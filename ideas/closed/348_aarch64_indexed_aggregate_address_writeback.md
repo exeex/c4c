@@ -1,6 +1,6 @@
 # AArch64 Indexed Aggregate Address And Writeback
 
-Status: Active
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -154,3 +154,14 @@ evidence points back to in-scope global indexed array snapshot/writeback in
 read back uninitialized and used to corrupt the final array. Treat this as the
 next selected-address/writeback localization route, while preserving the prior
 348 repairs for `00130`, `00187`, and `00195`.
+
+2026-05-21: Closed after the reactivated selected-snapshot/writeback route
+repaired `00176`. The latest focused before/after regression guard improved
+from 6/8 to 7/8 by resolving `c_testsuite_aarch64_backend_src_00176_c` with no
+new failures; `00130` and `00195` stayed passing, and the supervisor broader
+backend guard passed 141/141. The remaining
+`c_testsuite_aarch64_backend_src_00187_c` `RUNTIME_NONZERO` segmentation fault
+is not an indexed aggregate selected-address/writeback failure in the current
+classification. It is split to
+`ideas/open/354_aarch64_external_call_symbol_home_publication.md` as external
+call argument/symbol home publication work.

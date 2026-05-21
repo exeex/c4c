@@ -1,201 +1,159 @@
-# AArch64 Indexed Aggregate Address And Writeback Plan
+# AArch64 External Call Symbol Home Publication Plan
 
 Status: Active
-Source Idea: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
-Activated After: ideas/open/353_aarch64_local_formal_frame_slot_publication.md
+Source Idea: ideas/open/354_aarch64_external_call_symbol_home_publication.md
+Activated After: ideas/closed/348_aarch64_indexed_aggregate_address_writeback.md
 
 ## Purpose
 
-Repair AArch64 generated-code handling for dynamic indexed aggregate and array
-addressing when the selected element address, snapshot, or writeback handoff is
-lost before loads or stores execute.
+Repair AArch64 generated-code publication for values that must be present in
+call arguments, symbol homes, local homes, or preserved stack homes before an
+external or direct call consumes them.
 
-Goal: make indexed aggregate stores, loads, swaps, and member accesses write
-back through the source-selected element address rather than through stale
-snapshots, wrong offsets, fixed globals, or uninitialized temporary slots.
+Goal: make the current `00187` `RUNTIME_NONZERO` segmentation fault advance
+past its call/symbol-home publication failure without reopening indexed
+aggregate selected-address/writeback work.
 
-Core Rule: repair general selected-address/writeback semantics; do not
-special-case `00176`, `swap`, one global symbol, one stack snapshot slot, one
-array index, one register, or one emitted instruction neighborhood.
+Core Rule: repair a semantic call/symbol-home publication owner; do not
+special-case `00187`, one external callee, one symbol, one local, one stack
+offset, one register, or one emitted call neighborhood.
 
 ## Read First
 
-- `ideas/open/348_aarch64_indexed_aggregate_address_writeback.md`
-- `ideas/open/353_aarch64_local_formal_frame_slot_publication.md` for the
-  split boundary: stale formal/local-slot reads in `partition` were repaired,
-  and the remaining `00176` failure is global indexed array snapshot/writeback.
-- AArch64 selected-address lowering, aggregate element address computation,
-  snapshot temporary handling, emitted load/store selection, and writeback
-  handoff code before editing.
+- `ideas/open/354_aarch64_external_call_symbol_home_publication.md`
+- `ideas/closed/348_aarch64_indexed_aggregate_address_writeback.md` for the
+  split boundary: `00130`, `00176`, and `00195` now pass, while `00187` remains
+  a separate call/symbol-home publication segfault.
+- AArch64 call operand publication, prepared value homes, symbol/local home
+  publication, preserved stack homes, and emitted direct/external call setup
+  before editing.
 
 ## Current Targets
 
-- Current representative: `c_testsuite_aarch64_backend_src_00176_c`.
-- First bad fact family: generated `swap` appears to write global indexed array
-  elements from uninitialized high stack snapshot slots such as `[sp, #264]`
-  and `[sp, #268]`, corrupting the final sorted array after local/formal
-  publication has been repaired.
-- Regression guardrails: prior indexed aggregate representatives `00130`,
-  `00187`, and `00195`; nearby classified representatives `00181` and `00182`
-  only after confirming their current first bad facts still reach indexed
-  aggregate selected-address/writeback.
-- Adjacent focused backend coverage for selected addresses, aggregate element
-  stores/loads, global array writes, local array writes, struct-member array
-  elements, and frame-slot temporaries selected by the supervisor.
+- Current representative: `c_testsuite_aarch64_backend_src_00187_c`.
+- First bad fact family: external call argument/symbol home publication for a
+  value or address that reaches a call boundary stale, unpublished, or
+  uninitialized.
+- Guardrails: `c_testsuite_aarch64_backend_src_00130_c`,
+  `c_testsuite_aarch64_backend_src_00176_c`,
+  `c_testsuite_aarch64_backend_src_00195_c`, focused AArch64
+  call-publication tests, selected-address/writeback tests, and backend
+  guardrails selected by the supervisor.
 
 ## Non-Goals
 
-- Do not reopen formal-to-local frame-slot publication from idea 353 unless
-  fresh evidence shows scalar fixed formals feeding local slots are again the
-  first bad fact.
-- Do not reopen block label placement from idea 352, recursive call argument
-  preservation from idea 349, or unsigned div/rem producer publication from
-  idea 350 unless fresh evidence reaches those exact boundaries.
-- Do not broaden into variadic aggregate `va_arg`, byval aggregate argument
-  lanes, HFA/floating aggregate publication, scalar cast stack-home,
-  return-result publication, direct-call publication, static aggregate
-  initializer/relocation materialization, semantic admission, runner behavior,
-  timeout policy, proof-log behavior, expectation changes, unsupported
-  classifications, or CTest registration.
-- Do not use filename-only, function-name-only, global-symbol-only,
-  stack-offset-only, array-dimension-only, register-only, c-testsuite-number
-  specific, or emitted-text-only fixes.
+- Do not reopen indexed aggregate selected-address/writeback from idea 348
+  unless fresh evidence reaches that exact owner.
+- Do not reopen recursive call argument preservation, block label emission
+  ordering, formal-to-local frame-slot publication, unsigned div/rem producer
+  publication, scalar cast publication, return-result publication,
+  variadic/byval/HFA aggregate publication, static initializer
+  materialization, semantic admission, runner behavior, timeout policy,
+  expectation changes, unsupported classifications, CTest registration, or
+  proof-log behavior.
+- Do not use filename-only, function-name-only, callee-only, symbol-only,
+  stack-offset-only, register-only, c-testsuite-number-specific, or
+  emitted-text-only fixes.
 
 ## Working Model
 
-- BIR/prepared lowering should carry the selected aggregate element address
-  through address computation, helper temporaries, emitted loads/stores, and
-  writeback.
-- A snapshot slot may preserve an intermediate value, but it must not replace
-  the source-selected destination address or become the source of a store before
-  being initialized.
-- For a global indexed array swap, each load and store must target the
-  dynamically selected element address for the current index, not a stale fixed
-  global snapshot or unrelated frame slot.
+- Prepared lowering may assign a live value or address to a symbol, local,
+  stack, or register home, but AArch64 call setup must publish that value into
+  the ABI-visible argument location or memory home that the callee/runtime path
+  consumes.
+- A preserved stack home or symbol snapshot is only valid if it is populated
+  before the call path reloads or dereferences it.
+- If `00187` still fails after a repair, reclassify the new first bad fact
+  instead of widening this plan by assumption.
 
 ## Execution Rules
 
-- Start from prepared/generated evidence for the current `00176` `swap`
-  boundary before modifying code.
-- Prefer a shared selected-address, temporary lifetime, emitted store/load, or
-  writeback handoff repair over emitted-instruction pattern matching.
-- Preserve prior 348 improvements for `00130`, `00187`, and `00195`.
-- Preserve idea 353's formal/local publication repair, idea 352's label path,
-  idea 349's recursive call-boundary repair, and idea 350's div/rem owner.
-- Treat any fix that recognizes only `00176`, `swap`, one global symbol, one
-  stack snapshot slot, one index, one register, or one instruction sequence as
-  route drift.
-- Reclassify new first bad facts instead of widening this plan by assumption.
+- Start from generated/prepared evidence for the current `00187` segfault
+  before modifying code.
+- Prefer shared publication helpers for call operands, symbol homes, local
+  homes, or preserved stack homes over emitted-instruction pattern matching.
+- Preserve prior 348 repairs for `00130`, `00176`, and `00195`.
+- Treat any fix that recognizes only `00187`, one callee, one symbol, one
+  stack slot, one register, or one instruction sequence as route drift.
 
 ## Steps
 
-### Step 1: Localize Global Indexed Array Snapshot/Writeback Boundary
+### Step 1: Localize The 00187 Call/Symbol-Home Boundary
 
-Goal: identify the exact AArch64 owner that loses the selected global array
-element address or reads an uninitialized snapshot slot in `swap`.
+Goal: identify the exact prepared-to-AArch64 handoff that leaves a call
+operand, symbol home, local home, or preserved stack home unpublished before
+`00187` segfaults.
 
-Primary target: selected-address metadata, aggregate element address lowering,
-snapshot temporary creation, emitted indexed load/store selection, and writeback
-handoff.
+Primary target: prepared value homes, symbol/local publication, preserved
+stack homes, call operand assignment, and emitted call setup.
 
 Actions:
 
-- Trace `00176` `swap` from prepared aggregate/index metadata through generated
-  AArch64 loads and stores.
-- Identify why high stack snapshot slots such as `[sp, #264]` and `[sp, #268]`
-  are read before they contain the selected element values.
-- Decide whether the owner is selected-address computation, snapshot lifetime,
-  temporary-to-store handoff, emitted store addressing, or writeback routing
-  with direct evidence.
+- Trace `00187` from prepared MIR/BIR homes through generated call setup to
+  the crashing call path.
+- Identify whether the bad value is a call argument, symbol address, local
+  address, local value, or preserved stack-home reload.
+- Record the concrete first bad boundary with generated evidence and the
+  focused proof subset for the implementation packet.
 
 Completion check:
 
-- `todo.md` records the concrete first bad boundary, representative
-  prepared/generated evidence, and the narrow proof subset for the first
-  implementation packet.
+- `todo.md` records the localized first bad boundary, representative evidence,
+  and the narrow proof command for the repair packet.
 
-### Step 2: Add Focused Indexed Aggregate Coverage
+### Step 2: Add Focused Call/Symbol-Home Coverage
 
-Goal: prove dynamic indexed aggregate selected-address/writeback behavior
-without depending only on c-testsuite output.
+Goal: prove the publication shape without depending only on `00187`.
 
 Actions:
 
-- Add or extend focused backend coverage for a global array indexed swap or
-  indexed writeback shape that requires dynamic selected addresses.
-- Include at least one differently shaped indexed aggregate guardrail, such as
-  local byte array, multidimensional local array, or struct-member array
-  element access, when the localized owner applies to that shape.
-- Keep test contracts independent of `00176`, `swap`, one global symbol, one
-  stack slot, one register, or one emitted instruction neighborhood.
+- Add or identify focused backend coverage for the localized call argument,
+  symbol-home, local-home, or preserved-home publication shape.
+- Keep assertions semantic: the value or address must be published before the
+  call consumer reloads or dereferences it.
+- Avoid contracts tied to `00187`, one symbol name, one offset, one register,
+  or one emitted instruction neighborhood.
 
 Completion check:
 
 - Focused coverage fails without the repair or an existing focused test is
-  identified that already exposes stale snapshot or selected-address writeback
-  loss.
+  identified that already exposes the stale/unpublished call/symbol-home
+  behavior.
 
-### Step 3: Repair Selected-Address Snapshot/Writeback Handoff
+### Step 3: Repair The Publication Handoff
 
-Goal: make generated AArch64 load from and store to the dynamic indexed
-aggregate element selected by the source program.
+Goal: make AArch64 publish the live value/address into the call-visible or
+memory-visible home before the callee/runtime path consumes it.
 
 Actions:
 
-- Repair the localized owner from Step 1 in the smallest shared
-  selected-address, temporary lifetime, emitted load/store, or writeback helper.
-- Ensure stores do not consume uninitialized snapshot slots and do not collapse
-  dynamic element destinations into fixed global or frame-slot snapshots.
-- Preserve existing scalar local/formal publication, call argument publication,
-  branch/control, return, selected-address, and frame-layout behavior.
+- Repair the localized shared owner from Step 1.
+- Ensure prepared values are not treated as available in stack, symbol, local,
+  or argument homes until those homes have actually been filled.
+- Preserve selected-address/writeback, formal/local publication, recursive
+  call preservation, block labeling, scalar producer, and return behavior.
 
 Completion check:
 
 - Focused coverage from Step 2 passes, and supervisor-selected adjacent
-  indexed aggregate and backend guardrails show no regression.
+  call-publication and selected-address guardrails show no regression.
 
-### Step 4: Prove Representatives And Reclassify Residuals
+### Step 4: Prove 00187 And Reclassify Residuals
 
-Goal: verify `00176` advances past the global indexed array snapshot/writeback
-failure and confirm the repair is not one representative only.
-
-Actions:
-
-- Run the supervisor-selected external proof for `00176` after focused proof
-  is stable.
-- Re-run prior 348 representatives `00130`, `00187`, and `00195` or the
-  supervisor-selected equivalent guardrails to confirm they remain advanced.
-- Use `00181`, `00182`, or another classified representative only when fresh
-  evidence shows its current first bad fact reaches the same selected-address
-  writeback owner.
-- If any representative remains red, reclassify the new first bad fact instead
-  of broadening this plan by assumption.
-
-Completion check:
-
-- `todo.md` records whether `00176` passed, advanced past the global indexed
-  snapshot/writeback failure, or exposed a new first bad fact; it also records
-  at least one differently shaped indexed aggregate proof or a justified
-  reclassification.
-
-### Step 5: Broader Guard And Closure Decision
-
-Goal: decide whether the source idea is complete or whether another focused
-runbook is needed for remaining in-scope indexed aggregate work.
+Goal: verify `00187` advances past the current segmentation fault and decide
+whether this source idea is complete.
 
 Actions:
 
-- Run the supervisor-chosen broader backend guard after focused proof is
+- Run the supervisor-selected external proof including `00187`.
+- Re-run adjacent guardrails including `00130`, `00176`, and `00195`.
+- Run the supervisor-chosen broader backend guard once focused proof is
   stable.
-- Confirm adjacent variadic/byval aggregate, scalar cast, scalar local
-  writeback, return publication, direct-call publication, local conversion, and
-  selected-address guardrails remain stable where selected by the supervisor.
-- If the idea is complete, request lifecycle close with matching regression
-  logs. If not, leave `todo.md` with the remaining indexed aggregate boundary
-  and exact blocker.
+- If `00187` remains red, reclassify the new first bad fact instead of
+  broadening this plan by assumption.
 
 Completion check:
 
-- The lifecycle state either has closure-ready proof for idea 348 or a clear
-  remaining selected-address/writeback route that does not broaden beyond the
-  source idea.
+- `todo.md` records whether `00187` passed, advanced, or exposed a separate
+  first bad fact, plus the broader guard result and closure/split
+  recommendation.
