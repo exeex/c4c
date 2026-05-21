@@ -2367,6 +2367,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                   "scalar mul/div/rem node has incomplete printable lhs facts"};
     }
     std::optional<std::string> rhs;
+    std::optional<RegisterOperand> rhs_scratch;
     if (rhs_is_register || rhs_is_memory) {
       std::vector<const RegisterOperand*> rhs_occupied{&*scalar.result_register};
       if (lhs_register != nullptr) {
@@ -2389,6 +2390,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                     "scalar mul/div/rem node has incomplete printable rhs facts"};
       }
       rhs = rhs_source->name;
+      rhs_scratch = rhs_source->scratch;
     } else {
       const bool result_aliases_lhs =
           lhs_register != nullptr && scalar_registers_alias(*scalar.result_register,
@@ -2397,15 +2399,17 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       if (lhs->scratch.has_value()) {
         occupied.push_back(&*lhs->scratch);
       }
-      const auto scratch = scalar_gp_scratch_name(
-          *operand_view,
-          is_remainder_opcode || result_aliases_lhs
-              ? occupied
-              : std::vector<const RegisterOperand*>{lhs_register});
-      rhs = (is_remainder_opcode || result_aliases_lhs) ? scratch : result;
-      if (!rhs.has_value()) {
-        return {.lines = std::nullopt,
-                .diagnostic = "scalar mul/div/rem node needs an available scratch register"};
+      if (is_remainder_opcode || result_aliases_lhs) {
+        const auto scratch = scalar_gp_scratch_register(*operand_view, occupied);
+        if (!scratch.has_value()) {
+          return {.lines = std::nullopt,
+                  .diagnostic =
+                      "scalar mul/div/rem node needs an available scratch register"};
+        }
+        rhs_scratch = scratch;
+        rhs = abi::register_name(scratch->reg);
+      } else {
+        rhs = result;
       }
       std::ostringstream move;
       move << "mov " << *rhs << ", " << scalar_immediate_name(*rhs_immediate);
@@ -2429,34 +2433,37 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     if (alu.source_binary_opcode == bir::BinaryOpcode::SRem ||
         alu.source_binary_opcode == bir::BinaryOpcode::URem) {
       std::optional<std::string> divisor = rhs;
+      std::optional<RegisterOperand> divisor_scratch = rhs_scratch;
       if (rhs_register != nullptr && scalar_registers_alias(*scalar.result_register,
                                                             *rhs_register)) {
-        const auto scratch = scalar_gp_scratch_name(
-            *operand_view,
-            lhs->scratch.has_value()
-                ? std::vector<const RegisterOperand*>{
-                      &*scalar.result_register, lhs_register, &*lhs->scratch}
-                : std::vector<const RegisterOperand*>{
-                      &*scalar.result_register, lhs_register});
+        std::vector<const RegisterOperand*> occupied{&*scalar.result_register, lhs_register};
+        if (lhs->scratch.has_value()) {
+          occupied.push_back(&*lhs->scratch);
+        }
+        const auto scratch = scalar_gp_scratch_register(*operand_view, occupied);
         if (!scratch.has_value()) {
           return {.lines = std::nullopt,
                   .diagnostic =
                       "scalar rem node needs scratch when result aliases divisor"};
         }
         std::ostringstream move;
-        move << "mov " << *scratch << ", " << *rhs;
+        const std::string scratch_name = abi::register_name(scratch->reg);
+        move << "mov " << scratch_name << ", " << *rhs;
         lines.push_back(move.str());
-        divisor = scratch;
+        divisor = scratch_name;
+        divisor_scratch = scratch;
       }
       std::optional<std::string> quotient = result;
       if (lhs_register != nullptr &&
           scalar_registers_alias(*scalar.result_register, *lhs_register)) {
-        const auto scratch = scalar_gp_scratch_name(
-            *operand_view,
-            rhs_register == nullptr
-                ? std::vector<const RegisterOperand*>{&*scalar.result_register}
-                : std::vector<const RegisterOperand*>{&*scalar.result_register,
-                                                      rhs_register});
+        std::vector<const RegisterOperand*> occupied{&*scalar.result_register};
+        if (rhs_register != nullptr) {
+          occupied.push_back(rhs_register);
+        }
+        if (divisor_scratch.has_value()) {
+          occupied.push_back(&*divisor_scratch);
+        }
+        const auto scratch = scalar_gp_scratch_name(*operand_view, occupied);
         if (!scratch.has_value()) {
           return {.lines = std::nullopt,
                   .diagnostic =

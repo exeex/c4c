@@ -4761,6 +4761,36 @@ int selected_scalar_mul_div_rem_materializes_immediate_operands() {
                 join_lines(rem_result.instruction_lines));
   }
 
+  const auto rem_aliasing_dividend = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::SRem,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{156},
+          .result_value_name = c4c::ValueNameId{157},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(13),
+          .lhs = aarch64_codegen::make_register_operand(wreg(13)),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 8,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto rem_aliasing_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(rem_aliasing_dividend);
+  if (!rem_aliasing_result.ok ||
+      rem_aliasing_result.instruction_lines.size() != 3 ||
+      rem_aliasing_result.instruction_lines[0] != "mov w9, #8" ||
+      rem_aliasing_result.instruction_lines[1] != "sdiv w10, w13, w9" ||
+      rem_aliasing_result.instruction_lines[2] != "msub w13, w10, w9, w13") {
+    return fail(
+        "expected scalar rem to keep quotient scratch distinct from immediate divisor: " +
+        join_lines(rem_aliasing_result.instruction_lines));
+  }
+
   return 0;
 }
 
