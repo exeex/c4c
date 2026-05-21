@@ -192,3 +192,15 @@ authority path. Do not reopen prior local/value-home, fixed-formal entry,
 byval lane, stdarg cursor, MOVI zero-extension, or earlier HFA-output repairs
 unless fresh generated-code evidence moves the first bad fact back to those
 exact boundaries.
+
+2026-05-21: Parked after commit `1f0917f5b` reclassified the active `00204`
+evidence. The apparent `HFA long double:` corruption is reachable inside the
+second stdarg `%7s %9s ...` `myprintf` invocation by overreading past the
+format string terminator: generated AArch64 stores the current format byte
+with `strb`, then reloads an 8-byte value from the same stack address before
+testing for NUL, keeping the loop alive into adjacent `.str51` / `.str52`
+literals. This is a stdarg cursor/format byte materialization residual, not a
+proved HFA register-save-area defect. Active execution switched back to
+`ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`; do not
+continue this residual under idea 326 unless fresh evidence reaches a
+standalone HFA/floating first bad fact.

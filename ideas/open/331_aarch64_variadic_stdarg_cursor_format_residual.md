@@ -133,3 +133,15 @@ from unpopulated aggregate lane slots. `myprintf` cursor progression, aggregate
 observers. Handoff back to
 `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md` for
 partial upper-lane byval aggregate publication.
+
+2026-05-21: Reactivated after commit `1f0917f5b` reclassified the active
+`00204` evidence away from idea 326. The current first bad fact is in
+`myprintf` format traversal for the second stdarg `%7s %9s ...` invocation:
+generated AArch64 stores the current format byte with `strb`, then reloads an
+8-byte value from the same stack address before the NUL test. The stale-wide
+reload lets the loop overread past the format string terminator into adjacent
+`.str51` / `.str52` literals, making visible `HFA long double:` text appear
+before the standalone HFA stdarg invocation has been proven reachable. Resume
+from AArch64 format-byte materialization and NUL-test publication; do not
+reopen HFA register-save-area ownership unless fresh evidence reaches a
+standalone HFA/floating first bad fact.
