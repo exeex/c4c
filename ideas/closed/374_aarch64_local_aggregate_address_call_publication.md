@@ -1,6 +1,6 @@
 # AArch64 Local Aggregate Address Call Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -99,3 +99,21 @@ Reject the route if it:
   first-bad-fact handoff;
 - proves only the external representative while leaving focused local
   aggregate address call publication behavior unguarded.
+
+## Closure Note
+
+Closed 2026-05-21 after implementation commit `f76455f64` repaired the local
+aggregate address call publication boundary. Focused backend coverage guards
+direct and zero-offset computed local aggregate address call operands, while
+protecting `llvm.va_start.p0` and ABI `byval_copy` operands from the fallback.
+
+The stale-address first bad facts are gone. `00218` now materializes
+`&convs` before `convert_like_real`, and `00216` now materializes the first
+local aggregate `print(...)` addresses. Both remaining representatives are
+advanced residuals outside this owner: `00218` exposes a local
+aggregate/bit-field layout-store mismatch, and `00216` reaches a later
+compound-relocation/function-pointer-table residual.
+
+Supervisor full-suite review matched the accepted baseline at `3352` passed /
+`23` failed / `3375` total with no new failing tests. No baseline roll-forward
+was accepted because the candidate had no pass-count improvement.
