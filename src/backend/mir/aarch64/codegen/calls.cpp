@@ -36,6 +36,10 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
 std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
     abi::RegisterReference scratch,
     const MemoryOperand& memory);
+[[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    InstructionRecord target);
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_immediate_cast_call_argument_publication_instruction(
     const module::BlockLoweringContext& context,
@@ -1722,6 +1726,122 @@ find_prior_preserved_value_for_value(
   return selected;
 }
 
+[[nodiscard]] bool value_spelling_matches(const bir::Value& value,
+                                          std::string_view spelling) {
+  return value.kind == bir::Value::Kind::Named && value.name == spelling;
+}
+
+[[nodiscard]] bool non_call_instruction_uses_value(const bir::Inst& inst,
+                                                   std::string_view spelling) {
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return value_spelling_matches(binary->lhs, spelling) ||
+           value_spelling_matches(binary->rhs, spelling);
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    return value_spelling_matches(select->lhs, spelling) ||
+           value_spelling_matches(select->rhs, spelling) ||
+           value_spelling_matches(select->true_value, spelling) ||
+           value_spelling_matches(select->false_value, spelling);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return value_spelling_matches(cast->operand, spelling);
+  }
+  if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+    return value_spelling_matches(store_global->value, spelling);
+  }
+  if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+    return value_spelling_matches(store_local->value, spelling);
+  }
+  return false;
+}
+
+[[nodiscard]] bool terminator_uses_value(const bir::Terminator& terminator,
+                                         std::string_view spelling) {
+  if (terminator.value.has_value() &&
+      value_spelling_matches(*terminator.value, spelling)) {
+    return true;
+  }
+  for (const auto& lane : terminator.return_lanes) {
+    if (value_spelling_matches(lane, spelling)) {
+      return true;
+    }
+  }
+  return terminator.kind == bir::TerminatorKind::CondBranch &&
+         value_spelling_matches(terminator.condition, spelling);
+}
+
+[[nodiscard]] bool branch_condition_uses_value(
+    const module::BlockLoweringContext& context,
+    std::string_view spelling) {
+  if (context.function.control_flow == nullptr || context.control_flow_block == nullptr) {
+    return false;
+  }
+  const auto* condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (condition == nullptr) {
+    return false;
+  }
+  return value_spelling_matches(condition->condition_value, spelling) ||
+         (condition->lhs.has_value() &&
+          value_spelling_matches(*condition->lhs, spelling)) ||
+         (condition->rhs.has_value() &&
+          value_spelling_matches(*condition->rhs, spelling));
+}
+
+[[nodiscard]] bool preserved_value_has_later_non_call_use(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedCallPreservedValue& preserved) {
+  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
+      preserved.value_name == c4c::kInvalidValueName ||
+      call_plan.instruction_index >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto spelling =
+      prepare::prepared_value_name(context.function.prepared->names, preserved.value_name);
+  if (spelling.empty()) {
+    return false;
+  }
+
+  for (std::size_t index = call_plan.instruction_index + 1;
+       index < context.bir_block->insts.size();
+       ++index) {
+    if (std::holds_alternative<bir::CallInst>(context.bir_block->insts[index])) {
+      return false;
+    }
+    if (non_call_instruction_uses_value(context.bir_block->insts[index], spelling)) {
+      return true;
+    }
+  }
+  return terminator_uses_value(context.bir_block->terminator, spelling) ||
+         branch_condition_uses_value(context, spelling);
+}
+
+[[nodiscard]] bool preserved_value_has_block_entry_non_call_use(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPreservedValue& preserved) {
+  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
+      preserved.value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  const auto spelling =
+      prepare::prepared_value_name(context.function.prepared->names, preserved.value_name);
+  if (spelling.empty()) {
+    return false;
+  }
+
+  for (const auto& inst : context.bir_block->insts) {
+    if (std::holds_alternative<bir::CallInst>(inst)) {
+      return false;
+    }
+    if (non_call_instruction_uses_value(inst, spelling)) {
+      return true;
+    }
+  }
+  return terminator_uses_value(context.bir_block->terminator, spelling) ||
+         branch_condition_uses_value(context, spelling);
+}
+
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -1792,6 +1912,120 @@ make_prior_preserved_call_argument_source(
   }
 
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_callee_saved_preservation_home_republication_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedCallPreservedValue& preserved,
+    prepare::PreparedMovePhase phase,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::string reason,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (context.function.value_locations == nullptr ||
+      context.function.control_flow == nullptr ||
+      preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved.value_name == c4c::kInvalidValueName ||
+      !preserved.register_name.has_value() ||
+      !preserved.register_bank.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* source_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        preserved.value_id);
+  const auto expected_view =
+      source_home != nullptr && source_home->size_bytes.has_value()
+          ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+          : scalar_view_from_register_name(preserved.register_name);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+
+  auto source = make_register_operand_from_prepared_authority(
+      preserved.register_name,
+      preserved.register_placement,
+      preserved.register_bank,
+      RegisterOperandRole::StoragePlan,
+      preserved.value_id,
+      preserved.value_name,
+      preserved.contiguous_width,
+      preserved.occupied_register_names,
+      expected_view,
+      diagnostics,
+      context,
+      instruction_index);
+  auto destination = make_register_operand_from_prepared_authority(
+      preserved.register_name,
+      preserved.register_placement,
+      preserved.register_bank,
+      RegisterOperandRole::StoragePlan,
+      preserved.value_id,
+      preserved.value_name,
+      preserved.contiguous_width,
+      preserved.occupied_register_names,
+      expected_view,
+      diagnostics,
+      context,
+      instruction_index);
+  if (!source.has_value() || !destination.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedMoveResolution synthetic_move{
+      .from_value_id = preserved.value_id,
+      .to_value_id = preserved.value_id,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = preserved.register_name,
+      .destination_contiguous_width = preserved.contiguous_width,
+      .destination_occupied_register_names = preserved.occupied_register_names,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = std::move(reason),
+      .destination_register_placement = preserved.register_placement,
+  };
+  CallBoundaryMoveInstructionRecord move_record{
+      .function_name = context.function.control_flow->function_name,
+      .phase = phase,
+      .authority_kind = bundle.authority_kind,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .move = synthetic_move,
+      .source_register = *source,
+      .destination_register = *destination,
+      .source_bundle = &bundle,
+      .source_move = &synthetic_move,
+  };
+  return make_call_boundary_machine_instruction(
+      context,
+      instruction_index,
+      make_call_boundary_move_instruction(std::move(move_record)));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_callee_saved_preservation_home_republication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedCallPreservedValue& preserved,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (!preserved_value_has_later_non_call_use(context, call_plan, preserved)) {
+    return std::nullopt;
+  }
+  return make_callee_saved_preservation_home_republication_instruction(
+      context,
+      bundle,
+      preserved,
+      prepare::PreparedMovePhase::BeforeInstruction,
+      call_plan.block_index,
+      call_plan.instruction_index,
+      "callee_saved_preservation_home_republication",
+      diagnostics);
 }
 
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
@@ -4488,12 +4722,33 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
       prepare::PreparedMovePhase::AfterCall,
       context.block_index,
       instruction_index);
-  if (bundle == nullptr) {
-    return lowered;
+  const prepare::PreparedMoveBundle synthetic_bundle{
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+  };
+  if (bundle != nullptr) {
+    for (const auto& move : bundle->moves) {
+      if (auto instruction =
+              lower_after_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+        lowered.push_back(std::move(*instruction));
+      }
+    }
   }
-  for (const auto& move : bundle->moves) {
-    if (auto instruction =
-            lower_after_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+
+  const auto& republication_bundle =
+      bundle != nullptr ? *bundle : synthetic_bundle;
+  for (const auto& preserved : call_plan.preserved_values) {
+    if (auto instruction = make_callee_saved_preservation_home_republication(
+            context,
+            call_plan,
+            republication_bundle,
+            preserved,
+            instruction_index,
+            diagnostics)) {
       lowered.push_back(std::move(*instruction));
     }
   }
@@ -4642,11 +4897,15 @@ std::vector<module::MachineInstruction> lower_value_moves(
       phase,
       context.block_index,
       instruction_index);
-  if (bundle == nullptr) {
-    return lowered;
-  }
+  const prepare::PreparedMoveBundle synthetic_bundle{
+      .function_name = context.function.control_flow->function_name,
+      .phase = phase,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+  };
 
-  for (const auto& move : bundle->moves) {
+  if (bundle != nullptr) {
+    for (const auto& move : bundle->moves) {
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
         move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
       continue;
@@ -4777,6 +5036,66 @@ std::vector<module::MachineInstruction> lower_value_moves(
         context,
         instruction_index,
         make_call_boundary_move_instruction(std::move(move_record))));
+    }
+  }
+
+  if (phase != prepare::PreparedMovePhase::BlockEntry) {
+    return lowered;
+  }
+
+  const auto* call_plans =
+      context.function.call_plans != nullptr
+          ? context.function.call_plans
+          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
+                 ? prepare::find_prepared_call_plans(
+                       *context.function.prepared, context.function.control_flow->function_name)
+                 : nullptr);
+  if (call_plans == nullptr) {
+    return lowered;
+  }
+
+  std::vector<const prepare::PreparedCallPreservedValue*> selected_preserved;
+  for (const auto& call : call_plans->calls) {
+    if (call.block_index >= context.block_index) {
+      continue;
+    }
+    for (const auto& preserved : call.preserved_values) {
+      if (preserved.route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+        continue;
+      }
+      auto existing = std::find_if(
+          selected_preserved.begin(),
+          selected_preserved.end(),
+          [&](const prepare::PreparedCallPreservedValue* candidate) {
+            return candidate->value_id == preserved.value_id;
+          });
+      if (existing == selected_preserved.end()) {
+        selected_preserved.push_back(&preserved);
+      } else {
+        *existing = &preserved;
+      }
+    }
+  }
+
+  const auto& republication_bundle = bundle != nullptr ? *bundle : synthetic_bundle;
+  for (const auto* preserved : selected_preserved) {
+    if (preserved == nullptr ||
+        !preserved_value_has_block_entry_non_call_use(context, *preserved)) {
+      continue;
+    }
+    if (auto instruction =
+            make_callee_saved_preservation_home_republication_instruction(
+                context,
+                republication_bundle,
+                *preserved,
+                prepare::PreparedMovePhase::BlockEntry,
+                context.block_index,
+                instruction_index,
+                "callee_saved_preservation_home_block_entry_republication",
+                diagnostics)) {
+      lowered.push_back(std::move(*instruction));
+    }
   }
   return lowered;
 }

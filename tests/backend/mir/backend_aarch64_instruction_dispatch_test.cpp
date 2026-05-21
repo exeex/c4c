@@ -2130,6 +2130,70 @@ prepare::PreparedBirModule prepared_with_nested_call_preserved_argument_reuse() 
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_preserved_argument_non_call_reuse() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  auto& function = prepared.module.functions.front();
+  auto& block = function.blocks.front();
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto arg_name = prepared.names.value_names.find("%arg");
+  const auto sum_name = prepared.names.value_names.intern("%sum");
+
+  block.insts.insert(block.insts.begin() + 1,
+                     bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Add,
+                         .result = bir::Value::named(bir::TypeKind::I64, "%sum"),
+                         .operand_type = bir::TypeKind::I64,
+                         .lhs = bir::Value::named(bir::TypeKind::I64, "%arg"),
+                         .rhs = bir::Value::immediate_i64(1),
+                     });
+
+  auto& value_homes = prepared.value_locations.functions.front().value_homes;
+  value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = prepare::PreparedValueId{142},
+      .function_name = function_name,
+      .value_name = sum_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"x22"},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+
+  auto& move_bundle =
+      prepared.value_locations.functions.front().move_bundles.front();
+  move_bundle.instruction_index = 2;
+  for (auto& move : move_bundle.moves) {
+    move.instruction_index = 2;
+  }
+
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{141},
+               .value_name = arg_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"x1"},
+               .occupied_register_names = {"x1"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{142},
+               .value_name = sum_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"x22"},
+               .occupied_register_names = {"x22"},
+           }},
+  });
+
+  auto& calls = prepared.call_plans.functions.front().calls;
+  calls.back().instruction_index = 2;
+  calls.back().arguments.front().instruction_index = 2;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_load_global_call_argument(
     bir::GlobalAddressMaterializationPolicy policy) {
   prepare::PreparedBirModule prepared;
@@ -11709,6 +11773,77 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   return 0;
 }
 
+int preserved_home_feeds_later_non_call_scalar_after_clobber() {
+  auto prepared = prepared_with_preserved_argument_non_call_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  if (function_context.call_plans == nullptr ||
+      function_context.call_plans->calls.size() != 2 ||
+      function_context.call_plans->calls.front().instruction_index != 0 ||
+      function_context.call_plans->calls.back().instruction_index != 2) {
+    return fail("expected non-call reuse fixture to keep the second call after the scalar use");
+  }
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 3 || !result.visited_terminator ||
+      result.emitted_instructions != 7 || block.instructions.size() != 7 ||
+      !diagnostics.empty()) {
+    return fail("expected preserved-home republication, scalar use, later call, and return");
+  }
+
+  const auto* republished =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (republished == nullptr || !republished->source_register.has_value() ||
+      !republished->destination_register.has_value() ||
+      republished->source_register->reg != aarch64_module::abi::x_register(20) ||
+      republished->destination_register->reg != aarch64_module::abi::x_register(20) ||
+      republished->destination_register->value_name !=
+          prepared.names.value_names.find("%arg")) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected after-call republication to seed the preserved x20 home: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* scalar =
+      std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+          &block.instructions[3].target.payload);
+  if (scalar == nullptr || !scalar->scalar_alu.has_value()) {
+    return fail("expected scalar add after preserved-home republication");
+  }
+  const auto* lhs =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &scalar->scalar_alu->lhs.payload);
+  if (lhs == nullptr || lhs->reg != aarch64_module::abi::x_register(20) ||
+      lhs->value_name != prepared.names.value_names.find("%arg")) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected scalar add to read preserved x20, not stale x1: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected preserved scalar route to print: " + printed.diagnostic);
+  }
+  const auto first_call = printed.assembly.find("bl clobber_arg");
+  const auto preserved_scalar = printed.assembly.find("add x22, x20, #1", first_call);
+  const auto stale_scalar = printed.assembly.find("add x22, x1, #1", first_call);
+  if (first_call == std::string::npos ||
+      preserved_scalar == std::string::npos ||
+      (stale_scalar != std::string::npos && stale_scalar < preserved_scalar)) {
+    return fail("expected later non-call scalar use to consume preserved x20: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -20262,6 +20397,11 @@ int main() {
   }
   if (const int status =
           nested_call_argument_publishes_from_prior_preservation_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          preserved_home_feeds_later_non_call_scalar_after_clobber();
       status != 0) {
     return status;
   }
