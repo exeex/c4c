@@ -1,7 +1,8 @@
 # AArch64 Prepared Select Condition Join Stale Reload
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md
 
 ## Goal
@@ -13,14 +14,14 @@ a stale stack slot and overwrites that false value.
 ## Why This Exists
 
 Idea 362 repaired the pointer-derived load/address scaling timeout owner in
-`00181`. After that repair, `00181` no longer times out: it advances to a fast
+`00181`. After that repair, `00181` no longer timed out: it advanced to a fast
 runtime nonzero segmentation fault.
 
-The new first bad fact is a different owner in generated `Move`: the bounded
-source scan false edge emits `mov x13, #0`, but the join reloads
+The new first bad fact was a different owner in generated `Move`: the bounded
+source scan false edge emitted `mov x13, #0`, but the join reloaded
 `ldr x13, [sp, #64]`, replacing the false value with a stale stack slot. The
-same select/join shape appears in the destination scan. This is not an address
-scale multiply or pointer-derived load-address rule.
+same select/join shape appeared in the destination scan. This was not an
+address scale multiply or pointer-derived load-address rule.
 
 ## In Scope
 
@@ -65,6 +66,25 @@ scale multiply or pointer-derived load-address rule.
   distinct index and scale registers in the representative multiply shape.
 - `00170`, `00189`, and focused backend contracts for the nearby memory and
   prepared-BIR shapes remain passing.
+
+## Closure Notes
+
+Committed code slice `0efc079a5 Preserve join-published select conditions`
+repaired the stale prepared select/condition join reload owner. The repair
+scoped publication lookups and producer-skip checks to the current successor so
+unrelated block-entry bundles cannot satisfy the current join authority.
+
+Focused proof advanced `c_testsuite_aarch64_backend_src_00181_c` from the
+previous `[RUNTIME_NONZERO] exit=Segmentation fault` to a later
+`[RUNTIME_MISMATCH]`, while `00170`, `00189`, and the focused backend
+contracts passed. Live generated `00181` no longer has the stale scan-join
+reloads at `.LBB193_18` (`[sp, #64]`) or `.LBB193_25` (`[sp, #112]`); both
+joins branch from the published `w13`.
+
+The remaining `00181` first-move mismatch is a separate owner: disk `1` is
+placed on `B` instead of expected `C` after the stale scan joins now terminate
+correctly. That residual is split to
+`ideas/open/364_aarch64_hanoi_first_move_peg_selection_mismatch.md`.
 
 ## Reviewer Reject Signals
 
