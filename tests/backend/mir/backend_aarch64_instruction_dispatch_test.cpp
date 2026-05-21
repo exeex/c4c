@@ -18424,6 +18424,148 @@ int fp_scalar_compare_result_publication_materializes_fcmp_cset() {
   return 0;
 }
 
+int string_literal_pointer_null_compare_materializes_address_before_cset() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.string.ptr.compare");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.string.ptr.compare.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.string.ptr.compare.entry");
+  const auto text_name = prepared.names.texts.intern(".literal.ptr.compare");
+  const auto module_text_name = prepared.module.names.texts.intern(".literal.ptr.compare");
+  const auto pointer_name = prepared.names.value_names.intern("@.literal.ptr.compare");
+  const auto compare_name = prepared.names.value_names.intern("%cmp");
+
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".literal.ptr.compare",
+      .name_id = module_text_name,
+      .bytes = "abc",
+      .align_bytes = 1,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.string.ptr.compare",
+      .return_type = bir::TypeKind::I32,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.string.ptr.compare.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::Eq,
+                      .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+                      .operand_type = bir::TypeKind::Ptr,
+                      .lhs = bir::Value::named(bir::TypeKind::Ptr,
+                                               "@.literal.ptr.compare"),
+                      .rhs = bir::Value{
+                          .kind = bir::Value::Kind::Immediate,
+                          .type = bir::TypeKind::Ptr,
+                          .immediate = 0,
+                          .immediate_bits = 0,
+                      },
+                  }},
+              .terminator =
+                  bir::Terminator{bir::ReturnTerminator{
+                      .value = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+                  }},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{330},
+               .function_name = function_name,
+               .value_name = pointer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{331},
+               .function_name = function_name,
+               .value_name = compare_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {dispatch_storage_for_type(
+               prepare::PreparedValueId{330}, pointer_name, bir::TypeKind::Ptr, "x20"),
+           dispatch_storage_for_type(
+               prepare::PreparedValueId{331}, compare_name, bir::TypeKind::I32, "x13")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+      .address_materializations =
+          {prepare::PreparedAddressMaterialization{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+              .result_value_name = pointer_name,
+              .text_name = text_name,
+              .address_space = bir::AddressSpace::Default,
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 ||
+      result.emitted_instructions < 2 ||
+      block.instructions.size() < 3 ||
+      !diagnostics.empty()) {
+    return fail("expected string pointer compare to materialize address and publish result: ops=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected string pointer compare route to print: " + printed.diagnostic);
+  }
+  const auto page = printed.assembly.find("adrp x20, .literal.ptr.compare");
+  const auto low = printed.assembly.find("add x20, x20, :lo12:.literal.ptr.compare");
+  const auto compare = printed.assembly.find("cmp x20, #0");
+  const auto publish = printed.assembly.find("cset w13, eq");
+  const auto ret = printed.assembly.find("mov w0, w13");
+  if (page == std::string::npos ||
+      low == std::string::npos ||
+      compare == std::string::npos ||
+      publish == std::string::npos ||
+      ret == std::string::npos ||
+      !(page < low && low < compare && compare < publish && publish < ret)) {
+    return fail("expected string pointer/null compare to define boolean before return: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int stack_home_fused_compare_rejects_same_block_i8_extension_home() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -24470,6 +24612,11 @@ int main() {
   }
   if (const int status =
           fp_scalar_compare_result_publication_materializes_fcmp_cset();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          string_literal_pointer_null_compare_materializes_address_before_cset();
       status != 0) {
     return status;
   }

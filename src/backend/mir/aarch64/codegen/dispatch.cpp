@@ -5808,33 +5808,44 @@ void lower_pending_store_global_stack_value_publications(
   const auto* binary = std::get_if<bir::BinaryInst>(&inst);
   if (binary == nullptr ||
       binary->result.kind != bir::Value::Kind::Named ||
-      binary->result.type != bir::TypeKind::Ptr ||
-      context.bir_block == nullptr ||
-      instruction_index + 1 >= context.bir_block->insts.size()) {
-    return false;
-  }
-  const auto* next_store =
-      std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[instruction_index + 1]);
-  if (next_store == nullptr ||
-      next_store->value.kind != bir::Value::Kind::Named ||
-      next_store->value.type != bir::TypeKind::Ptr ||
-      next_store->value.name != binary->result.name) {
+      context.bir_block == nullptr) {
     return false;
   }
 
-  auto materialized = lower_address_materialization(context, instruction_index, diagnostics);
-  if (!materialized.has_value()) {
+  auto materialized_addresses =
+      lower_address_materializations(context, instruction_index, diagnostics);
+  if (materialized_addresses.empty()) {
     return false;
   }
 
-  record_address_materialization_result(scalar_state, *materialized);
-  auto lowered_scalar =
-      lower_scalar_instruction(context, inst, instruction_index, scalar_state, diagnostics);
+  auto trial_scalar_state = scalar_state;
+  for (const auto& materialized : materialized_addresses) {
+    record_address_materialization_result(trial_scalar_state, materialized);
+  }
+  std::optional<module::MachineInstruction> lowered_scalar;
+  if (binary->result.type == bir::TypeKind::Ptr &&
+      instruction_index + 1 < context.bir_block->insts.size()) {
+    const auto* next_store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[instruction_index + 1]);
+    if (next_store != nullptr &&
+        next_store->value.kind == bir::Value::Kind::Named &&
+        next_store->value.type == bir::TypeKind::Ptr &&
+        next_store->value.name == binary->result.name) {
+      lowered_scalar =
+          lower_scalar_instruction(context, inst, instruction_index, trial_scalar_state, diagnostics);
+    }
+  } else if (bir::is_compare_opcode(binary->opcode)) {
+    lowered_scalar = lower_scalar_control_value_instruction(
+        context, inst, instruction_index, trial_scalar_state, diagnostics, true);
+  }
   if (!lowered_scalar.has_value()) {
     return false;
   }
 
-  block.instructions.push_back(std::move(*materialized));
+  scalar_state = std::move(trial_scalar_state);
+  for (auto& materialized : materialized_addresses) {
+    block.instructions.push_back(std::move(materialized));
+  }
   block.instructions.push_back(std::move(*lowered_scalar));
   return true;
 }

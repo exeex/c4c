@@ -1,5 +1,6 @@
 #include "lir_to_bir/lowering.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <unordered_map>
 #include <stdexcept>
@@ -388,6 +389,149 @@ void rewrite_string_pointer_args_for_call_pairs(
   }
 }
 
+std::optional<c4c::TextId> resolve_string_pointer_operand(
+    const c4c::codegen::lir::LirOperand& operand,
+    const StringPointerAliasMap& string_aliases,
+    const c4c::TextTable& string_constant_names,
+    const std::unordered_map<c4c::TextId, const bir::StringConstant*>&
+        string_constants_by_name_id) {
+  c4c::TextId resolved_name_id = c4c::kInvalidText;
+  if (operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+    resolved_name_id = string_constant_names.find(strip_global_sig(operand.str()));
+  } else if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    const auto alias_it = string_aliases.find(operand.str());
+    if (alias_it == string_aliases.end()) {
+      return std::nullopt;
+    }
+    resolved_name_id = alias_it->second;
+  } else {
+    return std::nullopt;
+  }
+
+  if (string_constants_by_name_id.find(resolved_name_id) ==
+      string_constants_by_name_id.end()) {
+    return std::nullopt;
+  }
+  return resolved_name_id;
+}
+
+bir::Value string_pointer_value(c4c::TextId name_id, bir::Module* lowered_module) {
+  std::string rewritten_name = "@";
+  rewritten_name.append(lowered_module->names.texts.lookup(name_id));
+  return bir::Value::named(bir::TypeKind::Ptr, rewritten_name);
+}
+
+std::vector<const c4c::codegen::lir::LirCmpOp*> collect_lir_string_pointer_compares(
+    const c4c::codegen::lir::LirFunction& function) {
+  std::vector<const c4c::codegen::lir::LirCmpOp*> compares;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst);
+      if (cmp == nullptr ||
+          cmp->is_float ||
+          c4c::codegen::lir::trim_lir_arg_text(cmp->type_str.str()) != "ptr") {
+        continue;
+      }
+      compares.push_back(cmp);
+    }
+  }
+  return compares;
+}
+
+std::vector<bir::BinaryInst*> collect_bir_pointer_compares(bir::Function* function) {
+  std::vector<bir::BinaryInst*> compares;
+  for (auto& block : function->blocks) {
+    for (auto& inst : block.insts) {
+      auto* binary = std::get_if<bir::BinaryInst>(&inst);
+      if (binary == nullptr ||
+          !bir::is_compare_opcode(binary->opcode) ||
+          binary->operand_type != bir::TypeKind::Ptr) {
+        continue;
+      }
+      compares.push_back(binary);
+    }
+  }
+  return compares;
+}
+
+void rewrite_string_pointer_operands_for_compare(
+    const c4c::codegen::lir::LirCmpOp& lir_compare,
+    bir::BinaryInst& lowered_compare,
+    const StringPointerAliasMap& string_aliases,
+    const std::unordered_map<c4c::TextId, const bir::StringConstant*>&
+        string_constants_by_name_id,
+    bir::Module* lowered_module) {
+  if (lowered_module == nullptr) {
+    return;
+  }
+  const auto lhs_text = resolve_string_pointer_operand(lir_compare.lhs,
+                                                      string_aliases,
+                                                      lowered_module->names.texts,
+                                                      string_constants_by_name_id);
+  if (lhs_text.has_value()) {
+    lowered_compare.lhs = string_pointer_value(*lhs_text, lowered_module);
+  }
+  const auto rhs_text = resolve_string_pointer_operand(lir_compare.rhs,
+                                                      string_aliases,
+                                                      lowered_module->names.texts,
+                                                      string_constants_by_name_id);
+  if (rhs_text.has_value()) {
+    lowered_compare.rhs = string_pointer_value(*rhs_text, lowered_module);
+  }
+}
+
+void rewrite_string_pointer_operands_for_compare_pairs(
+    const std::vector<const c4c::codegen::lir::LirCmpOp*>& lir_compares,
+    const std::vector<bir::BinaryInst*>& lowered_compares,
+    const StringPointerAliasMap& string_aliases,
+    const std::unordered_map<c4c::TextId, const bir::StringConstant*>&
+        string_constants_by_name_id,
+    bir::Module* lowered_module) {
+  if (lir_compares.empty() || lowered_compares.empty() || lowered_module == nullptr) {
+    return;
+  }
+
+  auto rewrite_pair = [&](const c4c::codegen::lir::LirCmpOp& lir_compare,
+                          bir::BinaryInst& lowered_compare) {
+    rewrite_string_pointer_operands_for_compare(lir_compare,
+                                                lowered_compare,
+                                                string_aliases,
+                                                string_constants_by_name_id,
+                                                lowered_module);
+  };
+
+  if (lir_compares.size() == lowered_compares.size()) {
+    for (std::size_t compare_index = 0; compare_index < lir_compares.size(); ++compare_index) {
+      if (lir_compares[compare_index] == nullptr ||
+          lowered_compares[compare_index] == nullptr) {
+        continue;
+      }
+      rewrite_pair(*lir_compares[compare_index], *lowered_compares[compare_index]);
+    }
+    return;
+  }
+
+  std::unordered_map<std::string, bir::BinaryInst*> lowered_by_result;
+  lowered_by_result.reserve(lowered_compares.size());
+  for (auto* lowered_compare : lowered_compares) {
+    if (lowered_compare != nullptr &&
+        lowered_compare->result.kind == bir::Value::Kind::Named) {
+      lowered_by_result.emplace(lowered_compare->result.name, lowered_compare);
+    }
+  }
+  for (const auto* lir_compare : lir_compares) {
+    if (lir_compare == nullptr ||
+        lir_compare->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      continue;
+    }
+    const auto lowered_it = lowered_by_result.find(lir_compare->result.str());
+    if (lowered_it == lowered_by_result.end() || lowered_it->second == nullptr) {
+      continue;
+    }
+    rewrite_pair(*lir_compare, *lowered_it->second);
+  }
+}
+
 void rewrite_call_string_pointer_args(
     const c4c::codegen::lir::LirModule& lir_module,
     const LoweredStringConstantMetadata& string_constants,
@@ -435,6 +579,13 @@ void rewrite_call_string_pointer_args(
                                                  string_constants_by_name_id,
                                                  lowered_module);
     }
+
+    rewrite_string_pointer_operands_for_compare_pairs(
+        collect_lir_string_pointer_compares(*lir_function),
+        collect_bir_pointer_compares(&lowered_function),
+        string_aliases,
+        string_constants_by_name_id,
+        lowered_module);
   }
 }
 

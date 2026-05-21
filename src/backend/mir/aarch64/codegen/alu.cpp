@@ -1029,6 +1029,7 @@ namespace mir = c4c::backend::mir;
     case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
       return make_immediate_operand(ImmediateOperand{
           .kind = immediate_kind,
           .type = value.type,

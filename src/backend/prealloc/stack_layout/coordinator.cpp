@@ -1065,7 +1065,7 @@ void append_string_constant_address_materialization(PreparedNameTables& names,
   return std::nullopt;
 }
 
-void append_call_argument_address_materialization(PreparedNameTables& names,
+void append_pointer_value_address_materialization(PreparedNameTables& names,
                                                   PreparedAddressingFunction& function_addressing,
                                                   std::vector<PrepareNote>& notes,
                                                   const bir::Module& module,
@@ -1073,9 +1073,9 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
                                                   FunctionNameId function_name_id,
                                                   BlockLabelId block_label_id,
                                                   std::size_t inst_index,
-                                                  const bir::Value& argument,
+                                                  const bir::Value& value,
                                                   const FrameSlotMap& frame_slots_by_name) {
-  if (argument.type != bir::TypeKind::Ptr || argument.kind != bir::Value::Kind::Named) {
+  if (value.type != bir::TypeKind::Ptr || value.kind != bir::Value::Kind::Named) {
     return;
   }
   append_frame_slot_address_materialization(names,
@@ -1084,10 +1084,10 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
                                             function_name_id,
                                             block_label_id,
                                             inst_index,
-                                            argument,
+                                            value,
                                             0,
                                             frame_slots_by_name);
-  if (argument.pointer_symbol_link_name_id != kInvalidLinkName) {
+  if (value.pointer_symbol_link_name_id != kInvalidLinkName) {
     append_direct_global_address_materialization(
         names,
         function_addressing,
@@ -1097,11 +1097,11 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
         function_name_id,
         block_label_id,
         inst_index,
-        argument);
+        value);
     return;
   }
 
-  const auto text_name = direct_string_constant_name(module, argument);
+  const auto text_name = direct_string_constant_name(module, value);
   if (!text_name.has_value()) {
     return;
   }
@@ -1109,8 +1109,8 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
   if (!prepared_text_name.has_value()) {
     append_missing_address_materialization_fact(
         notes,
-        "prepared string-constant call-argument address materialization for '" +
-            argument.name + "' is missing a string text identity");
+        "prepared string-constant pointer-value address materialization for '" +
+            value.name + "' is missing a string text identity");
     return;
   }
   function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
@@ -1118,7 +1118,7 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
       .block_label = block_label_id,
       .inst_index = inst_index,
       .kind = PreparedAddressMaterializationKind::StringConstant,
-      .result_value_name = prepared_named_value_id(names, argument),
+      .result_value_name = prepared_named_value_id(names, value),
       .text_name = *prepared_text_name,
       .address_space = bir::AddressSpace::Default,
   });
@@ -1212,6 +1212,26 @@ void append_address_materializations(PreparedNameTables& names,
                                                   binary->lhs,
                                                   0,
                                                   frame_slots_by_name);
+        append_pointer_value_address_materialization(names,
+                                                     function_addressing,
+                                                     notes,
+                                                     module,
+                                                     target_profile,
+                                                     function_name_id,
+                                                     block_label_id,
+                                                     inst_index,
+                                                     binary->lhs,
+                                                     frame_slots_by_name);
+        append_pointer_value_address_materialization(names,
+                                                     function_addressing,
+                                                     notes,
+                                                     module,
+                                                     target_profile,
+                                                     function_name_id,
+                                                     block_label_id,
+                                                     inst_index,
+                                                     binary->rhs,
+                                                     frame_slots_by_name);
         append_direct_global_address_materialization(
             names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, binary->result);
       } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
@@ -1241,7 +1261,7 @@ void append_address_materializations(PreparedNameTables& names,
               *call->callee_value);
         }
         for (const auto& argument : call->args) {
-          append_call_argument_address_materialization(names,
+          append_pointer_value_address_materialization(names,
                                                        function_addressing,
                                                        notes,
                                                        module,
