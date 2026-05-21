@@ -825,6 +825,35 @@ Step 4 switch 2026-05-20 post-328:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the remaining parked buckets.
 
+Step 3 route 2026-05-21 post-348/354:
+
+- Step 1 captured the current backend-regex surface from
+  `ctest --test-dir build -j10 -R backend --output-on-failure`: 354 selected,
+  337 passed, 15 failed, and 2 timed out.
+- Local backend/unit/CLI tests selected by the backend regex are clean. The
+  remaining non-passing cases are external `c_testsuite_aarch64_backend_*`
+  tests.
+- Step 2 classified the dominant residual family as address-valued memory and
+  stack-home publication confusion across indirect load/store and
+  call-argument boundaries.
+- The selected focused owner is idea 355,
+  `ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md`,
+  covering the semantic choice between materializing an address, reloading a
+  pointer value, and loading or storing a pointee.
+- Representative evidence includes `00020` returning an intermediate pointer
+  address instead of the final `i32`, `00170` reloading `[sp, #8]` instead of
+  materializing `sp+8` for an address-exposed local, `00189` reloading an
+  unpublished `stdout` stack home before an indirect call, and `00173` pointer
+  loops reloading fixed string addresses instead of advancing through current
+  `*b` and `*src` values.
+- Rejected adjacent owners remain parked under this umbrella for later
+  classification: scalar compare/select publication, floating-point variadic
+  scalar correctness, composite/byval/HFA ABI, dynamic stack/goto timeout, and
+  complex aggregate initializer/relocation.
+- Active implementation should move to idea 355 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the remaining parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

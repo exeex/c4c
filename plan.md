@@ -1,141 +1,163 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Address-Valued Memory And Call Argument Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md
 
 ## Purpose
 
-Refresh and classify the main-build backend regex failure surface after the
-recent focused AArch64 closures, then split or activate a semantic repair
-owner before implementation work begins.
+Repair the AArch64 backend boundary where lowering must distinguish an address
+to materialize, a pointer value to reload, and a pointee to load/store.
 
 ## Goal
 
-Turn the current `ctest -R backend` residuals into focused lifecycle work,
-without treating backend regex failures as one monolithic implementation
-bucket.
+Make address-valued memory and call-argument publication semantic enough to
+advance the focused residual family split from the backend-regex inventory.
 
 ## Core Rule
 
-This plan is inventory and lifecycle-routing work only. Do not edit
-implementation files, tests, expectations, runners, timeout policy, CTest
-registration, or unsupported classifications under this umbrella.
+Do not fix named c-testsuite files directly. Every code slice must repair a
+general address/pointer/pointee publication boundary and prove it with focused
+backend coverage plus representative external cases.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- recent focused closure notes in `ideas/closed/`
-- current canonical `test_before.log` and `test_after.log`, if present
+- `ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md`
+- `todo.md`
+- `test_after.log` from the Step 1 backend-regex inventory
 - generated AArch64 artifacts under `build/c_testsuite_aarch64_backend/`
+- selected/prepared backend dumps for `00020`, `00170`, `00189`, and nearby
+  pointer cases when needed
 
-## Current Scope
+## Current Targets
 
-- Main build backend regex results from `/workspaces/c4c/build`.
-- Local backend/unit/CLI failures selected by the backend regex.
-- External `c_testsuite_aarch64_backend_*` runtime, compile, assembler,
-  linker, timeout, or output-storm failures.
-- Recently parked or closure-deferred open ideas only when fresh evidence
-  shows their exact owner has returned.
+- Minimal indirection representative: `c_testsuite_aarch64_backend_src_00020_c`
+- Boundary representatives: `00170` address-exposed local materialization and
+  `00189` stack-homed global/pointer call-argument publication
+- Adjacent pointer cases: `00005`, `00103`, `00173`, and `00181`
 
 ## Non-Goals
 
-- Do not implement a backend repair directly under this plan.
-- Do not reopen closed AArch64 owners from failing counts alone.
-- Do not merge unrelated residual buckets into a broad catch-all owner.
-- Do not use filename-specific, emitted-text-specific, expectation, runner, or
-  timeout changes as progress.
-- Do not run broad runtime scans without timeout discipline and stale-process
-  cleanup.
+- Scalar comparison/select materialization: `00112`, `00123`, `00183`,
+  `00200`, likely `00218`
+- Floating-point scalar and variadic-call correctness: `00174`
+- Composite/byval/HFA/f128 ABI work: `00140`, `00204`
+- Dynamic stack/goto timeout work: `00207`
+- Complex aggregate initializer/relocation work: `00216`
+- Expectation, unsupported, runner, timeout, CTest-registration, or proof-log
+  changes
 
 ## Working Model
 
-The umbrella inventory owns classification and lifecycle routing. A focused
-repair idea owns implementation only after a semantic owner is selected from
-evidence such as diagnostics, generated assembly, prepared dumps, runtime
-traces, or adjacent focused tests.
+The owner boundary is the value-kind decision at publication time:
+
+- materialize an address when the consumer needs the address of storage;
+- reload a pointer value when the consumer needs the pointer stored in storage;
+- load or store a pointee when the consumer needs the value behind the pointer.
+
+Repairs should prefer existing prepared-value, selected-home, and publication
+helpers over new testcase-shaped branches.
 
 ## Execution Rules
 
-- Prefer existing canonical logs when they are fresh enough to classify the
-  current surface.
-- If a fresh backend regex run is needed, capture it from the main build tree:
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Keep generated-code evidence tied to semantic owners, not test filenames.
-- Record routine inventory progress in `todo.md`.
-- Ask lifecycle authority to create, reactivate, close, or switch ideas once a
-  focused owner decision is ready.
+- Start from the smallest representative that shows the wrong value-kind
+  handoff.
+- Add or extend focused backend tests before relying on c-testsuite movement.
+- Keep each implementation packet narrow enough to identify the repaired
+  boundary.
+- If a representative exposes scalar compare/select, ABI, dynamic-stack, or
+  initializer semantics instead, stop and route that residual through
+  lifecycle instead of widening this owner.
+- Use `test_after.log` for delegated proof unless the supervisor chooses a
+  different canonical artifact.
 
 ## Ordered Steps
 
-### Step 1: Capture Current Backend Regex Surface
+### Step 1: Localize The Value-Kind Boundary
 
-Goal: establish the current residual set after the latest focused closures.
-
-Actions:
-
-- Inspect existing canonical logs and their commands.
-- If needed, run the main-build backend regex command with output captured to a
-  canonical log chosen by the supervisor.
-- Count selected, passed, failed, skipped, and timed-out tests.
-- Separate local backend/unit/CLI failures from external
-  `c_testsuite_aarch64_backend_*` failures.
-
-Completion check:
-
-- `todo.md` records the backend regex command or source log, pass/fail/timeout
-  counts, and whether local backend tests are clean.
-
-### Step 2: Classify Residual Failure Families
-
-Goal: group failures by first bad fact and likely semantic owner.
+Goal: identify the concrete AArch64 handoff where lowering confuses address,
+pointer, and pointee values.
 
 Actions:
 
-- Classify failures into compile/printer, semantic admission, assembler,
-  linker, runtime nonzero/crash, runtime mismatch, timeout, and output-storm
-  buckets.
-- For the most promising bucket, inspect generated artifacts or focused dumps
-  enough to identify the first bad fact.
-- Compare candidate owners against recently closed or parked AArch64 ideas.
-- Reject bucket groupings based only on test names or pass-count movement.
+- Inspect generated AArch64 and backend dumps for `00020`, then one of
+  `00170` or `00189`.
+- Identify the producer, prepared home, selected home, and consumer that
+  disagree about materialize-address versus reload-pointer versus
+  load/store-pointee.
+- Record nearby cases that share the same boundary and cases that do not.
 
 Completion check:
 
-- `todo.md` records the classified buckets, candidate focused owner, evidence
-  for the owner boundary, and rejected adjacent owners.
+- `todo.md` names the first repair boundary, the smallest failing
+  representative, adjacency candidates, and rejected out-of-scope residuals.
 
-### Step 3: Route To Focused Lifecycle Work
+### Step 2: Repair Minimal Indirect Memory Publication
 
-Goal: leave the umbrella only after a focused semantic repair owner is ready.
+Goal: make the smallest indirect memory representative consume the intended
+pointer or pointee value.
 
 Actions:
 
-- If the candidate owner matches an existing open idea, prepare a lifecycle
-  switch request for that idea.
-- If the candidate owner is new, create or request a focused
-  `ideas/open/*.md` contract with goal, scope, acceptance criteria, and
-  reviewer reject signals.
-- If no tractable owner is ready, record the blocker and the next evidence
-  needed in `todo.md`.
+- Add focused backend coverage for the localized indirect-memory boundary.
+- Repair the relevant AArch64 publication path using semantic value-kind
+  information already available in prepared or selected lowering state.
+- Prove the focused backend test and `00020`.
 
 Completion check:
 
-- A focused idea is ready to activate, or `todo.md` explains why the residual
-  set is not yet activatable.
+- The focused backend test passes and `00020` advances or passes without
+  expectation, runner, timeout, or filename-specific changes.
 
-### Step 4: Deactivate The Umbrella Before Coding
+### Step 3: Repair Address-Valued Call Argument Publication
 
-Goal: preserve durable inventory state and switch away before implementation.
+Goal: handle stack-homed or symbol/global-derived address/pointer values at
+call boundaries without reloading unpublished homes.
 
 Actions:
 
-- Add a compact deactivation note to the source idea only when the focused
-  owner decision is durable.
-- Reset or replace `plan.md` and `todo.md` through lifecycle authority for the
-  selected focused idea.
-- Keep implementation files untouched in the umbrella commit.
+- Add focused backend coverage for a call argument that needs an address or
+  pointer value from a prepared home.
+- Repair call-argument publication for the localized boundary.
+- Prove one representative from `00170` or `00189`.
 
 Completion check:
 
-- The active lifecycle state is no longer this umbrella plan before any code
-  repair starts.
+- The focused backend test passes and at least one call-boundary
+  representative advances or passes.
+
+### Step 4: Check Adjacent Pointer Cases
+
+Goal: determine whether the same repair covers the nearby pointer residuals or
+whether a new lifecycle owner is required.
+
+Actions:
+
+- Run the supervisor-selected focused subset including `00005`, `00103`,
+  `00173`, and `00181` when appropriate.
+- For any remaining failure, capture the first bad fact and decide whether it
+  stays in scope.
+- Route out-of-scope residuals through lifecycle instead of broadening this
+  plan.
+
+Completion check:
+
+- `todo.md` records which adjacent cases advanced, passed, or were split by a
+  new first bad fact.
+
+### Step 5: Broader Guard And Closure Decision
+
+Goal: prove the focused owner is stable enough for lifecycle closure or a
+clean split.
+
+Actions:
+
+- Run the focused proof selected by the supervisor.
+- Run a broader backend guard when the supervisor treats the owner as a
+  milestone or closure candidate.
+- Ask plan-owner to close this idea only when the source idea acceptance
+  criteria are satisfied.
+
+Completion check:
+
+- Regression logs and `todo.md` support either closure, parking with explicit
+  residuals, or a lifecycle split.
