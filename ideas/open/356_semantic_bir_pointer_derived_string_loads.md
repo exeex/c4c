@@ -1,8 +1,38 @@
 # Semantic BIR Pointer-Derived String Loads
 
-Status: Open
+Status: Parked
 Created: 2026-05-21
 Split From: ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md
+
+## Parked Outcome
+
+Parked: 2026-05-21
+
+The semantic dynamic pointer-derived byte-load owner was repaired by commit
+`96b80ee21 Preserve pointer-carrier byte loads`. Focused backend proof after
+the repair kept `backend_lir_to_bir_notes`,
+`backend_aarch64_instruction_dispatch`, and
+`backend_aarch64_memory_operand_contract` passing, and `00173` advanced beyond
+the old fixed-global-byte load behavior.
+
+The repaired semantic BIR no longer collapses dynamic `*b` / `*src` consumers
+to fixed `LoadGlobalInst @.str0` byte loads. Those consumers now remain dynamic
+pointer-value loads, and prepared addressing records them as
+`base=pointer_value`.
+
+The remaining `00173` failure is a downstream string literal pointer-address
+publication residual, not this idea's dynamic byte-load owner. The source
+assignment `char *a = "hello"` stores pointer carrier `%t2` into `%lv.a`, but
+`%t2` is never materialized as the `.str0` address. Prepared BIR treats `%t2`
+as a frame spill (`slot#26+stack72`), and generated AArch64 stores `sp+72` as
+the runtime pointer. Later `printf`, `*a`, `*b`, and `*src` consumers correctly
+follow that dynamic pointer, but the pointer value itself is wrong. The split
+follow-up is
+`ideas/open/365_aarch64_string_literal_pointer_value_publication.md`.
+
+Close was rejected because the hook full-suite baseline candidate after
+`96b80ee21` was not monotonic despite the focused semantic/backend progress.
+This idea is therefore parked rather than moved to `ideas/closed/`.
 
 ## Goal
 
