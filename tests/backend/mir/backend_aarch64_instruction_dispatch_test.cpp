@@ -17465,6 +17465,105 @@ int prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary() 
   return 0;
 }
 
+int preserved_stack_home_symbol_address_argument_not_reloaded_after_materialization() {
+  auto prepared = prepared_with_direct_variadic_call_stack_symbol_address_argument();
+  auto& value_locations = prepared.value_locations.functions.front();
+  auto& fmt_home = value_locations.value_homes.front();
+  fmt_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  fmt_home.register_name.reset();
+  fmt_home.slot_id = prepare::PreparedFrameSlotId{7};
+  fmt_home.offset_bytes = std::size_t{64};
+  fmt_home.size_bytes = std::size_t{8};
+  fmt_home.align_bytes = std::size_t{8};
+
+  auto& fmt_storage = prepared.storage_plans.functions.front().values.front();
+  fmt_storage.encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  fmt_storage.register_name.reset();
+  fmt_storage.register_placement.reset();
+  fmt_storage.occupied_register_names.clear();
+  fmt_storage.slot_id = prepare::PreparedFrameSlotId{7};
+  fmt_storage.stack_offset_bytes = std::size_t{64};
+
+  auto& call_plan = prepared.call_plans.functions.front().calls.front();
+  call_plan.preserved_values =
+      {prepare::PreparedCallPreservedValue{
+           .value_id = prepare::PreparedValueId{1},
+           .value_name = fmt_home.value_name,
+           .route = prepare::PreparedCallPreservationRoute::StackSlot,
+           .contiguous_width = 1,
+           .slot_id = prepare::PreparedFrameSlotId{7},
+           .stack_offset_bytes = std::size_t{64},
+           .stack_size_bytes = std::size_t{8},
+           .stack_align_bytes = std::size_t{8},
+           .spill_slot_placement =
+               prepare::PreparedSpillSlotPlacement{
+                   .slot_id = prepare::PreparedFrameSlotId{7},
+                   .offset_bytes = 64,
+               },
+       },
+       prepare::PreparedCallPreservedValue{
+           .value_id = prepare::PreparedValueId{2},
+           .value_name = value_locations.value_homes[1].value_name,
+           .route = prepare::PreparedCallPreservationRoute::StackSlot,
+           .contiguous_width = 1,
+           .slot_id = prepare::PreparedFrameSlotId{0},
+           .stack_offset_bytes = std::size_t{0},
+           .stack_size_bytes = std::size_t{8},
+           .stack_align_bytes = std::size_t{8},
+           .spill_slot_placement =
+               prepare::PreparedSpillSlotPlacement{
+                   .slot_id = prepare::PreparedFrameSlotId{0},
+                   .offset_bytes = 0,
+               },
+       }};
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      !result.visited_terminator || block.instructions.size() != 4) {
+    return fail("expected preserved stack-home symbol arguments to materialize directly before call: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected preserved stack-home symbol argument route to print: " +
+                printed.diagnostic);
+  }
+  const auto fmt_page = printed.assembly.find("adrp x0, .fmt");
+  const auto fmt_low = printed.assembly.find("add x0, x0, :lo12:.fmt", fmt_page);
+  const auto payload_page = printed.assembly.find("adrp x1, .payload", fmt_low);
+  const auto payload_low =
+      printed.assembly.find("add x1, x1, :lo12:.payload", payload_page);
+  const auto call = printed.assembly.find("bl printf", payload_low);
+  if (fmt_page == std::string::npos || fmt_low == std::string::npos ||
+      payload_page == std::string::npos || payload_low == std::string::npos ||
+      call == std::string::npos ||
+      printed.assembly.find("ldr x0, [sp, #64]", fmt_low) != std::string::npos ||
+      printed.assembly.find("ldr x1, [sp", payload_low) != std::string::npos ||
+      !(fmt_page < fmt_low && fmt_low < payload_page && payload_page < payload_low &&
+        payload_low < call)) {
+    return fail("expected preserved stack homes not to overwrite materialized symbol call arguments: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int non_hfa_va_arg_byte_loads_publish_stack_bytes_before_observing_call() {
   auto prepared = prepared_with_non_hfa_va_arg_byte_copy_before_printf();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -21768,6 +21867,11 @@ int main() {
   }
   if (const int status =
           prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          preserved_stack_home_symbol_address_argument_not_reloaded_after_materialization();
       status != 0) {
     return status;
   }

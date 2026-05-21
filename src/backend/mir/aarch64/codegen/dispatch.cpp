@@ -5579,6 +5579,42 @@ void record_call_result_source_register(
          registers_alias(*source->source_register, *destination->destination_register);
 }
 
+[[nodiscard]] bool call_boundary_move_reloads_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses) {
+  const auto* move =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move == nullptr ||
+      move->phase != prepare::PreparedMovePhase::BeforeCall ||
+      move->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move->move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !move->source_memory.has_value() ||
+      !move->destination_register.has_value() ||
+      (!move->source_memory->result_value_id.has_value() &&
+       !move->source_memory->result_value_name.has_value())) {
+    return false;
+  }
+  for (const auto& materialized : materialized_addresses) {
+    const auto* address =
+        std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
+    if (address == nullptr || !address->result_register.has_value() ||
+        !registers_alias(*address->result_register, *move->destination_register)) {
+      continue;
+    }
+    const bool same_value_id =
+        move->source_memory->result_value_id.has_value() &&
+        address->result_value_id == move->source_memory->result_value_id;
+    const bool same_value_name =
+        move->source_memory->result_value_name.has_value() &&
+        address->result_value_name == *move->source_memory->result_value_name;
+    if (same_value_id || same_value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 order_before_call_moves_for_source_preservation(
     std::vector<module::MachineInstruction> moves) {
@@ -6855,6 +6891,10 @@ InstructionDispatchResult dispatch_prepared_block(
           for (auto& before_call_move :
                order_before_call_moves_for_source_preservation(
                    std::move(deferred_before_call_moves))) {
+            if (call_boundary_move_reloads_materialized_address(
+                    before_call_move, materialized_addresses)) {
+              continue;
+            }
             retarget_call_boundary_source_to_emitted_scalar(before_call_move);
             if (auto materialized =
                     materialize_call_boundary_source_to_destination(
