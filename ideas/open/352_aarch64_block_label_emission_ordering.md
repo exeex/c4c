@@ -1,6 +1,6 @@
 # AArch64 Block Label Emission Ordering
 
-Status: Open
+Status: Parked - Closure Ready
 Created: 2026-05-21
 Split From: ideas/open/349_aarch64_recursive_call_argument_preservation.md
 
@@ -62,6 +62,18 @@ epilogue emission is violating prepared CFG semantics.
   failure or is reclassified by a new first bad fact.
 - Adjacent AArch64 branch, return, call-publication, and selected-address
   guardrails selected by the supervisor remain stable.
+
+## Lifecycle Note
+
+2026-05-21: Source scope is closure-ready, but close was rejected by the
+close-time regression-log gate. The focused canonical logs were comparable and
+showed no new failures, but the monotonic guard rejected them because the pass
+count stayed 5/6 instead of strictly increasing. The remaining `00176` segfault
+was reclassified outside this idea: generated `partition` now preserves the
+repaired `.LBB90_6`/`.LBB90_7` branch/label path, while the new first bad fact
+is missing publication of incoming formals into local frame slots before local
+loads. The next active initiative is split to
+`ideas/open/353_aarch64_local_formal_frame_slot_publication.md`.
 
 ## Reviewer Reject Signals
 
