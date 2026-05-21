@@ -35,10 +35,18 @@ lsl x10, x10, #2; add x9, x9, x10; ldr w13, [x9]` at
 residual remains in this refinement subset; broader backend-regex/full-suite
 guard before closure remains supervisor-owned.
 
+Supervisor full-suite baseline review also passed after the refinement. The
+accepted baseline before idea 371 had `3347` passed and `28` failed out of
+`3375`; the hook-generated candidate at `3bbe5f8f0` has `3350` passed and
+`25` failed out of `3375`. The regression guard reports resolved
+`c_testsuite_aarch64_backend_src_00157_c`,
+`c_testsuite_aarch64_backend_src_00176_c`, and
+`c_testsuite_aarch64_backend_src_00183_c`, with no new failing tests. The
+canonical `test_baseline.log` was rolled forward to this accepted result.
+
 ## Suggested Next
 
-Supervisor can run or compare the broader backend-regex/full-suite regression
-guard and decide whether idea 371 is ready for lifecycle close.
+Supervisor can route idea 371 to lifecycle closure.
 
 ## Watchouts
 
@@ -60,3 +68,13 @@ Result: build completed; CTest selected 146 tests, 146 passed, 0 failed.
 `c_testsuite_aarch64_backend_src_00176_c`, and
 `c_testsuite_aarch64_backend_src_00181_c` are green. Proof log is
 `test_after.log`.
+
+Supervisor full-suite baseline review compared `test_baseline.log` against
+the hook-generated `test_baseline.new.log`:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_baseline.new.log
+```
+
+Result: passed, `3347 -> 3350` passed, `28 -> 25` failed, three resolved
+tests, and no new failures.
