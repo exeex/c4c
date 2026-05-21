@@ -1,8 +1,9 @@
 # AArch64 Loaded Byte Value Reused As Address
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/closed/365_aarch64_string_literal_pointer_value_publication.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -89,3 +90,17 @@ Reject the route if it:
   frontend, dynamic stack, or runner work without fresh first-bad-fact
   evidence and a lifecycle split.
 
+## Closure Note
+
+Commit fde0927c1 repaired the scalar-value/address-carrier boundary in AArch64
+prepared scalar-memory emission. Same-block loaded scalar values with prepared
+homes are reloaded as scalar data instead of rematerializing the load's pointer
+address unless a fresh current memory load is explicitly requested.
+
+Focused backend coverage now protects the repaired shape, and
+`c_testsuite_aarch64_backend_src_00173_c` passes. The selected proof covered
+`backend_lir_to_bir_notes`, `backend_aarch64_instruction_dispatch`,
+`backend_aarch64_memory_operand_contract`, and
+`c_testsuite_aarch64_backend_src_00173_c`; a broader AArch64/MIR backend subset
+also passed. Close-time regression comparison of the canonical 4-test logs
+showed no new failures.
