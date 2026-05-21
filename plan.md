@@ -34,6 +34,8 @@ fresh first-bad-fact evidence.
 - `c_testsuite_aarch64_backend_src_00174_c`
 - Scalar float/double constants and expression values feeding ordinary
   generated AArch64 FP consumers.
+- The remaining `00174` unary-plus scalar FP lvalue residual where `+a`
+  publishes zero while nearby unary-minus and comparison rows still work.
 - Focused backend coverage to prove the repaired scalar FP publication path.
 
 ## Non-Goals
@@ -156,3 +158,32 @@ Completion check:
 
 - `todo.md` records proof results, residual classification for `00174` if it
   does not pass, and whether the source idea is ready for close review.
+
+### Step 5: Classify Unary-Plus FP Lvalue Publication
+
+Goal: repair the advanced `00174` residual where unary plus on a scalar FP
+lvalue loses the value before an ordinary print consumer.
+
+Primary target: the AArch64 lowering/classification path for scalar FP lvalues
+used through no-op unary operators.
+
+Actions:
+
+- Map row 13 `printf("%f\n", +a)` back through generated AArch64 and the
+  relevant expression classification path.
+- Compare the row 13 `+a` path with the adjacent row 14 `-a` path and the rows
+  that now publish correctly.
+- Identify whether unary plus incorrectly reclassifies an FP lvalue, drops the
+  prepared FP storage/register value, or falls through an integer/immediate
+  publication route.
+- Repair the shared scalar FP expression publication/classification behavior
+  without special-casing `00174`, row 13, unary-plus spelling, one register, or
+  one emitted instruction sequence.
+- Add or extend focused backend coverage if the existing scalar FP publication
+  coverage does not exercise the classified unary-plus/lvalue owner.
+
+Completion check:
+
+- Focused coverage and the external `00174` representative prove that unary
+  plus on scalar FP lvalues publishes the original FP value, while nearby
+  unary-minus and scalar FP rows remain stable.

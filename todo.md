@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/378_aarch64_scalar_fp_expression_constant_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove External Representative And Guardrails
+Current Step ID: 5
+Current Step Title: Classify Unary-Plus FP Lvalue Publication
 
 # Current Packet
 
@@ -16,9 +16,10 @@ advanced: rows 1-12 now match expected output, row 13
 
 ## Suggested Next
 
-Keep the next packet within the scalar FP publication owner by investigating
-why unary plus on an FP lvalue loses the value for `00174` row 13 while unary
-minus and nearby FP rows still publish correctly.
+Execute Step 5 by localizing why unary plus on an FP lvalue loses the value for
+`00174` row 13 while unary minus and nearby FP rows still publish correctly.
+Compare the `+a` and `-a` generated/lowered paths before editing, then repair
+the shared scalar FP expression publication or classification owner generally.
 
 ## Watchouts
 
@@ -27,9 +28,8 @@ one emitted instruction sequence. Keep the residual framed as scalar FP value
 publication/classification until evidence proves it belongs to a separate
 lifecycle owner.
 
-No lifecycle review is required from this proof alone: the representative did
-not pass, but it advanced to a precise residual still inside the scalar FP
-publication route.
+The runbook has been extended because the original Step 1-4 route is exhausted
+but the advanced residual remains inside the scalar FP publication source idea.
 
 ## Proof
 
