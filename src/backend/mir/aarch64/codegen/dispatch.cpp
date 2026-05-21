@@ -1114,6 +1114,7 @@ lower_scalar_mul_with_distinct_rhs_scratch(
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::size_t root_instruction_index,
+    c4c::ValueNameId root_value_name,
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,
@@ -3612,6 +3613,8 @@ lower_stack_home_fused_compare_branch(
                                                target_index,
                                                scratch_index,
                                                before_instruction_index,
+                                               prepared_named_value_id(context, value)
+                                                   .value_or(c4c::kInvalidValueName),
                                                lines,
                                                label_index,
                                                active_values,
@@ -4715,6 +4718,8 @@ lower_predecessor_join_source_publication(
 [[nodiscard]] std::string select_chain_label(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
+    c4c::ValueNameId root_value_name,
+    std::uint8_t target_index,
     std::size_t label_index,
     std::string_view suffix) {
   const auto function_name = context.function.control_flow != nullptr
@@ -4725,6 +4730,7 @@ lower_predecessor_join_source_publication(
                                : c4c::kInvalidBlockLabel;
   return ".Lselect_mat_" + std::to_string(function_name) + "_" +
          std::to_string(block_label) + "_" + std::to_string(instruction_index) +
+         "_" + std::to_string(root_value_name) + "_" + std::to_string(target_index) +
          "_" + std::to_string(label_index) + "_" + std::string{suffix};
 }
 
@@ -4735,6 +4741,7 @@ lower_predecessor_join_source_publication(
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::size_t root_instruction_index,
+    c4c::ValueNameId root_value_name,
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,
@@ -4781,9 +4788,11 @@ lower_predecessor_join_source_publication(
   active_values.push_back(value.name);
   const auto current_label = label_index++;
   const auto true_label =
-      select_chain_label(context, root_instruction_index, current_label, "true");
+      select_chain_label(
+          context, root_instruction_index, root_value_name, target_index, current_label, "true");
   const auto end_label =
-      select_chain_label(context, root_instruction_index, current_label, "end");
+      select_chain_label(
+          context, root_instruction_index, root_value_name, target_index, current_label, "end");
 
   const auto lhs_name = gp_register_name(target_index, *compare_view);
   if (!lhs_name.has_value() ||
@@ -4824,6 +4833,7 @@ lower_predecessor_join_source_publication(
                                            target_index,
                                            scratch_index,
                                            root_instruction_index,
+                                           root_value_name,
                                            lines,
                                            label_index,
                                            active_values,
@@ -4839,6 +4849,7 @@ lower_predecessor_join_source_publication(
                                            target_index,
                                            scratch_index,
                                            root_instruction_index,
+                                           root_value_name,
                                            lines,
                                            label_index,
                                            active_values,
@@ -5065,6 +5076,7 @@ materialize_direct_global_select_chain_call_argument(
                                            scratches[0].index,
                                            scratches[1].index,
                                            before_instruction_index,
+                                           *value_name,
                                            lines,
                                            label_index,
                                            active_values) ||
