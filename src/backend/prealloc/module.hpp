@@ -50,6 +50,10 @@ void apply_copy_coalescing_hints(const PreparedNameTables& names,
                                  const bir::Function& function,
                                  std::vector<PreparedStackObject>& objects);
 
+void apply_aggregate_address_publication_hints(const PreparedNameTables& names,
+                                               const bir::Function& function,
+                                               std::vector<PreparedStackObject>& objects);
+
 FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function);
 
 void apply_regalloc_hints(PreparedNameTables& names,

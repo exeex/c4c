@@ -1369,6 +1369,8 @@ void BirPreAlloc::run_stack_layout() {
             prepared_.names, prepared_.module.names, function, next_object_id);
     stack_layout::apply_alloca_coalescing_hints(prepared_.names, function, function_objects);
     stack_layout::apply_copy_coalescing_hints(prepared_.names, function, function_objects);
+    stack_layout::apply_aggregate_address_publication_hints(
+        prepared_.names, function, function_objects);
 
     const auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
     stack_layout::apply_regalloc_hints(

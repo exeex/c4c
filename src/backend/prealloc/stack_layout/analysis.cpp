@@ -2,6 +2,7 @@
 #include "stack_layout.hpp"
 
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace c4c::backend::prepare::stack_layout {
@@ -95,6 +96,29 @@ namespace {
   };
 }
 
+[[nodiscard]] std::optional<std::string_view> slot_slice_family(std::string_view slot_name) {
+  const auto dot = slot_name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
+    return std::nullopt;
+  }
+  for (std::size_t index = dot + 1; index < slot_name.size(); ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+  }
+  return slot_name.substr(0, dot);
+}
+
+void collect_published_pointer_value(std::unordered_set<std::string_view>& families,
+                                     const bir::Value& value) {
+  if (value.type == bir::TypeKind::Ptr &&
+      value.kind == bir::Value::Kind::Named &&
+      !value.name.empty()) {
+    families.insert(value.name);
+  }
+}
+
 }  // namespace
 
 std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
@@ -116,6 +140,46 @@ std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTabl
   }
 
   return objects;
+}
+
+void apply_aggregate_address_publication_hints(const PreparedNameTables& names,
+                                               const bir::Function& function,
+                                               std::vector<PreparedStackObject>& objects) {
+  std::unordered_set<std::string_view> published_pointer_values;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
+        if (call->callee.rfind("llvm.", 0) == 0) {
+          continue;
+        }
+        for (std::size_t index = 0; index < call->args.size(); ++index) {
+          if (index < call->arg_abi.size() && call->arg_abi[index].byval_copy) {
+            continue;
+          }
+          collect_published_pointer_value(published_pointer_values, call->args[index]);
+        }
+      } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+                 store != nullptr) {
+        collect_published_pointer_value(published_pointer_values, store->value);
+      }
+    }
+  }
+  if (published_pointer_values.empty()) {
+    return;
+  }
+
+  for (auto& object : objects) {
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto family = slot_slice_family(prepared_slot_name(names, *object.slot_name));
+    if (!family.has_value() ||
+        published_pointer_values.find(*family) == published_pointer_values.end()) {
+      continue;
+    }
+    object.requires_home_slot = true;
+    object.permanent_home_slot = true;
+  }
 }
 
 }  // namespace c4c::backend::prepare::stack_layout
