@@ -8,32 +8,31 @@ Current Step Title: Classify Unary-Plus FP Lvalue Publication
 
 ## Just Finished
 
-Step 4 ran the external `00174` representative proof after the scalar FP binary
-publication repair. The representative still fails, but the first bad fact has
-advanced: rows 1-12 now match expected output, row 13
-`printf("%f\n", +a)` prints `0.000000` instead of `12.340000`, and row 14
-`-a` plus rows 15-16 still match.
+Step 5 localized and repaired the unary-plus scalar FP publication residual at
+the AArch64 call-boundary immediate argument path. In this checkout, `00174`
+row 13 is `printf("%f\n", +12.34)`: semantic/prepared BIR already classify it
+as an F64 variadic FPR argument, but call-boundary immediate binding only
+materialized integer immediates into GPR ABI registers. The repair extends the
+shared immediate call-argument binding and printer path so F32/F64 immediates
+materialize into scalar FPR ABI registers generally.
 
 ## Suggested Next
 
-Execute Step 5 by localizing why unary plus on an FP lvalue loses the value for
-`00174` row 13 while unary minus and nearby FP rows still publish correctly.
-Compare the `+a` and `-a` generated/lowered paths before editing, then repair
-the shared scalar FP expression publication or classification owner generally.
+Have the supervisor decide whether Step 5 completes the active scalar FP
+publication idea or whether another residual needs a new packet.
 
 ## Watchouts
 
-Do not special-case `00174`, row 13, unary plus spelling, one FP register, or
-one emitted instruction sequence. Keep the residual framed as scalar FP value
-publication/classification until evidence proves it belongs to a separate
-lifecycle owner.
-
-The runbook has been extended because the original Step 1-4 route is exhausted
-but the advanced residual remains inside the scalar FP publication source idea.
+The delegated prompt referred to `+a`, but the live `00174` source in this
+checkout uses `+12.34`. The failure boundary was therefore scalar FP immediate
+publication into a variadic FPR call argument, not lvalue load classification.
+The repair is general for F32/F64 immediate call arguments and does not
+special-case `00174` or unary plus spelling.
 
 ## Proof
 
 Ran the delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00174_c$'; } > test_after.log 2>&1`.
-The build completed, then the focused external representative failed with the
-advanced residual described above. `test_after.log` is the proof log.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|c_testsuite_aarch64_backend_src_00174_c$)'; } > test_after.log 2>&1`.
+The build completed and all 146 selected tests passed, including
+`backend_aarch64_return_lowering` and
+`c_testsuite_aarch64_backend_src_00174_c`. `test_after.log` is the proof log.

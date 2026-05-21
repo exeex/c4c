@@ -6,6 +6,7 @@
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
 
+#include <cstdint>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -142,6 +143,15 @@ prepare::PreparedRegisterPlacement call_result_gpr(std::size_t slot_index) {
 prepare::PreparedRegisterPlacement call_argument_gpr(std::size_t slot_index) {
   return prepare::PreparedRegisterPlacement{
       .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
+  };
+}
+
+prepare::PreparedRegisterPlacement call_argument_fpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Fpr,
       .pool = prepare::PreparedRegisterSlotPool::CallArgument,
       .slot_index = slot_index,
       .contiguous_width = 1,
@@ -502,6 +512,92 @@ prepare::PreparedBirModule prepared_with_direct_call_immediate_argument_then_ret
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x0"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_placement = arg_placement,
+          }},
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_direct_call_fp_immediate_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("call.fp.imm");
+  const auto entry_label = prepared.names.block_labels.intern("call.fp.imm.entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("call.fp.imm.entry");
+  const auto callee_link = prepared.names.link_names.intern("takes_double");
+  const auto arg_placement = call_argument_fpr(0);
+  constexpr std::uint64_t literal_bits = 0x4028AE147AE147AEULL;
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "call.fp.imm",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "call.fp.imm.entry",
+          .insts = {bir::CallInst{
+              .callee = "takes_double",
+              .callee_link_name_id = callee_link,
+              .args = {bir::Value::immediate_f64_bits(literal_bits)},
+              .arg_types = {bir::TypeKind::F64},
+              .arg_abi = {bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::F64,
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+                  .primary_class = bir::AbiValueClass::Sse,
+                  .passed_in_register = true,
+              }},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeCall,
+          .block_index = 0,
+          .instruction_index = 0,
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .destination_register_name = std::string{"d0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"d0"},
+              .destination_register_placement = arg_placement,
+          }},
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"takes_double"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Fpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+              .source_literal = bir::Value::immediate_f64_bits(literal_bits),
+              .destination_register_name = std::string{"d0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"d0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
               .destination_register_placement = arg_placement,
           }},
       }},
@@ -1292,6 +1388,64 @@ int module_build_materializes_scalar_immediate_before_direct_call() {
   return 0;
 }
 
+int module_build_materializes_scalar_fp_immediate_before_direct_call() {
+  auto prepared = prepared_with_direct_call_fp_immediate_argument();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected FP immediate-argument direct-call module to build");
+  }
+
+  const auto& instructions =
+      result.module->mir.functions.front().blocks.front().instructions;
+  const aarch64_codegen::CallBoundaryMoveInstructionRecord* move = nullptr;
+  const aarch64_codegen::CallInstructionRecord* call = nullptr;
+  std::size_t move_index = instructions.size();
+  std::size_t call_index = instructions.size();
+  for (std::size_t index = 0; index < instructions.size(); ++index) {
+    if (move == nullptr) {
+      move = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+          &instructions[index].target.payload);
+      if (move != nullptr) {
+        move_index = index;
+      }
+    }
+    if (call == nullptr) {
+      call = std::get_if<aarch64_codegen::CallInstructionRecord>(
+          &instructions[index].target.payload);
+      if (call != nullptr) {
+        call_index = index;
+      }
+    }
+  }
+
+  if (move == nullptr ||
+      move_index >= call_index ||
+      instructions[move_index].target.family !=
+          aarch64_codegen::InstructionFamily::CallBoundary ||
+      instructions[move_index].target.opcode !=
+          aarch64_codegen::MachineOpcode::CallBoundaryMove ||
+      instructions[move_index].target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !move->source_immediate.has_value() ||
+      move->source_immediate->type != bir::TypeKind::F64 ||
+      move->source_immediate->unsigned_value != 0x4028AE147AE147AEULL ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_abi::d_register(0) ||
+      move->destination_register->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      move->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move->move.destination_abi_index != std::optional<std::size_t>{0}) {
+    return fail("expected scalar FP immediate argument to materialize into AAPCS64 d0");
+  }
+  if (call == nullptr ||
+      instructions[call_index].target.opcode != aarch64_codegen::MachineOpcode::DirectCall ||
+      !call->direct_callee.has_value() ||
+      call->direct_callee_label != "takes_double") {
+    return fail("expected direct call to follow selected FP immediate argument move");
+  }
+  return 0;
+}
+
 int module_build_keeps_call_result_return_publication_before_epilogue() {
   auto prepared = prepared_with_call_result_before_return_publication();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -1491,6 +1645,11 @@ int main() {
     return status;
   }
   if (const int status = module_build_materializes_scalar_immediate_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          module_build_materializes_scalar_fp_immediate_before_direct_call();
       status != 0) {
     return status;
   }

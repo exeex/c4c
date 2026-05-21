@@ -589,6 +589,15 @@ make_f128_q_register_operand_from_carrier(
                                 : static_cast<std::uint64_t>(value.immediate),
           .source_value_id = source_value_id,
       };
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+      return ImmediateOperand{
+          .kind = ImmediateKind::UnsignedInteger,
+          .type = value.type,
+          .signed_value = value.immediate,
+          .unsigned_value = value.immediate_bits,
+          .source_value_id = source_value_id,
+      };
     default:
       return std::nullopt;
   }
@@ -605,6 +614,18 @@ make_f128_q_register_operand_from_carrier(
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
       return abi::RegisterView::X;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> scalar_fp_register_view(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
     default:
       return std::nullopt;
   }
@@ -4420,7 +4441,8 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
           candidate.source_literal.has_value() &&
           (binding.destination_storage_kind ==
                prepare::PreparedMoveStorageKind::StackSlot ||
-           candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr)) {
+           candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr ||
+           candidate.destination_register_bank == prepare::PreparedRegisterBank::Fpr)) {
         return &candidate;
       }
     }
@@ -4434,19 +4456,30 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       make_scalar_call_argument_immediate(*argument->source_literal,
                                           argument->source_value_id);
   const auto expected_view =
-      scalar_integer_register_view(argument->source_literal->type);
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Fpr
+          ? scalar_fp_register_view(argument->source_literal->type)
+          : scalar_integer_register_view(argument->source_literal->type);
   if (!source_immediate.has_value() || !expected_view.has_value()) {
     append_call_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
         context,
         instruction_index,
-        "AArch64 immediate call-argument move requires a scalar integer literal");
+        "AArch64 immediate call-argument move requires a scalar integer or FP literal");
     return std::nullopt;
   }
 
   if (binding.destination_storage_kind ==
       prepare::PreparedMoveStorageKind::StackSlot) {
+    if (argument->destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 immediate stack call-argument move requires a scalar integer literal");
+      return std::nullopt;
+    }
     if (!binding.destination_stack_offset_bytes.has_value()) {
       return std::nullopt;
     }
@@ -6006,7 +6039,11 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
             "call-boundary move node requires prepared register source and destination"};
   }
     if (instruction.source_immediate.has_value() &&
-        instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+        (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr ||
+         (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+          scalar_fp_register_view(instruction.source_immediate->type).has_value() &&
+          instruction.destination_register->expected_view ==
+              *scalar_fp_register_view(instruction.source_immediate->type)))) {
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
   if (is_aggregate_register_lane_publication(instruction)) {
@@ -6834,6 +6871,35 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
                               "call-boundary move mnemonic is not printable");
   }
   if (!move.source_register.has_value() && move.source_immediate.has_value()) {
+    if (abi::is_fp_simd_register(move.destination_register->reg)) {
+      const auto fp_view = scalar_fp_register_view(move.source_immediate->type);
+      if (!fp_view.has_value() || move.destination_register->reg.view != *fp_view) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move requires matching scalar FPR destination");
+      }
+      const auto gp_scratch_base = abi::reserved_mir_scratch_gp_registers().front();
+      const auto gp_scratch = abi::gp_register(
+          gp_scratch_base.index,
+          move.source_immediate->type == bir::TypeKind::F32 ? abi::RegisterView::W
+                                                            : abi::RegisterView::X);
+      if (!gp_scratch.has_value()) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move requires scratch GPR materialization");
+      }
+      const unsigned width_bits = move.source_immediate->type == bir::TypeKind::F32 ? 32U : 64U;
+      auto lines = materialize_integer_constant_lines(
+          *gp_scratch, move.source_immediate->unsigned_value, width_bits);
+      if (lines.empty()) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move could not materialize literal bits");
+      }
+      lines.push_back("fmov " + std::string{register_name(*move.destination_register)} +
+                      ", " + std::string{abi::register_name(*gp_scratch)});
+      return target_printed(std::move(lines));
+    }
     const auto width_bits = scalar_integer_width_bits(move.source_immediate->type);
     if (!width_bits.has_value() || !abi::is_gp_register(move.destination_register->reg)) {
       return target_unsupported(
