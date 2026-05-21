@@ -626,6 +626,8 @@ make_f128_q_register_operand_from_carrier(
   switch (size_bytes) {
     case 1:
       return bir::TypeKind::I8;
+    case 2:
+      return bir::TypeKind::I16;
     case 4:
       return bir::TypeKind::I32;
     case 8:
@@ -4726,7 +4728,96 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       result_plan != nullptr &&
       result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
-    return std::nullopt;
+    if (destination_home == nullptr ||
+        destination_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !destination_home->offset_bytes.has_value() ||
+        result_plan->instruction_index != instruction_index ||
+        result_plan->destination_value_id !=
+            std::optional<prepare::PreparedValueId>{move.to_value_id} ||
+        result_plan->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        !result_plan->source_register_name.has_value() ||
+        result_plan->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
+      return std::nullopt;
+    }
+    if ((binding != nullptr &&
+         binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+         binding->destination_register_name.has_value() &&
+         *result_plan->source_register_name != *binding->destination_register_name) ||
+        (move.destination_register_name.has_value() &&
+         *result_plan->source_register_name != *move.destination_register_name)) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 stack call-result publication source register disagrees with prepared ABI binding");
+      return std::nullopt;
+    }
+    const auto width_bytes = destination_home->size_bytes.value_or(
+        scalar_size_from_register_view(
+            scalar_view_from_register_name(result_plan->source_register_name)));
+    const auto expected_view = scalar_integer_register_view_from_size(width_bytes);
+    const auto value_type = scalar_integer_type_from_size(width_bytes);
+    if (!expected_view.has_value() || !value_type.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 stack call-result publication requires a 1, 2, 4, or 8 byte scalar GPR result");
+      return std::nullopt;
+    }
+    const auto source_register_name =
+        register_name_with_expected_view(result_plan->source_register_name, expected_view);
+    auto source = make_register_operand_from_prepared_authority(
+        source_register_name,
+        result_plan->source_register_placement,
+        result_plan->source_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.from_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.from_value_id}
+                                : std::nullopt,
+        destination_home->value_name,
+        result_plan->source_contiguous_width,
+        result_plan->source_occupied_register_names.empty()
+            ? (binding != nullptr ? binding->destination_occupied_register_names
+                                  : move.destination_occupied_register_names)
+            : result_plan->source_occupied_register_names,
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    MemoryOperand destination{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_index = instruction_index,
+        .stored_value_id = destination_home->value_id,
+        .stored_value_name = destination_home->value_name,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = destination_home->slot_id,
+        .byte_offset = static_cast<std::int64_t>(*destination_home->offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = width_bytes,
+        .align_bytes = destination_home->align_bytes.value_or(width_bytes),
+        .can_use_base_plus_offset = true,
+    };
+    return make_call_boundary_machine_instruction(
+        context,
+        instruction_index,
+        make_memory_instruction(MemoryInstructionRecord{
+            .memory_kind = MemoryInstructionKind::Store,
+            .address = std::move(destination),
+            .value = make_register_operand(*source),
+            .value_type = *value_type,
+        }));
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&

@@ -350,6 +350,122 @@ int f128_hfa_call_boundary_requires_structured_q_register_authority() {
   return 0;
 }
 
+int scalar_call_result_publishes_gpr_to_prepared_stack_home() {
+  constexpr auto function_name = c4c::FunctionNameId{4401};
+  constexpr auto block_label = c4c::BlockLabelId{4402};
+  constexpr auto result_value_id = prepare::PreparedValueId{4403};
+  constexpr auto result_value_name = c4c::ValueNameId{4404};
+  constexpr auto result_slot = prepare::PreparedFrameSlotId{4405};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = result_value_id,
+          .function_name = function_name,
+          .value_name = result_value_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = result_slot,
+          .offset_bytes = std::size_t{40},
+          .size_bytes = std::size_t{8},
+          .align_bytes = std::size_t{8},
+      }},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::AfterCall,
+          .block_index = 0,
+          .instruction_index = 3,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = result_value_id,
+              .to_value_id = result_value_id,
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .block_index = 0,
+              .instruction_index = 3,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .reason = "call_result_gpr_to_stack_home",
+          }},
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+          }},
+      }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 3,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"produce_count"},
+      .result = prepare::PreparedCallResultPlan{
+          .instruction_index = 3,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .destination_value_id = result_value_id,
+          .source_register_name = std::string{"x0"},
+          .source_contiguous_width = 1,
+          .source_occupied_register_names = {"x0"},
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .destination_slot_id = result_slot,
+          .destination_stack_offset_bytes = std::size_t{40},
+      },
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_after_call_moves(block_context, call_plan, 3, diagnostics);
+  if (!diagnostics.empty() || lowered.size() != 1) {
+    return fail("expected scalar call result publication to lower one stack-home store");
+  }
+  const auto* store =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(&lowered.front().target.payload);
+  if (store == nullptr ||
+      store->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      store->value_type != bir::TypeKind::I64 ||
+      !store->value.has_value() ||
+      store->value->kind != aarch64_codegen::OperandKind::Register ||
+      store->address.base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      store->address.frame_slot_id != result_slot ||
+      store->address.byte_offset != 40 ||
+      store->address.size_bytes != 8 ||
+      store->address.stored_value_id != result_value_id ||
+      store->address.stored_value_name != result_value_name) {
+    return fail("expected structured store into the prepared call-result stack home");
+  }
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(&store->value->payload);
+  if (source == nullptr || source->reg != aarch64_abi::x_register(0) ||
+      source->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      source->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      source->value_id != result_value_id) {
+    return fail("expected stack-home publication to source the ABI GPR result register");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -357,5 +473,6 @@ int main() {
   status |= byval_caller_publishes_composite_gpr_lanes_not_object_pointer();
   status |= byval_callee_entry_consumes_byval_frame_slot();
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
+  status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
   return status == 0 ? 0 : 1;
 }
