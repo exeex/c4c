@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <algorithm>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -56,20 +57,138 @@ namespace {
   return lhs.instruction_index < rhs.instruction_index;
 }
 
+[[nodiscard]] std::optional<std::size_t> prepared_block_index_by_label(
+    const prepare::PreparedControlFlowFunction& function,
+    c4c::BlockLabelId label) {
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    if (function.blocks[index].block_label == label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::size_t> prepared_block_successors(
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedControlFlowBlock& block) {
+  std::vector<std::size_t> successors;
+  auto append_label = [&](c4c::BlockLabelId label) {
+    if (label == c4c::kInvalidBlockLabel) {
+      return;
+    }
+    const auto index = prepared_block_index_by_label(function, label);
+    if (index.has_value() &&
+        std::find(successors.begin(), successors.end(), *index) == successors.end()) {
+      successors.push_back(*index);
+    }
+  };
+
+  if (block.terminator_kind == bir::TerminatorKind::Branch) {
+    append_label(block.branch_target_label);
+  } else if (block.terminator_kind == bir::TerminatorKind::CondBranch) {
+    append_label(block.true_label);
+    append_label(block.false_label);
+  }
+  return successors;
+}
+
+[[nodiscard]] std::vector<std::vector<bool>> make_prepared_dominance_matrix(
+    const prepare::PreparedControlFlowFunction& function) {
+  const std::size_t count = function.blocks.size();
+  std::vector<std::vector<std::size_t>> predecessors(count);
+  for (std::size_t index = 0; index < count; ++index) {
+    for (const auto successor : prepared_block_successors(function, function.blocks[index])) {
+      if (successor < count) {
+        predecessors[successor].push_back(index);
+      }
+    }
+  }
+
+  std::vector<std::vector<bool>> dominates(count, std::vector<bool>(count, true));
+  if (count != 0) {
+    std::fill(dominates.front().begin(), dominates.front().end(), false);
+    dominates.front().front() = true;
+  }
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (std::size_t index = 1; index < count; ++index) {
+      std::vector<bool> next(count, !predecessors[index].empty());
+      if (predecessors[index].empty()) {
+        std::fill(next.begin(), next.end(), false);
+      } else {
+        for (const auto predecessor : predecessors[index]) {
+          for (std::size_t candidate = 0; candidate < count; ++candidate) {
+            next[candidate] = next[candidate] && dominates[predecessor][candidate];
+          }
+        }
+      }
+      next[index] = true;
+      if (next != dominates[index]) {
+        dominates[index] = std::move(next);
+        changed = true;
+      }
+    }
+  }
+  return dominates;
+}
+
+[[nodiscard]] bool prior_stack_preserved_reaches_call(
+    const std::vector<module::PriorPreservedValueEntry>& prior_entries,
+    const std::vector<std::vector<bool>>& dominates,
+    const prepare::PreparedCallPlan& call) {
+  for (const auto& prior : prior_entries) {
+    if (prior.preserved == nullptr ||
+        prior.preserved->route != prepare::PreparedCallPreservationRoute::StackSlot) {
+      continue;
+    }
+    if (prior.block_index == call.block_index) {
+      if (prior.instruction_index < call.instruction_index) {
+        return true;
+      }
+      continue;
+    }
+    if (call.block_index < dominates.size() &&
+        prior.block_index < dominates[call.block_index].size() &&
+        dominates[call.block_index][prior.block_index]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] module::PreparedCallPlanIndexes make_prepared_call_plan_indexes(
-    const prepare::PreparedCallPlansFunction* call_plans) {
+    const prepare::PreparedCallPlansFunction* call_plans,
+    const prepare::PreparedControlFlowFunction& function) {
   module::PreparedCallPlanIndexes indexes;
   if (call_plans == nullptr) {
     return indexes;
   }
   indexes.calls_by_position.reserve(call_plans->calls.size());
   indexes.first_stack_preserved_by_call_index.resize(call_plans->calls.size());
-  std::vector<unsigned char> seen_stack_values;
+  const auto dominates = make_prepared_dominance_matrix(function);
   for (std::size_t call_index = 0; call_index < call_plans->calls.size(); ++call_index) {
     const auto& call = call_plans->calls[call_index];
     indexes.calls_by_position.emplace(
         call_position_key(call.block_index, call.instruction_index), &call);
     for (const auto& preserved : call.preserved_values) {
+      const bool stack_preserved =
+          preserved.route == prepare::PreparedCallPreservationRoute::StackSlot &&
+          preserved.value_name != c4c::kInvalidValueName &&
+          preserved.slot_id.has_value() &&
+          preserved.stack_offset_bytes.has_value() &&
+          preserved.stack_size_bytes.has_value() &&
+          *preserved.stack_size_bytes != 0;
+      if (stack_preserved) {
+        const auto has_reaching_prior =
+            preserved.value_id < indexes.prior_preserved_by_value.size() &&
+            prior_stack_preserved_reaches_call(
+                indexes.prior_preserved_by_value[preserved.value_id], dominates, call);
+        if (!has_reaching_prior) {
+          indexes.first_stack_preserved_by_call_index[call_index].push_back(&preserved);
+        }
+      }
       if (preserved.route != prepare::PreparedCallPreservationRoute::Unknown) {
         if (preserved.value_id >= indexes.prior_preserved_by_value.size()) {
           indexes.prior_preserved_by_value.resize(preserved.value_id + 1U);
@@ -81,22 +200,6 @@ namespace {
                 .preserved = &preserved,
             });
       }
-      if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
-          preserved.value_name == c4c::kInvalidValueName ||
-          !preserved.slot_id.has_value() ||
-          !preserved.stack_offset_bytes.has_value() ||
-          !preserved.stack_size_bytes.has_value() ||
-          *preserved.stack_size_bytes == 0) {
-        continue;
-      }
-      if (preserved.value_id >= seen_stack_values.size()) {
-        seen_stack_values.resize(preserved.value_id + 1U, 0U);
-      }
-      if (seen_stack_values[preserved.value_id] != 0U) {
-        continue;
-      }
-      seen_stack_values[preserved.value_id] = 1U;
-      indexes.first_stack_preserved_by_call_index[call_index].push_back(&preserved);
     }
   }
   for (auto& entries : indexes.prior_preserved_by_value) {
@@ -193,7 +296,7 @@ std::vector<module::MachineFunction> lower_prepared_functions(
     auto function_context =
         make_function_lowering_context(prepared, target_profile, prepared_function);
     const auto call_plan_indexes =
-        make_prepared_call_plan_indexes(function_context.call_plans);
+        make_prepared_call_plan_indexes(function_context.call_plans, prepared_function);
     const auto address_materialization_indexes =
         make_prepared_address_materialization_indexes(prepared,
                                                       prepared_function.function_name);
