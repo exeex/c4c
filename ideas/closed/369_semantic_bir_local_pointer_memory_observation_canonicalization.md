@@ -1,7 +1,8 @@
 # Semantic BIR Local/Pointer Memory Observation Canonicalization
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -78,6 +79,24 @@ semantic-BIR shape.
 - Nearby semantic pointer-derived load coverage, including the completed
   idea 356/365/366 chain, remains stable or is explicitly reclassified by a
   new first bad fact.
+
+## Completion Notes
+
+Closed after Step 4 proved the semantic-BIR local/pointer memory observation
+repairs with the delegated focused backend subset and nearby regression
+boundaries. The seven idea 369 backend-route targets passed in the focused
+proof recorded in `todo.md`.
+
+Close retry used the canonical full-suite regression logs:
+
+- `test_before.log`: 3333 passed, 41 failed, 3374 total.
+- `test_after.log`: 3340 passed, 34 failed, 3374 total.
+- `c4c-regression-guard` result: PASS, with zero new failures and seven
+  resolved failures.
+
+No expectation, runner, timeout, CTest-registration, proof-log, unsupported
+classification, or out-of-scope backend target-machine policy changes were
+part of the lifecycle close decision.
 
 ## Reviewer Reject Signals
 
