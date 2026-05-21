@@ -1,91 +1,100 @@
 Status: Active
 Source Idea Path: ideas/open/374_aarch64_local_aggregate_address_call_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Local Aggregate Address Publication Gap
+Current Step ID: 4
+Current Step Title: Prove Representative And Classify Guard
 
 # Current Packet
 
 ## Just Finished
 
-Executed idea 374 Step 1 localization for local aggregate address publication
-to scalar pointer call arguments. The delegated proof refreshed
-`test_after.log` and reproduced both representatives:
+Executed idea 374 Steps 2 and 3 implementation packet. Added focused AArch64
+dispatch coverage for direct local aggregate address call operands and
+zero-offset computed local aggregate address call operands. Repaired scalar
+pointer call-argument publication so register-homed local aggregate address
+values materialize from the matching `%name.0` frame slot before the ABI move,
+and extended frame-slot call-argument address publication so stack-homed local
+aggregate pointer values also publish the local frame address instead of
+reloading an uninitialized pointer home.
 
-- `00218`: `RUNTIME_MISMATCH`, expected no output, actual
-  `unsigned enum bit-fields broken`.
-- `00216`: `RUNTIME_NONZERO`, segmentation fault before visible output.
+Generated publication facts after repair:
 
-First bad facts:
+- `00218` `main`: the callsite now emits `add x21, sp, #0; mov x0, x21; bl
+  convert_like_real`, so the stale `x21` pointer publication first bad fact is
+  removed.
+- `00216` `foo`: the first local aggregate print now emits `add x13, sp, #0`
+  before `mov x1, x13; bl print_`, and following stack-homed local aggregate
+  print operands now publish frame addresses such as `add x1, sp, #4` and
+  `add x1, sp, #8` instead of `ldr x1, [sp,#...]`.
 
-- `00218`: prepared BIR for `main` still represents the call as
-  `bir.call i32 convert_like_real(ptr %lv.convs)`, and the prepared call plan
-  binds arg0 from value `%lv.convs` in `x21` to ABI `x0`. Generated AArch64
-  stores `AMBIG_CONV` into the local union at `sp+2`, and the callee
-  `convert_like_real` correctly loads/masks `[x0,#16]` with `255` and compares
-  to `152`. The first bad instruction is the callsite publication:
-  `mov x0, x21; bl convert_like_real`; `x21` has only its saved-register
-  restore slot and was never materialized as `&convs`. Prepared addressing has
-  frame-slot address materialization for `%lv.convs.0`, but the scalar pointer
-  value used by the call is `%lv.convs`, so the address dies between prepared
-  address/value representation and AArch64 call-argument emission.
-- `00216`: inside `foo`, prepared BIR creates `%lv.ls = bir.add ptr %lv.ls.0,
-  0` and then calls `print_(ptr @.str3, ptr %lv.ls, i64 4)`. The prepared call
-  plan binds arg1 from `%lv.ls` in `x13` to ABI `x1`. Generated AArch64
-  initializes `ls` bytes at the start of the frame, then emits the first local
-  aggregate print as `adrp/add x0, .str3; mov x1, x13; mov x2, #4; bl print_`.
-  No `add x13, sp, #0` or equivalent materialization precedes the call, so
-  `print_` dereferences stale `x13` and crashes. Later local aggregate
-  print calls mostly use stack-slot or global address encodings, but the first
-  crash is the register-backed zero-offset local aggregate address.
+Proof did not close both representatives. `00218` still prints
+`unsigned enum bit-fields broken`, but the first bad fact has moved past the
+call-argument address: generated `main` stores `AMBIG_CONV` at `sp+2`, while
+`convert_like_real` correctly reads/masks `[x0,#16]`. That residual is a
+separate local aggregate/bit-field layout store boundary, not the local-address
+call publication owner. `00216` still segfaults after the local aggregate
+`print(...)` calls are address-published; the next visible suspicious region is
+later compound-relocation/function-pointer lowering (`test_multi_relocs` still
+selects/calls the table entry through `x21` regardless of the loop index).
+Treat that as an advanced residual, not part of this local-address call packet.
 
-Owning backend boundary: scalar pointer call-argument preparation/publication
-for address-valued local aggregate operands. The prepared representation can
-name a local aggregate address either directly (`%lv.convs`) or through a
-zero-offset frame-slot pointer add (`%lv.ls = %lv.ls.0 + 0`); AArch64 lowering
-must materialize that address into the planned source carrier before the ABI
-argument move. This is not a bit-field mask/sign-extension failure in `00218`
-and not a global/string symbol call-argument problem in `00216`.
+## Refinement
+
+Refined the uncommitted repair after the supervisor full-suite candidate found
+that `00204` regressed from passing to a `myprintf` segfault. The first bad fact
+was not the ordinary `printf("%.Ns", a.x)` by-value aggregate display path. It
+was `myprintf`'s `llvm.va_start.p0` intrinsic call taking the new local
+aggregate address publication shortcut: the fallback materialized the va_list
+operand through the call-argument path and corrupted va_list setup, leaving the
+overflow cursor null when later HFA `va_arg` logic loaded from it.
+
+The repair now keeps local aggregate address publication scoped to non-intrinsic
+pointer call operands and excludes ABI `byval_copy` operands. Focused dispatch
+coverage was added for both guards: a byval aggregate pointer argument must not
+take the local address fallback, and an `llvm.va_start.p0` operand must not use
+the call-argument local address fallback. The intended idea 374 shapes remain
+covered by the direct local aggregate address and zero-offset computed frame
+address call-argument tests.
+
+Generated `00204` now passes again. In `myprintf`, va_list initialization writes
+the overflow, gp, and fp cursors into the va_list storage and no longer leaves
+the overflow cursor null at the later HFA `va_arg` path. Protected
+representatives `00182`, `00163`, `00151`, and `00214` remain green.
 
 ## Suggested Next
 
-Execute Step 2/3 as a focused implementation packet: add backend coverage and
-repair local aggregate address materialization before call-argument ABI moves.
-Coverage should include both shapes:
-
-1. a direct address-of local aggregate value used as a scalar pointer call
-   argument, like `callee(&local_union_or_struct)`, where the aggregate base
-   is the call operand rather than a scalar local pointer variable;
-2. a zero-offset computed local aggregate address value feeding a nonzero ABI
-   argument, like `print_(name, (u8 *)&local_struct, sizeof local_struct)`.
-
-The test should assert semantic call-argument publication of the local frame
-address, not a named testcase, one stack offset, one register, or one emitted
-instruction spelling.
+Stop this packet at the current proof result and hand lifecycle choice back to
+the supervisor. The implemented local-address call publication repair is
+covered and protected representatives remain green, but `00218` needs a
+separate bit-field/local aggregate layout-store owner before this focused idea
+can be closed. `00216` should remain a crash guard for the next aggregate
+initializer/function-pointer residual if the supervisor chooses to continue
+after the `00218` handoff.
 
 ## Watchouts
 
-Do not reopen closed direct-call or address-valued publication owners from
-counts alone. Do not special-case `00218`, `00216`, `convs`, `ls`, one
-function, one register, one stack offset, or one emitted instruction sequence.
-Keep scalar constant/`sizeof` publication (`00205`), external call-result
-publication (`00187`), scalar FP (`00174`), and timeout buckets (`00200`,
-`00207`) parked under idea 295 unless fresh localization proves a handoff.
-`00216` is a crash guard and may advance to later compound-initializer or
-function-pointer selected-table facts after the first local-address call
-publication gap is repaired.
+Do not broaden this repair into `00218` bit-field/local aggregate byte layout
+or `00216` compound-relocation/function-pointer selected-table lowering inside
+idea 374 without lifecycle approval. The local call-argument address publication
+shape is now repaired for register homes and stack homes; further work should
+start from the new first bad facts.
 
 ## Proof
 
-Ran exact Step 1 localization command:
+Ran exact delegated refinement proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00218_c|c_testsuite_aarch64_backend_src_00216_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00218_c|c_testsuite_aarch64_backend_src_00216_c|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00182_c|c_testsuite_aarch64_backend_src_00163_c|c_testsuite_aarch64_backend_src_00151_c|c_testsuite_aarch64_backend_src_00214_c)$' > test_after.log 2>&1
 ```
 
-Result: build completed; CTest returned nonzero for the expected two
-representatives. `test_after.log` records `00218` as `RUNTIME_MISMATCH` with
-actual `unsigned enum bit-fields broken`, and `00216` as `RUNTIME_NONZERO`
-segmentation fault. Read-only localization used generated assembly for both
-representatives and prepared-BIR dumps focused on `00218` `main` and `00216`
-`foo`.
+Result: build completed; backend tests and protected representatives `00182`,
+`00163`, `00151`, `00214`, and `00204` passed. `test_after.log` remains nonzero
+because `00218` still has `RUNTIME_MISMATCH` and `00216` still has
+`RUNTIME_NONZERO` segmentation fault after the localized local-address
+publication gap was removed. Focused pre-proof check:
+`backend_aarch64_instruction_dispatch` passed.
+
+Supervisor full-suite candidate matched the accepted baseline after the
+refinement: `3352` passed / `23` failed before and after, with no new failing
+tests. A stale stopped `00204.c.bin` process from the run was killed before
+continuing.

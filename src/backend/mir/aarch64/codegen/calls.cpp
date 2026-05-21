@@ -1424,6 +1424,53 @@ make_byval_register_lane_prepared_source(
   };
 }
 
+[[nodiscard]] const bir::CallInst* call_argument_call(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return nullptr;
+  }
+  return std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+}
+
+[[nodiscard]] bool call_argument_is_pointer(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  const auto* call = call_argument_call(context, instruction_index);
+  if (call == nullptr || argument.arg_index >= call->args.size()) {
+    return false;
+  }
+  if (argument.arg_index < call->arg_types.size() &&
+      call->arg_types[argument.arg_index] == bir::TypeKind::Ptr) {
+    return true;
+  }
+  return call->args[argument.arg_index].type == bir::TypeKind::Ptr;
+}
+
+[[nodiscard]] bool call_argument_is_byval_copy(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  const auto* call = call_argument_call(context, instruction_index);
+  return call != nullptr &&
+         argument.arg_index < call->arg_abi.size() &&
+         call->arg_abi[argument.arg_index].byval_copy;
+}
+
+[[nodiscard]] bool call_argument_allows_local_frame_address_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  const auto* call = call_argument_call(context, instruction_index);
+  if (call == nullptr || call->callee.rfind("llvm.", 0) == 0) {
+    return false;
+  }
+  return call_argument_is_pointer(context, argument, instruction_index) &&
+         !call_argument_is_byval_copy(context, argument, instruction_index);
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
@@ -1438,27 +1485,79 @@ make_byval_register_lane_prepared_source(
   }
   const auto* addressing = prepare::find_prepared_addressing(
       *context.function.prepared, context.function.control_flow->function_name);
-  if (addressing == nullptr) {
-    return std::nullopt;
-  }
   const prepare::PreparedAddressMaterialization* selected = nullptr;
-  for (const auto& materialization : addressing->address_materializations) {
-    if (materialization.block_label == context.control_flow_block->block_label &&
-        materialization.inst_index <= instruction_index &&
-        materialization.kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
-        materialization.result_value_name == source_home.value_name &&
-        materialization.frame_slot_id.has_value()) {
-      if (selected != nullptr && selected->inst_index == materialization.inst_index) {
-        return std::nullopt;
+  if (addressing != nullptr) {
+    for (const auto& materialization : addressing->address_materializations) {
+      if (materialization.block_label == context.control_flow_block->block_label &&
+          materialization.inst_index <= instruction_index &&
+          materialization.kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
+          materialization.result_value_name == source_home.value_name &&
+          materialization.frame_slot_id.has_value()) {
+        if (selected != nullptr && selected->inst_index == materialization.inst_index) {
+          return std::nullopt;
+        }
+        if (selected != nullptr && selected->inst_index > materialization.inst_index) {
+          continue;
+        }
+        selected = &materialization;
       }
-      if (selected != nullptr && selected->inst_index > materialization.inst_index) {
-        continue;
-      }
-      selected = &materialization;
     }
   }
   if (selected == nullptr) {
-    return std::nullopt;
+    if (!call_argument_allows_local_frame_address_publication(
+            context, argument, instruction_index)) {
+      return std::nullopt;
+    }
+    const auto source_name =
+        prepare::prepared_value_name(context.function.prepared->names,
+                                     source_home.value_name);
+    if (source_name.empty()) {
+      return std::nullopt;
+    }
+    const std::string first_lane_name = std::string{source_name} + ".0";
+    const prepare::PreparedStackObject* selected_object = nullptr;
+    const prepare::PreparedFrameSlot* selected_slot = nullptr;
+    for (const auto& object : context.function.prepared->stack_layout.objects) {
+      if (object.function_name != context.function.control_flow->function_name ||
+          object.source_kind != "local_slot") {
+        continue;
+      }
+      const auto object_name =
+          prepare::prepared_stack_object_name(context.function.prepared->names, object);
+      if (object_name != first_lane_name) {
+        continue;
+      }
+      for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
+        if (slot.object_id != object.object_id) {
+          continue;
+        }
+        if (selected_slot == nullptr || slot.offset_bytes < selected_slot->offset_bytes) {
+          selected_object = &object;
+          selected_slot = &slot;
+        }
+      }
+    }
+    if (selected_object == nullptr || selected_slot == nullptr) {
+      return std::nullopt;
+    }
+    return MemoryOperand{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = context.function.control_flow->function_name,
+        .block_label = context.control_flow_block->block_label,
+        .instruction_index = instruction_index,
+        .result_value_id = argument.source_value_id,
+        .result_value_name = source_home.value_name,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = selected_slot->slot_id,
+        .byte_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = selected_object->size_bytes == 0 ? std::size_t{8}
+                                                       : selected_object->size_bytes,
+        .align_bytes = selected_object->align_bytes == 0 ? std::size_t{8}
+                                                         : selected_object->align_bytes,
+        .can_use_base_plus_offset = true,
+    };
   }
   return MemoryOperand{
       .surface = RecordSurfaceKind::MachineInstructionNode,
@@ -1479,26 +1578,6 @@ make_byval_register_lane_prepared_source(
   };
 }
 
-[[nodiscard]] bool call_argument_is_pointer(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  if (context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return false;
-  }
-  const auto* call =
-      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-  if (call == nullptr || argument.arg_index >= call->args.size()) {
-    return false;
-  }
-  if (argument.arg_index < call->arg_types.size() &&
-      call->arg_types[argument.arg_index] == bir::TypeKind::Ptr) {
-    return true;
-  }
-  return call->args[argument.arg_index].type == bir::TypeKind::Ptr;
-}
-
 [[nodiscard]] bool local_frame_address_name_matches(std::string_view source_name,
                                                     std::string_view candidate_name) {
   return candidate_name == source_name ||
@@ -1517,7 +1596,8 @@ make_byval_register_lane_prepared_source(
       context.control_flow_block == nullptr ||
       source_home.value_name == c4c::kInvalidValueName ||
       argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
-      !call_argument_is_pointer(context, argument, instruction_index)) {
+      !call_argument_allows_local_frame_address_publication(
+          context, argument, instruction_index)) {
     return std::nullopt;
   }
 

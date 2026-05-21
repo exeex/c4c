@@ -358,22 +358,140 @@ materialize_direct_global_select_chain_call_argument(
     std::size_t before_instruction_index,
     BlockScalarLoweringState& scalar_state);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_select_chain_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::vector<std::string> lines);
+
+[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto source_name =
+      prepare::prepared_value_name(context.function.prepared->names, value_name);
+  if (source_name.empty()) {
+    return std::nullopt;
+  }
+  const std::string first_lane_name = std::string{source_name} + ".0";
+  const prepare::PreparedFrameSlot* selected_slot = nullptr;
+  for (const auto& object : context.function.prepared->stack_layout.objects) {
+    if (object.function_name != context.function.control_flow->function_name ||
+        object.source_kind != "local_slot") {
+      continue;
+    }
+    const auto object_name =
+        prepare::prepared_stack_object_name(context.function.prepared->names, object);
+    if (object_name != first_lane_name) {
+      continue;
+    }
+    for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
+      if (slot.object_id != object.object_id) {
+        continue;
+      }
+      if (selected_slot == nullptr ||
+          slot.offset_bytes < selected_slot->offset_bytes) {
+        selected_slot = &slot;
+      }
+    }
+  }
+  return selected_slot != nullptr
+             ? std::optional<std::size_t>{selected_slot->offset_bytes}
+             : std::nullopt;
+}
+
+struct LocalAggregateAddressPublication {
+  module::MachineInstruction instruction;
+  RegisterOperand result_register;
+};
+
+[[nodiscard]] std::optional<LocalAggregateAddressPublication>
+materialize_local_aggregate_address_call_argument(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (value.type != bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  auto result_register = make_named_prepared_result_register(context, value);
+  if (!result_register.has_value() ||
+      !abi::is_gp_register(result_register->reg)) {
+    return std::nullopt;
+  }
+  const auto offset =
+      local_aggregate_address_frame_offset(context, result_register->value_name);
+  if (!offset.has_value()) {
+    return std::nullopt;
+  }
+  const auto address_register = abi::x_register(result_register->reg.index);
+  result_register->reg = address_register;
+  result_register->expected_view = abi::RegisterView::X;
+  std::vector<std::string> lines;
+  std::string line = "add " + std::string{abi::register_name(address_register)} +
+                     ", sp, #" + std::to_string(*offset);
+  lines.push_back(std::move(line));
+  auto instruction =
+      make_select_chain_materialization_instruction(
+          context, before_instruction_index, std::move(lines));
+  if (!instruction.has_value()) {
+    return std::nullopt;
+  }
+  return LocalAggregateAddressPublication{.instruction = std::move(*instruction),
+                                          .result_register = *result_register};
+}
+
+[[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
+    const bir::CallInst& call,
+    std::size_t argument_index) {
+  if (argument_index >= call.args.size()) {
+    return false;
+  }
+  if (call.callee.rfind("llvm.", 0) == 0) {
+    return false;
+  }
+  if (argument_index < call.arg_abi.size() &&
+      call.arg_abi[argument_index].byval_copy) {
+    return false;
+  }
+  return (argument_index < call.arg_types.size() &&
+          call.arg_types[argument_index] == bir::TypeKind::Ptr) ||
+         call.args[argument_index].type == bir::TypeKind::Ptr;
+}
+
 [[nodiscard]] bool materialize_scalar_call_argument_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
+    bool allow_local_aggregate_address_publication,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics,
     std::vector<module::MachineInstruction>& lowered,
     std::vector<std::string_view>& active_values) {
-  if (value.kind != bir::Value::Kind::Named || value.name.empty() ||
-      emitted_scalar_value_available(context, value, scalar_state)) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return true;
   }
   for (const auto active : active_values) {
     if (active == value.name) {
       return false;
     }
+  }
+  if (allow_local_aggregate_address_publication) {
+    if (auto local_address =
+            materialize_local_aggregate_address_call_argument(
+                context, value, before_instruction_index)) {
+      record_emitted_scalar_register(scalar_state,
+                                     local_address->result_register.value_name,
+                                     local_address->result_register);
+      lowered.push_back(std::move(local_address->instruction));
+      return true;
+    }
+  }
+  if (emitted_scalar_value_available(context, value, scalar_state)) {
+    return true;
   }
   const auto producer_index =
       find_same_block_scalar_producer(context, value.name, before_instruction_index);
@@ -398,19 +516,21 @@ materialize_direct_global_select_chain_call_argument(
   active_values.push_back(value.name);
   const bool lhs_ready =
       materialize_scalar_call_argument_value(context,
-                                             binary->lhs,
-                                             *producer_index,
-                                             scalar_state,
-                                             diagnostics,
-                                             lowered,
+	                                             binary->lhs,
+	                                             *producer_index,
+	                                             allow_local_aggregate_address_publication,
+	                                             scalar_state,
+	                                             diagnostics,
+	                                             lowered,
                                              active_values);
   const bool rhs_ready =
       materialize_scalar_call_argument_value(context,
-                                             binary->rhs,
-                                             *producer_index,
-                                             scalar_state,
-                                             diagnostics,
-                                             lowered,
+	                                             binary->rhs,
+	                                             *producer_index,
+	                                             allow_local_aggregate_address_publication,
+	                                             scalar_state,
+	                                             diagnostics,
+	                                             lowered,
                                              active_values);
   active_values.pop_back();
   if (!lhs_ready || !rhs_ready) {
@@ -476,7 +596,8 @@ lower_scalar_call_argument_producers(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
-  for (const auto& argument : call.args) {
+  for (std::size_t argument_index = 0; argument_index < call.args.size(); ++argument_index) {
+    const auto& argument = call.args[argument_index];
     if (auto select_chain =
             materialize_direct_global_select_chain_call_argument(context,
                                                                  argument,
@@ -486,9 +607,12 @@ lower_scalar_call_argument_producers(
       continue;
     }
     std::vector<std::string_view> active_values;
+    const bool allow_local_aggregate_address_publication =
+        call_argument_allows_local_aggregate_address_publication(call, argument_index);
     if (!materialize_scalar_call_argument_value(context,
                                                 argument,
                                                 instruction_index,
+                                                allow_local_aggregate_address_publication,
                                                 scalar_state,
                                                 diagnostics,
                                                 lowered,

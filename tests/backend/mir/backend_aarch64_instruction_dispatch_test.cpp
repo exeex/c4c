@@ -18297,6 +18297,583 @@ int register_homed_local_address_argument_materializes_frame_address_register() 
   return 0;
 }
 
+int block_dispatch_publishes_direct_local_aggregate_address_call_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.direct.local.address.arg");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.direct.local.address.arg.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.direct.local.address.arg.entry");
+  const auto source_name = prepared.names.value_names.intern("%direct.aggregate");
+  const auto source_lane_name = prepared.names.value_names.intern("%direct.aggregate.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{401};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.direct.local.address.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.direct.local.address.arg.entry",
+              .insts =
+                  {bir::CallInst{
+                      .callee = "consume_direct_local_address",
+                      .args = {bir::Value::named(bir::TypeKind::Ptr,
+                                                 "%direct.aggregate")},
+                      .arg_types = {bir::TypeKind::Ptr},
+                      .return_type = bir::TypeKind::Void,
+                      .calling_convention = bir::CallingConv::C,
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x21"},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlansFunction call_plans{
+      .function_name = function_name,
+      .calls =
+          {prepare::PreparedCallPlan{
+              .block_index = 0,
+              .instruction_index = 0,
+              .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+              .direct_callee_name = std::string{"consume_direct_local_address"},
+              .arguments =
+                  {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = source_value_id,
+                      .source_register_name = std::string{"x21"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  }},
+          }},
+  };
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{401},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{402},
+      .object_id = prepare::PreparedObjectId{401},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+      .call_plans = &call_plans,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto dispatched =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (dispatched.visited_operations != 1 || !diagnostics.empty()) {
+    return fail("expected direct local aggregate address call dispatch to lower");
+  }
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("add x21, sp, #64") == std::string::npos ||
+      (printed.assembly.find("mov x0, x21") == std::string::npos &&
+       printed.assembly.find("add x0, sp, #64") == std::string::npos) ||
+      printed.assembly.find("bl consume_direct_local_address") == std::string::npos) {
+    return fail("expected direct local aggregate address to publish before call: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
+int block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.zero.local.address.arg");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.zero.local.address.arg.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.zero.local.address.arg.entry");
+  const auto source_name = prepared.names.value_names.intern("%zero.aggregate");
+  const auto source_lane_name = prepared.names.value_names.intern("%zero.aggregate.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{411};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.zero.local.address.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.zero.local.address.arg.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::Ptr,
+                                                   "%zero.aggregate"),
+                       .lhs = bir::Value::named(bir::TypeKind::Ptr,
+                                                "%zero.aggregate.0"),
+                       .rhs = bir::Value::immediate_i64(0),
+                   },
+                   bir::CallInst{
+                       .callee = "consume_zero_local_address",
+                       .args = {bir::Value::named(bir::TypeKind::Ptr,
+                                                  "%zero.aggregate")},
+                       .arg_types = {bir::TypeKind::Ptr},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x13"},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 1,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlansFunction call_plans{
+      .function_name = function_name,
+      .calls =
+          {prepare::PreparedCallPlan{
+              .block_index = 0,
+              .instruction_index = 1,
+              .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+              .direct_callee_name = std::string{"consume_zero_local_address"},
+              .arguments =
+                  {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 1,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = source_value_id,
+                      .source_register_name = std::string{"x13"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  }},
+          }},
+  };
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{411},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{412},
+      .object_id = prepare::PreparedObjectId{411},
+      .function_name = function_name,
+      .offset_bytes = 96,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+      .call_plans = &call_plans,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto dispatched =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (dispatched.visited_operations != 2) {
+    return fail("expected zero-offset local aggregate address call dispatch to lower: visited=" +
+                std::to_string(dispatched.visited_operations) +
+                " emitted=" + std::to_string(dispatched.emitted_instructions) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("add x13, sp, #96") == std::string::npos ||
+      (printed.assembly.find("mov x0, x13") == std::string::npos &&
+       printed.assembly.find("add x0, sp, #96") == std::string::npos) ||
+      printed.assembly.find("bl consume_zero_local_address") == std::string::npos) {
+    return fail("expected zero-offset local aggregate address to publish before call: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_byval_aggregate_argument_out_of_local_address_fallback() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.byval.local.address.guard");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.byval.local.address.guard.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.byval.local.address.guard.entry");
+  const auto source_name = prepared.names.value_names.intern("%byval.aggregate");
+  const auto source_lane_name = prepared.names.value_names.intern("%byval.aggregate.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{421};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.byval.local.address.guard",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.byval.local.address.guard.entry",
+              .insts =
+                  {bir::CallInst{
+                      .callee = "consume_byval_aggregate",
+                      .args = {bir::Value::named(bir::TypeKind::Ptr,
+                                                 "%byval.aggregate")},
+                      .arg_types = {bir::TypeKind::Ptr},
+                      .arg_abi =
+                          {bir::CallArgAbiInfo{
+                              .type = bir::TypeKind::Ptr,
+                              .size_bytes = 8,
+                              .align_bytes = 1,
+                              .primary_class = bir::AbiValueClass::Integer,
+                              .passed_in_register = true,
+                              .byval_copy = true,
+                          }},
+                      .return_type = bir::TypeKind::Void,
+                      .calling_convention = bir::CallingConv::C,
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+	              .value_name = source_name,
+	              .kind = prepare::PreparedValueHomeKind::Register,
+	              .register_name = std::string{"x21"},
+	          }},
+	  };
+  const prepare::PreparedCallPlansFunction call_plans{
+      .function_name = function_name,
+      .calls =
+          {prepare::PreparedCallPlan{
+	              .block_index = 0,
+	              .instruction_index = 0,
+	              .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+	              .direct_callee_name = std::string{"consume_byval_aggregate"},
+	          }},
+	  };
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{421},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 1,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{422},
+      .object_id = prepare::PreparedObjectId{421},
+      .function_name = function_name,
+      .offset_bytes = 128,
+      .size_bytes = 8,
+      .align_bytes = 1,
+      .fixed_location = true,
+  });
+
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+      .call_plans = &call_plans,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto dispatched =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (dispatched.visited_operations != 1 || !diagnostics.empty()) {
+    return fail("expected byval local aggregate guard call dispatch to lower: visited=" +
+                std::to_string(dispatched.visited_operations) +
+                " emitted=" + std::to_string(dispatched.emitted_instructions) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("bl consume_byval_aggregate") == std::string::npos) {
+    return fail("expected byval aggregate guard call to print: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  if (printed.assembly.find("add x21, sp, #128") != std::string::npos ||
+      printed.assembly.find("add x0, sp, #128") != std::string::npos) {
+    return fail("byval aggregate argument incorrectly used local address fallback: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_va_start_intrinsic_out_of_local_address_fallback() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.va_start.local.address.guard");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.va_start.local.address.guard.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.va_start.local.address.guard.entry");
+  const auto source_name = prepared.names.value_names.intern("%lv.ap");
+  const auto source_lane_name = prepared.names.value_names.intern("%lv.ap.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{431};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.va_start.local.address.guard",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.va_start.local.address.guard.entry",
+              .insts =
+                  {bir::CallInst{
+                      .callee = "llvm.va_start.p0",
+                      .args = {bir::Value::named(bir::TypeKind::Ptr, "%lv.ap")},
+                      .arg_types = {bir::TypeKind::Ptr},
+                      .return_type = bir::TypeKind::Void,
+                      .calling_convention = bir::CallingConv::C,
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x21"},
+          }},
+  };
+  const prepare::PreparedCallPlansFunction call_plans{
+      .function_name = function_name,
+      .calls =
+	          {prepare::PreparedCallPlan{
+	              .block_index = 0,
+	              .instruction_index = 0,
+	              .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+	              .direct_callee_name = std::string{"llvm.va_start.p0"},
+	          }},
+  };
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{431},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{432},
+      .object_id = prepare::PreparedObjectId{431},
+      .function_name = function_name,
+      .offset_bytes = 160,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+      .call_plans = &call_plans,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto dispatched =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (dispatched.visited_operations != 1) {
+    return fail("expected va_start intrinsic guard dispatch to lower: visited=" +
+                std::to_string(dispatched.visited_operations) +
+                " emitted=" + std::to_string(dispatched.emitted_instructions) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok) {
+    return fail("expected va_start intrinsic guard to print: " + printed.diagnostic);
+  }
+  if (printed.assembly.find("add x21, sp, #160") != std::string::npos) {
+    return fail("va_start intrinsic incorrectly used local address fallback: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0() {
   constexpr auto function_name = c4c::FunctionNameId{121};
   constexpr auto block_label = c4c::BlockLabelId{122};
@@ -26649,6 +27226,26 @@ int main() {
   }
   if (const int status =
           register_homed_local_address_argument_materializes_frame_address_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_direct_local_aggregate_address_call_argument();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_byval_aggregate_argument_out_of_local_address_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_va_start_intrinsic_out_of_local_address_fallback();
       status != 0) {
     return status;
   }
