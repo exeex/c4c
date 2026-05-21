@@ -8,15 +8,23 @@ Current Step Title: Confirm the Current Residual Surface
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for
-`plan.md` Step 1.
+Completed `plan.md` Step 1: Confirm the Current Residual Surface.
+
+Fresh command scope:
+`cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R backend > test_after.log 2>&1`
+
+Result from `test_after.log`: 362 tests selected, 362 passed, 0 failed.
+Failing tests: none.
+
+Coarse residual buckets:
+- Local backend/unit/CLI: 150 selected, 150 passed, 0 failed.
+- External `c_testsuite_aarch64_backend_*`: 212 selected, 212 passed, 0 failed.
 
 ## Suggested Next
 
-Confirm the current backend-regex residual surface after closed timeout owners
-381 and 382. Use supervisor-approved baseline artifacts or an approved fresh
-backend-regex proof command, then record the selected count, pass count,
-failing tests, and coarse failure buckets here.
+Supervisor/plan-owner should decide whether umbrella idea 295 has no current
+post-382 backend-regex residual to classify under this proof scope, or whether
+another explicitly scoped probe is needed outside `-R backend`.
 
 ## Watchouts
 
@@ -24,13 +32,12 @@ This is an umbrella classification plan. Do not make implementation, test,
 expectation, runner, timeout-policy, CTest-registration, unsupported-list, or
 proof-log-policy changes while this plan is active.
 
-Do not reactivate stale parked ideas just because their files remain under
-`ideas/open/`; require fresh generated-code or proof evidence that matches the
-candidate owner.
-
-Use bounded timeout investigation and stale-process cleanup before trusting any
-runtime logs.
+No hang or stale runtime-process cleanup was needed for this run.
 
 ## Proof
 
-Not run. Lifecycle activation only.
+Ran:
+`cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R backend > test_after.log 2>&1`
+
+Build completed with no work to do. CTest completed successfully: 100% tests
+passed, 0 tests failed out of 362. Proof log: `test_after.log`.
