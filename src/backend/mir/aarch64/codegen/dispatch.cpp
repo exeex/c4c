@@ -1597,6 +1597,37 @@ void retarget_pointer_store_value_to_materialized_address(
   memory_record->value = make_register_operand(materialized_address);
 }
 
+void retarget_store_address_to_materialized_pointer(
+    const bir::StoreLocalInst& store,
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address) {
+  if (!store.address.has_value() ||
+      store.address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store) {
+    return;
+  }
+
+  memory_record->address.base_kind = MemoryBaseKind::Register;
+  memory_record->address.base_register = materialized_address;
+  memory_record->address.frame_slot_id.reset();
+  memory_record->address.symbol_name.reset();
+  memory_record->address.symbol_label.clear();
+  memory_record->address.pointer_value_name.reset();
+  memory_record->address.pointer_value_id.reset();
+  memory_record->address.byte_offset = store.address->byte_offset;
+  memory_record->address.byte_offset_is_prepared_snapshot = false;
+  memory_record->address.size_bytes = store.address->size_bytes;
+  memory_record->address.align_bytes = store.address->align_bytes;
+  memory_record->address.address_space = store.address->address_space;
+  memory_record->address.is_volatile = store.address->is_volatile;
+  memory_record->address.can_use_base_plus_offset = true;
+}
+
 void retarget_pointer_store_value_to_emitted_scalar(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
@@ -4684,6 +4715,115 @@ lower_store_local_value_publication(
   };
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_stack_homed_pointer_store_writeback(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      !store->address.has_value() ||
+      store->address->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+      context.function.value_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto* pointer_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *access->address.pointer_value_name);
+  if (pointer_home == nullptr ||
+      pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !pointer_home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  const auto value_view = scalar_view_for_type(store->value.type);
+  const auto store_mnemonic = scalar_store_mnemonic(store->value.type);
+  if (scratches.size() < 2U || !value_view.has_value() ||
+      !store_mnemonic.has_value()) {
+    return std::nullopt;
+  }
+  const auto value_register = gp_register_name(scratches[0].index, *value_view);
+  const auto address_register = gp_register_name(scratches[1].index, abi::RegisterView::X);
+  if (!value_register.has_value() || !address_register.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          store->value,
+                                          instruction_index,
+                                          scratches[0].index,
+                                          scratches[1].index,
+                                          lines,
+                                          true)) {
+    return std::nullopt;
+  }
+  lines.push_back("ldr " + *address_register + ", " +
+                  frame_slot_address(*pointer_home->offset_bytes));
+  lines.push_back(std::string{*store_mnemonic} + " " + *value_register +
+                  ", " + register_indirect_address(
+                              *address_register,
+                              static_cast<std::size_t>(access->address.byte_offset)));
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects =
+          {MachineSideEffectKind::MemoryRead, MachineSideEffectKind::MemoryWrite},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = [&] {
+            std::string text;
+            for (std::size_t index = 0; index < lines.size(); ++index) {
+              if (index != 0) {
+                text += '\n';
+              }
+              text += lines[index];
+            }
+            return text;
+          }(),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
 [[nodiscard]] bool is_store_global_select_snapshot_run_instruction(const bir::Inst& inst) {
   return std::get_if<bir::SelectInst>(&inst) != nullptr ||
          std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
@@ -4734,7 +4874,8 @@ void lower_pending_store_global_stack_value_publications(
     BlockScalarLoweringState& scalar_state,
     module::MachineBlock& block,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  if (!is_store_local_instruction(inst)) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr) {
     return false;
   }
 
@@ -4759,10 +4900,18 @@ void lower_pending_store_global_stack_value_publications(
     if (materialized_address.has_value()) {
       retarget_pointer_store_value_to_materialized_address(
           *lowered_memory.instruction, *materialized_address);
+      retarget_store_address_to_materialized_pointer(
+          *store, *lowered_memory.instruction, *materialized_address);
     }
     record_memory_result(scalar_state, *lowered_memory.instruction);
     block.instructions.push_back(std::move(*lowered_memory.instruction));
   } else if (lowered_memory.handled) {
+    if (auto pointer_store =
+            lower_stack_homed_pointer_store_writeback(context, inst, instruction_index)) {
+      diagnostics.entries.resize(diagnostic_count);
+      block.instructions.push_back(std::move(*pointer_store));
+      return lowered_memory.handled;
+    }
     if (auto formal_store =
             lower_fixed_formal_store_local_publication(
                 context, inst, instruction_index, scalar_state)) {
@@ -7422,6 +7571,11 @@ InstructionDispatchResult dispatch_prepared_block(
                   context, *lowered_ordinary_memory.instruction);
               record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
               block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
+            } else if (auto pointer_store =
+                           lower_stack_homed_pointer_store_writeback(
+                               context, inst, memory_lowering_index)) {
+              diagnostics.entries.resize(diagnostic_count);
+              block.instructions.push_back(std::move(*pointer_store));
             } else if (auto formal_store =
                            lower_fixed_formal_store_local_publication(
                                context, inst, memory_lowering_index, scalar_state)) {

@@ -7964,6 +7964,173 @@ prepare::PreparedBirModule prepared_with_store(StoreDispatchFixtureKind kind,
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_materialized_pointer_address_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.materialized.ptr.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.materialized.ptr.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.materialized.ptr.store.entry");
+  const auto stored_name = prepared.names.value_names.intern("%stored");
+  const auto address_name = prepared.names.value_names.intern("%addr");
+
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{61},
+               .object_id = prepare::PreparedObjectId{61},
+               .function_name = function_name,
+               .offset_bytes = 64,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{62},
+               .object_id = prepare::PreparedObjectId{62},
+               .function_name = function_name,
+               .offset_bytes = 128,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 144,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.materialized.ptr.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.materialized.ptr.store.entry",
+              .insts =
+                  {bir::StoreLocalInst{
+                      .slot_name = "%addr.addr",
+                      .slot_id = c4c::SlotNameId{61},
+                      .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+                      .byte_offset = 0,
+                      .align_bytes = 4,
+                      .address =
+                          bir::MemoryAddress{
+                              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                              .base_value = bir::Value::named(bir::TypeKind::Ptr, "%addr"),
+                              .byte_offset = 0,
+                              .size_bytes = 4,
+                              .align_bytes = 4,
+                              .address_space = bir::AddressSpace::Default,
+                          },
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{71},
+               .function_name = function_name,
+               .value_name = stored_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w1",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{72},
+               .function_name = function_name,
+               .value_name = address_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x9",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{71}, stored_name, "w1"),
+           register_storage(prepare::PreparedValueId{72}, address_name, "x9")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 144,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .stored_value_name = stored_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{61},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+      .address_materializations =
+          {prepare::PreparedAddressMaterialization{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+              .result_value_name = address_name,
+              .result_value_id = prepare::PreparedValueId{72},
+              .frame_slot_id = prepare::PreparedFrameSlotId{62},
+              .byte_offset = 128,
+          }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_stack_homed_pointer_value_store() {
+  auto prepared = prepared_with_store(StoreDispatchFixtureKind::PointerValue);
+  auto& function = prepared.control_flow.functions.front();
+  const auto pointer_name = prepared.names.value_names.find("%ptr");
+  auto& value_locations = prepared.value_locations.functions.front();
+  for (auto& home : value_locations.value_homes) {
+    if (home.value_name != pointer_name) {
+      continue;
+    }
+    home.kind = prepare::PreparedValueHomeKind::StackSlot;
+    home.slot_id = prepare::PreparedFrameSlotId{22};
+    home.offset_bytes = std::size_t{40};
+    home.size_bytes = std::size_t{8};
+    home.align_bytes = std::size_t{8};
+    home.register_name.reset();
+  }
+  auto& storage = prepared.storage_plans.functions.front();
+  for (auto& value : storage.values) {
+    if (value.value_name != pointer_name) {
+      continue;
+    }
+    value = frame_slot_storage(
+        prepare::PreparedValueId{12}, pointer_name, prepare::PreparedFrameSlotId{22}, 40);
+  }
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{22},
+      .object_id = prepare::PreparedObjectId{22},
+      .function_name = function.function_name,
+      .offset_bytes = 40,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.frame_size_bytes = 64;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_simple_integer_cast(
     bir::CastOpcode opcode = bir::CastOpcode::SExt,
     bir::TypeKind source_type = bir::TypeKind::I32,
@@ -21998,6 +22165,97 @@ int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   return 0;
 }
 
+int block_dispatch_lowers_materialized_pointer_address_store_writeback() {
+  auto prepared = prepared_with_materialized_pointer_address_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      block.instructions.size() != 3) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected materialized pointer-addressed store to lower with address materialization: ops=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (memory == nullptr ||
+      memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      memory->address.base_kind != aarch64_codegen::MemoryBaseKind::Register ||
+      !memory->address.base_register.has_value() ||
+      memory->address.base_register->reg != aarch64_module::abi::x_register(9) ||
+      memory->address.byte_offset != 0 ||
+      !memory->value.has_value() ||
+      memory->value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected store address to retarget to the materialized pointer register");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected materialized pointer store route to print: " +
+                printed.diagnostic);
+  }
+  const auto materialize = printed.assembly.find("add x9, sp, #128");
+  const auto writeback = printed.assembly.find("str w1, [x9]");
+  if (materialize == std::string::npos ||
+      writeback == std::string::npos ||
+      !(materialize < writeback) ||
+      printed.assembly.find("str w1, [sp, #64]") != std::string::npos) {
+    return fail("expected store to write through materialized pointer address: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int block_dispatch_lowers_stack_homed_pointer_value_store_writeback() {
+  auto prepared = prepared_with_stack_homed_pointer_value_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      block.instructions.size() != 2) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected stack-homed pointer-value store writeback to lower: ops=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("mov w9, w1") == std::string::npos ||
+      printed.assembly.find("ldr x10, [sp, #40]") == std::string::npos ||
+      printed.assembly.find("str w9, [x10, #24]") == std::string::npos) {
+    return fail("expected stack-homed pointer value store to reload address and write through it: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
 int block_dispatch_publishes_stack_homed_pointer_value_load_chain() {
   auto prepared = prepared_with_stack_homed_pointer_value_load_chain();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -22371,6 +22629,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_materialized_pointer_address_store_writeback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_stack_homed_pointer_value_store_writeback();
       status != 0) {
     return status;
   }
