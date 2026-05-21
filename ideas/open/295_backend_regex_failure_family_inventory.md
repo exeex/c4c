@@ -1051,6 +1051,31 @@ Step 3/4 selection 2026-05-21 post-370:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-371:
+
+- Step 1 commit `ef3a8cc94` captured the current backend-regex surface after
+  closed idea 371: 356 selected tests, 347 passed, and 9 failed. Local
+  backend/unit/route/MIR/BIR/CLI/runtime/smoke tests are clean; all residuals
+  are external `c_testsuite_aarch64_backend_*`.
+- Step 2 commit `0d2bea3a4` classified the remaining residuals. The selected
+  focused owner is new idea 372,
+  `ideas/open/372_aarch64_pointer_valued_subobject_address_publication.md`.
+- The selected representative is `00163`: generated AArch64 keeps using the
+  old local pointer home for `&a` after `b = &(bolshevic.b)`, so the final
+  `*b` prints `42` instead of the global member value `34`. This is fresh
+  scalar pointer-local publication evidence, not a count-only reopen of closed
+  pointer-derived address/lvalue owner 294 or address-valued call-argument
+  owner 355.
+- Remaining ranked buckets stay parked under this umbrella for later
+  classification: external/libc call return publication (`00187`), static
+  local/global selected array store/readback (`00182`), aggregate
+  initializer/layout (`00205`, `00216`), scalar FP publication (`00174`),
+  unsigned enum bit-field layout/address publication (`00218`), and timeout
+  quarantine (`00200`, `00207`).
+- The active lifecycle state should now use idea 372 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

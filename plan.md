@@ -1,163 +1,161 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Pointer-Valued Subobject Address Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/371_aarch64_indexed_aggregate_snapshot_writeback_regression.md
+Source Idea: ideas/open/372_aarch64_pointer_valued_subobject_address_publication.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after the indexed aggregate
-snapshot/writeback follow-up closed and select the next focused owner before
-any implementation work.
+Repair the focused `00163` pointer-valued address publication residual
+selected by the backend inventory.
 
 ## Goal
 
-Classify the current backend-matching failure surface from the accepted
-`3350` passed / `25` failed full-suite baseline and split or select one
-semantic repair owner.
+Make scalar pointer locals consume the current address-valued assignment for
+global object and subobject addresses before later dereferences.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat counts alone as owner
-evidence.
+Repair pointer-local address publication generally. Do not special-case
+`00163`, `bolshevic`, `b`, one struct field, one stack offset, one register,
+or one emitted instruction sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/372_aarch64_pointer_valued_subobject_address_publication.md`
 - `todo.md`
-- `test_baseline.log`
 - `test_after.log`
-- recent closed idea:
-  - `ideas/closed/371_aarch64_indexed_aggregate_snapshot_writeback_regression.md`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
+- `tests/c/external/c-testsuite/src/00163.c`
+- generated `build/c_testsuite_aarch64_backend/src/00163.c.s`
+- semantic/prepared BIR for `00163`
+- closed idea notes for adjacent owners:
+  - `ideas/closed/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`
+  - `ideas/closed/355_aarch64_address_valued_memory_call_argument_publication.md`
 
 ## Current Scope
 
-- current accepted full-suite baseline: `3350` passed, `25` failed,
-  `3375` total
-- backend-regex residual classification after closed idea 371
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- selection or creation of the next focused semantic owner
+- scalar pointer-local assignment from `&global` or `&global.member`
+- publication of that address value to the local pointer home/register
+- dereference through the updated scalar pointer local
+- representative proof for `c_testsuite_aarch64_backend_src_00163_c`
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
+- Do not reopen or edit closed ideas 294 or 355.
+- Do not broaden into external call return publication, selected array
+  store/readback, aggregate initializer/layout, scalar FP, bit-field, or
+  timeout buckets.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
+- Do not implement under umbrella idea 295.
 
 ## Working Model
 
-Closed idea 371 resolved `00157`, `00176`, and `00183` in the accepted
-full-suite guard with no new failures. The prior ranked parked buckets under
-idea 295 still need reclassification against the new backend surface before
-selecting the next implementation owner.
+`00163` first stores a pointer to local `a` in `b`, then later assigns `b =
+&(bolshevic.b)`. Generated AArch64 still dereferences the old pointer home for
+`&a`, so the final output prints `42` instead of the global member value `34`.
+The owner is scalar pointer-local publication of a current address-valued
+assignment, not global struct field writeback or external call publication.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, runtime mismatch,
-  runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open and closed idea scopes before choosing
-  a route.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Start from source, generated AArch64, and semantic/prepared records for
+  `b = &(bolshevic.b)` and the final `*b`.
+- Trace where the global member address value is materialized or lost before
+  the local pointer home/dereference consumer.
+- Compare against closed ideas 294 and 355 so the route does not repeat an
+  archived boundary or reopen from counts alone.
+- Add focused coverage before or with the repair.
+- Preserve adjacent pointer-derived address/lvalue and address-valued
+  call-argument behavior.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize Pointer-Local Address Publication Gap
 
-Goal: establish the current backend-regex residual surface after idea 371.
+Goal: identify the first backend boundary where `b = &(bolshevic.b)` fails to
+publish the current address value to the later `*b` consumer.
 
-Primary target: `test_baseline.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether local backend/unit tests fail or whether residuals remain
-  only external `c_testsuite_aarch64_backend_*`.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: generated `00163.c.s`, semantic/prepared BIR for `00163`, and
+AArch64 pointer-local publication helpers.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Re-check the parked ranked buckets from the post-370 inventory after the
-  `00157`/`00176`/`00183` resolutions.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by closed ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Inspect generated AArch64 for the first `b = &a` assignment, the later
+  `b = &(bolshevic.b)` assignment, and final `*b` load.
+- Trace whether the global member address is present in semantic/prepared
+  state and whether it reaches stack layout, MIR, and AArch64 lowering.
+- Identify whether the stale `&a` value is retained in a stack home, register,
+  or scalar state map.
+- Decide the focused coverage shape needed before repair.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` names the first bad fact, owning backend boundary, and focused
+  coverage requirement for pointer-local address publication.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Add Focused Pointer-Local Address Coverage
 
-Goal: choose one tractable focused owner for implementation outside this
-umbrella plan.
+Goal: guard scalar pointer-local assignment from global/member addresses
+independently of `00163`.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: backend tests or dump coverage for address-valued assignments
+to scalar pointer locals followed by dereference.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for the supervisor handoff.
+- Add coverage where a pointer local is assigned one address, then reassigned
+  to a different global or member address.
+- Assert the later dereference consumes the reassigned address value, not the
+  stale prior pointer home.
+- Keep the test semantic and not tied to `bolshevic`, one register, one stack
+  offset, or one emitted instruction sequence.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused coverage fails before the repair or directly guards the missing
+  pointer-local address publication fact.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Repair Pointer-Local Address Publication
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: publish current address-valued assignments to scalar pointer locals
+before dereference consumers.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: the semantic/prepared/MIR/AArch64 helper localized in Step 1.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Implement the smallest semantic repair at the owning publication boundary.
+- Preserve prior pointer-derived address/lvalue and address-valued
+  call-argument behavior.
+- Avoid broad rewrites of unrelated external-call return, aggregate,
+  floating-point, bit-field, timeout, or runner owners.
+- Run build proof before focused and representative tests.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- Focused coverage passes and generated AArch64 no longer dereferences the
+  stale `&a` pointer after `b = &(bolshevic.b)`.
+
+### Step 4: Prove Representative And Classify Residual
+
+Goal: prove `00163` advances past the stale pointer-home failure and classify
+any next first bad fact.
+
+Primary target: focused backend coverage and
+`c_testsuite_aarch64_backend_src_00163_c`.
+
+Actions:
+
+- Run the supervisor-delegated build and proof command.
+- Inspect generated `00163.c.s` enough to confirm the final `*b` consumes the
+  global member address.
+- If `00163` still fails, classify the new first bad fact and decide whether
+  it remains in this idea or needs lifecycle handoff.
+- Ask the supervisor whether backend-regex or broader regression guard proof
+  is needed before closure.
+
+Completion check:
+
+- `00163` no longer fails because `b = &(bolshevic.b)` leaves `*b` consuming
+  the old `&a` pointer home, and proof is recorded in `todo.md`.
