@@ -1191,6 +1191,34 @@ Step 3/4 selection 2026-05-21 post-376:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-377:
+
+- Step 2 classified the current backend-regex residual surface from existing
+  `test_after.log`, source files under `tests/c/external/c-testsuite/src/`,
+  and generated AArch64 assembly under
+  `build/c_testsuite_aarch64_backend/`.
+- The current residual surface has four known buckets: scalar FP
+  expression/constant materialization (`00174`), broad aggregate
+  initializer/compound relocation/function-pointer-table behavior (`00216`),
+  dynamic stack/VLA fixed-slot timeout (`00207`), and shift/type-promotion
+  timeout (`00200`).
+- The selected focused owner is new idea 378,
+  `ideas/open/378_aarch64_scalar_fp_expression_constant_publication.md`.
+- The lead representative is `00174`: source-level float/double arithmetic
+  and assignment output prints early arithmetic constants as zero while later
+  comparison rows and final `2.000000` / `0.909297` output survive. Generated
+  `00174.c.s` prints from FP registers such as `d13` without clear preceding
+  materialization of the first constants, so the first bad fact is scalar FP
+  constant/expression publication rather than aggregate, control-flow, or
+  external call-result handling.
+- Remaining parked buckets stay under this umbrella for later classification:
+  aggregate initializer/compound relocation/function-pointer-table behavior
+  (`00216`), dynamic stack/VLA fixed-slot timeout (`00207`), and
+  shift/type-promotion timeout (`00200`).
+- The active lifecycle state should now use idea 378 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

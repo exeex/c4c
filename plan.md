@@ -1,172 +1,158 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar FP Expression Constant Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/377_aarch64_external_libc_call_result_publication.md
+Source Idea: ideas/open/378_aarch64_scalar_fp_expression_constant_publication.md
+Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after the focused external/libc
-call-result publication owner was closed, then select the next focused
-semantic owner before any implementation work starts.
+Repair the focused AArch64 scalar floating-point constant/expression
+publication residual selected from the backend inventory after idea 377.
 
 ## Goal
 
-Classify the current backend-matching failure surface after idea 377 and split
-or select one tractable repair owner from the remaining parked buckets.
+Make generated scalar FP consumers observe the intended float or double
+constant/expression value instead of stale or unmaterialized FP registers.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat pass/fail counts alone as
-owner evidence.
+Repair a general scalar FP publication capability. Do not special-case
+`00174`, do not change expectations or runners, and do not pull aggregate,
+timeout, HFA/variadic, or external call-result buckets into this owner without
+fresh first-bad-fact evidence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/378_aarch64_scalar_fp_expression_constant_publication.md`
 - `todo.md`
-- `test_before.log`
 - `test_after.log`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
+- `tests/c/external/c-testsuite/src/00174.c`
+- `build/c_testsuite_aarch64_backend/src/00174.c.s`
 
-## Current Scope
+## Current Targets
 
-- backend-regex residual classification after closed idea 377
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- reclassification of the parked residual buckets after `00187` was removed
-  from the active implementation surface
-- selection or creation of the next focused semantic owner
+- `c_testsuite_aarch64_backend_src_00174_c`
+- Scalar float/double constants and expression values feeding ordinary
+  generated AArch64 FP consumers.
+- Focused backend coverage to prove the repaired scalar FP publication path.
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
-- Do not activate a parked residual idea merely because it exists; require
-  current first-bad-fact evidence that it is the next owner.
+- Do not implement aggregate initializer, compound literal, relocation, or
+  function-pointer-table behavior for `00216`.
+- Do not implement dynamic stack/VLA/goto timeout behavior for `00207`.
+- Do not implement shift/type-promotion timeout behavior for `00200`.
+- Do not reopen external/libc call-result publication, HFA/variadic floating,
+  integer immediate materialization, selected-value publication, or aggregate
+  local-address owners without generated-code evidence.
+- Do not change expectations, unsupported classifications, allowlists, timeout
+  policy, runner behavior, CTest registration, or proof-log policy.
 
 ## Working Model
 
-The latest durable umbrella handoff selected `00187` as the external/libc
-call-result publication owner. That focused owner is now closed. The next
-inventory pass should treat `00187` as removed from the active residual
-surface unless fresh generated-code or proof evidence contradicts the closure
-boundary.
+The inventory selected `00174` because it is the strongest current
+non-timeout residual. Runtime output shows early scalar FP arithmetic values
+printing as zero, while later comparison rows and final `sin(2)`-related
+output survive. Generated assembly prints from FP registers such as `d13`
+without an obvious preceding materialization of the first expected constants.
 
-The remaining ranked buckets from the umbrella are expected to include scalar
-FP expression or constant materialization (`00174`), aggregate
-initializer/compound relocation/function-pointer-table behavior (`00216`),
-dynamic stack/VLA fixed-slot timeout (`00207`), and shift/type-promotion
-timeout (`00200`). Treat this as a starting hypothesis, not as proof; the
-active executor must classify the current surface before selecting a focused
-owner.
+Treat that as a starting hypothesis. The executor must localize the first
+missing scalar FP value before editing code, then repair the shared FP
+constant/expression publication path that feeds the consumer.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, assembler/linker,
-  runtime mismatch, runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open idea scopes before choosing a route.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Localize the first bad fact from source output to generated AArch64 before
+  changing implementation code.
+- Prefer focused backend coverage for the repaired FP publication behavior
+  before using `00174` as external proof.
+- Keep `00216`, `00200`, and `00207` parked unless fresh evidence proves they
+  share the scalar FP publication owner.
+- Acceptance needs fresh build or focused compile/test proof chosen by the
+  supervisor.
+- Treat expectation rewrites, filename-shaped fixes, register-only shortcuts,
+  and output-count-only claims as route failures.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize First Scalar FP Bad Fact
 
-Goal: establish the current backend-regex residual surface after idea 377.
+Goal: identify the first scalar FP constant or expression value that is missing
+or stale before its generated consumer.
 
-Primary target: `test_before.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether local backend/unit tests fail or whether residuals remain
-  only external `c_testsuite_aarch64_backend_*`.
-- Confirm that `00187` is absent from the current residual list before ranking
-  the next bucket.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: `00174.c`, `00174.c.s`, and the `00174` excerpt in
+`test_after.log`.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Re-check the parked ranked buckets after the `00187` closure.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by recent focused ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Map the earliest incorrect runtime output row back to the source expression.
+- Trace the generated AArch64 value setup for that expression through the
+  print or comparison consumer.
+- Identify whether the missing value is an FP literal, arithmetic expression,
+  assignment/unary/coercion result, or consumer handoff problem.
+- Record adjacent rows that still work so the owner boundary stays narrow.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` records the first scalar FP bad fact, the consumer, and the
+  suspected backend boundary.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Add Focused Backend Coverage
 
-Goal: choose one focused owner for implementation outside this umbrella plan.
+Goal: create focused coverage for the localized scalar FP publication behavior
+before relying on the external representative.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: existing backend tests that cover AArch64 FP constant or
+expression publication paths.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for supervisor handoff.
+- Find the nearest backend test location for scalar FP constants or simple
+  float/double expression consumers.
+- Add the smallest focused case that fails before the repair and describes the
+  localized owner.
+- Keep the coverage general enough to reject a `00174`-only fix.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused coverage exposes the scalar FP publication failure without needing
+  to run the full external c-testsuite route.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Repair Scalar FP Publication
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: make the prepared/lowered AArch64 path publish scalar FP constants or
+expression results to the value consumed by later FP operations or calls.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: the backend boundary localized in Step 1.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Repair the shared scalar FP materialization or publication path.
+- Preserve existing integer immediate, selected-value, aggregate-address,
+  call-result, and HFA/variadic behavior.
+- Avoid register-name or filename-specific branches.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- Focused backend coverage from Step 2 passes after the repair.
+
+### Step 4: Prove External Representative And Guardrails
+
+Goal: verify that `00174` advances or passes and that adjacent backend
+guardrails stay stable.
+
+Primary target: supervisor-selected focused proof command plus the `00174`
+external backend test.
+
+Actions:
+
+- Run the delegated build/proof command exactly as provided by the supervisor.
+- Run or report the delegated `00174` representative proof.
+- Record whether `00174` passes or advances to a new first bad fact.
+- Record any remaining parked buckets separately instead of absorbing them
+  into this idea.
+
+Completion check:
+
+- `todo.md` records proof results, residual classification for `00174` if it
+  does not pass, and whether the source idea is ready for close review.
