@@ -1,63 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/365_aarch64_string_literal_pointer_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize The Pointer-Value Publication Boundary
+Current Step ID: 3
+Current Step Title: Repair String/Global Address Pointer Publication
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 1 localized the first bad pointer-value publication boundary without
-implementation edits.
+Plan Step 3 repaired string/global address pointer-value publication for the
+localized semantic BIR path.
 
-For `tests/c/external/c-testsuite/src/00173.c`, the LLVM route still has the
-expected literal pointer value:
-`%t2 = getelementptr [6 x i8], ptr @.str0, i64 0, i64 0`, followed by
-`store ptr %t2, ptr %lv.a`. The semantic BIR boundary has already lost the
-`.str0` producer fact: `bir.store_local %lv.a, ptr %t2` appears with no
-corresponding `%t2` address-materialization/global-symbol definition.
+Code changes:
+- `GlobalInfo` now marks string-pool globals with `is_string_constant`.
+- local pointer stores fed by a known global/string address SSA publish the
+  zero-offset symbol pointer value (`@.str0`/`@global`) instead of the
+  route-local GEP temp.
+- string-pool address publication emits a BIR string-constant address
+  materialization producer before the local pointer store, so prepared/AArch64
+  can materialize the literal address with `adrp/add` and then store that
+  value to the pointer local.
 
-Prepared BIR then records the local pointer store as ordinary frame-slot
-storage, not string/global address publication:
-`access block=entry inst_index=4 base=frame_slot stored=%t2 frame_slot=#11`.
-The producer carrier is `%t2`, value id 2, classified as
-`storage %t2 ... spill_slot=slot#26+stack72` / `home %t2 ... offset=72`, and
-the first call preserves it through `route=stack_slot spill_slot=slot#26+stack72`.
-The generated AArch64 publishes that stack-spill address into `%lv.a`:
-`add x9, sp, #72; str x9, [sp, #16]`. The expected store was the `.str0`
-address via `adrp/add ... .str0`; `.str0` is emitted in `.rodata` but never
-materialized before the local pointer store.
-
-The first runtime consumer is `printf("%s\n", a)`: generated code reloads
-`a` from `[sp, #16]`, moves it to `x1`, and calls `printf`, so the consumer
-receives `sp+72` instead of `.str0`. Later dynamic byte consumers still remain
-dynamic pointer-derived loads, for example prepared BIR records `*a`, `*b`,
-and `*src` as `base=pointer_value` accesses (`pointer=%t6`, `%t10`, `%t29`);
-this keeps idea 356's dynamic pointer-derived load behavior distinct from this
-pointer-address publication fault.
-
-Nearby shape check: `tests/c/external/gcc_torture/src/ptr-arith-1.c` has
-`char *str = "abcdefghijkl"`; LLVM has `%t0 = getelementptr ... @.str0` then
-`store ptr %t0, ptr %lv.str`, while prepared BIR similarly records only
-`access block=entry inst_index=0 base=frame_slot stored=%t0 frame_slot=#0`
-with no string address materialization for the local pointer store. Its
-generated AArch64 stores `x20` to `[sp]` before any `.str0` materialization.
-
-Owner classification: semantic BIR string/global pointer-value
-materialization/provenance is the first bad boundary. Prepared stack layout
-and AArch64 codegen already have address-materialization machinery for direct
-string/global call arguments and frame-slot addresses, but the `%t2` local
-pointer-store producer arrives without the `.str0` identity needed to publish
-the literal/global address as a pointer value.
+Focused result: `backend_lir_to_bir_notes` now passes the Step 2 fixture. For
+`00173`, semantic and prepared BIR now show:
+`@.str0 = bir.load_local ptr %lv.a, addr .str0`;
+`bir.store_local %lv.a, ptr @.str0`; and prepared addressing records
+`address_materialization block=entry inst_index=4 kind=string_constant result=@.str0`.
+Generated AArch64 now publishes the real literal address into `%lv.a`:
+`adrp x13, .str0; add x13, x13, :lo12:.str0; str x13, [sp, #16]`.
 
 ## Suggested Next
 
-Execute Plan Step 2: add focused coverage for `char *p = "literal"` or an
-equivalent global-data pointer flowing into a local pointer and then into a
-dynamic pointer consumer. The test should fail on the current frame-slot
-publication and also assert that the later byte load remains a
-`PointerValue`/dynamic load rather than becoming a fixed `.str0` byte load.
+Hand the remaining `00173` runtime segfault to the AArch64 codegen/prepared
+scalar-memory owner: after the fixed string pointer publication, the first bad
+fact is a later byte-load value being reused as an address during generated
+AArch64 emission.
 
 ## Watchouts
 
@@ -72,15 +49,30 @@ publication and also assert that the later byte load remains a
 - The repair route should carry string/global identity through the local
   pointer-store producer, not teach consumers to rediscover one named literal
   from a later load.
+- The equivalent global-data pointer path already carried `LinkNameId` identity
+  in a probe, so the focused committed coverage uses the actual string-pool
+  literal shape.
+- The old first bad fact is gone: generated AArch64 no longer stores `sp+72`
+  into `%lv.a` for `char *a = "hello"`.
+- New first bad fact after the repair: immediately after `%t7 = load i8, ptr
+  %t6`, generated AArch64 correctly starts with `ldr x13, [sp, #16]` and
+  `ldrb w9, [x13]`, but then emits `mov x9, x13; ldrb w13, [x9]`; after
+  `sxtb w13, w13`, it emits another `mov x9, x13; ldrb w13, [x9]`, treating
+  the byte value as a pointer address. This is beyond the owned semantic BIR
+  string/global pointer-publication files.
 
 ## Proof
 
 Ran delegated proof:
 `cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00173_c)$' | tee test_after.log`
 
-Result: build was up to date; `backend_lir_to_bir_notes`,
+Result: build completed. `backend_lir_to_bir_notes`,
 `backend_aarch64_instruction_dispatch`, and
 `backend_aarch64_memory_operand_contract` passed. The representative
 `c_testsuite_aarch64_backend_src_00173_c` still fails with
-`[RUNTIME_NONZERO] ... exit=Segmentation fault`, preserving the current first
-bad fact. Proof log: `test_after.log`.
+`[RUNTIME_NONZERO] ... exit=Segmentation fault`, but the failure advanced past
+the repaired string/global address pointer publication and now hits the
+out-of-scope generated byte-load-as-address fact recorded above. Proof log:
+`test_after.log`.
+
+`git diff --check` passes.

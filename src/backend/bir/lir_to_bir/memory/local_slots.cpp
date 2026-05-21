@@ -189,6 +189,42 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
       runtime_pointer_address_from_local_slot_address(stored_value, address_it->second);
 }
 
+std::optional<bir::Value> symbol_pointer_value_for_global_address(
+    const lir_to_bir_detail::GlobalAddress& address) {
+  if (address.byte_offset != 0) {
+    return std::nullopt;
+  }
+  return bir::Value::named_symbol_pointer("@" + address.global_name, address.link_name_id);
+}
+
+void append_string_pointer_value_materialization(std::string_view slot_name,
+                                                 const bir::Value& published_value,
+                                                 const lir_to_bir_detail::GlobalAddress& address,
+                                                 const BirFunctionLowerer::GlobalTypes& global_types,
+                                                 std::vector<bir::Inst>* lowered_insts) {
+  if (published_value.kind != bir::Value::Kind::Named ||
+      published_value.type != bir::TypeKind::Ptr ||
+      address.byte_offset != 0) {
+    return;
+  }
+  const auto global_it = global_types.find(address.global_name);
+  if (global_it == global_types.end() || !global_it->second.is_string_constant) {
+    return;
+  }
+  const auto pointer_size = type_size_bytes(bir::TypeKind::Ptr);
+  lowered_insts->push_back(bir::LoadLocalInst{
+      .result = published_value,
+      .slot_name = std::string(slot_name),
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+              .base_name = address.global_name,
+              .size_bytes = pointer_size,
+              .align_bytes = pointer_size,
+          },
+  });
+}
+
 static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -1582,9 +1618,17 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_slot_address_slots->erase(ptr_it->second);
         (*local_address_slots)[ptr_it->second] = global_ptr_it->second;
         local_indirect_pointer_slots->insert(ptr_it->second);
+        const auto published_value = symbol_pointer_value_for_global_address(global_ptr_it->second);
+        if (published_value.has_value()) {
+          append_string_pointer_value_materialization(ptr_it->second,
+                                                      *published_value,
+                                                      global_ptr_it->second,
+                                                      global_types,
+                                                      lowered_insts);
+        }
         lowered_insts->push_back(bir::StoreLocalInst{
             .slot_name = ptr_it->second,
-            .value = value,
+            .value = published_value.value_or(value),
         });
         return LocalSlotStoreResult::Lowered;
       }

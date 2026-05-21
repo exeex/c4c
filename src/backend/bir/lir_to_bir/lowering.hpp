@@ -57,6 +57,7 @@ struct GlobalInfo {
   std::size_t storage_size_bytes = 0;
   bool supports_direct_value = false;
   bool supports_linear_addressing = false;
+  bool is_string_constant = false;
   // Compatibility LIR type text retained for aggregate layout parsing.
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;

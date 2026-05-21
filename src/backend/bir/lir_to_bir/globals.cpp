@@ -543,6 +543,7 @@ std::optional<bir::Global> lower_string_constant_global(
   info->storage_size_bytes = static_cast<std::size_t>(string_constant.byte_length);
   info->supports_direct_value = false;
   info->supports_linear_addressing = true;
+  info->is_string_constant = true;
   info->type_text = "[" + std::to_string(string_constant.byte_length) + " x i8]";
   return lowered;
 }
