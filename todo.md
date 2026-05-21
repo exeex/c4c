@@ -8,22 +8,31 @@ Current Step Title: Capture Current Backend Surface
 
 ## Just Finished
 
-Reactivated the backend inventory umbrella after closing focused idea 376.
-This is a classification-only lifecycle state; implementation must wait until
-a focused owner is selected and activated.
+Completed Step 1: Capture Current Backend Surface for idea 295 from the
+existing backend proof log.
+
+Current backend-regex surface in `test_after.log`:
+
+- 357 backend-selected tests ran.
+- 352 tests passed.
+- 5 tests failed.
+- Local backend/unit tests are clean; every residual failure is under
+  `c_testsuite_aarch64_backend_*`.
+- Failed residual tests:
+  - `c_testsuite_aarch64_backend_src_00174_c` failed.
+  - `c_testsuite_aarch64_backend_src_00187_c` failed.
+  - `c_testsuite_aarch64_backend_src_00200_c` timed out.
+  - `c_testsuite_aarch64_backend_src_00207_c` timed out.
+  - `c_testsuite_aarch64_backend_src_00216_c` failed.
+- `c_testsuite_aarch64_backend_src_00205_c` and
+  `c_testsuite_aarch64_backend_src_00218_c` are absent from the residual
+  failure list; both appear as passing in the captured run.
 
 ## Suggested Next
 
-Execute Step 1: reconstruct or capture the current backend-regex residual
-surface after idea 376. Confirm that the recent `00218` and `00205` focused
-closures are absent from the active residual list before ranking the next
-bucket.
-
-Suggested initial command if the supervisor approves a fresh capture:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j10 -R backend --output-on-failure > test_after.log 2>&1
-```
+Proceed to Step 2 classification only: group the five residual
+`c_testsuite_aarch64_backend_*` failures by observed symptom and likely owner
+boundary, without implementation.
 
 ## Watchouts
 
@@ -35,5 +44,12 @@ a safe timeout-specific owner is explicitly selected.
 
 ## Proof
 
-Activation-only lifecycle change. No implementation or validation proof was
-run by the plan owner.
+No new test run was requested for this documentation-only packet. Used the
+existing `test_after.log` from:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j10 -R backend --output-on-failure; } > test_after.log 2>&1
+```
+
+The captured backend subset reports `99% tests passed, 5 tests failed out of
+357`, with 352 passing tests and the five residual failures listed above.
