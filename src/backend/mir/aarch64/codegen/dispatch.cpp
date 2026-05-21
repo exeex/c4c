@@ -7942,6 +7942,360 @@ materialize_call_boundary_source_to_destination(
       context, instruction_index, std::move(lines));
 }
 
+[[nodiscard]] c4c::SlotNameId local_load_effective_slot_id(
+    const bir::LoadLocalInst& load) {
+  if (load.address.has_value() &&
+      load.address->base_slot_id != c4c::kInvalidSlotName) {
+    return load.address->base_slot_id;
+  }
+  return load.slot_id;
+}
+
+[[nodiscard]] c4c::SlotNameId local_store_effective_slot_id(
+    const bir::StoreLocalInst& store) {
+  if (store.address.has_value() &&
+      store.address->base_slot_id != c4c::kInvalidSlotName) {
+    return store.address->base_slot_id;
+  }
+  return store.slot_id;
+}
+
+[[nodiscard]] std::int64_t local_load_effective_byte_offset(
+    const bir::LoadLocalInst& load) {
+  return load.address.has_value()
+             ? load.address->byte_offset
+             : static_cast<std::int64_t>(load.byte_offset);
+}
+
+[[nodiscard]] std::int64_t local_store_effective_byte_offset(
+    const bir::StoreLocalInst& store) {
+  return store.address.has_value()
+             ? store.address->byte_offset
+             : static_cast<std::int64_t>(store.byte_offset);
+}
+
+[[nodiscard]] bool same_local_scalar_slot_access(
+    const bir::LoadLocalInst& load,
+    const bir::StoreLocalInst& store) {
+  const auto load_slot_id = local_load_effective_slot_id(load);
+  const auto store_slot_id = local_store_effective_slot_id(store);
+  if (load_slot_id != c4c::kInvalidSlotName ||
+      store_slot_id != c4c::kInvalidSlotName) {
+    if (load_slot_id == c4c::kInvalidSlotName ||
+        store_slot_id == c4c::kInvalidSlotName ||
+        load_slot_id != store_slot_id) {
+      return false;
+    }
+  } else if (!load.slot_name.empty() || !store.slot_name.empty()) {
+    if (load.slot_name.empty() || store.slot_name.empty() ||
+        load.slot_name != store.slot_name) {
+      return false;
+    }
+  }
+
+  const auto load_size = scalar_type_size_bytes(load.result.type);
+  const auto store_size = scalar_type_size_bytes(store.value.type);
+  return load_size.has_value() &&
+         store_size.has_value() &&
+         *load_size == *store_size &&
+         local_load_effective_byte_offset(load) ==
+             local_store_effective_byte_offset(store);
+}
+
+struct LocalLoadStoredValue {
+  bir::Value value;
+  std::size_t store_instruction_index = 0;
+};
+
+[[nodiscard]] std::optional<LocalLoadStoredValue>
+find_latest_same_block_local_load_store(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::size_t load_instruction_index) {
+  if (context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const std::size_t limit =
+      std::min(load_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = limit; index > 0; --index) {
+    const auto store_index = index - 1;
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[store_index]);
+    if (store != nullptr && same_local_scalar_slot_access(load, *store)) {
+      return LocalLoadStoredValue{
+          .value = store->value,
+          .store_instruction_index = store_index,
+      };
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<LocalLoadStoredValue>
+resolve_indirect_callee_local_load_store(
+    const module::BlockLoweringContext& context,
+    const bir::Value& callee_value,
+    std::size_t call_instruction_index) {
+  if (callee_value.kind != bir::Value::Kind::Named || callee_value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, callee_value.name, call_instruction_index);
+  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer)
+                                         : nullptr;
+  const auto load_index = producer_instruction_index(context, producer);
+  if (load == nullptr || !load_index.has_value()) {
+    return std::nullopt;
+  }
+  auto stored =
+      find_latest_same_block_local_load_store(context, *load, *load_index);
+  if (!stored.has_value()) {
+    return std::nullopt;
+  }
+  return stored;
+}
+
+[[nodiscard]] std::vector<std::uint8_t> indirect_callee_materialization_scratch_indices() {
+  std::vector<std::uint8_t> indices;
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    indices.push_back(scratch.index);
+  }
+  for (const auto scratch : abi::indirect_call_scratch_registers()) {
+    indices.push_back(scratch.index);
+  }
+  return indices;
+}
+
+[[nodiscard]] bool scratch_index_is_available(
+    std::uint8_t candidate,
+    std::uint8_t target_index,
+    const std::vector<std::uint8_t>& occupied_indices) {
+  return candidate != target_index &&
+         std::find(occupied_indices.begin(), occupied_indices.end(), candidate) ==
+             occupied_indices.end();
+}
+
+[[nodiscard]] std::optional<std::uint8_t> choose_scratch_index(
+    const std::vector<std::uint8_t>& scratch_indices,
+    std::uint8_t target_index,
+    const std::vector<std::uint8_t>& occupied_indices) {
+  for (const auto candidate : scratch_indices) {
+    if (scratch_index_is_available(candidate, target_index, occupied_indices)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool emit_indirect_callee_value_to_register_with_csel(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    std::uint8_t target_index,
+    const std::vector<std::uint8_t>& scratch_indices,
+    std::vector<std::uint8_t> occupied_indices,
+    std::vector<std::string>& lines,
+    unsigned depth = 0) {
+  if (depth > 16U) {
+    return false;
+  }
+  const auto* producer =
+      value.kind == bir::Value::Kind::Named
+          ? find_same_block_named_producer(context, value.name, before_instruction_index)
+          : nullptr;
+  const auto* select =
+      producer != nullptr ? std::get_if<bir::SelectInst>(producer) : nullptr;
+  if (select == nullptr) {
+    const auto scratch_index =
+        choose_scratch_index(scratch_indices, target_index, occupied_indices);
+    return scratch_index.has_value() &&
+           emit_value_publication_to_register(context,
+                                              value,
+                                              before_instruction_index,
+                                              target_index,
+                                              *scratch_index,
+                                              lines,
+                                              true);
+  }
+
+  const auto condition = branch_condition_suffix(select->predicate);
+  const auto compare_view = scalar_view_for_type(select->compare_type);
+  const auto result_view = scalar_view_for_type(value.type);
+  if (!condition.has_value() || !compare_view.has_value() ||
+      !result_view.has_value()) {
+    return false;
+  }
+
+  const auto producer_index =
+      producer_instruction_index(context, producer).value_or(before_instruction_index);
+  const auto true_index =
+      choose_scratch_index(scratch_indices, target_index, occupied_indices);
+  if (!true_index.has_value()) {
+    return false;
+  }
+
+  auto false_value = select->false_value;
+  false_value.type = value.type;
+  auto true_value = select->true_value;
+  true_value.type = value.type;
+  if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        false_value,
+                                                        producer_index,
+                                                        target_index,
+                                                        scratch_indices,
+                                                        occupied_indices,
+                                                        lines,
+                                                        depth + 1)) {
+    return false;
+  }
+
+  auto true_occupied = occupied_indices;
+  true_occupied.push_back(target_index);
+  if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        true_value,
+                                                        producer_index,
+                                                        *true_index,
+                                                        scratch_indices,
+                                                        true_occupied,
+                                                        lines,
+                                                        depth + 1)) {
+    return false;
+  }
+
+  auto compare_occupied = occupied_indices;
+  compare_occupied.push_back(target_index);
+  compare_occupied.push_back(*true_index);
+  const auto lhs_index =
+      choose_scratch_index(scratch_indices, target_index, compare_occupied);
+  if (!lhs_index.has_value()) {
+    return false;
+  }
+  compare_occupied.push_back(*lhs_index);
+  const auto rhs_index =
+      choose_scratch_index(scratch_indices, target_index, compare_occupied);
+  if (!rhs_index.has_value()) {
+    return false;
+  }
+
+  auto lhs = select->lhs;
+  lhs.type = select->compare_type;
+  if (!emit_value_publication_to_register(context,
+                                          lhs,
+                                          producer_index,
+                                          *lhs_index,
+                                          *rhs_index,
+                                          lines,
+                                          true)) {
+    return false;
+  }
+  std::string rhs_name;
+  if (select->rhs.kind == bir::Value::Kind::Immediate &&
+      is_cmp_immediate_encodable(select->rhs.immediate)) {
+    rhs_name = "#" + std::to_string(select->rhs.immediate);
+  } else {
+    auto rhs = select->rhs;
+    rhs.type = select->compare_type;
+    if (!emit_value_publication_to_register(context,
+                                            rhs,
+                                            producer_index,
+                                            *rhs_index,
+                                            *lhs_index,
+                                            lines,
+                                            true)) {
+      return false;
+    }
+    const auto rhs_register = abi::gp_register(*rhs_index, *compare_view);
+    if (!rhs_register.has_value()) {
+      return false;
+    }
+    rhs_name = abi::register_name(*rhs_register);
+  }
+
+  const auto lhs_register = abi::gp_register(*lhs_index, *compare_view);
+  const auto target_register = abi::gp_register(target_index, *result_view);
+  const auto true_register = abi::gp_register(*true_index, *result_view);
+  if (!lhs_register.has_value() || !target_register.has_value() ||
+      !true_register.has_value()) {
+    return false;
+  }
+  lines.push_back("cmp " + std::string{abi::register_name(*lhs_register)} + ", " +
+                  rhs_name);
+  lines.push_back("csel " + std::string{abi::register_name(*target_register)} + ", " +
+                  std::string{abi::register_name(*true_register)} + ", " +
+                  std::string{abi::register_name(*target_register)} + ", " +
+                  std::string{*condition});
+  return true;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_indirect_call_callee_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  if (!call.is_indirect || !call.callee_value.has_value() ||
+      !call_plan.is_indirect || !call_plan.indirect_callee.has_value()) {
+    return std::nullopt;
+  }
+  const auto& callee = *call_plan.indirect_callee;
+  if (callee.value_name == c4c::kInvalidValueName ||
+      callee.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      callee.bank != prepare::PreparedRegisterBank::Gpr ||
+      !callee.register_name.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::Value source_value = *call.callee_value;
+  std::size_t source_before_index = instruction_index;
+  if (const auto stored = resolve_indirect_callee_local_load_store(
+          context, *call.callee_value, instruction_index);
+      stored.has_value() &&
+      select_chain_contains_direct_global_load(
+          context, stored->value, stored->store_instruction_index)) {
+    source_value = stored->value;
+    source_before_index = stored->store_instruction_index;
+  }
+
+  const auto target_register = abi::parse_aarch64_register_name(*callee.register_name);
+  if (!target_register.has_value() ||
+      target_register->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto result_register = abi::gp_register(target_register->index, abi::RegisterView::X);
+  if (!result_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = indirect_callee_materialization_scratch_indices();
+  std::vector<std::string> lines;
+  if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        source_value,
+                                                        source_before_index,
+                                                        result_register->index,
+                                                        scratches,
+                                                        {},
+                                                        lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+
+  RegisterOperand emitted{
+      .reg = *result_register,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = callee.value_id,
+      .value_name = callee.value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = abi::RegisterView::X,
+      .contiguous_width = 1,
+      .occupied_register_references = {*result_register},
+      .occupied_registers = {abi::register_name(*result_register)},
+  };
+  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
 void record_call_result_source_register(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -9614,6 +9968,11 @@ InstructionDispatchResult dispatch_prepared_block(
               inline_variadic_entry_helper
                   ? std::vector<module::MachineInstruction>{}
                   : lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);
+          if (auto materialized_callee =
+                  materialize_indirect_call_callee_to_prepared_register(
+                      context, *call, *call_plan, instruction_index, scalar_state)) {
+            block.instructions.push_back(std::move(*materialized_callee));
+          }
           for (auto& before_call_move : before_call_moves) {
             retarget_call_boundary_source_to_emitted_scalar(before_call_move);
           }

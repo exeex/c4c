@@ -95,5 +95,21 @@ function(c4c_add_backend_runtime_case test_name)
   c4c_set_backend_test_labels("${test_name}" backend_runtime case ${ARG_LABELS})
 endfunction()
 
+add_test(
+  NAME backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=aarch64-linux-gnu
+          -DSRC=${BACKEND_CASE_ROOT}/aarch64_global_function_pointer_table_selected_indirect_call.c
+          -DOUT_ASM=${BACKEND_TEST_BINARY_ROOT}/aarch64_global_function_pointer_table_selected_indirect_call.s
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_aarch64_selected_indirect_call_case.cmake"
+)
+c4c_set_backend_test_labels(
+  backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call
+  backend_route
+  aarch64
+  selected_indirect_call
+)
+
 add_subdirectory(mir)
 add_subdirectory(bir)
