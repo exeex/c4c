@@ -11659,14 +11659,26 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
   if (result.visited_operations != 2 || !result.visited_terminator ||
-      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
       !diagnostics.empty()) {
-    return fail("expected nested call dispatch to emit call, preserved-home arg move, call, return");
+    return fail("expected nested call dispatch to populate preserved home before call and reuse it later");
+  }
+
+  const auto* populate =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[0].target.payload);
+  if (populate == nullptr || !populate->source_register.has_value() ||
+      !populate->destination_register.has_value() ||
+      populate->source_register->reg != aarch64_module::abi::x_register(1) ||
+      populate->destination_register->reg != aarch64_module::abi::x_register(20)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected first call to populate preserved x20 home from original x1: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
 
   const auto* move =
       std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
-          &block.instructions[1].target.payload);
+          &block.instructions[2].target.payload);
   if (move == nullptr || !move->source_register.has_value() ||
       !move->destination_register.has_value() ||
       move->source_register->reg != aarch64_module::abi::x_register(20) ||
@@ -11680,14 +11692,18 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   if (!printed.ok) {
     return fail("expected nested call route to print: " + printed.diagnostic);
   }
+  const auto preserve_populate = printed.assembly.find("mov x20, x1");
   const auto first_call = printed.assembly.find("bl clobber_arg");
   const auto preserved_publish = printed.assembly.find("mov x0, x20", first_call);
   const auto stale_publish = printed.assembly.find("mov x0, x1", first_call);
   const auto second_call = printed.assembly.find("bl consume_arg", preserved_publish);
-  if (first_call == std::string::npos || preserved_publish == std::string::npos ||
+  if (preserve_populate == std::string::npos ||
+      first_call == std::string::npos ||
+      preserve_populate > first_call ||
+      preserved_publish == std::string::npos ||
       second_call == std::string::npos ||
       (stale_publish != std::string::npos && stale_publish < second_call)) {
-    return fail("expected later call argument to reload from preservation home after bl: " +
+    return fail("expected preservation home to be populated before bl and reused after it: " +
                 printed.assembly);
   }
   return 0;
