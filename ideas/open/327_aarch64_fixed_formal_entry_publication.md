@@ -1,6 +1,6 @@
 # AArch64 Fixed Formal Entry Publication
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-19
 Split From: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 

@@ -1,6 +1,6 @@
 # AArch64 Variadic HFA And Floating Residual
 
-Status: Open
+Status: Parked
 Created: 2026-05-19
 Split From: ideas/closed/325_aarch64_variadic_local_value_home_publication.md
 

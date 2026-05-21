@@ -1,6 +1,6 @@
 # AArch64 Scalar Cast Stack-Homed Register Source Publication
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 Reopens Boundary From: ideas/closed/338_aarch64_scalar_cast_register_source_operand_facts.md

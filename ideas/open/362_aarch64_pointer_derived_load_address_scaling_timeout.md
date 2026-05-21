@@ -1,6 +1,6 @@
 # AArch64 Pointer-Derived Load Address Scaling Timeout
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-21
 Split From: ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md
 
