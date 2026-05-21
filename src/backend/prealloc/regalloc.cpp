@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -60,6 +61,8 @@ using regalloc_detail::resolve_register_class;
 using regalloc_detail::resolve_register_group_width;
 using regalloc_detail::value_priority;
 using regalloc_detail::weighted_use_score;
+
+constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
 
 void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
                                   std::size_t start_point,
@@ -163,9 +166,23 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
 void publish_regalloc_stack_slots(PreparedStackLayout& stack_layout,
                                   const PreparedRegallocFunction& function) {
   PreparedObjectId next_object_id = next_stack_object_id(stack_layout);
+  std::unordered_set<PreparedFrameSlotId> existing_slot_ids;
+  existing_slot_ids.reserve(stack_layout.frame_slots.size() + function.values.size());
+  for (const auto& slot : stack_layout.frame_slots) {
+    existing_slot_ids.insert(slot.slot_id);
+  }
+  std::size_t new_slot_count = 0;
+  for (const auto& value : function.values) {
+    if (value.assigned_stack_slot.has_value() &&
+        existing_slot_ids.find(value.assigned_stack_slot->slot_id) == existing_slot_ids.end()) {
+      ++new_slot_count;
+    }
+  }
+  stack_layout.objects.reserve(stack_layout.objects.size() + new_slot_count);
+  stack_layout.frame_slots.reserve(stack_layout.frame_slots.size() + new_slot_count);
   for (const auto& value : function.values) {
     if (!value.assigned_stack_slot.has_value() ||
-        has_frame_slot_id(stack_layout, value.assigned_stack_slot->slot_id)) {
+        !existing_slot_ids.insert(value.assigned_stack_slot->slot_id).second) {
       continue;
     }
     const PreparedObjectId object_id = next_object_id++;
@@ -665,24 +682,26 @@ void BirPreAlloc::run_regalloc() {
                                              liveness_function.function_name,
                                              next_synthetic_value_id);
 
-    for (std::size_t lhs_index = 0; lhs_index < regalloc_function.values.size(); ++lhs_index) {
-      const auto& lhs = regalloc_function.values[lhs_index];
-      if (!lhs.live_interval.has_value() || lhs.register_class == PreparedRegisterClass::None) {
-        continue;
-      }
-      for (std::size_t rhs_index = lhs_index + 1U; rhs_index < regalloc_function.values.size(); ++rhs_index) {
-        const auto& rhs = regalloc_function.values[rhs_index];
-        if (!rhs.live_interval.has_value() || rhs.register_class == PreparedRegisterClass::None) {
+    if (regalloc_function.values.size() <= kMaxPublishedInterferenceValueCount) {
+      for (std::size_t lhs_index = 0; lhs_index < regalloc_function.values.size(); ++lhs_index) {
+        const auto& lhs = regalloc_function.values[lhs_index];
+        if (!lhs.live_interval.has_value() || lhs.register_class == PreparedRegisterClass::None) {
           continue;
         }
-        if (!intervals_overlap(*lhs.live_interval, *rhs.live_interval)) {
-          continue;
+        for (std::size_t rhs_index = lhs_index + 1U; rhs_index < regalloc_function.values.size(); ++rhs_index) {
+          const auto& rhs = regalloc_function.values[rhs_index];
+          if (!rhs.live_interval.has_value() || rhs.register_class == PreparedRegisterClass::None) {
+            continue;
+          }
+          if (!intervals_overlap(*lhs.live_interval, *rhs.live_interval)) {
+            continue;
+          }
+          regalloc_function.interference.push_back(PreparedInterferenceEdge{
+              .lhs_value_id = lhs.value_id,
+              .rhs_value_id = rhs.value_id,
+              .reason = "overlapping_live_intervals",
+          });
         }
-        regalloc_function.interference.push_back(PreparedInterferenceEdge{
-            .lhs_value_id = lhs.value_id,
-            .rhs_value_id = rhs.value_id,
-            .reason = "overlapping_live_intervals",
-        });
       }
     }
 

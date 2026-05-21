@@ -1,78 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/381_aarch64_shift_promotion_codegen_scalability_timeout.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reconfirm Stage and First Slow Phase
+Current Step ID: Step 3
+Current Step Title: Repair the Backend Scalability Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 classification/localization complete for idea 381.
+Step 3/4 external advancement repair is complete for the prepared AArch64
+call-boundary scalability route.
 
-- Reconfirmed `c_testsuite_aarch64_backend_src_00200_c` still times out under
-  the delegated AArch64 backend CTest proof.
-- Direct bounded probes show semantic BIR, prepared BIR, and MIR trace/dump
-  complete quickly, while default prepared-stage AArch64 asm generation times
-  out.
-- First slow backend phase: prepared BIR to AArch64 native asm emission, before
-  the output `.s` file is written.
-- First localized operation family: prepared call-boundary lowering for the
-  expanded `check(...)` call sequence. A bounded gdb sample of the live timeout
-  process stopped in
-  `c4c::backend::aarch64::codegen::lower_before_call_moves`, called from
-  `dispatch_prepared_block` -> `lower_prepared_functions` ->
-  `compile_prepared_module`.
+- Kept the reviewer-requested cache-lifetime fix: the new indexes remain
+  request-local/context-local, with no address-keyed `thread_local` pointer
+  caches reintroduced.
+- Added request-local prepared move-bundle and value-home indexes for AArch64
+  lowering, and routed hot call-boundary/dispatch value-home lookups through
+  those indexes with linear fallbacks for manually assembled test contexts.
+- Repaired the remaining real `00200.c` hot path by using the prepared
+  call-plan prior-preserved index for same-block/dominating prior probes instead
+  of rescanning prior calls from each preserved value.
+- Reduced remaining prealloc/lowering overhead with indexed storage-plan
+  regalloc lookups, call-preservation candidate filtering, indexed regalloc
+  call-move name lookups, vector-backed prior-preserved indexes, exact
+  address-materialization lookup by instruction, and block instruction-stream
+  reservation.
+- The focused backend scalability route remains a static prepared
+  call-boundary stress case and now passes inside the existing 5-second bound;
+  the external `c_testsuite_aarch64_backend_src_00200_c` also advances past the
+  asm-generation timeout and passes.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 by adding focused scalability coverage for the
-prepared AArch64 call-boundary lowering shape: many straight-line `check(...)`
-calls with promoted scalar compare/argument values, without keying on `00200`
-or `lshift-type.c`.
+Return to the supervisor for review/commit handling. If review wants a follow-up
+slice, keep it scoped to route-quality review of the focused test shape versus
+the now-green external `00200.c` gate.
 
 ## Watchouts
 
-- The timeout is not in semantic BIR generation, prepared BIR generation, or
-  the current MIR debug surface: `--dump-bir`, `--dump-prepared-bir`,
-  `--dump-mir`, and `--trace-mir` all finish in about 0.05-0.11 seconds.
-- `--codegen asm --backend-bir-stage semantic --target aarch64-linux-gnu`
-  finishes in about 0.05 seconds and writes 44,543 bytes of assembly; the
-  default prepared asm route times out at 15 seconds with no output file
-  materialized.
-- Prepared BIR for `main` reports 626 allocation constraints, 8,566
-  interference edges, 223 register assignments, 403 stack slots, 130 calls,
-  and 361 blocks. The dominant source shape is repeated `bir.call void check`
-  sites after shift/type-promotion folding, not runtime looping.
+- The repair is general and does not special-case `00200`, `lshift-type.c`, a
+  test name, or the c-testsuite timeout policy.
+- `rg` no longer finds `thread_local Cache` or `static thread_local` in the
+  reviewed AArch64/backend paths; the remaining `thread_local` in this area is
+  the pre-existing scoped preserve-effect publication flag, not an
+  address-keyed cache.
+- The focused test was kept as a static multi-call prepared call-boundary stress
+  case; unrelated literal/debug payload and promotion-heavy argument expressions
+  were removed so the 5-second bound measures the repaired backend route rather
+  than frontend expression/literal processing.
 - Do not work on parked idea 382 unless the supervisor switches lifecycle
-  state. Reject testcase-specific shortcuts, timeout policy changes, runner
-  changes, CTest registration changes, unsupported-list changes, expectation
-  weakening, proof-log policy changes, and count-only progress claims.
+  state.
 
 ## Proof
 
 Delegated proof preserved in `test_after.log`:
 
-`{ cmake --build --preset default && ctest --test-dir build -j1 --output-on-failure -R '^c_testsuite_aarch64_backend_src_00200_c$' --timeout 15 ; } > test_after.log 2>&1`
+First direct gate:
 
-Outcome: build was up to date; the single CTest timed out after about 5 seconds
-per test properties, confirming the backend test still times out.
+`timeout 20s ./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c -o /tmp/c4c_00200_after_step3.s`
 
-Bounded diagnostics, with stale-process checks before and after:
+Outcome: completed with `DIRECT_RC=0`.
 
-- `timeout 15s ./build/c4cll --dump-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c`
-  exited 0 in about 0.08 seconds.
-- `timeout 15s ./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c`
-  exited 0 in about 0.10 seconds.
-- `timeout 15s ./build/c4cll --dump-mir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c`
-  exited 0 in about 0.09 seconds and identified the current MIR dump as the
-  x86/debug summary surface.
-- `timeout 15s ./build/c4cll --trace-mir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c`
-  exited 0 in about 0.11 seconds and reported `main` as 361 blocks.
-- `timeout 15s ./build/c4cll --codegen asm --backend-bir-stage semantic --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c -o /tmp/c4c_00200_semantic_stage.s`
-  exited 0 in about 0.05 seconds.
-- `timeout 15s ./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00200.c -o /tmp/c4c_00200_aarch64.s`
-  exited 124 after 15 seconds.
-- Bounded stack sample of the default asm timeout process stopped in
-  `lower_before_call_moves`, establishing prepared call-boundary lowering as
-  the first localized operation family.
+Final delegated proof:
+
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|c_testsuite_aarch64_backend_src_00200_c$)' ; } > test_after.log 2>&1`
+
+Outcome: build completed; CTest ran 149 matching tests. The focused
+`backend_codegen_route_aarch64_prepared_call_boundary_scalability` test passed
+in 1.14 seconds, `c_testsuite_aarch64_backend_src_00200_c` passed in 1.61
+seconds, and all 149 tests passed.

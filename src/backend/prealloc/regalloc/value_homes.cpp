@@ -109,6 +109,31 @@ namespace {
   return matched_slot;
 }
 
+[[nodiscard]] PreparedComputedValueLookup make_prepared_computed_value_lookup(
+    const PreparedNameTables& names,
+    const c4c::backend::bir::Function* function) {
+  PreparedComputedValueLookup lookup;
+  lookup.bir_names.import_link_names(names.texts, names.link_names);
+  if (function == nullptr) {
+    return lookup;
+  }
+  for (const auto& block : function->blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+          binary != nullptr && binary->result.kind == bir::Value::Kind::Named &&
+          !binary->result.name.empty()) {
+        lookup.named_binaries.emplace(binary->result.name, binary);
+      } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
+                 load_global != nullptr &&
+                 load_global->result.kind == bir::Value::Kind::Named &&
+                 !load_global->result.name.empty()) {
+        lookup.named_global_loads.emplace(load_global->result.name, load_global);
+      }
+    }
+  }
+  return lookup;
+}
+
 }  // namespace
 
 PreparedValueHome classify_prepared_value_home(
@@ -118,6 +143,7 @@ PreparedValueHome classify_prepared_value_home(
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
     const PreparedPointerCarrierMap& pointer_carriers,
+    const PreparedComputedValueLookup& computed_values,
     const PreparedRegallocValue& value) {
   PreparedValueHome home{
       .value_id = value.value_id,
@@ -200,26 +226,15 @@ PreparedValueHome classify_prepared_value_home(
     }
   }
   if (function != nullptr && value.type == bir::TypeKind::I32) {
-    std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
-    std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads;
-    for (const auto& block : function->blocks) {
-      for (const auto& inst : block.insts) {
-        if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-            binary != nullptr && binary->result.kind == bir::Value::Kind::Named &&
-            !binary->result.name.empty()) {
-          named_binaries.emplace(binary->result.name, binary);
-        } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
-                   load_global != nullptr &&
-                   load_global->result.kind == bir::Value::Kind::Named &&
-                   !load_global->result.name.empty()) {
-          named_global_loads.emplace(load_global->result.name, load_global);
-        }
-      }
-    }
     const bir::Value named_value =
         bir::Value::named(value.type, std::string(prepared_value_name(names, value.value_name)));
     if (const auto computed_value =
-            classify_computed_value(names, named_value, *function, named_binaries, named_global_loads);
+            classify_computed_value(names,
+                                    computed_values.bir_names,
+                                    named_value,
+                                    *function,
+                                    computed_values.named_binaries,
+                                    computed_values.named_global_loads);
         computed_value.has_value() &&
         computed_value->base.kind == PreparedComputedBaseKind::ImmediateI32) {
       auto current_value = static_cast<std::int32_t>(computed_value->base.immediate);
@@ -317,6 +332,7 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
   const auto pointer_carriers =
       function == nullptr ? PreparedPointerCarrierMap{}
                           : build_pointer_carrier_map(names, *function, function_addressing);
+  const auto computed_values = make_prepared_computed_value_lookup(names, function);
   std::vector<PreparedValueHome> value_homes;
   value_homes.reserve(regalloc_function.values.size());
   for (const auto& value : regalloc_function.values) {
@@ -327,6 +343,7 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
                                      stack_layout,
                                      function_addressing,
                                      pointer_carriers,
+                                     computed_values,
                                      value));
   }
   return value_homes;

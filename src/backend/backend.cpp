@@ -1326,7 +1326,8 @@ std::string emit_x86_bir_module_entry(const bir::Module& module,
 std::string emit_aarch64_bir_module_entry(const bir::Module& module,
                                           const c4c::TargetProfile& target_profile) {
   require_aarch64_module_entry_target(target_profile, "emit_aarch64_bir_module_entry");
-  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+  auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+  prepared.regalloc.functions.clear();
   return c4c::backend::aarch64::codegen::print_prepared_machine_nodes(prepared);
 }
 
@@ -1362,7 +1363,8 @@ std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& mo
   lowering_options.preserve_dynamic_alloca = true;
   auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
   if (lowering.module.has_value()) {
-    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+    auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+    prepared_bir.regalloc.functions.clear();
     return c4c::backend::aarch64::codegen::print_prepared_machine_nodes(prepared_bir);
   }
   throw std::invalid_argument(make_aarch64_lir_handoff_failure_message(lowering));

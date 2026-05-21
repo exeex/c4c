@@ -5,11 +5,19 @@
 #include "../regalloc.hpp"
 #include "../value_locations.hpp"
 
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::prepare {
 
 namespace regalloc_detail {
+
+struct PreparedComputedValueLookup {
+  c4c::backend::bir::NameTables bir_names;
+  std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
+  std::unordered_map<std::string_view, const c4c::backend::bir::LoadGlobalInst*> named_global_loads;
+};
 
 [[nodiscard]] PreparedValueHome classify_prepared_value_home(
     PreparedNameTables& names,
@@ -18,6 +26,7 @@ namespace regalloc_detail {
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
     const PreparedPointerCarrierMap& pointer_carriers,
+    const PreparedComputedValueLookup& computed_values,
     const PreparedRegallocValue& value);
 
 [[nodiscard]] std::vector<PreparedValueHome> build_prepared_value_homes(

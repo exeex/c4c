@@ -12,12 +12,41 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace c4c::backend::prepare::regalloc_detail {
 
 namespace {
+
+struct RegallocValueNameIndex {
+  std::unordered_map<ValueNameId, const PreparedRegallocValue*> by_name;
+};
+
+[[nodiscard]] RegallocValueNameIndex make_regalloc_value_name_index(
+    const PreparedRegallocFunction& function) {
+  RegallocValueNameIndex index;
+  index.by_name.reserve(function.values.size());
+  for (const auto& value : function.values) {
+    if (value.value_name != kInvalidValueName) {
+      index.by_name.emplace(value.value_name, &value);
+    }
+  }
+  return index;
+}
+
+[[nodiscard]] const PreparedRegallocValue* find_regalloc_value(
+    const RegallocValueNameIndex& index,
+    const PreparedNameTables& names,
+    std::string_view value_name) {
+  const ValueNameId value_name_id = names.value_names.find(value_name);
+  if (value_name_id == kInvalidValueName) {
+    return nullptr;
+  }
+  const auto it = index.by_name.find(value_name_id);
+  return it == index.by_name.end() ? nullptr : it->second;
+}
 
 [[nodiscard]] bool same_register_destination(
     const std::optional<PreparedRegisterPlacement>& destination_placement,
@@ -196,6 +225,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                      const c4c::TargetProfile& target_profile,
                                      const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
+  const auto value_name_index = make_regalloc_value_name_index(regalloc_function);
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
@@ -209,7 +239,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
         const bool f128_constant_arg = is_f128_immediate_constant(arg);
         const auto* source =
             arg.kind == bir::Value::Kind::Named
-                ? find_regalloc_value(regalloc_function, names, arg.name)
+                ? find_regalloc_value(value_name_index, names, arg.name)
                 : f128_constant_arg
                       ? find_f128_constant_regalloc_value(regalloc_function, arg)
                       : nullptr;
@@ -325,6 +355,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                         const c4c::TargetProfile& target_profile,
                                         const bir::Function& function,
                                         PreparedRegallocFunction& regalloc_function) {
+  const auto value_name_index = make_regalloc_value_name_index(regalloc_function);
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
@@ -358,7 +389,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
           continue;
         }
         const auto* result =
-            find_regalloc_value(regalloc_function, names, result_lanes[lane_index].name);
+            find_regalloc_value(value_name_index, names, result_lanes[lane_index].name);
         if (result == nullptr) {
           continue;
         }
@@ -430,6 +461,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                    const c4c::TargetProfile& target_profile,
                                    const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
+  const auto value_name_index = make_regalloc_value_name_index(regalloc_function);
   const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
   if (consumed_kind == PreparedMoveStorageKind::None) {
     return;
@@ -469,7 +501,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
         continue;
       }
       const auto* source =
-          find_regalloc_value(regalloc_function, names, return_lanes[lane_index].name);
+          find_regalloc_value(value_name_index, names, return_lanes[lane_index].name);
       if (source == nullptr) {
         continue;
       }

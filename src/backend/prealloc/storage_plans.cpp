@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -135,6 +136,28 @@ namespace {
   return nullptr;
 }
 
+struct RegallocValueIndexes {
+  std::unordered_map<PreparedValueId, const PreparedRegallocValue*> by_id;
+  std::unordered_map<ValueNameId, const PreparedRegallocValue*> by_name;
+};
+
+[[nodiscard]] RegallocValueIndexes make_regalloc_value_indexes(
+    const PreparedRegallocFunction* function) {
+  RegallocValueIndexes indexes;
+  if (function == nullptr) {
+    return indexes;
+  }
+  indexes.by_id.reserve(function->values.size());
+  indexes.by_name.reserve(function->values.size());
+  for (const auto& value : function->values) {
+    indexes.by_id.emplace(value.value_id, &value);
+    if (value.value_name != c4c::kInvalidValueName) {
+      indexes.by_name.emplace(value.value_name, &value);
+    }
+  }
+  return indexes;
+}
+
 [[nodiscard]] PreparedStorageEncodingKind storage_encoding_from_home(
     const PreparedValueHome& home) {
   switch (home.kind) {
@@ -154,11 +177,9 @@ namespace {
 
 [[nodiscard]] PreparedStoragePlanValue build_storage_plan_value(
     const c4c::TargetProfile& target_profile,
-    const PreparedRegallocFunction* regalloc_function,
+    const PreparedRegallocValue* regalloc_value,
     const PreparedValueHome& home,
     bir::TypeKind type) {
-  const auto* regalloc_value =
-      regalloc_function == nullptr ? nullptr : find_regalloc_value_by_name(*regalloc_function, home.value_name);
   const bool home_is_assigned_register =
       regalloc_value != nullptr && regalloc_value->assigned_register.has_value() &&
       home.register_name ==
@@ -216,17 +237,21 @@ void populate_storage_plans(PreparedBirModule& prepared) {
     };
 
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_locations.function_name);
+    const auto regalloc_value_indexes = make_regalloc_value_indexes(regalloc_function);
     function_plan.values.reserve(function_locations.value_homes.size());
     for (const auto& home : function_locations.value_homes) {
       bir::TypeKind type = bir::TypeKind::Void;
-      if (regalloc_function != nullptr) {
-        if (const auto* regalloc_value = find_regalloc_value_by_id(*regalloc_function, home.value_id);
-            regalloc_value != nullptr) {
-          type = regalloc_value->type;
-        }
+      const auto by_id_it = regalloc_value_indexes.by_id.find(home.value_id);
+      const auto* typed_regalloc_value =
+          by_id_it == regalloc_value_indexes.by_id.end() ? nullptr : by_id_it->second;
+      if (typed_regalloc_value != nullptr) {
+        type = typed_regalloc_value->type;
       }
+      const auto by_name_it = regalloc_value_indexes.by_name.find(home.value_name);
+      const auto* placed_regalloc_value =
+          by_name_it == regalloc_value_indexes.by_name.end() ? nullptr : by_name_it->second;
       function_plan.values.push_back(
-          build_storage_plan_value(prepared.target_profile, regalloc_function, home, type));
+          build_storage_plan_value(prepared.target_profile, placed_regalloc_value, home, type));
     }
 
     if (!function_plan.values.empty()) {

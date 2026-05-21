@@ -10,6 +10,20 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+class ScopedPreparedCallPreserveEffectPublication {
+ public:
+  explicit ScopedPreparedCallPreserveEffectPublication(bool enabled);
+  ~ScopedPreparedCallPreserveEffectPublication();
+
+  ScopedPreparedCallPreserveEffectPublication(
+      const ScopedPreparedCallPreserveEffectPublication&) = delete;
+  ScopedPreparedCallPreserveEffectPublication& operator=(
+      const ScopedPreparedCallPreserveEffectPublication&) = delete;
+
+ private:
+  bool previous_enabled_ = true;
+};
+
 [[nodiscard]] std::optional<MachineEffectResource> effect_from_prepared_call_clobber(
     const prepare::PreparedClobberedRegister& clobber);
 [[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(

@@ -27,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <variant>
@@ -225,6 +226,38 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                                                  value.name);
 }
 
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.value_home_indexes != nullptr) {
+    const auto it = context.function.value_home_indexes->homes_by_name.find(value_name);
+    if (it != context.function.value_home_indexes->homes_by_name.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return context.function.value_locations == nullptr
+             ? nullptr
+             : prepare::find_prepared_value_home(*context.function.value_locations,
+                                                 value_name);
+}
+
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedValueId value_id) {
+  if (context.function.value_home_indexes != nullptr) {
+    const auto it = context.function.value_home_indexes->homes_by_id.find(value_id);
+    if (it != context.function.value_home_indexes->homes_by_id.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return context.function.value_locations == nullptr
+             ? nullptr
+             : prepare::find_prepared_value_home(*context.function.value_locations,
+                                                 value_id);
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_named_prepared_result_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
@@ -235,8 +268,7 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  const auto* home =
-      prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+  const auto* home = find_value_home(context, *value_name);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::Register ||
       !home->register_name.has_value()) {
@@ -689,6 +721,7 @@ lower_scalar_call_argument_producers(
 }
 
 [[nodiscard]] std::optional<bir::Value> instruction_result_value(const bir::Inst& inst);
+[[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst);
 
 [[nodiscard]] bool is_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
@@ -708,8 +741,8 @@ lower_scalar_call_argument_producers(
     return false;
   }
   const auto* result_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *result_value_name);
+      find_value_home(context,
+*result_value_name);
   if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
     return false;
   }
@@ -735,8 +768,8 @@ lower_scalar_call_argument_producers(
         continue;
       }
       const auto* destination_home =
-          prepare::find_prepared_value_home(*context.function.value_locations,
-                                            move.to_value_id);
+          find_value_home(context,
+move.to_value_id);
       if (destination_home != nullptr &&
           (prepared_edge_select_source_is_destination_register(*result_home,
                                                               *destination_home) ||
@@ -792,8 +825,8 @@ lower_scalar_call_argument_producers(
   const auto limit =
       std::min(before_instruction_index, context.bir_block->insts.size());
   for (std::size_t index = limit; index > 0; --index) {
-    const auto result = instruction_result_value(context.bir_block->insts[index - 1]);
-    if (result.has_value() && result->kind == bir::Value::Kind::Named &&
+    const auto* result = instruction_result_value_ref(context.bir_block->insts[index - 1]);
+    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
         result->name == value_name) {
       return index - 1;
     }
@@ -822,17 +855,33 @@ lower_scalar_call_argument_producers(
   if (!is_join_parallel_copy_expression_instruction(producer)) {
     return false;
   }
-  for (const auto operand_name : named_operands_of_instruction(producer)) {
-    if (operand_name == dependency_name ||
-        same_block_result_depends_on_value(context,
-                                           operand_name,
-                                           dependency_name,
-                                           *producer_index,
-                                           depth + 1U)) {
-      return true;
-    }
-  }
-  return false;
+  auto operand_depends = [&](const bir::Value& operand) {
+    return operand.kind == bir::Value::Kind::Named &&
+           !operand.name.empty() &&
+           (operand.name == dependency_name ||
+            same_block_result_depends_on_value(context,
+                                               operand.name,
+                                               dependency_name,
+                                               *producer_index,
+                                               depth + 1U));
+  };
+  return std::visit(
+      [&](const auto& typed_inst) {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+          return operand_depends(typed_inst.lhs) ||
+                 operand_depends(typed_inst.rhs);
+        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+          return operand_depends(typed_inst.operand);
+        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+          return operand_depends(typed_inst.lhs) ||
+                 operand_depends(typed_inst.rhs) ||
+                 operand_depends(typed_inst.true_value) ||
+                 operand_depends(typed_inst.false_value);
+        }
+        return false;
+      },
+      producer);
 }
 
 [[nodiscard]] bool is_current_block_join_parallel_copy_incoming_expression(
@@ -856,8 +905,8 @@ lower_scalar_call_argument_producers(
     return false;
   }
   const auto* result_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *result_value_name);
+      find_value_home(context,
+*result_value_name);
   if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
     return false;
   }
@@ -875,8 +924,8 @@ lower_scalar_call_argument_producers(
         continue;
       }
       const auto* source_home =
-          prepare::find_prepared_value_home(*context.function.value_locations,
-                                            move.from_value_id);
+          find_value_home(context,
+move.from_value_id);
       if (source_home == nullptr ||
           source_home->value_name == c4c::kInvalidValueName) {
         continue;
@@ -897,6 +946,172 @@ lower_scalar_call_argument_producers(
     }
   }
   return false;
+}
+
+struct CurrentBlockJoinParallelCopyCache {
+  const module::BlockLoweringContext* context = nullptr;
+  std::vector<bool> incoming_expressions;
+  std::vector<bool> sources;
+};
+
+[[nodiscard]] CurrentBlockJoinParallelCopyCache
+build_current_block_join_parallel_copy_cache(
+    const module::BlockLoweringContext& context) {
+  CurrentBlockJoinParallelCopyCache cache{.context = &context};
+  if (context.bir_block == nullptr) {
+    return cache;
+  }
+  const bool has_relevant_bundle =
+      context.function.value_locations != nullptr &&
+      context.control_flow_block != nullptr &&
+      std::any_of(context.function.value_locations->move_bundles.begin(),
+                  context.function.value_locations->move_bundles.end(),
+                  [&](const prepare::PreparedMoveBundle& bundle) {
+                    return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
+                           bundle.authority_kind ==
+                               prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+                           bundle.source_parallel_copy_successor_label ==
+                               std::optional<c4c::BlockLabelId>{
+                                   context.control_flow_block->block_label};
+                  });
+  cache.incoming_expressions.reserve(context.bir_block->insts.size());
+  cache.sources.reserve(context.bir_block->insts.size());
+  if (!has_relevant_bundle) {
+    cache.incoming_expressions.assign(context.bir_block->insts.size(), false);
+    cache.sources.assign(context.bir_block->insts.size(), false);
+    return cache;
+  }
+  std::unordered_map<std::string_view, std::size_t> result_indices;
+  result_indices.reserve(context.bir_block->insts.size());
+  for (std::size_t index = 0; index < context.bir_block->insts.size(); ++index) {
+    const auto* result = instruction_result_value_ref(context.bir_block->insts[index]);
+    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
+        !result->name.empty()) {
+      result_indices.emplace(result->name, index);
+    }
+  }
+
+  std::unordered_set<prepare::PreparedValueId> incoming_value_ids;
+  std::unordered_set<prepare::PreparedValueId> source_value_ids;
+  std::unordered_set<std::string_view> incoming_expression_names;
+  std::vector<std::string_view> pending_expression_names;
+  auto add_expression_dependency = [&](std::string_view name) {
+    if (!name.empty()) {
+      pending_expression_names.push_back(name);
+    }
+  };
+
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
+        continue;
+      }
+      if (!move.source_immediate_i32.has_value()) {
+        const auto* source_home =
+            find_value_home(context,
+move.from_value_id);
+        if (source_home != nullptr &&
+            source_home->value_name != c4c::kInvalidValueName) {
+          incoming_value_ids.insert(source_home->value_id);
+          add_expression_dependency(prepare::prepared_value_name(
+              context.function.prepared->names, source_home->value_name));
+        }
+      }
+      if (move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+        continue;
+      }
+      source_value_ids.insert(move.to_value_id);
+      if (move.source_immediate_i32.has_value() ||
+          move.from_value_id == move.to_value_id) {
+        continue;
+      }
+      const auto* result_home =
+          find_value_home(context,
+move.from_value_id);
+      const auto* destination_home =
+          find_value_home(context,
+move.to_value_id);
+      if (result_home != nullptr && destination_home != nullptr &&
+          (prepared_edge_select_source_is_destination_register(*result_home,
+                                                              *destination_home) ||
+           result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
+        source_value_ids.insert(move.from_value_id);
+      }
+    }
+  }
+
+  while (!pending_expression_names.empty()) {
+    const auto name = pending_expression_names.back();
+    pending_expression_names.pop_back();
+    if (name.empty() || !incoming_expression_names.insert(name).second) {
+      continue;
+    }
+    const auto producer_it = result_indices.find(name);
+    if (producer_it == result_indices.end()) {
+      continue;
+    }
+    const auto& producer = context.bir_block->insts[producer_it->second];
+    if (!is_join_parallel_copy_expression_instruction(producer)) {
+      continue;
+    }
+    for (const auto operand_name : named_operands_of_instruction(producer)) {
+      add_expression_dependency(operand_name);
+    }
+  }
+
+  for (const auto& inst : context.bir_block->insts) {
+    const auto* result = instruction_result_value_ref(inst);
+    bool incoming_expression = false;
+    bool source = false;
+    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
+        !result->name.empty()) {
+      const auto result_value_name = prepared_named_value_id(context, *result);
+      const auto* result_home =
+          result_value_name.has_value()
+              ? find_value_home(context,
+*result_value_name)
+              : nullptr;
+      if (result_home != nullptr && result_home->value_name != c4c::kInvalidValueName) {
+        incoming_expression =
+            incoming_value_ids.find(result_home->value_id) != incoming_value_ids.end() ||
+            incoming_expression_names.find(result->name) != incoming_expression_names.end();
+        source = source_value_ids.find(result_home->value_id) != source_value_ids.end();
+      }
+    }
+    cache.incoming_expressions.push_back(incoming_expression);
+    cache.sources.push_back(source);
+  }
+  return cache;
+}
+
+[[nodiscard]] bool cached_current_block_join_parallel_copy_incoming_expression(
+    const CurrentBlockJoinParallelCopyCache& cache,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Inst& inst) {
+  if (cache.context == &context &&
+      instruction_index < cache.incoming_expressions.size()) {
+    return cache.incoming_expressions[instruction_index];
+  }
+  return is_current_block_join_parallel_copy_incoming_expression(context, inst);
+}
+
+[[nodiscard]] bool cached_current_block_join_parallel_copy_source(
+    const CurrentBlockJoinParallelCopyCache& cache,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Inst& inst) {
+  if (cache.context == &context && instruction_index < cache.sources.size()) {
+    return cache.sources[instruction_index];
+  }
+  return is_current_block_join_parallel_copy_source(context, inst);
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -961,11 +1176,11 @@ lower_predecessor_select_parallel_copy_sources(
       continue;
     }
     const auto* source_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.from_value_id);
+        find_value_home(context,
+move.from_value_id);
     const auto* destination_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.to_value_id);
+        find_value_home(context,
+move.to_value_id);
     if (source_home == nullptr ||
         destination_home == nullptr ||
         source_home->value_name == c4c::kInvalidValueName ||
@@ -1551,8 +1766,8 @@ lower_materialized_compare_condition_branch(
       prepared_named_value_id(context, branch_condition->condition_value);
   const auto* condition_home =
       condition_name.has_value() && context.function.value_locations != nullptr
-          ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                              *condition_name)
+          ? find_value_home(context,
+*condition_name)
           : nullptr;
   if (condition_home == nullptr) {
     return std::nullopt;
@@ -1768,8 +1983,8 @@ lower_constant_rhs_fused_compare_branch(
   const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
       rhs_name.has_value() && context.function.value_locations != nullptr
-          ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                              *rhs_name)
+          ? find_value_home(context,
+*rhs_name)
           : nullptr;
   if (rhs_producer == nullptr ||
       rhs_home == nullptr ||
@@ -1859,8 +2074,8 @@ lower_conditional_branch_from_emitted_condition(
     }
     const auto* home =
         context.function.value_locations != nullptr
-            ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                                *condition_name)
+            ? find_value_home(context,
+*condition_name)
             : nullptr;
     condition_register = RegisterOperand{
         .reg = *reg,
@@ -2123,8 +2338,8 @@ void retarget_memory_result_to_prepared_home(
   }
 
   const auto* home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *memory_record->result_value_id);
+      find_value_home(context,
+*memory_record->result_value_id);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::Register ||
       !home->register_name.has_value()) {
@@ -3230,8 +3445,8 @@ lower_fixed_formal_store_local_publication(
     return false;
   }
   const auto* pointer_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *access->address.pointer_value_name);
+      find_value_home(context,
+*access->address.pointer_value_name);
   if (pointer_home == nullptr) {
     return false;
   }
@@ -3489,8 +3704,8 @@ find_latest_narrow_store_for_wide_local_load(
   }
   const auto value_name = prepared_named_value_id(context, value);
   return value_name.has_value()
-             ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                                 *value_name)
+             ? find_value_home(context,
+*value_name)
              : nullptr;
 }
 
@@ -3531,8 +3746,8 @@ find_latest_narrow_store_for_wide_local_load(
   auto value_name = prepared_named_value_id(context, value);
   const prepare::PreparedValueHome* home =
       value_name.has_value()
-          ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                              *value_name)
+          ? find_value_home(context,
+*value_name)
           : nullptr;
   if (home == nullptr && context.function.prepared != nullptr && !value.name.empty()) {
     for (const auto& candidate : context.function.value_locations->value_homes) {
@@ -3614,8 +3829,8 @@ void record_current_block_entry_publication_registers(
         continue;
       }
       const auto* home =
-          prepare::find_prepared_value_home(*context.function.value_locations,
-                                            move.to_value_id);
+          find_value_home(context,
+move.to_value_id);
       if (home == nullptr) {
         continue;
       }
@@ -3672,8 +3887,8 @@ void record_current_block_entry_publication_registers(
         continue;
       }
       const auto* home =
-          prepare::find_prepared_value_home(*context.function.value_locations,
-                                            move.to_value_id);
+          find_value_home(context,
+move.to_value_id);
       std::optional<std::string> register_name = move.destination_register_name;
       if (!register_name.has_value() &&
           home != nullptr &&
@@ -4541,8 +4756,8 @@ lower_scalar_mul_with_distinct_rhs_scratch(
     const auto value_name = prepared_named_value_id(context, binary->result);
     const auto* home =
         value_name.has_value() && context.function.value_locations != nullptr
-            ? prepare::find_prepared_value_home(*context.function.value_locations,
-                                                *value_name)
+            ? find_value_home(context,
+*value_name)
             : nullptr;
     const auto scratches = abi::reserved_mir_scratch_gp_registers();
     if (home == nullptr ||
@@ -4800,8 +5015,8 @@ lower_stack_homed_pointer_value_load_publication(
     return std::nullopt;
   }
   const auto* pointer_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *access->address.pointer_value_name);
+      find_value_home(context,
+*access->address.pointer_value_name);
   if (pointer_home == nullptr ||
       pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !pointer_home->offset_bytes.has_value()) {
@@ -4813,7 +5028,8 @@ lower_stack_homed_pointer_value_load_publication(
     return std::nullopt;
   }
   const auto* result_home =
-      prepare::find_prepared_value_home(*context.function.value_locations, *result_name);
+      find_value_home(context,
+*result_name);
   if (result_home == nullptr) {
     return std::nullopt;
   }
@@ -5783,8 +5999,8 @@ materialize_direct_global_select_chain_call_argument(
   }
   if (context.function.value_locations != nullptr) {
     const auto* home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          *value_name);
+        find_value_home(context,
+*value_name);
     if (home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot) {
       return std::nullopt;
     }
@@ -5796,8 +6012,8 @@ materialize_direct_global_select_chain_call_argument(
   if (context.function.value_locations != nullptr &&
       (value.type == bir::TypeKind::F32 || value.type == bir::TypeKind::F64)) {
     const auto* home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          *value_name);
+        find_value_home(context,
+*value_name);
     if (home == nullptr ||
         home->kind != prepare::PreparedValueHomeKind::Register ||
         !home->register_name.has_value()) {
@@ -5841,8 +6057,8 @@ materialize_direct_global_select_chain_call_argument(
   std::optional<prepare::PreparedValueHome> result_home;
   if (context.function.value_locations != nullptr) {
     if (const auto* home =
-            prepare::find_prepared_value_home(*context.function.value_locations,
-                                              *value_name);
+            find_value_home(context,
+*value_name);
         home != nullptr) {
       result_home = *home;
       if (home->kind == prepare::PreparedValueHomeKind::Register &&
@@ -6499,8 +6715,8 @@ lower_stack_homed_pointer_store_writeback(
     return std::nullopt;
   }
   const auto* pointer_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *access->address.pointer_value_name);
+      find_value_home(context,
+*access->address.pointer_value_name);
   if (pointer_home == nullptr ||
       pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !pointer_home->offset_bytes.has_value()) {
@@ -6695,8 +6911,8 @@ lower_stack_homed_pointer_store_writeback(
     return false;
   }
   const auto* base_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *value_home.pointer_base_value_name);
+      find_value_home(context,
+*value_home.pointer_base_value_name);
   if (base_home == nullptr) {
     return false;
   }
@@ -6794,7 +7010,8 @@ lower_pointer_base_plus_offset_store_local_publication(
         emit_global_symbol_address_to_register(*symbol, 0, scratches.front().index, lines);
   } else if (context.function.value_locations != nullptr) {
     const auto* value_home =
-        prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+        find_value_home(context,
+*value_name);
     emitted = value_home != nullptr &&
               value_home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
               emit_pointer_base_plus_offset_to_register(
@@ -6976,6 +7193,7 @@ void lower_pending_store_global_stack_value_publications(
 
 [[nodiscard]] bool lower_scalar_with_address_materialization(
     const module::BlockLoweringContext& context,
+    const BlockAddressMaterializationIndex& address_materializations,
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
@@ -6989,7 +7207,8 @@ void lower_pending_store_global_stack_value_publications(
   }
 
   auto materialized_addresses =
-      lower_address_materializations(context, instruction_index, diagnostics);
+      lower_address_materializations(
+          context, address_materializations, instruction_index, diagnostics);
   if (materialized_addresses.empty()) {
     return false;
   }
@@ -7595,23 +7814,31 @@ dynamic_stack_helper_kind(std::string_view callee) {
 
 [[nodiscard]] std::optional<bir::Value> instruction_result_value(
     const bir::Inst& inst) {
+  const auto* result = instruction_result_value_ref(inst);
+  if (result == nullptr) {
+    return std::nullopt;
+  }
+  return *result;
+}
+
+[[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst) {
   return std::visit(
-      [](const auto& typed_inst) -> std::optional<bir::Value> {
+      [](const auto& typed_inst) -> const bir::Value* {
         using T = std::decay_t<decltype(typed_inst)>;
         if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-          return typed_inst.result;
+          return &typed_inst.result;
         } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-          return typed_inst.result;
+          return &typed_inst.result;
         } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          return typed_inst.result;
+          return &typed_inst.result;
         } else if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
-          return typed_inst.result;
+          return &typed_inst.result;
         } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
-          return typed_inst.result;
+          return &typed_inst.result;
         } else if constexpr (std::is_same_v<T, bir::CallInst>) {
-          return typed_inst.result;
+          return typed_inst.result.has_value() ? &*typed_inst.result : nullptr;
         }
-        return std::nullopt;
+        return nullptr;
       },
       inst);
 }
@@ -8315,8 +8542,8 @@ void record_call_result_source_register(
           continue;
         }
         const auto* home =
-            prepare::find_prepared_value_home(*context.function.value_locations,
-                                              move.to_value_id);
+            find_value_home(context,
+move.to_value_id);
         if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
           continue;
         }
@@ -8374,8 +8601,8 @@ void record_call_result_source_register(
     return;
   }
   const auto* home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        *call_plan.result->destination_value_id);
+      find_value_home(context,
+*call_plan.result->destination_value_id);
   if (home == nullptr) {
     return;
   }
@@ -8504,8 +8731,8 @@ materialize_missing_frame_slot_call_arguments(
       continue;
     }
     const auto* home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          *argument.source_value_id);
+        find_value_home(context,
+*argument.source_value_id);
     if (home == nullptr ||
         find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
       continue;
@@ -8582,6 +8809,67 @@ materialize_missing_frame_slot_call_arguments(
   return lowered;
 }
 
+[[nodiscard]] const std::vector<const prepare::PreparedCallPreservedValue*>*
+first_stack_preserved_values_for_call(
+    const module::PreparedCallPlanIndexes& call_plan_indexes,
+    const prepare::PreparedCallPlansFunction& call_plans,
+    const prepare::PreparedCallPlan& current_call_plan) {
+  if (call_plans.calls.empty()) {
+    return nullptr;
+  }
+  const auto* begin = call_plans.calls.data();
+  const auto* end = begin + call_plans.calls.size();
+  const auto* current = &current_call_plan;
+  if (current >= begin && current < end) {
+    return &call_plan_indexes.first_stack_preserved_by_call_index
+                [static_cast<std::size_t>(current - begin)];
+  }
+  for (std::size_t call_index = 0; call_index < call_plans.calls.size(); ++call_index) {
+    const auto& call = call_plans.calls[call_index];
+    if (call.block_index == current_call_plan.block_index &&
+        call.instruction_index == current_call_plan.instruction_index) {
+      return &call_plan_indexes.first_stack_preserved_by_call_index[call_index];
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::vector<const prepare::PreparedCallPreservedValue*>
+first_stack_preserved_values_for_call_fallback(
+    const prepare::PreparedCallPlansFunction& call_plans,
+    const prepare::PreparedCallPlan& current_call_plan) {
+  std::vector<const prepare::PreparedCallPreservedValue*> values;
+  std::vector<unsigned char> seen_stack_values;
+  for (const auto& call : call_plans.calls) {
+    const bool is_current = call.block_index == current_call_plan.block_index &&
+                            call.instruction_index == current_call_plan.instruction_index;
+    for (const auto& preserved : call.preserved_values) {
+      if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
+          preserved.value_name == c4c::kInvalidValueName ||
+          !preserved.slot_id.has_value() ||
+          !preserved.stack_offset_bytes.has_value() ||
+          !preserved.stack_size_bytes.has_value() ||
+          *preserved.stack_size_bytes == 0) {
+        continue;
+      }
+      if (preserved.value_id >= seen_stack_values.size()) {
+        seen_stack_values.resize(preserved.value_id + 1U, 0U);
+      }
+      if (seen_stack_values[preserved.value_id] != 0U) {
+        continue;
+      }
+      seen_stack_values[preserved.value_id] = 1U;
+      if (is_current) {
+        values.push_back(&preserved);
+      }
+    }
+    if (is_current) {
+      break;
+    }
+  }
+  return values;
+}
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 publish_stack_preserved_call_values(
     const module::BlockLoweringContext& context,
@@ -8589,7 +8877,37 @@ publish_stack_preserved_call_values(
     std::size_t instruction_index,
     const BlockScalarLoweringState& scalar_state) {
   std::vector<module::MachineInstruction> lowered;
-  for (const auto& preserved : call_plan.preserved_values) {
+  const auto* call_plans =
+      context.function.call_plans != nullptr
+          ? context.function.call_plans
+          : (context.function.prepared != nullptr &&
+                     context.function.control_flow != nullptr
+                 ? prepare::find_prepared_call_plans(
+                       *context.function.prepared,
+                       context.function.control_flow->function_name)
+                 : nullptr);
+  const auto* first_stack_values =
+      call_plans == nullptr || context.function.call_plan_indexes == nullptr
+          ? nullptr
+          : first_stack_preserved_values_for_call(
+                *context.function.call_plan_indexes, *call_plans, call_plan);
+  std::vector<const prepare::PreparedCallPreservedValue*> fallback_values;
+  if (call_plans != nullptr && context.function.call_plan_indexes == nullptr) {
+    fallback_values =
+        first_stack_preserved_values_for_call_fallback(*call_plans, call_plan);
+  } else if (call_plans == nullptr) {
+    fallback_values.reserve(call_plan.preserved_values.size());
+    for (const auto& preserved : call_plan.preserved_values) {
+      fallback_values.push_back(&preserved);
+    }
+  }
+  const auto& values =
+      first_stack_values != nullptr ? *first_stack_values : fallback_values;
+  for (const auto* preserved_ptr : values) {
+    if (preserved_ptr == nullptr) {
+      continue;
+    }
+    const auto& preserved = *preserved_ptr;
     if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
         preserved.value_name == c4c::kInvalidValueName ||
         !preserved.slot_id.has_value() ||
@@ -8610,43 +8928,13 @@ publish_stack_preserved_call_values(
     } else {
       continue;
     }
-    const bool has_prior_stack_preservation = [&]() {
-      const auto* call_plans =
-          context.function.call_plans != nullptr
-              ? context.function.call_plans
-              : (context.function.prepared != nullptr &&
-                         context.function.control_flow != nullptr
-                     ? prepare::find_prepared_call_plans(
-                           *context.function.prepared,
-                           context.function.control_flow->function_name)
-                     : nullptr);
-      if (call_plans == nullptr) {
-        return false;
-      }
-      for (const auto& call : call_plans->calls) {
-        if (call.block_index != context.block_index ||
-            call.instruction_index >= instruction_index) {
-          continue;
-        }
-        for (const auto& prior : call.preserved_values) {
-          if (prior.value_id == preserved.value_id &&
-              prior.route == prepare::PreparedCallPreservationRoute::StackSlot) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }();
-    if (has_prior_stack_preservation) {
-      continue;
-    }
     std::optional<abi::RegisterReference> source_register;
     if (emitted.has_value() && abi::is_gp_register(emitted->reg)) {
       source_register = emitted->reg;
     } else if (context.function.value_locations != nullptr) {
       const auto* home =
-          prepare::find_prepared_value_home(*context.function.value_locations,
-                                            preserved.value_id);
+          find_value_home(context,
+preserved.value_id);
       if (home != nullptr &&
           home->kind == prepare::PreparedValueHomeKind::Register &&
           home->register_name.has_value()) {
@@ -8726,7 +9014,8 @@ lower_missing_fused_compare_operand_publication(
   }
   const auto* home =
       context.function.value_locations != nullptr
-          ? prepare::find_prepared_value_home(*context.function.value_locations, *value_name)
+          ? find_value_home(context,
+*value_name)
           : nullptr;
   if (home == nullptr) {
     return std::nullopt;
@@ -9583,7 +9872,8 @@ void record_entry_formal_register_home(
       continue;
     }
     const auto* home =
-        prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+        find_value_home(context,
+*value_name);
     if (home == nullptr) {
       continue;
     }
@@ -9864,6 +10154,15 @@ InstructionDispatchResult dispatch_prepared_block(
     block.instructions.push_back(std::move(block_entry_move));
   }
   if (context.bir_block != nullptr) {
+    const auto join_parallel_copy_cache =
+        build_current_block_join_parallel_copy_cache(context);
+    std::optional<BlockAddressMaterializationIndex> address_materialization_index;
+    auto current_address_materialization_index = [&]() -> const BlockAddressMaterializationIndex& {
+      if (!address_materialization_index.has_value()) {
+        address_materialization_index = make_block_address_materialization_index(context);
+      }
+      return *address_materialization_index;
+    };
     std::size_t prepared_memory_instruction_index = 0;
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
@@ -9963,7 +10262,11 @@ InstructionDispatchResult dispatch_prepared_block(
             block.instructions.push_back(std::move(preserved_stack_publication));
           }
           auto materialized_addresses =
-              lower_address_materializations(context, instruction_index, diagnostics);
+              lower_address_materializations(
+                  context,
+                  current_address_materialization_index(),
+                  instruction_index,
+                  diagnostics);
           auto before_call_moves =
               inline_variadic_entry_helper
                   ? std::vector<module::MachineInstruction>{}
@@ -10048,11 +10351,12 @@ InstructionDispatchResult dispatch_prepared_block(
                      diagnostics)) {
         ++result.visited_operations;
         continue;
-      } else if (is_current_block_join_parallel_copy_incoming_expression(
-                     context, inst)) {
+      } else if (cached_current_block_join_parallel_copy_incoming_expression(
+                     join_parallel_copy_cache, context, instruction_index, inst)) {
         continue;
       } else if (lower_scalar_with_address_materialization(
                      context,
+                     current_address_materialization_index(),
                      inst,
                      instruction_index,
                      scalar_state,
@@ -10138,7 +10442,8 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (auto lowered = lower_scalar_cast_publication_to_prepared_stack(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
-      } else if (is_current_block_join_parallel_copy_source(context, inst)) {
+      } else if (cached_current_block_join_parallel_copy_source(
+                     join_parallel_copy_cache, context, instruction_index, inst)) {
         continue;
       } else if (auto lowered =
                      lower_stack_homed_pointer_value_load_publication(

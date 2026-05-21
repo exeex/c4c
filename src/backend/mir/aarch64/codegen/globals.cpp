@@ -749,8 +749,74 @@ std::optional<module::MachineInstruction> lower_address_materialization(
       context, prepared, instruction_index, diagnostics);
 }
 
+BlockAddressMaterializationIndex make_block_address_materialization_index(
+    const module::BlockLoweringContext& context) {
+  BlockAddressMaterializationIndex index;
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return index;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return index;
+  }
+  if (context.function.address_materialization_indexes != nullptr) {
+    const auto it = context.function.address_materialization_indexes
+                        ->materializations_by_block.find(
+                            context.control_flow_block->block_label);
+    if (it != context.function.address_materialization_indexes
+                  ->materializations_by_block.end()) {
+      index.materializations = it->second;
+    }
+    for (const auto* materialization : index.materializations) {
+      if (materialization != nullptr) {
+        index.materializations_by_instruction[materialization->inst_index].push_back(
+            materialization);
+      }
+    }
+    std::sort(index.materializations.begin(),
+              index.materializations.end(),
+              [](const auto* lhs, const auto* rhs) {
+                if (lhs == nullptr || rhs == nullptr) {
+                  return rhs != nullptr;
+                }
+                return lhs->inst_index < rhs->inst_index;
+              });
+    return index;
+  }
+  index.materializations.reserve(addressing->address_materializations.size());
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.block_label == context.control_flow_block->block_label) {
+      index.materializations.push_back(&materialization);
+      index.materializations_by_instruction[materialization.inst_index].push_back(
+          &materialization);
+    }
+  }
+  std::sort(index.materializations.begin(),
+            index.materializations.end(),
+            [](const auto* lhs, const auto* rhs) {
+              if (lhs == nullptr || rhs == nullptr) {
+                return rhs != nullptr;
+              }
+              return lhs->inst_index < rhs->inst_index;
+            });
+  return index;
+}
+
 std::vector<module::MachineInstruction> lower_address_materializations(
     const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto index = make_block_address_materialization_index(context);
+  return lower_address_materializations(context, index, instruction_index, diagnostics);
+}
+
+std::vector<module::MachineInstruction> lower_address_materializations(
+    const module::BlockLoweringContext& context,
+    const BlockAddressMaterializationIndex& address_materializations,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
@@ -768,49 +834,66 @@ std::vector<module::MachineInstruction> lower_address_materializations(
     return lowered;
   }
   const auto* call_plan = find_prepared_call_plan(context, instruction_index);
-  for (const auto& materialization : addressing->address_materializations) {
-    if (materialization.block_label != context.control_flow_block->block_label) {
-      continue;
-    }
-    const bool exact_instruction = materialization.inst_index == instruction_index;
-    const bool prior_call_argument_materialization =
-        !exact_instruction && call_plan != nullptr &&
-        materialization.inst_index <= instruction_index;
-    if (!exact_instruction && !prior_call_argument_materialization) {
-      continue;
-    }
+  auto lower_materialization =
+      [&](const prepare::PreparedAddressMaterialization& materialization,
+          bool exact_instruction) {
+        PreparedAddressMaterializationRecordResult prepared =
+            exact_instruction
+                ? make_address_record_from_prepared_materialization(
+                      context.function.prepared->names,
+                      *context.function.value_locations,
+                      *context.function.storage_plan,
+                      *addressing,
+                      materialization)
+                : address_materialization_record_error(
+                      PreparedAddressMaterializationRecordError::UnsupportedResultStorage);
+        if (!prepared.record.has_value() &&
+            prepared.error == PreparedAddressMaterializationRecordError::
+                                  UnsupportedResultStorage &&
+            call_plan != nullptr) {
+          prepared = make_call_argument_address_record(
+              context.function.prepared->names, *addressing, materialization, *call_plan);
+        }
+        if (!exact_instruction && !prepared.record.has_value()) {
+          return;
+        }
+        auto instruction = lower_address_materialization_record(
+            context,
+            PreparedAddressMaterializationInstructionRecordResult{
+                .record = std::move(prepared.record),
+                .error = prepared.error,
+            },
+            instruction_index,
+            diagnostics);
+        if (instruction.has_value()) {
+          lowered.push_back(std::move(*instruction));
+        }
+      };
 
-    PreparedAddressMaterializationRecordResult prepared =
-        exact_instruction
-            ? make_address_record_from_prepared_materialization(
-                  context.function.prepared->names,
-                  *context.function.value_locations,
-                  *context.function.storage_plan,
-                  *addressing,
-                  materialization)
-            : address_materialization_record_error(
-                  PreparedAddressMaterializationRecordError::UnsupportedResultStorage);
-    if (!prepared.record.has_value() &&
-        prepared.error == PreparedAddressMaterializationRecordError::
-                              UnsupportedResultStorage &&
-        call_plan != nullptr) {
-      prepared = make_call_argument_address_record(
-          context.function.prepared->names, *addressing, materialization, *call_plan);
+  if (const auto exact_it =
+          address_materializations.materializations_by_instruction.find(instruction_index);
+      exact_it != address_materializations.materializations_by_instruction.end()) {
+    for (const auto* materialization_ptr : exact_it->second) {
+      if (materialization_ptr != nullptr) {
+        lower_materialization(*materialization_ptr, true);
+      }
     }
-    if (!exact_instruction && !prepared.record.has_value()) {
+  }
+  if (call_plan == nullptr) {
+    return lowered;
+  }
+  for (const auto* materialization_ptr : address_materializations.materializations) {
+    if (materialization_ptr == nullptr) {
       continue;
     }
-    auto instruction = lower_address_materialization_record(
-        context,
-        PreparedAddressMaterializationInstructionRecordResult{
-            .record = std::move(prepared.record),
-            .error = prepared.error,
-        },
-        instruction_index,
-        diagnostics);
-    if (instruction.has_value()) {
-      lowered.push_back(std::move(*instruction));
+    const auto& materialization = *materialization_ptr;
+    if (materialization.inst_index > instruction_index) {
+      break;
     }
+    if (materialization.inst_index == instruction_index) {
+      continue;
+    }
+    lower_materialization(materialization, false);
   }
   return lowered;
 }

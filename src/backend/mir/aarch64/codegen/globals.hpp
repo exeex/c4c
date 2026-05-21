@@ -6,10 +6,20 @@
 
 #include <cstddef>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
+struct BlockAddressMaterializationIndex {
+  std::vector<const prepare::PreparedAddressMaterialization*> materializations;
+  std::unordered_map<std::size_t,
+                     std::vector<const prepare::PreparedAddressMaterialization*>>
+      materializations_by_instruction;
+};
+
+[[nodiscard]] BlockAddressMaterializationIndex make_block_address_materialization_index(
+    const module::BlockLoweringContext& context);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,
@@ -32,6 +42,11 @@ make_prepared_address_materialization_instruction_record(
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::vector<module::MachineInstruction> lower_address_materializations(
     const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::vector<module::MachineInstruction> lower_address_materializations(
+    const module::BlockLoweringContext& context,
+    const BlockAddressMaterializationIndex& address_materializations,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] mir::TargetInstructionPrintResult print_address_materialization_instruction(

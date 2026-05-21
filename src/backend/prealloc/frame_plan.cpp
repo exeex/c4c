@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -313,16 +314,24 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         next_saved_offset += size_bytes;
       }
     }
+    std::unordered_map<PreparedFrameSlotId, std::size_t> frame_slot_offsets;
+    frame_slot_offsets.reserve(prepared.stack_layout.frame_slots.size());
+    for (const auto& slot : prepared.stack_layout.frame_slots) {
+      if (slot.function_name == function_name_id) {
+        frame_slot_offsets.emplace(slot.slot_id, slot.offset_bytes);
+      }
+    }
     std::sort(plan.frame_slot_order.begin(),
               plan.frame_slot_order.end(),
-              [&prepared](auto lhs, auto rhs) {
-                const auto* lhs_slot = find_prepared_frame_slot(prepared.stack_layout, lhs);
-                const auto* rhs_slot = find_prepared_frame_slot(prepared.stack_layout, rhs);
-                if (lhs_slot == nullptr || rhs_slot == nullptr) {
+              [&frame_slot_offsets](auto lhs, auto rhs) {
+                const auto lhs_it = frame_slot_offsets.find(lhs);
+                const auto rhs_it = frame_slot_offsets.find(rhs);
+                if (lhs_it == frame_slot_offsets.end() ||
+                    rhs_it == frame_slot_offsets.end()) {
                   return lhs < rhs;
                 }
-                if (lhs_slot->offset_bytes != rhs_slot->offset_bytes) {
-                  return lhs_slot->offset_bytes < rhs_slot->offset_bytes;
+                if (lhs_it->second != rhs_it->second) {
+                  return lhs_it->second < rhs_it->second;
                 }
                 return lhs < rhs;
               });

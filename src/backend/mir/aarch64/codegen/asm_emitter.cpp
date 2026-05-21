@@ -1,7 +1,9 @@
 #include "asm_emitter.hpp"
 
+#include "calls.hpp"
 #include "machine_printer.hpp"
 #include "mir/printer.hpp"
+#include "traversal.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -239,29 +241,34 @@ void append_global_objects(std::ostringstream& assembly,
 
 std::string print_prepared_machine_nodes(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  const auto built = compile_prepared_module(prepared);
-  if (!built.module.has_value()) {
+  if (auto error = module::abi::validate_prepared_module_handoff(prepared)) {
     std::string message = "AArch64 backend assembly route could not build a prepared module";
-    if (built.error.has_value() && !built.error->message.empty()) {
+    if (!error->message.empty()) {
       message += ": ";
-      message += built.error->message;
+      message += error->message;
     }
     throw std::invalid_argument(message);
   }
+  module::ModuleLoweringDiagnostics diagnostics;
+  const ScopedPreparedCallPreserveEffectPublication suppress_preserve_effects(false);
+  const auto functions = lower_prepared_functions(
+      prepared, module::abi::resolve_target_profile(prepared), diagnostics);
 
   std::ostringstream assembly;
   assembly << "    .text\n";
   std::size_t machine_node_count = 0;
-  for (const auto& function : built.module->functions) {
-    if (c4c::backend::mir::empty(function.mir)) {
+  for (const auto& function : functions) {
+    if (c4c::backend::mir::empty(function)) {
       continue;
     }
+    const auto label = module::prepare::prepared_function_name(prepared.names,
+                                                              function.function_name);
     ++machine_node_count;
-    assembly << "    .globl " << function.label << "\n"
-             << "    .type " << function.label << ", %function\n"
-             << function.label << ":\n";
+    assembly << "    .globl " << label << "\n"
+             << "    .type " << label << ", %function\n"
+             << label << ":\n";
     const MachineInstructionPrinter target_printer;
-    const auto printed = c4c::backend::mir::print_machine_function(function.mir,
+    const auto printed = c4c::backend::mir::print_machine_function(function,
                                                                    target_printer);
     if (!printed.ok) {
       throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
@@ -269,7 +276,7 @@ std::string print_prepared_machine_nodes(
                                   printed.diagnostic);
     }
     assembly << printed.assembly
-             << "    .size " << function.label << ", .-" << function.label << "\n";
+             << "    .size " << label << ", .-" << label << "\n";
   }
   if (machine_node_count == 0) {
     throw std::invalid_argument(

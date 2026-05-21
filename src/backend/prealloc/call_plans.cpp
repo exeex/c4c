@@ -257,6 +257,72 @@ struct DirectCalleeResolution {
   const bir::Function* function = nullptr;
 };
 
+struct PreparedValueHomeLookup {
+  std::vector<std::pair<PreparedValueId, const PreparedValueHome*>> by_value_id;
+};
+
+struct CallPreservationCandidates {
+  std::vector<const PreparedRegallocValue*> by_start_point;
+};
+
+[[nodiscard]] PreparedValueHomeLookup make_prepared_value_home_lookup(
+    const PreparedValueLocationFunction* value_locations) {
+  PreparedValueHomeLookup lookup;
+  if (value_locations == nullptr) {
+    return lookup;
+  }
+  lookup.by_value_id.reserve(value_locations->value_homes.size());
+  for (const auto& home : value_locations->value_homes) {
+    lookup.by_value_id.push_back({home.value_id, &home});
+  }
+  std::sort(lookup.by_value_id.begin(),
+            lookup.by_value_id.end(),
+            [](const auto& lhs, const auto& rhs) {
+              return lhs.first < rhs.first;
+            });
+  return lookup;
+}
+
+[[nodiscard]] CallPreservationCandidates make_call_preservation_candidates(
+    const PreparedRegallocFunction* regalloc_function) {
+  CallPreservationCandidates candidates;
+  if (regalloc_function == nullptr) {
+    return candidates;
+  }
+  candidates.by_start_point.reserve(regalloc_function->values.size());
+  for (const auto& value : regalloc_function->values) {
+    if (!value.crosses_call || !value.live_interval.has_value()) {
+      continue;
+    }
+    candidates.by_start_point.push_back(&value);
+  }
+  std::sort(candidates.by_start_point.begin(),
+            candidates.by_start_point.end(),
+            [](const PreparedRegallocValue* lhs, const PreparedRegallocValue* rhs) {
+              if (lhs->live_interval->start_point != rhs->live_interval->start_point) {
+                return lhs->live_interval->start_point < rhs->live_interval->start_point;
+              }
+              return lhs->value_id < rhs->value_id;
+            });
+  return candidates;
+}
+
+[[nodiscard]] const PreparedValueHome* find_prepared_value_home(
+    const PreparedValueHomeLookup& lookup,
+    PreparedValueId value_id) {
+  const auto it = std::lower_bound(
+      lookup.by_value_id.begin(),
+      lookup.by_value_id.end(),
+      value_id,
+      [](const auto& entry, PreparedValueId needle) {
+        return entry.first < needle;
+      });
+  if (it == lookup.by_value_id.end() || it->first != value_id) {
+    return nullptr;
+  }
+  return it->second;
+}
+
 [[nodiscard]] DirectCalleeResolution resolve_direct_callee(const bir::Module& module,
                                                            const bir::CallInst& call) {
   if (call.is_indirect) {
@@ -706,22 +772,21 @@ struct DirectCalleeResolution {
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
     const PreparedLivenessFunction* liveness_function,
-    const PreparedRegallocFunction* regalloc_function,
-    const PreparedValueLocationFunction* value_locations,
-    std::size_t program_point,
-    bool require_call_crossing_value) {
+    const CallPreservationCandidates& candidates,
+    const PreparedValueHomeLookup& value_home_lookup,
+    std::size_t program_point) {
   std::vector<PreparedCallPreservedValue> preserved_values;
-  if (liveness_function == nullptr || regalloc_function == nullptr) {
+  if (liveness_function == nullptr) {
     return preserved_values;
   }
+  preserved_values.reserve(candidates.by_start_point.size());
 
-  for (const auto& value : regalloc_function->values) {
-    if ((require_call_crossing_value && !value.crosses_call) ||
-        !value.live_interval.has_value()) {
-      continue;
+  for (const auto* value_ptr : candidates.by_start_point) {
+    const auto& value = *value_ptr;
+    if (program_point <= value.live_interval->start_point) {
+      break;
     }
-    if (!(program_point > value.live_interval->start_point &&
-          program_point < value.live_interval->end_point)) {
+    if (program_point >= value.live_interval->end_point) {
       continue;
     }
 
@@ -743,7 +808,7 @@ struct DirectCalleeResolution {
     };
 
     const PreparedValueHome* value_home =
-        value_locations == nullptr ? nullptr : find_prepared_value_home(*value_locations, value.value_id);
+        find_prepared_value_home(value_home_lookup, value.value_id);
     if (value_home != nullptr && value_home->kind == PreparedValueHomeKind::StackSlot) {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value_home->slot_id;
@@ -787,14 +852,19 @@ struct DirectCalleeResolution {
       }
     }
 
-    preserved_values.push_back(std::move(preserved));
+    if (preserved.route != PreparedCallPreservationRoute::Unknown) {
+      preserved_values.push_back(std::move(preserved));
+    }
   }
 
-  std::sort(preserved_values.begin(),
-            preserved_values.end(),
-            [](const PreparedCallPreservedValue& lhs, const PreparedCallPreservedValue& rhs) {
-              return lhs.value_id < rhs.value_id;
-            });
+  const auto by_value_id =
+      [](const PreparedCallPreservedValue& lhs,
+         const PreparedCallPreservedValue& rhs) {
+        return lhs.value_id < rhs.value_id;
+      };
+  if (!std::is_sorted(preserved_values.begin(), preserved_values.end(), by_value_id)) {
+    std::sort(preserved_values.begin(), preserved_values.end(), by_value_id);
+  }
   return preserved_values;
 }
 
@@ -802,8 +872,8 @@ struct DirectCalleeResolution {
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
     const PreparedLivenessFunction* liveness_function,
-    const PreparedRegallocFunction* regalloc_function,
-    const PreparedValueLocationFunction* value_locations,
+    const CallPreservationCandidates& candidates,
+    const PreparedValueHomeLookup& value_home_lookup,
     std::size_t block_index,
     std::size_t instruction_index) {
   if (liveness_function == nullptr) {
@@ -817,10 +887,9 @@ struct DirectCalleeResolution {
   return build_call_preserved_values(prepared,
                                      frame_plan,
                                      liveness_function,
-                                     regalloc_function,
-                                     value_locations,
-                                     *call_point,
-                                     true);
+                                     candidates,
+                                     value_home_lookup,
+                                     *call_point);
 }
 
 }  // namespace
@@ -845,6 +914,10 @@ void populate_call_plans(PreparedBirModule& prepared) {
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
     const auto* liveness_function = find_liveness_function(prepared.liveness, function_name_id);
     const auto* value_locations = find_prepared_value_location_function(prepared, function_name_id);
+    const PreparedValueHomeLookup value_home_lookup =
+        make_prepared_value_home_lookup(value_locations);
+    const CallPreservationCandidates call_preservation_candidates =
+        make_call_preservation_candidates(regalloc_function);
     const std::vector<PreparedClobberedRegister> call_clobbers =
         build_call_clobber_set(prepared.target_profile, regalloc_function);
 
@@ -885,8 +958,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 prepared,
                 frame_plan,
                 liveness_function,
-                regalloc_function,
-                value_locations,
+                call_preservation_candidates,
+                value_home_lookup,
                 block_index,
                 instruction_index),
             .clobbered_registers = call_clobbers,

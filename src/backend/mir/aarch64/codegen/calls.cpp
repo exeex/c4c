@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -22,6 +23,22 @@ namespace c4c::backend::aarch64::codegen {
 namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
+
+thread_local bool g_publish_prepared_call_preserve_effects = true;
+
+[[nodiscard]] bool publish_prepared_call_preserve_effects() {
+  return g_publish_prepared_call_preserve_effects;
+}
+
+ScopedPreparedCallPreserveEffectPublication::ScopedPreparedCallPreserveEffectPublication(
+    bool enabled)
+    : previous_enabled_(g_publish_prepared_call_preserve_effects) {
+  g_publish_prepared_call_preserve_effects = enabled;
+}
+
+ScopedPreparedCallPreserveEffectPublication::~ScopedPreparedCallPreserveEffectPublication() {
+  g_publish_prepared_call_preserve_effects = previous_enabled_;
+}
 
 namespace {
 
@@ -46,6 +63,12 @@ make_immediate_cast_call_argument_publication_instruction(
     const prepare::PreparedValueHome& source_home,
     const RegisterOperand& destination,
     std::size_t instruction_index);
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name);
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedValueId value_id);
 
 [[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
   if (alignment == 0) {
@@ -327,12 +350,22 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 [[nodiscard]] const prepare::PreparedAbiBinding* find_prepared_argument_binding(
     const prepare::PreparedMoveBundle& bundle,
     const prepare::PreparedMoveResolution& move) {
+  auto binding_matches_move = [&move](const prepare::PreparedAbiBinding& binding) {
+    return binding.destination_kind == move.destination_kind &&
+           binding.destination_storage_kind == move.destination_storage_kind &&
+           binding.destination_abi_index == move.destination_abi_index &&
+           binding.destination_register_name == move.destination_register_name &&
+           binding.destination_register_placement == move.destination_register_placement;
+  };
+  if (move.destination_abi_index.has_value() &&
+      *move.destination_abi_index < bundle.abi_bindings.size()) {
+    const auto& indexed_binding = bundle.abi_bindings[*move.destination_abi_index];
+    if (binding_matches_move(indexed_binding)) {
+      return &indexed_binding;
+    }
+  }
   for (const auto& binding : bundle.abi_bindings) {
-    if (binding.destination_kind == move.destination_kind &&
-        binding.destination_storage_kind == move.destination_storage_kind &&
-        binding.destination_abi_index == move.destination_abi_index &&
-        binding.destination_register_name == move.destination_register_name &&
-        binding.destination_register_placement == move.destination_register_placement) {
+    if (binding_matches_move(binding)) {
       return &binding;
     }
   }
@@ -1157,8 +1190,8 @@ collect_byval_register_lane_stores(
         const auto* stored_home =
             stored_value_name == c4c::kInvalidValueName
                 ? nullptr
-                : prepare::find_prepared_value_home(*context.function.value_locations,
-                                                    stored_value_name);
+                : find_value_home(context,
+stored_value_name);
         if (stored_home != nullptr &&
             stored_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
             stored_home->offset_bytes.has_value() && stored_home->slot_id.has_value() &&
@@ -1908,12 +1941,149 @@ struct PreservedCallArgumentSource {
   return dominates[block_index][dominator_index];
 }
 
+[[nodiscard]] std::size_t move_bundle_position_key(prepare::PreparedMovePhase phase,
+                                                   std::size_t block_index,
+                                                   std::size_t instruction_index) {
+  return (static_cast<std::size_t>(phase) << 56U) ^
+         (block_index << 32U) ^
+         instruction_index;
+}
+
+[[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedMovePhase phase,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (context.function.move_bundle_indexes != nullptr) {
+    const auto it = context.function.move_bundle_indexes->bundles_by_position.find(
+        move_bundle_position_key(phase, block_index, instruction_index));
+    if (it != context.function.move_bundle_indexes->bundles_by_position.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return context.function.value_locations == nullptr
+             ? nullptr
+             : prepare::find_prepared_move_bundle(*context.function.value_locations,
+                                                  phase,
+                                                  block_index,
+	                                                  instruction_index);
+}
+
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.value_home_indexes != nullptr) {
+    const auto it = context.function.value_home_indexes->homes_by_name.find(value_name);
+    if (it != context.function.value_home_indexes->homes_by_name.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return context.function.value_locations == nullptr
+             ? nullptr
+             : prepare::find_prepared_value_home(*context.function.value_locations,
+                                                 value_name);
+}
+
+[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedValueId value_id) {
+  if (context.function.value_home_indexes != nullptr) {
+    const auto it = context.function.value_home_indexes->homes_by_id.find(value_id);
+    if (it != context.function.value_home_indexes->homes_by_id.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return context.function.value_locations == nullptr
+             ? nullptr
+             : prepare::find_prepared_value_home(*context.function.value_locations,
+                                                 value_id);
+}
+
+[[nodiscard]] bool prior_preserved_entry_position_less(
+    const module::PriorPreservedValueEntry& lhs,
+    const module::PriorPreservedValueEntry& rhs) {
+  if (lhs.block_index != rhs.block_index) {
+    return lhs.block_index < rhs.block_index;
+  }
+  return lhs.instruction_index < rhs.instruction_index;
+}
+
+[[nodiscard]] const prepare::PreparedCallPreservedValue*
+find_latest_prior_preserved_value_by_position(
+    const module::PreparedCallPlanIndexes& call_plan_indexes,
+    const prepare::PreparedCallPlan& current_call_plan,
+    prepare::PreparedValueId value_id) {
+  if (value_id >= call_plan_indexes.prior_preserved_by_value.size()) {
+    return nullptr;
+  }
+  const auto& entries = call_plan_indexes.prior_preserved_by_value[value_id];
+  if (entries.empty()) {
+    return nullptr;
+  }
+  const module::PriorPreservedValueEntry current{
+      .block_index = current_call_plan.block_index,
+      .instruction_index = current_call_plan.instruction_index,
+      .preserved = nullptr,
+  };
+  auto it = std::lower_bound(
+      entries.begin(), entries.end(), current, prior_preserved_entry_position_less);
+  if (it == entries.begin()) {
+    return nullptr;
+  }
+  --it;
+  return it->preserved;
+}
+
+[[nodiscard]] const prepare::PreparedCallPreservedValue*
+find_prior_preserved_value_by_dominating_position(
+    const module::PreparedCallPlanIndexes& call_plan_indexes,
+    const prepare::PreparedControlFlowFunction* control_flow,
+    const prepare::PreparedCallPlan& current_call_plan,
+    prepare::PreparedValueId value_id) {
+  if (value_id >= call_plan_indexes.prior_preserved_by_value.size()) {
+    return nullptr;
+  }
+  const auto& entries = call_plan_indexes.prior_preserved_by_value[value_id];
+  if (entries.empty()) {
+    return nullptr;
+  }
+  const module::PriorPreservedValueEntry current{
+      .block_index = current_call_plan.block_index,
+      .instruction_index = current_call_plan.instruction_index,
+      .preserved = nullptr,
+  };
+  auto it = std::lower_bound(
+      entries.begin(), entries.end(), current, prior_preserved_entry_position_less);
+  while (it != entries.begin()) {
+    --it;
+    if (it->block_index == current_call_plan.block_index) {
+      if (it->instruction_index < current_call_plan.instruction_index) {
+        return it->preserved;
+      }
+      continue;
+    }
+    if (control_flow != nullptr &&
+        prepared_block_dominates(*control_flow, it->block_index, current_call_plan.block_index)) {
+      return it->preserved;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const prepare::PreparedCallPreservedValue*
 find_prior_preserved_value_for_call_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedMoveResolution& move) {
+  const auto value_id = argument.source_value_id.value_or(move.from_value_id);
+  if (context.function.call_plan_indexes != nullptr) {
+    return find_latest_prior_preserved_value_by_position(
+        *context.function.call_plan_indexes, current_call_plan, value_id);
+  }
   const auto* call_plans =
       context.function.call_plans != nullptr
           ? context.function.call_plans
@@ -1924,9 +2094,6 @@ find_prior_preserved_value_for_call_argument(
   if (call_plans == nullptr) {
     return nullptr;
   }
-
-  const auto value_id = argument.source_value_id.value_or(move.from_value_id);
-
   const prepare::PreparedCallPreservedValue* selected = nullptr;
   for (const auto& call : call_plans->calls) {
     if (call.block_index > current_call_plan.block_index ||
@@ -1949,6 +2116,13 @@ find_prior_preserved_value_for_value(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     prepare::PreparedValueId value_id) {
+  if (context.function.call_plan_indexes != nullptr) {
+    return find_prior_preserved_value_by_dominating_position(
+        *context.function.call_plan_indexes,
+        context.function.control_flow,
+        current_call_plan,
+        value_id);
+  }
   const auto* call_plans =
       context.function.call_plans != nullptr
           ? context.function.call_plans
@@ -1960,8 +2134,10 @@ find_prior_preserved_value_for_value(
     return nullptr;
   }
 
-  const prepare::PreparedCallPreservedValue* selected = nullptr;
-  for (const auto& call : call_plans->calls) {
+  for (auto call_it = call_plans->calls.rbegin();
+       call_it != call_plans->calls.rend();
+       ++call_it) {
+    const auto& call = *call_it;
     if (call.block_index == current_call_plan.block_index) {
       if (call.instruction_index >= current_call_plan.instruction_index) {
         continue;
@@ -1975,11 +2151,11 @@ find_prior_preserved_value_for_value(
     for (const auto& preserved : call.preserved_values) {
       if (preserved.value_id == value_id &&
           preserved.route != prepare::PreparedCallPreservationRoute::Unknown) {
-        selected = &preserved;
+        return &preserved;
       }
     }
   }
-  return selected;
+  return nullptr;
 }
 
 [[nodiscard]] const prepare::PreparedCallPreservedValue*
@@ -1998,8 +2174,10 @@ find_prior_stack_preserved_value_before_instruction(
     return nullptr;
   }
 
-  const prepare::PreparedCallPreservedValue* selected = nullptr;
-  for (const auto& call : call_plans->calls) {
+  for (auto call_it = call_plans->calls.rbegin();
+       call_it != call_plans->calls.rend();
+       ++call_it) {
+    const auto& call = *call_it;
     if (call.block_index != context.block_index ||
         call.instruction_index >= instruction_index) {
       continue;
@@ -2011,11 +2189,11 @@ find_prior_stack_preserved_value_before_instruction(
           preserved.stack_offset_bytes.has_value() &&
           preserved.stack_size_bytes.has_value() &&
           *preserved.stack_size_bytes != 0) {
-        selected = &preserved;
+        return &preserved;
       }
     }
   }
-  return selected;
+  return nullptr;
 }
 
 [[nodiscard]] bool value_spelling_matches(const bir::Value& value,
@@ -2232,8 +2410,8 @@ make_callee_saved_preservation_home_republication_instruction(
   }
 
   const auto* source_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        preserved.value_id);
+      find_value_home(context,
+preserved.value_id);
   const auto expected_view =
       source_home != nullptr && source_home->size_bytes.has_value()
           ? scalar_integer_register_view_from_size(*source_home->size_bytes)
@@ -2402,8 +2580,8 @@ make_callee_saved_preservation_home_population(
     return std::nullopt;
   }
   const auto* source_home =
-      prepare::find_prepared_value_home(*context.function.value_locations,
-                                        preserved.value_id);
+      find_value_home(context,
+preserved.value_id);
   if (source_home == nullptr || source_home->value_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
@@ -3229,8 +3407,8 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   const auto* source_home =
       context.function.value_locations == nullptr
           ? nullptr
-          : prepare::find_prepared_value_home(*context.function.value_locations,
-                                              move.from_value_id);
+          : find_value_home(context,
+move.from_value_id);
   const auto* argument = find_prepared_argument_plan(call_plan, move);
   const auto* binding = find_prepared_argument_binding(bundle, move);
   const auto* f128_carriers =
@@ -4608,8 +4786,8 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   const auto* destination_home =
       context.function.value_locations == nullptr
           ? nullptr
-          : prepare::find_prepared_value_home(*context.function.value_locations,
-                                              move.to_value_id);
+          : find_value_home(context,
+move.to_value_id);
   const auto* result_plan = call_plan.result.has_value() ? &*call_plan.result : nullptr;
   const auto* binding = find_prepared_result_binding(bundle, move);
   const auto* f128_carriers =
@@ -5010,6 +5188,16 @@ const prepare::PreparedCallPlan* find_prepared_call_plan(
   if (context.function.call_plans == nullptr) {
     return nullptr;
   }
+  const auto position_key = [](std::size_t block_index, std::size_t inst_index) {
+    return (block_index << 32U) ^ inst_index;
+  };
+  if (context.function.call_plan_indexes != nullptr) {
+    const auto it = context.function.call_plan_indexes->calls_by_position.find(
+        position_key(context.block_index, instruction_index));
+    return it == context.function.call_plan_indexes->calls_by_position.end()
+               ? nullptr
+               : it->second;
+  }
   for (const auto& call : context.function.call_plans->calls) {
     if (call.block_index == context.block_index &&
         call.instruction_index == instruction_index) {
@@ -5069,11 +5257,10 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
   if (context.function.value_locations == nullptr) {
     return lowered;
   }
-  const auto* bundle = prepare::find_prepared_move_bundle(
-      *context.function.value_locations,
-      prepare::PreparedMovePhase::BeforeCall,
-      context.block_index,
-      instruction_index);
+  const auto* bundle = find_move_bundle(context,
+                                        prepare::PreparedMovePhase::BeforeCall,
+                                        context.block_index,
+                                        instruction_index);
   const prepare::PreparedMoveBundle synthetic_bundle{
       .phase = prepare::PreparedMovePhase::BeforeCall,
       .block_index = context.block_index,
@@ -5154,11 +5341,10 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
   if (context.function.value_locations == nullptr) {
     return lowered;
   }
-  const auto* bundle = prepare::find_prepared_move_bundle(
-      *context.function.value_locations,
-      prepare::PreparedMovePhase::AfterCall,
-      context.block_index,
-      instruction_index);
+  const auto* bundle = find_move_bundle(context,
+                                        prepare::PreparedMovePhase::AfterCall,
+                                        context.block_index,
+                                        instruction_index);
   const prepare::PreparedMoveBundle synthetic_bundle{
       .function_name = context.function.control_flow != nullptr
                            ? context.function.control_flow->function_name
@@ -5201,11 +5387,10 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
       context.function.control_flow == nullptr) {
     return lowered;
   }
-  const auto* bundle = prepare::find_prepared_move_bundle(
-      *context.function.value_locations,
-      prepare::PreparedMovePhase::BeforeReturn,
-      context.block_index,
-      instruction_index);
+  const auto* bundle = find_move_bundle(context,
+                                        prepare::PreparedMovePhase::BeforeReturn,
+                                        context.block_index,
+                                        instruction_index);
   if (bundle == nullptr) {
     return lowered;
   }
@@ -5217,8 +5402,8 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
       continue;
     }
     const auto* source_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.from_value_id);
+        find_value_home(context,
+move.from_value_id);
     if (source_home == nullptr || !move.destination_register_name.has_value()) {
       continue;
     }
@@ -5329,11 +5514,7 @@ std::vector<module::MachineInstruction> lower_value_moves(
        phase != prepare::PreparedMovePhase::BeforeInstruction)) {
     return lowered;
   }
-  const auto* bundle = prepare::find_prepared_move_bundle(
-      *context.function.value_locations,
-      phase,
-      context.block_index,
-      instruction_index);
+  const auto* bundle = find_move_bundle(context, phase, context.block_index, instruction_index);
   const prepare::PreparedMoveBundle synthetic_bundle{
       .function_name = context.function.control_flow->function_name,
       .phase = phase,
@@ -5348,14 +5529,14 @@ std::vector<module::MachineInstruction> lower_value_moves(
       continue;
     }
     const auto* destination_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.to_value_id);
+        find_value_home(context,
+move.to_value_id);
     if (destination_home == nullptr) {
       continue;
     }
     const auto* source_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.from_value_id);
+        find_value_home(context,
+move.from_value_id);
     if (move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
         destination_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
       if (auto stack_move = make_value_stack_move_instruction(
@@ -5583,7 +5764,9 @@ std::optional<module::MachineInstruction> lower_prepared_call_instruction(
       .prepared_indirect_callee = call_plan.indirect_callee,
       .prepared_arguments = call_plan.arguments,
       .prepared_result = call_plan.result,
-      .preserved_values = call_plan.preserved_values,
+      .preserved_values = publish_prepared_call_preserve_effects()
+                              ? call_plan.preserved_values
+                              : std::vector<prepare::PreparedCallPreservedValue>{},
       .clobbered_registers = call_plan.clobbered_registers,
       .source_call = &call_plan,
       .outgoing_stack_argument_bytes =
@@ -6760,13 +6943,16 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
                                                 ? MachineOpcode::IndirectCall
                                                 : MachineOpcode::DirectCall)))),
       .selection = call_selection_status(instruction),
-      .operands = operands,
-      .defs = defs,
-      .uses = uses,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
-      .preserves = effects_from_prepared_call_preserved_values(instruction.preserved_values),
+      .preserves = publish_prepared_call_preserve_effects()
+                       ? effects_from_prepared_call_preserved_values(
+                             instruction.preserved_values)
+                       : std::vector<MachineEffectResource>{},
       .side_effects = std::move(side_effects),
-      .payload = instruction,
+      .payload = std::move(instruction),
   };
 }
 

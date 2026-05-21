@@ -27,7 +27,7 @@ endfunction()
 function(c4c_add_backend_codegen_route_test test_name)
   set(options)
   set(one_value_args SRC TARGET_TRIPLE OUT_TEXT REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS
-                     EXTRA_COMPILER_ARGS)
+                     EXTRA_COMPILER_ARGS CASE_TIMEOUT_SEC)
   set(multi_value_args LABELS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -53,10 +53,21 @@ function(c4c_add_backend_codegen_route_test test_name)
             "-DREQUIRED_SNIPPETS=${ARG_REQUIRED_SNIPPETS}"
             "-DFORBIDDEN_SNIPPETS=${ARG_FORBIDDEN_SNIPPETS}"
             "-DEXTRA_COMPILER_ARGS=${ARG_EXTRA_COMPILER_ARGS}"
+            "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
             -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
   )
   c4c_set_backend_test_labels("${test_name}" backend_route ${ARG_LABELS})
 endfunction()
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_prepared_call_boundary_scalability
+  SRC "${BACKEND_CASE_ROOT}/aarch64_prepared_call_boundary_scalability.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_prepared_call_boundary_scalability.s"
+  REQUIRED_SNIPPETS ".text"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 scalability prepared_call_boundary
+)
 
 function(c4c_add_backend_runtime_case test_name)
   set(options)
