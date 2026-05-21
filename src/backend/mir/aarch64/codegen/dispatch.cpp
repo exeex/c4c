@@ -3140,6 +3140,10 @@ void record_current_block_entry_publication_registers(
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
       load_local != nullptr) {
     const auto index = producer_instruction_index(context, producer);
+    if (const auto* home = prepared_value_home_for_value(context, value);
+        !reload_current_memory_loads && home != nullptr) {
+      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+    }
     if (emit_prepared_va_list_field_load_to_register(
             context, *load_local, target_index, lines)) {
       return true;

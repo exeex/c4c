@@ -14173,9 +14173,12 @@ int scalar_byte_load_call_argument_materializes_loaded_value_not_cursor() {
     return fail("expected byte-load scalar call argument route to print: " +
                 printed.diagnostic);
   }
-  if (printed.assembly.find("ldrb w13, [x9]") == std::string::npos ||
-      printed.assembly.find("bl sink_i32") == std::string::npos) {
-    return fail("expected loaded byte value to be materialized for w0 call argument");
+  if (printed.assembly.find("ldrb w13, [sp, #64]") == std::string::npos ||
+      printed.assembly.find("mov w0, w13") == std::string::npos ||
+      printed.assembly.find("bl sink_i32") == std::string::npos ||
+      printed.assembly.find("ldrb w13, [x9]") != std::string::npos) {
+    return fail(
+        "expected loaded byte value to be materialized from scalar home for w0 call argument");
   }
   return 0;
 }
