@@ -7748,18 +7748,39 @@ InstructionDispatchResult dispatch_prepared_block(
       return;
     }
     std::optional<c4c::ValueNameId> source_value_name;
+    std::optional<prepare::PreparedValueId> source_value_id;
     if (move_record->source_memory.has_value() &&
         !move_record->source_memory_materializes_address &&
         move_record->source_memory->result_value_name.has_value()) {
       source_value_name = *move_record->source_memory->result_value_name;
+      source_value_id = move_record->source_memory->result_value_id;
     } else if (move_record->source_register.has_value() &&
                move_record->source_register->value_name != c4c::kInvalidValueName) {
       source_value_name = move_record->source_register->value_name;
+      source_value_id = move_record->source_register->value_id;
+    } else if (move_record->source_register.has_value()) {
+      source_value_id = move_record->source_register->value_id;
     }
-    if (!source_value_name.has_value()) {
+    if (!source_value_name.has_value() && !source_value_id.has_value()) {
       return;
     }
-    const auto emitted = find_emitted_scalar_register(scalar_state, *source_value_name);
+    auto emitted = source_value_name.has_value()
+                       ? find_emitted_scalar_register(scalar_state, *source_value_name)
+                       : std::nullopt;
+    if (!emitted.has_value() && source_value_id.has_value()) {
+      const bool floating_preserved_source =
+          move_record->source_register.has_value() &&
+          move_record->source_register->reg.bank == abi::RegisterBank::FpSimd;
+      if (floating_preserved_source) {
+        for (const auto& [_, candidate] : scalar_state.emitted_registers) {
+          if (candidate.value_id == source_value_id &&
+              candidate.reg.bank == abi::RegisterBank::FpSimd) {
+            emitted = candidate;
+            break;
+          }
+        }
+      }
+    }
     if (!emitted.has_value()) {
       return;
     }
