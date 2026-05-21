@@ -1,8 +1,18 @@
 # AArch64 String Literal Pointer Null Comparison
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
+
+## Closure Summary
+
+Completed by implementation `ef4f45482` and proof `ad65a6182`.
+`c_testsuite_aarch64_backend_src_00112_c` now materializes the string-literal
+address, compares it against null, publishes the boolean result, and returns a
+defined value. The previous stale-register first bad fact is resolved with no
+new first bad fact for `00112`. Close-time regression guard passed for the
+matching representative before/after logs.
 
 ## Goal
 
