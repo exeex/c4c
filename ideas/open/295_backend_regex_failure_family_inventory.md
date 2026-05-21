@@ -1023,6 +1023,34 @@ Lifecycle switch 2026-05-21 post-365:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-370:
+
+- Step 1 commit `1d1a1a3d2` captured the current backend-regex surface after
+  closed ideas 366 and 370: 356 selected tests, 344 passed, and 12 failed.
+  Local backend/unit/route/MIR/BIR/CLI/runtime/smoke tests are clean; all
+  residuals are external `c_testsuite_aarch64_backend_*`.
+- Step 2 commit `65b676c45` classified the leading residual families. The
+  strongest current implementation owner is the dynamic indexed local/global
+  aggregate address/writeback regression represented by `00157` and `00176`.
+- This bucket overlaps closed idea 348, but current generated assembly gives
+  fresh first-bad-fact evidence after that closure: `00157` snapshots a local
+  array through fixed/high stack slots instead of storing through
+  `Array[Count-1]`, while `00176` again expands global `array[...]` through
+  large select/snapshot chains and stack temporaries, producing an unsorted
+  array.
+- Plan-owner selected a new follow-up owner rather than mutating the closed
+  348 archive: `ideas/open/371_aarch64_indexed_aggregate_snapshot_writeback_regression.md`.
+- Remaining ranked buckets stay parked under this umbrella for later
+  classification: scalar FP constant/expression materialization (`00174`),
+  conditional/switch selected arm materialization (`00183`, `00182`),
+  external/libc call return publication (`00187`), pointer/subobject address
+  publication (`00163`), global `sizeof`/aggregate metadata (`00205`),
+  complex initializer/relocation (`00216`), unsigned enum bit-field layout
+  (`00218`), and timeout quarantine (`00200`, `00207`).
+- The active lifecycle state should now use idea 371 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

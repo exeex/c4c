@@ -1,162 +1,170 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Indexed Aggregate Snapshot Writeback Regression Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/370_aarch64_short_circuit_control_publication_regression.md
+Source Idea: ideas/open/371_aarch64_indexed_aggregate_snapshot_writeback_regression.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after the recent AArch64 focused
-closures and select the next focused owner before any implementation work.
+Repair the current AArch64 dynamic indexed aggregate snapshot/writeback
+regression selected by the backend inventory.
 
 ## Goal
 
-Classify the current backend-matching failure surface, preserve the accepted
-baseline context, and split or select one semantic repair owner.
+Make dynamic indexed local and global aggregate element operations preserve the
+selected element address and write back through that address instead of stale
+snapshots or uninitialized stack homes.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat counts alone as owner
-evidence.
+Repair the general selected aggregate address/writeback boundary. Do not
+special-case `00157`, `00176`, one stack offset, one array name, one global
+symbol, or one emitted instruction sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/371_aarch64_indexed_aggregate_snapshot_writeback_regression.md`
+- `ideas/closed/348_aarch64_indexed_aggregate_address_writeback.md`
 - `todo.md`
-- `test_baseline.log`
 - `test_after.log`
-- recent closed ideas:
-  - `ideas/closed/366_aarch64_string_literal_pointer_null_comparison.md`
-  - `ideas/closed/370_aarch64_short_circuit_control_publication_regression.md`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
+- `tests/c/external/c-testsuite/src/00157.c`
+- `tests/c/external/c-testsuite/src/00176.c`
+- generated:
+  - `build/c_testsuite_aarch64_backend/src/00157.c.s`
+  - `build/c_testsuite_aarch64_backend/src/00176.c.s`
 
 ## Current Scope
 
-- current accepted full-suite baseline: `3347` passed, `28` failed,
-  `3375` total
-- backend-regex residual classification after closed ideas 366 and 370
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- selection or creation of the next focused semantic owner
+- `c_testsuite_aarch64_backend_src_00157_c`
+- `c_testsuite_aarch64_backend_src_00176_c`
+- dynamic local array selected element store/load
+- global array swap selected element address/writeback
+- focused backend coverage for snapshot/writeback behavior
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change test expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
+- Do not reopen or edit closed idea 348.
+- Do not broaden into scalar FP materialization, conditional/switch arm
+  materialization, external/libc return publication, pointer/subobject address
+  publication, global `sizeof`, complex initializers, enum bit-fields, ABI, or
+  timeout buckets.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
+- Do not implement under umbrella idea 295.
 
 ## Working Model
 
-The accepted full-suite baseline after idea 370 is clean relative to the
-current lifecycle guard: `3347` passed, `28` failed, and no pending baseline
-review. The backend inventory parent should now reclassify the remaining
-backend surface because the previous focused owners 366 and 370 have closed
-and the residual ordering may have changed.
+The backend inventory selected this route because `00157` and `00176` are the
+strongest current multi-test family. Both failures show dynamic indexed
+aggregate operations lowered through fixed snapshots or stack temporaries
+instead of selected element addresses. This is adjacent to closed idea 348, but
+fresh generated-code evidence justifies a follow-up owner rather than a
+count-only reopen.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, runtime mismatch,
-  runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open and closed idea scopes before choosing
-  a route.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Start from generated AArch64 and source-level selected element semantics for
+  `00157` and `00176`.
+- Trace selected address authority from BIR/prepared records through AArch64
+  load/store/writeback emission before editing code.
+- Add focused coverage before or with the repair.
+- Preserve prior selected-address/writeback repairs from closed idea 348.
+- If localization proves one representative has a different first bad fact,
+  record that in `todo.md` and keep the implementation route narrow.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize Snapshot Writeback Boundary
 
-Goal: establish the current backend-regex residual surface after ideas 366 and
-370.
+Goal: identify the first backend boundary where dynamic selected aggregate
+element address authority is lost.
 
-Primary target: `test_baseline.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether any local backend/unit tests fail, or whether residuals are
-  only external `c_testsuite_aarch64_backend_*` tests.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group the residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: generated `00157.c.s`, generated `00176.c.s`, and prepared
+records for selected local/global aggregate element access.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by closed ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Inspect `00157` source and assembly for the `Array[Count-1] = Count * Count`
+  store/load path.
+- Inspect `00176` source and assembly for global `array[...]` swap/writeback
+  paths.
+- Trace whether selected address loss occurs in BIR, prepared aggregate
+  access, stack layout, MIR address materialization, or AArch64 load/store
+  lowering.
+- Compare against closed idea 348's closure boundary so the route does not
+  simply repeat prior fixes.
+- Decide the focused coverage shape needed before repair.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` names the first bad fact, owning backend boundary, and focused
+  coverage requirement for the current snapshot/writeback regression.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Add Focused Snapshot Writeback Coverage
 
-Goal: choose one tractable focused owner for implementation outside this
-umbrella plan.
+Goal: guard the current selected aggregate snapshot/writeback failure outside
+the external representatives.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: backend tests covering dynamic indexed local and global
+aggregate element writeback.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for the supervisor handoff.
+- Add or extend focused coverage for a local dynamic indexed element store
+  followed by a read from the same selected element.
+- Add or extend focused coverage for a global indexed array swap or writeback
+  if the localized boundary handles both representatives.
+- Assert semantic selected-address behavior, not one emitted offset or
+  register spelling.
+- Keep coverage independent of `00157`, `00176`, one array name, or one
+  stack-offset pattern.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused coverage fails before the repair or directly guards the localized
+  selected-address/writeback fact.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Repair Selected Aggregate Address Writeback
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: make the localized backend boundary preserve selected aggregate element
+addresses and write back through them.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: the BIR/prepared/MIR/AArch64 helper localized in Step 1.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Implement the smallest semantic repair at the owner boundary.
+- Preserve selected element address authority across temporaries, helper
+  materializations, calls, and join points required by the representatives.
+- Avoid broad rewrites of unrelated scalar, FP, conditional, call-return,
+  metadata, initializer, bit-field, ABI, or timeout owners.
+- Run build proof before focused and representative tests.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- Focused coverage passes and generated AArch64 no longer uses stale
+  snapshots or uninitialized stack homes for the repaired selected element
+  writeback shape.
+
+### Step 4: Prove Representatives And Classify Residuals
+
+Goal: prove the selected owner advanced without hiding a new first bad fact.
+
+Primary target: focused coverage plus
+`c_testsuite_aarch64_backend_src_00157_c` and
+`c_testsuite_aarch64_backend_src_00176_c`.
+
+Actions:
+
+- Run the supervisor-delegated build and proof command.
+- Inspect generated `00157.c.s` and `00176.c.s` enough to confirm selected
+  element address/writeback behavior.
+- If a representative still fails, classify the new first bad fact in
+  `todo.md`.
+- Ask the supervisor whether backend-regex or broader regression guard proof
+  is needed before closure.
+
+Completion check:
+
+- `00157` and `00176` pass or are reclassified by new first bad facts, and
+  regression proof is recorded in `todo.md`.
