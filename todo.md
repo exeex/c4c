@@ -1,60 +1,79 @@
 Status: Active
 Source Idea Path: ideas/open/364_aarch64_synthetic_select_label_uniqueness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair General Label Uniqueness
+Current Step ID: 4
+Current Step Title: Prove Representative And Classify Residual
 
 # Current Packet
 
 ## Just Finished
 
-Steps 2 and 3 are implemented for AArch64 synthetic select/materialized-label
-uniqueness.
+Step 4 proved the `00143` representative advances past the duplicate synthetic
+label assembler failure after commit `a591ae012`.
 
-Focused coverage was added in
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`:
-`repeated_select_chain_materializations_use_unique_synthetic_labels` builds one
-block with two call-argument select-chain materializations under the same call
-instruction, then scans emitted `.Lselect_mat_*` label definitions and fails if
-any definition repeats. The fixture intentionally forces the materialized
-select-chain path rather than the ordinary `csel` select lowering path.
+Generated `build/c_testsuite_aarch64_backend/src/00143.c.s` contains 152
+`.Lselect_mat_*` label definitions and zero duplicate definitions. The focused
+CTest now reaches runtime and fails with `[RUNTIME_NONZERO] ... exit=1` and
+empty stdout/stderr.
 
-The repair is in `src/backend/mir/aarch64/codegen/dispatch.cpp`.
-`select_chain_label` now includes both the root value id and target register
-index in addition to function id, block label, root instruction index, recursive
-label index, and suffix. Root value id alone was not sufficient for `00143`:
-the generated `00143.c.s` still had repeated materializations for the same root
-value and root instruction, but into different temporary target registers. The
-added target-register discriminator keeps adjacent same-root materialization
-regions unique without changing `.LBB*` block-label ordering or epilogue logic.
+New runtime first bad fact:
 
-`00143` no longer fails in assembly with duplicate `.Lselect_mat_*` symbols.
-Generated `build/c_testsuite_aarch64_backend/src/00143.c.s` now contains 152
-`.Lselect_mat_*` label definitions with zero duplicates. The delegated proof
-advanced `00143` to a new residual: runtime nonzero, `exit=1`, with empty
-stdout/stderr.
+- Source `tests/c/external/c-testsuite/src/00143.c` initializes `a[n] = n`,
+  `b[n] = 0`, then uses Duff's device to copy 39 `short` elements from `a` to
+  `b` before checking `a[n] == b[n]`.
+- The source dispatch expression is `switch (count % 8)` with `count == 39`,
+  so the expected selector is `7` and execution should enter case 7.
+- Generated assembly computes `(count + 7) / 8` correctly for `n`, but the
+  later `count % 8` lowering is wrong:
+  `sdiv w9, w13, w9` followed by `msub w13, w9, w9, w13`.
+- For `count == 39`, that sequence computes `39 - 4 * 4 == 23` rather than
+  `39 - 4 * 8 == 7`.
+- The switch selector therefore misses cases 0 through 7, falls through the
+  default path at `.LBB1_21`, sets loop counter storage to zero, skips the
+  copy, and the verification loop returns 1 because `b` remains zeroed.
+
+Classification:
+
+- The duplicate synthetic select/materialized-label owner from idea 364 is
+  repaired for this representative.
+- The remaining `exit=1` residual is an AArch64 signed integer remainder
+  producer/lowering bug for `% 8`, not a synthetic-label allocation or emission
+  fault.
+- This residual requires lifecycle handoff rather than continued work inside
+  idea 364. It is adjacent to div/rem producer-publication work, but this
+  concrete fact is signed integer `%` lowering in switch selection, so it
+  should not be silently folded into an unsigned-only owner without plan-owner
+  review.
+
+Closure readiness:
+
+- Idea 364 is closure-ready from the executor perspective for the focused
+  duplicate-label goal, subject to supervisor/plan-owner closure review and any
+  broader validation policy they require.
 
 ## Suggested Next
 
-Classify the new `00143` runtime `exit=1` residual if the supervisor keeps this
-plan active. The duplicate synthetic-label owner is repaired and covered.
+Ask the plan owner to close or retire idea 364 as complete for synthetic label
+uniqueness, then route the new `00143` `%` remainder residual through a separate
+integer div/rem lifecycle packet.
 
 ## Watchouts
 
-The proof command exits nonzero because `00143` now reaches runtime and returns
-1. Backend tests in the delegated subset are green. This packet did not touch
-`plan.md`, `ideas/open/*`, `ideas/closed/*`, expectations, unsupported
-classifications, runners, block-label ordering, or epilogue code.
+- Do not keep expanding idea 364 into runtime value correctness: the remaining
+  first bad fact is arithmetic remainder lowering, not label uniqueness.
+- The current proof command intentionally contains only the representative
+  CTest; it does not rerun backend unit coverage from Step 3.
+- No implementation files, tests, expectations, runners, `plan.md`, or
+  `ideas/*` files were touched in this packet.
 
 ## Proof
 
 Ran the delegated proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00143_c)$' > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00143_c$' > test_after.log 2>&1
 ```
 
-Result: build succeeded and `backend_.*` passed. The overall command exited
-nonzero because `c_testsuite_aarch64_backend_src_00143_c` advanced to
-`[RUNTIME_NONZERO] ... exit=1`. `test_after.log` is preserved with this proof
-output.
+Result: command exited nonzero because
+`c_testsuite_aarch64_backend_src_00143_c` now reaches runtime and returns
+`exit=1`. `test_after.log` is preserved with this proof output.
