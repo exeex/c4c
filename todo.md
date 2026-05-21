@@ -1,12 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Residuals by Semantic Owner
+Current Step ID: 4
+Current Step Title: Prepare Lifecycle Handoff
 
 # Current Packet
 
 ## Just Finished
+
+Step 3 - Select the Next Focused Owner selected exactly one next lifecycle
+owner from the Step 2 post-369 residual classification:
+`ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
+
+Selection evidence from Step 2:
+
+- The selected bucket is AArch64 aggregate/varargs ABI call-boundary lowering,
+  represented by `c_testsuite_aarch64_backend_src_00140_c` and
+  `c_testsuite_aarch64_backend_src_00204_c`.
+- `00140.c` currently segfaults in calls involving a struct argument plus
+  variadic extras.
+- `00204.c` now fails in the machine printer with
+  `deferred_unsupported: call-boundary move node requires prepared GPR
+  registers, scalar FPR registers, or structured f128 q-register authority`.
+- This is not a source unsupported-classification issue: Step 2 observed that
+  the backend already has a prepared-BIR publication path for `00204`, and the
+  first bad fact is an explicit call-boundary move gap.
+- Existing idea 326 is activatable because its current source intent covers
+  AArch64 variadic HFA/floating call-boundary argument transport, and the fresh
+  `00204` diagnostic supplies direct f128/composite call-boundary evidence
+  rather than reopening that route from failing counts alone.
+
+Rejected owner choices:
+
+- Do not create a new composite ABI idea yet; idea 326 already carries the
+  open variadic HFA/floating residual contract and can absorb this fresh
+  f128/composite call-boundary evidence with a narrow lifecycle handoff note.
+- Do not select the indexed array/writeback bucket (`00157`, `00176`,
+  `00182`) because the closest existing indexed/writeback ideas are parked
+  after different first-bad facts, and the bucket needs a later split if it is
+  chosen.
+- Do not select the scalar comparison/value materialization bucket (`00112`,
+  `00119`, `00123`) or the timeout bucket (`00200`, `00207`) before the
+  existing activatable ABI/HFA/f128 owner is handled.
 
 Step 2 - Classify Residuals by Semantic Owner completed a read-only
 classification of the 18 external AArch64 c-testsuite residuals captured in
@@ -116,9 +151,12 @@ Classification by first bad boundary or actionable owner:
 
 ## Suggested Next
 
-Supervisor should choose a Step 3 owner from the evidence groups above and
-delegate one bounded repair packet. Do not select the owner from this Step 2
-classification alone inside `todo.md`.
+Perform lifecycle handoff away from the umbrella inventory to selected owner
+`ideas/open/326_aarch64_variadic_hfa_floating_residual.md` before any
+implementation edits. The next focused plan should narrow execution to the
+current AArch64 aggregate/varargs ABI call-boundary evidence for `00140` and
+`00204`, not to unrelated historical `00204` residuals already split or
+parked.
 
 ## Watchouts
 
@@ -126,6 +164,13 @@ Do not weaken expectations, mark supported cases unsupported, or treat filename
 clusters/pass-count movement as owner evidence. The two timeout cases remain
 separate until a focused probe shows whether they share a concrete first bad
 boundary with one of the non-timeout groups.
+
+For the selected idea 326 handoff, do not reopen prior local/value-home,
+fixed-formal entry, stdarg cursor, byval lane, MOVI zero-extension, or old
+HFA-output repairs unless fresh generated-code evidence ties the current first
+bad fact back to that exact owner. The selected route is the fresh composite
+call-boundary move gap, especially the structured f128/q-register authority
+diagnostic in `00204`.
 
 ## Proof
 

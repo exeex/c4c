@@ -922,6 +922,30 @@ Lifecycle switch 2026-05-21:
   complex initializer/relocation semantics, unsigned enum bitfield
   load/extension, and the two quarantined timeout residuals.
 
+Step 3 selection 2026-05-21 post-369:
+
+- Step 2 classified the current post-369 backend-regex surface into 18
+  external AArch64 residuals using `test_after.log`, source files, and
+  generated assembly.
+- The selected focused owner is existing idea 326,
+  `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`, resumed for the
+  current AArch64 aggregate/varargs ABI call-boundary lowering bucket.
+- The selected bucket is represented by `00140` and `00204`: `00140` segfaults
+  in calls involving a struct argument plus variadic extras, while `00204`
+  fails in the machine printer with an explicit call-boundary move gap that
+  requires prepared GPR registers, scalar FPR registers, or structured f128
+  q-register authority.
+- This selection uses fresh generated-code/diagnostic evidence and does not
+  reopen prior variadic/HFA, byval, fixed-formal, stdarg cursor, MOVI, or
+  local/value-home owners from pass counts alone.
+- Remaining parked buckets stay under this umbrella for later classification:
+  scalar comparison/value materialization, floating-point expression and
+  vararg call lowering, aggregate/member lvalue address lowering, indexed
+  array/select-matrix lowering, switch/select label ownership, conditional
+  operator lowering, file API call-boundary result lowering, constant
+  `sizeof` materialization, complex aggregate initializer/object layout,
+  unsigned enum bit-field layout, and the two timeout-only residuals.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

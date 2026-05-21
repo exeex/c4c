@@ -175,3 +175,20 @@ This idea is not closed: the close-time representative is still red. The MOVI
 sign-extension residual is outside this HFA/floating source scope and is
 tracked separately under
 `ideas/open/332_aarch64_movi_zero_extension_materialization.md`.
+
+2026-05-21: Reactivated from the post-369 umbrella classification in
+`ideas/open/295_backend_regex_failure_family_inventory.md`. The current
+activating evidence is not the old HFA-output, fixed-formal, byval, stdarg
+cursor, or MOVI residual. Step 2 classified a fresh AArch64 aggregate/varargs
+ABI call-boundary bucket represented by `00140` and `00204`: `00140` segfaults
+in calls involving a struct argument plus variadic extras, and `00204` now
+fails before runtime with
+`deferred_unsupported: call-boundary move node requires prepared GPR
+registers, scalar FPR registers, or structured f128 q-register authority`.
+
+Resume this idea narrowly from composite/variadic call-boundary move
+preparation and publication, including the structured f128/q-register
+authority path. Do not reopen prior local/value-home, fixed-formal entry,
+byval lane, stdarg cursor, MOVI zero-extension, or earlier HFA-output repairs
+unless fresh generated-code evidence moves the first bad fact back to those
+exact boundaries.
