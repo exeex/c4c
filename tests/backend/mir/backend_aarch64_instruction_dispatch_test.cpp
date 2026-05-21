@@ -18002,8 +18002,8 @@ int materialized_compare_branch_reuses_emitted_latch_operand() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
-  if (result.visited_operations != 4 || !result.visited_terminator ||
-      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+  if (result.visited_operations != 3 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
       !diagnostics.empty()) {
     return fail("expected materialized latch compare branch to lower without diagnostics: emitted=" +
                 std::to_string(result.emitted_instructions) +
@@ -18162,6 +18162,271 @@ int predecessor_join_source_publication_materializes_edge_compare() {
       printed.assembly.find("cset w20, eq") == std::string::npos ||
       printed.assembly.find("b .LBB") == std::string::npos) {
     return fail("expected predecessor edge compare source to materialize before branch");
+  }
+  return 0;
+}
+
+int predecessor_immediate_select_join_condition_uses_published_zero() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.join.edge.immediate");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.immediate.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.immediate.join");
+  const auto true_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.immediate.true");
+  const auto false_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.immediate.false");
+  const auto unrelated_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.immediate.unrelated");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.immediate.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.immediate.join");
+  const auto bir_true_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.immediate.true");
+  const auto bir_false_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.immediate.false");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded.true.edge");
+  const auto selected_name = prepared.names.value_names.intern("%join.selected");
+  const auto condition_name = prepared.names.value_names.intern("%join.condition");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.join.edge.immediate",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.join.edge.immediate.pred",
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.join.edge.immediate.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.immediate.join",
+               .insts =
+                   {bir::SelectInst{
+                        .predicate = bir::BinaryOpcode::Slt,
+                        .result =
+                            bir::Value::named(bir::TypeKind::I32, "%join.selected"),
+                        .compare_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::named(bir::TypeKind::I32, "%idx"),
+                        .rhs = bir::Value::immediate_i32(4),
+                        .true_value =
+                            bir::Value::named(bir::TypeKind::I32, "%loaded.true.edge"),
+                        .false_value = bir::Value::immediate_i32(0),
+                    }},
+               .terminator =
+                   bir::Terminator{bir::CondBranchTerminator{
+                       .condition =
+                           bir::Value::named(bir::TypeKind::I32, "%join.selected"),
+                       .true_label = "dispatch.join.edge.immediate.true",
+                       .false_label = "dispatch.join.edge.immediate.false",
+                       .true_label_id = bir_true_label,
+                       .false_label_id = bir_false_label,
+                   }},
+               .label_id = bir_join_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.immediate.true",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_true_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.immediate.false",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_false_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::CondBranch,
+               .true_label = true_label,
+               .false_label = false_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = true_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = false_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .branch_conditions =
+          {prepare::PreparedBranchCondition{
+              .function_name = function_name,
+              .block_label = join_label,
+              .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+              .predicate = bir::BinaryOpcode::Ne,
+              .compare_type = bir::TypeKind::I32,
+              .lhs = bir::Value::named(bir::TypeKind::I32, "%join.selected"),
+              .rhs = bir::Value::immediate_i32(0),
+              .can_fuse_with_branch = true,
+              .true_label = true_label,
+              .false_label = false_label,
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{510},
+               .function_name = function_name,
+               .value_name = loaded_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{510},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{511},
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{512},
+               .function_name = function_name,
+               .value_name = condition_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w14"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 99,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = unrelated_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{511},
+                      .to_value_id = prepare::PreparedValueId{511},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w12"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w12"},
+                      .block_index = 99,
+                      .instruction_index = 0,
+                      .source_immediate_i32 = std::int64_t{42},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = unrelated_label,
+                      .reason = "test_non_current_successor_publication",
+                  }},
+          },
+           prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{511},
+                      .to_value_id = prepare::PreparedValueId{511},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w13"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w13"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .source_immediate_i32 = std::int64_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_false_edge_zero_publication",
+                  }},
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+
+  aarch64_module::MachineBlock pred_block;
+  aarch64_module::ModuleLoweringDiagnostics pred_diagnostics;
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks[0],
+                                                   0);
+  const auto pred_result =
+      aarch64_codegen::dispatch_prepared_block(pred_context,
+                                               pred_block,
+                                               pred_diagnostics);
+  if (!pred_result.visited_terminator || pred_block.instructions.size() < 2 ||
+      !pred_diagnostics.empty()) {
+    return fail("expected predecessor false edge to publish immediate zero before branch");
+  }
+  const auto pred_printed = print_route_block(function_cf.function_name, pred_block);
+  if (!pred_printed.ok ||
+      pred_printed.assembly.find("mov w13, #0") == std::string::npos) {
+    return fail("expected predecessor false edge immediate zero publication: " +
+                pred_printed.assembly);
+  }
+
+  aarch64_module::MachineBlock join_block;
+  aarch64_module::ModuleLoweringDiagnostics join_diagnostics;
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks[1],
+                                                   1);
+  const auto join_result =
+      aarch64_codegen::dispatch_prepared_block(join_context,
+                                               join_block,
+                                               join_diagnostics);
+  if (join_result.visited_operations != 0 || !join_result.visited_terminator ||
+      join_block.instructions.size() != 1 || !join_diagnostics.empty()) {
+    const std::string diagnostic =
+        join_diagnostics.empty()
+            ? std::string{}
+            : " first=" + join_diagnostics.entries.front().message;
+    return fail("expected join branch consumer to use edge-published select value: ops=" +
+                std::to_string(join_result.visited_operations) +
+                " emitted=" + std::to_string(join_block.instructions.size()) +
+                " diagnostics=" + std::to_string(join_diagnostics.entries.size()) +
+                diagnostic);
+  }
+  const auto join_printed = print_route_block(function_cf.function_name, join_block);
+  if (!join_printed.ok) {
+    return fail("expected join branch consumer route to print: " +
+                join_printed.diagnostic);
+  }
+  if (join_printed.assembly.find("[sp, #64]") != std::string::npos ||
+      join_printed.assembly.find("csel") != std::string::npos ||
+      join_printed.assembly.find("cmp w13, #0") == std::string::npos ||
+      join_printed.assembly.find("cmp w12, #0") != std::string::npos ||
+      join_printed.assembly.find("b.ne") == std::string::npos) {
+    return fail("expected join branch to consume published w13 instead of reloading true edge stack source: " +
+                join_printed.assembly);
   }
   return 0;
 }
@@ -23061,6 +23326,11 @@ int main() {
   }
   if (const int status =
           predecessor_join_source_publication_materializes_edge_compare();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          predecessor_immediate_select_join_condition_uses_published_zero();
       status != 0) {
     return status;
   }

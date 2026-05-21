@@ -497,6 +497,8 @@ lower_scalar_call_argument_producers(
          *source_home.register_name == *destination_home.register_name;
 }
 
+[[nodiscard]] std::optional<bir::Value> instruction_result_value(const bir::Inst& inst);
+
 [[nodiscard]] bool is_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
@@ -504,13 +506,13 @@ lower_scalar_call_argument_producers(
       context.control_flow_block == nullptr) {
     return false;
   }
-  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-  if (binary == nullptr ||
-      binary->result.kind != bir::Value::Kind::Named ||
-      binary->result.name.empty()) {
+  const auto result_value = instruction_result_value(inst);
+  if (!result_value.has_value() ||
+      result_value->kind != bir::Value::Kind::Named ||
+      result_value->name.empty()) {
     return false;
   }
-  const auto result_value_name = prepared_named_value_id(context, binary->result);
+  const auto result_value_name = prepared_named_value_id(context, *result_value);
   if (!result_value_name.has_value()) {
     return false;
   }
@@ -530,8 +532,13 @@ lower_scalar_call_argument_producers(
     for (const auto& move : bundle.moves) {
       if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
           move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-          move.source_immediate_i32.has_value() ||
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+        continue;
+      }
+      if (move.to_value_id == result_home->value_id) {
+        return true;
+      }
+      if (move.source_immediate_i32.has_value() ||
           move.from_value_id != result_home->value_id ||
           move.from_value_id == move.to_value_id) {
         continue;
@@ -1112,6 +1119,11 @@ lower_scalar_mul_with_distinct_rhs_scratch(
     std::vector<std::string_view>& active_values,
     bool reload_current_memory_loads = false);
 
+[[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    abi::RegisterView expected_view);
+
 [[nodiscard]] const bir::Global* find_load_global_target(
     const module::BlockLoweringContext& context,
     const bir::LoadGlobalInst& load);
@@ -1184,18 +1196,29 @@ lower_materialized_compare_condition_branch(
   auto lhs = binary->lhs;
   lhs.type = binary->operand_type;
   std::optional<std::uint8_t> lhs_register_index;
+  std::optional<RegisterOperand> lhs_publication;
   auto lhs_name = emitted_register_name(context, lhs, scalar_state, *operand_view);
+  if (!lhs_name.has_value()) {
+    if (auto published =
+            current_block_entry_publication_register(context, lhs, *operand_view)) {
+      lhs_publication = *published;
+      lhs_name = std::string{abi::register_name(published->reg)};
+      lhs_register_index = published->reg.index;
+    }
+  }
   if (lhs_name.has_value()) {
-    const auto value_name = prepared_named_value_id(context, lhs);
-    if (!value_name.has_value()) {
-      return std::nullopt;
+    if (!lhs_publication.has_value()) {
+      const auto value_name = prepared_named_value_id(context, lhs);
+      if (!value_name.has_value()) {
+        return std::nullopt;
+      }
+      const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+      if (!emitted.has_value() ||
+          emitted->reg.bank != abi::RegisterBank::GeneralPurpose) {
+        return std::nullopt;
+      }
+      lhs_register_index = emitted->reg.index;
     }
-    const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
-    if (!emitted.has_value() ||
-        emitted->reg.bank != abi::RegisterBank::GeneralPurpose) {
-      return std::nullopt;
-    }
-    lhs_register_index = emitted->reg.index;
   } else {
     if (!emit_value_publication_to_register(context,
                                             lhs,
@@ -1248,6 +1271,57 @@ lower_materialized_compare_condition_branch(
   }
 
   lines.push_back("cmp " + *lhs_name + ", " + rhs);
+  lines.push_back("b." + std::string{*condition} + " " +
+                  machine_block_label(branch_condition->function_name,
+                                      branch_condition->true_label));
+  lines.push_back("b " + machine_block_label(branch_condition->function_name,
+                                             branch_condition->false_label));
+  return make_branch_compare_assembler_instruction(context, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_current_block_entry_fused_compare_branch(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition->can_fuse_with_branch ||
+      !branch_condition->predicate.has_value() ||
+      !branch_condition->compare_type.has_value() ||
+      !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto condition = branch_condition_suffix(*branch_condition->predicate);
+  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
+  if (!condition.has_value() || !operand_view.has_value() ||
+      branch_condition->true_label == c4c::kInvalidBlockLabel ||
+      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  auto lhs = *branch_condition->lhs;
+  lhs.type = *branch_condition->compare_type;
+  const auto published_lhs =
+      current_block_entry_publication_register(context, lhs, *operand_view);
+  if (!published_lhs.has_value() ||
+      published_lhs->reg.bank != abi::RegisterBank::GeneralPurpose ||
+      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
+      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
+    return std::nullopt;
+  }
+  const auto lhs_reg = abi::gp_register(published_lhs->reg.index, *operand_view);
+  if (!lhs_reg.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
+                  std::to_string(branch_condition->rhs->immediate));
   lines.push_back("b." + std::string{*condition} + " " +
                   machine_block_label(branch_condition->function_name,
                                       branch_condition->true_label));
@@ -1336,8 +1410,7 @@ lower_conditional_branch_from_emitted_condition(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
     const BlockScalarLoweringState& scalar_state) {
-  if (!lower_fused_compare_branch_from_emitted_cast(context, scalar_state).has_value() ||
-      context.function.control_flow == nullptr ||
+  if (context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr) {
     return false;
   }
@@ -1351,6 +1424,9 @@ lower_conditional_branch_from_emitted_condition(
   if (const auto* cast = std::get_if<bir::CastInst>(&inst);
       cast != nullptr &&
       cast->result.kind == bir::Value::Kind::Named) {
+    if (!lower_fused_compare_branch_from_emitted_cast(context, scalar_state).has_value()) {
+      return false;
+    }
     const auto matches = [&](const bir::Value& value) {
       return value.kind == bir::Value::Kind::Named &&
              value.name == cast->result.name;
@@ -2721,6 +2797,192 @@ find_latest_narrow_store_for_wide_local_load(
   return false;
 }
 
+[[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    abi::RegisterView expected_view) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr ||
+      value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  auto value_name = prepared_named_value_id(context, value);
+  const prepare::PreparedValueHome* home =
+      value_name.has_value()
+          ? prepare::find_prepared_value_home(*context.function.value_locations,
+                                              *value_name)
+          : nullptr;
+  if (home == nullptr && context.function.prepared != nullptr && !value.name.empty()) {
+    for (const auto& candidate : context.function.value_locations->value_homes) {
+      if (candidate.value_name == c4c::kInvalidValueName) {
+        continue;
+      }
+      const auto candidate_name =
+          prepare::prepared_value_name(context.function.prepared->names,
+                                       candidate.value_name);
+      if (candidate_name == value.name) {
+        home = &candidate;
+        value_name = candidate.value_name;
+        break;
+      }
+    }
+  }
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+          move.to_value_id != home->value_id) {
+        continue;
+      }
+      std::optional<std::string> register_name = move.destination_register_name;
+      if (!register_name.has_value() &&
+          home->kind == prepare::PreparedValueHomeKind::Register) {
+        register_name = home->register_name;
+      }
+      if (!register_name.has_value()) {
+        continue;
+      }
+      const auto parsed = abi::parse_aarch64_register_name(*register_name);
+      if (!parsed.has_value() ||
+          parsed->bank != abi::RegisterBank::GeneralPurpose) {
+        continue;
+      }
+      auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
+      reg.view = expected_view;
+      return RegisterOperand{
+          .reg = reg,
+          .role = RegisterOperandRole::StoragePlan,
+          .value_id = home->value_id,
+          .value_name = home->value_name,
+          .expected_view = expected_view,
+      };
+    }
+  }
+  return std::nullopt;
+}
+
+void record_current_block_entry_publication_registers(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+        continue;
+      }
+      const auto* home =
+          prepare::find_prepared_value_home(*context.function.value_locations,
+                                            move.to_value_id);
+      if (home == nullptr) {
+        continue;
+      }
+      std::optional<std::string> register_name = move.destination_register_name;
+      if (!register_name.has_value() &&
+          home->kind == prepare::PreparedValueHomeKind::Register) {
+        register_name = home->register_name;
+      }
+      if (!register_name.has_value()) {
+        continue;
+      }
+      const auto parsed = abi::parse_aarch64_register_name(*register_name);
+      if (!parsed.has_value() ||
+          parsed->bank != abi::RegisterBank::GeneralPurpose) {
+        continue;
+      }
+      record_emitted_scalar_register(
+          scalar_state,
+          home->value_name,
+          RegisterOperand{
+              .reg = *parsed,
+              .role = RegisterOperandRole::StoragePlan,
+              .value_id = home->value_id,
+              .value_name = home->value_name,
+              .expected_view = parsed->view,
+          });
+    }
+  }
+}
+
+[[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
+    const module::BlockLoweringContext& context,
+    const module::MachineInstruction& instruction) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return false;
+  }
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr || !move_record->destination_register.has_value()) {
+    return false;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+          move.to_value_id == move_record->destination_register->value_id) {
+        continue;
+      }
+      const auto* home =
+          prepare::find_prepared_value_home(*context.function.value_locations,
+                                            move.to_value_id);
+      std::optional<std::string> register_name = move.destination_register_name;
+      if (!register_name.has_value() &&
+          home != nullptr &&
+          home->kind == prepare::PreparedValueHomeKind::Register) {
+        register_name = home->register_name;
+      }
+      if (!register_name.has_value()) {
+        continue;
+      }
+      const auto parsed = abi::parse_aarch64_register_name(*register_name);
+      if (!parsed.has_value()) {
+        continue;
+      }
+      RegisterOperand published{
+          .reg = *parsed,
+          .role = RegisterOperandRole::StoragePlan,
+          .value_id = home != nullptr
+                          ? std::optional<prepare::PreparedValueId>{home->value_id}
+                          : std::nullopt,
+          .value_name = home != nullptr ? home->value_name : c4c::kInvalidValueName,
+          .expected_view = parsed->view,
+      };
+      if (registers_alias(published, *move_record->destination_register)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool emit_prepared_value_home_to_register(
     const prepare::PreparedValueHome& home,
     bir::TypeKind type,
@@ -2843,8 +3105,27 @@ find_latest_narrow_store_for_wide_local_load(
   if (value.kind != bir::Value::Kind::Named) {
     return false;
   }
+  if (auto published =
+          current_block_entry_publication_register(context, value, *target_view)) {
+    const auto source = abi::gp_register(published->reg.index, *target_view);
+    if (!source.has_value()) {
+      return false;
+    }
+    const auto source_name = std::string{abi::register_name(*source)};
+    if (source_name != *target) {
+      lines.push_back("mov " + *target + ", " + source_name);
+    }
+    return true;
+  }
   const auto* producer =
       find_same_block_named_producer(context, value.name, before_instruction_index);
+  if (producer != nullptr &&
+      is_current_block_join_parallel_copy_source(context, *producer)) {
+    const auto* home = prepared_value_home_for_value(context, value);
+    if (home != nullptr) {
+      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+    }
+  }
   if (producer == nullptr) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
@@ -6409,6 +6690,13 @@ lower_missing_fused_compare_operand_publication(
   if (!expected_view.has_value()) {
     return std::nullopt;
   }
+  if (auto published =
+          current_block_entry_publication_register(context, value, *expected_view)) {
+    record_emitted_scalar_register(scalar_state,
+                                   published->value_name,
+                                   *published);
+    return std::nullopt;
+  }
 
   std::uint8_t target_index = 0;
   std::uint8_t scratch_index = 0;
@@ -7286,6 +7574,7 @@ InstructionDispatchResult dispatch_prepared_block(
   }
 
   BlockScalarLoweringState scalar_state;
+  record_current_block_entry_publication_registers(context, scalar_state);
   std::unordered_set<c4c::ValueNameId> published_store_global_stack_values;
   auto record_call_boundary_destination =
       [&](const module::MachineInstruction& instruction) {
@@ -7422,6 +7711,10 @@ InstructionDispatchResult dispatch_prepared_block(
            prepare::PreparedMovePhase::BlockEntry,
            0,
            diagnostics)) {
+    if (block_entry_move_clobbers_current_join_publication(context,
+                                                           block_entry_move)) {
+      continue;
+    }
     if (const auto* move =
             std::get_if<CallBoundaryMoveInstructionRecord>(
                 &block_entry_move.target.payload);
@@ -7474,6 +7767,10 @@ InstructionDispatchResult dispatch_prepared_block(
                  prepare::PreparedMovePhase::BeforeInstruction,
                  instruction_index,
                  diagnostics)) {
+          if (block_entry_move_clobbers_current_join_publication(
+                  context, before_instruction_move)) {
+            continue;
+          }
           if (!call_boundary_move_reloads_prepared_stack_source(
                   before_instruction_move)) {
             continue;
@@ -7830,6 +8127,10 @@ InstructionDispatchResult dispatch_prepared_block(
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::CondBranch) {
     if (auto lowered =
+            lower_current_block_entry_fused_compare_branch(context)) {
+      block.instructions.push_back(std::move(*lowered));
+      block.successors = make_conditional_branch_successors(context);
+    } else if (auto lowered =
             lower_fused_compare_branch_from_emitted_cast(context, scalar_state)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
