@@ -1,8 +1,9 @@
 # Semantic BIR Indirect Local-Memory Lvalue Admission
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -70,6 +71,30 @@ at emitted AArch64 assembly behavior.
 - No expectation, unsupported-classification, runner, timeout, CTest
   registration, proof-log, or AArch64 runtime-policy change is used to claim
   progress.
+
+## Completion Note
+
+Commit `b2253656b Admit indirect local memory lvalues` completed the semantic
+admission owner. The repair admits computed pointer-address local-memory
+lvalues for both the loaded pointer/pointer-to-pointer store shape and the
+casted byte-pointer/pointer-arithmetic load/update shape without expectation,
+unsupported-classification, runner, timeout, CTest-registration, proof-log, or
+AArch64 runtime-policy changes.
+
+Focused before/after regression guard for the idea scope passed: the four-test
+subset improved from 1/4 to 3/4, resolving `backend_lir_to_bir_notes` and
+`c_testsuite_aarch64_backend_src_00005_c` with no new failures.
+`c_testsuite_aarch64_backend_src_00173_c` remained passing.
+
+`c_testsuite_aarch64_backend_src_00217_c` advanced past the semantic
+`lir_to_bir` handoff required by this idea and now fails later as an AArch64
+runtime mismatch:
+
+- expected: `data = "0123-5678"`
+- actual: `data = "0123\x05"`
+
+That residual is outside this semantic admission owner and is split to
+`ideas/open/368_aarch64_00217_c_c_behavior_runtime_mismatch.md`.
 
 ## Reviewer Reject Signals
 
