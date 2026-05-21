@@ -557,6 +557,157 @@ lower_scalar_call_argument_producers(
   return false;
 }
 
+[[nodiscard]] std::vector<std::string_view> named_operands_of_instruction(
+    const bir::Inst& inst) {
+  std::vector<std::string_view> operands;
+  auto append_named = [&operands](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Named && !value.name.empty()) {
+      operands.push_back(value.name);
+    }
+  };
+  std::visit(
+      [&](const auto& typed_inst) {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+          append_named(typed_inst.lhs);
+          append_named(typed_inst.rhs);
+        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+          append_named(typed_inst.operand);
+        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+          append_named(typed_inst.lhs);
+          append_named(typed_inst.rhs);
+          append_named(typed_inst.true_value);
+          append_named(typed_inst.false_value);
+        }
+      },
+      inst);
+  return operands;
+}
+
+[[nodiscard]] bool is_join_parallel_copy_expression_instruction(
+    const bir::Inst& inst) {
+  return std::get_if<bir::BinaryInst>(&inst) != nullptr ||
+         std::get_if<bir::CastInst>(&inst) != nullptr ||
+         std::get_if<bir::SelectInst>(&inst) != nullptr;
+}
+
+[[nodiscard]] std::optional<std::size_t> find_same_block_result_index(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr || value_name.empty()) {
+    return std::nullopt;
+  }
+  const auto limit =
+      std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = limit; index > 0; --index) {
+    const auto result = instruction_result_value(context.bir_block->insts[index - 1]);
+    if (result.has_value() && result->kind == bir::Value::Kind::Named &&
+        result->name == value_name) {
+      return index - 1;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool same_block_result_depends_on_value(
+    const module::BlockLoweringContext& context,
+    std::string_view source_name,
+    std::string_view dependency_name,
+    std::size_t before_instruction_index,
+    std::size_t depth = 0) {
+  if (source_name.empty() || dependency_name.empty() || depth > 16U) {
+    return false;
+  }
+  if (source_name == dependency_name) {
+    return true;
+  }
+  const auto producer_index =
+      find_same_block_result_index(context, source_name, before_instruction_index);
+  if (!producer_index.has_value()) {
+    return false;
+  }
+  const auto& producer = context.bir_block->insts[*producer_index];
+  if (!is_join_parallel_copy_expression_instruction(producer)) {
+    return false;
+  }
+  for (const auto operand_name : named_operands_of_instruction(producer)) {
+    if (operand_name == dependency_name ||
+        same_block_result_depends_on_value(context,
+                                           operand_name,
+                                           dependency_name,
+                                           *producer_index,
+                                           depth + 1U)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool is_current_block_join_parallel_copy_incoming_expression(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst) {
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      !is_join_parallel_copy_expression_instruction(inst)) {
+    return false;
+  }
+  const auto result_value = instruction_result_value(inst);
+  if (!result_value.has_value() ||
+      result_value->kind != bir::Value::Kind::Named ||
+      result_value->name.empty()) {
+    return false;
+  }
+  const auto result_value_name = prepared_named_value_id(context, *result_value);
+  if (!result_value_name.has_value()) {
+    return false;
+  }
+  const auto* result_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *result_value_name);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.source_immediate_i32.has_value()) {
+        continue;
+      }
+      const auto* source_home =
+          prepare::find_prepared_value_home(*context.function.value_locations,
+                                            move.from_value_id);
+      if (source_home == nullptr ||
+          source_home->value_name == c4c::kInvalidValueName) {
+        continue;
+      }
+      if (source_home->value_id == result_home->value_id) {
+        return true;
+      }
+      const auto source_name =
+          prepare::prepared_value_name(context.function.prepared->names,
+                                       source_home->value_name);
+      if (!source_name.empty() &&
+          same_block_result_depends_on_value(context,
+                                             source_name,
+                                             result_value->name,
+                                             context.bir_block->insts.size())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
     const module::BlockLoweringContext& context,
@@ -8379,6 +8530,9 @@ InstructionDispatchResult dispatch_prepared_block(
                      block,
                      diagnostics)) {
         ++result.visited_operations;
+        continue;
+      } else if (is_current_block_join_parallel_copy_incoming_expression(
+                     context, inst)) {
         continue;
       } else if (lower_scalar_with_address_materialization(
                      context,

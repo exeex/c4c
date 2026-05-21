@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/370_aarch64_short_circuit_control_publication_regression.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Short-Circuit Regression Boundary
+Current Step ID: 3
+Current Step Title: Repair Short-Circuit Control Publication
 
 你該做baseline sanity check了
 
@@ -10,105 +10,56 @@ Current Step Title: Localize Short-Circuit Regression Boundary
 
 ## Just Finished
 
-Step 1 localized the `00196` short-circuit regression while preserving the
-idea 366 representative `00112` proof.
+Steps 2 and 3 completed as one packet.
 
-`tests/c/external/c-testsuite/src/00196.c` line 21 is the first failing
-expression:
+Focused backend coverage was added in
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` with
+`short_circuit_join_consumes_edge_published_result()`. The test builds a
+semantic short-circuit join where the skip edge publishes immediate `0` to the
+join result while the RHS edge source is a same-block derived add/compare. It
+asserts that the join block emits only the branch compare against the
+edge-published result register and does not emit RHS-only `add`/`cset`
+materialization.
 
-```c
-printf("%d\n", fred() && (1 + joe()));
-```
+The AArch64 repair is in
+`src/backend/mir/aarch64/codegen/dispatch.cpp`. Dispatch now recognizes
+expression instructions whose results are either direct incoming sources for
+the current block's authoritative out-of-ssa parallel copy, or dependencies of
+such incoming sources. Those RHS-edge expressions are skipped in the join
+block, leaving the prepared predecessor edge publication as the owner of the
+join value. This keeps the branch sense unchanged and avoids recomputing
+RHS-only producers from stale registers after a skip edge.
 
-The expected output for that expression is `fred` then `0`. The current AArch64
-output is `fred` then `1`; it does not print `joe` for this expression in the
-current generated run, so the first bad fact is stale RHS-derived value
-publication at the join, not RHS call execution.
-
-Semantic BIR is still correct. It branches on `%t50 = bir.ne i32 %t49, 0`;
-`logic.skip.52` reaches the join with incoming `0`, and only `logic.rhs.51`
-contains the `joe()` call, `%t56 = bir.add i32 1, %t55`, and `%t57 = bir.ne i32
-%t56, 0`.
-
-Prepared control-flow also preserves the authoritative join intent for `%t59`:
-
-```text
-join_transfer logic.end.54 result=%t59 ... source_incomings=(logic.rhs.end.53, logic.skip.52)
-  incoming [logic.rhs.end.53] -> %t57
-  incoming [logic.skip.52] -> 0
-parallel_copy logic.skip.52 -> logic.end.54
-  move[0] 0 -> %t59 ... carrier=select_materialization
-```
-
-The first bad generated instruction sequence is in
-`build/c_testsuite_aarch64_backend/src/00196.c.s` lines 147-177. The branch
-sense is correct:
-
-```asm
-bl fred
-mov x13, x0
-cmp w13, #0
-b.ne .LBB91_18
-b .LBB91_19
-.LBB91_19:
-mov x13, #0
-b .LBB91_21
-```
-
-But the join block then recomputes the RHS-only value with stale `%t55/w21`:
-
-```asm
-.LBB91_21:
-add w9, w21, #1
-str w9, [sp]
-...
-cmp w9, #0
-cset w13, ne
-...
-mov w1, w13
-bl printf
-```
-
-Owner boundary: AArch64 scalar/control publication at the short-circuit join,
-not C semantics and not branch lowering. The relevant prepared block is
-`logic.end.54`, where `%t56`/`%t57` are RHS-derived same-block producers and
-`%t59` has authoritative out-of-ssa edge transfers. The AArch64 path around
-`lower_scalar_with_address_materialization` / `lower_scalar_control_value_instruction`
-materializes a same-block binary/compare for `%t57` in the join and lets that
-stale publication feed the `printf` argument instead of respecting the
-prepared skip-edge `%t59 = 0` publication.
-
-Idea 366 appears causal as a trigger but adjacent in semantics: the regression
-is not string-pointer comparison itself. The newly added address-materialized
-scalar lowering interaction can combine a string address materialization in
-the join block with scalar compare publication, exposing the older unsafe
-same-block RHS materialization across a short-circuit join.
+The generated `00196` sequence now preserves the Step 1 branch fact and removes
+the stale join recomputation. Around
+`build/c_testsuite_aarch64_backend/src/00196.c.s` lines 147-171, the skip edge
+publishes `mov x13, #0`, the RHS edge computes `(1 + joe()) != 0` before the
+join, and `.LBB91_21` directly passes `x13` to `printf` without the previous
+join-local `add ...; cmp ...; cset ...` sequence.
 
 ## Suggested Next
 
-Add focused backend coverage before repair for a short-circuit join whose
-skip edge publishes an immediate false value while the RHS edge computes a
-same-block derived binary/compare value. The assertion should require the
-generated/join publication to use the prepared edge value for the skip path and
-not recompute the RHS-only binary at the join from a stale register. Include an
-address materialization in the same join block to cover the idea 366 trigger.
+Supervisor review and commit of idea 370 Steps 2/3. The delegated proof is
+green for all backend tests plus `00196` and the preserved `00112`
+representative.
 
 ## Watchouts
 
-Do not repair by changing branch sense or by weakening `00196` expectations.
-The branch to `logic.skip.52` is already correct. Preserve `00112`: the
-delegated proof shows it still passes. Keep the fix scoped to AArch64
-control/scalar publication at join edges and avoid changing unrelated
-short-circuit semantics or string-pointer materialization contracts.
+The repair intentionally treats prepared out-of-ssa edge copies as authoritative
+for join incoming expression values. It does not change branch lowering,
+string-pointer comparison semantics, HFA/byval handling, or testcase
+expectations. The focused test covers the stale RHS-derived add/compare shape;
+the full delegated proof covers the idea 366 representative `00112`.
 
 ## Proof
 
-Ran the delegated Step 1 localization proof:
+Ran the delegated Steps 2/3 proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00112_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00112_c)$' > test_after.log 2>&1
 ```
 
-Result: failed for `c_testsuite_aarch64_backend_src_00196_c` with
-`RUNTIME_MISMATCH`; passed for `c_testsuite_aarch64_backend_src_00112_c`.
-`test_after.log` is the preserved proof/localization log.
+Result: passed, `100% tests passed, 0 tests failed out of 145`.
+`c_testsuite_aarch64_backend_src_00196_c`, `c_testsuite_aarch64_backend_src_00112_c`,
+and `backend_aarch64_instruction_dispatch` are green. `test_after.log` is the
+preserved proof log.
