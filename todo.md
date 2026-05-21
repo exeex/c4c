@@ -18,6 +18,13 @@ proof, so the baseline regression introduced after idea 366 is removed for the
 representative case. `c_testsuite_aarch64_backend_src_00112_c` also remains
 passing, preserving the string-literal pointer/null comparison repair.
 
+Supervisor full-suite regression guard also passed against the accepted
+baseline. `test_baseline.log` before the repair had `3346` passed, `29`
+failed, `3375` total; the fresh full-suite `test_after.log` has `3347` passed,
+`28` failed, `3375` total. The guard reports one resolved failing test,
+`c_testsuite_aarch64_backend_src_00112_c`, and no new failing tests. The
+accepted baseline log was rolled forward to this full-suite result.
+
 Assembly classification for
 `build/c_testsuite_aarch64_backend/src/00196.c.s` confirms the repaired
 boundary:
@@ -57,8 +64,7 @@ publication in `x13`.
 
 ## Suggested Next
 
-Supervisor owns the full-suite regression guard against `test_baseline.log`
-and the final acceptance/commit decision for idea 370.
+Supervisor can route idea 370 to lifecycle closure.
 
 ## Watchouts
 
@@ -78,3 +84,14 @@ Result: passed, `100% tests passed, 0 tests failed out of 2`.
 `c_testsuite_aarch64_backend_src_00196_c` and
 `c_testsuite_aarch64_backend_src_00112_c` are green. `test_after.log` is the
 preserved proof log.
+
+Ran the supervisor full-suite guard:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log
+```
+
+Result: passed. The comparison reports `3346 -> 3347` passed, `29 -> 28`
+failed, resolved `c_testsuite_aarch64_backend_src_00112_c`, and no new failing
+tests.
