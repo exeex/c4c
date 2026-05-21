@@ -1,8 +1,34 @@
 # AArch64 Recursive Stack-Preserved Pointer Formal Post-Call Overwrite
 
-Status: Open
+Status: Parked
 Created: 2026-05-21
 Split From: ideas/open/358_aarch64_recursive_scalar_formal_post_call_preservation.md
+
+## Parked Notes
+
+The stack-preserved pointer formal post-call overwrite scope is complete.
+
+Commit `34387ce97` repaired the `%p.spare` boundary for recursive paths that
+previously republished a stack-preserved pointer formal home from clobbered
+`x3` after an intervening call. Generated `Hanoi` no longer emits the bad
+post-call `str x3, [sp, #8]` between `bl Move` and the final reload/call
+sequence, while scalar `%p.n` reloads and callee-saved pointer homes remain
+stable.
+
+Focused proof advanced `00181` from `RUNTIME_NONZERO` segmentation fault to
+`RUNTIME_MISMATCH`; backend contracts, `00170`, and `00189` passed. The
+supervisor-provided backend guard
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.
+
+The remaining `00181` residual is a starting-state output mismatch: expected
+`A: 1 2 3 4`, actual `A: 1 2 0 4`. That first visible bad fact appears before
+the repaired recursive post-call `%p.spare` reuse is observable, so it is split
+to `ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md`.
+
+Formal close was not accepted in this lifecycle pass because the available
+canonical focused before/after logs remain 6/7 passed before and after. The
+regression guard reported no new failing tests, but rejected closure because
+the pass count did not strictly increase.
 
 ## Goal
 
