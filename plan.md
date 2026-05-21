@@ -1,28 +1,29 @@
-# AArch64 Pointer-Derived Load Address Scaling Timeout Runbook
+# AArch64 Prepared Select Condition Join Stale Reload Runbook
 
 Status: Active
-Source Idea: ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md
+Source Idea: ideas/open/363_aarch64_prepared_select_condition_join_stale_reload.md
 
 ## Purpose
 
-Repair the AArch64 residual where `00181` now times out after materialized
-pointer-addressed store writeback was repaired.
+Repair the AArch64 residual exposed after pointer-derived load/address scaling
+was fixed: prepared false/zero scan exits can be overwritten by stale stack
+reloads at a join.
 
 ## Goal
 
-Make pointer-derived loads or address scaling use the correct computed address
-so `00181` advances beyond the 5 second timeout without reopening the repaired
-store-writeback path.
+Make prepared select or condition publication preserve explicit false/zero edge
+values across joins so `00181` advances beyond the current fast segmentation
+fault without reopening the repaired address-scaling path.
 
 ## Core Rule
 
-Localize and repair the general pointer-derived load/address scaling boundary.
-Do not special-case `00181`, `Hanoi`, tower names, stack offsets, ABI
-registers, one emitted instruction neighborhood, or the 5 second timeout
-itself.
+Localize and repair the general prepared select/condition join publication
+boundary. Do not special-case `00181`, `Move`, Hanoi tower globals, block
+labels, stack offsets, ABI registers, or one emitted instruction neighborhood.
 
 ## Read First
 
+- `ideas/open/363_aarch64_prepared_select_condition_join_stale_reload.md`
 - `ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md`
 - `ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md`
 - `ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md`
@@ -43,113 +44,110 @@ itself.
 
 ## Non-Goals
 
+- Do not reopen pointer-derived load/address scaling from idea 362 except to
+  keep it stable.
 - Do not reopen materialized pointer-addressed store writeback from idea 361
   except to keep it stable.
 - Do not reopen the idea 360 direct `LoadGlobal` current-memory select-store
   repair except to keep it stable.
-- Do not reopen stack-preserved pointer formal post-call handling from idea
+- Do not reopen recursive formal post-call repairs from ideas 357, 358, and
   359.
-- Do not reopen scalar formal post-call reloads from idea 358.
-- Do not reopen pointer-formal callee-saved home publication from idea 357.
 - Do not handle semantic-BIR dynamic pointer-derived string loads for `00173`.
 - Do not handle frontend or semantic admission failure for `00005`.
 - Do not change expectations, unsupported classifications, runner behavior,
   timeout policy, CTest registration, or proof-log policy.
-- Do not broaden into ABI composite/byval/HFA/f128, variadic floating,
-  dynamic stack, or unrelated scalar compare/select residuals.
+- Do not broaden into ABI composite/byval/HFA/f128, variadic floating, dynamic
+  stack, or unrelated load-address scaling residuals.
 
 ## Working Model
 
-After commit `ee027c36a`, `00181` advanced beyond the old unchanged
-subsequent-state runtime mismatch. Generated `Move` assembly now reloads
-computed pointers and emits real stores through them before `PrintAll`. The
-remaining failure is a 5 second timeout, with suspicious generated address
-scaling such as `mov x9, #4; mul x9, x9, x9` around pointer-derived loads.
-The likely owner is now on the load/address side rather than missing store
-writeback.
+Commit `321031ce0` repaired immediate-scale multiply publication so generated
+`Move` keeps the index and scale in distinct registers. `00181` now advances
+from the old 5 second timeout to a fast runtime nonzero segmentation fault.
+The new first bad fact is at a prepared select/condition join: the false scan
+exit materializes `mov x13, #0`, but the join reloads a stale stack slot such
+as `ldr x13, [sp, #64]`, overwriting the false value. The destination scan
+shows the same shape.
 
 ## Execution Rules
 
-- Use generated-code and prepared-BIR evidence to confirm the first bad
-  pointer-derived load/address scaling fact before editing.
-- Compare semantic BIR, prepared BIR, and generated AArch64 before choosing
-  the owner boundary.
-- Prefer existing memory, local, GEP, address-projection, and load-address
-  materialization helpers and local codegen patterns.
-- Add focused backend coverage for the localized pointer-derived load/address
-  scaling shape before claiming capability progress.
+- Use generated-code and prepared-BIR evidence to confirm the first stale join
+  reload before editing.
+- Compare semantic BIR, prepared BIR, and generated AArch64 before choosing the
+  owner boundary.
+- Prefer existing select, condition, local publication, stack home, and
+  join-value helper patterns.
+- Add focused backend coverage for the localized select/condition join shape
+  before claiming capability progress.
+- Keep the idea 362 index/scale repair evidence stable.
+- Keep the idea 361 store writeback evidence present.
 - Keep the idea 360 starting-state output correct.
-- Keep the idea 361 materialized pointer store writeback evidence present.
-- Keep ideas 357, 358, and 359 stable.
 - Treat named-case matching, timeout-policy changes, or expectation weakening
   as route failure.
 
-## Step 1: Localize The Pointer-Derived Load Scaling Boundary
+## Step 1: Localize The Stale Join Reload Boundary
 
-Goal: find the first pointer-derived load or address-scaling operation that can
-explain the post-writeback `00181` timeout.
+Goal: find the first prepared select or condition publication operation that
+lets a false/zero edge value be overwritten by a stale stack reload.
 
 Actions:
 
 - Reproduce the focused subset including `00181`, `00170`, `00189`, and the
   backend contracts listed above.
 - Inspect `00181.c`, semantic BIR, prepared BIR, and generated AArch64 around
-  the repaired `Move` stores and the following load or recursion consumer.
-- Identify the producing pointer value, index or scale carrier, expected
-  address, emitted address calculation, load behavior, and timeout-causing
-  consumer.
+  the source and destination scan joins in `Move`.
+- Identify the false-edge producer, expected join-visible value, stale stack
+  slot, emitted reload, and consuming path.
 - Record the first bad fact and any adjacent same-shape examples in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the source load operation, pointer/index carrier, expected
-  address, emitted address calculation, first wrong boundary, and consumer
-  path.
-- The idea 361 store-writeback repair remains outside this step unless fresh
+- `todo.md` names the source select/condition operation, false-edge producer,
+  expected join value, stale reload, first wrong boundary, and consumer path.
+- The idea 362 address-scaling repair remains outside this step unless fresh
   evidence contradicts the split.
 
-## Step 2: Repair The Pointer-Derived Load Address Rule
+## Step 2: Repair The Prepared Select Condition Join Rule
 
-Goal: repair the general AArch64 lowering rule that computes the wrong address
-for pointer-derived loads.
+Goal: repair the general AArch64 prepared select/condition publication rule
+that lets stale stack reloads override explicit false/zero edge values.
 
 Actions:
 
-- Update only the localized AArch64 load/address scaling boundary.
-- Ensure the repair applies to the general pointer-derived load shape, not just
-  `00181`, one stack offset, or one emitted multiply.
+- Update only the localized select/condition join publication boundary.
+- Ensure the repair applies to the general join-visible value shape, not just
+  `00181`, one stack offset, or one emitted register.
+- Preserve pointer-derived load/address scaling from idea 362.
 - Preserve materialized pointer-addressed store writeback from idea 361.
 - Preserve direct `LoadGlobal` current-memory select-store handling from idea
   360.
-- Preserve recursive formal post-call repairs from ideas 357, 358, and 359.
-- Add focused backend coverage for the repaired load/address scaling shape.
+- Add focused backend coverage for the repaired join publication shape.
 
 Completion check:
 
 - Focused backend coverage fails before the repair and passes after it.
-- Generated code or execution evidence shows the representative load computes
-  the expected pointer-derived address.
+- Generated code or execution evidence shows false/zero scan exits keep their
+  expected join-visible value.
 - `git diff --check` passes.
 
 ## Step 3: Prove Focused External Progress
 
-Goal: prove the pointer-derived load/address scaling repair advances `00181`
-without regressing nearby repaired paths.
+Goal: prove the stale join reload repair advances `00181` without regressing
+nearby repaired paths.
 
 Actions:
 
 - Run:
   `cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00189_c)$' | tee test_after.log`
 - If `00181` still fails, classify the new first bad fact in `todo.md` and
-  split it only if it is outside the pointer-derived load/address scaling
-  owner.
-- Keep `00170`, `00189`, the idea 360 starting-state output, and the idea 361
-  store writeback evidence stable.
+  split it only if it is outside the prepared select/condition join owner.
+- Keep `00170`, `00189`, the idea 360 starting-state output, the idea 361
+  store writeback evidence, and the idea 362 address-scaling evidence stable.
 
 Completion check:
 
 - The delegated proof command is recorded in `todo.md`.
-- `00181` advances beyond the 5 second timeout or has a newly localized
+- `00181` advances beyond the fast segmentation fault or has a newly localized
   out-of-scope first bad fact.
 - Stability representatives remain passing.
 
@@ -163,12 +161,13 @@ Actions:
 - Compare the final residual, if any, against the source idea's in-scope and
   out-of-scope lists.
 - Ask the supervisor for a broader backend guard before closure because the
-  repair touches shared load/address lowering behavior.
+  repair may touch shared select, condition, local publication, or stack-home
+  behavior.
 - Split unrelated residuals into new `ideas/open/` source ideas instead of
   absorbing them into this plan.
 
 Completion check:
 
-- The pointer-derived load/address scaling residual closes only when it is
-  repaired, guarded, and not masking a separate owner.
+- The prepared select/condition join residual closes only when it is repaired,
+  guarded, and not masking a separate owner.
 - Any unrelated residual is split into a new source idea.

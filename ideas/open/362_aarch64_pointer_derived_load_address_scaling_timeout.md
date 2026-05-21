@@ -87,3 +87,24 @@ Reject the route if it:
   residuals without fresh first-bad-fact evidence and a lifecycle split;
 - regresses the idea 360 starting-state output, idea 361 store writeback, or
   the already repaired ideas 357, 358, and 359 stability paths.
+
+## Parked Lifecycle Note
+
+2026-05-21: commit `321031ce0` repaired the pointer-derived load/address
+scaling timeout owner by preserving the live index/result carrier when
+materializing immediate scales. Focused proof showed `00181` advanced from the
+5 second timeout to a fast runtime nonzero, with `00170`, `00189`, and the
+focused backend contracts passing. The broader backend guard reported 141/141
+passing.
+
+The new first bad fact is not pointer-derived load/address scaling: false scan
+exits materialize `mov x13, #0`, but the join reloads stale stack slots such
+as `ldr x13, [sp, #64]`, overwriting the false value. That residual was split
+to `ideas/open/363_aarch64_prepared_select_condition_join_stale_reload.md`.
+
+Source intent for this idea is satisfied, but close was rejected by the
+close-time monotonic regression gate because the available focused before/after
+logs classify `00181` as a changed failing test and the full baseline candidate
+introduced different failing tests despite a lower total failure count. Keep
+this idea parked until the supervisor can provide an acceptance-grade guard
+that permits archival closure.
