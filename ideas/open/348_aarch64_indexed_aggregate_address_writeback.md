@@ -1,6 +1,6 @@
 # AArch64 Indexed Aggregate Address And Writeback
 
-Status: Parked
+Status: Active
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -144,3 +144,13 @@ was requested. Resume 348 only if fresh generated-code evidence again shows an
 in-scope dynamic indexed aggregate selected-address/writeback failure after
 the residual call-preservation and unsigned div/rem publication owners are
 handled.
+
+2026-05-21: Reactivated after
+`ideas/open/353_aarch64_local_formal_frame_slot_publication.md` repaired the
+formal-to-local publication failure in `00176`. The current `00176` failure is
+now a runtime output mismatch, not timeout/stack exhaustion. Fresh generated
+evidence points back to in-scope global indexed array snapshot/writeback in
+`swap`: high stack snapshot slots such as `[sp, #264]` and `[sp, #268]` are
+read back uninitialized and used to corrupt the final array. Treat this as the
+next selected-address/writeback localization route, while preserving the prior
+348 repairs for `00130`, `00187`, and `00195`.

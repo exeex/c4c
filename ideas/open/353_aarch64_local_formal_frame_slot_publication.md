@@ -1,6 +1,6 @@
 # AArch64 Local/Formal Frame-Slot Publication
 
-Status: Open
+Status: Parked
 Created: 2026-05-21
 Split From: ideas/open/352_aarch64_block_label_emission_ordering.md
 
@@ -67,6 +67,27 @@ block-label or branch-emission repair.
 - Adjacent AArch64 local load/store, call argument publication, branch/control,
   return, selected-address, and frame-slot guardrails selected by the supervisor
   remain stable.
+
+## Lifecycle Handoff
+
+2026-05-21: The active repair published incoming register-backed fixed formals
+into the local frame slots consumed by generated AArch64 local loads. Focused
+proof stayed 5/6, but `00176` advanced from timeout/stack exhaustion to a fast
+runtime output mismatch after the stale `partition` formal/local-slot reads
+were repaired. Supervisor broader backend guard for the repair passed 141/141.
+
+The remaining `00176` first bad fact is outside this idea: generated `swap`
+appears to write global indexed array elements from uninitialized high stack
+snapshot slots such as `[sp, #264]` and `[sp, #268]`. That residual belongs to
+indexed aggregate/global array selected-address writeback work, so the active
+lifecycle switches to `ideas/open/348_aarch64_indexed_aggregate_address_writeback.md`.
+
+Close is deferred instead of moving this file to `ideas/closed/` because the
+available canonical narrow regression logs still report 5/6 before and after,
+and the guard script classifies the timeout-to-runtime-mismatch transition as a
+new failing test rather than a close-accepted monotonic pass increase. Resume
+this idea only if fresh evidence again shows scalar fixed formal-to-local
+frame-slot publication is the first bad fact.
 
 ## Reviewer Reject Signals
 
