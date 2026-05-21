@@ -70,13 +70,14 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
     const auto stored_size = type_size_bytes(stored_type);
     if (stored_size == 0 ||
         static_cast<std::size_t>(byte_offset) + access_size > stored_size) {
-      return false;
+      return allow_opaque_ptr_base && byte_offset == 0 && stored_type == bir::TypeKind::I8;
     }
     // Preserve byte-wise inspection/update of scalar object representations
     // after pointer reinterpretation through unsigned char* style views.
     return access_type == bir::TypeKind::I8;
   }
-  if (allow_opaque_ptr_base && byte_offset == 0 && (type_text.empty() || type_text == "ptr")) {
+  if (allow_opaque_ptr_base && byte_offset == 0 &&
+      (type_text.empty() || type_text == "ptr" || type_text == "i8")) {
     return true;
   }
   if (can_cover_scalar_access_with_byte_storage(byte_offset, access_size, type_text, type_decls)) {
@@ -715,6 +716,30 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_store(
   if (local_slot_ptr_it == local_slot_pointer_values.end()) {
     return std::nullopt;
   }
+  if (local_slot_ptr_it->second.value_type == bir::TypeKind::Ptr &&
+      value_type != bir::TypeKind::Ptr) {
+    const auto slot_size = type_size_bytes(value_type);
+    if (slot_size == 0) {
+      return false;
+    }
+    const std::string scratch_slot = std::string(ptr_name) + ".store.addr";
+    if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
+      return false;
+    }
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = scratch_slot,
+        .value = value,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(ptr_name)),
+                .byte_offset = 0,
+                .size_bytes = slot_size,
+                .align_bytes = slot_size,
+            },
+    });
+    return true;
+  }
   if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
                                     local_slot_ptr_it->second.value_type,
                                     local_slot_ptr_it->second.type_text,
@@ -753,7 +778,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
     return false;
   }
 
-  const std::string scratch_slot = std::string(ptr_name) + ".addr";
+  const std::string scratch_slot = std::string(ptr_name) + ".store.addr";
   if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
     return false;
   }
@@ -804,6 +829,30 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
   const auto local_slot_ptr_it = local_slot_pointer_values->find(std::string(ptr_name));
   if (local_slot_ptr_it == local_slot_pointer_values->end()) {
     return std::nullopt;
+  }
+  if (local_slot_ptr_it->second.value_type == bir::TypeKind::Ptr &&
+      value_type != bir::TypeKind::Ptr) {
+    const auto slot_size = type_size_bytes(value_type);
+    if (slot_size == 0) {
+      return false;
+    }
+    const std::string scratch_slot = std::string(result_name) + ".addr";
+    if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
+      return false;
+    }
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(value_type, std::string(result_name)),
+        .slot_name = scratch_slot,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(ptr_name)),
+                .byte_offset = 0,
+                .size_bytes = slot_size,
+                .align_bytes = slot_size,
+            },
+    });
+    return true;
   }
   if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
                                     local_slot_ptr_it->second.value_type,

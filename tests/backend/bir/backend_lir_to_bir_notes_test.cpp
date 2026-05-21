@@ -93,6 +93,9 @@ int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling()
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
 int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
+int expect_loaded_pointer_addressed_store_uses_pointer_base();
+int expect_casted_byte_pointer_i32_update_uses_pointer_base();
+int expect_indirect_local_memory_lvalue_contracts();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_pointer_value_symbol_identity_carrier();
 int expect_addressed_global_pointer_provenance_uses_link_name_id_keys();
@@ -1055,6 +1058,247 @@ int expect_string_literal_pointer_store_publishes_string_address_value() {
     return fail("published string pointer consumer should remain a dynamic pointer-value load");
   }
   return 0;
+}
+
+int expect_loaded_pointer_addressed_store_uses_pointer_base() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "loaded_pointer_addressed_store";
+  function.signature_text = "define i32 @loaded_pointer_addressed_store()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.x"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.p"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.pp"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("0"),
+      .ptr = LirOperand("%lv.x"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%lv.x"),
+      .ptr = LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%lv.p"),
+      .ptr = LirOperand("%lv.pp"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.p"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.pp"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("1"),
+      .ptr = LirOperand("%loaded.p"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.x"),
+      .type_str = "i32",
+      .ptr = LirOperand("%lv.x"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%loaded.x",
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("loaded pointer addressed-store fixture should lower to semantic BIR");
+  }
+
+  bool saw_pointer_base_store = false;
+  bool saw_direct_x_store_for_indirect_write = false;
+  const auto& lowered_function = result.module->functions.back();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+      if (store == nullptr || store->value != c4c::backend::bir::Value::immediate_i32(1)) {
+        continue;
+      }
+      if (store->address.has_value() &&
+          store->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          store->address->base_value.name == "%loaded.p" &&
+          store->address->size_bytes == 4) {
+        saw_pointer_base_store = true;
+      }
+      if (store->slot_name == "%lv.x") {
+        saw_direct_x_store_for_indirect_write = true;
+      }
+    }
+  }
+
+  if (saw_direct_x_store_for_indirect_write) {
+    return fail("loaded pointer addressed store must not collapse to a direct local-slot store");
+  }
+  if (!saw_pointer_base_store) {
+    return fail("loaded pointer addressed store should use the loaded pointer as the BIR memory base");
+  }
+  return 0;
+}
+
+int expect_casted_byte_pointer_i32_update_uses_pointer_base() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+
+  LirFunction function;
+  function.name = "casted_byte_pointer_i32_update";
+  function.signature_text =
+      "define i32 @casted_byte_pointer_i32_update(i32 %p.r, i32 %p.a, i32 %p.b)";
+  function.return_type = int_type;
+  function.params.push_back({"%p.r", int_type});
+  function.params.push_back({"%p.a", int_type});
+  function.params.push_back({"%p.b", int_type});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.bytes"),
+      .type_str = "[8 x i8]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.data"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%bytes.base"),
+      .element_type = "[8 x i8]",
+      .ptr = LirOperand("%lv.bytes"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%bytes.base"),
+      .ptr = LirOperand("%lv.data"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%data.ptr"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.data"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%r64"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.r"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%byte.ptr"),
+      .element_type = "i8",
+      .ptr = LirOperand("%data.ptr"),
+      .indices = {LirOperand("i64 %r64")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%old.word"),
+      .type_str = "i32",
+      .ptr = LirOperand("%byte.ptr"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%delta"),
+      .opcode = "sub",
+      .type_str = "i32",
+      .lhs = LirOperand("%p.a"),
+      .rhs = LirOperand("%p.b"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%new.word"),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = LirOperand("%old.word"),
+      .rhs = LirOperand("%delta"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("%new.word"),
+      .ptr = LirOperand("%byte.ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%new.word",
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("casted byte-pointer i32 update fixture should lower to semantic BIR");
+  }
+
+  bool saw_pointer_base_i32_load = false;
+  bool saw_pointer_base_i32_store = false;
+  const auto& lowered_function = result.module->functions.back();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%old.word" &&
+          load->address.has_value() &&
+          load->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          load->address->base_value.name == "%byte.ptr" &&
+          load->address->size_bytes == 4) {
+        saw_pointer_base_i32_load = true;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+          store != nullptr && store->value.name == "%new.word" &&
+          store->address.has_value() &&
+          store->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          store->address->base_value.name == "%byte.ptr" &&
+          store->address->size_bytes == 4) {
+        saw_pointer_base_i32_store = true;
+      }
+    }
+  }
+
+  if (!saw_pointer_base_i32_load || !saw_pointer_base_i32_store) {
+    return fail("casted byte-pointer update should load and store i32 through the computed pointer base");
+  }
+  return 0;
+}
+
+int expect_indirect_local_memory_lvalue_contracts() {
+  int status = 0;
+  if (expect_loaded_pointer_addressed_store_uses_pointer_base() != 0) {
+    status = 1;
+  }
+  if (expect_casted_byte_pointer_i32_update_uses_pointer_base() != 0) {
+    status = 1;
+  }
+  return status;
 }
 
 int expect_pointer_initializer_symbol_names_carry_link_name_id() {
@@ -7656,6 +7900,12 @@ int main() {
           expect_string_literal_pointer_store_publishes_string_address_value();
       string_literal_pointer_publication_status != 0) {
     return string_literal_pointer_publication_status;
+  }
+
+  if (const int indirect_local_memory_lvalue_status =
+          expect_indirect_local_memory_lvalue_contracts();
+      indirect_local_memory_lvalue_status != 0) {
+    return indirect_local_memory_lvalue_status;
   }
 
   if (const int pointer_initializer_identity_status =
