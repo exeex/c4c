@@ -1,8 +1,24 @@
 # AArch64 Local Aggregate Copy Load Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
+
+## Closure Note
+
+Idea 379 is complete for its local aggregate copy/load publication owner.
+Follow-up execution fixed local aggregate address publication, pointer-published
+aggregate homes, and fixed aggregate slice-family offsets. The focused
+`00216` proof now shows `ls21`, `lu22`, `lv3`, and `flow` matching expected
+output, with all 146 backend tests passing in the delegated backend-focused
+proof.
+
+The remaining `00216` failure is the previously parked
+function-pointer-table/relocation mismatch in `test_multi_relocs`, where the
+runtime prints `two/two/two` instead of `one/two/three`. That behavior is
+outside this idea's aggregate-copy publication scope and has been split into a
+new focused owner under `ideas/open/380_aarch64_function_pointer_table_relocation_dispatch.md`.
 
 ## Goal
 
