@@ -1,36 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/365_aarch64_signed_remainder_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Signed Remainder Operand Flow
+Current Step ID: 4
+Current Step Title: Prove Representative And Classify Residual
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added focused machine-printer coverage for signed remainder where the
-result aliases the dividend and the divisor is an immediate. The new assertion
-requires the emitted sequence to preserve separate quotient and divisor
-carriers:
-`mov w9, #8`; `sdiv w10, w13, w9`; `msub w13, w10, w9, w13`.
+Step 4 proved the signed remainder repair on `00143` after commit
+`0652f810c`.
 
-Step 3 repaired `src/backend/mir/aarch64/codegen/alu.cpp` so scalar remainder
-printing keeps the materialized RHS scratch as a real occupied
-`RegisterOperand`. When a remainder result aliases the dividend, quotient
-scratch allocation now excludes the divisor carrier, including immediate and
-frame-slot materializations, before emitting `sdiv`/`udiv` and `msub`.
+The delegated build-plus-subset proof passed. `test_after.log` reports
+144/144 tests passed, including the `backend_.*` coverage and
+`c_testsuite_aarch64_backend_src_00143_c`.
+
+Representative status:
+
+- `00143` now passes.
+- No new first bad fact was exposed by the delegated proof.
+- Generated `build/c_testsuite_aarch64_backend/src/00143.c.s` preserves the
+  divisor carrier for `count % 8`: `mov w9, #8`; `sdiv w10, w13, w9`;
+  `msub w13, w10, w9, w13`.
+
+Closure readiness:
+
+- Idea 365 is closure-ready from the executor perspective for the focused
+  signed remainder lowering goal.
+- No lifecycle handoff is needed from this Step 4 proof because the
+  representative now passes and there is no residual to classify.
 
 ## Suggested Next
 
-Supervisor can review the signed-remainder slice for commit readiness or move
-to the next active packet.
+Supervisor can route idea 365 to plan-owner closure review or run any broader
+validation required before closure.
 
 ## Watchouts
 
-The repair is in the shared signed/unsigned scalar remainder print path and
-does not touch switch lowering, synthetic labels, or expectations. Existing
-unsigned remainder behavior is preserved while sharing the same divisor-scratch
-occupancy protection.
+- This packet was proof/classification only; it did not touch implementation
+  files, tests, expectations, runners, `plan.md`, or `ideas/*`.
+- The delegated subset is green, but broader validation policy remains a
+  supervisor decision.
 
 ## Proof
 
