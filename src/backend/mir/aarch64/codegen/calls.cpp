@@ -1648,6 +1648,119 @@ make_byval_register_lane_prepared_source(
   };
 }
 
+struct PreservedCallArgumentSource {
+  const prepare::PreparedCallPreservedValue* preserved = nullptr;
+  std::optional<RegisterOperand> source_register;
+  std::optional<MemoryOperand> source_memory;
+};
+
+[[nodiscard]] const prepare::PreparedCallPreservedValue*
+find_prior_preserved_value_for_call_argument(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& current_call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedMoveResolution& move) {
+  const auto* call_plans =
+      context.function.call_plans != nullptr
+          ? context.function.call_plans
+          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
+                 ? prepare::find_prepared_call_plans(
+                       *context.function.prepared, context.function.control_flow->function_name)
+                 : nullptr);
+  if (call_plans == nullptr) {
+    return nullptr;
+  }
+
+  const auto value_id = argument.source_value_id.value_or(move.from_value_id);
+
+  const prepare::PreparedCallPreservedValue* selected = nullptr;
+  for (const auto& call : call_plans->calls) {
+    if (call.block_index != current_call_plan.block_index ||
+        call.instruction_index >= current_call_plan.instruction_index) {
+      continue;
+    }
+    for (const auto& preserved : call.preserved_values) {
+      if (preserved.value_id == value_id &&
+          preserved.route != prepare::PreparedCallPreservationRoute::Unknown) {
+        selected = &preserved;
+      }
+    }
+  }
+  return selected;
+}
+
+[[nodiscard]] std::optional<PreservedCallArgumentSource>
+make_prior_preserved_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& current_call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedValueHome* source_home,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* preserved = find_prior_preserved_value_for_call_argument(
+      context, current_call_plan, argument, move);
+  if (preserved == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto source_view =
+      source_home != nullptr && source_home->size_bytes.has_value()
+          ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+          : scalar_view_from_register_name(preserved->register_name);
+  PreservedCallArgumentSource result{.preserved = preserved};
+  if (preserved->route == prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    auto source = make_register_operand_from_prepared_authority(
+        preserved->register_name,
+        preserved->register_placement,
+        preserved->register_bank,
+        RegisterOperandRole::CallAbi,
+        preserved->value_id,
+        preserved->value_name,
+        preserved->contiguous_width,
+        preserved->occupied_register_names,
+        source_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    source->value_name = c4c::kInvalidValueName;
+    result.source_register = *source;
+    return result;
+  }
+
+  if (preserved->route == prepare::PreparedCallPreservationRoute::StackSlot &&
+      preserved->slot_id.has_value() && preserved->stack_offset_bytes.has_value() &&
+      preserved->stack_size_bytes.has_value() && *preserved->stack_size_bytes != 0 &&
+      preserved->stack_align_bytes.has_value() && *preserved->stack_align_bytes != 0) {
+    result.source_memory = MemoryOperand{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_index = instruction_index,
+        .result_value_id = argument.source_value_id,
+        .result_value_name = std::nullopt,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = preserved->slot_id,
+        .byte_offset = static_cast<std::int64_t>(*preserved->stack_offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = *preserved->stack_size_bytes,
+        .align_bytes = *preserved->stack_align_bytes,
+        .can_use_base_plus_offset = true,
+    };
+    return result;
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -2449,6 +2562,59 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   const auto aggregate_lane_size =
       byval_register_lane_size_bytes(context, move, call_plan.instruction_index);
 
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      argument != nullptr) {
+    auto preserved_source = make_prior_preserved_call_argument_source(
+        context,
+        call_plan,
+        *argument,
+        move,
+        source_home,
+        instruction_index,
+        diagnostics);
+    if (preserved_source.has_value()) {
+      auto destination = make_register_operand_from_prepared_authority(
+          binding != nullptr && binding->destination_register_name.has_value()
+              ? binding->destination_register_name
+              : move.destination_register_name,
+          binding != nullptr && binding->destination_register_placement.has_value()
+              ? binding->destination_register_placement
+              : move.destination_register_placement,
+          argument->destination_register_bank,
+          RegisterOperandRole::CallAbi,
+          move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                                : argument->source_value_id,
+          preserved_source->preserved != nullptr
+              ? preserved_source->preserved->value_name
+              : c4c::kInvalidValueName,
+          binding != nullptr ? binding->destination_contiguous_width
+                             : move.destination_contiguous_width,
+          binding != nullptr ? binding->destination_occupied_register_names
+                             : move.destination_occupied_register_names,
+          preserved_source->source_memory.has_value()
+              ? scalar_integer_register_view_from_size(
+                    preserved_source->source_memory->size_bytes)
+              : (source_home != nullptr && source_home->size_bytes.has_value()
+                     ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+                     : scalar_view_from_register_name(move.destination_register_name)),
+          diagnostics,
+          context,
+          instruction_index);
+      if (destination.has_value()) {
+        move_record.source_register = preserved_source->source_register;
+        move_record.source_memory = preserved_source->source_memory;
+        move_record.destination_register = *destination;
+        return make_call_boundary_machine_instruction(
+            context,
+            instruction_index,
+            make_call_boundary_move_instruction(std::move(move_record)));
+      }
+    }
+  }
+
   const bool selected_gpr_argument_move =
       argument != nullptr &&
       (argument->source_encoding == prepare::PreparedStorageEncodingKind::Register ||
@@ -2505,17 +2671,18 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     return std::nullopt;
   }
 
-    if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-        move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-        move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
-        move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-        source_home != nullptr &&
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
       source_home->register_name.has_value() && argument != nullptr &&
       (selected_gpr_argument_move || selected_scalar_fpr_argument_move ||
        selected_f128_argument_move) &&
       binding != nullptr &&
-      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      !move_record.destination_register.has_value()) {
     if (argument->source_register_name.has_value() &&
         *argument->source_register_name != *source_home->register_name) {
       append_call_diagnostic(

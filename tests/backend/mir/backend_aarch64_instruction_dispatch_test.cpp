@@ -1984,6 +1984,152 @@ prepare::PreparedBirModule prepared_with_direct_call_argument_register_move() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_nested_call_preserved_argument_reuse() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.nested.call.arg");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.nested.call.arg.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.nested.call.arg.entry");
+  const auto clobber_link = prepared.names.link_names.intern("clobber_arg");
+  const auto consume_link = prepared.names.link_names.intern("consume_arg");
+  const auto arg_name = prepared.names.value_names.intern("%arg");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.nested.call.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.nested.call.arg.entry",
+          .insts =
+              {bir::CallInst{
+                   .callee = "clobber_arg",
+                   .callee_link_name_id = clobber_link,
+                   .return_type = bir::TypeKind::Void,
+                   .calling_convention = bir::CallingConv::C,
+               },
+               bir::CallInst{
+                   .callee = "consume_arg",
+                   .callee_link_name_id = consume_link,
+                   .args = {bir::Value::named(bir::TypeKind::I64, "%arg")},
+                   .arg_types = {bir::TypeKind::I64},
+                   .return_type = bir::TypeKind::Void,
+                   .calling_convention = bir::CallingConv::C,
+               }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{141},
+              .function_name = function_name,
+              .value_name = arg_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x1"},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 1,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{141},
+                      .to_value_id = prepare::PreparedValueId{141},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 1,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_register_to_register_after_call",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+          }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {prepare::PreparedCallPlan{
+               .block_index = 0,
+               .instruction_index = 0,
+               .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+               .direct_callee_name = std::string{"clobber_arg"},
+               .preserved_values =
+                   {prepare::PreparedCallPreservedValue{
+                       .value_id = prepare::PreparedValueId{141},
+                       .value_name = arg_name,
+                       .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                       .callee_saved_save_index = std::size_t{0},
+                       .contiguous_width = 1,
+                       .register_name = std::string{"x20"},
+                       .register_bank = prepare::PreparedRegisterBank::Gpr,
+                       .occupied_register_names = {"x20"},
+                   }},
+               .clobbered_registers =
+                   {prepare::PreparedClobberedRegister{
+                       .bank = prepare::PreparedRegisterBank::Gpr,
+                       .register_name = std::string{"x1"},
+                       .contiguous_width = 1,
+                       .occupied_register_names = {"x1"},
+                   }},
+           },
+           prepare::PreparedCallPlan{
+               .block_index = 0,
+               .instruction_index = 1,
+               .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+               .direct_callee_name = std::string{"consume_arg"},
+               .arguments =
+                   {prepare::PreparedCallArgumentPlan{
+                       .instruction_index = 1,
+                       .arg_index = 0,
+                       .value_bank = prepare::PreparedRegisterBank::Gpr,
+                       .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                       .source_value_id = prepare::PreparedValueId{141},
+                       .source_register_name = std::string{"x1"},
+                       .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                       .destination_register_name = std::string{"x0"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x0"},
+                       .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   }},
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_load_global_call_argument(
     bir::GlobalAddressMaterializationPolicy policy) {
   prepare::PreparedBirModule prepared;
@@ -11485,6 +11631,68 @@ int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
   return 0;
 }
 
+int nested_call_argument_publishes_from_prior_preservation_home() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  if (function_context.call_plans == nullptr ||
+      function_context.call_plans->calls.size() != 2 ||
+      function_context.call_plans->calls.front().preserved_values.empty() ||
+      function_context.call_plans->calls.front().preserved_values.front().value_id !=
+          prepare::PreparedValueId{141} ||
+      function_context.call_plans->calls.back().arguments.empty() ||
+      function_context.call_plans->calls.front().block_index != 0 ||
+      function_context.call_plans->calls.back().block_index != 0 ||
+      function_context.call_plans->calls.front().instruction_index != 0 ||
+      function_context.call_plans->calls.back().instruction_index != 1 ||
+      function_context.call_plans->calls.back().arguments.front().source_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{141}}) {
+    return fail("expected nested call fixture to carry prior preserved value");
+  }
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      !diagnostics.empty()) {
+    return fail("expected nested call dispatch to emit call, preserved-home arg move, call, return");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::x_register(20) ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected later call argument to publish from preserved x20 home: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected nested call route to print: " + printed.diagnostic);
+  }
+  const auto first_call = printed.assembly.find("bl clobber_arg");
+  const auto preserved_publish = printed.assembly.find("mov x0, x20", first_call);
+  const auto stale_publish = printed.assembly.find("mov x0, x1", first_call);
+  const auto second_call = printed.assembly.find("bl consume_arg", preserved_publish);
+  if (first_call == std::string::npos || preserved_publish == std::string::npos ||
+      second_call == std::string::npos ||
+      (stale_publish != std::string::npos && stale_publish < second_call)) {
+    return fail("expected later call argument to reload from preservation home after bl: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -20033,6 +20241,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_register_argument_move_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          nested_call_argument_publishes_from_prior_preservation_home();
       status != 0) {
     return status;
   }
