@@ -1,8 +1,19 @@
 # AArch64 Short-Circuit Control Publication Regression
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Discovered After: ideas/closed/366_aarch64_string_literal_pointer_null_comparison.md
+Closed: 2026-05-21
+
+## Closure Summary
+
+Completed by implementation `ea9d30f56` and proof updates `a5333beb4` /
+`c37b51e85`. `c_testsuite_aarch64_backend_src_00196_c` passes again, and
+`c_testsuite_aarch64_backend_src_00112_c` remains passing. The full-suite
+regression guard passed against the accepted baseline with no new failing
+tests, improving the suite from `3346` passed / `29` failed to `3347` passed /
+`28` failed. After baseline roll-forward, the current canonical full-suite
+logs still compare cleanly with no new failures.
 
 ## Goal
 
