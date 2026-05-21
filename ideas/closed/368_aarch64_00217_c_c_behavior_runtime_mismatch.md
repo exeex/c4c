@@ -1,8 +1,9 @@
 # AArch64 00217 C Behavior Runtime Mismatch
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/closed/367_semantic_bir_indirect_local_memory_lvalue_admission.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -92,3 +93,25 @@ Reject the route if it:
   split;
 - hides the same runtime corruption behind a broader rewrite that cannot name
   the first incorrect prepared-BIR, AArch64, memory, ABI, or runtime boundary.
+
+## Closure Notes
+
+Closed after commit `9977c2d2c` repaired the localized AArch64
+pointer-value local store writeback owner by using the prepared/emitted named
+stored-value register instead of recomputing the producer chain during the
+writeback fallback. The focused acceptance proof showed
+`c_testsuite_aarch64_backend_src_00217_c` passing with
+`c_testsuite_aarch64_backend_src_00005_c`,
+`c_testsuite_aarch64_backend_src_00173_c`, `backend_lir_to_bir_notes`,
+`backend_aarch64_instruction_dispatch`, and the focused
+`backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value`
+guard stable.
+
+Close guard command:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00005_c|c_testsuite_aarch64_backend_src_00173_c|c_testsuite_aarch64_backend_src_00217_c)$'
+```
+
+The guard compared against the existing matching three-test baseline and
+passed: `00217` resolved from failing to passing, with no new failing tests.
