@@ -27,6 +27,25 @@ namespace {
 
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 
+[[nodiscard]] bool append_global_pointer_offset_value(
+    std::string_view result_name,
+    const GlobalAddress& address,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (result_name.empty() || address.global_name.empty() || address.byte_offset == 0 ||
+      address.link_name_id == c4c::kInvalidLinkName) {
+    return false;
+  }
+  lowered_insts->push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named_symbol_pointer("@" + address.global_name,
+                                              address.link_name_id),
+      .rhs = bir::Value::immediate_i64(static_cast<std::int64_t>(address.byte_offset)),
+  });
+  return true;
+}
+
 BackendAggregateLayoutLookup lookup_addressing_layout_result(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
@@ -1235,6 +1254,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         value_aliases[gep.result.str()] =
             bir::Value::named_symbol_pointer("@" + linked_address.global_name,
                                              linked_address.link_name_id);
+      } else if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+                 append_global_pointer_offset_value(gep.result.str(),
+                                                    linked_address,
+                                                    lowered_insts)) {
+        value_aliases[gep.result.str()] =
+            bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
       }
       global_pointer_slots[gep.result.str()] = std::move(linked_address);
       return true;
@@ -1586,6 +1611,13 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         structured_layouts_);
     if (resolved_address.has_value()) {
       global_pointer_slots[gep.result.str()] = *resolved_address;
+      if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+          append_global_pointer_offset_value(gep.result.str(),
+                                             *resolved_address,
+                                             lowered_insts)) {
+        value_aliases[gep.result.str()] =
+            bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
+      }
       return true;
     }
     const auto dynamic_array = resolve_global_dynamic_pointer_array_access(

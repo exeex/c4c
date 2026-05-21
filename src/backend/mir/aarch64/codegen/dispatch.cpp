@@ -6078,6 +6078,257 @@ lower_stack_homed_pointer_store_writeback(
   };
 }
 
+[[nodiscard]] std::optional<std::string> prepared_global_symbol_from_value_name(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr || value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const std::string_view spelling =
+      context.function.prepared->names.value_names.spelling(value_name);
+  if (spelling.size() <= 1 || spelling.front() != '@') {
+    if (context.function.prepared->names.link_names.find(spelling) != c4c::kInvalidLinkName) {
+      return std::string{spelling};
+    }
+    return std::nullopt;
+  }
+  return std::string{spelling.substr(1)};
+}
+
+[[nodiscard]] bool emit_global_symbol_address_to_register(
+    std::string_view symbol,
+    std::int64_t delta,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  const auto target = gp_register_name(target_index, abi::RegisterView::X);
+  if (!target.has_value() || symbol.empty()) {
+    return false;
+  }
+  if (delta >= 0) {
+    const auto reloc = relocation_operand(std::string{symbol}, static_cast<std::size_t>(delta));
+    lines.push_back("adrp " + *target + ", " + reloc);
+    lines.push_back("add " + *target + ", " + *target + ", :lo12:" + reloc);
+    return true;
+  }
+  lines.push_back("adrp " + *target + ", " + std::string{symbol});
+  lines.push_back("add " + *target + ", " + *target + ", :lo12:" + std::string{symbol});
+  lines.push_back("sub " + *target + ", " + *target + ", #" +
+                  std::to_string(-delta));
+  return true;
+}
+
+[[nodiscard]] bool emit_pointer_base_plus_offset_to_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& value_home,
+    std::size_t instruction_index,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  if (value_home.kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !value_home.pointer_base_value_name.has_value()) {
+    return false;
+  }
+  const auto target = gp_register_name(target_index, abi::RegisterView::X);
+  if (!target.has_value()) {
+    return false;
+  }
+
+  const auto delta = value_home.pointer_byte_delta.value_or(0);
+  if (auto symbol =
+          prepared_global_symbol_from_value_name(context, *value_home.pointer_base_value_name)) {
+    return emit_global_symbol_address_to_register(
+        *symbol, delta, target_index, lines);
+  }
+
+  const auto base_value_spelling =
+      context.function.prepared != nullptr
+          ? context.function.prepared->names.value_names.spelling(
+                *value_home.pointer_base_value_name)
+          : std::string_view{};
+  const auto* producer =
+      find_same_block_named_producer(context, base_value_spelling, instruction_index);
+  if (const auto* load_local =
+          producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
+      load_local != nullptr && load_local->result.type == bir::TypeKind::Ptr) {
+    const auto producer_index = producer_instruction_index(context, producer);
+    const auto offset = producer_index.has_value()
+                            ? prepared_local_load_offset(context, *producer_index)
+                            : std::nullopt;
+    if (offset.has_value()) {
+      lines.push_back("ldr " + *target + ", " + frame_slot_address(*offset));
+      if (delta > 0) {
+        lines.push_back("add " + *target + ", " + *target + ", #" +
+                        std::to_string(delta));
+      } else if (delta < 0) {
+        lines.push_back("sub " + *target + ", " + *target + ", #" +
+                        std::to_string(-delta));
+      }
+      return true;
+    }
+  }
+
+  if (context.function.value_locations == nullptr) {
+    return false;
+  }
+  const auto* base_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *value_home.pointer_base_value_name);
+  if (base_home == nullptr) {
+    return false;
+  }
+  if (base_home->kind == prepare::PreparedValueHomeKind::Register &&
+      base_home->register_name.has_value()) {
+    const auto parsed = abi::parse_aarch64_register_name(*base_home->register_name);
+    if (!parsed.has_value() || !abi::is_gp_register(*parsed)) {
+      return false;
+    }
+    const auto source = gp_register_name(parsed->index, abi::RegisterView::X);
+    if (!source.has_value()) {
+      return false;
+    }
+    if (delta == 0) {
+      if (*source != *target) {
+        lines.push_back("mov " + *target + ", " + *source);
+      }
+    } else if (delta > 0) {
+      lines.push_back("add " + *target + ", " + *source + ", #" +
+                      std::to_string(delta));
+    } else {
+      lines.push_back("sub " + *target + ", " + *source + ", #" +
+                      std::to_string(-delta));
+    }
+    return true;
+  }
+  if (base_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      base_home->offset_bytes.has_value()) {
+    lines.push_back("ldr " + *target + ", " + frame_slot_address(*base_home->offset_bytes));
+    if (delta > 0) {
+      lines.push_back("add " + *target + ", " + *target + ", #" +
+                      std::to_string(delta));
+    } else if (delta < 0) {
+      lines.push_back("sub " + *target + ", " + *target + ", #" +
+                      std::to_string(-delta));
+    }
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::size_t> store_local_frame_slot_offset(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr) {
+    return std::nullopt;
+  }
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto* slot =
+      find_frame_slot(context.function.prepared->stack_layout,
+                      *access->address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_pointer_base_plus_offset_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named ||
+      store->value.type != bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto destination_offset = store_local_frame_slot_offset(context, instruction_index);
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (!destination_offset.has_value() || scratches.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  const auto address_register = gp_register_name(scratches.front().index, abi::RegisterView::X);
+  if (!address_register.has_value()) {
+    return std::nullopt;
+  }
+
+  bool emitted = false;
+  if (auto symbol = prepared_global_symbol_from_value_name(context, *value_name)) {
+    emitted =
+        emit_global_symbol_address_to_register(*symbol, 0, scratches.front().index, lines);
+  } else if (context.function.value_locations != nullptr) {
+    const auto* value_home =
+        prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+    emitted = value_home != nullptr &&
+              value_home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+              emit_pointer_base_plus_offset_to_register(
+                  context, *value_home, instruction_index, scratches.front().index, lines);
+  }
+  if (!emitted) {
+    return std::nullopt;
+  }
+  lines.push_back("str " + *address_register + ", " + frame_slot_address(*destination_offset));
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryWrite},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = [&] {
+            std::string text;
+            for (std::size_t index = 0; index < lines.size(); ++index) {
+              if (index != 0) {
+                text += '\n';
+              }
+              text += lines[index];
+            }
+            return text;
+          }(),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
 [[nodiscard]] bool is_store_global_select_snapshot_run_instruction(const bir::Inst& inst) {
   return std::get_if<bir::SelectInst>(&inst) != nullptr ||
          std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
@@ -6132,6 +6383,12 @@ void lower_pending_store_global_stack_value_publications(
   if (store == nullptr) {
     return false;
   }
+  if (auto pointer_address_store =
+          lower_pointer_base_plus_offset_store_local_publication(
+              context, inst, instruction_index)) {
+    block.instructions.push_back(std::move(*pointer_address_store));
+    return true;
+  }
 
   auto materialized = lower_address_materialization(context, instruction_index, diagnostics);
   if (!materialized.has_value()) {
@@ -6169,6 +6426,13 @@ void lower_pending_store_global_stack_value_publications(
     record_memory_result(scalar_state, *lowered_memory.instruction);
     block.instructions.push_back(std::move(*lowered_memory.instruction));
   } else if (lowered_memory.handled) {
+    if (auto pointer_address_store =
+            lower_pointer_base_plus_offset_store_local_publication(
+                context, inst, instruction_index)) {
+      diagnostics.entries.resize(diagnostic_count);
+      block.instructions.push_back(std::move(*pointer_address_store));
+      return lowered_memory.handled;
+    }
     if (auto pointer_store =
             lower_stack_homed_pointer_store_writeback(context, inst, instruction_index)) {
       diagnostics.entries.resize(diagnostic_count);
@@ -8974,6 +9238,11 @@ InstructionDispatchResult dispatch_prepared_block(
                   context, *lowered_ordinary_memory.instruction);
               record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
               block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
+            } else if (auto pointer_address_store =
+                           lower_pointer_base_plus_offset_store_local_publication(
+                               context, inst, memory_lowering_index)) {
+              diagnostics.entries.resize(diagnostic_count);
+              block.instructions.push_back(std::move(*pointer_address_store));
             } else if (auto pointer_store =
                            lower_stack_homed_pointer_store_writeback(
                                context, inst, memory_lowering_index)) {

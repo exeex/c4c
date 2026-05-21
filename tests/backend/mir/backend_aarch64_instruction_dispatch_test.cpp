@@ -8131,6 +8131,228 @@ prepare::PreparedBirModule prepared_with_stack_homed_pointer_value_store() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_pointer_local_computed_address_reassignment() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.ptr.local.reassign");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.ptr.local.reassign.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.ptr.local.reassign.entry");
+  const auto pointer_slot = prepared.names.slot_names.intern("%ptr.local");
+  const auto first_addr = prepared.names.value_names.intern("%first.addr");
+  const auto member_addr = prepared.names.value_names.intern("%member.addr");
+  const auto global_base = prepared.names.value_names.intern("@global_pair");
+  const auto loaded_pointer = prepared.names.value_names.intern("%loaded.ptr");
+  const auto observed = prepared.names.value_names.intern("%observed");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.ptr.local.reassign",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.ptr.local.reassign.entry",
+          .insts =
+              {bir::StoreLocalInst{
+                   .slot_name = "%ptr.local",
+                   .slot_id = pointer_slot,
+                   .value = bir::Value::named(bir::TypeKind::Ptr, "%first.addr"),
+                   .align_bytes = 8,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                           .size_bytes = 8,
+                           .align_bytes = 8,
+                           .address_space = bir::AddressSpace::Default,
+                           .base_slot_id = pointer_slot,
+                       },
+               },
+               bir::StoreLocalInst{
+                   .slot_name = "%ptr.local",
+                   .slot_id = pointer_slot,
+                   .value = bir::Value::named(bir::TypeKind::Ptr, "%member.addr"),
+                   .align_bytes = 8,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                           .size_bytes = 8,
+                           .align_bytes = 8,
+                           .address_space = bir::AddressSpace::Default,
+                           .base_slot_id = pointer_slot,
+                       },
+               },
+               bir::LoadLocalInst{
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%loaded.ptr"),
+                   .slot_name = "%ptr.local",
+                   .slot_id = pointer_slot,
+                   .align_bytes = 8,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                           .size_bytes = 8,
+                           .align_bytes = 8,
+                           .address_space = bir::AddressSpace::Default,
+                           .base_slot_id = pointer_slot,
+                       },
+               },
+               bir::LoadLocalInst{
+                   .result = bir::Value::named(bir::TypeKind::I32, "%observed"),
+                   .slot_name = "%observed.addr",
+                   .align_bytes = 4,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                           .base_value =
+                               bir::Value::named(bir::TypeKind::Ptr, "%loaded.ptr"),
+                           .size_bytes = 4,
+                           .align_bytes = 4,
+                           .address_space = bir::AddressSpace::Default,
+                       },
+               }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{151},
+              .object_id = prepare::PreparedObjectId{151},
+              .function_name = function_name,
+              .offset_bytes = 16,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{151},
+               .function_name = function_name,
+               .value_name = first_addr,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{152},
+               .function_name = function_name,
+               .value_name = member_addr,
+               .kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+               .slot_id = prepare::PreparedFrameSlotId{152},
+               .offset_bytes = std::size_t{32},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+               .pointer_base_value_name = global_base,
+               .pointer_byte_delta = std::int64_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{153},
+               .function_name = function_name,
+               .value_name = loaded_pointer,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{154},
+               .function_name = function_name,
+               .value_name = observed,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w14"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{151}, first_addr, "x20"),
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{152},
+               .value_name = member_addr,
+               .encoding = prepare::PreparedStorageEncodingKind::ComputedAddress,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{152},
+               .stack_offset_bytes = std::size_t{32},
+           },
+           register_storage(prepare::PreparedValueId{153}, loaded_pointer, "x13"),
+           register_storage(prepare::PreparedValueId{154}, observed, "w14")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .stored_value_name = first_addr,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{151},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .stored_value_name = member_addr,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{151},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .result_value_name = loaded_pointer,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{151},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .result_value_name = observed,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                       .pointer_value_name = loaded_pointer,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_pointer_index_byte_offset_scale() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -24838,6 +25060,53 @@ int block_dispatch_lowers_stack_homed_pointer_value_store_writeback() {
   return 0;
 }
 
+int block_dispatch_publishes_computed_address_to_pointer_local_before_reload() {
+  auto prepared = prepared_with_pointer_local_computed_address_reassignment();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 4 ||
+      block.instructions.size() < 5) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected pointer-local computed address publication before reload: ops=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected pointer-local computed address route to print: " +
+                printed.diagnostic);
+  }
+  const auto materialize = printed.assembly.find("adrp ");
+  const auto symbol = printed.assembly.find("global_pair+4");
+  const auto publish = printed.assembly.find("str x9, [sp, #16]");
+  const auto reload = printed.assembly.find("ldr x13, [sp, #16]");
+  const auto dereference = printed.assembly.find("ldr w14, [x13]");
+  if (materialize == std::string::npos ||
+      symbol == std::string::npos ||
+      publish == std::string::npos ||
+      reload == std::string::npos ||
+      dereference == std::string::npos ||
+      !(materialize < publish && publish < reload && reload < dereference)) {
+    return fail("expected computed global subobject address to be stored to pointer local before dereference: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_keeps_pointer_index_and_scale_registers_distinct() {
   auto prepared = prepared_with_pointer_index_byte_offset_scale();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -25326,6 +25595,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_stack_homed_pointer_value_store_writeback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_computed_address_to_pointer_local_before_reload();
       status != 0) {
     return status;
   }
