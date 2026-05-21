@@ -8,15 +8,22 @@ Current Step Title: Confirm the Current Residual Surface
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for
-`plan.md` Step 1.
+Completed `plan.md` Step 1 classification from existing supervisor-approved
+logs. The current backend-regex residual list is:
+
+- `c_testsuite_aarch64_backend_src_00200_c` - timeout-only residual.
+- `c_testsuite_aarch64_backend_src_00207_c` - timeout-only residual.
+
+`00216` is gone from the current residual surface: `test_after.log` includes
+`c_testsuite_aarch64_backend_src_00216_c` and records it as passed. The
+full-suite baseline in `test_baseline.log` lists only `00200` and `00207` as
+`aarch64_backend c_testsuite` failures, and both are timeouts.
 
 ## Suggested Next
 
-Confirm the current backend-regex residual surface after idea 380 using the
-supervisor-approved baseline artifacts or proof command. Verify whether
-`00216` is gone and whether `00200` and `00207` are the only remaining
-timeout-only backend-regex residuals.
+Classify the timeout mechanism for `00200` under `plan.md` Step 2 using bounded
+source/log/generated-artifact inspection. Do not broaden into implementation or
+runner-policy changes without a new packet.
 
 ## Watchouts
 
@@ -29,4 +36,13 @@ runtime logs.
 
 ## Proof
 
-Not run. Lifecycle activation only.
+No new proof command was run for this classification-only packet. Read-only
+evidence used:
+
+- `test_baseline.log`: full-suite baseline reports 18 total failures; the only
+  `aarch64_backend c_testsuite` failures are
+  `c_testsuite_aarch64_backend_src_00200_c` and
+  `c_testsuite_aarch64_backend_src_00207_c`, both marked `Timeout`.
+- `test_after.log`: backend subset plus focused
+  `c_testsuite_aarch64_backend_src_00216_c` reports 148/148 passed, with
+  `00216` passed.
