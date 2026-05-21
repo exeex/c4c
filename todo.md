@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/370_aarch64_short_circuit_control_publication_regre
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Localize Short-Circuit Regression Boundary
-你該做test baseline review了
 
 你該做baseline sanity check了
 
