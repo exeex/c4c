@@ -1,46 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/375_aarch64_local_aggregate_bitfield_layout_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Local Aggregate Bit-Field Layout Gap
+Current Step ID: 2
+Current Step Title: Add Focused Layout Publication Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the `00218` local aggregate bit-field mismatch. Frontend HIR
-and Clang agree that `union tree_node.common.code` is stored in the
-`tree_common` bit-field storage unit at byte `16`, bit `0`; `convert_like_real`
-semantic/prepared BIR also loads `addr %p.convs+16`. The first bad fact is
-already present in `main` semantic BIR: `convs.common.code = AMBIG_CONV`
-lowers to `bir.store_local %lv.convs.0, ... addr %lv.convs.0+2`, and prepared
-addressing preserves that bad `frame_slot #1 offset=2` store through AArch64
-publication (`str w9, [sp,#2]`).
+Step 2 added focused backend coverage in
+`backend_codegen_route_x86_64_local_aggregate_bitfield_layout_observe_semantic_bir`.
+The revised case `tests/backend/case/local_aggregate_bitfield_layout.c` uses a
+local aggregate wrapper containing `struct NodeCommon common`; `NodeCommon` has
+two pointer-sized fields followed by `unsigned code : 8`. The route test writes
+`node.common.code`, passes `&node` to a consumer that reads `common.code`, and
+checks semantic BIR stores and later loads the bit-field storage unit at
+ABI/layout byte offset `16` instead of logical field index `2`.
 
 ## Suggested Next
 
-Execute Step 2 by adding focused backend coverage for semantic-BIR local
-aggregate member/bit-field GEP lowering: a local aggregate with an initial
-pointer-sized member followed by an unsigned 8-bit bit-field is written, its
-address is passed to a scalar pointer consumer, and the dump/assembly proof
-requires the write and later load to use the ABI/layout byte offset (`16` here),
-not the logical field index (`2`) or a testcase-specific spelling.
+Execute Step 3 by repairing the semantic-BIR local aggregate member/bit-field
+GEP lowering so the failing `00218` AArch64 path publishes the layout byte
+offset for the local store instead of preserving logical field index `2`.
 
 ## Watchouts
 
-Likely owning boundary is semantic layout publication in the local aggregate
-member/bit-field GEP path before prepared handoff, not frame-slot allocation,
-bit-field mask/store lowering, or AArch64 store publication. Evidence:
-`--dump-hir` reports `tree_common.code offset=16 size=4 bitfield(width=8,
-bit_offset=0, storage_bits=32)`, while `--dump-bir --mir-focus-function main`
-has `addr %lv.convs.0+2`; prepared stack layout and AArch64 merely preserve
-that bad offset. Do not reopen idea 374's local aggregate address call
-publication boundary; the call now passes `&convs` correctly.
+The focused x86_64 semantic-BIR route test is green before the repair with the
+nested aggregate-wrapper shape. Keep the next slice in implementation code; do
+not loosen this coverage or the external `00218` expectation.
 
 ## Proof
 
 Ran delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00218_c$'; } > test_after.log 2>&1`.
-Result: build was up to date, focused CTest failed with the known runtime
-mismatch (`actual: unsigned enum bit-fields broken`). Proof log:
-`test_after.log`.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_aggregate_bitfield_layout_observe_semantic_bir|c_testsuite_aarch64_backend_src_00218_c)$'; } > test_after.log 2>&1`.
+Result: build succeeded; the revised focused route test passed; the proof
+command failed only because `c_testsuite_aarch64_backend_src_00218_c` still
+reports the known runtime mismatch (`actual: unsigned enum bit-fields broken`).
+Proof log: `test_after.log`.

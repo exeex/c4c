@@ -852,6 +852,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_aggregate_bitfield_layout_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_aggregate_bitfield_layout.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_aggregate_bitfield_layout_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @read_code(ptr %p.node) -> i32 {|addr %p.node+16|bir.func @main() -> i32 {|bir.store_local %lv.node.0, ptr 0|bir.store_local %lv.node.8, ptr 0|bir.load_local i32 %lv.node.16|bir.store_local %lv.node.16, i32 %t4.bf.comb|bir.call i32 read_code(ptr %lv.node)"
+  FORBIDDEN_SNIPPETS "define i32 @main()|addr %p.node+2|%lv.node.2,|getelementptr %struct.TreeNode|getelementptr %struct.NodeCommon"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
