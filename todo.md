@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Capture Current Backend Surface
+Current Step ID: 2
+Current Step Title: Classify Residual Buckets
 
 # Current Packet
 
