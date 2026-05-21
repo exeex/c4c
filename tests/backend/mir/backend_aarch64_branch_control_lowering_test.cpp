@@ -459,6 +459,139 @@ prepare::PreparedBirModule prepared_with_i32_sext_i64_constant_udiv_bound_branch
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_stack_homed_constant_binary_bound_branch() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("sizeof.bound.fn");
+  const auto entry_label = prepared.names.block_labels.intern("sizeof.bound.entry");
+  const auto then_label = prepared.names.block_labels.intern("sizeof.bound.then");
+  const auto else_label = prepared.names.block_labels.intern("sizeof.bound.else");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto index_name = prepared.names.value_names.intern("%idx");
+  const auto bound_name = prepared.names.value_names.intern("%sizeof.bound");
+  const auto function_link_name =
+      prepared.module.names.link_names.intern("sizeof.bound.fn");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("sizeof.bound.entry");
+  const auto bir_then_label =
+      prepared.module.names.block_labels.intern("sizeof.bound.then");
+  const auto bir_else_label =
+      prepared.module.names.block_labels.intern("sizeof.bound.else");
+  const auto condition = bir::Value::named(bir::TypeKind::I32, "%cond");
+  const auto index = bir::Value::named(bir::TypeKind::I32, "%idx");
+  const auto bound = bir::Value::named(bir::TypeKind::I32, "%sizeof.bound");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::CondBranch,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+      .branch_conditions = {prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = entry_label,
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = condition,
+          .predicate = bir::BinaryOpcode::Slt,
+          .compare_type = bir::TypeKind::I32,
+          .lhs = index,
+          .rhs = bound,
+          .can_fuse_with_branch = true,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{70},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{71},
+                  .function_name = function_name,
+                  .value_name = index_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w13"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{72},
+                  .function_name = function_name,
+                  .value_name = bound_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{72},
+                  .offset_bytes = std::size_t{32},
+                  .size_bytes = std::size_t{4},
+                  .align_bytes = std::size_t{4},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{71},
+                  .value_name = index_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"w13"},
+                  .occupied_register_names = {std::string{"w13"}},
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{72},
+                  .value_name = bound_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .slot_id = prepare::PreparedFrameSlotId{72},
+                  .stack_offset_bytes = std::size_t{32},
+              },
+          },
+  });
+
+  bir::Block entry;
+  entry.label = "sizeof.bound.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Mul,
+      .result = bound,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(16),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Slt,
+      .result = condition,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = index,
+      .rhs = bound,
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = condition,
+      .true_label = "sizeof.bound.then",
+      .false_label = "sizeof.bound.else",
+      .true_label_id = bir_then_label,
+      .false_label_id = bir_else_label,
+  };
+
+  bir::Function function;
+  function.name = "sizeof.bound.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(entry);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_loop_header_fused_compare_branch() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1371,6 +1504,64 @@ int direct_dispatch_lowers_i32_sext_i64_constant_udiv_bound_branch() {
   return 0;
 }
 
+int direct_dispatch_lowers_stack_homed_constant_binary_rhs_as_compare_immediate() {
+  auto prepared = prepared_with_stack_homed_constant_binary_bound_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 10);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!result.visited_terminator || block.instructions.empty() ||
+      !diagnostics.empty()) {
+    std::string messages;
+    for (const auto& diagnostic : diagnostics.entries) {
+      messages += diagnostic.message;
+      messages += "; ";
+    }
+    return fail("expected stack-homed compile-time RHS bound to lower as fused compare immediate: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) + " " +
+                messages);
+  }
+
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.back().target);
+  if (!printed.ok || printed.instruction_lines.size() != 4 ||
+      printed.instruction_lines[0] != "mov w9, w13" ||
+      printed.instruction_lines[1] != "cmp w9, #64" ||
+      printed.instruction_lines[2] !=
+          "b.lt .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.true_label) ||
+      printed.instruction_lines[3] !=
+          "b .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.false_label)) {
+    return fail("expected fused branch to materialize named same-block constant RHS as compare immediate");
+  }
+
+  for (const auto& instruction : block.instructions) {
+    const auto payload =
+        aarch64_codegen::print_machine_instruction_line_payloads(instruction.target);
+    if (!payload.ok) {
+      continue;
+    }
+    for (const auto& line : payload.instruction_lines) {
+      if (line.find("ldr ") != std::string::npos &&
+          line.find("[sp, #32]") != std::string::npos) {
+        return fail("fused branch read the unpublished RHS stack home instead of the folded constant");
+      }
+    }
+  }
+  return 0;
+}
+
 int direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids() {
   auto prepared = prepared_with_loop_header_fused_compare_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1553,6 +1744,11 @@ int main() {
   }
   if (const int status =
           direct_dispatch_lowers_i32_sext_i64_constant_udiv_bound_branch();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          direct_dispatch_lowers_stack_homed_constant_binary_rhs_as_compare_immediate();
       status != 0) {
     return status;
   }
