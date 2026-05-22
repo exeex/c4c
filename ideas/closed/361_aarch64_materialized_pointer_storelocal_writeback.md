@@ -1,8 +1,18 @@
 # AArch64 Materialized Pointer StoreLocal Writeback
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md
+
+## Closure Outcome
+
+Closed: 2026-05-22
+
+The refreshed Step 1 close-scope proof is 7/7 green, including the focused
+materialized pointer writeback backend contracts, `00170`, `00181`, and
+`00189`. The historical materialized pointer-addressed `StoreLocal` writeback
+owner repaired by commit `ee027c36a` is not live in the current tree, and the
+refresh exposed no out-of-scope first bad fact that belongs under this idea.
 
 ## Parked Outcome
 
