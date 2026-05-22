@@ -678,15 +678,16 @@ bool BirFunctionLowerer::lower_memory_store_inst(
           hfa_facts.has_value()) {
         std::vector<bir::Value> lanes;
         bool has_return_lane_store = false;
-        if (const auto lane_it = hfa_return_lanes_.find(store.val.str());
-            lane_it != hfa_return_lanes_.end()) {
-          lanes = lane_it->second;
-          has_return_lane_store = true;
-        } else if (hfa_facts->lane_count == 1 &&
-                   aggregate_value_aliases_.find(store.val.str()) ==
-                       aggregate_value_aliases_.end()) {
-          const auto value = lower_value(store.val, hfa_facts->lane_type, value_aliases_);
-          if (value.has_value()) {
+        if (const auto value = lower_value(store.val, hfa_facts->lane_type, value_aliases_)) {
+          if (const auto lane_key = HfaReturnValueKey::from_value(*value)) {
+            if (const auto lane_it = hfa_return_lanes_.find(*lane_key);
+                lane_it != hfa_return_lanes_.end()) {
+              lanes = lane_it->second;
+              has_return_lane_store = true;
+            }
+          }
+          if (!has_return_lane_store && hfa_facts->lane_count == 1 &&
+              aggregate_value_aliases_.find(store.val.str()) == aggregate_value_aliases_.end()) {
             lanes.push_back(*value);
             has_return_lane_store = true;
           }

@@ -426,7 +426,45 @@ class BirFunctionLowerer {
   using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
   // Aggregate SSA value to aggregate slot spelling within one function.
   using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
-  using HfaReturnLaneMap = std::unordered_map<std::string, std::vector<bir::Value>>;
+
+  struct HfaReturnValueKey {
+    bir::Value::Kind kind = bir::Value::Kind::Immediate;
+    bir::TypeKind type = bir::TypeKind::Void;
+    std::string name;
+    LinkNameId pointer_symbol_link_name_id = kInvalidLinkName;
+
+    static std::optional<HfaReturnValueKey> from_value(const bir::Value& value) {
+      if (value.kind != bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      return HfaReturnValueKey{
+          .kind = value.kind,
+          .type = value.type,
+          .name = value.name,
+          .pointer_symbol_link_name_id = value.pointer_symbol_link_name_id,
+      };
+    }
+  };
+
+  struct HfaReturnValueKeyHash {
+    std::size_t operator()(const HfaReturnValueKey& key) const {
+      auto seed = std::hash<unsigned>{}(static_cast<unsigned>(key.kind));
+      seed ^= std::hash<unsigned>{}(static_cast<unsigned>(key.type)) + 0x9e3779b9u + (seed << 6) +
+              (seed >> 2);
+      seed ^= std::hash<std::string>{}(key.name) + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+      seed ^= std::hash<LinkNameId>{}(key.pointer_symbol_link_name_id) + 0x9e3779b9u +
+              (seed << 6) + (seed >> 2);
+      return seed;
+    }
+  };
+
+  friend bool operator==(const HfaReturnValueKey& lhs, const HfaReturnValueKey& rhs) {
+    return lhs.kind == rhs.kind && lhs.type == rhs.type && lhs.name == rhs.name &&
+           lhs.pointer_symbol_link_name_id == rhs.pointer_symbol_link_name_id;
+  }
+
+  using HfaReturnLaneMap =
+      std::unordered_map<HfaReturnValueKey, std::vector<bir::Value>, HfaReturnValueKeyHash>;
 
   struct BranchChain {
     // Selector-recognition labels are raw LIR block spellings consumed before

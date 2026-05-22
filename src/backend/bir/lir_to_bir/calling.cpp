@@ -1342,7 +1342,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             return_info->type,
             call.result.str() + ".hfa.ret.lane." + std::to_string(lane_index)));
       }
-      hfa_return_lanes_[call.result.str()] = lowered_call.result_lanes;
+      if (const auto result_key = HfaReturnValueKey::from_value(*lowered_call.result)) {
+        hfa_return_lanes_[*result_key] = lowered_call.result_lanes;
+      }
     }
   } else if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     if (!return_info->returned_via_sret) {
