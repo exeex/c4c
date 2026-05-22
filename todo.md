@@ -8,26 +8,35 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1 of
-the active runbook.
+Step 1: Refresh Current First Bad Fact is complete. The delegated focused
+proof is green: build was up to date and all 7 selected tests passed,
+including `c_testsuite_aarch64_backend_src_00181_c`, nearby `00170` / `00189`,
+and the memory-operand / pointer-value writeback backend contracts. Current
+classification: pointer-derived load/address scaling is not a live first bad
+fact in this tree; the old `00181` timeout owner appears already repaired.
 
 ## Suggested Next
 
-Run Step 1: rebuild, refresh the current focused `00181` representative and
-nearby pointer-derived load/address-scaling evidence, and classify whether
-AArch64 pointer-derived load address scaling is still a live first bad fact.
+Supervisor should route lifecycle close/deactivation consideration for idea
+362, or choose a separate source idea if current broader evidence points to a
+different first bad fact.
 
 ## Watchouts
 
-- The source idea is parked after a historical repair; do not assume the old
-  post-writeback timeout still exists.
-- If current evidence points to stale prepared select/join reloads,
-  materialized pointer store writeback, direct `LoadGlobal` select-store
-  handling, recursive formal preservation, or another owner, record the
-  classification instead of widening this plan.
-- Do not change expectations, unsupported classifications, runner behavior,
-  timeout policy, CTest registration, or proof-log policy.
+- Artifact note: `build/c_testsuite_aarch64_backend/src/00181.c.s` has current
+  `Move` pointer-derived address calculations using `sxtw` plus `lsl #2`
+  before adding to pointer carriers, and no `mul` occurrence matching the old
+  suspicious immediate-scale pattern.
+- This packet did not inspect or change expectations, unsupported
+  classifications, runner behavior, timeout policy, CTest registration,
+  implementation files, tests, `plan.md`, or the source idea.
 
 ## Proof
 
-Not run during lifecycle-only activation.
+Ran exactly:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00189_c)$' > test_after.log 2>&1
+```
+
+Result: passed, 7/7 tests green. Proof log: `test_after.log`.
