@@ -79,10 +79,9 @@ loads. The next active initiative is split to
 label/emission ordering first bad fact. The delegated focused proof rebuilt the
 current tree and passed 7/7, including `c_testsuite_aarch64_backend_src_00176_c`
 plus adjacent branch, return, instruction-dispatch, and call-boundary guardrails.
-Close remains rejected by the strict close-time regression-log gate because
-`test_before.log` and `test_after.log` both show 7/7 passing, so the pass count
-did not strictly increase. The active runbook was deactivated and this source
-idea remains parked/open.
+Close is not accepted in the lifecycle packet because an acceptance-grade
+close-gate pair is not available under the delegated proof-log constraints. The
+active runbook was deactivated and this source idea remains parked/open.
 
 ## Reviewer Reject Signals
 
