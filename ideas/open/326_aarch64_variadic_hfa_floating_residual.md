@@ -204,3 +204,21 @@ proved HFA register-save-area defect. Active execution switched back to
 `ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`; do not
 continue this residual under idea 326 unless fresh evidence reaches a
 standalone HFA/floating first bad fact.
+
+2026-05-22: Parked after a Step 1 refresh found no current `00204.c` first
+bad fact to localize under this source idea. The delegated proof command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_(bir|prepared_bir).*00204|c_testsuite_aarch64_backend_src_00204_c)$'
+```
+
+passed 11/11 selected tests, including
+`c_testsuite_aarch64_backend_src_00204_c`, and exposed neither an in-scope
+HFA/floating or composite variadic call-boundary failure nor an adjacent owner
+for handoff. Closure was considered but rejected by the close-time regression
+guard because `test_before.log` and `test_after.log` both reported
+`passed=11 failed=0 total=11`, so the strict monotonic check did not increase
+the pass count. Keep this idea open and parked; resume only if fresh generated
+evidence reaches a standalone HFA/floating, composite variadic call-boundary,
+or structured f128/q-register authority first bad fact within the source
+scope.
