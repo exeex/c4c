@@ -222,3 +222,15 @@ the pass count. Keep this idea open and parked; resume only if fresh generated
 evidence reaches a standalone HFA/floating, composite variadic call-boundary,
 or structured f128/q-register authority first bad fact within the source
 scope.
+
+2026-05-22: Deactivated after the active Step 2 lifecycle decision for the
+latest refresh. The focused proof remained green across 15 selected `00204.c`
+backend dump and representative tests, and classification stayed absent: no
+current in-scope HFA/floating, composite variadic call-boundary, or structured
+f128/q-register authority first bad fact was available to repair or hand off.
+
+Closure was rejected again by the strict close-time regression guard on the
+matching canonical logs because both sides reported `passed=15 failed=0
+total=15`; the guard failed only because the pass count did not strictly
+increase. Keep this idea open and parked. Reactivate only if fresh generated
+evidence reaches a standalone first bad fact inside this source scope.
