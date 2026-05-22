@@ -1,6 +1,6 @@
 # AArch64 MOVI Zero-Extension Materialization
 
-Status: Parked - scope satisfied; close deferred
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 
@@ -102,3 +102,22 @@ guard rejected the available canonical logs: `test_before.log` and
 `test_after.log` do not form a matching close-gate scope after the appended
 representative run. Continue the OPI pointer/integer operation residual under
 `ideas/open/333_aarch64_opi_pointer_integer_operation_result_publication.md`.
+
+## Closure
+
+2026-05-22: Step 1 refreshed the current tree with matching canonical focused
+proof logs. `test_before.log` and `test_after.log` both ran the same six-test
+scope: `backend_aarch64_scalar_cast_records`,
+`backend_aarch64_prepared_scalar_cast_records`,
+`backend_aarch64_machine_printer`,
+`backend_aarch64_instruction_dispatch`,
+`backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`, and
+`c_testsuite_aarch64_backend_src_00204_c`. Both logs passed 6/6 after a
+no-op build, and the regression guard passed in documented non-decreasing mode
+for this lifecycle-only close.
+
+The MOVI zero-extension first bad fact remains absent in the focused backend
+coverage and representative. No in-scope MOVI or integer zero-extension
+materialization owner is live, so this source idea is closed. Any future OPI
+pointer/integer result-publication work remains outside this idea and belongs
+under the separate OPI lifecycle scope.
