@@ -89,6 +89,18 @@ new failing test rather than a close-accepted monotonic pass increase. Resume
 this idea only if fresh evidence again shows scalar fixed formal-to-local
 frame-slot publication is the first bad fact.
 
+2026-05-22: Reactivated only to refresh the current first bad fact. The
+focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_instruction_dispatch|backend_aarch64_prepared_memory_operand_records|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_00176_c)$'`
+passed 5/5, including `00176` and the focused local/formal publication
+guardrails, leaving no current local/formal frame-slot publication failure
+owned by this source idea. Close was still rejected because the close-time
+monotonic regression guard compared matching green logs with
+`passed=5 failed=0 total=5` before and after and requires a strict pass-count
+increase. Keep this idea parked, not active, until fresh generated-code
+evidence again shows scalar fixed formal-to-local frame-slot publication as the
+first bad fact.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
