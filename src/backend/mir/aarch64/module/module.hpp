@@ -94,7 +94,7 @@ struct PreparedMoveBundleIndexes {
 
 struct PreparedValueHomeIndexes {
   std::unordered_map<prepare::PreparedValueId, const prepare::PreparedValueHome*> homes_by_id;
-  std::unordered_map<c4c::ValueNameId, const prepare::PreparedValueHome*> homes_by_name;
+  std::unordered_map<c4c::ValueNameId, prepare::PreparedValueId> value_ids;
 };
 
 struct FunctionLoweringContext {

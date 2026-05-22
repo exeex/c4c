@@ -247,11 +247,11 @@ make_prepared_address_materialization_indexes(
     return indexes;
   }
   indexes.homes_by_id.reserve(value_locations->value_homes.size());
-  indexes.homes_by_name.reserve(value_locations->value_homes.size());
+  indexes.value_ids.reserve(value_locations->value_homes.size());
   for (const auto& home : value_locations->value_homes) {
     indexes.homes_by_id.emplace(home.value_id, &home);
     if (home.value_name != c4c::kInvalidValueName) {
-      indexes.homes_by_name.emplace(home.value_name, &home);
+      indexes.value_ids.emplace(home.value_name, home.value_id);
     }
   }
   return indexes;
