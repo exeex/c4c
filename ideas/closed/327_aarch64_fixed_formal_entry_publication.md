@@ -1,7 +1,8 @@
 # AArch64 Fixed Formal Entry Publication
 
-Status: Parked - scope satisfied; close deferred
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-22
 Split From: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 
 ## Goal
@@ -104,3 +105,11 @@ byval handoff repair as routine fixed-formal entry publication work. Resume or
 close this idea only after lifecycle authority is allowed to touch the closed
 archive, or if fresh generated-code evidence shows the exact fixed-formal
 entry publication fault has returned.
+
+2026-05-22: Lifecycle close accepted after the refreshed Step 1 proof found no
+live in-scope fixed-formal entry publication owner. The focused proof covered
+`backend_aarch64_instruction_dispatch`, `backend_aarch64_call_boundary_owner`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+and `c_testsuite_aarch64_backend_src_00204_c`; all passed. The close gate used
+the existing canonical focused proof log read-only because the delegated
+operation forbade touching test logs.
