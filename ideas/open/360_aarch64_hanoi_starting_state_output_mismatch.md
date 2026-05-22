@@ -32,11 +32,10 @@ focused proof recorded in `todo.md` passed 7/7, including
 `c_testsuite_aarch64_backend_src_00181_c`, with the nearby backend guardrails
 stable.
 
-Close remains rejected because the close gate cannot be accepted from the
-available canonical logs: `test_before.log` shows the focused 7/7 pass, but
-`test_after.log` is not present in the packet and no strict before/after
-pass-count improvement can be established. The idea stays open and parked
-rather than active.
+Close remains rejected because the strict monotonic close gate fails even with
+matching green proof: `test_before.log` and `test_after.log` both pass 7/7,
+so the pass-count delta is 0 and no strict before/after improvement is
+established. The idea stays open and parked rather than active.
 
 ## Goal
 
