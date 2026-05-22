@@ -132,3 +132,15 @@ is absent and no in-scope implementation owner is live. The idea remains
 parked rather than archived because close-gate comparison could not be
 accepted in this lifecycle packet: only `test_before.log` was present for the
 refreshed focused proof, and the delegation excluded touching test logs.
+
+2026-05-22: Close accepted. Matching canonical focused proof logs are now
+available for the same close scope, and both `test_before.log` and
+`test_after.log` show 3/3 passed for
+`backend_aarch64_instruction_dispatch`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+and `c_testsuite_aarch64_backend_src_00204_c`. The lifecycle close gate was
+accepted using the regression guard's non-decreasing mode because this is a
+lifecycle-only archival decision over an already-green focused proof, not a new
+implementation delta. The remaining adjacent aggregate materialization residual
+stays split to
+`ideas/open/330_aarch64_non_hfa_aggregate_va_arg_materialization.md`.
