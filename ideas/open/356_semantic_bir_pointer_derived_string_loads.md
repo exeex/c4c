@@ -8,6 +8,24 @@ Split From: ideas/open/355_aarch64_address_valued_memory_call_argument_publicati
 
 Parked: 2026-05-21
 
+Refresh: 2026-05-22
+
+Reactivated for a fresh first-bad-fact check after several adjacent parked
+owners were refreshed. The focused semantic/backend pointer-derived byte-load
+subset stayed green:
+`backend_lir_to_bir_notes`, `backend_aarch64_instruction_dispatch`,
+`backend_aarch64_memory_operand_contract`,
+`backend_aarch64_prepared_memory_operand_records`, and
+`c_testsuite_aarch64_backend_src_00173_c` all passed. No current `00173` or
+pointer-derived byte-load first bad fact remains under this owner.
+
+Close was rejected again because the required monotonic regression guard on
+matching `test_before.log` / `test_after.log` reported
+`passed=5 failed=0 total=5` before and after, so the pass count did not
+strictly increase. Keep this idea parked and reactivate only if fresh evidence
+shows dynamic pointer-derived byte loads collapsing back to fixed global-byte
+loads.
+
 The semantic dynamic pointer-derived byte-load owner was repaired by commit
 `96b80ee21 Preserve pointer-carrier byte loads`. Focused backend proof after
 the repair kept `backend_lir_to_bir_notes`,
