@@ -102,6 +102,22 @@ contains fallthrough fixed-offset local loads/stores for the Duff-device copy,
 but generated AArch64 for the matching fallthrough labels only advances the
 `from`/`to` pointer locals and omits the `ldrh`/`strh` data copy.
 
+## Lifecycle Note 2026-05-22
+
+Refresh runbook Step 1 found no live in-scope scalar cast stack-homed
+register source-publication first bad fact. The focused proof passed all three
+delegated tests:
+`backend_aarch64_scalar_cast_records`,
+`backend_aarch64_prepared_scalar_cast_records`, and
+`c_testsuite_aarch64_backend_src_00143_c`.
+
+Close was not accepted in this lifecycle pass because the required regression
+guard remains strict-increase based for closure: `test_before.log` and
+`test_after.log` both record 3/3 passing, so the guard reports no new failures
+but rejects the close due to unchanged pass count. The active refresh runbook
+was therefore deactivated with this source idea left open and parked rather
+than replaced with more in-scope scalar-cast work.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
