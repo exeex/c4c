@@ -8,19 +8,26 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from
-`ideas/open/349_aarch64_recursive_call_argument_preservation.md`.
+Completed `plan.md` Step 1 by refreshing the current generated-code first bad
+fact for recursive/nested-call representatives `00176.c` and `00181.c`.
+
+The exact delegated proof is green. No current `00176.c` or `00181.c` first
+bad fact remains under this focused subset, so there is no fresh evidence that
+the active recursive call argument preservation source idea owns a current
+failure.
 
 ## Suggested Next
 
-Start `plan.md` Step 1 by refreshing the current generated-code first bad fact
-for the recursive/nested call representatives. Stop for lifecycle handoff if
-the current owner is outside recursive call argument preservation scope.
+Supervisor lifecycle routing. With both representatives green, this packet has
+no in-scope preservation boundary to localize in Step 2.
 
 ## Watchouts
 
 - Do not continue from stale historical `00176` or `00181` notes without fresh
   artifacts.
+- The refreshed representative tests both pass, so any next execution packet
+  should start from a newly identified failing artifact rather than historical
+  notes.
 - Do not reopen block-label ordering, local/formal frame-slot publication,
   stack-preserved pointer formal publication, indexed aggregate writeback, or
   other split owners unless fresh first-bad-fact evidence proves this source
@@ -30,4 +37,15 @@ the current owner is outside recursive call argument preservation scope.
 
 ## Proof
 
-Lifecycle-only activation; no implementation validation run.
+Proof command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$'
+```
+
+Result: passed, 2/2 selected tests green:
+
+- `c_testsuite_aarch64_backend_src_00176_c`
+- `c_testsuite_aarch64_backend_src_00181_c`
+
+Proof log: `test_after.log`.
