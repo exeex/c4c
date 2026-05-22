@@ -1,7 +1,8 @@
 # String Authority Guard Unclassified Symbols
 
-Status: Active
+Status: Closed
 Created: 2026-05-22
+Closed: 2026-05-22
 
 ## Goal
 
@@ -64,6 +65,25 @@ the classifier allowlist.
   its type and usage, not by broad explanatory comments or allowlist metadata.
 - A focused compile or CTest proof shows the touched backend/prealloc surfaces
   still build and preserve existing behavior.
+
+## Closure Notes
+
+Closed after replacing all four reported string-authority surfaces with typed
+or interned value authority:
+
+- `HfaReturnLaneMap` is keyed by lowered HFA return value identity.
+- prepared AArch64 value homes resolve through prepared ids instead of
+  `homes_by_name`.
+- prepared computed binaries and global loads use interned `ValueNameId`
+  lookup authority instead of string-keyed containers.
+
+`scripts/string_authority_classifications.json` was not edited. The close-time
+regression guard passed against matching six-test logs:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+The supervisor also reported full-suite acceptance after commit `5ef0b4156`:
+`ctest --test-dir build -j --output-on-failure` passed 3381/3381.
 
 ## Reviewer Reject Signals
 
