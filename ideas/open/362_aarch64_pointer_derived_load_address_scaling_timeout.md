@@ -109,12 +109,13 @@ introduced different failing tests despite a lower total failure count. Keep
 this idea parked until the supervisor can provide an acceptance-grade guard
 that permits archival closure.
 
-2026-05-22: reactivation commits `b31ef2e53` and `10b03efd4` refreshed the
-current tree. Step 1 focused proof was 7/7 green for the memory operand
-contracts, materialized pointer writeback guard, and AArch64 `00170`, `00181`,
-and `00189`. Current `00181` generated address calculations use `sxtw` plus
-`lsl #2` and no `mul` occurrence matching the old suspicious immediate-scale
-pattern. The pointer-derived load/address-scaling timeout owner is still not
-live, so the active refresh runbook was deactivated. Leave this source idea
-parked rather than closed until an acceptance-grade matching regression guard
-is available for archival closure.
+2026-05-22: the active refresh runbook reran Step 1 on the current tree. The
+focused proof passed 9/9 for memory operand contracts, materialized pointer
+writeback coverage, and AArch64 `00170`, `00181`, and `00189`, with no
+in-scope pointer-derived load/address-scaling first bad fact remaining live.
+Closure is still rejected because the close-time regression gate lacks a
+matching canonical before/after pair: `test_after.log` is absent, while the
+available canonical log contains only the focused green run. The refresh
+runbook is deactivated; leave this source idea parked rather than closed until
+an acceptance-grade matching regression guard is available for archival
+closure.
