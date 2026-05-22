@@ -24,6 +24,18 @@ Close was rejected by the plan-owner close gate because
 before/after logs: both runs remained 6/7 with `00181` failing. The residual
 is split to `ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md`.
 
+Refresh parked: 2026-05-22
+
+The refresh runbook activated by `9c933b8e1` and proved by `e637eff98` found
+no live in-scope Hanoi starting-state value-flow first bad fact. The focused
+proof passed 7/7, including `c_testsuite_aarch64_backend_src_00181_c`, with
+the nearby backend guardrails stable.
+
+Close remains rejected by the strict close gate because the canonical
+`test_before.log` and `test_after.log` both show 7/7 passing, so
+`c4c-regression-guard` reports no strict pass-count increase. The idea stays
+open and parked rather than active.
+
 ## Goal
 
 Repair the AArch64 lowering residual where `00181` prints an incorrect initial
