@@ -92,6 +92,17 @@ count increase. Keep 349 parked as a completion candidate rather than active;
 resume it only if fresh generated-code evidence again shows an in-scope stale
 caller-clobbered post-call argument use.
 
+2026-05-22: Reactivated only to refresh the representative first bad fact.
+The focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$'`
+passed 2/2 for `00176` and `00181`, leaving no current representative failure
+owned by this source idea. Close was still rejected because the close-time
+monotonic regression guard compared matching green logs with
+`passed=2 failed=0 total=2` before and after and requires a strict pass-count
+increase. Keep this idea parked, not active, until fresh generated-code
+evidence again shows an in-scope recursive or nested-call argument preservation
+failure.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
