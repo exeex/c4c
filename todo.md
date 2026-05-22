@@ -8,24 +8,29 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from
-`ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
+Completed `plan.md` Step 1 refresh for the current `00204.c` generated-code
+first bad fact. The delegated build plus focused dump/representative subset is
+green, so no current `00204.c` first bad fact remains under this subset.
 
 ## Suggested Next
 
-Start `plan.md` Step 1 by refreshing the current `00204.c` generated-code
-first bad fact. Stop for lifecycle handoff if the current owner is outside
-HFA/floating or composite variadic call-boundary scope.
+Return to supervisor lifecycle routing. Since the refreshed Step 1 proof is
+green, there is no current in-scope HFA/floating or composite variadic
+call-boundary failure to localize from `00204.c` in this subset.
 
 ## Watchouts
 
-- Do not continue from stale historical HFA notes without fresh artifacts.
-- Do not reopen stdarg format traversal, MOVI zero-extension, fixed-formal
-  entry, byval lane placement, or other split owners unless fresh first-bad-fact
-  evidence proves this source idea owns the current failure.
-- Do not special-case `00204.c`, `myprintf`, one HFA lane, one register, one
-  stack offset, or one emitted instruction sequence.
+- The refreshed evidence did not expose an out-of-scope first bad fact either;
+  the representative and BIR/prepared-BIR dump tests all passed.
+- Avoid advancing to implementation steps from stale historical HFA notes; Step
+  1 currently has no failing artifact to map.
 
 ## Proof
 
-Lifecycle-only activation; no implementation validation run.
+Ran:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_(bir|prepared_bir).*00204|c_testsuite_aarch64_backend_src_00204_c)$'
+```
+
+Result: passed, 11/11 selected tests green. Proof log: `test_after.log`.
