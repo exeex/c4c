@@ -1,7 +1,8 @@
 # AArch64 Synthetic Select Label Uniqueness
 
-Status: Parked - scope satisfied; close deferred
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-22
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -103,3 +104,19 @@ bad fact is outside this idea: signed `count % 8` lowering computes
 `39 - 4 * 4 == 23` via `sdiv` followed by `msub` using the quotient as the
 multiplier operand instead of computing `39 - 4 * 8 == 7`. Active lifecycle
 switches to `ideas/open/365_aarch64_signed_remainder_lowering.md`.
+
+## Closure
+
+2026-05-22: Refresh activation `cee5b2ef8` and Step 1 classification
+`b5f67a927` rechecked the parked boundary. Focused proof for
+`backend_aarch64_instruction_dispatch` and
+`c_testsuite_aarch64_backend_src_00143_c` passed 2/2, and generated
+`build/c_testsuite_aarch64_backend/src/00143.c.s` contains 152
+`.Lselect_mat_*` label definitions with zero duplicates. The old duplicate
+synthetic select-label owner is not live in current output.
+
+Close-time guard used the same focused scope in `test_before.log` and
+`test_after.log`. Strict pass-increase mode is not meaningful for this
+lifecycle-only close because both logs already pass 2/2; the guard passed with
+non-decreasing mode and no new failures. The source idea is closed with no
+active `plan.md` or `todo.md` state remaining.
