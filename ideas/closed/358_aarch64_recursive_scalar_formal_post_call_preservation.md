@@ -1,10 +1,23 @@
 # AArch64 Recursive Scalar Formal Post-Call Preservation
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/closed/357_aarch64_recursive_pointer_formal_home_publication.md
 
-## Parked Notes
+## Closure Notes
+
+Closed on 2026-05-22 after reactivation Step 1 refreshed the current first bad
+fact and found no live scalar-formal post-call preservation owner. The focused
+proof passed `backend_cli_aarch64_asm_external_return_add_smoke`, `00170`,
+`00181`, and `00189`; `00181` is green on the current tree.
+
+Close gate used the existing matching canonical `test_before.log` and
+`test_after.log` focused logs. The strict monotonic checker rejected equal pass
+counts, as expected for a lifecycle-only close, and the documented
+`--allow-non-decreasing-passed` maintenance mode passed with 4/4 before and 4/4
+after.
+
+## Historical Parked Notes
 
 The scalar formal post-call preservation scope is complete.
 
@@ -14,18 +27,14 @@ incoming scalar formal to its stack home before the first recursive call and
 reloads that preserved home before the later decrement instead of computing
 from clobbered `w0`.
 
-Focused proof passed backend contracts,
+Earlier parked proof passed backend contracts,
 `backend_cli_aarch64_asm_external_return_add_smoke`, `00170`, and `00189`.
-`00181` advanced past the scalar formal first bad fact but still fails with
-`RUNTIME_NONZERO` because stack-preserved pointer formal `%p.spare` is later
-overwritten from clobbered `x3` and reloaded for another recursive call. That
-residual is outside this scalar-formal idea and is split to
+At that time, `00181` advanced past the scalar formal first bad fact but still
+failed with `RUNTIME_NONZERO` because stack-preserved pointer formal
+`%p.spare` was later overwritten from clobbered `x3` and reloaded for another
+recursive call. That residual was outside this scalar-formal idea and was split
+to
 `ideas/open/359_aarch64_recursive_stack_preserved_pointer_formal_post_call_overwrite.md`.
-
-Formal close was not accepted in this lifecycle pass because the canonical
-`test_before.log` and `test_after.log` files cover different scopes and the
-delegation prohibited proof-log updates. The supervisor-provided backend guard
-`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.
 
 ## Goal
 
