@@ -8,20 +8,15 @@ Current Step Title: Refresh Current Scalar-Cast Proof
 
 ## Just Finished
 
-Lifecycle activation created this execution state for Step 1 of `plan.md`.
+Step 1 of `plan.md` refreshed the current scalar-cast stack-homed
+register-source publication proof. The focused subset passed, so there is no
+live current first bad fact to classify as in scope for idea 340.
 
 ## Suggested Next
 
-Run the focused scalar-cast refresh proof:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|c_testsuite_aarch64_backend_src_00143_c)$'
-```
-
-If all targets pass, record the proof here and route to Step 3 for a
-close/deactivate decision. If any target fails, classify whether the first bad
-fact is the old scalar-cast stack-homed register source-publication owner
-before editing code.
+Supervisor route to Step 3 for the close/deactivate decision. No implementation
+packet is suggested from this proof because no in-scope scalar-cast
+source-publication failure is live.
 
 ## Watchouts
 
@@ -35,4 +30,12 @@ before editing code.
 
 ## Proof
 
-No proof has been run for this active packet yet.
+Command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|c_testsuite_aarch64_backend_src_00143_c)$'
+```
+
+Result: passed, 3/3. The build reported `ninja: no work to do`.
+
+Proof log: `test_after.log`.
