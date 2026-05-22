@@ -8,19 +8,23 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1.
+Step 1 refreshed the current first bad fact for idea 358. The delegated proof
+is green, including `c_testsuite_aarch64_backend_src_00181_c`, so there is no
+current representative failure showing scalar-formal post-call preservation is
+still live.
 
 ## Suggested Next
 
-Refresh the current `00181` first bad fact and determine whether the historical
-scalar-formal post-call preservation owner is live.
+Return to lifecycle routing for idea 358: `00181` is currently green under the
+focused proof, so this plan should be closed, parked, or replaced rather than
+expanded into implementation work.
 
 ## Watchouts
 
 - The source idea is parked and says the scalar `%p.n` post-call owner was
-  previously repaired; do not implement from stale `00181` evidence.
-- Confirm whether current generated AArch64 reloads live scalar formals from
-  their preserved homes before touching lowering code.
+  previously repaired; the fresh proof is consistent with that note.
+- No implementation files, tests, expectations, CTest registration, runner
+  behavior, `plan.md`, or source idea files were touched in this packet.
 - Do not reopen pointer-formal callee-saved home publication, stack-preserved
   pointer formal overwrite handling, address-valued publication, semantic
   string-load work, or frontend admission inside this plan without lifecycle
@@ -28,4 +32,20 @@ scalar-formal post-call preservation owner is live.
 
 ## Proof
 
-Not run during lifecycle-only activation.
+Command run exactly:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_aarch64_asm_external_return_add_smoke|c_testsuite_aarch64_backend_src_001(70|81|89)_c)$'; } > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` records `ninja: no work to do` followed by
+4/4 passing tests:
+`backend_cli_aarch64_asm_external_return_add_smoke`,
+`c_testsuite_aarch64_backend_src_00170_c`,
+`c_testsuite_aarch64_backend_src_00181_c`, and
+`c_testsuite_aarch64_backend_src_00189_c`.
+
+Classification: `00181` is green, so scalar-formal post-call preservation is
+not a live owner for this representative on the current tree. No generated BIR
+or AArch64 failure artifact needed further inspection because the delegated
+subset did not produce a failing first bad fact.
