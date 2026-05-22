@@ -8,14 +8,17 @@ Current Step Title: Refresh Current Unsigned Div/Rem Producer Proof
 
 ## Just Finished
 
-Lifecycle activation created this refresh runbook from
-`ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md`.
+Step 1 - Refresh Current Unsigned Div/Rem Producer Proof: rebuilt the default
+preset and reran the supervisor-selected focused unsigned div/rem
+producer-publication proof plus `00182`. The subset passed 4/4 with 0 failures,
+so no current first bad fact belongs to idea 350's stale unsigned div/rem
+producer-publication boundary.
 
 ## Suggested Next
 
-Execute Step 1: rebuild, run the supervisor-selected focused unsigned div/rem
-producer-publication proof plus `00182`, then record whether any current first
-bad fact still belongs to idea 350.
+Hand off to the supervisor for the next lifecycle decision: plan-owner
+close/park handling under the required close-gate policy using the refreshed
+green proof.
 
 ## Watchouts
 
@@ -27,7 +30,16 @@ bad fact still belongs to idea 350.
   temporary-specific, register-specific, or instruction-neighborhood shortcut.
 - Preserve canonical proof-log names if producing executor proof logs:
   `test_before.log` and `test_after.log`.
+- The focused proof did not expose an in-scope unsigned `udiv`/`urem`
+  producer-publication failure. Treat any future `00182` failure as requiring
+  fresh first-bad-fact classification before reopening idea 350 implementation
+  work.
 
 ## Proof
 
-Not run during lifecycle activation.
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00182_c)$' > test_after.log 2>&1
+```
+
+Result: build was up to date; focused subset passed 4/4 with 0 failures.
+`test_after.log` is the canonical executor proof log for this packet.
