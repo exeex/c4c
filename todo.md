@@ -8,20 +8,33 @@ Current Step Title: Refresh Stack-Preserved Pointer-Formal First Bad Fact
 
 ## Just Finished
 
-Activation created this executor-compatible scratchpad for `plan.md` Step 1.
+Completed `plan.md` Step 1 refresh for idea 359. The focused AArch64 proof is
+green across the external return-add smoke case and `00170`, `00181`, and
+`00189`, so the old stack-preserved pointer-formal post-call overwrite is not a
+live owner in this subset.
 
 ## Suggested Next
 
-Run the Step 1 refresh proof selected by the supervisor and inspect generated
-`00181` evidence only if the focused proof fails or shows a returned
-stack-preserved pointer-formal overwrite.
+Supervisor should decide whether this absence is enough to close or retire the
+runbook, or whether a plan-owner lifecycle handoff is needed for idea 359.
 
 ## Watchouts
 
-Do not chase a different `00181` failure under this idea. If the first bad fact
-is not stack-preserved pointer formal post-call overwrite, stop for lifecycle
-handoff or closure.
+No generated `00181` inspection was needed because the delegated focused proof
+passed and did not indicate a returned overwrite. Do not chase a different
+`00181` failure under this idea without a new lifecycle decision.
 
 ## Proof
 
-Not run during activation.
+Ran exactly:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_aarch64_asm_external_return_add_smoke|c_testsuite_aarch64_backend_src_001(70|81|89)_c)$'; } > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` records `ninja: no work to do.` and `100% tests
+passed, 0 tests failed out of 4` for
+`backend_cli_aarch64_asm_external_return_add_smoke`,
+`c_testsuite_aarch64_backend_src_00170_c`,
+`c_testsuite_aarch64_backend_src_00181_c`, and
+`c_testsuite_aarch64_backend_src_00189_c`.
