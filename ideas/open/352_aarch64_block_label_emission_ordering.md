@@ -79,9 +79,10 @@ loads. The next active initiative is split to
 label/emission ordering first bad fact. The delegated focused proof rebuilt the
 current tree and passed 7/7, including `c_testsuite_aarch64_backend_src_00176_c`
 plus adjacent branch, return, instruction-dispatch, and call-boundary guardrails.
-Close is not accepted in the lifecycle packet because an acceptance-grade
-close-gate pair is not available under the delegated proof-log constraints. The
-active runbook was deactivated and this source idea remains parked/open.
+Close is not accepted in the lifecycle packet because the strict monotonic
+close gate failed on comparable canonical logs: before and after both passed
+7/7 with no new failures, leaving a pass-count delta of 0. The active runbook
+was deactivated and this source idea remains parked/open.
 
 ## Reviewer Reject Signals
 
