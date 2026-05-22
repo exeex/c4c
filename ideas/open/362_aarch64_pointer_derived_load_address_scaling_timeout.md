@@ -113,9 +113,9 @@ that permits archival closure.
 focused proof passed 9/9 for memory operand contracts, materialized pointer
 writeback coverage, and AArch64 `00170`, `00181`, and `00189`, with no
 in-scope pointer-derived load/address-scaling first bad fact remaining live.
-Closure is still rejected because the close-time regression gate lacks a
-matching canonical before/after pair: `test_after.log` is absent, while the
-available canonical log contains only the focused green run. The refresh
-runbook is deactivated; leave this source idea parked rather than closed until
-an acceptance-grade matching regression guard is available for archival
-closure.
+Closure is still rejected because the close-time monotonic regression gate
+failed on the matching canonical before/after pair: before passed=9 failed=0
+total=9; after passed=9 failed=0 total=9; delta passed=0 failed=0; result
+FAIL, reason passed count did not strictly increase. The refresh runbook is
+deactivated; leave this source idea parked rather than closed until an
+acceptance-grade regression guard permits archival closure.
