@@ -122,3 +122,13 @@ packet because the delegated ownership explicitly excluded `ideas/closed/*`,
 and the existing strict close-gate regression comparison did not accept
 closure: `test_before.log` and `test_after.log` both show 11 passed and 1
 failed, with no newly failing tests but no strict pass-count increase.
+
+2026-05-22: The refreshed active runbook rechecked the current
+post-aggregate-`va_arg` ordinary call setup owner. The focused proof passed
+for `backend_aarch64_instruction_dispatch`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+and `c_testsuite_aarch64_backend_src_00204_c`, so the current first bad fact
+is absent and no in-scope implementation owner is live. The idea remains
+parked rather than archived because close-gate comparison could not be
+accepted in this lifecycle packet: only `test_before.log` was present for the
+refreshed focused proof, and the delegation excluded touching test logs.
