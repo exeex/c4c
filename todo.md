@@ -8,13 +8,15 @@ Current Step Title: Refresh Current Pointer-Derived Load Proof
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1
-of `plan.md`.
+Step 1 of `plan.md` refreshed the current pointer-derived load/address-scaling
+proof for idea 362. The delegated build plus focused AArch64 memory-lowering
+subset passed 9/9, including `c_testsuite_aarch64_backend_src_00181_c`.
+No live current in-scope pointer-derived load/address-scaling first bad fact
+was observed.
 
 ## Suggested Next
 
-Run Step 1's focused refresh proof for idea 362 and record the exact command,
-result, and current first-bad-fact classification here.
+Route to Step 3 for the supervisor/plan-owner close-or-deactivate decision.
 
 ## Watchouts
 
@@ -27,4 +29,12 @@ result, and current first-bad-fact classification here.
 
 ## Proof
 
-Not run yet for this activation.
+Command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00189_c)$'
+```
+
+Result: passed, 9/9. The build reported `ninja: no work to do`.
+
+Proof log: `test_after.log`.
