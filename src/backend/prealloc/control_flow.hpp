@@ -1603,16 +1603,20 @@ find_authoritative_short_circuit_join_sources(
 }
 
 [[nodiscard]] inline std::optional<PreparedSupportedImmediateBinary>
-classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_view source_name) {
+classify_supported_immediate_binary(PreparedNameTables& names,
+                                    const bir::BinaryInst& binary,
+                                    ValueNameId source_name) {
   if (binary.operand_type != bir::TypeKind::I32 || binary.result.type != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
+  const auto lhs_name = prepared_named_value_id(names, binary.lhs);
+  const auto rhs_name = prepared_named_value_id(names, binary.rhs);
   const bool lhs_is_source_rhs_is_imm =
-      binary.lhs.kind == bir::Value::Kind::Named && binary.lhs.name == source_name &&
+      lhs_name.has_value() && *lhs_name == source_name &&
       binary.rhs.kind == bir::Value::Kind::Immediate && binary.rhs.type == bir::TypeKind::I32;
   const bool rhs_is_source_lhs_is_imm =
-      binary.rhs.kind == bir::Value::Kind::Named && binary.rhs.name == source_name &&
+      rhs_name.has_value() && *rhs_name == source_name &&
       binary.lhs.kind == bir::Value::Kind::Immediate && binary.lhs.type == bir::TypeKind::I32;
   if (!lhs_is_source_rhs_is_imm && !rhs_is_source_lhs_is_imm) {
     return std::nullopt;
@@ -1690,9 +1694,9 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     const bir::NameTables& bir_names,
     const bir::Value& value,
     const bir::Function& function,
-    const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
-    const std::unordered_map<std::string_view, const bir::LoadGlobalInst*>& named_global_loads,
-    std::vector<std::string_view>* active_names = nullptr) {
+    const std::unordered_map<ValueNameId, const bir::BinaryInst*>& binaries_by_value_name,
+    const std::unordered_map<ValueNameId, const bir::LoadGlobalInst*>& global_loads_by_value_name,
+    std::vector<ValueNameId>* active_names = nullptr) {
   if (value.type != bir::TypeKind::I32) {
     return std::nullopt;
   }
@@ -1705,32 +1709,38 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     };
   }
 
-  std::vector<std::string_view> local_active_names;
+  const auto value_name = prepared_named_value_id(names, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<ValueNameId> local_active_names;
   auto* recursion_stack = active_names == nullptr ? &local_active_names : active_names;
   for (const auto active_name : *recursion_stack) {
-    if (active_name == value.name) {
+    if (active_name == *value_name) {
       return std::nullopt;
     }
   }
 
-  const auto binary_it = named_binaries.find(value.name);
-  if (binary_it == named_binaries.end()) {
+  const auto binary_it = binaries_by_value_name.find(*value_name);
+  if (binary_it == binaries_by_value_name.end()) {
     for (const auto& param : function.params) {
-      if (param.type == bir::TypeKind::I32 && param.name == value.name) {
+      const ValueNameId param_name = names.value_names.intern(param.name);
+      if (param.type == bir::TypeKind::I32 && param_name == *value_name) {
         return PreparedComputedValue{
             .base = PreparedComputedBase{
                 .kind = PreparedComputedBaseKind::ParamValue,
-                .param_name_id = names.value_names.intern(param.name),
+                .param_name_id = param_name,
             },
         };
       }
     }
-    const auto load_global_it = named_global_loads.find(value.name);
-    if (load_global_it != named_global_loads.end() && load_global_it->second != nullptr) {
+    const auto load_global_it = global_loads_by_value_name.find(*value_name);
+    if (load_global_it != global_loads_by_value_name.end() && load_global_it->second != nullptr) {
       const auto* load_global = load_global_it->second;
       if (load_global->result.type != bir::TypeKind::I32 ||
           load_global->result.kind != bir::Value::Kind::Named ||
-          load_global->result.name != value.name) {
+          prepared_named_value_id(names, load_global->result) != value_name) {
         return std::nullopt;
       }
       if (load_global->address.has_value()) {
@@ -1783,7 +1793,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     return std::nullopt;
   }
 
-  recursion_stack->push_back(value.name);
+  recursion_stack->push_back(*value_name);
   auto pop_active_name = [&]() { recursion_stack->pop_back(); };
 
   if (const auto immediate_root = classify_immediate_root_binary(*binary);
@@ -1804,8 +1814,8 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
                                 bir_names,
                                 source_value,
                                 function,
-                                named_binaries,
-                                named_global_loads,
+                                binaries_by_value_name,
+                                global_loads_by_value_name,
                                 recursion_stack);
     if (!computed_value.has_value()) {
       return std::nullopt;
@@ -1814,17 +1824,23 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     return computed_value;
   };
 
-  if (const auto computed_value = try_extend(
-          binary->lhs, classify_supported_immediate_binary(*binary, binary->lhs.name));
+  if (const auto lhs_name = prepared_named_value_id(names, binary->lhs);
+      lhs_name.has_value()) {
+    if (const auto computed_value =
+            try_extend(binary->lhs, classify_supported_immediate_binary(names, *binary, *lhs_name));
       computed_value.has_value()) {
-    pop_active_name();
-    return computed_value;
+      pop_active_name();
+      return computed_value;
+    }
   }
-  if (const auto computed_value = try_extend(
-          binary->rhs, classify_supported_immediate_binary(*binary, binary->rhs.name));
+  if (const auto rhs_name = prepared_named_value_id(names, binary->rhs);
+      rhs_name.has_value()) {
+    if (const auto computed_value =
+            try_extend(binary->rhs, classify_supported_immediate_binary(names, *binary, *rhs_name));
       computed_value.has_value()) {
-    pop_active_name();
-    return computed_value;
+      pop_active_name();
+      return computed_value;
+    }
   }
 
   pop_active_name();
@@ -1835,13 +1851,51 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     PreparedNameTables& names,
     const bir::Value& value,
     const bir::Function& function,
-    const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
-    const std::unordered_map<std::string_view, const bir::LoadGlobalInst*>& named_global_loads,
-    std::vector<std::string_view>* active_names = nullptr) {
+    const std::unordered_map<ValueNameId, const bir::BinaryInst*>& binaries_by_value_name,
+    const std::unordered_map<ValueNameId, const bir::LoadGlobalInst*>& global_loads_by_value_name,
+    std::vector<ValueNameId>* active_names = nullptr) {
   bir::NameTables bir_names;
   bir_names.import_link_names(names.texts, names.link_names);
   return classify_computed_value(
-      names, bir_names, value, function, named_binaries, named_global_loads, active_names);
+      names,
+      bir_names,
+      value,
+      function,
+      binaries_by_value_name,
+      global_loads_by_value_name,
+      active_names);
+}
+
+[[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
+    PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const bir::Value& value,
+    const bir::Function& function,
+    const std::unordered_map<std::string_view, const bir::BinaryInst*>& binaries_by_spelling,
+    const std::unordered_map<std::string_view, const bir::LoadGlobalInst*>& global_loads_by_spelling) {
+  std::unordered_map<ValueNameId, const bir::BinaryInst*> binaries_by_value_name;
+  std::unordered_map<ValueNameId, const bir::LoadGlobalInst*> global_loads_by_value_name;
+  for (const auto& [result_spelling, binary] : binaries_by_spelling) {
+    const ValueNameId result_name = names.value_names.intern(result_spelling);
+    if (result_name == kInvalidValueName) {
+      return std::nullopt;
+    }
+    binaries_by_value_name.emplace(result_name, binary);
+  }
+  for (const auto& [result_spelling, global_load] : global_loads_by_spelling) {
+    const ValueNameId result_name = names.value_names.intern(result_spelling);
+    if (result_name == kInvalidValueName) {
+      return std::nullopt;
+    }
+    global_loads_by_value_name.emplace(result_name, global_load);
+  }
+  return classify_computed_value(
+      names,
+      bir_names,
+      value,
+      function,
+      binaries_by_value_name,
+      global_loads_by_value_name);
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
@@ -2413,18 +2467,26 @@ find_prepared_materialized_compare_join_return_context(
     return std::nullopt;
   }
 
-  std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
-  std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads;
+  std::unordered_map<ValueNameId, const bir::BinaryInst*> binaries_by_value_name;
+  std::unordered_map<ValueNameId, const bir::LoadGlobalInst*> global_loads_by_value_name;
   for (std::size_t inst_index = 0; inst_index < compare_join_context.carrier_index; ++inst_index) {
     if (const auto* binary = std::get_if<bir::BinaryInst>(&join_block->insts[inst_index]);
         binary != nullptr) {
-      named_binaries.emplace(binary->result.name, binary);
+      const auto result_name = prepared_named_value_id(names, binary->result);
+      if (!result_name.has_value()) {
+        return std::nullopt;
+      }
+      binaries_by_value_name.emplace(*result_name, binary);
       continue;
     }
     if (const auto* load_global =
             std::get_if<bir::LoadGlobalInst>(&join_block->insts[inst_index]);
         load_global != nullptr) {
-      named_global_loads.emplace(load_global->result.name, load_global);
+      const auto result_name = prepared_named_value_id(names, load_global->result);
+      if (!result_name.has_value()) {
+        return std::nullopt;
+      }
+      global_loads_by_value_name.emplace(*result_name, load_global);
       continue;
     }
     return std::nullopt;
@@ -2435,8 +2497,8 @@ find_prepared_materialized_compare_join_return_context(
       compare_join_context.bir_names,
       selected_value,
       *compare_join_context.function,
-      named_binaries,
-      named_global_loads);
+      binaries_by_value_name,
+      global_loads_by_value_name);
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }
@@ -2444,8 +2506,9 @@ find_prepared_materialized_compare_join_return_context(
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
   if (compare_join_context.trailing_binary != nullptr) {
     trailing_binary = classify_supported_immediate_binary(
+        names,
         *compare_join_context.trailing_binary,
-        prepared_value_name(names, compare_join_context.carrier_result_name_id));
+        compare_join_context.carrier_result_name_id);
     if (!trailing_binary.has_value()) {
       return std::nullopt;
     }

@@ -110,7 +110,7 @@ namespace {
 }
 
 [[nodiscard]] PreparedComputedValueLookup make_prepared_computed_value_lookup(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const c4c::backend::bir::Function* function) {
   PreparedComputedValueLookup lookup;
   lookup.bir_names.import_link_names(names.texts, names.link_names);
@@ -122,12 +122,18 @@ namespace {
       if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
           binary != nullptr && binary->result.kind == bir::Value::Kind::Named &&
           !binary->result.name.empty()) {
-        lookup.named_binaries.emplace(binary->result.name, binary);
+        if (const auto result_name = prepared_named_value_id(names, binary->result);
+            result_name.has_value()) {
+          lookup.binaries_by_value_name.emplace(*result_name, binary);
+        }
       } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
                  load_global != nullptr &&
                  load_global->result.kind == bir::Value::Kind::Named &&
                  !load_global->result.name.empty()) {
-        lookup.named_global_loads.emplace(load_global->result.name, load_global);
+        if (const auto result_name = prepared_named_value_id(names, load_global->result);
+            result_name.has_value()) {
+          lookup.global_loads_by_value_name.emplace(*result_name, load_global);
+        }
       }
     }
   }
@@ -233,8 +239,8 @@ PreparedValueHome classify_prepared_value_home(
                                     computed_values.bir_names,
                                     named_value,
                                     *function,
-                                    computed_values.named_binaries,
-                                    computed_values.named_global_loads);
+                                    computed_values.binaries_by_value_name,
+                                    computed_values.global_loads_by_value_name);
         computed_value.has_value() &&
         computed_value->base.kind == PreparedComputedBaseKind::ImmediateI32) {
       auto current_value = static_cast<std::int32_t>(computed_value->base.immediate);

@@ -1,51 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/383_string_authority_guard_unclassified_symbols.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Replace Prepared Home By-Name Lookup
+Current Step ID: 4
+Current Step Title: Replace Prepared Computed Value String Containers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by replacing
-`PreparedValueHomeIndexes::homes_by_name` with prepared-value-id resolution.
+Completed `plan.md` Step 4 by replacing the remaining
+`PreparedComputedValueLookup` string-keyed computed-value containers with
+interned `ValueNameId` authority.
 
-- `PreparedValueHomeIndexes` now keeps authoritative homes only in
-  `homes_by_id`.
-- A separate `ValueNameId -> PreparedValueId` index resolves legacy named BIR
-  operands to ids before probing `homes_by_id`.
-- The call and dispatch local `find_value_home(ValueNameId)` bridges now resolve
-  a prepared value id first instead of returning a home from a by-name home map.
-- The focused guard output no longer reports
-  `PreparedValueHomeIndexes::homes_by_name`.
+- `PreparedComputedValueLookup` now stores binaries and global loads by
+  `ValueNameId`.
+- Computed-value producers intern BIR result names once before inserting into
+  the prepared lookup maps.
+- `classify_computed_value` now probes binaries, global loads, parameters, and
+  recursive active entries through `ValueNameId`.
+- `classify_supported_immediate_binary` now checks source operands through
+  `ValueNameId` instead of string spelling.
+- The focused guard no longer reports
+  `PreparedComputedValueLookup::named_binaries` or
+  `PreparedComputedValueLookup::named_global_loads`.
 
 ## Suggested Next
 
-Execute the next packet against `PreparedComputedValueLookup::named_binaries`,
-moving computed binary lookup from raw `std::string_view` keys to interned
-`ValueNameId` authority across producers, consumers, and recursion guards.
+Ask the supervisor to review the completed Step 4 slice and decide whether the
+active runbook is ready for lifecycle closure or broader validation.
 
 ## Watchouts
 
-- Do not edit `scripts/string_authority_classifications.json`.
-- Do not rename reported symbols just to evade the scanner.
-- For the computed-value lookup maps, changing `std::string_view` to
-  `ValueNameId` is a real authority move only if all producers and recursive
-  consumers use the interned id consistently, including the recursion guard.
-- `PreparedValueHomeIndexes::value_ids` is an id resolver only; home authority
-  remains `PreparedValueId` through `homes_by_id`.
+- `scripts/string_authority_classifications.json` was not edited.
+- A compatibility overload remains for existing direct test calls that pass
+  spelling-keyed temporary maps; it immediately converts those inputs to
+  `ValueNameId` maps before using the shared classifier.
+- No in-scope reports remain from the focused guard after this packet.
 
 ## Proof
 
 Ran the delegated proof command and preserved combined output in
 `test_after.log`:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(string_authority_guard|backend_aarch64_instruction_dispatch)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(string_authority_guard|backend_prepare_(liveness|stack_layout|frame_stack_call_contract|structured_context)|backend_prepared_printer)$'`
 
-The build completed successfully and `backend_aarch64_instruction_dispatch`
-passed. The `string_authority_guard` test still exits nonzero because the
-remaining in-scope reports are:
-
-- `PreparedComputedValueLookup::named_binaries`
-- `PreparedComputedValueLookup::named_global_loads`
+The build completed successfully. `string_authority_guard`,
+`backend_prepare_liveness`, `backend_prepare_stack_layout`,
+`backend_prepare_frame_stack_call_contract`,
+`backend_prepare_structured_context`, and `backend_prepared_printer` all
+passed.

@@ -15,8 +15,8 @@ namespace regalloc_detail {
 
 struct PreparedComputedValueLookup {
   c4c::backend::bir::NameTables bir_names;
-  std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-  std::unordered_map<std::string_view, const c4c::backend::bir::LoadGlobalInst*> named_global_loads;
+  std::unordered_map<ValueNameId, const c4c::backend::bir::BinaryInst*> binaries_by_value_name;
+  std::unordered_map<ValueNameId, const c4c::backend::bir::LoadGlobalInst*> global_loads_by_value_name;
 };
 
 [[nodiscard]] PreparedValueHome classify_prepared_value_home(
