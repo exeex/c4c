@@ -26,15 +26,17 @@ is split to `ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md
 
 Refresh parked: 2026-05-22
 
-The refresh runbook activated by `9c933b8e1` and proved by `e637eff98` found
-no live in-scope Hanoi starting-state value-flow first bad fact. The focused
-proof passed 7/7, including `c_testsuite_aarch64_backend_src_00181_c`, with
-the nearby backend guardrails stable.
+The refresh runbook activated by `6fd359d53` and classified by `6e6f420db`
+found no live in-scope Hanoi starting-state value-flow first bad fact. The
+focused proof recorded in `todo.md` passed 7/7, including
+`c_testsuite_aarch64_backend_src_00181_c`, with the nearby backend guardrails
+stable.
 
-Close remains rejected by the strict close gate because the canonical
-`test_before.log` and `test_after.log` both show 7/7 passing, so
-`c4c-regression-guard` reports no strict pass-count increase. The idea stays
-open and parked rather than active.
+Close remains rejected because the close gate cannot be accepted from the
+available canonical logs: `test_before.log` shows the focused 7/7 pass, but
+`test_after.log` is not present in the packet and no strict before/after
+pass-count improvement can be established. The idea stays open and parked
+rather than active.
 
 ## Goal
 
