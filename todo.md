@@ -8,18 +8,22 @@ Current Step Title: Refresh The Current Post-Va-Arg Call Setup First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from `ideas/open/329_aarch64_variadic_aggregate_va_arg_call_setup.md`.
+Step 1 - Refresh The Current Post-Va-Arg Call Setup First Bad Fact: refreshed the current post-aggregate-`va_arg` ordinary call setup first bad fact. The supervisor-selected focused proof passed for call setup coverage and the `00204.c` representative, so the current first bad fact is classified as absent. No generated-artifact inspection was needed because the focused proof did not fail.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor with a supervisor-selected focused proof command for post-`va_arg` ordinary call setup and the `00204.c` representative.
+Proceed to Step 2 lifecycle handling: with no live in-scope first bad fact, request plan-owner closure or the supervisor-approved closure path using the current focused proof result.
 
 ## Watchouts
 
-- Do not implement under this idea unless fresh evidence shows an in-scope post-aggregate-`va_arg` ordinary call setup first bad fact.
-- Treat byval aggregate lane publication, non-HFA aggregate materialization, HFA/floating, fixed-formal, local/value-home, frame/formal, and global initializer repairs as adjacent guardrails, not default scope.
+- Do not implement under this idea unless new generated-code evidence shows an in-scope post-aggregate-`va_arg` ordinary call setup first bad fact.
+- The refreshed proof gives no current evidence to reopen byval aggregate lane publication, non-HFA aggregate materialization, HFA/floating, fixed-formal, local/value-home, frame/formal, or global initializer work from this idea.
 - Do not weaken expectations, unsupported classifications, runner behavior, timeout policy, proof-log policy, or CTest registration.
 
 ## Proof
 
-Lifecycle-only activation. No build or test command was run.
+Passed:
+
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_instruction_dispatch|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|c_testsuite_aarch64_backend_src_00204_c)$"' > test_after.log 2>&1`
+
+Proof log: `test_after.log`. The proof was sufficient for this classification packet because all three selected tests passed, including post-`va_arg` prepared-BIR publication coverage and the `00204.c` representative.
