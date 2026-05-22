@@ -8,14 +8,18 @@ Current Step Title: Refresh Current Recursive Call Preservation Proof
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from
-`ideas/open/349_aarch64_recursive_call_argument_preservation.md`.
+Completed `plan.md` Step 1 by refreshing the recursive/nested call
+representative proof for `c_testsuite_aarch64_backend_src_00176_c` and
+`c_testsuite_aarch64_backend_src_00181_c`.
+
+The focused subset passed 2/2 with 0 failures. Neither representative exposes
+stale caller-clobbered post-call argument use as a current in-scope first bad
+fact for idea 349.
 
 ## Suggested Next
 
-Start `plan.md` Step 1 by refreshing the current generated-code first bad fact
-for the recursive/nested call representatives. Stop for lifecycle handoff if
-the current owner is outside recursive call argument preservation scope.
+Hand off to the supervisor for lifecycle close/park decision under the current
+close-gate policy.
 
 ## Watchouts
 
@@ -30,4 +34,9 @@ the current owner is outside recursive call argument preservation scope.
 
 ## Proof
 
-Lifecycle-only activation; no implementation validation run.
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$' > test_after.log 2>&1
+```
+
+Result: build was up to date; focused subset passed 2/2 with 0 failures.
+Proof log: `test_after.log`.
