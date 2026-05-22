@@ -289,8 +289,13 @@ bool append_f128_initializer_bytes(std::string_view text, std::vector<bir::Value
     payload[index] = static_cast<std::uint8_t>((*hi << 4) | *lo);
   }
 
-  for (auto it = payload.rbegin(); it != payload.rend(); ++it) {
-    out->push_back(bir::Value::immediate_i8(static_cast<std::int8_t>(*it)));
+  for (std::size_t word = 0; word < 2; ++word) {
+    const std::size_t begin = word * 8;
+    const std::size_t end = begin + 8;
+    for (std::size_t index = end; index > begin; --index) {
+      out->push_back(bir::Value::immediate_i8(
+          static_cast<std::int8_t>(payload[index - 1])));
+    }
   }
   return true;
 }

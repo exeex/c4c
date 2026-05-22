@@ -943,7 +943,7 @@ inline std::string fp_to_fp128_literal(double v) {
   const auto hi = static_cast<unsigned long long>(val128 >> 64);
   const auto lo = static_cast<unsigned long long>(val128);
   char buf[40];
-  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", hi, lo);
+  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", lo, hi);
   return buf;
 }
 
@@ -1055,7 +1055,7 @@ inline std::optional<std::string> fp_to_fp128_literal(std::string_view spelling)
   if (significand == 0) {
     const unsigned long long hi = negative ? 0x8000000000000000ULL : 0ULL;
     char buf[40];
-    std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", hi, 0ULL);
+    std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", 0ULL, hi);
     return std::string(buf);
   }
 
@@ -1123,7 +1123,7 @@ inline std::optional<std::string> fp_to_fp128_literal(std::string_view spelling)
   const auto low = static_cast<unsigned long long>(payload & 0xFFFFFFFFFFFFFFFFULL);
   const auto high = static_cast<unsigned long long>(payload >> 64);
   char buf[40];
-  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", high, low);
+  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", low, high);
   return std::string(buf);
 }
 

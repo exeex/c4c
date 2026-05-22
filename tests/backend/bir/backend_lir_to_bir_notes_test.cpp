@@ -2963,6 +2963,24 @@ int expect_admitted_aggregate_long_double_field_global() {
     }
   }
 
+  const auto* fp128_global = find_global("gfp128_field");
+  if (fp128_global == nullptr || fp128_global->type != TypeKind::I8 ||
+      fp128_global->size_bytes != 16 || fp128_global->initializer_elements.size() != 16) {
+    return fail("aggregate globals with fp128 fields should lower into 16-byte byte-addressable storage");
+  }
+
+  const std::array<std::int8_t, 16> expected_fp128_bytes = {
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0,
+      static_cast<std::int8_t>(0xFF), static_cast<std::int8_t>(0x3F),
+  };
+  for (std::size_t index = 0; index < expected_fp128_bytes.size(); ++index) {
+    if (fp128_global->initializer_elements[index] !=
+        c4c::backend::bir::Value::immediate_i8(expected_fp128_bytes[index])) {
+      return fail("aggregate globals with fp128 fields should preserve LLVM low-word/high-word text as little-endian bytes");
+    }
+  }
+
   return 0;
 }
 
@@ -6217,6 +6235,7 @@ LirModule make_admitted_aggregate_long_double_field_global_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
   module.type_decls.push_back("%struct.long_double_field = type { x86_fp80 }");
+  module.type_decls.push_back("%struct.fp128_field = type { fp128 }");
 
   LirGlobal global;
   global.name = "gld_field";
@@ -6225,6 +6244,14 @@ LirModule make_admitted_aggregate_long_double_field_global_module() {
   global.init_text = "{ x86_fp80 0xK4003F8CCCCCCCCCCD000 }";
   global.align_bytes = 16;
   module.globals.push_back(std::move(global));
+
+  LirGlobal fp128_global;
+  fp128_global.name = "gfp128_field";
+  fp128_global.qualifier = "global ";
+  fp128_global.llvm_type = "%struct.fp128_field";
+  fp128_global.init_text = "{ fp128 0xL00000000000000003FFF000000000000 }";
+  fp128_global.align_bytes = 16;
+  module.globals.push_back(std::move(fp128_global));
 
   LirFunction function;
   function.name = "admitted_aggregate_long_double_field_global";

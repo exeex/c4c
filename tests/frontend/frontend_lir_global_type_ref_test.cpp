@@ -6,6 +6,7 @@
 #include "parser.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
+#include "codegen/shared/llvm_helpers.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -343,6 +344,24 @@ int owner_miss_global;
               "complete owner-key miss should stop before interning stale rendered names");
 }
 
+void test_fp128_literals_match_llvm_text_order() {
+  namespace helpers = c4c::codegen::llvm_helpers;
+  helpers::set_active_target_triple("aarch64-unknown-linux-gnu");
+
+  expect_eq(helpers::fp_literal(c4c::TB_LONGDOUBLE, 1.0),
+            "0xL00000000000000003FFF000000000000",
+            "fp128 literal text should match LLVM low-word/high-word order");
+  expect_eq(helpers::fp_literal(c4c::TB_LONGDOUBLE, 0.5),
+            "0xL00000000000000003FFE000000000000",
+            "fp128 half literal text should match LLVM low-word/high-word order");
+  expect_eq(helpers::fp_literal(c4c::TB_LONGDOUBLE, 1.0, "1.0L"),
+            "0xL00000000000000003FFF000000000000",
+            "decimal fp128 literal parser should use LLVM low-word/high-word order");
+  expect_eq(helpers::fp_literal(c4c::TB_LONGDOUBLE, 0.0, "-0.0L"),
+            "0xL00000000000000008000000000000000",
+            "negative zero fp128 literal text should keep the sign bit in the high word");
+}
+
 }  // namespace
 
 int main() {
@@ -395,6 +414,7 @@ union Slot slot_global = {.int_value = 3};
 
   test_lookup_structured_layout_rejects_stale_rendered_compatibility();
   test_global_type_ref_owner_key_precedes_stale_rendered_names();
+  test_fp128_literals_match_llvm_text_order();
 
   std::cout << "PASS: frontend_lir_global_type_ref\n";
   return 0;
