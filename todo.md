@@ -8,11 +8,13 @@ Current Step Title: Refresh Pointer-Derived Load/Scaling Proof
 
 ## Just Finished
 
-Lifecycle activation created this runbook from `ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md`.
+Completed `plan.md` Step 1: refreshed the pointer-derived load/address-scaling proof for `ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md`.
+
+The focused subset passed 9/9 with 0 failures. `00181` passed, the memory operand contracts passed, and the materialized pointer writeback guardrails passed. No live in-scope pointer-derived load/address-scaling first bad fact remains in this proof.
 
 ## Suggested Next
 
-Run `plan.md` Step 1: refresh the focused pointer-derived load/address-scaling proof and record whether a live in-scope first bad fact remains.
+Ask the plan owner for the close/park lifecycle decision using the current green Step 1 proof and the required close-gate policy.
 
 ## Watchouts
 
@@ -23,4 +25,12 @@ Run `plan.md` Step 1: refresh the focused pointer-derived load/address-scaling p
 
 ## Proof
 
-Pending executor refresh.
+Ran:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00189_c)$' > test_after.log 2>&1
+```
+
+Result: build was up to date; focused subset passed 9/9 with 0 failures.
+
+Classification: no live in-scope pointer-derived load/address-scaling first bad fact remains. `test_after.log` is the canonical proof log for this executor packet.
