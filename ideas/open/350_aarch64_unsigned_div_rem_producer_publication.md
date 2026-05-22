@@ -6,6 +6,20 @@ Split From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
 
 ## Parking Note
 
+Reactivated on 2026-05-22 to refresh the current first bad fact. The focused
+unsigned div/rem producer-publication subset and `00182` representative both
+passed:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00182_c)$'
+```
+
+No current unsigned div/rem producer-publication failure remained. Close was
+rejected because the matching close-time regression guard stayed at 4/4
+passed before and after, with no strict pass-count increase. Keep this idea
+parked and reactivate it only if fresh evidence again shows unsigned div/rem
+consumers reading stale scratch or condition state.
+
 Parked on 2026-05-20 after the unsigned div/rem producer publication repair
 landed as scoped progress. Focused backend coverage for unsigned division and
 unsigned remainder producers now passes, and `00182` advanced past the stale
