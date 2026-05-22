@@ -75,6 +75,15 @@ is missing publication of incoming formals into local frame slots before local
 loads. The next active initiative is split to
 `ideas/open/353_aarch64_local_formal_frame_slot_publication.md`.
 
+2026-05-22: Refresh runbook Step 1 found no live in-scope AArch64 block
+label/emission ordering first bad fact. The delegated focused proof rebuilt the
+current tree and passed 7/7, including `c_testsuite_aarch64_backend_src_00176_c`
+plus adjacent branch, return, instruction-dispatch, and call-boundary guardrails.
+Close remains rejected by the strict close-time regression-log gate because
+`test_before.log` and `test_after.log` both show 7/7 passing, so the pass count
+did not strictly increase. The active runbook was deactivated and this source
+idea remains parked/open.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
