@@ -1,8 +1,8 @@
 # AArch64 Recursive Stack-Preserved Pointer Formal Post-Call Overwrite
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
-Split From: ideas/open/358_aarch64_recursive_scalar_formal_post_call_preservation.md
+Split From: ideas/closed/358_aarch64_recursive_scalar_formal_post_call_preservation.md
 
 ## Parked Notes
 
@@ -29,6 +29,21 @@ Formal close was not accepted in this lifecycle pass because the available
 canonical focused before/after logs remain 6/7 passed before and after. The
 regression guard reported no new failing tests, but rejected closure because
 the pass count did not strictly increase.
+
+## Closure Notes
+
+Closed on 2026-05-22 after the active refresh runbook confirmed that the old
+stack-preserved pointer-formal post-call overwrite is not live in the current
+focused subset. Step 1 passed 4/4 for
+`backend_cli_aarch64_asm_external_return_add_smoke`,
+`c_testsuite_aarch64_backend_src_00170_c`,
+`c_testsuite_aarch64_backend_src_00181_c`, and
+`c_testsuite_aarch64_backend_src_00189_c`.
+
+The close-time maintenance regression guard used matching canonical
+`test_before.log` and `test_after.log` files for that 4-test scope with
+`--allow-non-decreasing-passed`; it passed 4/4 before and 4/4 after with no new
+failures. No in-scope implementation packet remains for this source idea.
 
 ## Goal
 
