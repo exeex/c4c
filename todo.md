@@ -8,23 +8,34 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1.
+Step 1 - Refresh Current First Bad Fact refreshed the current `00173`
+semantic pointer-derived string-load proof. The focused subset passed 5/5 with
+0 failures, including `c_testsuite_aarch64_backend_src_00173_c`; no guardrail
+exposed dynamic pointer-derived byte-load collapse to fixed global-byte loads
+as a current in-scope first bad fact.
 
 ## Suggested Next
 
-Refresh the current `00173` first bad fact and determine whether the historical
-semantic pointer-derived string-load owner is live.
+Ask the plan owner for the close/park decision using the refreshed green proof
+and the required close-gate policy.
 
 ## Watchouts
 
 - The source idea is parked and says the dynamic pointer-derived byte-load
-  owner was previously repaired; do not implement from stale `00173` evidence.
-- Confirm whether current semantic BIR still preserves dynamic pointer bases
-  before touching lowering code.
+  owner was previously repaired; this refresh did not produce fresh evidence to
+  reopen implementation work.
 - Do not reopen string literal pointer-value publication, AArch64
   address-valued publication, recursive formal preservation, or frontend
   admission work inside this plan without lifecycle routing.
 
 ## Proof
 
-Not run during lifecycle-only activation.
+Command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_aarch64_prepared_memory_operand_records|c_testsuite_aarch64_backend_src_00173_c)$' > test_after.log 2>&1
+```
+
+Result: build was up to date; focused subset passed 5/5 with 0 failures.
+`test_after.log` is the proof log path. The supervisor-selected proof was
+sufficient for this refresh/classification packet.
