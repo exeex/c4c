@@ -8,23 +8,39 @@ Current Step Title: Refresh Current First Bad Fact
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1.
+Step 1: Refresh Current First Bad Fact completed for the semantic BIR
+pointer-derived string-load representative. The focused subset is green,
+including `c_testsuite_aarch64_backend_src_00173_c`, so no current `00173.c`
+or focused pointer-derived byte-load first bad fact remains under this owner.
 
 ## Suggested Next
 
-Refresh the current `00173` first bad fact and determine whether the historical
-semantic pointer-derived string-load owner is live.
+Supervisor lifecycle routing. The active source idea has no live first bad fact
+under the delegated focused proof.
 
 ## Watchouts
 
 - The source idea is parked and says the dynamic pointer-derived byte-load
-  owner was previously repaired; do not implement from stale `00173` evidence.
-- Confirm whether current semantic BIR still preserves dynamic pointer bases
-  before touching lowering code.
+  owner was previously repaired; this refresh did not produce contrary
+  evidence.
 - Do not reopen string literal pointer-value publication, AArch64
   address-valued publication, recursive formal preservation, or frontend
   admission work inside this plan without lifecycle routing.
 
 ## Proof
 
-Not run during lifecycle-only activation.
+Command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_aarch64_prepared_memory_operand_records|c_testsuite_aarch64_backend_src_00173_c)$'
+```
+
+Result: passed, 5/5 selected tests green:
+
+- `backend_lir_to_bir_notes`
+- `backend_aarch64_instruction_dispatch`
+- `backend_aarch64_memory_operand_contract`
+- `backend_aarch64_prepared_memory_operand_records`
+- `c_testsuite_aarch64_backend_src_00173_c`
+
+Proof log: `test_after.log`.
