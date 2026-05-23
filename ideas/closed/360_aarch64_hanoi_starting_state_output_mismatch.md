@@ -1,6 +1,6 @@
 # AArch64 Hanoi Starting-State Output Mismatch
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/359_aarch64_recursive_stack_preserved_pointer_formal_post_call_overwrite.md
 
@@ -36,6 +36,20 @@ Close remains rejected because the strict monotonic close gate fails even with
 matching green proof: `test_before.log` and `test_after.log` both pass 7/7,
 so the pass-count delta is 0 and no strict before/after improvement is
 established. The idea stays open and parked rather than active.
+
+Closed: 2026-05-23
+
+The focused refresh runbook activated by `2cf5828da` and recorded by
+`fceb07c78` found no live in-scope Hanoi starting-state value-flow failure.
+The supervisor-selected proof passed 8/8: `00181`, nearby `00170` and `00189`,
+and the five focused backend guardrails for adjacent repaired owners all
+passed.
+
+The close gate was accepted in non-decreasing mode against the rolled-forward
+focused proof log: 8/8 before, 8/8 after, pass delta 0, no new failures. The
+source idea is complete because the owned starting-state mismatch is absent
+from the current tree and any future residual must be classified under a
+separate source idea.
 
 ## Goal
 
