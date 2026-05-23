@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-prepared-boundary-recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Move One Generic Prepared/MIR Responsibility
+Current Step ID: Step 3
+Current Step Title: Boundary Review and Handoff
 
 # Current Packet
 
