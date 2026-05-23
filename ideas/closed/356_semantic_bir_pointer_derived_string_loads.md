@@ -1,8 +1,28 @@
 # Semantic BIR Pointer-Derived String Loads
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md
+
+## Closure
+
+Closed: 2026-05-23
+
+The focused semantic/backend pointer-derived byte-load owner is satisfied. The
+source note already recorded that the old owned first bad fact was absent:
+dynamic pointer-derived byte loads no longer collapse to fixed `@.str0` global
+byte loads, and the remaining string-literal pointer publication residual was
+split to `ideas/open/365_aarch64_string_literal_pointer_value_publication.md`.
+
+Close was accepted under the supervisor-approved non-decreasing close policy.
+Matching fresh focused proof logs in `test_before.log` and `test_after.log`
+cover:
+`backend_lir_to_bir_notes`, `backend_aarch64_instruction_dispatch`,
+`backend_aarch64_memory_operand_contract`,
+`backend_aarch64_prepared_memory_operand_records`, and
+`c_testsuite_aarch64_backend_src_00173_c`. The regression guard reported
+before 5/5, after 5/5, delta 0, and no new failures with
+`--allow-non-decreasing-passed`.
 
 ## Parked Outcome
 
