@@ -1,6 +1,6 @@
 # AArch64 Pointer-Derived Load Address Scaling Timeout
 
-Status: Parked - scope satisfied; close deferred
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md
 
@@ -119,3 +119,10 @@ total=9; after passed=9 failed=0 total=9; delta passed=0 failed=0; result
 FAIL, reason passed count did not strictly increase. The refresh runbook is
 deactivated; leave this source idea parked rather than closed until an
 acceptance-grade regression guard permits archival closure.
+
+2026-05-23: closure accepted after supervisor-provided focused refresh proof
+found no live in-scope pointer-derived load/address-scaling failure. The
+focused proof passed 9/9 for `00181`, neighboring `00170` and `00189`, and six
+AArch64/backend guardrails. The close-time non-decreasing regression guard
+using the rolled-forward focused proof artifact passed: before 9/9, after 9/9,
+delta 0, no new failures. The source scope is complete and the idea is archived.
