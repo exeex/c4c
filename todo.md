@@ -8,26 +8,26 @@ Current Step Title: Consolidate Dispatch Headers
 
 ## Just Finished
 
-Step 1 from `plan.md` is complete: calls-family shard declarations were folded
-into `src/backend/mir/aarch64/codegen/calls.hpp`, `calls*.cpp` now include the
-family header, and the empty `calls_*.hpp` shard headers were deleted. No
-calls shard header survivors remain.
+Step 2 from `plan.md` is complete: dispatch-family shard declarations were
+folded into `src/backend/mir/aarch64/codegen/dispatch.hpp`, grouped by the old
+shard subtopic names. Local dispatch-family include users now include
+`dispatch.hpp`, empty `dispatch_*.hpp` shard headers were deleted, and no
+dispatch shard header survivors remain.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: consolidate `dispatch_*.hpp` declarations into
-`dispatch.hpp`, update dispatch-family include users, delete empty dispatch
-shard headers, and prove with a fresh build plus supervisor-selected backend
-tests.
+Execute Step 3 from `plan.md`: review the consolidated calls and dispatch
+header families, confirm no `.cpp` files were merged or renamed, confirm no
+BIR/prealloc/MIR responsibility movement occurred, and run the
+supervisor-selected broader validation checkpoint.
 
 ## Watchouts
 
 - Do not merge `.cpp` files in this plan.
 - Do not move responsibilities between BIR, prealloc, MIR, and AArch64 codegen.
-- Keep declarations grouped by old shard subtopic inside the family header.
-- The calls consolidation had to give the formerly generic calls-effects helper
-  declarations calls-specific names to avoid collisions in other AArch64
-  implementation files that include `calls.hpp`.
+- The dispatch consolidation exposed formerly hidden private helper name
+  collisions in `dispatch_branch_fusion.cpp` and `dispatch_dynamic_stack.cpp`;
+  those anonymous-namespace helpers were renamed with file-specific prefixes.
 - Do not start the CPP-family consolidation idea.
 
 ## Proof

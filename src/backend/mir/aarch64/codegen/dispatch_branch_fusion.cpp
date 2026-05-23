@@ -1,6 +1,5 @@
-#include "dispatch_branch_fusion.hpp"
+#include "dispatch.hpp"
 
-#include "dispatch_lookup.hpp"
 #include "instruction.hpp"
 
 #include <cstdint>
@@ -12,7 +11,7 @@
 namespace c4c::backend::aarch64::codegen {
 namespace {
 
-[[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type) {
+[[nodiscard]] std::optional<unsigned> branch_fusion_integer_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
       return 1U;
@@ -115,7 +114,7 @@ struct SameBlockLoadProducer {
   return {};
 }
 
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
+[[nodiscard]] const bir::BinaryInst* branch_fusion_find_same_block_binary_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
   if (context.bir_block == nullptr ||
@@ -134,7 +133,7 @@ struct SameBlockLoadProducer {
   return nullptr;
 }
 
-[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
+[[nodiscard]] std::optional<std::int64_t> branch_fusion_evaluate_same_block_integer_constant(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     unsigned depth = 0) {
@@ -144,12 +143,12 @@ struct SameBlockLoadProducer {
   if (depth > 4U) {
     return std::nullopt;
   }
-  const auto* binary = find_same_block_binary_producer(context, value);
+  const auto* binary = branch_fusion_find_same_block_binary_producer(context, value);
   if (binary == nullptr) {
     return std::nullopt;
   }
-  const auto lhs = evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
-  const auto rhs = evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
+  const auto lhs = branch_fusion_evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
+  const auto rhs = branch_fusion_evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
@@ -254,7 +253,7 @@ struct SameBlockLoadProducer {
   return nullptr;
 }
 
-[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
+[[nodiscard]] std::optional<std::string> branch_fusion_prepared_frame_slot_load_address(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
   if (context.function.prepared == nullptr ||
@@ -451,8 +450,8 @@ lower_fused_compare_branch_from_emitted_cast(
     return std::nullopt;
   }
 
-  const auto source_bits = integer_bit_width(cast->operand.type);
-  const auto result_bits = integer_bit_width(cast->result.type);
+  const auto source_bits = branch_fusion_integer_bit_width(cast->operand.type);
+  const auto result_bits = branch_fusion_integer_bit_width(cast->result.type);
   const auto result_view = scalar_register_view(cast->result.type);
   if (!source_bits.has_value() || !result_bits.has_value() ||
       !result_view.has_value() || *source_bits >= *result_bits) {
@@ -462,7 +461,7 @@ lower_fused_compare_branch_from_emitted_cast(
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
   auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
   if (!rhs_name.has_value()) {
-    const auto constant = evaluate_same_block_integer_constant(context, *other_value);
+    const auto constant = branch_fusion_evaluate_same_block_integer_constant(context, *other_value);
     if (constant.has_value() && is_cmp_immediate_encodable(*constant)) {
       rhs_name = "#" + std::to_string(*constant);
     }
@@ -472,7 +471,7 @@ lower_fused_compare_branch_from_emitted_cast(
     const auto load_producer = find_same_block_load_producer(context, cast->operand);
     const auto load_address =
         load_producer.load != nullptr
-            ? prepared_frame_slot_load_address(context, load_producer.instruction_index)
+            ? branch_fusion_prepared_frame_slot_load_address(context, load_producer.instruction_index)
             : std::optional<std::string>{};
     if (!load_producer.load ||
         load_producer.load->result.type != bir::TypeKind::I8 ||
@@ -770,7 +769,7 @@ lower_constant_rhs_fused_compare_branch(
   }
   auto rhs = *branch_condition->rhs;
   rhs.type = *branch_condition->compare_type;
-  const auto* rhs_producer = find_same_block_binary_producer(context, rhs);
+  const auto* rhs_producer = branch_fusion_find_same_block_binary_producer(context, rhs);
   const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
       rhs_name.has_value() && context.function.value_locations != nullptr
@@ -782,7 +781,7 @@ lower_constant_rhs_fused_compare_branch(
       hooks.value_has_current_block_entry_publication(context, *rhs_home)) {
     return std::nullopt;
   }
-  const auto rhs_constant = evaluate_same_block_integer_constant(context, rhs);
+  const auto rhs_constant = branch_fusion_evaluate_same_block_integer_constant(context, rhs);
   if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(*rhs_constant)) {
     return std::nullopt;
   }
@@ -936,7 +935,7 @@ bool is_fused_compare_branch_support_instruction(
     };
     if ((matches_binary_result(*branch_condition->lhs) ||
          matches_binary_result(*branch_condition->rhs)) &&
-        evaluate_same_block_integer_constant(context, binary->result).has_value()) {
+        branch_fusion_evaluate_same_block_integer_constant(context, binary->result).has_value()) {
       return true;
     }
   }

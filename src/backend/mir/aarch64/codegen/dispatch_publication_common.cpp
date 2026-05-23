@@ -1,4 +1,4 @@
-#include "dispatch_publication_common.hpp"
+#include "dispatch.hpp"
 
 namespace c4c::backend::aarch64::codegen {
 

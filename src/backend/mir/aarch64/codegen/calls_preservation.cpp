@@ -1,5 +1,5 @@
 #include "calls.hpp"
-#include "dispatch_lookup.hpp"
+#include "dispatch.hpp"
 
 #include <algorithm>
 #include <cstddef>

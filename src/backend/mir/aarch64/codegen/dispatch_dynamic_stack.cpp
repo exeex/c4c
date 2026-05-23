@@ -1,4 +1,4 @@
-#include "dispatch_dynamic_stack.hpp"
+#include "dispatch.hpp"
 
 #include "instruction.hpp"
 
@@ -15,7 +15,7 @@ namespace {
 namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 
-void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
+void dynamic_stack_append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             module::ModuleLoweringDiagnosticKind kind,
                             const module::BlockLoweringContext& context,
                             std::size_t instruction_index,
@@ -238,7 +238,7 @@ dynamic_stack_helper_kind(std::string_view callee) {
     std::size_t instruction_index,
     std::string_view message,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  append_call_diagnostic(diagnostics,
+  dynamic_stack_append_call_diagnostic(diagnostics,
                          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
                          context,
                          instruction_index,
@@ -437,7 +437,7 @@ dynamic_stack_helper_kind(std::string_view callee) {
   if (op == nullptr) {
     constexpr std::string_view message =
         "AArch64 dynamic-stack helper lowering requires prepared dynamic-stack operation authority";
-    append_call_diagnostic(
+    dynamic_stack_append_call_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
         context,

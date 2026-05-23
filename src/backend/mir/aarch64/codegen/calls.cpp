@@ -1,5 +1,5 @@
 #include "calls.hpp"
-#include "dispatch_lookup.hpp"
+#include "dispatch.hpp"
 #include "float_ops.hpp"
 #include "f128.hpp"
 #include "machine_printer.hpp"

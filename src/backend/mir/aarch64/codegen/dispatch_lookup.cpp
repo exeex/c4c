@@ -1,4 +1,4 @@
-#include "dispatch_lookup.hpp"
+#include "dispatch.hpp"
 
 #include "../abi/abi.hpp"
 

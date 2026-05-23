@@ -1,7 +1,5 @@
-#include "dispatch_producers.hpp"
+#include "dispatch.hpp"
 
-#include "dispatch_lookup.hpp"
-#include "dispatch_publication.hpp"
 
 #include <algorithm>
 #include <cstdint>

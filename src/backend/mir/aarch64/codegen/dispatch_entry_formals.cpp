@@ -1,7 +1,6 @@
-#include "dispatch_entry_formals.hpp"
+#include "dispatch.hpp"
 
 #include "../abi/abi.hpp"
-#include "dispatch_lookup.hpp"
 #include "machine_printer.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 
