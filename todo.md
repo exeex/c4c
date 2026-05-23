@@ -1,28 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-cpp-family-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Consolidate Dispatch Publication CPP Boundary
+Current Step ID: Step 3
+Current Step Title: Consolidate Calls CPP Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by merging the dispatch publication common helper
-definitions into `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`.
-Deleted the obsolete helper `.cpp` and removed its explicit
-`src/backend/CMakeLists.txt` source-list entry.
+Completed `plan.md` Step 3 by merging the call effects helper definitions from
+`src/backend/mir/aarch64/codegen/calls_effects.cpp` into
+`src/backend/mir/aarch64/codegen/calls_printing.cpp`.
+Deleted the obsolete helper `.cpp`, removed its explicit
+`src/backend/CMakeLists.txt` source-list entry, and trimmed
+`src/backend/mir/aarch64/codegen/calls.hpp` so only
+`effects_from_prepared_call_clobbers`, the call-effect API still used by other
+translation units, remains public.
 
 Post-merge scans found no remaining source-list or implementation references to
-the removed dispatch publication helper `.cpp`; remaining mentions are
-lifecycle/history context or the existing `dispatch.hpp` section label.
+the removed `calls_effects.cpp`. A follow-up source-reference scan confirmed
+`effects_from_prepared_call_preserved_values` is used only by
+`calls_printing.cpp`, so it now has internal linkage there.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3 for the calls family: inspect the previously noted
-`calls_common.cpp` / `calls_effects.cpp` candidates, choose one thin helper
-boundary, merge it into the nearest durable calls implementation, update
-`src/backend/CMakeLists.txt`, and run the same backend proof.
+Execute `plan.md` Step 4: re-scan the AArch64 codegen `.cpp` layout, record
+which remaining tiny call or dispatch helper files are intentionally retained
+or out of scope, and run the supervisor-selected broader validation or
+regression guard if required by the accumulated consolidation slices.
 
 ## Watchouts
 
@@ -30,11 +35,12 @@ boundary, merge it into the nearest durable calls implementation, update
 - Do not merge large semantic lowering modules just to reduce file count.
 - Do not hide target-independent logic in AArch64 during consolidation.
 - Keep slices behavior-preserving and reviewable.
-- Calls helpers are shared across `calls.cpp`, `calls_moves.cpp`, and
-  `calls_printing.cpp`; choose the destination by ownership, not just file
-  size.
-- Keep substantive call ABI, move, printing, and preservation modules separate
-  unless the next packet proves a boundary is only connective glue.
+- `effects_from_prepared_call_clobbers` remains public because `f128.cpp` and
+  `i128_ops.cpp` still consume it; `effects_from_prepared_call_preserved_values`
+  and the single-record effect helpers are local to `calls_printing.cpp`.
+- Remaining calls modules such as call argument sources, moves, preservation,
+  and byval aggregates still look like durable semantic boundaries unless the
+  Step 4 review proves otherwise.
 
 ## Proof
 

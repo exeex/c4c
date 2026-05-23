@@ -51,24 +51,10 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             std::size_t instruction_index,
                             std::string message);
 
-// calls_effects
+// calls_printing effects
 
-[[nodiscard]] MachineEffectResource call_effect_from_operand(const OperandRecord& operand);
-[[nodiscard]] MachineEffectResource call_prepared_value_def(
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name);
-[[nodiscard]] std::vector<MachineEffectResource> call_effects_from_operands(
-    const std::vector<OperandRecord>& operands);
-[[nodiscard]] std::optional<MachineEffectResource> effect_from_prepared_call_clobber(
-    const prepare::PreparedClobberedRegister& clobber);
 [[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
     const std::vector<prepare::PreparedClobberedRegister>& clobbers);
-[[nodiscard]] std::optional<MachineEffectResource>
-effect_from_prepared_call_preserved_value(
-    const prepare::PreparedCallPreservedValue& preserved);
-[[nodiscard]] std::vector<MachineEffectResource>
-effects_from_prepared_call_preserved_values(
-    const std::vector<prepare::PreparedCallPreservedValue>& preserved_values);
 
 // calls_argument_sources
 

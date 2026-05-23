@@ -16,7 +16,6 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_argument_sources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_byval_aggregates.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_common.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_effects.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_moves.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_preservation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_printing.cpp"
