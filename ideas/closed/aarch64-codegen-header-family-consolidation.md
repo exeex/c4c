@@ -47,3 +47,9 @@ prefix families.
   `calls.hpp` and `dispatch.hpp`, except for any explicitly justified survivor.
 - All affected `.cpp` files include the family header.
 - Fresh build proves the include consolidation.
+
+## Closure Note
+
+Closed after consolidating the calls and dispatch shard headers into
+`calls.hpp` and `dispatch.hpp`, with no shard header survivors and no stale
+shard includes. Backend regression guard passed 149/149 before and after.
