@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/385_aarch64_dispatch_publication_mechanical_split.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Extract Shared Publication Helpers
+Current Step ID: 2
+Current Step Title: Extract Same-Block Producer Discovery
 
 # Current Packet
 
