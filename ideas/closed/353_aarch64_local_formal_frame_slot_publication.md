@@ -1,6 +1,6 @@
 # AArch64 Local/Formal Frame-Slot Publication
 
-Status: Parked
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/352_aarch64_block_label_emission_ordering.md
 
@@ -100,6 +100,16 @@ monotonic regression guard compared matching green logs with
 increase. Keep this idea parked, not active, until fresh generated-code
 evidence again shows scalar fixed formal-to-local frame-slot publication as the
 first bad fact.
+
+## Closure Note
+
+2026-05-23: Closed under the supervisor-approved non-decreasing close policy.
+No active `plan.md` or `todo.md` existed. The source scope is satisfied because
+the owned scalar fixed formal-to-local frame-slot publication failure is absent:
+the focused close proof passed 5/5 before and 5/5 after, including `00176` and
+the adjacent local/formal publication guardrails, with no new failures and no
+pass-count decrease. The only previous close rejection was the stricter
+pass-count-increase gate, not remaining source intent.
 
 ## Reviewer Reject Signals
 
