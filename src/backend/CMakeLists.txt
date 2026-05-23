@@ -19,6 +19,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_effects.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_moves.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_preservation.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_printing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/comparison.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/compatibility_projection.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch.cpp"
