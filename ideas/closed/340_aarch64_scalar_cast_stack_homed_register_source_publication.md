@@ -1,6 +1,6 @@
 # AArch64 Scalar Cast Stack-Homed Register Source Publication
 
-Status: Parked - scope satisfied; close deferred
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 Reopens Boundary From: ideas/closed/338_aarch64_scalar_cast_register_source_operand_facts.md
@@ -117,6 +117,21 @@ guard remains strict-increase based for closure: `test_before.log` and
 but rejects the close due to unchanged pass count. The active refresh runbook
 was therefore deactivated with this source idea left open and parked rather
 than replaced with more in-scope scalar-cast work.
+
+## Closure Note 2026-05-23
+
+Step 3 lifecycle handoff accepted closure after the refreshed focused proof
+found no live in-scope scalar-cast source-publication first bad fact. The
+focused proof passed:
+`backend_aarch64_scalar_cast_records`,
+`backend_aarch64_prepared_scalar_cast_records`, and
+`c_testsuite_aarch64_backend_src_00143_c`.
+
+The close-time regression gate was accepted in non-decreasing mode using the
+rolled-forward canonical focused log: 3/3 passing before, 3/3 passing after,
+delta 0, and no new failing tests. No implementation, expectation, runner,
+timeout, unsupported, CTest-registration, or proof-log-policy change was used
+to claim closure.
 
 ## Reviewer Reject Signals
 
