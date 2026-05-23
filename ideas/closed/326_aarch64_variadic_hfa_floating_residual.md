@@ -1,6 +1,6 @@
 # AArch64 Variadic HFA And Floating Residual
 
-Status: Parked
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/325_aarch64_variadic_local_value_home_publication.md
 
@@ -234,3 +234,13 @@ matching canonical logs because both sides reported `passed=15 failed=0
 total=15`; the guard failed only because the pass count did not strictly
 increase. Keep this idea open and parked. Reactivate only if fresh generated
 evidence reaches a standalone first bad fact inside this source scope.
+
+2026-05-23: Closed after the Step 2 lifecycle handoff for the focused refresh
+accepted the supervisor-approved non-decreasing close mode. The latest
+focused `00204.c` backend dump and representative proof remained green across
+15 selected tests, with no live in-scope HFA/floating, composite variadic
+call-boundary, or structured f128/q-register authority first bad fact to
+repair or hand off. The close-time regression guard was rerun against the
+rolled-forward focused canonical log in non-decreasing mode and passed with
+`passed=15 failed=0 total=15` before and after, `delta=0`, and no new failing
+tests. The source idea is therefore complete rather than merely parked.
