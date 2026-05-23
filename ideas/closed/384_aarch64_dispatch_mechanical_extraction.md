@@ -145,3 +145,10 @@ ctest --test-dir build -j10 --output-on-failure
 - No behavior-changing edits are mixed into the mechanical extraction commits.
 - Full-suite baseline remains green.
 
+## Closure Note
+
+Closed after the mechanical extraction reduced `dispatch.cpp` to 2745 lines,
+kept `dispatch.hpp` at a small 26-line public API, and wired the extracted
+`dispatch_*.cpp` files as normal CMake sources. No tests or expectations were
+changed as part of the extraction route. The close-time full-suite evidence in
+`test_baseline.log` reports 3381/3381 tests passing.
