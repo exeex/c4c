@@ -1,34 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/386_aarch64_calls_mechanical_split.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Extract Argument Sources And Bindings
+Current Step ID: Step 4
+Current Step Title: Extract Byval And Aggregate Lane Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 - Extract Argument Sources And Bindings.
+Completed Step 4 - Extract Byval And Aggregate Lane Helpers.
 
-Added `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp` and
-`src/backend/mir/aarch64/codegen/calls_argument_sources.hpp`, registered the new
+Added `src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp` and
+`src/backend/mir/aarch64/codegen/calls_byval_aggregates.hpp`, registered the new
 source in `src/backend/CMakeLists.txt`, and made `calls.cpp` include the new
 helper header.
 
-Mechanically moved the prepared argument/result binding lookup helpers,
-prepared register/immediate/f128 argument-source helpers, frame-slot/local-frame
-address/stack/aggregate argument source construction helpers, and the prepared
-indirect-callee plus memory-return storage helpers.
+Mechanically moved the aggregate stack-copy primitives, aggregate register-lane
+load/memory/destination/publication helpers, byval register-lane store
+collection and prepared-source helpers, aggregate lane store memory construction,
+and the byval ABI-size predicates out of `calls.cpp`.
 
-After supervisor route review, narrowed the slice by restoring byval aggregate
-register-lane helpers and preservation-analysis helpers to `calls.cpp` for the
-later clusters.
+Kept call lowering, preservation analysis, effects, and print helper bodies in
+`calls.cpp`.
 
 ## Suggested Next
 
 Execute the next mechanical extraction packet from the active plan, keeping
-byval aggregate-lane and preservation-analysis work out of Step 3 unless that
-later packet explicitly owns it.
+preservation-analysis, move-lowering, effects, and print-body changes out of
+the byval aggregate helper slice unless that later packet explicitly owns them.
 
 ## Watchouts
 
@@ -46,17 +45,19 @@ later packet explicitly owns it.
 - `calls_common.hpp` currently includes `calls.hpp` for shared call/codegen
   types. Later narrower headers can reduce that include after more clusters are
   split.
-- Byval aggregate register-lane helpers remain in `calls.cpp`: they are reserved
-  for later plan clusters and also feed the current aggregate lane print/copy
-  paths.
 - Preservation-analysis helpers remain in `calls.cpp`: they are reserved for a
-  later plan cluster and are not required by the narrowed Step 3 helper set.
+  later plan cluster and are not required by the Step 4 helper set.
 - `calls.cpp` now includes `dispatch_lookup.hpp` and `float_ops.hpp` directly
-  for existing external helper declarations that Step 3 no longer re-exports.
+  for existing external helper declarations from earlier split packets.
+- `calls_byval_aggregates.cpp` includes `dispatch_lookup.hpp` for
+  `find_value_home` and keeps tiny local copies of the GP-register equality and
+  aggregate frame-slot direct-offset predicates instead of moving call-boundary
+  print helpers.
+- `clang-format` was unavailable in the environment.
 
 ## Proof
 
-Step 3 proof recorded in `test_after.log`:
+Step 4 proof recorded in `test_after.log`:
 
 ```bash
 cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10
@@ -68,14 +69,10 @@ Result: green; all 3 selected tests passed.
 Additional AST-backed checks run during the packet:
 
 ```bash
-command -v c4c-clang-tool c4c-clang-tool-ccdb
 c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
 c4c-clang-tool-ccdb list-symbols /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_prepared_argument_plan build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_register_operand_from_prepared_authority build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_register_operand_from_prepared_authority build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_frame_slot_call_argument_source build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_frame_slot_call_argument_source build/compile_commands.json
-c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_argument_sources.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_indirect_callee_register build/compile_commands.json
+c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp collect_byval_register_lane_stores build/compile_commands.json
+c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp collect_byval_register_lane_stores build/compile_commands.json
+c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp aggregate_register_lane_scratch build/compile_commands.json
 ```

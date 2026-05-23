@@ -1,0 +1,672 @@
+#include "calls_byval_aggregates.hpp"
+
+#include "calls_argument_sources.hpp"
+#include "dispatch_lookup.hpp"
+#include "memory.hpp"
+
+#include <algorithm>
+#include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <variant>
+#include <vector>
+
+namespace c4c::backend::aarch64::codegen {
+
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+
+namespace {
+
+[[nodiscard]] bool byval_same_gp_register_index(abi::RegisterReference lhs,
+                                                abi::RegisterReference rhs) {
+  return lhs.index == rhs.index && abi::is_gp_register(lhs) && abi::is_gp_register(rhs);
+}
+
+[[nodiscard]] bool aggregate_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t load_width_bytes) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      load_width_bytes == 0) {
+    return false;
+  }
+  if (load_width_bytes != 1 && load_width_bytes != 2 && load_width_bytes != 4 &&
+      load_width_bytes != 8 && load_width_bytes != 16) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % load_width_bytes == 0 && offset / load_width_bytes <= 4095U;
+}
+
+}  // namespace
+
+[[nodiscard]] std::string_view aggregate_stack_copy_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+[[nodiscard]] std::string_view aggregate_stack_copy_store_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_stack_copy_scratch(
+    std::size_t width_bytes) {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  if (width_bytes == 1 || width_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  if (width_bytes == 8) {
+    return abi::x_register(scratch.index);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::size_t> aggregate_stack_copy_chunks(
+    std::size_t size_bytes) {
+  std::vector<std::size_t> chunks;
+  std::size_t remaining = size_bytes;
+  while (remaining >= 8) {
+    chunks.push_back(8);
+    remaining -= 8;
+  }
+  if (remaining >= 4) {
+    chunks.push_back(4);
+    remaining -= 4;
+  }
+  while (remaining > 0) {
+    chunks.push_back(1);
+    --remaining;
+  }
+  return chunks;
+}
+
+[[nodiscard]] std::string_view aggregate_register_lane_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 2:
+      return "ldrh";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+[[nodiscard]] abi::RegisterReference aggregate_register_lane_load_register(
+    abi::RegisterReference reg,
+    std::size_t width_bytes) {
+  return width_bytes == 8 ? abi::x_register(reg.index) : abi::w_register(reg.index);
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
+    const RegisterOperand& destination) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (byval_same_gp_register_index(scratch, destination.reg)) {
+      continue;
+    }
+    bool aliases_occupied = false;
+    for (const auto occupied : destination.occupied_register_references) {
+      if (byval_same_gp_register_index(scratch, occupied)) {
+        aliases_occupied = true;
+        break;
+      }
+    }
+    if (!aliases_occupied) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] MemoryOperand aggregate_register_lane_memory(
+    MemoryOperand memory,
+    std::size_t byte_offset,
+    std::size_t width_bytes) {
+  memory.byte_offset += static_cast<std::int64_t>(byte_offset);
+  memory.size_bytes = width_bytes;
+  memory.align_bytes = std::min<std::size_t>(memory.align_bytes, width_bytes);
+  return memory;
+}
+
+[[nodiscard]] bool aggregate_register_lane_memory_is_printable(
+    const MemoryOperand& memory,
+    std::size_t width_bytes) {
+  if (memory.base_kind == MemoryBaseKind::PointerValue && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
+  if (memory.base_kind == MemoryBaseKind::Register && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
+  return memory.base_kind == MemoryBaseKind::FrameSlot &&
+         aggregate_frame_slot_direct_offset_is_encodable(memory, width_bytes) &&
+         !memory_address(memory).empty();
+}
+
+[[nodiscard]] std::optional<std::size_t> aggregate_register_lane_printable_chunk(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining) {
+  static constexpr std::size_t kCandidateChunks[] = {8, 4, 2, 1};
+  for (const std::size_t chunk_width : kCandidateChunks) {
+    if (chunk_width > remaining) {
+      continue;
+    }
+    const auto chunk_memory =
+        aggregate_register_lane_memory(memory, source_offset, chunk_width);
+    if (aggregate_register_lane_memory_is_printable(chunk_memory, chunk_width) &&
+        !aggregate_register_lane_load_mnemonic(chunk_width).empty()) {
+      return chunk_width;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_destination(
+    const RegisterOperand& destination,
+    std::size_t lane_index) {
+  if (lane_index < destination.occupied_register_references.size()) {
+    return abi::x_register(destination.occupied_register_references[lane_index].index);
+  }
+  if (destination.reg.index + lane_index > 30) {
+    return std::nullopt;
+  }
+  return abi::x_register(static_cast<std::uint8_t>(destination.reg.index + lane_index));
+}
+
+[[nodiscard]] bool is_aggregate_register_lane_publication(
+    const CallBoundaryMoveInstructionRecord& move) {
+  return move.phase == prepare::PreparedMovePhase::BeforeCall &&
+           move.move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+           move.move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+           move.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.move.reason == "call_arg_byval_aggregate_register_lanes" &&
+           move.source_memory.has_value() &&
+         !move.source_memory_materializes_address &&
+         move.source_memory->support == MemoryOperandSupportKind::Prepared &&
+         move.source_memory->size_bytes > 0 &&
+           move.source_memory->size_bytes <= 16 &&
+           move.destination_register.has_value() &&
+           move.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
+         move.destination_register->expected_view == abi::RegisterView::X &&
+           abi::is_gp_register(move.destination_register->reg);
+}
+
+[[nodiscard]] bool is_aarch64_byval_register_lane_move(
+    const prepare::PreparedMoveResolution& move) {
+  return move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+         (move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register ||
+          move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) &&
+         move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.reason == "call_arg_byval_aggregate_register_lanes";
+}
+
+[[nodiscard]] std::optional<std::size_t> byval_register_lane_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    std::size_t instruction_index) {
+  if (!is_aarch64_byval_register_lane_move(move) ||
+      context.bir_block == nullptr ||
+      !move.destination_abi_index.has_value() ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call = std::get_if<bir::CallInst>(
+      &context.bir_block->insts[instruction_index]);
+  if (call == nullptr || *move.destination_abi_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& arg_abi = call->arg_abi[*move.destination_abi_index];
+  if (arg_abi.type != bir::TypeKind::Ptr || !arg_abi.byval_copy ||
+      arg_abi.sret_pointer ||
+      (!arg_abi.passed_in_register && !arg_abi.passed_on_stack) ||
+      arg_abi.primary_class != bir::AbiValueClass::Integer ||
+      arg_abi.size_bytes == 0 || arg_abi.size_bytes > 16) {
+    return std::nullopt;
+  }
+  return arg_abi.size_bytes;
+}
+
+namespace {
+
+[[nodiscard]] std::optional<std::size_t> aggregate_slot_source_byte_offset(
+    std::string_view slot_name,
+    std::string_view source_name) {
+  if (source_name.empty() || slot_name.size() <= source_name.size() + 1 ||
+      slot_name.compare(0, source_name.size(), source_name) != 0 ||
+      slot_name[source_name.size()] != '.') {
+    return std::nullopt;
+  }
+  const auto suffix = slot_name.substr(source_name.size() + 1);
+  std::size_t byte_offset = 0;
+  const auto* begin = suffix.data();
+  const auto* end = begin + suffix.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, byte_offset);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return byte_offset;
+}
+
+struct AggregateRegisterLaneLoadSource {
+  std::string value_name;
+  std::string slot_name;
+};
+
+struct AggregateRegisterLanePartialStore {
+  std::string slot_name;
+  std::size_t byte_offset = 0;
+  AggregateRegisterLaneStore store;
+};
+
+[[nodiscard]] std::optional<std::string_view> find_aggregate_lane_load_source_slot(
+    const std::vector<AggregateRegisterLaneLoadSource>& load_sources,
+    std::string_view value_name) {
+  for (auto it = load_sources.rbegin(); it != load_sources.rend(); ++it) {
+    if (it->value_name == value_name) {
+      return std::string_view{it->slot_name};
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool append_aggregate_lane_partial_source_stores(
+    std::string_view slot_name,
+    std::size_t source_offset,
+    std::size_t source_size_bytes,
+    std::optional<std::size_t> source_home_offset,
+    const std::vector<AggregateRegisterLanePartialStore>& partial_stores,
+    std::vector<AggregateRegisterLaneStore>* stores) {
+  bool appended = false;
+  for (const auto& partial : partial_stores) {
+    if (partial.slot_name != slot_name || partial.byte_offset >= source_size_bytes) {
+      continue;
+    }
+    auto adjusted = partial.store;
+    adjusted.source_offset = source_offset + partial.byte_offset;
+    adjusted.size_bytes = std::min(adjusted.size_bytes,
+                                   source_size_bytes - partial.byte_offset);
+    if (!source_home_offset.has_value() || adjusted.stack_offset < 0 ||
+        static_cast<std::size_t>(adjusted.stack_offset) < *source_home_offset) {
+      continue;
+    }
+    stores->push_back(std::move(adjusted));
+    appended = true;
+  }
+  return appended;
+}
+
+}  // namespace
+
+[[nodiscard]] std::vector<AggregateRegisterLaneStore>
+collect_byval_register_lane_stores(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t instruction_index) {
+  std::vector<AggregateRegisterLaneStore> stores;
+  std::vector<AggregateRegisterLaneLoadSource> load_sources;
+  std::vector<AggregateRegisterLanePartialStore> partial_stores;
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      source_home.value_name == c4c::kInvalidValueName) {
+    return stores;
+  }
+  const auto source_name =
+      prepare::prepared_value_name(context.function.prepared->names,
+                                   source_home.value_name);
+  if (source_name.empty()) {
+    return stores;
+  }
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return stores;
+  }
+
+  for (std::size_t index = 0;
+       index < instruction_index && index < context.bir_block->insts.size();
+       ++index) {
+    if (const auto* load = std::get_if<bir::LoadLocalInst>(
+            &context.bir_block->insts[index]);
+        load != nullptr && load->result.kind == bir::Value::Kind::Named &&
+        !load->slot_name.empty()) {
+      load_sources.push_back(AggregateRegisterLaneLoadSource{
+          .value_name = load->result.name,
+          .slot_name = load->slot_name,
+      });
+      continue;
+    }
+
+    const auto* store = std::get_if<bir::StoreLocalInst>(
+        &context.bir_block->insts[index]);
+    if (store == nullptr) {
+      continue;
+    }
+    const auto* access =
+        prepare::find_prepared_memory_access(*addressing,
+                                             context.control_flow_block->block_label,
+                                             index);
+    if (access == nullptr ||
+        access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        access->address.size_bytes == 0) {
+      continue;
+    }
+    if (store->value.kind == bir::Value::Kind::Named) {
+      const auto stored_value_name =
+          context.function.prepared->names.value_names.find(store->value.name);
+      if (stored_value_name != c4c::kInvalidValueName &&
+          access->stored_value_name != std::optional<c4c::ValueNameId>{stored_value_name}) {
+        continue;
+      }
+    }
+    const auto* slot =
+        find_frame_slot_by_id(context.function.prepared->stack_layout,
+                              *access->address.frame_slot_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    AggregateRegisterLaneStore lane_store{
+        .stack_offset =
+            static_cast<std::int64_t>(slot->offset_bytes) +
+            access->address.byte_offset,
+        .size_bytes = access->address.size_bytes,
+        .align_bytes = access->address.align_bytes == 0
+                           ? std::size_t{1}
+                           : access->address.align_bytes,
+        .frame_slot_id = access->address.frame_slot_id,
+    };
+
+    if (store->address.has_value() &&
+        store->address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+        store->address->byte_offset >= 0 && !store->address->base_name.empty()) {
+      auto partial_store = lane_store;
+      if (context.function.value_locations != nullptr &&
+          source_home.offset_bytes.has_value() &&
+          store->value.kind == bir::Value::Kind::Named) {
+        const auto stored_value_name =
+            context.function.prepared->names.value_names.find(store->value.name);
+        const auto* stored_home =
+            stored_value_name == c4c::kInvalidValueName
+                ? nullptr
+                : find_value_home(context, stored_value_name);
+        if (stored_home != nullptr &&
+            stored_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+            stored_home->offset_bytes.has_value() && stored_home->slot_id.has_value() &&
+            *stored_home->offset_bytes >= *source_home.offset_bytes) {
+          partial_store.stack_offset = static_cast<std::int64_t>(*stored_home->offset_bytes);
+          partial_store.size_bytes = stored_home->size_bytes.value_or(access->address.size_bytes);
+          partial_store.align_bytes =
+              stored_home->align_bytes.value_or(access->address.align_bytes == 0
+                                                    ? std::size_t{1}
+                                                    : access->address.align_bytes);
+          partial_store.frame_slot_id = stored_home->slot_id;
+        }
+      }
+      partial_stores.push_back(AggregateRegisterLanePartialStore{
+          .slot_name = store->address->base_name,
+          .byte_offset = static_cast<std::size_t>(store->address->byte_offset),
+          .store = partial_store,
+      });
+    }
+
+    const auto source_offset =
+        aggregate_slot_source_byte_offset(store->slot_name, source_name);
+    if (!source_offset.has_value()) {
+      continue;
+    }
+    lane_store.source_offset = *source_offset;
+
+    if (store->value.kind == bir::Value::Kind::Named) {
+      if (const auto load_source_slot =
+              find_aggregate_lane_load_source_slot(load_sources, store->value.name);
+          load_source_slot.has_value() &&
+          append_aggregate_lane_partial_source_stores(*load_source_slot,
+                                                      *source_offset,
+                                                      access->address.size_bytes,
+                                                      source_home.offset_bytes,
+                                                      partial_stores,
+                                                      &stores)) {
+        continue;
+      }
+    }
+    stores.push_back(std::move(lane_store));
+  }
+  std::sort(stores.begin(), stores.end(),
+            [](const AggregateRegisterLaneStore& lhs,
+               const AggregateRegisterLaneStore& rhs) {
+              return lhs.source_offset < rhs.source_offset;
+            });
+  return stores;
+}
+
+[[nodiscard]] std::optional<MemoryOperand>
+make_byval_register_lane_prepared_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t size_bytes,
+    std::size_t instruction_index) {
+  if (size_bytes == 0) {
+    return std::nullopt;
+  }
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, instruction_index);
+  if (stores.empty()) {
+    return std::nullopt;
+  }
+
+  if (stores.front().source_offset != 0 || stores.front().stack_offset < 0) {
+    return std::nullopt;
+  }
+  const auto first_offset = stores.front().stack_offset;
+  std::size_t covered_bytes = 0;
+  std::size_t source_align = stores.front().align_bytes;
+  for (const auto& store : stores) {
+    if (store.stack_offset < 0 ||
+        store.source_offset > covered_bytes ||
+        static_cast<std::int64_t>(store.source_offset) !=
+            store.stack_offset - first_offset) {
+      return std::nullopt;
+    }
+    covered_bytes =
+        std::max(covered_bytes, store.source_offset + store.size_bytes);
+    source_align = std::min(source_align, store.align_bytes);
+    if (covered_bytes >= size_bytes) {
+      break;
+    }
+  }
+  if (covered_bytes < size_bytes || !stores.front().frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
+      .result_value_name = std::nullopt,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = stores.front().frame_slot_id,
+      .byte_offset = first_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = source_align,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> aggregate_lane_store_memory(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const AggregateRegisterLaneStore& store,
+    std::size_t byte_delta,
+    std::size_t width_bytes,
+    std::size_t instruction_index) {
+  if (!store.frame_slot_id.has_value() ||
+      store.stack_offset < 0 ||
+      width_bytes == 0 ||
+      byte_delta >
+          static_cast<std::size_t>(
+              std::numeric_limits<std::int64_t>::max() - store.stack_offset)) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{
+                                   source_home.value_id},
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = store.frame_slot_id,
+      .byte_offset = store.stack_offset + static_cast<std::int64_t>(byte_delta),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = width_bytes,
+      .align_bytes = std::min<std::size_t>(store.align_bytes, width_bytes),
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<std::size_t> aarch64_indirect_byval_argument_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_in_register ||
+      abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes <= 16) {
+    return std::nullopt;
+  }
+  return abi.size_bytes;
+}
+
+[[nodiscard]] std::optional<std::size_t> aarch64_stack_byval_argument_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_on_stack ||
+      abi.size_bytes == 0) {
+    return std::nullopt;
+  }
+  return abi.size_bytes;
+}
+
+[[nodiscard]] std::optional<std::size_t> aarch64_register_byval_argument_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_in_register ||
+      abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes == 0 ||
+      abi.size_bytes > 16) {
+    return std::nullopt;
+  }
+  return abi.size_bytes;
+}
+
+[[nodiscard]] bool aarch64_indirect_register_byval_argument(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
+      context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return false;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  return abi.type == bir::TypeKind::Ptr &&
+         abi.byval_copy &&
+         !abi.sret_pointer &&
+         abi.passed_in_register &&
+         !abi.passed_on_stack &&
+         abi.primary_class == bir::AbiValueClass::Integer &&
+         abi.size_bytes > 16;
+}
+
+
+}  // namespace c4c::backend::aarch64::codegen
