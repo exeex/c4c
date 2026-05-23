@@ -52,3 +52,12 @@ Possible early candidates include:
 - A small set of `.cpp` files is merged based on documented rationale.
 - Remaining files have names that correspond to durable implementation concepts.
 - Fresh build or targeted backend tests prove the consolidation.
+
+## Completion Note
+
+Closed after merging `dispatch_publication_common.cpp` into
+`dispatch_publication.cpp` and `calls_effects.cpp` into `calls_printing.cpp`.
+The retained small AArch64 codegen `.cpp` files were re-scanned and kept
+because they still name durable route, diagnostics, compatibility, compile, or
+call-family boundaries. Backend validation passed with the canonical
+`^backend_` regression scope.
