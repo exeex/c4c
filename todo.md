@@ -1,58 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/384_aarch64_dispatch_mechanical_extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Extract Publication Helpers
+Current Step ID: Step 6
+Current Step Title: Extract Call Boundary and Indirect Call Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 extracted the value, store, and edge publication helper cluster into
-`dispatch_publication.cpp/hpp` and wired the new source into
-`src/backend/CMakeLists.txt`. The moved cluster preserves publication ordering,
-inline-asm note construction, stack-store publication, edge-source publication,
-and current block entry publication behavior without adding lowering support.
+Step 6 extracted the call boundary, indirect call, scalar call-argument
+materialization, call-result publication, before-call move ordering, missing
+frame-slot call argument materialization, and stack-preserved call value helper
+cluster into `dispatch_calls.cpp/hpp`. The new source is wired into
+`src/backend/CMakeLists.txt`, and `dispatch.cpp` calls through the same helper
+names without adding call lowering support or changing test expectations.
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: use AST-backed queries to identify the
-mechanically separable call boundary and indirect-call helper cluster before
-moving call-related logic out of `dispatch.cpp`.
+Execute Step 7 from `plan.md`: review the residual `dispatch.cpp` shape,
+confirm the public dispatch API remains small, check extracted files are normal
+CMake sources, and run the close-readiness validation selected by the
+supervisor.
 
 ## Watchouts
 
-- AST evidence recorded for Step 5:
+- AST evidence recorded for Step 6:
   `c4c-clang-tool-ccdb function-signatures .../dispatch.cpp build/compile_commands.json`,
-  `function-callees/function-callers emit_value_publication_to_register`,
-  `function-callees/function-callers lower_store_local_value_publication`,
-  plus `function-callees` on
-  `emit_select_chain_value_to_register`,
-  `make_select_chain_materialization_instruction`, and
-  `lower_pending_store_global_stack_value_publications`.
-- `dispatch.cpp` is now 3927 lines, below the source idea's first-pass target.
-- `dispatch_publication.hpp` exposes several mechanically shared publication
-  support helpers because residual call-boundary and missing-operand code still
-  uses the same publication contracts. Keep Step 6 limited to call-boundary and
-  indirect-call extraction rather than reshaping these publication APIs.
-- Two publication support helper names were made publication-specific to avoid
-  colliding with existing memory lowering symbols:
-  `dispatch_publication_scalar_type_size_bytes` and
-  `publication_parse_va_list_field_suffix`.
+  `function-callees/function-callers materialize_call_boundary_source_to_destination`,
+  `function-callees/function-callers materialize_indirect_call_callee_to_prepared_register`,
+  `function-callees/function-callers lower_scalar_call_argument_producers`,
+  `function-callees/function-callers publish_stack_preserved_call_values`,
+  plus `function-callees` on `materialize_scalar_call_argument_value`,
+  `order_before_call_moves_for_source_preservation`, and
+  `materialize_missing_frame_slot_call_arguments`.
+- AST showed the moved public Step 6 surface was directly called from
+  `dispatch_prepared_block`; the smaller local-load/store helpers,
+  indirect-callee scratch selection helpers, preserved-call-value lookup
+  helpers, and `find_bir_value_for_prepared_name` moved with that surface as
+  same-cluster support.
+- `dispatch.cpp` is now 2745 lines after the Step 6 extraction.
+- `dispatch_calls.cpp` includes the call wrapper that still delegates to the
+  existing dynamic-stack, variadic, prepared-call, diagnostic, lookup,
+  publication, and branch-fusion helpers. This is a mechanical split only, not
+  a move into long-term `calls.cpp` ownership.
 
 ## Proof
 
-Fresh Step 5 executor proof passed:
+Fresh Step 6 executor proof passed:
 
 ```bash
 (cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10 && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_00204_c)$' --output-on-failure) > test_after.log 2>&1
 ```
 
-Supervisor milestone proof also passed and is now preserved in `test_after.log`:
-
-```bash
-ctest --test-dir build -j10 --output-on-failure > test_after.log 2>&1
-```
-
-Full-suite result: 3381/3381 tests passed. Regression guard against the last
-accepted full-suite baseline passed with no new failures.
+Result: 3/3 selected tests passed. `test_after.log` contains the fresh proof
+output from the delegated command.
