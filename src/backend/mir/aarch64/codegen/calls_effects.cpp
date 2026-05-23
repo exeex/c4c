@@ -1,6 +1,4 @@
-#include "calls_effects.hpp"
-
-#include "calls_common.hpp"
+#include "calls.hpp"
 #include "memory.hpp"
 
 #include <cstdint>
@@ -192,7 +190,7 @@ std::vector<MachineEffectResource> effects_from_prepared_call_preserved_values(
   return effects;
 }
 
-MachineEffectResource effect_from_operand(const OperandRecord& operand) {
+MachineEffectResource call_effect_from_operand(const OperandRecord& operand) {
   MachineEffectResource resource;
   resource.operand = operand;
   switch (operand.kind) {
@@ -273,7 +271,7 @@ MachineEffectResource effect_from_operand(const OperandRecord& operand) {
   return resource;
 }
 
-MachineEffectResource prepared_value_def(
+MachineEffectResource call_prepared_value_def(
     std::optional<prepare::PreparedValueId> value_id,
     c4c::ValueNameId value_name) {
   return MachineEffectResource{
@@ -283,12 +281,12 @@ MachineEffectResource prepared_value_def(
   };
 }
 
-std::vector<MachineEffectResource> effects_from_operands(
+std::vector<MachineEffectResource> call_effects_from_operands(
     const std::vector<OperandRecord>& operands) {
   std::vector<MachineEffectResource> effects;
   effects.reserve(operands.size());
   for (const auto& operand : operands) {
-    effects.push_back(effect_from_operand(operand));
+    effects.push_back(call_effect_from_operand(operand));
   }
   return effects;
 }

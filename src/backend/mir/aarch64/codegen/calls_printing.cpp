@@ -1,7 +1,4 @@
-#include "calls_printing.hpp"
-#include "calls_byval_aggregates.hpp"
-#include "calls_common.hpp"
-#include "calls_effects.hpp"
+#include "calls.hpp"
 #include "float_ops.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
@@ -741,7 +738,7 @@ make_immediate_cast_call_argument_publication_instruction(
       .block_index = context.block_index,
       .instruction_index = instruction_index,
       .operands = {destination_operand},
-      .defs = {effect_from_operand(destination_operand)},
+      .defs = {call_effect_from_operand(destination_operand)},
       .uses = {MachineEffectResource{
           .kind = MachineEffectResourceKind::PreparedValue,
           .value_id = source_home.value_id,
@@ -769,26 +766,26 @@ InstructionRecord make_call_boundary_move_instruction(
   if (instruction.destination_register.has_value()) {
     const auto destination = make_register_operand(*instruction.destination_register);
     operands.push_back(destination);
-    defs.push_back(effect_from_operand(destination));
+    defs.push_back(call_effect_from_operand(destination));
   } else if (instruction.move.to_value_id != 0) {
-    defs.push_back(prepared_value_def(instruction.move.to_value_id, c4c::kInvalidValueName));
+    defs.push_back(call_prepared_value_def(instruction.move.to_value_id, c4c::kInvalidValueName));
   }
   if (instruction.source_register.has_value()) {
     const auto source = make_register_operand(*instruction.source_register);
     operands.push_back(source);
-    uses.push_back(effect_from_operand(source));
+    uses.push_back(call_effect_from_operand(source));
   } else if (instruction.source_memory.has_value()) {
     const auto source = make_memory_operand(*instruction.source_memory);
     operands.push_back(source);
     if (!instruction.source_memory_materializes_address) {
-      uses.push_back(effect_from_operand(source));
+      uses.push_back(call_effect_from_operand(source));
     }
   } else if (instruction.source_immediate.has_value()) {
     const auto source = make_immediate_operand(*instruction.source_immediate);
     operands.push_back(source);
-    uses.push_back(effect_from_operand(source));
+    uses.push_back(call_effect_from_operand(source));
   } else if (instruction.move.from_value_id != 0) {
-    uses.push_back(prepared_value_def(instruction.move.from_value_id, c4c::kInvalidValueName));
+    uses.push_back(call_prepared_value_def(instruction.move.from_value_id, c4c::kInvalidValueName));
   }
   return InstructionRecord{
       .family = InstructionFamily::CallBoundary,
@@ -830,45 +827,45 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   }
   std::vector<MachineEffectResource> defs;
   if (instruction.result.has_value()) {
-    defs.push_back(effect_from_operand(*instruction.result));
+    defs.push_back(call_effect_from_operand(*instruction.result));
   }
-  std::vector<MachineEffectResource> uses = effects_from_operands(operands);
+  std::vector<MachineEffectResource> uses = call_effects_from_operands(operands);
   std::vector<MachineSideEffectKind> side_effects = {MachineSideEffectKind::Call};
   if (instruction.memory_return_storage.has_value()) {
-    defs.push_back(effect_from_operand(make_memory_operand(*instruction.memory_return_storage)));
+    defs.push_back(call_effect_from_operand(make_memory_operand(*instruction.memory_return_storage)));
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
   if (instruction.variadic_va_start.has_value()) {
-    defs.push_back(prepared_value_def(
+    defs.push_back(call_prepared_value_def(
         instruction.variadic_va_start->destination_va_list.value_id,
         instruction.variadic_va_start->destination_va_list.value_name));
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
   if (instruction.variadic_scalar_va_arg.has_value()) {
-    defs.push_back(prepared_value_def(
+    defs.push_back(call_prepared_value_def(
         instruction.variadic_scalar_va_arg->result_home.value_id,
         instruction.variadic_scalar_va_arg->result_home.value_name));
-    uses.push_back(prepared_value_def(
+    uses.push_back(call_prepared_value_def(
         instruction.variadic_scalar_va_arg->source_va_list.value_id,
         instruction.variadic_scalar_va_arg->source_va_list.value_name));
     side_effects.push_back(MachineSideEffectKind::MemoryRead);
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
   if (instruction.variadic_aggregate_va_arg.has_value()) {
-    defs.push_back(prepared_value_def(
+    defs.push_back(call_prepared_value_def(
         instruction.variadic_aggregate_va_arg->destination_payload_home.value_id,
         instruction.variadic_aggregate_va_arg->destination_payload_home.value_name));
-    uses.push_back(prepared_value_def(
+    uses.push_back(call_prepared_value_def(
         instruction.variadic_aggregate_va_arg->source_va_list.value_id,
         instruction.variadic_aggregate_va_arg->source_va_list.value_name));
     side_effects.push_back(MachineSideEffectKind::MemoryRead);
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
   if (instruction.variadic_va_copy.has_value()) {
-    defs.push_back(prepared_value_def(
+    defs.push_back(call_prepared_value_def(
         instruction.variadic_va_copy->destination_va_list.value_id,
         instruction.variadic_va_copy->destination_va_list.value_name));
-    uses.push_back(prepared_value_def(
+    uses.push_back(call_prepared_value_def(
         instruction.variadic_va_copy->source_va_list.value_id,
         instruction.variadic_va_copy->source_va_list.value_name));
     side_effects.push_back(MachineSideEffectKind::MemoryRead);

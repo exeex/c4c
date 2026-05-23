@@ -1,9 +1,4 @@
-#include "calls_moves.hpp"
-
-#include "calls_argument_sources.hpp"
-#include "calls_byval_aggregates.hpp"
-#include "calls_common.hpp"
-#include "calls_preservation.hpp"
+#include "calls.hpp"
 #include "dispatch_lookup.hpp"
 #include "f128.hpp"
 #include "machine_printer.hpp"
@@ -29,7 +24,7 @@ namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
 
-MachineEffectResource effect_from_operand(const OperandRecord& operand) {
+MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
   MachineEffectResource resource;
   resource.operand = operand;
   switch (operand.kind) {
@@ -374,7 +369,7 @@ make_fragmented_aggregate_register_lane_publication_instruction(
   for (const auto& source : source_operands) {
     const auto source_operand = make_memory_operand(source);
     operands.push_back(source_operand);
-    uses.push_back(effect_from_operand(source_operand));
+    uses.push_back(local_effect_from_operand(source_operand));
   }
 
   InstructionRecord target{
@@ -393,7 +388,7 @@ make_fragmented_aggregate_register_lane_publication_instruction(
       .block_index = bundle.block_index,
       .instruction_index = bundle.instruction_index,
       .operands = operands,
-      .defs = {effect_from_operand(destination_operand)},
+      .defs = {local_effect_from_operand(destination_operand)},
       .uses = uses,
       .side_effects = {MachineSideEffectKind::MemoryRead,
                        MachineSideEffectKind::InlineAssembly},
@@ -643,8 +638,8 @@ make_value_stack_move_instruction(
       .block_index = context.block_index,
       .instruction_index = instruction_index,
       .operands = {make_memory_operand(source), make_memory_operand(destination)},
-      .defs = {effect_from_operand(make_memory_operand(destination))},
-      .uses = {effect_from_operand(make_memory_operand(source))},
+      .defs = {local_effect_from_operand(make_memory_operand(destination))},
+      .uses = {local_effect_from_operand(make_memory_operand(source))},
       .side_effects = {MachineSideEffectKind::MemoryRead,
                        MachineSideEffectKind::MemoryWrite,
                        MachineSideEffectKind::InlineAssembly},
@@ -743,8 +738,8 @@ make_byval_register_lane_stack_publication_instruction(
       .block_index = context.block_index,
       .instruction_index = instruction_index,
       .operands = {source_operand, destination_operand},
-      .defs = {effect_from_operand(destination_operand)},
-      .uses = {effect_from_operand(source_operand)},
+      .defs = {local_effect_from_operand(destination_operand)},
+      .uses = {local_effect_from_operand(source_operand)},
       .side_effects = {MachineSideEffectKind::MemoryRead,
                        MachineSideEffectKind::MemoryWrite,
                        MachineSideEffectKind::InlineAssembly},
@@ -864,7 +859,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
                   memory_address(destination_chunk);
       const auto source_operand = make_memory_operand(*source_memory);
       operands.push_back(source_operand);
-      uses.push_back(effect_from_operand(source_operand));
+      uses.push_back(local_effect_from_operand(source_operand));
       covered_bytes += chunk_width;
       store_offset += chunk_width;
     }
@@ -889,7 +884,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       .block_index = context.block_index,
       .instruction_index = instruction_index,
       .operands = operands,
-      .defs = {effect_from_operand(destination_operand)},
+      .defs = {local_effect_from_operand(destination_operand)},
       .uses = uses,
       .side_effects = {MachineSideEffectKind::MemoryRead,
                        MachineSideEffectKind::MemoryWrite,
@@ -1155,7 +1150,7 @@ make_immediate_cast_call_argument_publication_instruction(
       .block_index = context.block_index,
       .instruction_index = instruction_index,
       .operands = {destination_operand},
-      .defs = {effect_from_operand(destination_operand)},
+      .defs = {local_effect_from_operand(destination_operand)},
       .uses = {MachineEffectResource{
           .kind = MachineEffectResourceKind::PreparedValue,
           .value_id = source_home.value_id,

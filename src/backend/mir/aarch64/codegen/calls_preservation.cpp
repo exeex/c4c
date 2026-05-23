@@ -1,7 +1,4 @@
-#include "calls_preservation.hpp"
-
-#include "calls_argument_sources.hpp"
-#include "calls_byval_aggregates.hpp"
+#include "calls.hpp"
 #include "dispatch_lookup.hpp"
 
 #include <algorithm>
