@@ -271,3 +271,17 @@ ctest --test-dir build -j10 --output-on-failure
   cleanup/reorganization idea.
 - Full-suite baseline remains green.
 
+## Closure Note
+
+Closed on 2026-05-23 after the mechanical split reached the size target:
+`calls.cpp` is 200 lines and the largest extracted calls implementation file is
+`calls_moves.cpp` at 3397 lines.
+
+The repeated narrow proof for the split was green. The full close proof still
+reported failures in `c_testsuite_aarch64_backend_src_00176_c`,
+`c_testsuite_aarch64_backend_src_00182_c`, and
+`c_testsuite_aarch64_backend_src_00205_c`, but supervisor baseline evidence
+showed the same three runtime mismatches at pre-split commit `84af66ebf` using
+the current c-testsuite contents. Those failures are therefore treated as
+pre-existing baseline failures, not regressions from this behavior-preserving
+mechanical split.
