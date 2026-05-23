@@ -1,43 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/384_aarch64_dispatch_mechanical_extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Extract Diagnostics Helpers
+Current Step ID: Step 3
+Current Step Title: Extract Lookup and Producer Lookup Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 extracted the dispatch diagnostic construction/formatting helper cluster
-into `dispatch_diagnostics.cpp/hpp` and wired the new source into
-`src/backend/CMakeLists.txt`. The moved cluster keeps the same diagnostic record
-fields and emitted message text for block diagnostics, unsupported terminators,
-unsupported instruction-family diagnostics, and call diagnostics.
+Step 3 extracted the value lookup and producer lookup helper cluster into
+`dispatch_lookup.cpp/hpp` and wired the new source into
+`src/backend/CMakeLists.txt`. The moved cluster keeps the same prepared-value
+lookup fallbacks, emitted-scalar lookup behavior, same-block producer scans, and
+load-local producer checks.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: use AST-backed queries to identify the value
-lookup and producer lookup helper cluster, then extract mechanically separable
-lookup helpers into `dispatch_lookup.cpp/hpp`.
+Execute Step 4 from `plan.md`: use AST-backed queries to identify the branch
+fusion helper cluster, then extract mechanically separable branch fusion helpers
+into `dispatch_branch_fusion.cpp/hpp`.
 
 ## Watchouts
 
-- AST evidence recorded for Step 2:
+- AST evidence recorded for Step 3:
   `c4c-clang-tool-ccdb function-signatures .../dispatch.cpp build/compile_commands.json`,
-  `function-callees/function-callers append_block_diagnostic`,
-  `function-callees/function-callers unsupported_terminator_message`,
-  `function-callees/function-callers append_unsupported_instruction_diagnostic`,
-  `function-callees/function-callers append_call_diagnostic`, and
-  `function-callees/function-callers classify_instruction`.
-- `classify_instruction` moved as a private helper in
-  `dispatch_diagnostics.cpp` because AST callers showed it is only used by
-  `append_unsupported_instruction_diagnostic`.
-- `dispatch_dynamic_stack.cpp` still has its own private `append_call_diagnostic`
-  copy from Step 1; Step 2 did not broaden ownership into that file.
+  `function-callees/function-callers prepared_named_value_id`,
+  `function-callees/function-callers find_value_home`,
+  `function-callees/function-callers prepared_value_id`,
+  `function-callees/function-callers make_named_prepared_result_register`,
+  `function-callees/function-callers emitted_scalar_value_available`,
+  `function-callees/function-callers find_same_block_scalar_producer`,
+  `function-callees/function-callers has_same_block_load_local_producer`, and
+  `function-callers is_scalar_call_argument_producer_opcode`.
+- `is_scalar_call_argument_producer_opcode` is public in
+  `dispatch_lookup.hpp` because AST and build proof showed both
+  `find_same_block_scalar_producer` and the existing
+  `materialize_scalar_call_argument_value` caller need it.
+- Lookup helpers now live outside `dispatch.cpp`, so later extractions should
+  include `dispatch_lookup.hpp` instead of recreating local lookup glue.
 
 ## Proof
 
-Fresh Step 2 proof passed and is preserved in `test_after.log`:
+Fresh Step 3 proof passed and is preserved in `test_after.log`:
 
 ```bash
 (cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10 && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_00204_c)$' --output-on-failure) > test_after.log 2>&1
