@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dispatch_producers.hpp"
 #include "dispatch_publication_common.hpp"
 
 #include "alu.hpp"
@@ -28,11 +29,6 @@ struct NarrowLocalStorePublication {
 struct EdgeProducerContext {
   module::BlockLoweringContext context;
   const bir::Inst* producer = nullptr;
-  std::size_t instruction_index = 0;
-};
-
-struct SameBlockSelectProducer {
-  const bir::SelectInst* select = nullptr;
   std::size_t instruction_index = 0;
 };
 
@@ -68,35 +64,6 @@ struct SameBlockSelectProducer {
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
-
-[[nodiscard]] std::optional<std::size_t> producer_instruction_index(
-    const module::BlockLoweringContext& context,
-    const bir::Inst* producer);
-
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value);
-
-[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    unsigned depth = 0);
-
-[[nodiscard]] bool select_chain_contains_direct_global_load(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    unsigned depth = 0);
-
-[[nodiscard]] const bir::Inst* find_same_block_named_producer(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
     const module::BlockLoweringContext& context,
@@ -181,15 +148,6 @@ find_latest_narrow_store_for_wide_local_load(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load,
     std::size_t load_instruction_index);
-
-[[nodiscard]] const bir::Global* find_load_global_target(
-    const module::BlockLoweringContext& context,
-    const bir::LoadGlobalInst& load_global);
-
-[[nodiscard]] std::string load_global_symbol_label(
-    const module::BlockLoweringContext& context,
-    const bir::LoadGlobalInst& load_global,
-    const bir::Global* target_global);
 
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,
@@ -458,9 +416,5 @@ lower_scalar_cast_publication_to_prepared_stack(
     const bir::Inst& inst,
     std::size_t instruction_index,
     const BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] bool is_current_block_join_parallel_copy_source(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst);
 
 }  // namespace c4c::backend::aarch64::codegen

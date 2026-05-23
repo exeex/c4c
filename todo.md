@@ -8,37 +8,31 @@ Current Step Title: Extract Same-Block Producer Discovery
 
 ## Just Finished
 
-Step 1 repaired the shared-helper extraction boundary. `dispatch_publication_common.cpp/hpp`
-now contains only the low-level Step 1 helpers: register aliasing, integer width
-and power-of-two helpers, frame/stack/address helpers, scalar register/view and
-load/store mnemonic helpers. Same-block producer/select-chain helpers and
-later-cluster publication helpers were moved back to `dispatch_publication.cpp`.
+Step 2 mechanically extracted the same-block producer discovery cluster into
+`dispatch_producers.cpp/hpp`: `find_same_block_binary_producer`,
+`find_same_block_select_producer`, `evaluate_same_block_integer_constant`,
+`select_chain_contains_direct_global_load`, `find_same_block_named_producer`,
+`producer_instruction_index`, `find_load_global_target`,
+`load_global_symbol_label`, and `is_current_block_join_parallel_copy_source`.
+The moved `find_bir_block` definition remains in `dispatch_producers.cpp`, with
+only `dispatch_publication.cpp` carrying the local declaration it needs.
 
 ## Suggested Next
 
-Delegate Step 2 for the next mechanical publication split cluster after a
-fresh AST caller/callee check.
+Delegate the next mechanical publication split cluster after a fresh AST
+caller/callee check, keeping value materialization and store-source helpers out
+of the producer-discovery slice.
 
 ## Watchouts
 
 - Keep the split mechanical and behavior-preserving.
 - Do not fold code into long-term feature homes such as `calls.cpp`,
   `memory.cpp`, or `comparison.cpp`.
-- Left `immediate_integer_bits`, `emit_fp_immediate_to_register`, and
-  `emit_fp_value_to_register` in `dispatch_publication.cpp` because the floating
-  value path pulls in higher publication lowering dependencies including
-  branch-fusion predicates, global-load symbol lookup, prepared value homes, and
-  recursive value publication.
-- Left same-block producer/select-chain helpers in `dispatch_publication.cpp`
-  for Step 2: `find_same_block_binary_producer`,
-  `find_same_block_select_producer`, `evaluate_same_block_integer_constant`,
-  `select_chain_contains_direct_global_load`, and
-  `find_same_block_named_producer`.
-- Left later-cluster helpers such as local-slot address publication,
-  prepared-global/va-list materialization, store-source register checks,
-  `producer_instruction_index`, and `prepared_memory_access` in
-  `dispatch_publication.cpp`; moving them now would broaden Step 1 beyond the
-  low-level helper cluster.
+- `dispatch_publication.hpp` includes `dispatch_producers.hpp` so existing
+  dispatch/call users continue to see producer declarations.
+- Do not re-expose `find_bir_block` from `dispatch_producers.hpp`; `dispatch.cpp`
+  has an existing anonymous-namespace helper with the same name, and
+  publication keeps its own local forward declaration for the moved definition.
 
 ## Proof
 

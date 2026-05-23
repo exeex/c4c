@@ -22,6 +22,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_dynamic_stack.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_entry_formals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_lookup.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_producers.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_publication.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_publication_common.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/f128.cpp"
