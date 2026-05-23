@@ -8,38 +8,42 @@ Current Step Title: Extract Edge Copy and Select-Chain Handling
 
 ## Just Finished
 
-Step 3 mechanically extracted the prepared value/home materialization cluster
-into `dispatch_value_materialization.cpp/hpp`: `emit_fp_immediate_to_register`,
-`emit_fp_value_to_register`, `emit_prepared_global_symbol_load_to_register`,
-`emit_prepared_va_list_field_load_to_register`,
-`emit_prepared_pointer_value_load_to_register`,
-`emit_prepared_value_home_to_register`, `emit_value_publication_to_register`,
-`lower_local_slot_address_publication`,
-`lower_stack_homed_pointer_value_load_publication`,
-`lower_scalar_cast_publication_to_prepared_register`,
-`lower_scalar_fp_binary_publication_to_prepared_register`, and
-`lower_scalar_cast_publication_to_prepared_stack`. No Step 3-listed helper was
-left behind.
+Step 4 mechanically extracted the edge-copy and select-chain handling cluster
+into `dispatch_edge_copies.cpp/hpp`: `EdgeProducerContext`,
+`prepared_edge_select_source_is_destination_register`,
+`unique_branch_predecessor_context`, `find_edge_named_producer`,
+`prepared_memory_access`, `prepared_memory_access_matches_instruction`,
+`edge_value_publication_may_read_register_index`,
+`emit_edge_load_local_to_register`,
+`emit_edge_value_publication_to_register`,
+`lower_predecessor_join_source_publication`, `select_chain_label`,
+`emit_select_chain_value_to_register`,
+`make_select_chain_materialization_instruction`, and
+`materialize_direct_global_select_chain_call_argument`. No Step 4-listed helper
+was left in `dispatch_publication.cpp`; `dispatch_publication.hpp` re-exports
+the new edge-copy header for existing users.
 
 ## Suggested Next
 
-Delegate the next mechanical publication split cluster after a fresh AST
-caller/callee check, keeping edge-copy and store-source helpers out of the
-value-materialization slice.
+Delegate Step 5, the store source and writeback handling extraction, after a
+fresh AST caller/callee check.
 
 ## Watchouts
 
 - Keep the split mechanical and behavior-preserving.
 - Do not fold code into long-term feature homes such as `calls.cpp`,
   `memory.cpp`, or `comparison.cpp`.
-- `dispatch_publication.hpp` includes `dispatch_value_materialization.hpp` so
-  existing publication users continue to see materialization declarations.
+- `dispatch_publication.hpp` now includes `dispatch_edge_copies.hpp` so
+  existing publication users continue to see edge/select declarations.
+- `dispatch_edge_copies.cpp` keeps a local forward declaration for
+  `find_bir_block`, which is still defined in `dispatch_producers.cpp`; this
+  avoided widening another header during the mechanical move.
 - Unlisted state/address helpers stayed central in `dispatch_publication.cpp`
-  because they are shared across materialization, edge-copy, and store-source
-  paths: examples include `prepared_value_home_for_value`,
-  `current_block_entry_publication_register`, `prepared_local_load_offset`,
-  `prepared_va_list_field_address`, `value_publication_may_read_register_index`,
-  and `instruction_result_value`.
+  because they are shared across value-materialization, edge-copy, and
+  store-source paths: examples include `prepared_value_home_for_value`,
+  `prepared_value_home_reads_register_index`,
+  `value_publication_may_read_register_index`, `instruction_result_value`,
+  `prepared_local_load_offset`, and `prepared_va_list_field_address`.
 
 ## Proof
 
