@@ -1,6 +1,6 @@
 # AArch64 Recursive Call Argument Preservation
 
-Status: Parked
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
 
@@ -102,6 +102,16 @@ monotonic regression guard compared matching green logs with
 increase. Keep this idea parked, not active, until fresh generated-code
 evidence again shows an in-scope recursive or nested-call argument preservation
 failure.
+
+2026-05-23: Step 3 lifecycle decision accepted closure after the focused
+refresh proof again found no live in-scope recursive or nested-call argument
+preservation failure. The supervisor-provided focused proof command passed
+2/2, and the plan-owner close gate used the rolled-forward focused log in
+non-decreasing mode:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`.
+The guard reported before 2/2, after 2/2, delta 0, and no new failing tests.
+No implementation work remains for this source idea unless fresh generated-code
+evidence later reintroduces this exact preservation failure family.
 
 ## Reviewer Reject Signals
 
