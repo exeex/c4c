@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-header-family-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Consolidate Dispatch Headers
+Current Step ID: Step 3
+Current Step Title: Boundary Review and Broader Validation
 
 # Current Packet
 
