@@ -8,20 +8,16 @@ Current Step Title: Refresh Scalar-Cast Publication Proof
 
 ## Just Finished
 
-Activation created this executor-compatible lifecycle state for Step 1.
+Step 1 - Refresh Scalar-Cast Publication Proof completed. The delegated build
+and focused scalar-cast publication subset are green, so this refresh did not
+expose any live first bad fact in-scope for idea 340 scalar-cast source
+publication work.
 
 ## Suggested Next
 
-Run Step 1 from `plan.md`: build the default preset and execute the focused
-scalar-cast publication subset:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|c_testsuite_aarch64_backend_src_00143_c)$'
-```
-
-Classify any failure by first bad fact before deciding whether Step 2 has live
-implementation work or whether the plan should return to lifecycle close
-consideration.
+Return to lifecycle handoff or close consideration. No implementation packet is
+recommended from this Step 1 refresh because the current proof has no
+scalar-cast source publication failure to repair.
 
 ## Watchouts
 
@@ -29,9 +25,15 @@ consideration.
   strings, or selected instruction indexes.
 - Do not change expectations, unsupported classifications, runner behavior,
   timeout policy, CTest registration, or proof-log behavior.
-- If the refreshed failure is not scalar-cast source publication, record the
-  classification instead of widening this plan.
+- If broader supervisor validation later finds a different failure, classify
+  its first bad fact before treating it as idea 340 work.
 
 ## Proof
 
-Not run during activation. First proof belongs to Step 1 execution.
+Ran:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|c_testsuite_aarch64_backend_src_00143_c)$'
+```
+
+Result: passed; `test_after.log` contains the exact proof output.
