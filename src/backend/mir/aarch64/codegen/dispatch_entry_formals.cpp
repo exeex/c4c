@@ -1,6 +1,7 @@
 #include "dispatch_entry_formals.hpp"
 
 #include "../abi/abi.hpp"
+#include "dispatch_lookup.hpp"
 #include "machine_printer.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 
@@ -28,56 +29,6 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   }
   const std::size_t remainder = value % alignment;
   return remainder == 0 ? value : value + (alignment - remainder);
-}
-
-[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedValueId value_id) {
-  if (context.function.value_home_indexes != nullptr) {
-    const auto it = context.function.value_home_indexes->homes_by_id.find(value_id);
-    if (it != context.function.value_home_indexes->homes_by_id.end()) {
-      return it->second;
-    }
-    return nullptr;
-  }
-  return context.function.value_locations == nullptr
-             ? nullptr
-             : prepare::find_prepared_value_home(*context.function.value_locations,
-                                                 value_id);
-}
-
-[[nodiscard]] std::optional<prepare::PreparedValueId> prepared_value_id(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  if (context.function.value_home_indexes != nullptr) {
-    const auto it = context.function.value_home_indexes->value_ids.find(value_name);
-    if (it != context.function.value_home_indexes->value_ids.end()) {
-      return it->second;
-    }
-    return std::nullopt;
-  }
-  if (context.function.regalloc != nullptr) {
-    for (const auto& value : context.function.regalloc->values) {
-      if (value.value_name == value_name) {
-        return value.value_id;
-      }
-    }
-  }
-  if (context.function.value_locations != nullptr) {
-    for (const auto& home : context.function.value_locations->value_homes) {
-      if (home.value_name == value_name) {
-        return home.value_id;
-      }
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] const prepare::PreparedValueHome* find_value_home(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  const auto value_id = prepared_value_id(context, value_name);
-  return value_id.has_value() ? find_value_home(context, *value_id) : nullptr;
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> entry_formal_register_view(

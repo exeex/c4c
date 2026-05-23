@@ -175,6 +175,76 @@ struct PreparedValueLocations {
   return find_prepared_value_home(function_locations, value_name_id);
 }
 
+template <typename PreparedValueHomeIndexes>
+[[nodiscard]] inline const PreparedValueHome* find_indexed_prepared_value_home(
+    const PreparedValueHomeIndexes* value_home_indexes,
+    const PreparedValueLocationFunction* function_locations,
+    PreparedValueId value_id) {
+  if (value_home_indexes != nullptr) {
+    const auto it = value_home_indexes->homes_by_id.find(value_id);
+    if (it != value_home_indexes->homes_by_id.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+  return function_locations == nullptr ? nullptr
+                                       : find_prepared_value_home(*function_locations,
+                                                                  value_id);
+}
+
+[[nodiscard]] inline std::optional<PreparedValueId> find_prepared_value_id(
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    ValueNameId value_name) {
+  if (regalloc != nullptr) {
+    for (const auto& value : regalloc->values) {
+      if (value.value_name == value_name) {
+        return value.value_id;
+      }
+    }
+  }
+  if (function_locations != nullptr) {
+    for (const auto& home : function_locations->value_homes) {
+      if (home.value_name == value_name) {
+        return home.value_id;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+template <typename PreparedValueHomeIndexes>
+[[nodiscard]] inline std::optional<PreparedValueId> find_indexed_prepared_value_id(
+    const PreparedValueHomeIndexes* value_home_indexes,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    ValueNameId value_name) {
+  if (value_home_indexes != nullptr) {
+    const auto it = value_home_indexes->value_ids.find(value_name);
+    if (it != value_home_indexes->value_ids.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+  return find_prepared_value_id(regalloc, function_locations, value_name);
+}
+
+template <typename PreparedValueHomeIndexes>
+[[nodiscard]] inline const PreparedValueHome* find_indexed_prepared_value_home(
+    const PreparedValueHomeIndexes* value_home_indexes,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    ValueNameId value_name) {
+  const auto value_id =
+      find_indexed_prepared_value_id(value_home_indexes,
+                                     regalloc,
+                                     function_locations,
+                                     value_name);
+  return value_id.has_value()
+             ? find_indexed_prepared_value_home(value_home_indexes, function_locations, *value_id)
+             : nullptr;
+}
+
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_move_bundle(
     const PreparedValueLocationFunction& function_locations,
     PreparedMovePhase phase,
