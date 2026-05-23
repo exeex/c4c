@@ -1,34 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/386_aarch64_calls_mechanical_split.md
 Source Plan Path: plan.md
-Current Step ID: Step 8
-Current Step Title: Extract Call Printing And Record Construction
+Current Step ID: Step 9
+Current Step Title: Size And Integration Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 8 - Extract Call Printing And Record Construction.
+Lifecycle close rejected after Step 8 because Step 9 - Size And Integration
+Checkpoint is not complete.
 
-Added `src/backend/mir/aarch64/codegen/calls_printing.cpp` and
-`src/backend/mir/aarch64/codegen/calls_printing.hpp`, registered the new source
-in `src/backend/CMakeLists.txt`, and made `calls.cpp` include the new printing
-header.
+Size criteria are satisfied:
 
-Mechanically moved the call-boundary status helpers, call/call-boundary
-instruction record construction helpers, call print helpers, frame-slot and
-aggregate-lane print support, and the local call-boundary machine-instruction
-wrapper out of `calls.cpp`.
-
-Kept call-plan lookup, required-plan diagnostics, preserve-effect publication
-state, and prepared call lowering in `calls.cpp`. `calls_printing.cpp` declares
-`publish_prepared_call_preserve_effects()` locally because the moved call record
-constructor still needs that state owned by `calls.cpp`.
+- `calls.cpp`: 200 lines.
+- largest extracted calls implementation file: `calls_moves.cpp`, 3397 lines.
 
 ## Suggested Next
 
-Run supervisor-side review or validation for the accumulated mechanical split,
-then choose the next active-plan packet or lifecycle close/split decision.
+Keep the active plan open at Step 9. Investigate whether the three full-suite
+failures are known baseline failures or regressions from the mechanical split,
+then rerun the source idea's full close proof before another closure attempt.
 
 ## Watchouts
 
@@ -53,7 +45,7 @@ then choose the next active-plan packet or lifecycle close/split decision.
 
 ## Proof
 
-Step 8 proof recorded in `test_after.log`:
+Step 8 packet proof was green:
 
 ```bash
 cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10 && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_00204_c)$' --output-on-failure
@@ -61,16 +53,14 @@ cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j1
 
 Result: green; all 3 selected tests passed.
 
-Additional AST-backed checks run during the packet:
+Step 9 close proof was run on 2026-05-23:
 
 ```bash
-c4c-clang-tool-ccdb list-symbols /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_call_instruction build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_call_instruction build/compile_commands.json
-c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_printing.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_printing.cpp make_call_instruction build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_printing.cpp print_call_boundary_move build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_printing.cpp call_boundary_move_selection_status build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_printing.cpp print_aggregate_register_lane_publication_lines build/compile_commands.json
+cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10 && ctest --test-dir build -j10 --output-on-failure
 ```
+
+Result: failed; 3394 of 3397 tests passed. Failing tests:
+
+- `c_testsuite_aarch64_backend_src_00176_c`
+- `c_testsuite_aarch64_backend_src_00182_c`
+- `c_testsuite_aarch64_backend_src_00205_c`
