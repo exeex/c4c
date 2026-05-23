@@ -2,6 +2,7 @@
 
 #include "dispatch_producers.hpp"
 #include "dispatch_publication_common.hpp"
+#include "dispatch_value_materialization.hpp"
 
 #include "alu.hpp"
 #include "../abi/abi.hpp"
@@ -35,47 +36,13 @@ struct EdgeProducerContext {
 [[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
                                                    unsigned width_bits);
 
-[[nodiscard]] bool emit_fp_immediate_to_register(std::vector<std::string>& lines,
-                                                 const bir::Value& value,
-                                                 abi::RegisterReference fp_destination,
-                                                 std::uint8_t gp_scratch_index);
-
-[[nodiscard]] bool emit_fp_value_to_register(const module::BlockLoweringContext& context,
-                                             const bir::Value& value,
-                                             std::size_t before_instruction_index,
-                                             abi::RegisterReference destination,
-                                             std::uint8_t gp_scratch_index,
-                                             std::vector<std::string>& lines);
-
-[[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load_local,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines);
-
 [[nodiscard]] bool is_byval_formal_value_name(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name);
 
-[[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load_local,
-    std::size_t instruction_index,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
-
 [[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
-
-[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
 
 [[nodiscard]] std::optional<std::size_t> publication_parse_va_list_field_suffix(
     std::string_view base,
@@ -170,14 +137,6 @@ void record_current_block_entry_publication_registers(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction);
 
-[[nodiscard]] bool emit_prepared_value_home_to_register(
-    const prepare::PreparedStackLayout* stack_layout,
-    const prepare::PreparedValueHome& home,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines,
-    bool use_frame_pointer_base = false);
-
 [[nodiscard]] bool prepared_value_home_reads_register_index(
     const prepare::PreparedValueHome& home,
     std::uint8_t register_index);
@@ -188,29 +147,6 @@ void record_current_block_entry_publication_registers(
     std::size_t before_instruction_index,
     std::uint8_t register_index,
     unsigned depth = 0);
-
-[[nodiscard]] bool emit_value_publication_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines,
-    bool reload_current_memory_loads = false);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_local_slot_address_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_stack_homed_pointer_value_load_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] std::optional<module::BlockLoweringContext> unique_branch_predecessor_context(
     const module::BlockLoweringContext& context);
@@ -395,26 +331,5 @@ void lower_pending_store_global_stack_value_publications(
     const bir::Inst& inst);
 
 [[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_cast_publication_to_prepared_register(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_fp_binary_publication_to_prepared_register(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_cast_publication_to_prepared_stack(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    const BlockScalarLoweringState& scalar_state);
 
 }  // namespace c4c::backend::aarch64::codegen
