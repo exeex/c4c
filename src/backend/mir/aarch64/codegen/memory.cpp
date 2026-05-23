@@ -2114,7 +2114,6 @@ MemoryInstructionLoweringResult lower_memory_instruction(
 
   if (context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
-      context.function.storage_plan == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr) {
     append_memory_diagnostic(
@@ -2138,6 +2137,13 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         memory_error_message(PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess));
     return MemoryInstructionLoweringResult{.handled = true};
   }
+  const prepare::PreparedStoragePlanFunction empty_storage_plan{
+      .function_name = context.function.control_flow->function_name,
+      .values = {},
+  };
+  const auto& storage_plan =
+      context.function.storage_plan != nullptr ? *context.function.storage_plan
+                                               : empty_storage_plan;
 
   PreparedMemoryInstructionRecordResult prepared;
   if (load != nullptr) {
@@ -2147,7 +2153,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
       prepared = make_prepared_load_memory_instruction_record(
           context.function.prepared->names,
           *context.function.value_locations,
-          *context.function.storage_plan,
+          storage_plan,
           *addressing,
           context.control_flow_block->block_label,
           instruction_index,
@@ -2157,7 +2163,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
     prepared = make_prepared_load_memory_instruction_record(
         context.function.prepared->names,
         *context.function.value_locations,
-        *context.function.storage_plan,
+        storage_plan,
         *addressing,
         context.control_flow_block->block_label,
         instruction_index,
@@ -2170,7 +2176,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
       prepared = make_prepared_store_memory_instruction_record(
           context.function.prepared->names,
           *context.function.value_locations,
-          *context.function.storage_plan,
+          storage_plan,
           *addressing,
           context.control_flow_block->block_label,
           instruction_index,
@@ -2180,7 +2186,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
     prepared = make_prepared_store_memory_instruction_record(
         context.function.prepared->names,
         *context.function.value_locations,
-        *context.function.storage_plan,
+        storage_plan,
         *addressing,
         context.control_flow_block->block_label,
         instruction_index,

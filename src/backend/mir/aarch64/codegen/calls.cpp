@@ -2451,10 +2451,34 @@ preserved.value_id);
       diagnostics,
       context,
       instruction_index);
+  auto destination_register_name = preserved.register_name;
+  auto destination_register_placement = preserved.register_placement;
+  auto destination_register_bank = preserved.register_bank;
+  if (source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      source_home->register_name.has_value()) {
+    destination_register_name =
+        register_name_with_expected_view(source_home->register_name, expected_view);
+    destination_register_placement = std::nullopt;
+    if (destination_register_name.has_value()) {
+      const auto parsed =
+          abi::parse_aarch64_register_name(*destination_register_name);
+      if (parsed.has_value()) {
+        if (parsed->bank == abi::RegisterBank::GeneralPurpose) {
+          destination_register_bank = prepare::PreparedRegisterBank::Gpr;
+        } else if (parsed->bank == abi::RegisterBank::FpSimd) {
+          destination_register_bank =
+              parsed->view == abi::RegisterView::Q
+                  ? prepare::PreparedRegisterBank::Vreg
+                  : prepare::PreparedRegisterBank::Fpr;
+        }
+      }
+    }
+  }
   auto destination = make_register_operand_from_prepared_authority(
-      preserved.register_name,
-      preserved.register_placement,
-      preserved.register_bank,
+      destination_register_name,
+      destination_register_placement,
+      destination_register_bank,
       RegisterOperandRole::StoragePlan,
       preserved.value_id,
       preserved.value_name,
@@ -2464,7 +2488,9 @@ preserved.value_id);
       diagnostics,
       context,
       instruction_index);
-  if (!source.has_value() || !destination.has_value()) {
+  if (!source.has_value() || !destination.has_value() ||
+      (source->reg.bank == destination->reg.bank &&
+       source->reg.index == destination->reg.index)) {
     return std::nullopt;
   }
 
@@ -2473,14 +2499,14 @@ preserved.value_id);
       .to_value_id = preserved.value_id,
       .destination_kind = prepare::PreparedMoveDestinationKind::Value,
       .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-      .destination_register_name = preserved.register_name,
+      .destination_register_name = destination_register_name,
       .destination_contiguous_width = preserved.contiguous_width,
       .destination_occupied_register_names = preserved.occupied_register_names,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
       .reason = std::move(reason),
-      .destination_register_placement = preserved.register_placement,
+      .destination_register_placement = destination_register_placement,
   };
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow->function_name,
@@ -2508,9 +2534,6 @@ make_callee_saved_preservation_home_republication(
     const prepare::PreparedCallPreservedValue& preserved,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  if (!preserved_value_has_later_non_call_use(context, call_plan, preserved)) {
-    return std::nullopt;
-  }
   return make_callee_saved_preservation_home_republication_instruction(
       context,
       bundle,

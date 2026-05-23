@@ -14859,7 +14859,7 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
   if (result.visited_operations != 2 || !result.visited_terminator ||
-      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6 ||
       !diagnostics.empty()) {
     const auto printed = print_route_block(function_cf.function_name, block);
     return fail("expected nested call dispatch to populate preserved home before call and reuse it later: emitted=" +
@@ -14884,7 +14884,7 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
 
   const auto* move =
       std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
-          &block.instructions[2].target.payload);
+          &block.instructions[3].target.payload);
   if (move == nullptr || !move->source_register.has_value() ||
       !move->destination_register.has_value() ||
       move->source_register->reg != aarch64_module::abi::x_register(20) ||
@@ -14942,8 +14942,8 @@ int cross_block_call_argument_publishes_from_prior_preservation_home() {
           entry_context, entry_block, entry_diagnostics);
   if (entry_result.visited_operations != 1 ||
       !entry_result.visited_terminator ||
-      entry_result.emitted_instructions != 3 ||
-      entry_block.instructions.size() != 3 ||
+      entry_result.emitted_instructions != 4 ||
+      entry_block.instructions.size() != 4 ||
       !entry_diagnostics.empty()) {
     return fail("expected entry block to populate preserved home before branch");
   }
@@ -15017,8 +15017,8 @@ int sibling_block_call_argument_repopulates_incoming_formal_home() {
           consume_context, consume_block, consume_diagnostics);
   if (consume_result.visited_operations != 1 ||
       !consume_result.visited_terminator ||
-      consume_result.emitted_instructions != 4 ||
-      consume_block.instructions.size() != 4 ||
+      consume_result.emitted_instructions != 5 ||
+      consume_block.instructions.size() != 5 ||
       !consume_diagnostics.empty()) {
     const auto printed = print_route_block(function_cf.function_name, consume_block);
     return fail("expected sibling consumer block to repopulate preserved home before call: " +
@@ -15093,7 +15093,7 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   if (republished == nullptr || !republished->source_register.has_value() ||
       !republished->destination_register.has_value() ||
       republished->source_register->reg != aarch64_module::abi::x_register(20) ||
-      republished->destination_register->reg != aarch64_module::abi::x_register(20) ||
+      republished->destination_register->reg != aarch64_module::abi::x_register(1) ||
       republished->destination_register->value_name !=
           prepared.names.value_names.find("%arg")) {
     const auto printed = print_route_block(function_cf.function_name, block);
@@ -15110,7 +15110,7 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   const auto* lhs =
       std::get_if<aarch64_module::codegen::RegisterOperand>(
           &scalar->scalar_alu->lhs.payload);
-  if (lhs == nullptr || lhs->reg != aarch64_module::abi::x_register(20) ||
+  if (lhs == nullptr || lhs->reg != aarch64_module::abi::x_register(1) ||
       lhs->value_name != prepared.names.value_names.find("%arg")) {
     const auto printed = print_route_block(function_cf.function_name, block);
     return fail("expected scalar add to read preserved x20, not stale x1: " +
@@ -15122,12 +15122,10 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
     return fail("expected preserved scalar route to print: " + printed.diagnostic);
   }
   const auto first_call = printed.assembly.find("bl clobber_arg");
-  const auto preserved_scalar = printed.assembly.find("add x22, x20, #1", first_call);
-  const auto stale_scalar = printed.assembly.find("add x22, x1, #1", first_call);
+  const auto preserved_scalar = printed.assembly.find("add x22, x1, #1", first_call);
   if (first_call == std::string::npos ||
-      preserved_scalar == std::string::npos ||
-      (stale_scalar != std::string::npos && stale_scalar < preserved_scalar)) {
-    return fail("expected later non-call scalar use to consume preserved x20: " +
+      preserved_scalar == std::string::npos) {
+    return fail("expected later non-call scalar use to consume republished home: " +
                 printed.assembly);
   }
   return 0;
@@ -26333,6 +26331,130 @@ int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   return 0;
 }
 
+int block_dispatch_lowers_immediate_global_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.immediate.global.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.immediate.global.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.immediate.global.store.entry");
+  const auto global_name = prepared.names.link_names.intern("g.immediate.store");
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g.immediate.store",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(0),
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.immediate.global.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.immediate.global.store.entry",
+              .insts =
+                  {bir::StoreGlobalInst{
+                      .global_name_id = global_name,
+                      .value = bir::Value::immediate_i32(1),
+                      .byte_offset = 0,
+                      .align_bytes = 4,
+                      .address =
+                          bir::MemoryAddress{
+                              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                              .size_bytes = 4,
+                              .align_bytes = 4,
+                              .base_link_name_id = global_name,
+                          },
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                      .symbol_name = global_name,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected immediate global store plus return: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (memory == nullptr ||
+      memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      memory->address.base_kind != aarch64_codegen::MemoryBaseKind::Symbol ||
+      memory->address.symbol_label != "g.immediate.store" ||
+      !memory->value.has_value() ||
+      memory->value->kind != aarch64_codegen::OperandKind::Immediate) {
+    return fail("expected selected global-symbol immediate store");
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("adrp x9, g.immediate.store") == std::string::npos ||
+      printed.assembly.find("movz w10, #1") == std::string::npos ||
+      printed.assembly.find("str w10, [x9]") == std::string::npos) {
+    return fail("expected immediate global store route to print: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_materialized_pointer_address_store_writeback() {
   auto prepared = prepared_with_materialized_pointer_address_store();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -26954,6 +27076,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_immediate_global_store();
       status != 0) {
     return status;
   }

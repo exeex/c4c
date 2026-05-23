@@ -846,6 +846,51 @@ namespace mir = c4c::backend::mir;
   };
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_prepared_stack_home_load_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> offset;
+  if (context.function.storage_plan != nullptr) {
+    if (const auto* storage =
+            find_prepared_scalar_storage(*context.function.storage_plan, home.value_id);
+        storage != nullptr &&
+        storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+        storage->stack_offset_bytes.has_value()) {
+      offset = static_cast<std::int64_t>(*storage->stack_offset_bytes);
+    }
+  }
+  if (!offset.has_value()) {
+    if (!home.offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+    offset = static_cast<std::int64_t>(*home.offset_bytes);
+  }
+
+  const auto size_bytes = home.size_bytes.value_or(4);
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .result_value_id = home.value_id,
+      .result_value_name = home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = home.slot_id,
+      .byte_offset = *offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = home.align_bytes.value_or(size_bytes),
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] std::optional<std::size_t> find_same_block_load_local_producer_index(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1311,7 +1356,7 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
   const auto emitted = find_emitted_scalar_register(scalar_state, home->value_name);
-  if (emitted.has_value()) {
+  if (emitted.has_value() && !abi::is_reserved_mir_scratch(emitted->reg)) {
     return make_register_operand(*emitted);
   }
   if (allow_prepared_load_source) {
@@ -1319,11 +1364,22 @@ namespace mir = c4c::backend::mir;
     if (source.has_value()) {
       return make_memory_operand(*source);
     }
+    source = make_prepared_stack_home_load_source(context, *home);
+    if (source.has_value()) {
+      return make_memory_operand(*source);
+    }
+  }
+  if (emitted.has_value()) {
+    return make_register_operand(*emitted);
   }
   if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     auto source = make_prepared_scalar_load_source(context, *home);
     if (source.has_value() && context.control_flow_block != nullptr &&
         source->block_label == context.control_flow_block->block_label) {
+      return make_memory_operand(*source);
+    }
+    source = make_prepared_stack_home_load_source(context, *home);
+    if (source.has_value()) {
       return make_memory_operand(*source);
     }
   }
@@ -1849,6 +1905,15 @@ materialize_control_binary_result_source(
         return true;
       }
       lines.resize(original_line_count);
+      if (const auto* home = find_named_value_home(value, context.function);
+          home != nullptr) {
+        if (auto source = make_prepared_stack_home_load_source(context, *home);
+            source.has_value()) {
+          auto operand = make_memory_operand(*source);
+          return append_move_control_value_to_register(
+              operand, view, target, lines, std::move(occupied));
+        }
+      }
     }
     if (const auto* producer =
             find_same_block_cast_result(context, value.name, before_instruction_index);

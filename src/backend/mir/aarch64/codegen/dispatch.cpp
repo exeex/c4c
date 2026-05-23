@@ -108,6 +108,24 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   return matches(binary->lhs) || matches(binary->rhs);
 }
 
+[[nodiscard]] bool instruction_result_has_stack_home(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst) {
+  const auto result_value = instruction_result_value(inst);
+  if (!result_value.has_value() ||
+      result_value->kind != bir::Value::Kind::Named ||
+      result_value->name.empty()) {
+    return false;
+  }
+  const auto result_value_name = prepared_named_value_id(context, *result_value);
+  if (!result_value_name.has_value()) {
+    return false;
+  }
+  const auto* result_home = find_value_home(context, *result_value_name);
+  return result_home != nullptr &&
+         result_home->kind == prepare::PreparedValueHomeKind::StackSlot;
+}
+
 
 
 
@@ -2435,7 +2453,8 @@ InstructionDispatchResult dispatch_prepared_block(
         ++result.visited_operations;
         continue;
       } else if (cached_current_block_join_parallel_copy_incoming_expression(
-                     join_parallel_copy_cache, context, instruction_index, inst)) {
+                     join_parallel_copy_cache, context, instruction_index, inst) &&
+                 !instruction_result_has_stack_home(context, inst)) {
         continue;
       } else if (lower_scalar_with_address_materialization(
                      context,
@@ -2527,7 +2546,8 @@ InstructionDispatchResult dispatch_prepared_block(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (cached_current_block_join_parallel_copy_source(
-                     join_parallel_copy_cache, context, instruction_index, inst)) {
+                     join_parallel_copy_cache, context, instruction_index, inst) &&
+                 !instruction_result_has_stack_home(context, inst)) {
         continue;
       } else if (auto lowered =
                      lower_stack_homed_pointer_value_load_publication(
