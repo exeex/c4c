@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/385_aarch64_dispatch_publication_mechanical_split.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract Value Materialization
+Current Step ID: 4
+Current Step Title: Extract Edge Copy and Select-Chain Handling
 
 # Current Packet
 
