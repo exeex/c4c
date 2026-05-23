@@ -1,32 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/386_aarch64_calls_mechanical_split.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Extract Preservation Analysis
+Current Step ID: Step 6
+Current Step Title: Extract Move Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 - Extract Preservation Analysis.
+Completed Step 6 - Extract Move Lowering.
 
-Added `src/backend/mir/aarch64/codegen/calls_preservation.cpp` and
-`src/backend/mir/aarch64/codegen/calls_preservation.hpp`, registered the new
-source in `src/backend/CMakeLists.txt`, and made `calls.cpp` include the new
-preservation header.
+Added `src/backend/mir/aarch64/codegen/calls_moves.cpp` and
+`src/backend/mir/aarch64/codegen/calls_moves.hpp`, registered the new source in
+`src/backend/CMakeLists.txt`, and made `calls.cpp` include the new move
+lowering header.
 
-Mechanically moved the prepared-block dominance helpers, move-bundle lookup,
-prior preserved-value search helpers, later-use checks, prior preserved argument
-source construction, and callee-saved preservation home population/republication
-helpers out of `calls.cpp`.
+Mechanically moved the call-boundary move-lowering entry points and their local
+support out of `calls.cpp`: before-call, after-call, before-return, and value
+move lowering; outgoing stack-base setup; stack/value move assembly helpers;
+aggregate stack/byval stack move helpers; and immediate-cast call-argument
+publication helpers used by the moved lowering path.
 
-Kept call lowering, effects, printing helpers, and the existing external
-`find_value_home`/`prepared_value_id` ownership in their current files.
+Kept call lowering, effect/public instruction construction, and print-body
+ownership in `calls.cpp`; `calls_moves.cpp` uses tiny local copies of the
+machine-instruction wrapper, operand-to-effect conversion, and frame-slot address
+materialization needed by the moved helpers.
 
 ## Suggested Next
 
 Execute the next mechanical extraction packet from the active plan, keeping
-move-lowering, effects, and print-body changes out of the preservation helper
+print-body ownership and broad effect construction out of the move-lowering
 slice unless that later packet explicitly owns them.
 
 ## Watchouts
@@ -58,11 +61,14 @@ slice unless that later packet explicitly owns them.
 - `calls_preservation.cpp` uses a tiny local machine-instruction wrapper for
   moved callee-saved preservation construction instead of moving the broader
   call-boundary machine-instruction helper out of `calls.cpp`.
+- `calls_moves.cpp` duplicates the small local operand-effect conversion and
+  frame-slot address materialization helpers because those bodies still serve
+  print/effect construction in `calls.cpp`, which was outside this packet.
 - `clang-format` was unavailable in the environment.
 
 ## Proof
 
-Step 5 proof recorded in `test_after.log`:
+Step 6 proof recorded in `test_after.log`:
 
 ```bash
 cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test -j10 && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_00204_c)$' --output-on-failure
@@ -73,16 +79,12 @@ Result: green; all 3 selected tests passed.
 Additional AST-backed checks run during the packet:
 
 ```bash
-c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
 c4c-clang-tool-ccdb list-symbols /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_prior_preserved_value_for_call_argument build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp preserved_value_has_later_non_call_use build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_prior_preserved_call_argument_source build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_move_bundle build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_prior_preserved_value_for_call_argument build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_prior_preserved_value_for_value build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp find_prior_stack_preserved_value_before_instruction build/compile_commands.json
-c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_preservation.cpp build/compile_commands.json
-c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp make_callee_saved_preservation_home_population build/compile_commands.json
-c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_preservation.cpp make_callee_saved_preservation_home_population build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp lower_before_call_move build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp lower_after_call_move build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp lower_before_call_moves build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls.cpp lower_value_moves build/compile_commands.json
+c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_moves.cpp build/compile_commands.json
+c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_moves.cpp lower_before_call_move build/compile_commands.json
+c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/aarch64/codegen/calls_moves.cpp lower_before_call_move build/compile_commands.json
 ```
