@@ -59,3 +59,12 @@ Then move one narrow, low-risk generic responsibility out of
 - At least one generic Prepared/MIR responsibility is moved out of AArch64
   codegen, or the audit justifies why the first move should be deferred.
 - Fresh build or targeted backend tests prove the moved slice.
+
+## Closure
+
+Closed after Step 3 review accepted the boundary recovery slice. The audit
+classified the `dispatch_*` and `calls_*` families, the Prepared value-home/name
+lookup responsibility moved into shared `prealloc` support, and backend proof
+remained stable at 149/149 with no new failures. Header-family consolidation is
+unblocked; additional Prepared boundary refinement is optional future work, not
+a prerequisite for that follow-on.
