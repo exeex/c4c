@@ -1,6 +1,6 @@
 # AArch64 Block Label Emission Ordering
 
-Status: Parked - Closure Ready
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/349_aarch64_recursive_call_argument_preservation.md
 
@@ -83,6 +83,15 @@ Close is not accepted in the lifecycle packet because the strict monotonic
 close gate failed on comparable canonical logs: before and after both passed
 7/7 with no new failures, leaving a pass-count delta of 0. The active runbook
 was deactivated and this source idea remains parked/open.
+
+2026-05-23: Closed after the refreshed Step 1 proof found no live in-scope
+AArch64 block label/emission ordering failure. The focused proof rebuilt the
+tree and passed 10/10, including `c_testsuite_aarch64_backend_src_00176_c`
+plus adjacent branch, return, instruction-dispatch, call-boundary, traversal,
+and compare guardrails. The lifecycle close gate used matching focused logs in
+non-decreasing mode and passed with before 10/10, after 10/10, delta 0, and no
+new failures. No residual block-ordering, label-placement, fallthrough,
+branch-target, or epilogue-emission owner remains for this idea.
 
 ## Reviewer Reject Signals
 
