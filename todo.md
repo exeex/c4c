@@ -1,46 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-cpp-family-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Consolidate Calls CPP Helpers
+Current Step ID: Step 4
+Current Step Title: Boundary Review and Broader Validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by merging the call effects helper definitions from
-`src/backend/mir/aarch64/codegen/calls_effects.cpp` into
-`src/backend/mir/aarch64/codegen/calls_printing.cpp`.
-Deleted the obsolete helper `.cpp`, removed its explicit
-`src/backend/CMakeLists.txt` source-list entry, and trimmed
-`src/backend/mir/aarch64/codegen/calls.hpp` so only
-`effects_from_prepared_call_clobbers`, the call-effect API still used by other
-translation units, remains public.
+Completed `plan.md` Step 4 by re-scanning the AArch64 codegen `.cpp` layout
+after the Step 2 and Step 3 consolidation commits.
 
-Post-merge scans found no remaining source-list or implementation references to
-the removed `calls_effects.cpp`. A follow-up source-reference scan confirmed
-`effects_from_prepared_call_preserved_values` is used only by
-`calls_printing.cpp`, so it now has internal linkage there.
+Final boundary rationale:
+
+- `dispatch_publication_common.cpp` is gone; its publication glue now lives in
+  `dispatch_publication.cpp`, and no live source-list references remain.
+- `calls_effects.cpp` is gone; its call-printing effect helpers now live in
+  `calls_printing.cpp`, and only the still-shared clobber effect API remains in
+  `calls.hpp`.
+- `calls_common.cpp` is intentionally retained. It is not a tiny orphan helper;
+  it owns shared call ABI sizing, stack argument, register naming, variadic, and
+  call-boundary utility behavior consumed across the calls family.
+- `peephole.cpp` is intentionally retained as the explicit deferred peephole
+  boundary described by `codegen/README.md`; folding it into an unrelated owner
+  would hide the current no-live-pass decision.
+- `compatibility_projection.cpp` is intentionally retained. It owns the
+  compatibility projection between lowered machine functions and legacy
+  publication records, which remains a named route concept rather than local
+  glue for `module_compile.cpp`.
+- `module_compile.cpp` is intentionally retained as the internal prepared-module
+  compile coordinator and public build/compile handoff surface.
+- `dispatch_diagnostics.cpp` is intentionally retained as the diagnostics
+  ownership surface for dispatch and call-lowering failures.
+
+The remaining small files therefore still correspond to durable implementation
+concepts or explicitly deferred route surfaces. The completed merges moved only
+AArch64-local publication and calls helpers within their existing families; no
+target-independent logic was moved into AArch64.
 
 ## Suggested Next
 
-Execute `plan.md` Step 4: re-scan the AArch64 codegen `.cpp` layout, record
-which remaining tiny call or dispatch helper files are intentionally retained
-or out of scope, and run the supervisor-selected broader validation or
-regression guard if required by the accumulated consolidation slices.
+No further implementation packet is needed for this runbook. The source idea
+acceptance criteria appear satisfied: a small documented set of `.cpp` files
+was merged, remaining files have durable boundary names, and fresh backend
+proof is recorded below.
+
+Any future consolidation beyond this scope, such as reconsidering the broader
+calls-family layout or changing the deferred peephole route, should start as a
+separate idea.
 
 ## Watchouts
 
-- Keep the source idea stable unless durable intent changes.
-- Do not merge large semantic lowering modules just to reduce file count.
-- Do not hide target-independent logic in AArch64 during consolidation.
-- Keep slices behavior-preserving and reviewable.
-- `effects_from_prepared_call_clobbers` remains public because `f128.cpp` and
-  `i128_ops.cpp` still consume it; `effects_from_prepared_call_preserved_values`
-  and the single-record effect helpers are local to `calls_printing.cpp`.
-- Remaining calls modules such as call argument sources, moves, preservation,
-  and byval aggregates still look like durable semantic boundaries unless the
-  Step 4 review proves otherwise.
+- Do not fold the retained tiny route surfaces into larger files without a new
+  source idea; they are intentionally retained under this runbook.
+- Lifecycle close/deactivate belongs to the supervisor and plan owner, not this
+  executor packet.
 
 ## Proof
 
