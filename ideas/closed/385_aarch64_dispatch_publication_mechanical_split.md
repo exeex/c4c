@@ -206,3 +206,33 @@ ctest --test-dir build -j10 --output-on-failure
   reorganization idea.
 - Full-suite baseline remains green.
 
+## Closure Note
+
+Closed after Step 5 commit `cc1ebeeb8dd21f95b79bea42272d62befe0895e3`
+(`Extract AArch64 publication store sources`) and Step 6 verification.
+
+Final implementation-file line counts confirmed every publication-related
+implementation file is under 4000 lines:
+
+- `dispatch_publication.cpp`: 559
+- `dispatch_publication_common.cpp`: 303
+- `dispatch_producers.cpp`: 390
+- `dispatch_value_materialization.cpp`: 1528
+- `dispatch_edge_copies.cpp`: 934
+- `dispatch_store_sources.cpp`: 1172
+
+Full-suite close proof is recorded in `test_baseline.log` for commit
+`cc1ebeeb8dd21f95b79bea42272d62befe0895e3`: 3381/3381 tests passed.
+The close-time regression guard was run against that accepted full-suite proof
+with non-decreasing passes allowed and reported no new failures.
+
+Follow-up cleanup should be handled as a separate idea if desired:
+
+- Review whether provisional `publication` naming should be replaced now that
+  the responsibilities are visible.
+- Review whether the extracted clusters should later move to longer-term homes
+  such as call, memory, comparison, or producer-specific files.
+- Revisit temporary dependency seams noted during execution, including the
+  local `find_bir_block` forward declaration in `dispatch_edge_copies.cpp` and
+  central state/address helpers intentionally left in
+  `dispatch_publication.cpp`.
