@@ -1,8 +1,24 @@
 # AArch64 Unsigned Div Rem Producer Publication
 
-Status: Parked
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
+
+## Closure Note
+
+Closed on 2026-05-23 under the supervisor-approved non-decreasing close policy.
+Fresh focused before/after proof for the unsigned div/rem producer-publication
+scope passed 4/4 before and 4/4 after with no new failures:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00182_c)$'
+```
+
+The parked source scope is satisfied because the current focused proof shows no
+remaining unsigned div/rem stale scratch or condition-state consumer failure,
+and `00182` passes this focused AArch64 backend representative scope. The prior
+close rejection was only the strict pass-count-increase gate; the matching
+regression guard now passes with `--allow-non-decreasing-passed`.
 
 ## Parking Note
 
