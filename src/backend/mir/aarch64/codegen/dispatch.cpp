@@ -1,4 +1,5 @@
 #include "dispatch.hpp"
+#include "dispatch_branch_fusion.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "dispatch_dynamic_stack.hpp"
 #include "dispatch_entry_formals.hpp"
@@ -143,52 +144,6 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   return shift;
 }
 
-[[nodiscard]] std::optional<std::string_view> branch_condition_suffix(
-    bir::BinaryOpcode predicate) {
-  switch (predicate) {
-    case bir::BinaryOpcode::Eq:
-      return std::string_view{"eq"};
-    case bir::BinaryOpcode::Ne:
-      return std::string_view{"ne"};
-    case bir::BinaryOpcode::Slt:
-      return std::string_view{"lt"};
-    case bir::BinaryOpcode::Sle:
-      return std::string_view{"le"};
-    case bir::BinaryOpcode::Sgt:
-      return std::string_view{"gt"};
-    case bir::BinaryOpcode::Sge:
-      return std::string_view{"ge"};
-    case bir::BinaryOpcode::Ult:
-      return std::string_view{"lo"};
-    case bir::BinaryOpcode::Ule:
-      return std::string_view{"ls"};
-    case bir::BinaryOpcode::Ugt:
-      return std::string_view{"hi"};
-    case bir::BinaryOpcode::Uge:
-      return std::string_view{"hs"};
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::string machine_block_label(c4c::FunctionNameId function_name,
-                                              c4c::BlockLabelId block_label) {
-  return ".LBB" + std::to_string(function_name) + "_" + std::to_string(block_label);
-}
-
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
@@ -201,6 +156,278 @@ make_select_chain_materialization_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     std::vector<std::string> lines);
+
+[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  for (const auto& inst : context.bir_block->insts) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+    if (binary != nullptr &&
+        binary->result.kind == bir::Value::Kind::Named &&
+        binary->result.name == value.name) {
+      return binary;
+    }
+  }
+  return nullptr;
+}
+
+struct SameBlockSelectProducer {
+  const bir::SelectInst* select = nullptr;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto* select =
+        std::get_if<bir::SelectInst>(&context.bir_block->insts[candidate_index]);
+    if (select != nullptr &&
+        select->result.kind == bir::Value::Kind::Named &&
+        select->result.name == value.name) {
+      return SameBlockSelectProducer{.select = select,
+                                     .instruction_index = candidate_index};
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    unsigned depth = 0) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  if (depth > 4U) {
+    return std::nullopt;
+  }
+  const auto* binary = find_same_block_binary_producer(context, value);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto lhs = evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
+  const auto rhs = evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  switch (binary->opcode) {
+    case bir::BinaryOpcode::Add:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) +
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Sub:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) -
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Mul:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) *
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::And:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) &
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Or:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) |
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Xor:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) ^
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Shl:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
+                                       << static_cast<unsigned>(*rhs));
+    case bir::BinaryOpcode::LShr:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
+                                       >> static_cast<unsigned>(*rhs));
+    case bir::BinaryOpcode::AShr:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return *lhs >> static_cast<unsigned>(*rhs);
+    case bir::BinaryOpcode::SDiv:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return *lhs / *rhs;
+    case bir::BinaryOpcode::UDiv:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::SRem:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return *lhs % *rhs;
+    case bir::BinaryOpcode::URem:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Eq:
+      return *lhs == *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Ne:
+      return *lhs != *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Slt:
+      return *lhs < *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Sle:
+      return *lhs <= *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Sgt:
+      return *lhs > *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Sge:
+      return *lhs >= *rhs ? 1 : 0;
+    case bir::BinaryOpcode::Ult:
+      return static_cast<std::uint64_t>(*lhs) < static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Ule:
+      return static_cast<std::uint64_t>(*lhs) <= static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Ugt:
+      return static_cast<std::uint64_t>(*lhs) > static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Uge:
+      return static_cast<std::uint64_t>(*lhs) >= static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const bir::Inst* find_same_block_named_producer(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::size_t> producer_instruction_index(
+    const module::BlockLoweringContext& context,
+    const bir::Inst* producer);
+
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+
+[[nodiscard]] bool select_chain_contains_direct_global_load(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, value.name, before_instruction_index);
+  if (producer == nullptr) {
+    return false;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
+    return true;
+  }
+  const auto producer_index = producer_instruction_index(context, producer);
+  const auto nested_before = producer_index.value_or(before_instruction_index);
+  if (const auto* select = std::get_if<bir::SelectInst>(producer);
+      select != nullptr) {
+    return select_chain_contains_direct_global_load(
+               context, select->true_value, nested_before, depth + 1) ||
+           select_chain_contains_direct_global_load(
+               context, select->false_value, nested_before, depth + 1);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    return select_chain_contains_direct_global_load(
+        context, cast->operand, nested_before, depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer);
+      binary != nullptr) {
+    return select_chain_contains_direct_global_load(
+               context, binary->lhs, nested_before, depth + 1) ||
+           select_chain_contains_direct_global_load(
+               context, binary->rhs, nested_before, depth + 1);
+  }
+  return false;
+}
+
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  const auto* access =
+      addressing != nullptr
+          ? prepare::find_prepared_memory_access(
+                *addressing, context.control_flow_block->block_label, instruction_index)
+          : nullptr;
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return std::nullopt;
+  }
+  const auto* slot =
+      find_frame_slot(context.function.prepared->stack_layout, *access->address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  const auto offset =
+      static_cast<std::int64_t>(slot->offset_bytes) + access->address.byte_offset;
+  std::string address =
+      context.function.frame_plan != nullptr &&
+              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
+          ? "[x29"
+          : "[sp";
+  if (offset != 0) {
+    address += ", #";
+    address += std::to_string(offset);
+  }
+  address += "]";
+  return address;
+}
 
 [[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
     const module::BlockLoweringContext& context,
@@ -1035,490 +1262,6 @@ move.to_value_id);
   return lowered;
 }
 
-[[nodiscard]] module::MachineInstruction make_branch_compare_assembler_instruction(
-    const module::BlockLoweringContext& context,
-    std::vector<std::string> lines);
-
-[[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  for (const auto& inst : context.bir_block->insts) {
-    const auto* cast = std::get_if<bir::CastInst>(&inst);
-    if (cast != nullptr &&
-        cast->result.kind == bir::Value::Kind::Named &&
-        cast->result.name == value.name) {
-      return cast;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] std::optional<std::string> emitted_register_name(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const BlockScalarLoweringState& scalar_state,
-    abi::RegisterView view) {
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
-  if (!emitted.has_value() || !abi::is_gp_register(emitted->reg)) {
-    return std::nullopt;
-  }
-  const auto viewed = abi::gp_register(emitted->reg.index, view);
-  if (!viewed.has_value()) {
-    return std::nullopt;
-  }
-  return abi::register_name(*viewed);
-}
-
-[[nodiscard]] std::optional<std::string> compare_operand_name(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const BlockScalarLoweringState& scalar_state,
-    abi::RegisterView view) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return "#" + std::to_string(value.immediate);
-  }
-  return emitted_register_name(context, value, scalar_state, view);
-}
-
-struct SameBlockLoadProducer {
-  const bir::LoadLocalInst* load = nullptr;
-  std::size_t instruction_index = 0;
-};
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_select_chain_materialization_instruction(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    std::vector<std::string> lines);
-
-[[nodiscard]] SameBlockLoadProducer find_same_block_load_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
-  }
-  for (std::size_t index = 0; index < context.bir_block->insts.size(); ++index) {
-    const auto& inst = context.bir_block->insts[index];
-    const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
-    if (load != nullptr &&
-        load->result.kind == bir::Value::Kind::Named &&
-        load->result.name == value.name) {
-      return SameBlockLoadProducer{.load = load, .instruction_index = index};
-    }
-  }
-  return {};
-}
-
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  for (const auto& inst : context.bir_block->insts) {
-    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-    if (binary != nullptr &&
-        binary->result.kind == bir::Value::Kind::Named &&
-        binary->result.name == value.name) {
-      return binary;
-    }
-  }
-  return nullptr;
-}
-
-struct SameBlockSelectProducer {
-  const bir::SelectInst* select = nullptr;
-  std::size_t instruction_index = 0;
-};
-
-[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
-  }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const std::size_t candidate_index = index - 1;
-    const auto* select =
-        std::get_if<bir::SelectInst>(&context.bir_block->insts[candidate_index]);
-    if (select != nullptr &&
-        select->result.kind == bir::Value::Kind::Named &&
-        select->result.name == value.name) {
-      return SameBlockSelectProducer{.select = select,
-                                     .instruction_index = candidate_index};
-    }
-  }
-  return {};
-}
-
-[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    unsigned depth = 0) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return value.immediate;
-  }
-  if (depth > 4U) {
-    return std::nullopt;
-  }
-  const auto* binary = find_same_block_binary_producer(context, value);
-  if (binary == nullptr) {
-    return std::nullopt;
-  }
-  const auto lhs = evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
-  const auto rhs = evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return std::nullopt;
-  }
-  switch (binary->opcode) {
-    case bir::BinaryOpcode::Add:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) +
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Sub:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) -
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Mul:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) *
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::And:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) &
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Or:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) |
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Xor:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) ^
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Shl:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       << static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::LShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       >> static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::AShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return *lhs >> static_cast<unsigned>(*rhs);
-    case bir::BinaryOpcode::SDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs / *rhs;
-    case bir::BinaryOpcode::UDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::SRem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs % *rhs;
-    case bir::BinaryOpcode::URem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Eq:
-      return *lhs == *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ne:
-      return *lhs != *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Slt:
-      return *lhs < *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sle:
-      return *lhs <= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sgt:
-      return *lhs > *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sge:
-      return *lhs >= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ult:
-      return static_cast<std::uint64_t>(*lhs) < static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ule:
-      return static_cast<std::uint64_t>(*lhs) <= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ugt:
-      return static_cast<std::uint64_t>(*lhs) > static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Uge:
-      return static_cast<std::uint64_t>(*lhs) >= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] bool is_cmp_immediate_encodable(std::int64_t value) {
-  return value >= 0 && value <= 4095;
-}
-
-[[nodiscard]] const bir::Inst* find_same_block_named_producer(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::size_t> producer_instruction_index(
-    const module::BlockLoweringContext& context,
-    const bir::Inst* producer);
-
-[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-
-[[nodiscard]] bool select_chain_contains_direct_global_load(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    unsigned depth = 0) {
-  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return false;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context, value.name, before_instruction_index);
-  if (producer == nullptr) {
-    return false;
-  }
-  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
-    return true;
-  }
-  const auto producer_index = producer_instruction_index(context, producer);
-  const auto nested_before = producer_index.value_or(before_instruction_index);
-  if (const auto* select = std::get_if<bir::SelectInst>(producer);
-      select != nullptr) {
-    return select_chain_contains_direct_global_load(
-               context, select->true_value, nested_before, depth + 1) ||
-           select_chain_contains_direct_global_load(
-               context, select->false_value, nested_before, depth + 1);
-  }
-  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
-    return select_chain_contains_direct_global_load(
-        context, cast->operand, nested_before, depth + 1);
-  }
-  if (const auto* binary = std::get_if<bir::BinaryInst>(producer);
-      binary != nullptr) {
-    return select_chain_contains_direct_global_load(
-               context, binary->lhs, nested_before, depth + 1) ||
-           select_chain_contains_direct_global_load(
-               context, binary->rhs, nested_before, depth + 1);
-  }
-  return false;
-}
-
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedFrameSlotId slot_id) {
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.slot_id == slot_id) {
-      return &slot;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedObjectId object_id) {
-  for (const auto& object : stack_layout.objects) {
-    if (object.object_id == object_id) {
-      return &object;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto* addressing =
-      prepare::find_prepared_addressing(*context.function.prepared,
-                                        context.function.control_flow->function_name);
-  const auto* access =
-      addressing != nullptr
-          ? prepare::find_prepared_memory_access(
-                *addressing, context.control_flow_block->block_label, instruction_index)
-          : nullptr;
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value() ||
-      !access->address.can_use_base_plus_offset) {
-    return std::nullopt;
-  }
-  const auto* slot =
-      find_frame_slot(context.function.prepared->stack_layout, *access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-  const auto offset =
-      static_cast<std::int64_t>(slot->offset_bytes) + access->address.byte_offset;
-  std::string address =
-      context.function.frame_plan != nullptr &&
-              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
-          ? "[x29"
-          : "[sp";
-  if (offset != 0) {
-    address += ", #";
-    address += std::to_string(offset);
-  }
-  address += "]";
-  return address;
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_fused_compare_branch_from_emitted_cast(
-    const module::BlockLoweringContext& context,
-    const BlockScalarLoweringState& scalar_state) {
-  if (context.function.control_flow == nullptr ||
-      context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  if (!condition.has_value()) {
-    return std::nullopt;
-  }
-
-  const bir::Value* cast_value = &*branch_condition->lhs;
-  const bir::Value* other_value = &*branch_condition->rhs;
-  const bir::CastInst* cast = find_same_block_cast_producer(context, *cast_value);
-  if (cast == nullptr) {
-    cast_value = &*branch_condition->rhs;
-    other_value = &*branch_condition->lhs;
-    cast = find_same_block_cast_producer(context, *cast_value);
-  }
-  if (cast == nullptr ||
-      cast->opcode != bir::CastOpcode::SExt ||
-      cast->operand.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-
-  const auto source_bits = integer_bit_width(cast->operand.type);
-  const auto result_bits = integer_bit_width(cast->result.type);
-  const auto result_view = scalar_register_view(cast->result.type);
-  if (!source_bits.has_value() || !result_bits.has_value() ||
-      !result_view.has_value() || *source_bits >= *result_bits) {
-    return std::nullopt;
-  }
-  auto source_name =
-      emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
-  auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
-  if (!rhs_name.has_value()) {
-    const auto constant = evaluate_same_block_integer_constant(context, *other_value);
-    if (constant.has_value() && is_cmp_immediate_encodable(*constant)) {
-      rhs_name = "#" + std::to_string(*constant);
-    }
-  }
-  std::vector<std::string> lines;
-  if (!source_name.has_value()) {
-    const auto load_producer = find_same_block_load_producer(context, cast->operand);
-    const auto load_address =
-        load_producer.load != nullptr
-            ? prepared_frame_slot_load_address(context, load_producer.instruction_index)
-            : std::optional<std::string>{};
-    if (!load_producer.load ||
-        load_producer.load->result.type != bir::TypeKind::I8 ||
-        !load_address.has_value()) {
-      return std::nullopt;
-    }
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    if (scratches.size() < 2U) {
-      return std::nullopt;
-    }
-    source_name = abi::register_name(abi::w_register(scratches[1].index));
-    lines.push_back("ldrb " + *source_name + ", " + *load_address);
-  }
-  if (!rhs_name.has_value()) {
-    return std::nullopt;
-  }
-
-  std::string scratch_name;
-  if (auto result_register = make_named_prepared_result_register(context, cast->result);
-      result_register.has_value()) {
-    const auto scratch = abi::gp_register(result_register->reg.index, *result_view);
-    if (scratch.has_value() && abi::register_name(*scratch) != *rhs_name) {
-      scratch_name = abi::register_name(*scratch);
-    }
-  }
-  if (scratch_name.empty()) {
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    for (const auto& scratch_reg : scratches) {
-      const auto scratch = abi::gp_register(scratch_reg.index, *result_view);
-      if (!scratch.has_value()) {
-        continue;
-      }
-      const auto candidate = abi::register_name(*scratch);
-      if (candidate != *rhs_name) {
-        scratch_name = candidate;
-        break;
-      }
-    }
-    if (scratch_name.empty()) {
-      return std::nullopt;
-    }
-  }
-
-  if (*source_bits == 8U) {
-    lines.push_back("sxtb " + scratch_name + ", " + *source_name);
-  } else if (*source_bits == 16U) {
-    lines.push_back("sxth " + scratch_name + ", " + *source_name);
-  } else if (*source_bits == 32U && *result_bits == 64U) {
-    lines.push_back("sxtw " + scratch_name + ", " + *source_name);
-  } else {
-    return std::nullopt;
-  }
-  lines.push_back("cmp " + scratch_name + ", " + *rhs_name);
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
-}
-
 [[nodiscard]] std::optional<abi::RegisterView> scalar_view_for_type(
     bir::TypeKind type);
 
@@ -1562,413 +1305,6 @@ lower_scalar_mul_with_distinct_rhs_scratch(
     const module::BlockLoweringContext& context,
     const bir::LoadGlobalInst& load,
     const bir::Global* target_global);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_materialized_compare_condition_branch(
-    const module::BlockLoweringContext& context,
-    const BlockScalarLoweringState& scalar_state) {
-  if (context.function.control_flow == nullptr ||
-      context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch ||
-      context.bir_block->terminator.kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
-      branch_condition->condition_value != context.bir_block->terminator.condition) {
-    return std::nullopt;
-  }
-  const auto condition_name =
-      prepared_named_value_id(context, branch_condition->condition_value);
-  const auto* condition_home =
-      condition_name.has_value() && context.function.value_locations != nullptr
-          ? find_value_home(context,
-*condition_name)
-          : nullptr;
-  if (condition_home == nullptr) {
-    return std::nullopt;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context,
-                                     branch_condition->condition_value.name,
-                                     context.bir_block->insts.size());
-  const auto producer_index = producer_instruction_index(context, producer);
-  const auto* binary =
-      producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
-  if (binary == nullptr || !producer_index.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(binary->opcode);
-  const auto operand_view = scalar_view_for_type(binary->operand_type);
-  if (!condition.has_value() || !operand_view.has_value()) {
-    return std::nullopt;
-  }
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
-  const auto rhs_reg = abi::gp_register(scratches[1].index, *operand_view);
-  const auto lhs_scratch_name =
-      lhs_reg.has_value() ? std::optional<std::string>{abi::register_name(*lhs_reg)}
-                          : std::nullopt;
-  const auto rhs_scratch_name =
-      rhs_reg.has_value() ? std::optional<std::string>{abi::register_name(*rhs_reg)}
-                          : std::nullopt;
-  if (!lhs_scratch_name.has_value() || !rhs_scratch_name.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-
-  std::vector<std::string> lines;
-  auto lhs = binary->lhs;
-  lhs.type = binary->operand_type;
-  std::optional<std::uint8_t> lhs_register_index;
-  std::optional<RegisterOperand> lhs_publication;
-  auto lhs_name = emitted_register_name(context, lhs, scalar_state, *operand_view);
-  if (!lhs_name.has_value()) {
-    if (auto published =
-            current_block_entry_publication_register(context, lhs, *operand_view)) {
-      lhs_publication = *published;
-      lhs_name = std::string{abi::register_name(published->reg)};
-      lhs_register_index = published->reg.index;
-    }
-  }
-  if (lhs_name.has_value()) {
-    if (!lhs_publication.has_value()) {
-      const auto value_name = prepared_named_value_id(context, lhs);
-      if (!value_name.has_value()) {
-        return std::nullopt;
-      }
-      const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
-      if (!emitted.has_value() ||
-          emitted->reg.bank != abi::RegisterBank::GeneralPurpose) {
-        return std::nullopt;
-      }
-      lhs_register_index = emitted->reg.index;
-    }
-  } else {
-    if (!emit_value_publication_to_register(context,
-                                            lhs,
-                                            *producer_index,
-                                            scratches[0].index,
-                                            scratches[1].index,
-                                            lines)) {
-      return std::nullopt;
-    }
-    lhs_name = *lhs_scratch_name;
-  }
-
-  std::string rhs;
-  if (binary->rhs.kind == bir::Value::Kind::Immediate &&
-      is_cmp_immediate_encodable(binary->rhs.immediate)) {
-    rhs = "#" + std::to_string(binary->rhs.immediate);
-  } else {
-    auto rhs_value = binary->rhs;
-    rhs_value.type = binary->operand_type;
-    if (auto emitted_rhs =
-            emitted_register_name(context, rhs_value, scalar_state, *operand_view);
-        emitted_rhs.has_value()) {
-      rhs = *emitted_rhs;
-    } else {
-      const auto rhs_target_index =
-          lhs_register_index == std::optional<std::uint8_t>{scratches[1].index}
-              ? scratches[0].index
-              : scratches[1].index;
-      const auto rhs_scratch_index =
-          rhs_target_index == scratches[0].index ? scratches[1].index
-                                                 : scratches[0].index;
-      if (lhs_register_index ==
-          std::optional<std::uint8_t>{rhs_scratch_index}) {
-        return std::nullopt;
-      }
-      if (!emit_value_publication_to_register(context,
-                                              rhs_value,
-                                              *producer_index,
-                                              rhs_target_index,
-                                              rhs_scratch_index,
-                                              lines)) {
-        return std::nullopt;
-      }
-      const auto rhs_reg = abi::gp_register(rhs_target_index, *operand_view);
-      if (!rhs_reg.has_value()) {
-        return std::nullopt;
-      }
-      rhs = abi::register_name(*rhs_reg);
-    }
-  }
-
-  lines.push_back("cmp " + *lhs_name + ", " + rhs);
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_current_block_entry_fused_compare_branch(
-    const module::BlockLoweringContext& context) {
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
-  const auto published_lhs =
-      current_block_entry_publication_register(context, lhs, *operand_view);
-  if (!published_lhs.has_value() ||
-      published_lhs->reg.bank != abi::RegisterBank::GeneralPurpose ||
-      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
-      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
-    return std::nullopt;
-  }
-  const auto lhs_reg = abi::gp_register(published_lhs->reg.index, *operand_view);
-  if (!lhs_reg.has_value()) {
-    return std::nullopt;
-  }
-  std::vector<std::string> lines;
-  lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
-                  std::to_string(branch_condition->rhs->immediate));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
-}
-
-[[nodiscard]] bool value_has_current_block_entry_publication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& home);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_constant_rhs_fused_compare_branch(
-    const module::BlockLoweringContext& context) {
-  if (context.function.control_flow == nullptr ||
-      context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-
-  if (branch_condition->rhs->kind != bir::Value::Kind::Named ||
-      branch_condition->rhs->name.empty()) {
-    return std::nullopt;
-  }
-  auto rhs = *branch_condition->rhs;
-  rhs.type = *branch_condition->compare_type;
-  const auto* rhs_producer = find_same_block_binary_producer(context, rhs);
-  const auto rhs_name = prepared_named_value_id(context, rhs);
-  const auto* rhs_home =
-      rhs_name.has_value() && context.function.value_locations != nullptr
-          ? find_value_home(context,
-*rhs_name)
-          : nullptr;
-  if (rhs_producer == nullptr ||
-      rhs_home == nullptr ||
-      rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      value_has_current_block_entry_publication(context, *rhs_home)) {
-    return std::nullopt;
-  }
-  const auto rhs_constant = evaluate_same_block_integer_constant(context, rhs);
-  if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(*rhs_constant)) {
-    return std::nullopt;
-  }
-
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (scratches.size() < 2U) {
-    return std::nullopt;
-  }
-  const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
-  if (!lhs_reg.has_value()) {
-    return std::nullopt;
-  }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
-  std::vector<std::string> lines;
-  if (!emit_value_publication_to_register(context,
-                                          lhs,
-                                          context.bir_block->insts.size(),
-                                          scratches[0].index,
-                                          scratches[1].index,
-                                          lines,
-                                          true)) {
-    return std::nullopt;
-  }
-  lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
-                  std::to_string(*rhs_constant));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_conditional_branch_from_emitted_condition(
-    const module::BlockLoweringContext& context,
-    BlockScalarLoweringState& scalar_state) {
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->condition_value.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-  const auto condition_name =
-      prepared_named_value_id(context, branch_condition->condition_value);
-  if (!condition_name.has_value()) {
-    return std::nullopt;
-  }
-  auto condition_register =
-      find_emitted_scalar_register(scalar_state, *condition_name);
-  std::vector<std::string> lines;
-  if (!condition_register.has_value()) {
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    if (scratches.size() < 2U) {
-      return std::nullopt;
-    }
-    const auto expected_view =
-        scalar_view_for_type(branch_condition->condition_value.type)
-            .value_or(abi::RegisterView::W);
-    if (!emit_value_publication_to_register(context,
-                                            branch_condition->condition_value,
-                                            context.bir_block != nullptr
-                                                ? context.bir_block->insts.size()
-                                                : 0U,
-                                            scratches[0].index,
-                                            scratches[1].index,
-                                            lines)) {
-      return std::nullopt;
-    }
-    auto reg = abi::gp_register(scratches[0].index, expected_view);
-    if (!reg.has_value()) {
-      return std::nullopt;
-    }
-    const auto* home =
-        context.function.value_locations != nullptr
-            ? find_value_home(context,
-*condition_name)
-            : nullptr;
-    condition_register = RegisterOperand{
-        .reg = *reg,
-        .role = RegisterOperandRole::ReservedMirScratch,
-        .value_id = home != nullptr ? std::optional<prepare::PreparedValueId>{home->value_id}
-                                    : std::nullopt,
-        .value_name = *condition_name,
-        .expected_view = expected_view,
-    };
-    record_emitted_scalar_register(scalar_state, *condition_name, *condition_register);
-  }
-  condition_register->reg.view =
-      condition_register->expected_view.value_or(abi::RegisterView::W);
-  const auto condition = std::string{abi::register_name(condition_register->reg)};
-  if (condition.empty() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  lines.push_back("cbnz " + condition + ", " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
-}
-
-[[nodiscard]] bool is_fused_compare_branch_support_instruction(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    const BlockScalarLoweringState& scalar_state) {
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return false;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return false;
-  }
-  if (const auto* cast = std::get_if<bir::CastInst>(&inst);
-      cast != nullptr &&
-      cast->result.kind == bir::Value::Kind::Named) {
-    if (!lower_fused_compare_branch_from_emitted_cast(context, scalar_state).has_value()) {
-      return false;
-    }
-    const auto matches = [&](const bir::Value& value) {
-      return value.kind == bir::Value::Kind::Named &&
-             value.name == cast->result.name;
-    };
-    return matches(*branch_condition->lhs) || matches(*branch_condition->rhs);
-  }
-  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-      binary != nullptr &&
-      binary->result.kind == bir::Value::Kind::Named &&
-      branch_condition->condition_value.kind == bir::Value::Kind::Named) {
-    if (binary->result.name == branch_condition->condition_value.name) {
-      return true;
-    }
-    const auto matches_binary_result = [&](const bir::Value& value) {
-      return value.kind == bir::Value::Kind::Named &&
-             value.name == binary->result.name;
-    };
-    if ((matches_binary_result(*branch_condition->lhs) ||
-         matches_binary_result(*branch_condition->rhs)) &&
-        evaluate_same_block_integer_constant(context, binary->result).has_value()) {
-      return true;
-    }
-  }
-  return false;
-}
 
 [[nodiscard]] bool is_store_local_instruction(const bir::Inst& inst) {
   return std::get_if<bir::StoreLocalInst>(&inst) != nullptr;
@@ -3792,79 +3128,6 @@ move.to_value_id);
     return true;
   }
   return false;
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_stack_home_fused_compare_branch(
-    const module::BlockLoweringContext& context) {
-  if (context.function.control_flow == nullptr ||
-      context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value() ||
-      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
-      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
-  if (lhs.kind == bir::Value::Kind::Named && context.bir_block != nullptr) {
-    const auto* producer =
-        find_same_block_named_producer(context, lhs.name, context.bir_block->insts.size());
-    if (producer != nullptr &&
-        std::get_if<bir::LoadLocalInst>(producer) == nullptr &&
-        std::get_if<bir::LoadGlobalInst>(producer) == nullptr) {
-      return std::nullopt;
-    }
-  }
-  const auto* home = prepared_value_home_for_value(context, lhs);
-  if (home == nullptr ||
-      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      !home->offset_bytes.has_value()) {
-    return std::nullopt;
-  }
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (scratches.empty()) {
-    return std::nullopt;
-  }
-  const auto compare_reg = abi::gp_register(scratches.front().index, *operand_view);
-  if (!compare_reg.has_value()) {
-    return std::nullopt;
-  }
-  std::vector<std::string> lines;
-  if (!emit_prepared_value_home_to_register(&context.function.prepared->stack_layout,
-                                            *home,
-                                            *branch_condition->compare_type,
-                                            scratches.front().index,
-                                            lines,
-                                            fixed_slots_use_frame_pointer(context.function))) {
-    return std::nullopt;
-  }
-  lines.push_back("cmp " + std::string{abi::register_name(*compare_reg)} + ", #" +
-                  std::to_string(branch_condition->rhs->immediate));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
-  return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
 [[nodiscard]] bool prepared_value_home_reads_register_index(
@@ -7089,47 +6352,6 @@ void lower_pending_store_global_stack_value_publications(
   };
 }
 
-[[nodiscard]] module::MachineInstruction make_branch_compare_assembler_instruction(
-    const module::BlockLoweringContext& context,
-    std::vector<std::string> lines) {
-  std::string asm_text;
-  for (std::size_t index = 0; index < lines.size(); ++index) {
-    if (index != 0) {
-      asm_text += '\n';
-    }
-    asm_text += lines[index];
-  }
-
-  const std::size_t instruction_index =
-      context.bir_block != nullptr ? context.bir_block->insts.size() : 0;
-  InstructionRecord target{
-      .family = InstructionFamily::Assembler,
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .opcode = MachineOpcode::Unspecified,
-      .selection =
-          MachineNodeStatusRecord{
-              .status = MachineNodeSelectionStatus::Selected,
-          },
-      .function_name = context.function.control_flow != nullptr
-                           ? context.function.control_flow->function_name
-                           : c4c::kInvalidFunctionName,
-      .block_label = context.control_flow_block != nullptr
-                         ? context.control_flow_block->block_label
-                         : c4c::kInvalidBlockLabel,
-      .block_index = context.block_index,
-      .instruction_index = instruction_index,
-      .side_effects = {MachineSideEffectKind::ControlFlowTransfer},
-      .payload =
-          AssemblerInstructionRecord{
-              .has_inline_asm_payload = true,
-              .side_effects = true,
-              .inline_asm_template = std::move(asm_text),
-          },
-  };
-  return make_bir_machine_instruction(context, instruction_index, std::move(target));
-}
-
-
 [[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,
@@ -8518,36 +7740,23 @@ lower_missing_fused_compare_operand_publications(
   return lowered;
 }
 
-[[nodiscard]] bool fused_compare_operand_has_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto* producer = find_same_block_named_producer(
-      context, value.name, context.bir_block->insts.size());
-  return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
+[[nodiscard]] DispatchBranchFusionHooks make_dispatch_branch_fusion_hooks() {
+  return DispatchBranchFusionHooks{
+      .scalar_view_for_type = scalar_view_for_type,
+      .emit_value_publication_to_register = emit_value_publication_to_register,
+      .current_block_entry_publication_register =
+          current_block_entry_publication_register,
+      .find_same_block_named_producer = find_same_block_named_producer,
+      .producer_instruction_index = producer_instruction_index,
+      .prepared_value_home_for_value = prepared_value_home_for_value,
+      .value_has_current_block_entry_publication =
+          value_has_current_block_entry_publication,
+      .emit_prepared_value_home_to_register =
+          emit_prepared_value_home_to_register,
+      .fixed_slots_use_frame_pointer = fixed_slots_use_frame_pointer,
+  };
 }
 
-[[nodiscard]] bool fused_compare_uses_selected_operand(
-    const module::BlockLoweringContext& context) {
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return false;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch) {
-    return false;
-  }
-  return (branch_condition->lhs.has_value() &&
-          fused_compare_operand_has_select_producer(context, *branch_condition->lhs)) ||
-         (branch_condition->rhs.has_value() &&
-          fused_compare_operand_has_select_producer(context, *branch_condition->rhs));
-}
 
 
 }  // namespace
@@ -8592,6 +7801,7 @@ InstructionDispatchResult dispatch_prepared_block(
 
   BlockScalarLoweringState scalar_state;
   record_current_block_entry_publication_registers(context, scalar_state);
+  const auto branch_fusion_hooks = make_dispatch_branch_fusion_hooks();
   std::unordered_set<c4c::ValueNameId> published_store_global_stack_values;
   auto record_call_boundary_destination =
       [&](const module::MachineInstruction& instruction) {
@@ -8824,9 +8034,12 @@ InstructionDispatchResult dispatch_prepared_block(
               context, prepared_index_access, inst);
       if (std::get_if<bir::BinaryInst>(&inst) != nullptr) {
         const bool stack_home_fused_compare_branch =
-            is_fused_compare_branch_support_instruction(context, inst, scalar_state) &&
-            (lower_stack_home_fused_compare_branch(context).has_value() ||
-             lower_constant_rhs_fused_compare_branch(context).has_value());
+            is_fused_compare_branch_support_instruction(
+                context, inst, scalar_state, branch_fusion_hooks) &&
+            (lower_stack_home_fused_compare_branch(context, branch_fusion_hooks)
+                 .has_value() ||
+             lower_constant_rhs_fused_compare_branch(context, branch_fusion_hooks)
+                 .has_value());
         for (auto& before_instruction_move : lower_value_moves(
                  context,
                  prepare::PreparedMovePhase::BeforeInstruction,
@@ -9060,7 +8273,8 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (auto lowered = lower_scalar_fp_binary_publication_to_prepared_register(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
-      } else if (is_fused_compare_branch_support_instruction(context, inst, scalar_state)) {
+      } else if (is_fused_compare_branch_support_instruction(
+                     context, inst, scalar_state, branch_fusion_hooks)) {
         continue;
       } else if (auto lowered = lower_scalar_cast_instruction(
               context, inst, instruction_index, scalar_state)) {
@@ -9226,7 +8440,7 @@ InstructionDispatchResult dispatch_prepared_block(
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::CondBranch) {
-    if (fused_compare_uses_selected_operand(context)) {
+    if (fused_compare_uses_selected_operand(context, branch_fusion_hooks)) {
       for (auto& publication :
            lower_missing_fused_compare_operand_publications(
                context, scalar_state, diagnostics)) {
@@ -9234,23 +8448,23 @@ InstructionDispatchResult dispatch_prepared_block(
       }
     }
     if (auto lowered =
-            lower_current_block_entry_fused_compare_branch(context)) {
+            lower_current_block_entry_fused_compare_branch(context, branch_fusion_hooks)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
-                   lower_stack_home_fused_compare_branch(context)) {
+                   lower_stack_home_fused_compare_branch(context, branch_fusion_hooks)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
-            lower_fused_compare_branch_from_emitted_cast(context, scalar_state)) {
+            lower_fused_compare_branch_from_emitted_cast(context, scalar_state, branch_fusion_hooks)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
-                   lower_constant_rhs_fused_compare_branch(context)) {
+                   lower_constant_rhs_fused_compare_branch(context, branch_fusion_hooks)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
-                   lower_materialized_compare_condition_branch(context, scalar_state)) {
+                   lower_materialized_compare_condition_branch(context, scalar_state, branch_fusion_hooks)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else {
@@ -9265,7 +8479,7 @@ InstructionDispatchResult dispatch_prepared_block(
         block.instructions.push_back(std::move(*publication));
       }
       if (auto lowered = lower_conditional_branch_from_emitted_condition(
-              context, scalar_state)) {
+              context, scalar_state, branch_fusion_hooks)) {
         block.instructions.push_back(std::move(*lowered));
         block.successors = make_conditional_branch_successors(context);
       } else if (auto lowered =
