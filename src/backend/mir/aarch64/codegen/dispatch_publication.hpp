@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dispatch_publication_common.hpp"
+
 #include "alu.hpp"
 #include "../abi/abi.hpp"
 #include "../module/module.hpp"
@@ -18,11 +20,6 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-struct SameBlockSelectProducer {
-  const bir::SelectInst* select = nullptr;
-  std::size_t instruction_index = 0;
-};
-
 struct NarrowLocalStorePublication {
   bir::Value stored_value;
   std::size_t instruction_index = 0;
@@ -34,140 +31,10 @@ struct EdgeProducerContext {
   std::size_t instruction_index = 0;
 };
 
-[[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
-                                   const RegisterOperand& rhs);
-
-[[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type);
-
-[[nodiscard]] std::optional<unsigned> power_of_two_shift(std::uint64_t value);
-
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value);
-
-[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    unsigned depth = 0);
-
-[[nodiscard]] bool select_chain_contains_direct_global_load(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    unsigned depth = 0);
-
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedFrameSlotId slot_id);
-
-[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedObjectId object_id);
-
-[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-
-[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
-    const module::BlockLoweringContext& context,
-    std::string_view local_slot_name);
-
-[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name);
-
-[[nodiscard]] bool emit_local_slot_address_publication_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::BinaryInst& binary,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines);
-
-[[nodiscard]] bool prepared_edge_select_source_is_destination_register(
-    const prepare::PreparedValueHome& source_home,
-    const prepare::PreparedValueHome& destination_home);
-
-[[nodiscard]] bool register_operands_share_physical_register(
-    const RegisterOperand& lhs,
-    const RegisterOperand& rhs);
-
-[[nodiscard]] bool store_local_uses_pointer_value_address(
-    const bir::StoreLocalInst& store);
-
-[[nodiscard]] std::optional<RegisterOperand> prepared_or_emitted_store_value_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::string relocation_operand(std::string_view label,
-                                             std::size_t byte_offset);
-
-[[nodiscard]] std::string register_indirect_address(std::string_view base,
-                                                    std::size_t byte_offset);
-
-[[nodiscard]] bool fixed_slots_use_frame_pointer(
-    const module::FunctionLoweringContext& context);
-
-[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes,
-                                             std::string_view base_register = "sp");
-
-[[nodiscard]] std::string frame_slot_address(
-    const module::FunctionLoweringContext& context,
-    std::size_t offset_bytes);
-
-[[nodiscard]] std::optional<abi::RegisterView> scalar_view_for_type(
-    bir::TypeKind type);
-
-[[nodiscard]] std::optional<std::string> gp_register_name(std::uint8_t index,
-                                                          abi::RegisterView view);
-
-[[nodiscard]] const bir::Inst* find_same_block_named_producer(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-
-[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
-
-[[nodiscard]] std::optional<std::size_t> publication_parse_va_list_field_suffix(
-    std::string_view base,
-    std::string_view slot_name);
-
-[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
-    const module::BlockLoweringContext& context,
-    std::string_view slot_name);
-
-[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
-
-[[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(bir::TypeKind type);
-
-[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
-    std::size_t width_bytes);
-
-[[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type);
-
-[[nodiscard]] std::optional<unsigned> scalar_integer_width_bits(bir::TypeKind type);
-
-[[nodiscard]] std::optional<abi::RegisterReference> scalar_gp_register_view(
-    abi::RegisterReference reg,
-    bir::TypeKind type);
-
-[[nodiscard]] std::optional<abi::RegisterReference> scalar_fp_register_view(
-    abi::RegisterReference reg,
-    bir::TypeKind type);
+struct SameBlockSelectProducer {
+  const bir::SelectInst* select = nullptr;
+  std::size_t instruction_index = 0;
+};
 
 [[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
                                                    unsigned width_bits);
@@ -205,6 +72,81 @@ struct EdgeProducerContext {
 [[nodiscard]] std::optional<std::size_t> producer_instruction_index(
     const module::BlockLoweringContext& context,
     const bir::Inst* producer);
+
+[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value);
+
+[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    unsigned depth = 0);
+
+[[nodiscard]] bool select_chain_contains_direct_global_load(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0);
+
+[[nodiscard]] const bir::Inst* find_same_block_named_producer(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+
+[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    bir::TypeKind type,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines);
+
+[[nodiscard]] std::optional<std::size_t> publication_parse_va_list_field_suffix(
+    std::string_view base,
+    std::string_view slot_name);
+
+[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
+    const module::BlockLoweringContext& context,
+    std::string_view slot_name);
+
+[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
+    const module::BlockLoweringContext& context,
+    std::string_view local_slot_name);
+
+[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name);
+
+[[nodiscard]] bool emit_local_slot_address_publication_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines);
+
+[[nodiscard]] bool prepared_edge_select_source_is_destination_register(
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedValueHome& destination_home);
+
+[[nodiscard]] bool register_operands_share_physical_register(
+    const RegisterOperand& lhs,
+    const RegisterOperand& rhs);
+
+[[nodiscard]] bool store_local_uses_pointer_value_address(
+    const bir::StoreLocalInst& store);
+
+[[nodiscard]] std::optional<RegisterOperand> prepared_or_emitted_store_value_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] std::string_view local_slot_reference_name(
     const module::BlockLoweringContext& context,
