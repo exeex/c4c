@@ -8,22 +8,34 @@ Current Step Title: Refresh Representative Evidence
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible packet skeleton for
-`plan.md` Step 1.
+Completed `plan.md` Step 1 by refreshing representative evidence for
+recursive and nested-call argument preservation. The delegated focused proof
+passed for both `00176` and `00181`, so no current first bad fact was
+reproduced in the in-scope stale caller-clobbered post-call argument
+preservation family.
 
 ## Suggested Next
 
-Run Step 1 from `plan.md`: refresh `00176` and `00181` with the delegated
-focused proof command, then classify whether any in-scope stale
-caller-clobbered recursive or nested-call argument use remains.
+Lifecycle handoff should follow: the supervisor should treat idea 349 as
+close-ready or park-ready pending its regression-guard policy. No
+implementation packet is recommended from the refreshed evidence.
 
 ## Watchouts
 
 Do not expand this owner into indexed aggregate writeback, local/formal
 frame-slot publication, unsigned div/rem publication, semantic pointer-derived
-loads, or expectation/test contract changes. If no owned failure remains,
-report close-readiness evidence instead of inventing implementation work.
+loads, or expectation/test contract changes. The refreshed representatives are
+green, so inventing implementation work here would be route drift; any future
+failure should be reclassified before continuing this owner.
 
 ## Proof
 
-Not run during lifecycle activation.
+Command:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$'
+```
+
+Result: passed. `test_after.log` contains the exact proof output. Classification:
+no current owned failure; no live first bad fact belongs to the in-scope stale
+caller-clobbered recursive/nested-call argument preservation owner.
