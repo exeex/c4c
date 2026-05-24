@@ -1,47 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/entry-formal-publication-planning-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Adapt AArch64 To Consume Formal Publication Plans
+Current Step ID: Step 4
+Current Step Title: Prove Reuse Path For x86 Entry Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 adapted AArch64 entry-formal dispatch to consume the prealloc formal
-publication plans.
+Step 4 proved the x86 reuse path for the prealloc formal-publication plans.
 
-`lower_entry_formal_publications()` now calls
-`prepare::plan_prepared_formal_publications(...)` and uses each
-`PreparedFormalPublicationPlan` for the target-neutral formal/home iteration:
-formal index, formal pointer, prepared value/home authority, and home kind.
+`x86::prepared::Query` now exposes the prepared BIR function for its selected
+function and provides `plan_formal_publication(...)` and
+`plan_formal_publications()` wrappers over
+`prepare::plan_prepared_formal_publication(s)`.
 
-AArch64 still owns incoming register vs stack source selection, overflow and
-frame-size policy, source/destination register spelling, byval/f128 special
-cases, scalar-state recording, inline asm/copy-line construction, prologue
-behavior, diagnostics/status handling, and final instruction emission.
+The existing x86 prepared internal test now constructs formal Prepared facts
+and proves reuse across incoming-register, incoming-stack, missing-home, and
+no-publication forms while preserving source formal/home facts and missing
+authority behavior.
 
 ## Suggested Next
 
-Step 4 should prove the reuse path for x86 entry lowering by exposing or using
-the prealloc formal-publication plan from the x86 prepared/query surface,
-without rewriting x86 prologue/lowering or moving x86 ABI operands into
-prealloc.
+Step 5 should validate behavior and anti-overfit coverage for the active plan.
 
 ## Watchouts
 
-Keep ABI register and stack source policy, AArch64 register spelling, prologue
-shape, and entry-copy instruction emission target-local. Do not combine this
-with call-boundary classification, edge-copy bookkeeping, or operand decoding
-migrations.
+The x86 packet proves the shared planning API is reusable from the prepared
+query surface only. It does not rewrite x86 prologue/lowering, and x86 ABI
+policy, source operands, register classes, operand spelling, and entry-copy
+emission remain target-local.
 
 `dispatch_publication.cpp` block-entry move scans may be reusable later, but
 they are not the first formal-publication extraction. Keep this packet scoped
 to entry formal-to-home publication intent.
 
-The prealloc plan's source action remains target-neutral. AArch64 still
-rechecks its own incoming stack/register conditions because AAPCS64 overflow
-and frame-size behavior are target policy.
+The prealloc formal-publication plan remains fact/status-only: it does not
+construct target operands, select x86 registers, or emit entry-copy code.
 
 ## Proof
 

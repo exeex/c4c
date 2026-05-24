@@ -3,9 +3,11 @@
 #include "../../../bir/bir.hpp"
 #include "../../../prealloc/prealloc.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::x86::prepared {
 
@@ -53,6 +55,18 @@ struct Query {
     return c4c::backend::prepare::find_prepared_storage_plan(*module, *function_name);
   }
 
+  [[nodiscard]] const c4c::backend::bir::Function* bir_function() const {
+    if (module == nullptr || !function_name.has_value()) {
+      return nullptr;
+    }
+    for (const auto& function : module->module.functions) {
+      if (module->names.function_names.find(function.name) == *function_name) {
+        return &function;
+      }
+    }
+    return nullptr;
+  }
+
   [[nodiscard]] c4c::backend::prepare::PreparedDecodedHomeStorage decode_home_storage(
       c4c::backend::prepare::PreparedValueId value_id) const {
     return c4c::backend::prepare::decode_prepared_home_storage(
@@ -72,6 +86,29 @@ struct Query {
       const c4c::backend::prepare::PreparedMoveResolution& move) const {
     return c4c::backend::prepare::classify_prepared_call_boundary_move(
         call_plan, bundle, move);
+  }
+
+  [[nodiscard]] c4c::backend::prepare::PreparedFormalPublicationPlan
+  plan_formal_publication(std::size_t formal_index) const {
+    return c4c::backend::prepare::plan_prepared_formal_publication(
+        c4c::backend::prepare::PreparedFormalPublicationInputs{
+            .names = module == nullptr ? nullptr : &module->names,
+            .function = bir_function(),
+            .value_locations = locations(),
+            .value_home_lookups = nullptr,
+        },
+        formal_index);
+  }
+
+  [[nodiscard]] std::vector<c4c::backend::prepare::PreparedFormalPublicationPlan>
+  plan_formal_publications() const {
+    return c4c::backend::prepare::plan_prepared_formal_publications(
+        c4c::backend::prepare::PreparedFormalPublicationInputs{
+            .names = module == nullptr ? nullptr : &module->names,
+            .function = bir_function(),
+            .value_locations = locations(),
+            .value_home_lookups = nullptr,
+        });
   }
 };
 

@@ -7,6 +7,7 @@
 namespace {
 
 namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
 namespace x86_prepared = c4c::backend::x86::prepared;
 
 int fail(std::string_view message) {
@@ -29,6 +30,60 @@ prepare::PreparedBirModule make_fixture() {
   const auto storage_value_name = prepared.names.value_names.intern("storage_immediate");
   const auto empty_storage_value_name = prepared.names.value_names.intern("empty_storage");
   const auto home_value_name = prepared.names.value_names.intern("home_stack");
+  const auto formal_reg_name = prepared.names.value_names.intern("formal_reg");
+  const auto formal_stack_name = prepared.names.value_names.intern("formal_stack");
+  (void)prepared.names.value_names.intern("formal_missing_home");
+  prepared.module.functions.push_back(bir::Function{
+      .name = "x86.decode",
+      .params = {
+          bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "formal_reg",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .abi = bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .primary_class = bir::AbiValueClass::Integer,
+                  .passed_in_register = true,
+              },
+          },
+          bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "formal_stack",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .abi = bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .primary_class = bir::AbiValueClass::Integer,
+                  .passed_on_stack = true,
+              },
+          },
+          bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "formal_missing_home",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .abi = bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .primary_class = bir::AbiValueClass::Integer,
+                  .passed_in_register = true,
+              },
+          },
+          bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "formal_varargs",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .is_varargs = true,
+          },
+      },
+  });
 
   prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
       .function_name = function_name,
@@ -91,6 +146,21 @@ prepare::PreparedBirModule make_fixture() {
               .kind = prepare::PreparedValueHomeKind::StackSlot,
               .slot_id = 9,
               .offset_bytes = 72,
+          },
+          prepare::PreparedValueHome{
+              .value_id = 10,
+              .function_name = function_name,
+              .value_name = formal_reg_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"eax"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = 11,
+              .function_name = function_name,
+              .value_name = formal_stack_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = 12,
+              .offset_bytes = 96,
           },
       },
       .move_bundles = {prepare::PreparedMoveBundle{
@@ -278,6 +348,70 @@ int check_query_reuses_shared_call_boundary_classification() {
   return 0;
 }
 
+int check_query_reuses_shared_formal_publication_plans() {
+  const auto prepared = make_fixture();
+  const auto query = x86_prepared::make_query(prepared, "x86.decode");
+
+  if (!expect(query.bir_function() != nullptr,
+              "x86 prepared query did not expose prepared BIR function")) {
+    return 1;
+  }
+
+  const auto plans = query.plan_formal_publications();
+  if (!expect(plans.size() == 4,
+              "x86 prepared query did not reuse shared formal-publication collection")) {
+    return 1;
+  }
+
+  const auto reg_home = query.plan_formal_publication(0);
+  if (!expect(prepare::prepared_formal_publication_available(reg_home),
+              "x86 prepared query did not reuse available register-home publication plan") ||
+      !expect(reg_home.action ==
+                  prepare::PreparedFormalPublicationAction::IncomingRegisterToHome,
+              "x86 formal publication did not preserve incoming-register action") ||
+      !expect(reg_home.formal_index == 0 && reg_home.value_id.has_value() &&
+                  *reg_home.value_id == 10,
+              "x86 formal publication did not preserve formal index and prepared value id") ||
+      !expect(reg_home.formal == &query.bir_function()->params[0],
+              "x86 formal publication did not preserve source formal pointer") ||
+      !expect(reg_home.home_kind == prepare::PreparedValueHomeKind::Register &&
+                  reg_home.home != nullptr && reg_home.home->register_name == "eax",
+              "x86 formal publication did not preserve register-home facts")) {
+    return 1;
+  }
+
+  const auto stack_home = query.plan_formal_publication(1);
+  if (!expect(prepare::prepared_formal_publication_available(stack_home),
+              "x86 prepared query did not reuse available stack-home publication plan") ||
+      !expect(stack_home.action ==
+                  prepare::PreparedFormalPublicationAction::IncomingStackToHome,
+              "x86 formal publication did not preserve incoming-stack action") ||
+      !expect(stack_home.home_kind == prepare::PreparedValueHomeKind::StackSlot &&
+                  stack_home.home != nullptr && stack_home.home->offset_bytes == 96,
+              "x86 formal publication did not preserve stack-home facts")) {
+    return 1;
+  }
+
+  const auto missing_home = query.plan_formal_publication(2);
+  if (!expect(missing_home.status ==
+                  prepare::PreparedFormalPublicationStatus::MissingValueHome,
+              "x86 formal publication should surface missing value-home authority") ||
+      !expect(missing_home.formal == &query.bir_function()->params[2],
+              "x86 missing-home publication should preserve source formal facts")) {
+    return 1;
+  }
+
+  const auto varargs = query.plan_formal_publication(3);
+  if (!expect(varargs.status == prepare::PreparedFormalPublicationStatus::NoPublication,
+              "x86 formal publication should preserve no-publication formals") ||
+      !expect(varargs.action == prepare::PreparedFormalPublicationAction::NoPublication,
+              "x86 no-publication formal should not select an entry-copy action")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_query_reports_no_authority() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "missing");
@@ -286,6 +420,13 @@ int check_missing_query_reports_no_authority() {
               "missing x86 prepared query should not report an authority source") ||
       !expect(decoded.status == prepare::PreparedDecodedHomeStorageStatus::MissingAuthority,
               "missing x86 prepared query should report missing authority")) {
+    return 1;
+  }
+  const auto publication = query.plan_formal_publication(0);
+  if (!expect(publication.status == prepare::PreparedFormalPublicationStatus::MissingInputs,
+              "missing x86 prepared query should not report formal-publication authority") ||
+      !expect(query.plan_formal_publications().empty(),
+              "missing x86 prepared query should not collect formal-publication plans")) {
     return 1;
   }
   return 0;
@@ -302,6 +443,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_query_reuses_shared_call_boundary_classification();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_query_reuses_shared_formal_publication_plans();
       status != 0) {
     return EXIT_FAILURE;
   }
