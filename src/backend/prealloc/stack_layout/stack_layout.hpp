@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../frame.hpp"
+
 #include "../../bir/bir.hpp"
 
 #include <algorithm>
@@ -8,6 +10,41 @@
 #include <vector>
 
 namespace c4c::backend::prepare::stack_layout {
+
+struct FunctionInlineAsmSummary {
+  std::size_t instruction_count = 0;
+  bool has_side_effects = false;
+};
+
+std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
+                                                                const bir::NameTables& bir_names,
+                                                                const bir::Function& function,
+                                                                PreparedObjectId& next_object_id);
+
+void apply_alloca_coalescing_hints(const PreparedNameTables& names,
+                                   const bir::Function& function,
+                                   std::vector<PreparedStackObject>& objects);
+
+void apply_copy_coalescing_hints(const PreparedNameTables& names,
+                                 const bir::Function& function,
+                                 std::vector<PreparedStackObject>& objects);
+
+void apply_aggregate_address_publication_hints(const PreparedNameTables& names,
+                                               const bir::Function& function,
+                                               std::vector<PreparedStackObject>& objects);
+
+FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function);
+
+void apply_regalloc_hints(PreparedNameTables& names,
+                          const bir::Function& function,
+                          const FunctionInlineAsmSummary& inline_asm_summary,
+                          std::vector<PreparedStackObject>& objects);
+
+std::vector<PreparedFrameSlot> assign_frame_slots(const PreparedNameTables& names,
+                                                  const std::vector<PreparedStackObject>& objects,
+                                                  PreparedFrameSlotId& next_slot_id,
+                                                  std::size_t& frame_size_bytes,
+                                                  std::size_t& frame_alignment_bytes);
 
 [[nodiscard]] inline std::size_t fallback_type_size(c4c::backend::bir::TypeKind type) {
   using TypeKind = c4c::backend::bir::TypeKind;
