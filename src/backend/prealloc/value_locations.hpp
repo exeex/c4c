@@ -80,10 +80,10 @@ struct PreparedValueHome {
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
-// Step 5 fence: value homes and move bundles are backend-prepared route-local
-// lookup state. Block indexes, instruction indexes, and physical register
-// spellings here describe the prepared route only; semantic identity stays in
-// PreparedValueId plus interned function/value/block IDs.
+// Value homes and move bundles publish backend-prepared lookup state. Block
+// indexes, instruction indexes, and physical register spellings describe the
+// prepared route only; semantic identity stays in PreparedValueId plus interned
+// function/value/block IDs.
 struct PreparedMoveBundle {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
@@ -201,10 +201,8 @@ struct PreparedValueLocations {
   return nullptr;
 }
 
-// Step 5 fence: this spelling bridge is for prepared-route diagnostics and
-// legacy callers that still name a value by text. It resolves through the
-// prepared value table before lookup; callers with structured state should pass
-// ValueNameId directly.
+// Text-name access resolves through the prepared value table before lookup.
+// Callers with structured state should pass ValueNameId directly.
 [[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(
     const PreparedNameTables& names,
     const PreparedValueLocationFunction& function_locations,
@@ -300,9 +298,8 @@ template <typename PreparedValueHomeIndexes>
   return nullptr;
 }
 
-// Step 5 fence: the step index is the prepared parallel-copy plan's local move
-// resolution coordinate. It is valid only with the matched bundle/edge authority
-// above.
+// The step index is the prepared parallel-copy plan's local move resolution
+// coordinate. It is valid only with the matched bundle/edge authority above.
 [[nodiscard]] inline const PreparedMoveResolution*
 find_prepared_out_of_ssa_parallel_copy_move_for_step(
     const PreparedMoveBundle& move_bundle,
@@ -323,8 +320,8 @@ find_prepared_out_of_ssa_parallel_copy_move_for_step(
   return match;
 }
 
-// Step 5 fence: uniqueness is scoped to one prepared route phase/block index.
-// This is a scheduling lookup for move insertion, not a semantic identity map.
+// Uniqueness is scoped to one prepared route phase/block index. This is a
+// scheduling lookup for move insertion, not a semantic identity map.
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_unique_move_bundle(
     const PreparedValueLocationFunction& function_locations,
     PreparedMovePhase phase,
