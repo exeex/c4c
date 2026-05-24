@@ -122,3 +122,20 @@ The runbook generated from this idea should produce:
 - Fresh backend build/tests pass for each code-changing slice.
 - Any newly discovered target-neutral migration candidate is recorded as a new
   `ideas/open/*.md` follow-up rather than hidden inside this layout cleanup.
+
+## Closure Notes
+
+Closed after Step 5 final layout review.
+
+- Final direct inventory under `src/backend/mir/aarch64/codegen/`: 77 files,
+  split into 41 `.cpp` and 36 `.hpp`.
+- The visible AArch64 codegen layout now maps to the reference family
+  inventory, with remaining adapter/internal files explicitly justified.
+- `dispatch.hpp` was reduced to the block-dispatch surface:
+  `InstructionDispatchResult`, `make_block_lowering_context`, and
+  `dispatch_prepared_block`.
+- No target-neutral migration candidate was found during the final review, so
+  no follow-up idea was required for this lifecycle.
+- Close-time regression guard used backend scope:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"`.
+  The guard passed with 162/162 tests passing before and after.
