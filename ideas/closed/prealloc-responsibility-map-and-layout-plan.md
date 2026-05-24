@@ -104,3 +104,28 @@ The runbook generated from this idea should produce:
   external reference.
 - Follow-up ideas exist for the highest-value cleanup slices.
 - The active plan closes without leaving broad code movement half-finished.
+
+## Closure Notes
+
+Closed after the Step 5 final audit review.
+
+The audit produced a complete recursive `src/backend/prealloc` inventory and
+responsibility map covering 109 files: 60 `.cpp`, 49 `.hpp`, and 31,635 lines.
+It settled the working package model around prealloc as the target-parameterized
+preparation layer between semantic BIR and target MIR/codegen. The retained
+aggregate contracts are `module.hpp`, `control_flow.hpp`, `regalloc.hpp`,
+`calls.hpp`, `runtime_helpers.hpp`, and `special_carriers.hpp`.
+
+The highest-value follow-up cleanup slices were recorded as separate open
+ideas:
+
+- `ideas/open/prealloc-publication-accessor-contracts.md`
+- `ideas/open/prealloc-call-plan-phase-split.md`
+- `ideas/open/prealloc-stack-layout-contract-boundary.md`
+- `ideas/open/prealloc-regalloc-coordinator-contraction.md`
+- `ideas/open/prealloc-runtime-carrier-naming-alignment.md`
+
+No implementation movement, behavior change, test expectation change, or
+semantic migration was performed during this audit. Remaining ownership watch
+points are either represented by the generated follow-up ideas or recorded as
+non-blocking semantic watch points in the completed execution notes.
