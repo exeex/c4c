@@ -1354,6 +1354,33 @@ void append_address_materializations(PreparedNameTables& names,
   }
 }
 
+void publish_function_addressing_facts(PreparedNameTables& names,
+                                       PreparedAddressingFunction& function_addressing,
+                                       std::vector<PrepareNote>& notes,
+                                       const bir::Module& module,
+                                       const c4c::TargetProfile& target_profile,
+                                       FunctionNameId function_name_id,
+                                       const bir::Function& function,
+                                       const std::vector<PreparedStackObject>& function_objects,
+                                       const std::vector<PreparedFrameSlot>& function_slots) {
+  const auto frame_slots_by_name = build_frame_slot_map(function_objects, function_slots);
+  append_direct_frame_slot_accesses(
+      names,
+      function_addressing,
+      function_name_id,
+      module.names,
+      function,
+      frame_slots_by_name);
+  append_address_materializations(names,
+                                  function_addressing,
+                                  notes,
+                                  module,
+                                  target_profile,
+                                  function_name_id,
+                                  function,
+                                  frame_slots_by_name);
+}
+
 [[nodiscard]] FunctionStackObjectPlan plan_function_stack_objects(PreparedNameTables& names,
                                                                   const bir::NameTables& bir_names,
                                                                   const bir::Function& function,
@@ -1407,22 +1434,16 @@ void BirPreAlloc::run_stack_layout() {
         .frame_size_bytes = function_frame_size,
         .frame_alignment_bytes = function_frame_alignment,
     });
-    const auto frame_slots_by_name = build_frame_slot_map(function_objects, function_slots);
-    append_direct_frame_slot_accesses(
+    publish_function_addressing_facts(
         prepared_.names,
         function_addressing,
+        prepared_.notes,
+        prepared_.module,
+        prepared_.target_profile,
         function_name_id,
-        prepared_.module.names,
         function,
-        frame_slots_by_name);
-    append_address_materializations(prepared_.names,
-                                    function_addressing,
-                                    prepared_.notes,
-                                    prepared_.module,
-                                    prepared_.target_profile,
-                                    function_name_id,
-                                    function,
-                                    frame_slots_by_name);
+        function_objects,
+        function_slots);
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),
