@@ -1,68 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-forward-migration-second-wave-audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Generate Focused Follow-Up Ideas
+Current Step ID: 4
+Current Step Title: Record Keep-Local And Deferred Decisions
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Generate Focused Follow-Up Ideas completed as an audit-only lifecycle
-packet. Created focused follow-up implementation ideas from the Step 2
-candidate table:
+Step 4: Record Keep-Local And Deferred Decisions completed as an audit-only
+decision record. The audit intentionally did not promote these remaining
+second-wave candidates into implementation ideas:
 
-- `ideas/open/shared-mir-same-block-producer-select-queries.md`
-  extracts shared same-block producer and select-chain query ownership.
-- `ideas/open/target-neutral-publication-plan-record.md`
-  introduces a target-neutral scalar publication-plan record with target-local
-  emission hooks.
-- `ideas/open/prealloc-call-boundary-ordering-republication.md`
-  extends prealloc call-plan ownership for generic call-boundary ordering and
-  republication intent.
-- `ideas/open/prealloc-store-source-publication-planning.md`
-  moves store-source planning facts into prealloc while leaving memory operand
-  spelling and final store emission target-local.
-
-Each new idea includes intent, why it exists, in-scope work, out-of-scope work,
-acceptance criteria, proof expectations, concrete `## Reviewer Reject Signals`,
-and an explicit x86/RISC-V reuse path. Each also keeps AArch64 instruction
-spelling, ABI lane policy, stack-pointer sequences, memory operand spelling,
-and final machine instruction construction out of scope except for target-local
-hook/adaptor work.
+- Dynamic-stack helper recognition and operand-home planning: defer for now.
+  The reusable portion is plausible, but the safe boundary is still entangled
+  with target-specific stack-pointer/frame-pointer sequencing, alignment,
+  scratch-register availability, and final address materialization. Revisit
+  only when there is a narrower hook contract or an adjacent x86/RISC-V
+  consumer that needs the same planning facts.
+- Branch-fusion eligibility and support-instruction filtering: defer for now.
+  Reusable same-block reasoning may exist, but eligibility depends on
+  target-specific condition sets, immediate encodability, compare forms,
+  support-instruction legality, and final conditional-branch spelling. Do not
+  create a migration slice until those hooks are narrow enough to avoid moving
+  AArch64 instruction-selection policy into shared code.
+- Generic `dispatch.hpp` helper cleanup: defer as standalone work. Header
+  cleanup should follow a concrete implementation move and transfer
+  declarations with their owning helper, not become an independent API shuffle.
+- Final AArch64 emission, ABI, and instruction spelling: keep target-local.
+  This includes ABI lane policy, AArch64 register spelling, stack-pointer
+  sequences, ADRP/ADD forms, CMP/CSEL/branch forms, memory operand spelling,
+  and final machine instruction construction. Future shared or prealloc ideas
+  may expose target hooks, but final AArch64 spelling remains in the AArch64
+  layer.
 
 ## Suggested Next
 
-Step 4 keep-local/defer recording should list candidates intentionally not
-promoted into implementation ideas yet:
-
-- Dynamic-stack helper recognition and operand-home planning: defer until the
-  hook boundary around stack-pointer/frame-pointer sequencing, alignment, and
-  scratch availability is clearer.
-- Branch-fusion eligibility and support-instruction filtering: defer until the
-  target hook boundary for condition sets, immediate encodability, compare
-  forms, and final branch spelling is narrow enough.
-- Generic `dispatch.hpp` helper API cleanup: defer until one concrete
-  implementation move lands, then move declarations with the owning helper.
-- Final AArch64 spelling, ABI lane rules, stack-pointer sequences, memory
-  operands, ADRP/ADD, CMP/CSEL/branch forms, and machine instruction
-  construction: keep target-local.
+Step 5 lifecycle handoff. Ask the plan owner to decide whether this audit
+source idea is satisfied and should close, or whether lifecycle should switch
+to one generated follow-up idea. The cleanest immediate activation candidate is
+`ideas/open/shared-mir-same-block-producer-select-queries.md` because it has
+the narrowest hook boundary and the least target-specific emission risk.
 
 ## Watchouts
 
 - This is an audit run; do not implement broad code movement.
-- Step 4 should not reopen the four created follow-up ideas unless a wording
-  fix is required; it should record keep-local/defer decisions for the
-  remaining tempting candidates.
 - Do not create follow-up ideas for target-local final emission. The audit
   explicitly keeps AArch64 register spelling, ABI lane policy, stack-pointer
   sequences, ADRP/ADD, CMP/CSEL/branch forms, memory operands, and machine
   instruction construction in the AArch64 layer.
-- The safest follow-up activation remains producer/select-chain query
-  extraction. Publication planning, call-boundary ordering, and store-source
-  planning are valuable but have higher hook-boundary risk.
+- Do not treat dynamic-stack or branch-fusion deferral as rejection forever;
+  they need tighter target-hook boundaries or adjacent x86/RISC-V proof before
+  becoming migration work.
+- Publication planning, call-boundary ordering, and store-source planning are
+  already captured as follow-up ideas. They are valuable but have higher
+  hook-boundary risk than producer/select-chain query extraction.
 
 ## Proof
 
-Audit-only idea creation and `todo.md` update. No build or test proof required
-by the packet, and no `test_after.log` was created.
+Audit-only `todo.md` update. No build or test proof required by the packet, and
+no `test_after.log` was created.
