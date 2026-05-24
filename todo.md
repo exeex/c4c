@@ -10,27 +10,28 @@ Current Step Title: Adapt AArch64 Call Consumption
 
 Completed Step 3: `Adapt AArch64 Call Consumption`.
 
-Adapted the AArch64 explicit before-call move path to construct and read
+Adapted the AArch64 explicit after-call move path to construct and read
 `plan_prepared_call_boundary_effects` through a narrow local adapter. The
-neutral effect records now select the before-call explicit move order while
-the existing AArch64 lowering still consumes the original
-`PreparedMoveResolution` records for alias checks, register conversion, memory
-operand spelling, scratch selection, byval handling, and final instruction
-record construction.
+neutral effect records now select the after-call explicit move order while the
+existing AArch64 lowering still consumes the original `PreparedMoveResolution`
+records for result publication, register views, memory operands, scratch
+selection, and final instruction record construction.
 
 ## Suggested Next
 
-Continue Step 3 with the after-call explicit move path, using the neutral
-`PreparedCallBoundaryEffectPlan` records only to drive generic ordering while
-leaving result publication, preservation republication, register views, and
-machine instruction construction target-local.
+Continue Step 3 by deciding whether the preservation home population and
+republication loops should remain target-local for this plan or get a similarly
+narrow neutral-effect ordering adapter.
 
 ## Watchouts
 
 The before-call adapter intentionally does not use neutral preservation effect
 ordering yet, because current AArch64 behavior emits preservation-home
 population before explicit moves. Keep that behavior unless a later slice
-explicitly proves and migrates preservation ordering.
+explicitly proves and migrates preservation ordering. The after-call adapter
+filters explicit effects and remaps their indexes because the neutral full
+effect plan also includes preservation-population records before after-call
+explicit effects.
 
 ## Proof
 
