@@ -110,9 +110,4 @@ void record_current_block_entry_publication_registers(
 
 [[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst);
 
-// prologue_entry_formals.cpp
-[[nodiscard]] std::vector<module::MachineInstruction> lower_entry_formal_publications(
-    const module::BlockLoweringContext& context,
-    BlockScalarLoweringState& scalar_state);
-
 }  // namespace c4c::backend::aarch64::codegen

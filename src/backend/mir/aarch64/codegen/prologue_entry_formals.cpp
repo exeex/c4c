@@ -1,3 +1,5 @@
+#include "prologue.hpp"
+
 #include "dispatch.hpp"
 
 #include "../abi/abi.hpp"

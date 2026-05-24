@@ -8,25 +8,23 @@ Current Step Title: Consolidate Remaining Family Boundaries
 
 ## Just Finished
 
-Completed Step 3 - Rename Or Merge Thin Historical Shards. Extracted the
-remaining `dispatch_publication_common` helper declarations from
-`dispatch.hpp` into the private `dispatch_publication_common.hpp` header,
-updated direct implementation users, and kept `dispatch_publication.cpp` as the
-owner of those definitions with no behavior changes.
+Completed Step 4 - Consolidate Remaining Family Boundaries. Moved the
+`lower_entry_formal_publications` declaration out of `dispatch.hpp` and into
+the prologue-family boundary in `prologue.hpp`, updated `dispatch.cpp` to
+include that boundary directly, and kept `prologue_entry_formals.cpp` aligned
+with its owning header with no behavior changes.
 
 ## Suggested Next
 
-Step 3 is complete after supervisor review of the dispatch header-extraction
-sequence. Recommended next packet: execute Step 4 by selecting the next narrow
-family-boundary cleanup from the retained prioritized list, refreshing the
-file-to-family map afterward, and keeping any target-neutral migration
-candidate as a separate open idea instead of expanding this layout cleanup.
+Continue Step 4 with one more narrow family-boundary cleanup from the retained
+prioritized list, or refresh the file-to-family map if the supervisor decides
+the remaining dispatch catch-all surface is small enough for this runbook slice.
 
 ## Watchouts
 
-- `dispatch.hpp` still owns `dispatch_publication` and
-  `prologue_entry_formals` declaration blocks; this packet intentionally moved
-  only the common helper block named by the delegated slice.
+- `dispatch.hpp` no longer declares the prologue entry-formal lowering
+  function; remaining catch-all surface is now mostly dispatch/publication
+  helpers and should be moved only through similarly narrow ownership packets.
 - Several direct users still include both `dispatch.hpp` and narrow private
   dispatch headers because the remaining public dispatch entry points have not
   moved.
