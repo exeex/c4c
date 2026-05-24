@@ -80,3 +80,18 @@ logic remains target-local.
 
 Reject broad rewrites that combine call classification, operand decoding,
 entry-formal publication, and call emission in one slice.
+
+## Completion Note
+
+Closed after the active runbook moved target-neutral Prepared call-boundary
+classification into prealloc-owned helper records, adapted AArch64 call move
+handling to consume the shared classification while retaining AAPCS64 policy and
+emission locally, and exposed a concrete x86 prepared-query reuse path.
+
+Validation covered shared prealloc classification, the AArch64 consumer path,
+and x86 prepared query reuse through backend tests including
+`backend_prealloc_call_boundary_classification`,
+`backend_aarch64_call_boundary_owner`,
+`backend_x86_prepared_decoded_home_storage`, and
+`backend_codegen_route_aarch64_prepared_call_boundary_scalability`. No tests or
+expectations were weakened or reclassified.
