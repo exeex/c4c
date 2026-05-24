@@ -9,27 +9,26 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Extracted the
-edge-copy and select-chain declarations from `dispatch.hpp` into the private
-`dispatch_edge_copies.hpp` header, updated direct implementation include sites,
-and kept `dispatch_edge_copies.cpp` as the owner of those definitions with no
-behavior changes.
+value-materialization declarations from `dispatch.hpp` into the private
+`dispatch_value_materialization.hpp` header, updated the direct implementation
+include sites, and kept `dispatch_value_materialization.cpp` as the owner of
+those definitions with no behavior changes.
 
 ## Suggested Next
 
-Recommended next packet: continue the header-boundary cleanup by extracting the
-`dispatch_value_materialization` declaration block from `dispatch.hpp` into a
-narrow private header and updating only direct materialization/publication users.
+Recommended next packet: continue shrinking `dispatch.hpp` by extracting the
+remaining `dispatch_publication_common` helper declarations into a narrow
+private header and updating only direct helper users.
 
 ## Watchouts
 
 - `dispatch.hpp` still owns `dispatch_publication_common`,
-  `dispatch_value_materialization`, `dispatch_publication`, and
-  `prologue_entry_formals` declaration blocks; the edge-copy block is now out
-  of the catch-all header.
-- Several direct users still include both `dispatch.hpp` and
-  `dispatch_edge_copies.hpp` because this packet only moved edge-copy
-  declarations, not the remaining publication/materialization declarations they
-  also use.
+  `dispatch_publication`, and `prologue_entry_formals` declaration blocks; the
+  edge-copy and value-materialization blocks are now out of the catch-all
+  header.
+- Several direct users still include both `dispatch.hpp` and narrow private
+  dispatch headers because this route is only moving one declaration block per
+  packet.
 - `dispatch.cpp` has a pre-existing local `EdgeProducerContext` type declaration
   that is not part of the moved edge-copy public declarations; this packet left
   it untouched to avoid unrelated cleanup.
