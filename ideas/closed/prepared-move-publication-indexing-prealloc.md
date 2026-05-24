@@ -82,3 +82,22 @@ index construction remains target-local.
 Reject if the new helper only mirrors AArch64 data structures with AArch64 names
 and no clear x86 consumption path, or if the old missing-index failure mode is
 kept behind a new abstraction name.
+
+## Completion Note
+
+Closed on 2026-05-24 after commits through `bd8ae4b42`.
+
+The active runbook completed all six steps. The shared lookup surface now lives
+under `src/backend/prealloc/prepared_lookups.*`, exposes target-neutral lookup
+records for call plans, address materializations, move bundles, and value
+homes, and AArch64 consumes those helpers without moving target emission,
+register spelling, ABI policy, addressing legality, or printing into prealloc.
+x86 has a named `ConsumedPlans` path carrying `PreparedFunctionLookups` for
+shared prepared-plan lookup consumption.
+
+Focused behavioral proof was added in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`; it exercises
+linear and diamond prepared-function shapes, verifies function-local filtering,
+and covers the required lookup families without expectation downgrades.
+Close-time backend regression guard passed with 150/150 backend tests before
+and after, using non-decreasing pass-count mode for the lifecycle close review.
