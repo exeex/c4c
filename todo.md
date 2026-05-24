@@ -1,42 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/edge-copy-block-entry-bookkeeping-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Reuse Path For x86 Prepared Blocks
+Current Step ID: Step 5
+Current Step Title: Validate Behavior And Anti-Overfit Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 proved the x86 prepared reuse path for the prealloc block-entry
-publication helper.
+Step 5 validated behavior and anti-overfit coverage for the edge-copy and
+block-entry bookkeeping helper route.
 
-`x86::prepared::Query` now exposes
-`collect_block_entry_publications(...)`, a narrow wrapper over
-`prepare::collect_prepared_block_entry_publications(...)` for prepared block
-facts by successor label.
+The backend subset passes with the prealloc helper test, AArch64 consumers,
+and x86 prepared reuse coverage all enabled.
 
-The existing x86 prepared internal test now builds block-entry
-`OutOfSsaParallelCopy` facts and verifies available publication facts,
-missing-home status, successor-label filtering, register-name availability,
-and preservation of source `PreparedMoveBundle`, source
-`PreparedMoveResolution`, and value-home authority.
+Anti-overfit coverage summary:
 
-This is reuse evidence only. x86 block lowering was not rewritten, and x86
-target move emission, register classes, operand spelling, and instruction
-selection remain target-local.
+- The prealloc helper test covers available register publications, missing
+  home/register facts, unsupported destination/storage/operation forms, and
+  wrong phase/authority/label filtering.
+- AArch64 backend coverage passes with block-entry/publication consumers using
+  the shared helper.
+- The x86 prepared query test proves reuse without rewriting x86 block
+  lowering.
+- No tests were weakened or reclassified.
 
 ## Suggested Next
 
-Step 5 should validate behavior and anti-overfit coverage for the active
-edge-copy/block-entry plan.
+The current runbook packet is validation-complete. Supervisor should decide
+whether to close, review, or activate the next plan state.
 
 ## Watchouts
 
-Do not broaden validation into implementation changes unless a real blocker is
-found. AArch64 edge producer walking, select-chain materialization, target
-register spelling/parsing, scratch-register selection, machine records, target
-operands, move diagnostics, and x86 target emission remain target-local.
+Concrete target move emission, target register parsing/spelling,
+physical-register aliasing, scalar-state recording, scratch choice, machine
+records, target operands, and diagnostics remain target-local.
 
 The helper intentionally reports facts and statuses for target consumers; it
 does not silently downgrade unsupported destination/storage forms to fallback
