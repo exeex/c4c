@@ -564,6 +564,61 @@ namespace prepare = c4c::backend::prepare;
   }
   return false;
 }
+[[nodiscard]] bool emit_prepared_scalar_publication_plan_to_register(
+    const prepare::PreparedStackLayout* stack_layout,
+    const prepare::PreparedScalarPublicationPlan& plan,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines,
+    bool use_frame_pointer_base) {
+  if (!prepare::prepared_scalar_publication_available(plan) ||
+      plan.destination_home == nullptr) {
+    return false;
+  }
+
+  switch (plan.hook_kind) {
+    case prepare::PreparedScalarPublicationHookKind::RegisterHome:
+      if (plan.storage_encoding != prepare::PreparedStorageEncodingKind::Register) {
+        return false;
+      }
+      return emit_prepared_value_home_to_register(stack_layout,
+                                                  *plan.destination_home,
+                                                  plan.source_value.type,
+                                                  target_index,
+                                                  lines,
+                                                  use_frame_pointer_base);
+    case prepare::PreparedScalarPublicationHookKind::StackSlotHome:
+      if (plan.storage_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+          !plan.stack_offset_bytes.has_value()) {
+        return false;
+      }
+      return emit_prepared_value_home_to_register(stack_layout,
+                                                  *plan.destination_home,
+                                                  plan.source_value.type,
+                                                  target_index,
+                                                  lines,
+                                                  use_frame_pointer_base);
+    case prepare::PreparedScalarPublicationHookKind::RematerializableImmediate:
+    case prepare::PreparedScalarPublicationHookKind::PointerBasePlusOffset:
+    case prepare::PreparedScalarPublicationHookKind::None:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool emit_prepared_scalar_publication_plan_to_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedScalarPublicationPlan& plan,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  return emit_prepared_scalar_publication_plan_to_register(
+      context.function.prepared != nullptr ? &context.function.prepared->stack_layout
+                                           : nullptr,
+      plan,
+      target_index,
+      lines,
+      fixed_slots_use_frame_pointer(context.function));
+}
+
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -624,14 +679,15 @@ namespace prepare = c4c::backend::prepare;
   if (producer == nullptr) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
-      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
-                                                     ? &context.function.prepared->stack_layout
-                                                     : nullptr,
-                                                 *home,
-                                                 value.type,
-                                                 target_index,
-                                                 lines,
-                                                 fixed_slots_use_frame_pointer(context.function));
+      const auto plan = prepare::plan_prepared_scalar_publication(
+          prepare::PreparedScalarPublicationInputs{
+              .source_value = &value,
+              .destination_home = home,
+          });
+      return emit_prepared_scalar_publication_plan_to_register(context,
+                                                              plan,
+                                                              target_index,
+                                                              lines);
     }
     return false;
   }
