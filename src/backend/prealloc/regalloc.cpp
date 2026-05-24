@@ -20,7 +20,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -50,11 +49,15 @@ using regalloc_detail::call_result_storage_kind;
 using regalloc_detail::expire_completed_assignments;
 using regalloc_detail::f128_call_arg_destination_placement;
 using regalloc_detail::find_regalloc_value;
+using regalloc_detail::function_frame_alignment;
+using regalloc_detail::function_frame_extent;
 using regalloc_detail::interval_start_sort_key;
 using regalloc_detail::intervals_overlap;
 using regalloc_detail::materialize_register_names;
 using regalloc_detail::materialize_register_placements;
 using regalloc_detail::allocate_stack_slot;
+using regalloc_detail::next_frame_slot_id;
+using regalloc_detail::publish_regalloc_stack_slots;
 using regalloc_detail::normalized_value_size;
 using regalloc_detail::published_register_group_width;
 using regalloc_detail::resolve_call_arg_abi;
@@ -81,14 +84,6 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
   return PreparedMovePhase::BeforeInstruction;
 }
 
-[[nodiscard]] PreparedFrameSlotId next_frame_slot_id(const PreparedStackLayout& stack_layout) {
-  PreparedFrameSlotId next = 0;
-  for (const auto& slot : stack_layout.frame_slots) {
-    next = std::max(next, slot.slot_id + 1U);
-  }
-  return next;
-}
-
 [[nodiscard]] bool function_has_dynamic_stack_operation(const bir::Function* function) {
   if (function == nullptr) {
     return false;
@@ -106,97 +101,6 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
     }
   }
   return false;
-}
-
-[[nodiscard]] PreparedObjectId next_stack_object_id(const PreparedStackLayout& stack_layout) {
-  PreparedObjectId next = 0;
-  for (const auto& object : stack_layout.objects) {
-    next = std::max(next, object.object_id + 1U);
-  }
-  return next;
-}
-
-[[nodiscard]] bool has_frame_slot_id(const PreparedStackLayout& stack_layout,
-                                     PreparedFrameSlotId slot_id) {
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.slot_id == slot_id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::size_t function_frame_extent(const PreparedStackLayout& stack_layout,
-                                                FunctionNameId function_name) {
-  std::size_t extent = 0;
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.function_name == function_name) {
-      extent = std::max(extent, slot.offset_bytes + slot.size_bytes);
-    }
-  }
-  return extent;
-}
-
-[[nodiscard]] std::size_t function_frame_alignment(const PreparedStackLayout& stack_layout,
-                                                   FunctionNameId function_name) {
-  std::size_t alignment = 1;
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.function_name == function_name) {
-      alignment = std::max(alignment, slot.align_bytes);
-    }
-  }
-  return alignment;
-}
-
-void publish_regalloc_stack_slots(PreparedStackLayout& stack_layout,
-                                  const PreparedRegallocFunction& function) {
-  PreparedObjectId next_object_id = next_stack_object_id(stack_layout);
-  std::unordered_set<PreparedFrameSlotId> existing_slot_ids;
-  existing_slot_ids.reserve(stack_layout.frame_slots.size() + function.values.size());
-  for (const auto& slot : stack_layout.frame_slots) {
-    existing_slot_ids.insert(slot.slot_id);
-  }
-  std::size_t new_slot_count = 0;
-  for (const auto& value : function.values) {
-    if (value.assigned_stack_slot.has_value() &&
-        existing_slot_ids.find(value.assigned_stack_slot->slot_id) == existing_slot_ids.end()) {
-      ++new_slot_count;
-    }
-  }
-  stack_layout.objects.reserve(stack_layout.objects.size() + new_slot_count);
-  stack_layout.frame_slots.reserve(stack_layout.frame_slots.size() + new_slot_count);
-  for (const auto& value : function.values) {
-    if (!value.assigned_stack_slot.has_value() ||
-        !existing_slot_ids.insert(value.assigned_stack_slot->slot_id).second) {
-      continue;
-    }
-    const PreparedObjectId object_id = next_object_id++;
-    const std::size_t size_bytes = value.assigned_stack_slot->size_bytes.value_or(0);
-    const std::size_t align_bytes = value.assigned_stack_slot->align_bytes.value_or(1);
-    stack_layout.objects.push_back(PreparedStackObject{
-        .object_id = object_id,
-        .function_name = function.function_name,
-        .slot_name = std::nullopt,
-        .value_name = value.value_name,
-        .source_kind =
-            value.requires_home_slot ? "regalloc.home_slot" : "regalloc.spill_slot",
-        .type = value.type,
-        .size_bytes = size_bytes,
-        .align_bytes = align_bytes,
-        .address_exposed = false,
-        .requires_home_slot = value.requires_home_slot,
-        .permanent_home_slot = value.requires_home_slot,
-    });
-    stack_layout.frame_slots.push_back(PreparedFrameSlot{
-        .slot_id = value.assigned_stack_slot->slot_id,
-        .object_id = object_id,
-        .function_name = function.function_name,
-        .offset_bytes = value.assigned_stack_slot->offset_bytes,
-        .size_bytes = size_bytes,
-        .align_bytes = align_bytes,
-        .fixed_location = false,
-    });
-  }
 }
 
 void append_prepared_move_bundle(PreparedValueLocationFunction& function_locations,

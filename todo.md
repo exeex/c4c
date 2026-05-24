@@ -9,38 +9,41 @@ Current Step Title: Contract One Clear Coordinator Boundary
 ## Just Finished
 
 Completed Step 2 from `plan.md`: moved the file-local
-`expire_completed_assignments(...)` helper from
-`src/backend/prealloc/regalloc.cpp` into the existing assignment helper family.
+stack-slot publication helpers from `src/backend/prealloc/regalloc.cpp` into
+the existing `regalloc/stack_slots.*` helper family.
 
 Changed files:
-- `src/backend/prealloc/regalloc/assignment.hpp` now declares the assignment
-  expiry helper beside `ActiveRegisterAssignment`.
-- `src/backend/prealloc/regalloc/assignment.cpp` now owns the unchanged erase
-  predicate for expired active assignment spans.
-- `src/backend/prealloc/regalloc.cpp` now imports
-  `regalloc_detail::expire_completed_assignments` and keeps the allocation
-  call site unchanged.
+- `src/backend/prealloc/regalloc/stack_slots.hpp` now declares the stack-slot
+  frame seed helpers and the publication helper beside `allocate_stack_slot`.
+- `src/backend/prealloc/regalloc/stack_slots.cpp` now owns
+  `next_frame_slot_id(...)`, `function_frame_extent(...)`,
+  `function_frame_alignment(...)`, and `publish_regalloc_stack_slots(...)`.
+- `src/backend/prealloc/regalloc.cpp` imports those helpers and keeps the
+  allocation call sites and phase order unchanged.
+- The previously file-local unused `has_frame_slot_id(...)` helper was not
+  carried forward because no stack-slot publication path referenced it.
 
-The boundary is behavior-preserving because the helper signature keeps the
-same explicit inputs: the active-assignment vector, the current interval start
-point, and the `preserve_call_boundary_pressure` boolean. The strict
-`end_point < start_point` expiry and the call-boundary-sensitive
-`end_point == start_point` path are unchanged.
+The boundary is behavior-preserving because regalloc still computes and passes
+the mutable frame-slot seed state explicitly into `allocate_stack_slot(...)`,
+and `run()` still performs publication after allocation and before
+spill/reload/move materialization. Prepared stack-layout authority is preserved:
+the moved helper only appends regalloc-owned prepared stack objects/frame slots
+for assigned stack slots, using the same source-kind strings, object IDs, slot
+IDs, offsets, sizes, alignments, and home-slot flags as before.
 
 ## Suggested Next
 
-Run the next Step 2 packet as a separate stack-slot publication contraction:
-audit whether the frame-slot seed values, frame extent/alignment lookup, and
-`publish_regalloc_stack_slots(...)` can move behind `regalloc/stack_slots.*`
-without changing prepared stack-layout authority. Do not combine that packet
-with ABI binding or prepared-printer moves.
+Move to Step 3 with a separate second-boundary packet. Audit stack-slot
+publication fallout first, then choose only one next clear helper-family
+boundary if one remains stable.
 
 ## Watchouts
 
-`regalloc.cpp` still owns allocation phase order and mutable pool selection.
-The next stack-slot packet touches prepared frame publication, so it should be
-validated separately and should not rename public prepared data or printer
-labels. No `regalloc.hpp` contract split was needed for assignment expiry.
+`regalloc.cpp` still owns allocation phase order, mutable pool selection, and
+the final prepared stack-layout frame-size/frame-alignment maxima. Do not
+combine any later ABI binding, value-location, or prepared-printer move with
+this stack-slot contraction. No `regalloc.hpp` split or printer-label edit was
+needed.
 
 ## Proof
 
