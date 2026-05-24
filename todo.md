@@ -1,70 +1,72 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-call-plan-phase-split.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Align Prepared Printer Calls Mirror
+Current Step ID: 6
+Current Step Title: Final Call Plan Boundary Review
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5 prepared-printer call mirror audit: compared
-`src/backend/prealloc/prepared_printer/calls.cpp` against the call-plan helper
-families extracted in Steps 2-4 and made no printer code change.
+Completed `plan.md` Step 6 final call-plan boundary review: compared the
+phase-split diff against `plan.md` and
+`ideas/open/prealloc-call-plan-phase-split.md`, including the source idea
+acceptance criteria and reject signals.
 
 Changed files:
+- `src/backend/prealloc/call_plans.cpp`
 - `todo.md`
 
-No-code decision:
-- The printer still mirrors the aggregate `PreparedCallPlan` data families
-  directly: call header fields, indirect callee detail, memory-return detail,
-  argument source/destination fields, result source/destination fields,
-  preserved values, and clobbered registers.
-- Step 2 extracted argument source and destination construction helpers, but
-  did not rename or reshape `PreparedCallArgumentPlan` fields.
-- Step 3 extracted clobber span append/deduplication behind a file-local
-  helper, but did not change `PreparedClobberedRegister` fields or clobber dump
-  meaning. Preservation and boundary effects kept their existing data-family
-  boundaries.
-- Step 4 extracted call-result construction behind a file-local helper while
-  keeping `PreparedCallResultPlan`, `PreparedMemoryReturnPlan`, and formal
-  publication data independent.
-- Because the data contract and printed field meanings did not change, no
-  prepared-printer label, grouping, or helper rename was required.
-- Left `src/backend/prealloc/prepared_printer/calls.cpp`,
-  `src/backend/prealloc/call_plans.cpp`, public headers, tests, `plan.md`, and
-  the source idea untouched.
+Final boundary summary:
+- `call_plans.cpp` is better structured by durable call-plan subphase:
+  argument destination construction is owned by
+  `plan_call_argument_destination(...)`, argument source construction by
+  `plan_call_argument_source(...)`, clobber span append/deduplication by
+  `append_call_clobbered_register_spans(...)`, and result construction by
+  `build_call_result_plan(...)`.
+- Memory-return handling remains in `build_memory_return_plan(...)`, which
+  already owns the sret storage/frame-slot boundary. Formal publication remains
+  independent because no call-plan responsibility moved into publication
+  storage or naming.
+- Preservation and boundary-effect logic were audited and intentionally kept at
+  their existing helper/data-family boundaries; moving them would require
+  broader mutable planning state without a clearer file-local API.
+- `calls.hpp` remains the aggregate public call-plan contract. No smaller
+  independently consumed public boundary was proven, and no public headers were
+  changed.
+- `prepared_printer/calls.cpp` needed no update because the prepared data shape,
+  field names, labels, and printed meanings did not change.
+- No ABI policy, argument/result placement, clobber set, preservation,
+  indirect-callee, memory-return, formal-publication, or prepared dump semantic
+  change was found in the final diff.
+- No target-shaped shortcut, named-case handling, expectation rewrite, or
+  testcase-overfit route was introduced.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 6 for the final call-plan boundary review. Confirm
-the active diff remains behavior-preserving, summarize the final helper-family
-boundaries, and decide whether the source idea is ready for lifecycle closure.
+Recommend supervisor handoff to the plan owner for lifecycle closure of
+`ideas/open/prealloc-call-plan-phase-split.md`.
 
 ## Watchouts
 
-- Keep this slice behavior-preserving.
-- Do not change ABI policy, argument/result placement, clobbering,
-  preservation, indirect-callee handling, memory-return behavior, formal
-  publication behavior, or prepared dump meaning.
-- Keep `calls.hpp` as the aggregate public contract unless usage proves a
-  smaller independently consumed boundary.
-- The prepared printer is intentionally data-shape-driven; do not rewrite
-  labels or grouping for cosmetic alignment with file-local helper names.
-- `build_memory_return_plan(...)`, `build_call_result_plan(...)`,
-  `plan_call_argument_destination(...)`, `plan_call_argument_source(...)`, and
-  `build_call_clobber_set(...)` are construction boundaries only; they did not
-  create new public dump sections.
-- Step 6 should focus on final route quality, proof sufficiency, and closure
-  readiness rather than opening another extraction unless a real ownership
-  gap is found.
+- Deferred follow-up candidates are not blockers for this source idea:
+  `calls.hpp` can stay aggregate until an independently consumed public
+  contract exists, and prepared-printer grouping should remain driven by real
+  prepared data-family changes rather than file-local helper names.
+- If future work revisits preservation or call-boundary move classification, it
+  should start as a separate initiative because this runbook's behavior-
+  preserving file-local boundaries are exhausted.
 
 ## Proof
 
-Ran delegated no-code proof:
+Step 6 proof:
 `git diff --check`
 
 Result: passed.
 
-Proof log: none; no code changed, so the delegated proof did not produce
-`test_after.log`.
+Earlier code-changing packets in this runbook ran the delegated backend proof
+and passed `162/162` backend tests:
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+
+Proof log for Step 6: none; this packet made no code change and was delegated
+not to create `test_after.log`.
