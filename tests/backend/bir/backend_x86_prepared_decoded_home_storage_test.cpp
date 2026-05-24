@@ -536,6 +536,56 @@ int check_query_reuses_shared_block_entry_publications() {
   return 0;
 }
 
+int check_query_reuses_shared_home_storage_diagnostics() {
+  const auto prepared = make_fixture();
+  const auto query = x86_prepared::make_query(prepared, "x86.decode");
+
+  const auto missing = query.diagnose_home_storage(99);
+  if (!expect(missing.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingValueAuthority,
+              "x86 prepared diagnostic should reuse missing-authority category") ||
+      !expect(missing.value_id == 99,
+              "x86 prepared diagnostic should preserve missing value id") ||
+      !expect(missing.message == "no typed prepared authority exists for value operand",
+              "x86 prepared diagnostic should reuse missing-authority message")) {
+    return 1;
+  }
+
+  const auto empty_storage = query.diagnose_home_storage(3);
+  if (!expect(empty_storage.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      UnsupportedStoragePlanAuthority,
+              "x86 prepared diagnostic should reuse storage-plan category") ||
+      !expect(empty_storage.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan &&
+                  empty_storage.status ==
+                      prepare::PreparedDecodedHomeStorageStatus::MissingAuthority,
+              "x86 prepared diagnostic should preserve decoded storage facts") ||
+      !expect(empty_storage.message ==
+                  "storage-plan value does not have a supported typed operand form",
+              "x86 prepared diagnostic should reuse storage-plan message")) {
+    return 1;
+  }
+
+  const auto value_home_register = query.diagnose_home_storage(5);
+  if (!expect(value_home_register.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingTypedRegisterAuthority,
+              "x86 prepared diagnostic should reuse value-home typed-register category") ||
+      !expect(value_home_register.source ==
+                  prepare::PreparedDecodedHomeStorageSource::ValueHome &&
+                  value_home_register.status ==
+                      prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement,
+              "x86 prepared diagnostic should preserve value-home register facts") ||
+      !expect(value_home_register.message ==
+                  "value-home register spelling is diagnostic-only until typed placement exists",
+              "x86 prepared diagnostic should reuse value-home register message")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_query_reports_no_authority() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "missing");
@@ -555,6 +605,13 @@ int check_missing_query_reports_no_authority() {
   }
   if (!expect(query.collect_block_entry_publications(c4c::BlockLabelId{1}).empty(),
               "missing x86 prepared query should not collect block-entry publications")) {
+    return 1;
+  }
+  const auto missing_diagnostic = query.diagnose_home_storage(5);
+  if (!expect(missing_diagnostic.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingValueAuthority,
+              "missing x86 prepared query should still build shared missing-authority diagnostic")) {
     return 1;
   }
   return 0;
@@ -579,6 +636,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_query_reuses_shared_block_entry_publications();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_query_reuses_shared_home_storage_diagnostics();
       status != 0) {
     return EXIT_FAILURE;
   }

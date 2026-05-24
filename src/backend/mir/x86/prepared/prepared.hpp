@@ -79,6 +79,12 @@ struct Query {
         value_id);
   }
 
+  [[nodiscard]] c4c::backend::prepare::PreparedDecodedHomeStorageDiagnostic
+  diagnose_home_storage(c4c::backend::prepare::PreparedValueId value_id) const {
+    return c4c::backend::prepare::build_prepared_decoded_home_storage_diagnostic(
+        decode_home_storage(value_id));
+  }
+
   [[nodiscard]] c4c::backend::prepare::PreparedCallBoundaryMoveClassification
   classify_call_boundary_move(
       const c4c::backend::prepare::PreparedCallPlan& call_plan,
