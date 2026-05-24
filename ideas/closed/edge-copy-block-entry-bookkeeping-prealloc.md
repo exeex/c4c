@@ -69,3 +69,18 @@ after claiming shared ownership.
 
 Reject if the chosen destination is unclear between prealloc and shared MIR and
 the code crosses both layers without a small explicit contract.
+
+## Completion Note
+
+Closed after the active runbook moved a target-neutral block-entry publication
+helper into prealloc-owned value-location support, adapted AArch64 block-entry
+publication consumers to use the shared helper while retaining concrete target
+move emission locally, and exposed a concrete x86 prepared-query reuse path.
+
+Validation covered the prealloc block-entry publication helper, AArch64
+consumer paths, and x86 prepared query reuse through backend tests including
+`backend_prealloc_block_entry_publications`,
+`backend_cli_dump_prepared_bir_focus_block_entry_00204`,
+`backend_aarch64_branch_control_lowering`, and
+`backend_x86_prepared_decoded_home_storage`. No tests or expectations were
+weakened or reclassified.
