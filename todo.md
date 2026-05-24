@@ -9,29 +9,29 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
-the durable memory-family store-source shard from
-`dispatch_store_sources.cpp`/`.hpp` to `memory_store_sources.cpp`/`.hpp`,
-updated the CMake source list, and moved direct include sites to the new header
-with no behavior changes.
+the durable prologue-family entry-formal shard from
+`dispatch_entry_formals.cpp` to `prologue_entry_formals.cpp`, updated the CMake
+source list, and refreshed the remaining direct declaration comment in
+`dispatch.hpp` with no behavior changes.
 
-This shard remains separate from `memory.cpp` because store-source publication,
-pointer-address writeback, global-store stack publication, and related prepared
-home helpers form a cohesive reviewable implementation shard. The durable-family
-rename fixes the historical `dispatch_*` label without forcing a low-value merge
-into the main memory implementation.
+This shard remains separate from `prologue.cpp` because entry-formal
+publication is a cohesive bridge between incoming ABI locations, prepared home
+publication, scalar state, and frame/prologue setup. The durable-family rename
+fixes the historical `dispatch_*` label without forcing that larger helper body
+into the main prologue implementation.
 
 ## Suggested Next
 
-Recommended next packet: continue Step 3 with one bounded historical
-`dispatch_*` shard decision. Good candidates are either a mechanical prologue
-family rename for `dispatch_entry_formals.cpp`, or an explicit grouped
-keep-as-dispatch-internal justification for the remaining adapter/internal
-shards whose responsibilities still cross family boundaries.
+Recommended next packet: continue Step 3 with one bounded grouped decision for
+the remaining historical `dispatch_*` shards, either justifying the adapter/
+internal names that still cross family boundaries or renaming one more clearly
+durable-family shard if the boundary is mechanical.
 
 ## Watchouts
 
-- `memory_store_sources.hpp` keeps the existing store-source publication APIs
-  because symbol churn would not improve this mechanical file-boundary slice.
+- `prologue_entry_formals.cpp` keeps the existing
+  `lower_entry_formal_publications` symbol and `dispatch.hpp` declaration
+  because this packet was a mechanical file-boundary rename only.
 - `memory_store_sources.cpp` still includes `dispatch.hpp` for publication,
   edge-copy, value-materialization, lookup, and shared frame/address helper
   declarations; moving those boundaries is outside this packet.
@@ -90,7 +90,6 @@ File-to-family map:
 | `dispatch_calls.cpp` | `calls` | Durable dispatch-to-calls bridge: scalar call producers, call lowering, call boundary materialization, indirect callee materialization, missing frame-slot args, stack-preserved values. Should move toward `calls.hpp`/calls-private surface instead of `dispatch.hpp`. |
 | `dispatch_diagnostics.cpp` | `adapter/internal` | Thin diagnostics helper; first low-risk header extraction candidate because the declarations are self-contained and used by dispatch/calls/dynamic-stack paths. |
 | `dispatch_edge_copies.cpp` | `adapter/internal` | Join/edge copy publication glue across predecessor/successor contexts; temporarily justified as dispatch-internal. |
-| `dispatch_entry_formals.cpp` | `prologue` | Entry formal publication complements frame/prologue setup; durable responsibility but currently dispatch-internal. |
 | `dispatch_lookup.cpp` | `adapter/internal` | Thin prepared-value/home lookup helpers; temporarily justified as dispatch-internal and a possible private-header split after diagnostics. |
 | `dispatch_producers.cpp` | `adapter/internal` | Same-block producer analysis used by fusion/publication; temporarily justified as dispatch-internal. |
 | `dispatch_publication.cpp` | `adapter/internal` | Current-block prepared-value publication helpers; cross-cuts memory/alu/comparison, so keep private adapter/internal until a cleaner family boundary emerges. |
@@ -124,6 +123,7 @@ File-to-family map:
 | `peephole.cpp` | `peephole` | Stub/no-op optimizer implementation; durable family placeholder. |
 | `peephole.hpp` | `peephole` | Narrow peephole declaration surface. |
 | `prologue.cpp` | `prologue` | Durable frame-boundary/prologue insertion implementation. |
+| `prologue_entry_formals.cpp` | `prologue` | Entry formal publication complements frame/prologue setup; now uses a prologue-family filename while staying separate as cohesive ABI/home-publication bridge logic. |
 | `prologue.hpp` | `prologue` | Narrow prologue declaration surface. |
 | `returns.cpp` | `returns` | Durable return instruction printing support. |
 | `returns.hpp` | `returns` | Durable return printing declarations. |
@@ -153,8 +153,9 @@ Specific dispatch surface notes:
   remaining separate from `memory.cpp`.
 - `dispatch_edge_copies.cpp`: maps to `adapter/internal`; cross-block join copy
   publication is genuine dispatch glue and should stay private.
-- `dispatch_entry_formals.cpp`: maps to `prologue`; entry-formal publication is
-  prologue-adjacent but currently depends on dispatch context and scalar state.
+- `prologue_entry_formals.cpp`: maps to `prologue`; entry-formal publication
+  now has a durable-family filename but remains a separate shard because it
+  depends on dispatch context, prepared homes, and scalar state.
 - `dispatch_lookup.cpp`: maps to `adapter/internal`; thin lookup helpers are a
   later private-header candidate after diagnostics.
 - `dispatch_producers.cpp`: maps to `adapter/internal`; same-block producer
@@ -197,10 +198,9 @@ Prioritized consolidation list:
    dispatch internals.
 4. Revisit whether `comparison_branch_fusion.hpp` should move closer to
    `comparison.hpp` once the hook dependency can remain private.
-5. Revisit prologue-adjacent dispatch shards such as
-   `dispatch_entry_formals.cpp`; keep `memory_dynamic_stack.cpp` and
-   `memory_store_sources.cpp` as separate memory-family shards unless a later
-   memory-only cleanup finds a real merge benefit.
+5. Keep `prologue_entry_formals.cpp`, `memory_dynamic_stack.cpp`, and
+   `memory_store_sources.cpp` as separate family-named shards unless a later
+   family-only cleanup finds a real merge benefit.
 6. Leave large cohesive family files (`alu`, `memory`, `calls_moves`, `f128`,
    `i128_ops`, `machine_printer`, `instruction`) split as durable families; do
    not merge them just to reduce file count.
