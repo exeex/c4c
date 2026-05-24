@@ -86,3 +86,18 @@ Also run `git diff --check`.
   to claim progress.
 - Reject printer files becoming a second ownership taxonomy not present in
   data files.
+
+## Closure Notes
+
+Closed after the runtime-helper and special-carrier ownership terminology was
+made explicit through comment and grouping clarification in
+`runtime_helpers.hpp` and `special_carriers.hpp`.
+
+The plan deliberately avoided public contract renames because the inventory
+found no safe rename that would improve ownership clarity without unnecessary
+printer or dump churn. Prepared-printer runtime-helper and special-carrier
+files were audited and left unchanged because the public prepared data names
+and printed field meanings did not change.
+
+Close-gate backend validation passed with `162/162` tests and the regression
+guard reported no new failures against the matching backend baseline.
