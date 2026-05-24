@@ -302,6 +302,28 @@ set_tests_properties(backend_x86_prepared_handoff_label_authority PROPERTIES
   LABELS "backend;internal;cpp;x86"
 )
 
+add_executable(backend_x86_prepared_decoded_home_storage_test
+    "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_decoded_home_storage_test.cpp"
+)
+target_include_directories(backend_x86_prepared_decoded_home_storage_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_x86_prepared_decoded_home_storage_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_x86_prepared_decoded_home_storage_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_x86_prepared_decoded_home_storage
+  COMMAND $<TARGET_FILE:backend_x86_prepared_decoded_home_storage_test>
+)
+set_tests_properties(backend_x86_prepared_decoded_home_storage PROPERTIES
+  LABELS "backend;internal;cpp;x86"
+)
+
 add_test(
   NAME backend_cli_dump_bir_is_semantic
   COMMAND "${CMAKE_COMMAND}"

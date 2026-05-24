@@ -1,52 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/value-home-storage-interpretation-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Adapt AArch64 To Consume Prealloc Interpretation
+Current Step ID: Step 4
+Current Step Title: Prove Reuse Path For x86 Prepared Operands
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 3: Adapt AArch64 To Consume Prealloc Interpretation`.
+Completed `Step 4: Prove Reuse Path For x86 Prepared Operands`.
 
-Updated AArch64 value-operand resolution to consume
-`prepare::decode_prepared_home_storage()` instead of independently
-interpreting raw regalloc, storage-plan, and value-home records.
+Added a narrow x86 prepared reuse path in
+`src/backend/mir/x86/prepared/prepared.hpp`:
 
-The AArch64 adapter now:
+- `prepared::Query::regalloc()` exposes the prepared regalloc function for the
+  query focus;
+- `prepared::Query::storage_plan()` exposes the prepared storage plan for the
+  query focus;
+- `prepared::Query::decode_home_storage()` calls the shared prealloc
+  `prepare::decode_prepared_home_storage()` helper and returns
+  `prepare::PreparedDecodedHomeStorage`.
 
-- maps `PreparedDecodedHomeStorage` facts to `ResolvedOperand`;
-- keeps `abi::convert_prepared_register()`, MIR physical-register, memory,
-  immediate, and symbol operand construction in AArch64 codegen;
-- preserves AArch64-local diagnostic selection and messages for missing typed
-  register authority, unsupported storage plans, unsupported value homes, and
-  missing value authority;
-- preserves regalloc, storage-plan, value-home precedence, including the rule
-  that a present higher-precedence decoded authority blocks lower-precedence
-  fallback.
+This gives x86 prepared operand/lowering code a concrete API to reuse decoded
+Prepared home/storage interpretation without re-decoding raw regalloc,
+storage-plan, or value-home records. x86-specific operand spelling and
+encoding remain outside prealloc.
 
-Added focused `backend_aarch64_operand_resolution` coverage for present empty
-regalloc authority blocking storage-plan fallback and storage-plan `None`
-authority blocking value-home fallback.
+Added `backend_x86_prepared_decoded_home_storage` coverage proving:
+
+- x86 prepared `Query` exposes regalloc, storage-plan, and value-location
+  inputs;
+- `Query::decode_home_storage()` preserves regalloc over storage-plan
+  precedence;
+- storage-plan immediates are returned as decoded facts;
+- storage-plan `None` authority blocks value-home fallback;
+- true no-record fallback reaches value homes;
+- a missing query focus returns no authority.
 
 ## Suggested Next
 
-Execute the next coherent packet by adapting x86 prepared operand/lowering
-reuse to consume or expose the prealloc decoded home/storage API where it
-removes duplicated target-neutral interpretation, while keeping x86-specific
-text/encoding and legality decisions in x86 code.
+Execute the next coherent packet by closing or reviewing the active plan,
+depending on whether the source idea requires another integration step beyond
+the AArch64 adapter and x86 prepared reuse proof.
 
 ## Watchouts
 
-- The AArch64 adapter intentionally maps decoded facts to MIR operands locally;
-  prealloc still does not construct MIR operands or target registers.
-- Present-but-empty regalloc or storage-plan authority now stops fallback in
-  AArch64 through the decoded API; future target adapters should preserve the
-  same precedence contract.
-- Diagnostics are preserved as closely as possible, but regalloc register
-  assignments that are present without typed placement now diagnose as missing
-  typed register authority instead of falling through to lower authority.
+- `Query::decode_home_storage()` returns decoded facts only; it does not render
+  x86 operand text or encode target-specific addressing.
+- The helper currently builds decode inputs from query focus state and uses
+  linear value-home lookup by passing no prebuilt value-home index. That keeps
+  this proof narrow; a later performance-oriented x86 lowering integration may
+  pass precomputed lookups if needed.
+- The new x86 test is a direct Prepared fixture, not a lowering rewrite.
 
 ## Proof
 
@@ -55,5 +60,4 @@ Ran exactly:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
 Result: passed. `test_after.log` reports `100% tests passed, 0 tests failed out
-of 151`; `backend_aarch64_operand_resolution` passed with the new precedence
-coverage.
+of 152`; `backend_x86_prepared_decoded_home_storage` passed.

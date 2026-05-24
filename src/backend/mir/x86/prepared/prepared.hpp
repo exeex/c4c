@@ -26,6 +26,37 @@ struct Query {
     }
     return c4c::backend::prepare::find_prepared_value_location_function(*module, *function_name);
   }
+
+  [[nodiscard]] const c4c::backend::prepare::PreparedRegallocFunction* regalloc() const {
+    if (module == nullptr || !function_name.has_value()) {
+      return nullptr;
+    }
+    for (const auto& function_regalloc : module->regalloc.functions) {
+      if (function_regalloc.function_name == *function_name) {
+        return &function_regalloc;
+      }
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan() const {
+    if (module == nullptr || !function_name.has_value()) {
+      return nullptr;
+    }
+    return c4c::backend::prepare::find_prepared_storage_plan(*module, *function_name);
+  }
+
+  [[nodiscard]] c4c::backend::prepare::PreparedDecodedHomeStorage decode_home_storage(
+      c4c::backend::prepare::PreparedValueId value_id) const {
+    return c4c::backend::prepare::decode_prepared_home_storage(
+        c4c::backend::prepare::PreparedHomeStorageDecodeInputs{
+            .regalloc = regalloc(),
+            .storage_plan = storage_plan(),
+            .value_locations = locations(),
+            .value_home_lookups = nullptr,
+        },
+        value_id);
+  }
 };
 
 [[nodiscard]] inline Query make_query(const c4c::backend::prepare::PreparedBirModule& module,
