@@ -10,34 +10,34 @@ Current Step Title: Adapt AArch64 Call Consumption
 
 Completed Step 3: `Adapt AArch64 Call Consumption`.
 
-Adapted the AArch64 explicit after-call move path to construct and read
-`plan_prepared_call_boundary_effects` through a narrow local adapter. The
-neutral effect records now select the after-call explicit move order while the
-existing AArch64 lowering still consumes the original `PreparedMoveResolution`
-records for result publication, register views, memory operands, scratch
-selection, and final instruction record construction.
+Recorded the Step 3 boundary after the before-call and after-call explicit move
+adapters. Both explicit call-boundary move paths now construct and read
+`plan_prepared_call_boundary_effects` through narrow AArch64 adapters while
+preserving the existing target-local lowering for register views, memory
+operands, scratch selection, byval/result publication handling, and final
+instruction record construction.
+
+Preservation-home population and republication loops remain target-local for
+this plan. Their current behavior is coupled to existing ordering and
+register-emission policy, including preservation-home population before
+explicit before-call moves and target-side republication after calls, so further
+AArch64 call rewiring is intentionally deferred.
 
 ## Suggested Next
 
-Continue Step 3 by deciding whether the preservation home population and
-republication loops should remain target-local for this plan or get a similarly
-narrow neutral-effect ordering adapter.
+Proceed to Step 4: cross-target ordering proof for the neutral
+call-boundary-effect plan, without claiming additional AArch64 call lowering
+migration.
 
 ## Watchouts
 
-The before-call adapter intentionally does not use neutral preservation effect
-ordering yet, because current AArch64 behavior emits preservation-home
-population before explicit moves. Keep that behavior unless a later slice
-explicitly proves and migrates preservation ordering. The after-call adapter
-filters explicit effects and remaps their indexes because the neutral full
-effect plan also includes preservation-population records before after-call
-explicit effects.
+Keep preservation ordering and republication emission out of Step 3 follow-up
+work unless a later source idea defines a tighter neutral ordering/register
+identity boundary. The after-call adapter still filters explicit effects and
+remaps their indexes because the neutral full effect plan includes
+preservation-population records before after-call explicit effects.
 
 ## Proof
 
-Ran:
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
-
-Result: `159/159` backend tests passed, `0` failed.
-
-Proof log: `test_after.log`.
+Audit-only `todo.md` update. No build or test proof was required, and no new
+`test_after.log` was created for this non-code packet.
