@@ -1,42 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/call-boundary-move-classification-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Reuse Path For x86 Prepared Calls
+Current Step ID: Step 5
+Current Step Title: Validate Behavior And Anti-Overfit Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added concrete x86 prepared reuse evidence for the shared prealloc
-call-boundary classification helper.
+Step 5 completed validation for the call-boundary classification extraction
+route.
 
-`x86::prepared::Query` now exposes prepared call plans through `call_plans()`
-and provides `classify_call_boundary_move(...)`, a narrow forwarding helper
-that returns `prepare::PreparedCallBoundaryMoveClassification` from
-`prepare::classify_prepared_call_boundary_move(...)`.
+Anti-overfit coverage summary:
+- `backend_prealloc_call_boundary_classification` directly covers shared
+  prealloc classification for call argument, call result, function return, and
+  ordinary value moves, plus missing ABI index, missing argument plan, missing
+  result plan, mismatched result plan, missing ABI binding, and unsupported op
+  statuses.
+- Existing AArch64 backend coverage continues to pass with AArch64 consuming
+  the shared classification helper for before-call and after-call move
+  resolution.
+- `backend_x86_prepared_decoded_home_storage` now proves x86 prepared query
+  reuse of the shared call-boundary classification helper without rewriting x86
+  lowering.
+- No tests were weakened, downgraded, or reclassified.
 
-Focused x86 prepared query coverage now builds call-boundary Prepared facts,
-classifies a call-argument move through the x86 query surface, verifies phase,
-destination role, storage kind, ABI index, matched argument plan, matched ABI
-binding, and source Prepared record pointers, and checks missing-binding status
-without falling back to target-local raw decoding.
+AArch64 ABI policy, register spelling, MIR operand construction, printing,
+preservation emission, diagnostics, and instruction emission remain
+target-local.
 
 ## Suggested Next
 
-Step 5 should validate the completed route and summarize the anti-overfit
-coverage: prealloc helper coverage, AArch64 consumer coverage, and x86 prepared
-reuse coverage, with no test weakening or expectation reclassification.
+The active runbook steps are complete. Supervisor should decide whether to
+request lifecycle closure/review or final broader validation.
 
 ## Watchouts
 
-x86 now proves the shared classification can be reused from a target prepared
-query surface. This remains evidence only; x86 lowering, x86 operand spelling,
-ABI policy, and emission were not rewritten.
-
-The shared classification still returns facts/status only. Keep preservation
-lookup/emission and target-specific operand construction out of prealloc unless
-a later packet explicitly owns that extraction.
+This packet was validation-only. No implementation files were edited.
 
 ## Proof
 
