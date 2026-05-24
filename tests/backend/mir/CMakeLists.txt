@@ -69,6 +69,11 @@ set_tests_properties(backend_call_boundary_effect_plan PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+c4c_add_mir_cpp_test(backend_x86_call_boundary_effect_ordering)
+set_tests_properties(backend_x86_call_boundary_effect_ordering PROPERTIES
+  LABELS "backend;internal;cpp;x86"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_signature_metadata SOURCE_TEXT_AUDIT)
 set_tests_properties(backend_aarch64_signature_metadata PROPERTIES
   LABELS "backend;internal;cpp"
