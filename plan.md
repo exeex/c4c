@@ -1,180 +1,168 @@
-# AArch64 Codegen Forward-Migration Second-Wave Audit Runbook
+# Shared MIR Same-Block Producer And Select-Chain Queries Runbook
 
 Status: Active
-Source Idea: ideas/open/aarch64-codegen-forward-migration-second-wave-audit.md
+Source Idea: ideas/open/shared-mir-same-block-producer-select-queries.md
 
 ## Purpose
 
-Audit the remaining `src/backend/mir/aarch64/codegen` responsibilities after
-the first forward-migration wave and turn the best second-wave opportunities
-into focused follow-up ideas.
+Move same-block producer discovery and select-chain dependency analysis out of
+AArch64 codegen into a shared MIR query surface that AArch64, x86, and RISC-V
+lowering can reuse before final target instruction selection.
 
 ## Goal
 
-Identify target-local codegen responsibilities that can move earlier into
-`bir`, `prealloc`, or shared MIR support without implementing broad movement in
-this run.
+Expose target-neutral same-block producer and select-chain query records while
+preserving the current AArch64 machine instruction output.
 
 ## Core Rule
 
-This is an audit and planning run. Do not implement migration slices, weaken
-tests, or propose testcase-shaped moves as capability progress.
+Move generic query ownership only. Keep AArch64 instruction spelling, ABI
+policy, target condition mapping, and final machine construction in the AArch64
+layer.
 
 ## Read First
 
-- `ideas/open/aarch64-codegen-forward-migration-second-wave-audit.md`
-- `ref/claudes-c-compiler/src/backend/arm/codegen/README.md`
-- First-wave helper surfaces:
-  - `src/backend/prealloc/prepared_lookups.*`
-  - `src/backend/prealloc/decoded_home_storage.*`
-  - `src/backend/prealloc/formal_publications.*`
-  - `src/backend/prealloc/call_plans.cpp`
-  - `src/backend/prealloc/calls.hpp`
-  - `src/backend/prealloc/value_locations.hpp`
+- `ideas/open/shared-mir-same-block-producer-select-queries.md`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- AArch64 users of producer/select-chain facts in call arguments, branch
+  fusion, value publication, and store handling.
 
 ## Current Targets
 
-Inspect the remaining AArch64 codegen surfaces, especially:
-
-- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_store_sources.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_dynamic_stack.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_branch_fusion.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- remaining generic portions of `dispatch_calls.cpp`
-- remaining generic portions of `calls_moves.cpp`
-- helper declarations still collected in `dispatch.hpp`
+- AArch64 call, branch-fusion, publication, and store consumers that currently
+  depend on local producer/select-chain helpers.
+- A new or existing shared MIR-owned helper location for target-neutral query
+  records.
+- One x86 or RISC-V compile fixture, adapter, or consumer-facing unit test that
+  proves the query shape is not AArch64-only.
 
 ## Non-Goals
 
-- Do not implement broad code movement during this audit.
-- Do not regenerate first-wave ideas unless a concrete remaining second slice is
-  visible in the same area.
-- Do not move AArch64 instruction spelling, ABI lane rules, final assembly
-  sequences, or target-specific instruction selection into generic layers.
-- Do not create shared abstractions without naming how x86 or RISC-V would use
-  them.
-- Do not edit implementation files except for read-only inspection commands.
+- Do not move publication planning, store-source planning, or call-boundary
+  ordering.
+- Do not encode AArch64 register names, condition mnemonics, ADRP/ADD forms,
+  memory operand spelling, or final machine construction in the shared API.
+- Do not weaken AArch64 tests or mark supported behavior unsupported.
+- Do not perform helper-only renames that leave AArch64 codegen as the real
+  owner of the generic query responsibility.
 
 ## Working Model
 
-Classify each candidate responsibility into one of these buckets:
+Separate target-neutral local def-use discovery from target-specific emission:
 
-- `Keep target-local`: AArch64 register spelling, ABI register/lane policy,
-  instruction sequences, or final machine printing.
-- `Move to BIR`: semantic producer or store/load normalization that should be
-  represented before preallocation.
-- `Move to prealloc`: target-independent or target-parameterized facts computed
-  from BIR plus target profile before MIR lowering.
-- `Move to shared MIR`: generic Prepared-to-machine orchestration, block
-  traversal, publication scheduling, or machine-record construction.
-- `Needs target hook`: reusable planning with small target hooks for register
-  classes, scalar widths, or instruction-specific emission.
-- `Defer`: plausible but too risky until x86/RISC-V has adjacent consumers.
+- shared MIR owns same-block producer lookup and select-chain dependency
+  traversal records;
+- AArch64 users ask the shared query for facts and keep their target policy at
+  the call site;
+- x86 or RISC-V proof must compile or exercise the same query surface without
+  depending on AArch64 namespaces.
 
 ## Execution Rules
 
-- Prefer concise audit artifacts and focused follow-up ideas over a large
-  speculative design note.
-- Every proposed migration must name the reuse value for x86 or RISC-V.
-- Every generated follow-up idea must be small enough for one focused agent run.
-- Every generated follow-up idea must include concrete reviewer reject signals.
-- Keep tempting target-local work explicitly listed as target-local or deferred.
-- Use build or compile checks only if audit edits touch executable repo files;
-  lifecycle-only or idea-only edits do not require code validation.
+- Start by mapping current helper call sites before extracting code.
+- Preserve behavior first; do not combine this migration with publication,
+  store-source, or call-ordering changes.
+- Keep the shared API small enough for current users and one cross-target proof.
+- Prefer semantic query records over testcase-shaped matching.
+- For code-changing steps, run build proof plus focused AArch64 parity tests and
+  the x86/RISC-V proof named by the step.
+- Escalate to a backend subset when shared MIR headers or common lowering paths
+  change.
 
 ## Ordered Steps
 
-### Step 1: Map Remaining Codegen Surfaces
+### Step 1: Map Current Producer And Select-Chain Users
 
-Goal: Create a compact inventory of the remaining AArch64 codegen files against
-the ARM reference README responsibility model.
-
-Concrete actions:
-
-- Inspect the reference README inventory.
-- Inspect the target files listed under `Current Targets`.
-- Mark which responsibilities are direct AArch64 instruction selection or
-  printing.
-- Mark which responsibilities are still broad Prepared/MIR pipeline mechanics.
-- Record the map in `todo.md` or in an audit note before generating follow-up
-  ideas.
-
-Completion check:
-
-- There is a short file-to-responsibility map naming what still sits outside the
-  reference target-codegen model.
-
-### Step 2: Classify Second-Wave Candidates
-
-Goal: Convert the inventory into a candidate table with destination layer,
-reuse value, risk, and suggested proof.
+Goal: Identify the exact AArch64 helper logic and consumer call sites that
+should move to or consume the shared query surface.
 
 Concrete actions:
 
-- Evaluate same-block producer discovery and select-chain dependency analysis.
-- Evaluate scalar value publication planning for stack homes, register homes,
-  globals, immediates, and pointer-base-plus-offset homes.
-- Evaluate store-source publication planning, including narrow-store to
-  wide-load recovery and pointer-store writeback.
-- Evaluate dynamic-stack helper recognition and operand-home planning.
-- Evaluate branch-fusion eligibility and support-instruction filtering.
-- Evaluate remaining generic call move ordering or republication logic.
-- Evaluate generic helper APIs still exposed through `dispatch.hpp`.
+- Inspect `dispatch_producers.cpp` and related declarations.
+- List same-block producer lookup, constant discovery, select-chain dependency,
+  and support-instruction filtering responsibilities.
+- List each AArch64 consumer in call arguments, branch fusion, value
+  publication, and store handling.
+- Mark which decisions are target-neutral facts and which remain AArch64
+  target policy.
 
 Completion check:
 
-- There is a candidate table with bucket, destination layer, x86/RISC-V reuse
-  value, risk, and proof expectation for each viable candidate.
+- `todo.md` records the helper-to-consumer map and the boundary between shared
+  facts and retained AArch64 policy.
 
-### Step 3: Generate Focused Follow-Up Ideas
+### Step 2: Introduce Shared MIR Query Records
 
-Goal: Create multiple new `ideas/open/*.md` implementation ideas for the best
-second-wave candidates.
+Goal: Add the smallest shared MIR-owned API needed for same-block producer and
+select-chain queries.
 
 Concrete actions:
 
-- Select only candidates with clear ownership, reuse value, and a focused proof
-  path.
-- Write one `ideas/open/*.md` file per migration slice.
-- Include intent, scope, non-goals, acceptance, and `## Reviewer Reject Signals`
-  in each new idea.
-- Keep the current source idea stable unless durable intent actually changes.
+- Choose a shared MIR-owned or target-neutral helper location consistent with
+  nearby code.
+- Move generic same-block producer lookup and select-chain dependency traversal
+  into that location.
+- Define target-neutral result records that do not mention AArch64 instruction
+  spelling or register names.
+- Keep target-specific legality, mnemonic choice, and emission decisions out of
+  the shared API.
 
 Completion check:
 
-- Multiple focused follow-up ideas exist under `ideas/open/`, each traceable to
-  this audit and each small enough for one execution run.
+- The project builds through the affected C++ targets, and the shared API can
+  be included without AArch64 codegen ownership.
 
-### Step 4: Record Keep-Local And Deferred Decisions
+### Step 3: Rewire AArch64 Users To The Shared Query
 
-Goal: Prevent future routes from treating target-local or too-risky candidates
-as implied migration work.
+Goal: Make current AArch64 consumers use the shared query while preserving
+their emitted behavior.
 
 Concrete actions:
 
-- List tempting candidates that should stay target-local for now.
-- List candidates deferred until x86/RISC-V has adjacent consumers or proof.
-- Explain the target-specific or risk reason for each decision.
+- Replace local AArch64 helper ownership with calls to the shared query.
+- Keep call, branch-fusion, publication, and store target policy in AArch64
+  codegen.
+- Remove only declarations whose underlying ownership actually moved.
+- Avoid changing expected machine instruction sequences except where an
+  existing test already permits equivalent output.
 
 Completion check:
 
-- The audit records a clear keep-local/defer note for non-selected candidates.
+- Focused AArch64 parity tests or fixtures for the affected producer and
+  select-chain cases still pass.
 
-### Step 5: Lifecycle Handoff
+### Step 4: Add Cross-Target Reuse Proof
 
-Goal: Leave canonical lifecycle state ready for the next supervisor decision.
+Goal: Prove the new query is usable outside AArch64 codegen.
 
 Concrete actions:
 
-- If the audit source idea is satisfied, report that the runbook can be closed
-  or intentionally handed off to one generated follow-up idea.
-- If a follow-up should become active immediately, ask the supervisor to route a
-  plan-owner lifecycle switch.
-- Keep `todo.md` aligned with this runbook until lifecycle state changes.
+- Add one x86 or RISC-V compile fixture, adapter, or consumer-facing unit test
+  that includes or exercises the shared query surface.
+- Keep the proof small and targeted to the query shape.
+- Do not fake reuse with a comment-only proof or unused include.
 
 Completion check:
 
-- The supervisor has enough information to close this audit or activate one
-  generated follow-up idea without re-reading the entire audit history.
+- The x86 or RISC-V proof compiles or runs and demonstrates the query surface is
+  not AArch64-only.
+
+### Step 5: Validation And Lifecycle Handoff
+
+Goal: Prove the migration and leave lifecycle state ready for close or the next
+focused follow-up.
+
+Concrete actions:
+
+- Run build proof for affected C++ targets.
+- Run focused AArch64 parity tests for same-block producer and select-chain
+  behavior.
+- Run the x86/RISC-V proof from Step 4.
+- If shared MIR or common backend headers changed, run a backend subset
+  regression guard before closure.
+
+Completion check:
+
+- Validation is recorded in `todo.md`, and the supervisor can either close this
+  idea or route the next generated follow-up without re-reading the route.

@@ -139,3 +139,11 @@ The runbook generated from this idea should produce:
 - Each follow-up idea is small enough for one focused agent run.
 - `plan.md` and `todo.md` are either closed after the audit or intentionally
   handed off to one activated follow-up idea by the plan owner.
+
+## Closure Note
+
+Closed after the audit run completed the required map, candidate table,
+follow-up idea generation, and keep-local/defer record. The immediate lifecycle
+handoff activated
+`ideas/open/shared-mir-same-block-producer-select-queries.md`; the other
+generated follow-up ideas remain open for later supervisor selection.
