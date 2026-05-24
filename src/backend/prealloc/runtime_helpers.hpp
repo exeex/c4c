@@ -192,6 +192,7 @@ enum class PreparedF128CmpResultZeroTest {
 }
 
 struct PreparedF128RuntimeHelper {
+  // Source/result carrier facts as bound for this helper-call marshal plan.
   struct CarrierBinding {
     PreparedValueId value_id = 0;
     ValueNameId value_name = kInvalidValueName;
@@ -253,6 +254,7 @@ struct PreparedF128RuntimeHelper {
     bool owns_bir_i1_result = false;
   };
 
+  // Helper-call resource obligations, not top-level special-carrier facts.
   struct ResourcePolicy {
     bool call_boundary = false;
     bool runtime_helper_callee = false;
@@ -277,6 +279,7 @@ struct PreparedF128RuntimeHelper {
     std::vector<PreparedCallPreservedValue> preserved_values;
   };
 
+  // Completeness summary for the selected helper call and its ABI marshaling.
   struct SelectedCallOwnershipPolicy {
     bool owns_terminal_call = false;
     bool has_callee_identity = false;
@@ -460,6 +463,7 @@ enum class PreparedI128RuntimeHelperMarshalDirection {
 }
 
 struct PreparedI128RuntimeHelper {
+  // Source/result carrier lanes as bound for this helper-call marshal plan.
   struct LaneBinding {
     PreparedValueId value_id = 0;
     ValueNameId value_name = kInvalidValueName;
@@ -525,6 +529,7 @@ struct PreparedI128RuntimeHelper {
     std::vector<PreparedCallPreservedValue> preserved_values;
   };
 
+  // Completeness summary for the selected helper call and its ABI marshaling.
   struct SelectedCallOwnershipPolicy {
     bool owns_terminal_call = false;
     bool has_callee_identity = false;
@@ -535,6 +540,7 @@ struct PreparedI128RuntimeHelper {
     bool has_live_preservation = false;
   };
 
+  // Helper-call resource obligations, not top-level special-carrier facts.
   struct ResourcePolicy {
     bool call_boundary = false;
     bool runtime_helper_callee = false;
