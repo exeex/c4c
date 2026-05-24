@@ -274,6 +274,22 @@ struct CallArgumentDestinationPlan {
   std::optional<PreparedRegisterPlacement> register_placement;
 };
 
+struct CallArgumentSourcePlan {
+  PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
+  std::optional<PreparedValueId> value_id;
+  std::optional<PreparedValueId> base_value_id;
+  std::optional<bir::Value> literal;
+  std::optional<std::string> symbol_name;
+  std::optional<LinkNameId> symbol_name_id;
+  std::optional<std::string> register_name;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<PreparedRegisterBank> register_bank;
+  std::optional<ValueNameId> base_value_name;
+  std::optional<std::int64_t> pointer_byte_delta;
+  std::optional<PreparedRegisterPlacement> register_placement;
+};
+
 [[nodiscard]] PreparedValueHomeLookup make_prepared_value_home_lookup(
     const PreparedValueLocationFunction* value_locations) {
   PreparedValueHomeLookup lookup;
@@ -826,6 +842,91 @@ struct CallArgumentDestinationPlan {
   return destination;
 }
 
+[[nodiscard]] CallArgumentSourcePlan plan_call_argument_source(
+    const bir::Module& module,
+    PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Value& argument) {
+  CallArgumentSourcePlan source;
+
+  if (const auto value_name_id = maybe_named_value_id(names, argument);
+      value_name_id.has_value() && value_locations != nullptr) {
+    if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
+        home != nullptr) {
+      source.encoding = storage_encoding_from_home(*home);
+      source.register_name = home->register_name;
+      source.slot_id = home->slot_id;
+      source.stack_offset_bytes = home->offset_bytes;
+      if (home->immediate_i32.has_value()) {
+        source.literal = bir::Value::immediate_i32(*home->immediate_i32);
+      }
+      source.base_value_name = home->pointer_base_value_name;
+      source.pointer_byte_delta = home->pointer_byte_delta;
+      if (home->pointer_base_value_name.has_value()) {
+        if (const auto* base_home =
+                find_prepared_value_home(*value_locations, *home->pointer_base_value_name);
+            base_home != nullptr) {
+          source.base_value_id = base_home->value_id;
+        } else if (regalloc_function != nullptr) {
+          if (const auto* base_regalloc_value =
+                  find_regalloc_value_by_name(*regalloc_function, *home->pointer_base_value_name);
+              base_regalloc_value != nullptr) {
+            source.base_value_id = base_regalloc_value->value_id;
+          }
+        }
+      }
+    }
+    if (regalloc_function != nullptr) {
+      if (const auto* regalloc_value =
+              find_regalloc_value_by_name(*regalloc_function, *value_name_id);
+          regalloc_value != nullptr) {
+        source.value_id = regalloc_value->value_id;
+        source.register_bank = register_bank_from_class(regalloc_value->register_class);
+        if (regalloc_value->assigned_register.has_value() &&
+            source.register_name ==
+                std::optional<std::string>{regalloc_value->assigned_register->register_name}) {
+          source.register_placement =
+              assignment_register_placement(target_profile, *regalloc_value->assigned_register);
+        }
+      }
+    }
+    const auto symbol_name = resolve_symbol_pointer_name(module, argument);
+    if (symbol_name.has_value()) {
+      source.encoding = PreparedStorageEncodingKind::SymbolAddress;
+      if (argument.pointer_symbol_link_name_id != kInvalidLinkName) {
+        source.symbol_name_id = names.link_names.intern(*symbol_name);
+        source.symbol_name = display_symbol_pointer_name(*symbol_name);
+      } else {
+        source.symbol_name = std::string(*symbol_name);
+      }
+    }
+  } else if (const auto symbol_name = resolve_symbol_pointer_name(module, argument);
+             symbol_name.has_value()) {
+    source.encoding = PreparedStorageEncodingKind::SymbolAddress;
+    if (argument.pointer_symbol_link_name_id != kInvalidLinkName) {
+      source.symbol_name_id = names.link_names.intern(*symbol_name);
+      source.symbol_name = display_symbol_pointer_name(*symbol_name);
+    } else {
+      source.symbol_name = std::string(*symbol_name);
+    }
+  } else if (argument.kind != bir::Value::Kind::Named) {
+    source.encoding = PreparedStorageEncodingKind::Immediate;
+    source.literal = argument;
+    if (regalloc_function != nullptr) {
+      if (const auto* constant_value =
+              find_f128_constant_regalloc_value(*regalloc_function, argument);
+          constant_value != nullptr) {
+        source.value_id = constant_value->value_id;
+        source.register_bank = register_bank_from_class(constant_value->register_class);
+      }
+    }
+  }
+
+  return source;
+}
+
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function) {
@@ -1223,85 +1324,26 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.destination_stack_offset_bytes = destination.stack_offset_bytes;
           arg_plan.destination_register_placement = destination.register_placement;
 
-          if (const auto value_name_id = maybe_named_value_id(prepared.names, call->args[arg_index]);
-              value_name_id.has_value() && value_locations != nullptr) {
-            if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
-                home != nullptr) {
-              arg_plan.source_encoding = storage_encoding_from_home(*home);
-              arg_plan.source_register_name = home->register_name;
-              arg_plan.source_slot_id = home->slot_id;
-              arg_plan.source_stack_offset_bytes = home->offset_bytes;
-              if (home->immediate_i32.has_value()) {
-                arg_plan.source_literal = bir::Value::immediate_i32(*home->immediate_i32);
-              }
-              arg_plan.source_base_value_name = home->pointer_base_value_name;
-              arg_plan.source_pointer_byte_delta = home->pointer_byte_delta;
-              if (home->pointer_base_value_name.has_value()) {
-                if (const auto* base_home =
-                        find_prepared_value_home(*value_locations, *home->pointer_base_value_name);
-                    base_home != nullptr) {
-                  arg_plan.source_base_value_id = base_home->value_id;
-                } else if (regalloc_function != nullptr) {
-                  if (const auto* base_regalloc_value =
-                          find_regalloc_value_by_name(*regalloc_function,
-                                                      *home->pointer_base_value_name);
-                      base_regalloc_value != nullptr) {
-                    arg_plan.source_base_value_id = base_regalloc_value->value_id;
-                  }
-                }
-              }
-            }
-            if (regalloc_function != nullptr) {
-              if (const auto* regalloc_value =
-                      find_regalloc_value_by_name(*regalloc_function, *value_name_id);
-                  regalloc_value != nullptr) {
-                arg_plan.source_value_id = regalloc_value->value_id;
-                arg_plan.source_register_bank =
-                    register_bank_from_class(regalloc_value->register_class);
-                if (regalloc_value->assigned_register.has_value() &&
-                    arg_plan.source_register_name ==
-                        std::optional<std::string>{
-                            regalloc_value->assigned_register->register_name}) {
-                  arg_plan.source_register_placement =
-                      assignment_register_placement(prepared.target_profile,
-                                                    *regalloc_value->assigned_register);
-                }
-              }
-            }
-            const auto symbol_name =
-                resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
-            if (symbol_name.has_value()) {
-              arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
-              if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
-                arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
-                arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
-              } else {
-                arg_plan.source_symbol_name = std::string(*symbol_name);
-              }
-            }
-          } else if (const auto symbol_name =
-                         resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
-                     symbol_name.has_value()) {
-            arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
-            if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
-              arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
-              arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
-            } else {
-              arg_plan.source_symbol_name = std::string(*symbol_name);
-            }
-          } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
-            arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
-            arg_plan.source_literal = call->args[arg_index];
-            if (regalloc_function != nullptr) {
-              if (const auto* constant_value =
-                      find_f128_constant_regalloc_value(*regalloc_function, call->args[arg_index]);
-                  constant_value != nullptr) {
-                arg_plan.source_value_id = constant_value->value_id;
-                arg_plan.source_register_bank =
-                    register_bank_from_class(constant_value->register_class);
-              }
-            }
-          }
+          const CallArgumentSourcePlan source =
+              plan_call_argument_source(prepared.module,
+                                        prepared.names,
+                                        prepared.target_profile,
+                                        regalloc_function,
+                                        value_locations,
+                                        call->args[arg_index]);
+          arg_plan.source_encoding = source.encoding;
+          arg_plan.source_value_id = source.value_id;
+          arg_plan.source_base_value_id = source.base_value_id;
+          arg_plan.source_literal = source.literal;
+          arg_plan.source_symbol_name = source.symbol_name;
+          arg_plan.source_symbol_name_id = source.symbol_name_id;
+          arg_plan.source_register_name = source.register_name;
+          arg_plan.source_slot_id = source.slot_id;
+          arg_plan.source_stack_offset_bytes = source.stack_offset_bytes;
+          arg_plan.source_register_bank = source.register_bank;
+          arg_plan.source_base_value_name = source.base_value_name;
+          arg_plan.source_pointer_byte_delta = source.pointer_byte_delta;
+          arg_plan.source_register_placement = source.register_placement;
 
           call_plan.arguments.push_back(std::move(arg_plan));
         }

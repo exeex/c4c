@@ -8,35 +8,36 @@ Current Step Title: Extract Argument Planning Subphases
 
 ## Just Finished
 
-Completed `plan.md` Step 2 cleanup: removed the redundant
-`arg_index < call->args.size()` source-materialization guard left after the
-argument destination extraction and normalized the block indentation.
+Completed `plan.md` Step 2 cleanup: extracted argument source materialization
+from the `populate_call_plans` per-argument loop into file-local
+`plan_call_argument_source(...)`.
 
 Changed files:
 - `src/backend/prealloc/call_plans.cpp`
 - `todo.md`
 
-Cleanup result:
-- The source-materialization block in `populate_call_plans` now sits directly
-  under the per-argument loop after assigning `arg_plan.destination_*`.
-- Removed the redundant guard already guaranteed by
-  `for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index)`.
-- Preserved source materialization behavior, destination extraction behavior,
-  result planning behavior, and boundary-effect code.
+Extraction result:
+- Added file-local `CallArgumentSourcePlan` with explicit source-side outputs
+  for storage encoding, value IDs, pointer-base IDs, literals, symbol names,
+  registers, slots, register banks, pointer deltas, and register placement.
+- Moved named value-home lookup, pointer-base ID resolution, symbol address
+  handling, immediate handling, F128 constant regalloc lookup, source value ID
+  lookup, and source register placement into `plan_call_argument_source(...)`.
+- Kept the shared direct/indirect argument path intact; the per-argument loop
+  now composes destination planning and source planning through separate
+  file-local helpers.
+- Preserved destination extraction behavior, result planning behavior,
+  memory-return behavior, boundary-effect code, and aggregate-subslot fallback
+  behavior.
 - Left `calls.hpp`, `call_plans.hpp`, tests, `plan.md`, and the source idea
   untouched.
 
-Deferred source-materialization candidate:
-- The source side of the per-argument loop remains broad and is still the next
-  natural Step 2 extraction candidate. It owns named value homes, pointer-base
-  IDs, symbol addresses, immediates, F128 constant regalloc lookup, and source
-  register placement.
-
 ## Suggested Next
 
-Continue `plan.md` Step 2 with a narrow file-local extraction of argument
-source materialization inside `src/backend/prealloc/call_plans.cpp`, keeping
-`calls.hpp` unchanged unless a compile error proves a direct need.
+Proceed to `plan.md` Step 3 with a narrow mutable-state audit of the call-plan
+families, using the extracted destination/source helpers as the boundary for
+checking whether remaining local state should stay in `populate_call_plans` or
+move behind another helper.
 
 ## Watchouts
 
@@ -52,6 +53,8 @@ source materialization inside `src/backend/prealloc/call_plans.cpp`, keeping
   shared.
 - Keep memory-return and aggregate-subslot fallback behavior out of argument
   source-materialization cleanup.
+- `plan_call_argument_source(...)` intentionally mutates `prepared.names` for
+  link-name interning exactly where the old loop did.
 
 ## Proof
 
