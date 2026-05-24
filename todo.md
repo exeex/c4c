@@ -1,129 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-forward-migration-second-wave-audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Remaining Codegen Surfaces
+Current Step ID: 2
+Current Step Title: Classify Second-Wave Candidates
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Map Remaining Codegen Surfaces completed as an audit-only inventory.
-Reference model used:
-`ref/claudes-c-compiler/src/backend/arm/codegen/README.md` treats target
-codegen as final AArch64 assembly emission: ABI/register/frame policy, call
-marshalling, memory addressing, ALU/compare/float/cast/global/return/intrinsic
-lowering, inline asm, and peephole/printing.
+Step 2: Classify Second-Wave Candidates completed as an audit-only
+classification of the Step 1 surface map. No implementation files were changed.
 
-File-to-responsibility map:
+| Candidate | Bucket | Destination layer | x86/RISC-V reuse value | Risk | Suggested proof |
+| --- | --- | --- | --- | --- | --- |
+| Same-block producer discovery and select-chain dependency analysis from `dispatch_producers.cpp` and its branch/call/value/store users | Move to shared MIR | Shared MIR query/helper layer, with target-local final emission retaining symbol/register spelling | High: x86/RISC-V need the same local def-use, constant, select-chain, and block lookup facts before final instruction choice | Medium: current helpers may carry AArch64-shaped assumptions around global labels and materialized operand forms | Add shared query API plus AArch64 parity tests for current producer/select cases; then prove one x86 or RISC-V callsite can consume the same query without target-specific branching |
+| Scalar value-publication planning into Prepared homes from `dispatch_value_materialization.cpp` and `dispatch_publication.cpp` | Needs target hook | Prealloc or shared MIR planner that computes publication intent; target hooks emit register views, memory operands, immediates, and final instructions | High: publication-to-home decisions, entry publication tracking, clobber checks, and Prepared home interpretation should apply across targets | High: easy to move AArch64 register widths, FP immediates, ADRP/ADD, or load/store mnemonics too early | Introduce a target-neutral publication plan record and keep AArch64 emission byte-for-byte equivalent on stack/register/global/immediate homes; require a small x86/RISC-V consumer sketch or adapter |
+| Store-source publication planning, narrow-store to wide-load recovery, and pointer-store writeback from `dispatch_store_sources.cpp` | Move to prealloc | Prealloc store-source planner that resolves logical slots, recovered sources, stack-object identities, and pending publication requirements | Medium-high: x86/RISC-V stores need the same source provenance and stack-object recovery even though address modes differ | High: source recovery is subtle and may accidentally encode AArch64 address legality or store mnemonics | Add planner output inspected by AArch64 lowering; prove existing narrow-store/wide-load and pointer-writeback tests remain supported, plus one non-AArch64 consumer-facing unit or fixture |
+| Dynamic-stack helper recognition and operand-home planning from `dispatch_dynamic_stack.cpp` | Needs target hook | Prealloc dynamic-stack op classifier plus target hook for stack-pointer/frame-pointer instruction sequences | Medium: recognizing helper calls and matching `PreparedDynamicStackOp` should be shared; final `sp` adjustment and scratch usage are target-local | Medium: stack alignment, frame-pointer policy, and scratch register availability vary per target | Split recognition/classification from emission; prove AArch64 dynamic alloca cases still lower identically and add hook-level fixture showing x86/RISC-V can choose different stack adjustment spelling |
+| Branch-fusion eligibility, support-instruction filtering, selected-operand checks, and constant evaluation from `dispatch_branch_fusion.cpp` | Needs target hook | Shared MIR branch-fusion analysis with target hook for condition set, immediate encodability, compare form, and final branch spelling | High: x86/RISC-V also benefit from local compare/load/cast folding before conditional branch emission | Medium-high: immediate encodability and condition mapping are target-specific, and over-broad sharing could hide target branch semantics | Add reusable fusion-decision object; prove AArch64 fused/unfused branch tests are unchanged and add target-profile fixtures for immediate legality differences |
+| Call-boundary move ordering, preservation, and republication mechanics from `dispatch_calls.cpp` and `calls_moves.cpp` | Move to prealloc | Extend prealloc call-plan/move-bundle support to own generic ordering, preservation-home population, source/destination effect resources, and republication intent | High: x86/RISC-V call lowering has the same before/after/return move ordering and preservation problems with different ABI lanes | High: ABI lane/register spelling, variadic details, F128 carriers, byval copies, and actual machine moves must stay target-local | Move only ordering/intent into call plans; prove AArch64 call, byval, preserved-value, indirect-callee, and return-value cases remain equivalent, then wire one x86/RISC-V plan consumer |
+| Generic helper APIs collected in `dispatch.hpp` for Prepared lookups, publication/clobber tracking, producer lookup, and move orchestration | Move to shared MIR | Shared MIR/prealloc headers near the owning implementation, leaving `dispatch.hpp` as AArch64 emission declarations only | Medium: clearer ownership reduces duplicated declarations for future x86/RISC-V consumers | Low-medium: declaration moves are mechanical but can create circular dependencies if ownership is not split with the implementation | Extract declarations only after one concrete implementation move above; prove compile/build and ensure `dispatch.hpp` no longer exposes generic helpers without moving target-local APIs |
+| Final AArch64 spelling, ABI lane rules, stack-pointer sequences, memory operands, ADRP/ADD, CMP/CSEL/branch forms, and machine instruction construction | Keep target-local | AArch64 codegen final emission layer | Low direct reuse; x86/RISC-V need analogous hooks, not shared AArch64 instructions | High if moved: would collapse target-specific ABI and instruction-selection policy into generic layers | Keep as explicit non-goal; proof is reviewer check that follow-up ideas do not move instruction spelling or target ABI policy |
 
-- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`:
-  direct target codegen includes AArch64 FP immediate materialization, GP/FP
-  register spelling, load/store mnemonics, ADRP/ADD symbol loads, compare/ALU
-  spellings, and final materialization lines. Broad mechanics include same-block
-  producer chasing, recursive value-publication planning, PreparedValueHome
-  interpretation, select-chain materialization, stack-vs-register publication
-  decisions, and publication of cast/FP-binary results into Prepared homes.
-- `src/backend/mir/aarch64/codegen/dispatch_store_sources.cpp`: direct target
-  codegen includes scalar conversion/cast emission, global-address emission,
-  pointer-base-plus-offset address spelling, store mnemonic choice, and final
-  memory instructions. Broad mechanics include store-source discovery,
-  logical-slot matching, narrow-store to wide-load recovery, byval/frame-slot
-  source recognition, stack-homed pointer-store writeback, and pending
-  store-global stack publication scheduling.
-- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`: direct target
-  codegen includes register view/mnemonic mapping, frame/global/va-list address
-  spelling, and scalar type width helpers tied to AArch64 register views. Broad
-  mechanics include Prepared frame-slot/object lookup, value-home lookup,
-  current-block entry publication tracking, clobber checks, and generic
-  instruction-result/value-publication bookkeeping.
-- `src/backend/mir/aarch64/codegen/dispatch_dynamic_stack.cpp`: direct target
-  codegen includes `sp` adjustment/save/restore sequences, dynamic alloca
-  assembly, frame-pointer address spelling, and AArch64 scratch/register-home
-  names. Broad mechanics include recognizing dynamic-stack helper calls,
-  matching them to `PreparedDynamicStackOp`, validating Prepared value homes,
-  and converting unsupported helper cases into machine rejection records.
-- `src/backend/mir/aarch64/codegen/dispatch_branch_fusion.cpp`: direct target
-  codegen includes AArch64 condition suffixes, CMP immediate encodability,
-  register/address spelling, compare-branch assembly construction, and final
-  block-label branch instructions. Broad mechanics include same-block
-  cast/load/binary producer discovery, constant evaluation, branch-fusion
-  eligibility, support-instruction filtering, selected-operand use checks, and
-  Prepared frame-slot load-address lookup.
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`: mostly broad
-  BIR/MIR pipeline mechanics: same-block producer lookup, select-chain
-  discovery, integer constant evaluation, load-global target lookup, BIR block
-  lookup, and join parallel-copy source detection. Target-local content is
-  limited to global symbol label spelling assumptions.
-- `src/backend/mir/aarch64/codegen/dispatch_calls.cpp`: direct target codegen
-  includes call instruction construction, indirect callee register
-  materialization with AArch64 scratch registers and `csel`/`cmp`, call result
-  source-register recording, and variadic/dynamic-stack handoff. Broad
-  mechanics include scalar call-argument producer materialization,
-  local-aggregate address publication, local-load/store alias recovery for
-  indirect callees, call-boundary source materialization, move reload detection,
-  and preserved-value publication/republication orchestration.
-- `src/backend/mir/aarch64/codegen/calls_moves.cpp`: direct target codegen
-  includes ABI lane/register spelling, outgoing stack base setup,
-  frame-slot-address materialization, immediate-to-register/stack move
-  emission, F128 carrier-specific moves, byval stack/register lane copies, and
-  before/after/return move machine instruction construction. Broad mechanics
-  include Prepared move-bundle traversal, move classification, ordering around
-  call boundaries, preservation-home population/republication, value stack
-  moves, aggregate copy planning, and source/destination effect-resource
-  bookkeeping.
-- `src/backend/mir/aarch64/codegen/dispatch.hpp`: mixed declaration hub.
-  Target-local declarations cover branch conditions, scalar mnemonics/register
-  views, AArch64 memory/address helpers, dynamic-stack lowering, and call
-  boundary emission entry points. Broad mechanics declarations expose producer
-  lookup, Prepared home/value lookup, publication/clobber tracking, move
-  orchestration, and helper APIs that are not inherently final target printing.
+Most viable Step 3 idea candidates:
 
-Summary split:
-
-- Direct AArch64 instruction selection/printing remains in final emission
-  helpers: register/view parsing, mnemonic choice, address spelling,
-  ADRP/ADD/loads/stores, CMP/CSEL/branch forms, stack-pointer adjustment,
-  call/return ABI register spellings, and assembler record construction.
-- Broad Prepared/MIR pipeline mechanics still present in target codegen include
-  producer discovery, select-chain/value-publication planning, Prepared home
-  interpretation, logical-slot and stack-object matching, dynamic-stack helper
-  recognition, branch-fusion eligibility analysis, call-boundary move ordering,
-  preserved-value scheduling, and publication/republication bookkeeping.
+- Extract shared same-block producer/select-chain queries first. It has the
+  broadest reuse value, the smallest target hook surface, and a clear parity
+  proof path.
+- Create a target-neutral publication-plan record second, but only if the idea
+  explicitly preserves target-local emission hooks.
+- Extend prealloc call-plan ownership for generic call-boundary ordering after
+  the producer/publication direction is established; it has high value but a
+  larger ABI-risk boundary.
 
 ## Suggested Next
 
-Step 2 classification packet: convert the map above into a compact candidate
-table with bucket, destination layer, x86/RISC-V reuse value, risk, and proof
-expectation. Suggested first-pass rows:
-
-- same-block producer/select-chain discovery (`dispatch_producers.cpp`,
-  branch/call/value/store users)
-- value publication planning into Prepared homes
-  (`dispatch_value_materialization.cpp`, `dispatch_publication.cpp`)
-- store-source publication and narrow-store recovery
-  (`dispatch_store_sources.cpp`)
-- dynamic-stack helper recognition versus target-local stack-pointer emission
-  (`dispatch_dynamic_stack.cpp`)
-- branch-fusion eligibility/support filtering versus final AArch64 branch
-  spelling (`dispatch_branch_fusion.cpp`)
-- call-boundary move ordering and preservation/republication mechanics
-  (`dispatch_calls.cpp`, `calls_moves.cpp`)
-- generic helper declarations still centralized in `dispatch.hpp`
+Step 3 idea-generation packet: create focused `ideas/open/*.md` follow-up ideas
+for the top second-wave candidates, starting with shared same-block
+producer/select-chain queries. Include intent, scope, non-goals, acceptance,
+proof expectations, and reviewer reject signals. Keep each idea small enough
+for one execution run and keep AArch64 instruction spelling/ABI policy
+explicitly out of scope.
 
 ## Watchouts
 
 - This is an audit run; do not implement broad code movement.
-- Do not regenerate first-wave ideas unless a concrete second slice is visible.
-- Keep source-idea edits rare; routine audit notes should stay in this file
-  until a durable follow-up idea is created.
-- Several files intentionally combine target-local emission and reusable
-  planning; Step 2 should avoid proposing any move that hides AArch64 ABI lane
-  rules, register spelling, stack-pointer rules, or instruction sequences in a
-  generic layer.
-- The most reusable-looking areas are producer discovery, publication planning,
-  Prepared home lookup, and call-boundary orchestration; each still needs an
-  explicit x86/RISC-V consumer before becoming a follow-up idea.
+- Step 3 is allowed to edit `ideas/open/*.md`; this packet was not.
+- Do not create follow-up ideas for target-local final emission. The audit
+  explicitly keeps AArch64 register spelling, ABI lane policy, stack-pointer
+  sequences, ADRP/ADD, CMP/CSEL/branch forms, memory operands, and machine
+  instruction construction in the AArch64 layer.
+- The safest first idea is producer/select-chain query extraction. Publication
+  planning and call-boundary ordering are valuable but need tighter hook
+  boundaries to avoid moving ABI or instruction-selection policy.
+- Any Step 3 idea should name one x86 or RISC-V consumer path, not just an
+  abstract desire for sharing.
 
 ## Proof
 
