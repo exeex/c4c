@@ -729,8 +729,9 @@ void record_current_block_entry_publication_registers(
   if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return false;
   }
-  const auto* producer =
-      find_same_block_named_producer(context, value.name, before_instruction_index);
+  const auto producer_record = mir::find_same_block_named_producer_record(
+      context.bir_block, value.name, before_instruction_index);
+  const auto* producer = producer_record.inst;
   const auto* home = prepared_value_home_for_value(context, value);
   if (producer == nullptr ||
       (home != nullptr && value_has_current_block_entry_publication(context, *home))) {
@@ -738,8 +739,8 @@ void record_current_block_entry_publication_registers(
            prepared_value_home_reads_register_index(*home, register_index);
   }
 
-  const auto producer_index =
-      producer_instruction_index(context, producer).value_or(before_instruction_index);
+  const auto producer_index = producer_record ? producer_record.instruction_index
+                                              : before_instruction_index;
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;

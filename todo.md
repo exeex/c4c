@@ -9,10 +9,11 @@ Current Step Title: Rewire AArch64 Users To The Shared Query
 ## Just Finished
 
 Step 3: Rewire AArch64 Users To The Shared Query completed as a narrow code
-slice. `dispatch_value_materialization.cpp` now calls
-`mir::evaluate_same_block_integer_constant` directly in
-`emit_value_publication_to_register` and consumes the shared
-`SameBlockIntegerConstant` record for the policy-free named constant fact.
+slice. `dispatch_publication.cpp` now calls
+`mir::find_same_block_named_producer_record` directly in
+`value_publication_may_read_register_index` and consumes the shared producer
+record for the policy-free producer pointer/index facts used by recursive
+read-register analysis.
 
 The AArch64 compatibility wrapper remains in `dispatch_producers.cpp` for
 unmigrated users, and no publication/store/call planning semantics moved.
@@ -21,9 +22,9 @@ unmigrated users, and no publication/store/call planning semantics moved.
 
 Continue Step 3 with one more narrow consumer migration if the supervisor wants
 more AArch64 rewiring before review. The remaining wrapper-heavy users are
-mostly producer-index and named-producer lookups in value materialization, store
-sources, and publication; migrate only policy-free facts and leave frame-slot,
-store-source, call-boundary, and publication-planning decisions local.
+producer-index and named-producer lookups in value materialization and store
+sources; migrate only policy-free facts and leave frame-slot, store-source,
+call-boundary, and publication-planning decisions local.
 
 ## Watchouts
 
@@ -32,6 +33,9 @@ store-source, call-boundary, and publication-planning decisions local.
 - `dispatch_producers.cpp` remains the AArch64 compatibility surface for other
   consumers. Avoid deleting wrappers before call, publication, store, and
   branch-fusion users are migrated coherently.
+- `dispatch_publication.cpp` no longer calls the AArch64 named-producer or
+  producer-index wrappers directly, but its publication policy helpers still
+  belong in the target layer.
 - The shared traversal is predicate-based; keep target-specific questions such
   as direct-global-load materialization decisions outside `src/backend/mir`.
 
