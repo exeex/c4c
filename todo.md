@@ -9,16 +9,16 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
-the durable prologue-family entry-formal shard from
-`dispatch_entry_formals.cpp` to `prologue_entry_formals.cpp`, updated the CMake
-source list, and refreshed the remaining direct declaration comment in
-`dispatch.hpp` with no behavior changes.
+the durable calls-family dispatch bridge shard from `dispatch_calls.cpp`/
+`.hpp` to `calls_dispatch_bridge.cpp`/`.hpp`, updated the CMake source list,
+and refreshed direct include sites with no behavior changes.
 
-This shard remains separate from `prologue.cpp` because entry-formal
-publication is a cohesive bridge between incoming ABI locations, prepared home
-publication, scalar state, and frame/prologue setup. The durable-family rename
-fixes the historical `dispatch_*` label without forcing that larger helper body
-into the main prologue implementation.
+This shard remains separate from `calls.cpp` because it is a cohesive bridge
+between block dispatch, scalar call producer materialization, prepared call
+plans, call-boundary moves, indirect callees, missing frame-slot arguments, and
+stack-preserved value publication. The durable-family rename fixes the
+historical `dispatch_*` label without merging that bridge into the central calls
+entry point.
 
 ## Suggested Next
 
@@ -29,8 +29,7 @@ durable-family shard if the boundary is mechanical.
 
 ## Watchouts
 
-- `prologue_entry_formals.cpp` keeps the existing
-  `lower_entry_formal_publications` symbol and `dispatch.hpp` declaration
+- `calls_dispatch_bridge.cpp` keeps the existing exported bridge symbol names
   because this packet was a mechanical file-boundary rename only.
 - `memory_store_sources.cpp` still includes `dispatch.hpp` for publication,
   edge-copy, value-materialization, lookup, and shared frame/address helper
@@ -73,6 +72,8 @@ File-to-family map:
 | `calls_argument_sources.cpp` | `calls` | Durable call argument source/materialization helpers; large enough to stay split. |
 | `calls_byval_aggregates.cpp` | `calls` | Durable byval aggregate lane/stack logic; includes `dispatch.hpp` for frame/value publication helpers and is a possible later header-narrowing beneficiary. |
 | `calls_common.cpp` | `calls` | Small shared calls helpers; durable but thin. Could stay as calls-common support or merge only if a later calls-only packet needs it. |
+| `calls_dispatch_bridge.cpp` | `calls` | Durable calls-family dispatch bridge: scalar call producers, call lowering, call boundary materialization, indirect callee materialization, missing frame-slot args, stack-preserved values. Keep separate from `calls.cpp` while it bridges dispatcher context and prepared call plans. |
+| `calls_dispatch_bridge.hpp` | `calls` | Narrow bridge declaration surface used by direct lowering callers. |
 | `calls_moves.cpp` | `calls` | Durable large call boundary move lowering implementation; should stay split. |
 | `calls_preservation.cpp` | `calls` | Durable preserved-value analysis/republication helpers; includes `dispatch.hpp` for diagnostic/context helpers and is a possible later header-narrowing beneficiary. |
 | `calls_printing.cpp` | `calls` | Durable call instruction construction, effect modeling, and printer support; should stay split. |
@@ -84,10 +85,9 @@ File-to-family map:
 | `compatibility_projection.cpp` | `adapter/internal` | Compatibility projection from prepared/module records; historical boundary adapter, not a reference family. |
 | `compatibility_projection.hpp` | `adapter/internal` | Narrow adapter header for compatibility projection. |
 | `dispatch.cpp` | `adapter/internal` | Main block dispatcher and retargeting glue; should shrink but not be merged into one giant dispatch file. |
-| `dispatch.hpp` | `adapter/internal` | Current catch-all dispatch/internal header. It exposes block dispatch plus calls glue, diagnostics, producer lookup, publication, edge copies, store sources, entry formals, and lookup declarations. Step 2 has narrowed some shard declarations, but this header still needs continued shrinkage. |
+| `dispatch.hpp` | `adapter/internal` | Current catch-all dispatch/internal header. It exposes block dispatch plus producer lookup, publication, edge copies, store sources, entry formals, and lookup declarations. Step 2 and Step 3 have narrowed some shard declarations, but this header still needs continued shrinkage. |
 | `comparison_branch_fusion.cpp` | `comparison` | Durable fused compare/branch lowering, now using a comparison-family filename while temporarily depending on dispatch hooks. Keep separate until hook dependencies are narrow enough to justify moving declarations toward `comparison.hpp` or a private branch-fusion header. |
 | `comparison_branch_fusion.hpp` | `comparison` | Narrow branch-fusion declaration surface for the comparison-family shard; still exposes dispatch hook plumbing by necessity. |
-| `dispatch_calls.cpp` | `calls` | Durable dispatch-to-calls bridge: scalar call producers, call lowering, call boundary materialization, indirect callee materialization, missing frame-slot args, stack-preserved values. Should move toward `calls.hpp`/calls-private surface instead of `dispatch.hpp`. |
 | `dispatch_diagnostics.cpp` | `adapter/internal` | Thin diagnostics helper; first low-risk header extraction candidate because the declarations are self-contained and used by dispatch/calls/dynamic-stack paths. |
 | `dispatch_edge_copies.cpp` | `adapter/internal` | Join/edge copy publication glue across predecessor/successor contexts; temporarily justified as dispatch-internal. |
 | `dispatch_lookup.cpp` | `adapter/internal` | Thin prepared-value/home lookup helpers; temporarily justified as dispatch-internal and a possible private-header split after diagnostics. |
@@ -135,17 +135,14 @@ File-to-family map:
 Specific dispatch surface notes:
 
 - `dispatch.hpp`: adapter/internal catch-all. It currently includes `alu.hpp`,
-  ABI/module/query headers, and declares every dispatch shard interface in one
-  public-looking header. The safest shrink is extracting self-contained
-  declarations into narrow private headers used only by implementation shards,
-  starting with diagnostics.
+  ABI/module/query headers, and still declares several dispatch shard
+  interfaces in one public-looking header. The safest shrink is extracting
+  remaining self-contained declarations into narrow private headers used only by
+  implementation shards.
 - `comparison_branch_fusion.cpp`: maps to `comparison`; now has a
   durable-family filename but still needs dispatch publication callbacks. Keep
   separate while hook dependencies remain, then consider whether declarations
   should move further toward `comparison.hpp`.
-- `dispatch_calls.cpp`: maps to `calls`; should stop being declared from
-  `dispatch.hpp` once the calls bridge has a calls-owned or private dispatch-call
-  surface.
 - `dispatch_diagnostics.cpp`: maps to `adapter/internal`; declarations are thin,
   cohesive, and low-risk to extract first.
 - `memory_dynamic_stack.cpp`: maps to `memory`; dynamic alloca helper-call
@@ -181,6 +178,9 @@ Specific calls shard notes:
   but later remove `dispatch.hpp` dependency if frame-slot helpers move.
 - `calls_common.cpp`: thin shared helper file; low priority merge candidate only
   inside a calls-only cleanup packet.
+- `calls_dispatch_bridge.cpp`: durable calls-family bridge from dispatch-time
+  lowering context into prepared call-plan handling; keep split from `calls.cpp`
+  because the implementation remains large and cohesive.
 - `calls_moves.cpp`: large durable call boundary move lowering; keep split.
 - `calls_preservation.cpp`: durable preservation analysis/republication; keep
   split, but later remove `dispatch.hpp` dependency if diagnostics/helpers move.
@@ -191,9 +191,9 @@ Prioritized consolidation list:
 1. Step 2 low-risk header packet: extract `dispatch_diagnostics` declarations
    from `dispatch.hpp` into a narrow private header, update only implementation
    includes that need diagnostics, and keep behavior unchanged.
-2. Move `dispatch_calls.cpp` declarations toward `calls.hpp` or a narrow
-   calls-private bridge so calls logic is not advertised by the catch-all
-   dispatch header.
+2. Grouped Step 3 route-boundary decision: justify the remaining
+   adapter/internal `dispatch_*` shard names, or mechanically rename one more
+   clearly durable-family shard if the family boundary is already obvious.
 3. Split `dispatch_lookup` declarations into a private lookup header used by
    dispatch internals.
 4. Revisit whether `comparison_branch_fusion.hpp` should move closer to
