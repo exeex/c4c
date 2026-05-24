@@ -131,3 +131,14 @@ Do not treat this list as final; use it as a starting set for the audit.
 - Each generated idea is small enough for one focused agent run.
 - No active implementation plan is left half-open unless one generated idea is
   intentionally activated by the plan owner.
+
+## Completion Note
+
+Closed after the active runbook produced the audit table, reference-model
+comparison, prioritized candidate list, and six focused follow-up ideas under
+`ideas/open/`. The generated ideas cover prepared move/publication indexing,
+value-home and storage interpretation, call-boundary move classification,
+entry-formal publication planning, edge-copy/block-entry bookkeeping, and shared
+Prepared-consumer diagnostics. No implementation changes or weakened contracts
+were used as audit evidence, and no generated implementation idea was
+activated.
