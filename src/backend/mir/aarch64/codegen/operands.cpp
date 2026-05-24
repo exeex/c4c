@@ -156,48 +156,31 @@ namespace mir = c4c::backend::mir;
   return std::nullopt;
 }
 
-[[nodiscard]] module::ModuleLoweringDiagnosticKind diagnostic_kind_for_decoded_failure(
-    const prepare::PreparedDecodedHomeStorage& decoded) {
-  if (decoded.status == prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement) {
-    return module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority;
-  }
-  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
-    return module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan;
-  }
-  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
-    return module::ModuleLoweringDiagnosticKind::UnsupportedValueHome;
+[[nodiscard]] module::ModuleLoweringDiagnosticKind diagnostic_kind_for_prepared_failure(
+    prepare::PreparedDecodedHomeStorageDiagnosticCategory category) {
+  switch (category) {
+    case prepare::PreparedDecodedHomeStorageDiagnosticCategory::MissingTypedRegisterAuthority:
+      return module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority;
+    case prepare::PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedStoragePlanAuthority:
+      return module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan;
+    case prepare::PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedValueHomeAuthority:
+      return module::ModuleLoweringDiagnosticKind::UnsupportedValueHome;
+    case prepare::PreparedDecodedHomeStorageDiagnosticCategory::MissingValueAuthority:
+      return module::ModuleLoweringDiagnosticKind::MissingValueAuthority;
   }
   return module::ModuleLoweringDiagnosticKind::MissingValueAuthority;
 }
 
-[[nodiscard]] std::string diagnostic_message_for_decoded_failure(
-    const prepare::PreparedDecodedHomeStorage& decoded) {
-  if (decoded.status == prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement) {
-    if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
-      return "storage-plan register value is missing typed register placement";
-    }
-    if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
-      return "value-home register spelling is diagnostic-only until typed placement exists";
-    }
-    return "regalloc register assignment is missing typed register placement";
-  }
-  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
-    return "storage-plan value does not have a supported typed operand form";
-  }
-  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
-    return "prepared value home does not have a supported typed operand form";
-  }
-  return "no typed prepared authority exists for value operand";
-}
-
 void diagnose_decoded_failure(const prepare::PreparedDecodedHomeStorage& decoded,
                               module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto prepared_diagnostic =
+      prepare::build_prepared_decoded_home_storage_diagnostic(decoded);
   diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-      .kind = diagnostic_kind_for_decoded_failure(decoded),
-      .function_name = decoded.function_name,
-      .value_id = decoded.value_id,
-      .value_name = decoded.value_name,
-      .message = diagnostic_message_for_decoded_failure(decoded),
+      .kind = diagnostic_kind_for_prepared_failure(prepared_diagnostic.category),
+      .function_name = prepared_diagnostic.function_name,
+      .value_id = prepared_diagnostic.value_id,
+      .value_name = prepared_diagnostic.value_name,
+      .message = prepared_diagnostic.message,
   });
 }
 
@@ -232,12 +215,9 @@ std::optional<ResolvedOperand> resolve_value_operand(
     return std::nullopt;
   }
 
-  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-      .kind = module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-      .function_name = context.control_flow->function_name,
-      .value_id = value_id,
-      .message = "no typed prepared authority exists for value operand",
-  });
+  auto missing_decoded = decoded;
+  missing_decoded.function_name = context.control_flow->function_name;
+  diagnose_decoded_failure(missing_decoded, diagnostics);
   return std::nullopt;
 }
 
