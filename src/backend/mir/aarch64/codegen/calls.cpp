@@ -46,26 +46,10 @@ ScopedPreparedCallPreserveEffectPublication::~ScopedPreparedCallPreserveEffectPu
 const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
-  if (context.function.call_plans == nullptr) {
-    return nullptr;
-  }
-  const auto position_key = [](std::size_t block_index, std::size_t inst_index) {
-    return (block_index << 32U) ^ inst_index;
-  };
-  if (context.function.call_plan_indexes != nullptr) {
-    const auto it = context.function.call_plan_indexes->calls_by_position.find(
-        position_key(context.block_index, instruction_index));
-    return it == context.function.call_plan_indexes->calls_by_position.end()
-               ? nullptr
-               : it->second;
-  }
-  for (const auto& call : context.function.call_plans->calls) {
-    if (call.block_index == context.block_index &&
-        call.instruction_index == instruction_index) {
-      return &call;
-    }
-  }
-  return nullptr;
+  return prepare::find_indexed_prepared_call_plan(context.function.call_plan_lookups,
+                                                  context.function.call_plans,
+                                                  context.block_index,
+                                                  instruction_index);
 }
 
 const prepare::PreparedCallPlan* require_prepared_call_plan(

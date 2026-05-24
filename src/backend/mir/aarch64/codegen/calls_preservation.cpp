@@ -130,105 +130,16 @@ namespace {
   return dominates[block_index][dominator_index];
 }
 
-[[nodiscard]] std::size_t argument_source_move_bundle_position_key(
-    prepare::PreparedMovePhase phase,
-    std::size_t block_index,
-    std::size_t instruction_index) {
-  return (static_cast<std::size_t>(phase) << 56U) ^
-         (block_index << 32U) ^
-         instruction_index;
-}
-
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index) {
-  if (context.function.move_bundle_indexes != nullptr) {
-    const auto it = context.function.move_bundle_indexes->bundles_by_position.find(
-        argument_source_move_bundle_position_key(phase, block_index, instruction_index));
-    if (it != context.function.move_bundle_indexes->bundles_by_position.end()) {
-      return it->second;
-    }
-    return nullptr;
-  }
-  return context.function.value_locations == nullptr
-             ? nullptr
-             : prepare::find_prepared_move_bundle(*context.function.value_locations,
-                                                  phase,
-                                                  block_index,
-                                                  instruction_index);
-}
-
-[[nodiscard]] bool argument_source_prior_preserved_entry_position_less(
-    const module::PriorPreservedValueEntry& lhs,
-    const module::PriorPreservedValueEntry& rhs) {
-  if (lhs.block_index != rhs.block_index) {
-    return lhs.block_index < rhs.block_index;
-  }
-  return lhs.instruction_index < rhs.instruction_index;
-}
-
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_latest_prior_preserved_value_by_position(
-    const module::PreparedCallPlanIndexes& call_plan_indexes,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id) {
-  if (value_id >= call_plan_indexes.prior_preserved_by_value.size()) {
-    return nullptr;
-  }
-  const auto& entries = call_plan_indexes.prior_preserved_by_value[value_id];
-  if (entries.empty()) {
-    return nullptr;
-  }
-  const module::PriorPreservedValueEntry current{
-      .block_index = current_call_plan.block_index,
-      .instruction_index = current_call_plan.instruction_index,
-      .preserved = nullptr,
-  };
-  auto it = std::lower_bound(
-      entries.begin(), entries.end(), current, argument_source_prior_preserved_entry_position_less);
-  if (it == entries.begin()) {
-    return nullptr;
-  }
-  --it;
-  return it->preserved;
-}
-
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_preserved_value_by_dominating_position(
-    const module::PreparedCallPlanIndexes& call_plan_indexes,
-    const prepare::PreparedControlFlowFunction* control_flow,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id) {
-  if (value_id >= call_plan_indexes.prior_preserved_by_value.size()) {
-    return nullptr;
-  }
-  const auto& entries = call_plan_indexes.prior_preserved_by_value[value_id];
-  if (entries.empty()) {
-    return nullptr;
-  }
-  const module::PriorPreservedValueEntry current{
-      .block_index = current_call_plan.block_index,
-      .instruction_index = current_call_plan.instruction_index,
-      .preserved = nullptr,
-  };
-  auto it = std::lower_bound(
-      entries.begin(), entries.end(), current, argument_source_prior_preserved_entry_position_less);
-  while (it != entries.begin()) {
-    --it;
-    if (it->block_index == current_call_plan.block_index) {
-      if (it->instruction_index < current_call_plan.instruction_index) {
-        return it->preserved;
-      }
-      continue;
-    }
-    if (control_flow != nullptr &&
-        prepared_block_dominates(*control_flow, it->block_index, current_call_plan.block_index)) {
-      return it->preserved;
-    }
-  }
-  return nullptr;
+  return prepare::find_indexed_prepared_move_bundle(context.function.move_bundle_lookups,
+                                                    context.function.value_locations,
+                                                    phase,
+                                                    block_index,
+                                                    instruction_index);
 }
 
 [[nodiscard]] const prepare::PreparedCallPreservedValue*
@@ -238,9 +149,9 @@ find_prior_preserved_value_for_call_argument(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedMoveResolution& move) {
   const auto value_id = argument.source_value_id.value_or(move.from_value_id);
-  if (context.function.call_plan_indexes != nullptr) {
-    return find_latest_prior_preserved_value_by_position(
-        *context.function.call_plan_indexes, current_call_plan, value_id);
+  if (context.function.call_plan_lookups != nullptr) {
+    return prepare::find_latest_indexed_prior_preserved_value(
+        *context.function.call_plan_lookups, current_call_plan, value_id);
   }
   const auto* call_plans =
       context.function.call_plans != nullptr
@@ -274,9 +185,9 @@ find_prior_preserved_value_for_value(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     prepare::PreparedValueId value_id) {
-  if (context.function.call_plan_indexes != nullptr) {
-    return find_prior_preserved_value_by_dominating_position(
-        *context.function.call_plan_indexes,
+  if (context.function.call_plan_lookups != nullptr) {
+    return prepare::find_dominating_indexed_prior_preserved_value(
+        *context.function.call_plan_lookups,
         context.function.control_flow,
         current_call_plan,
         value_id);

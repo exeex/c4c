@@ -769,14 +769,11 @@ BlockAddressMaterializationIndex make_block_address_materialization_index(
   if (addressing == nullptr) {
     return index;
   }
-  if (context.function.address_materialization_indexes != nullptr) {
-    const auto it = context.function.address_materialization_indexes
-                        ->materializations_by_block.find(
-                            context.control_flow_block->block_label);
-    if (it != context.function.address_materialization_indexes
-                  ->materializations_by_block.end()) {
-      index.materializations = it->second;
-    }
+  if (const auto* materializations =
+          prepare::find_indexed_prepared_address_materializations(
+              context.function.address_materialization_lookups,
+              context.control_flow_block->block_label)) {
+    index.materializations = *materializations;
     for (const auto* materialization : index.materializations) {
       if (materialization != nullptr) {
         index.materializations_by_instruction[materialization->inst_index].push_back(
@@ -793,12 +790,12 @@ BlockAddressMaterializationIndex make_block_address_materialization_index(
               });
     return index;
   }
-  index.materializations.reserve(addressing->address_materializations.size());
-  for (const auto& materialization : addressing->address_materializations) {
-    if (materialization.block_label == context.control_flow_block->block_label) {
-      index.materializations.push_back(&materialization);
-      index.materializations_by_instruction[materialization.inst_index].push_back(
-          &materialization);
+  index.materializations = prepare::collect_prepared_address_materializations_for_block(
+      *addressing, context.control_flow_block->block_label);
+  for (const auto* materialization : index.materializations) {
+    if (materialization != nullptr) {
+      index.materializations_by_instruction[materialization->inst_index].push_back(
+          materialization);
     }
   }
   std::sort(index.materializations.begin(),

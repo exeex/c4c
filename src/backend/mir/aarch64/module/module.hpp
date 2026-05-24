@@ -9,7 +9,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::aarch64::module {
@@ -69,34 +68,6 @@ struct ModuleLoweringDiagnostics {
   [[nodiscard]] bool empty() const { return entries.empty(); }
 };
 
-struct PriorPreservedValueEntry {
-  std::size_t block_index = 0;
-  std::size_t instruction_index = 0;
-  const prepare::PreparedCallPreservedValue* preserved = nullptr;
-};
-
-struct PreparedCallPlanIndexes {
-  std::unordered_map<std::size_t, const prepare::PreparedCallPlan*> calls_by_position;
-  std::vector<std::vector<PriorPreservedValueEntry>> prior_preserved_by_value;
-  std::vector<std::vector<const prepare::PreparedCallPreservedValue*>>
-      first_stack_preserved_by_call_index;
-};
-
-struct PreparedAddressMaterializationIndexes {
-  std::unordered_map<c4c::BlockLabelId,
-                     std::vector<const prepare::PreparedAddressMaterialization*>>
-      materializations_by_block;
-};
-
-struct PreparedMoveBundleIndexes {
-  std::unordered_map<std::size_t, const prepare::PreparedMoveBundle*> bundles_by_position;
-};
-
-struct PreparedValueHomeIndexes {
-  std::unordered_map<prepare::PreparedValueId, const prepare::PreparedValueHome*> homes_by_id;
-  std::unordered_map<c4c::ValueNameId, prepare::PreparedValueId> value_ids;
-};
-
 struct FunctionLoweringContext {
   const prepare::PreparedBirModule* prepared = nullptr;
   const c4c::TargetProfile* target_profile = nullptr;
@@ -108,10 +79,12 @@ struct FunctionLoweringContext {
   const prepare::PreparedFramePlanFunction* frame_plan = nullptr;
   const prepare::PreparedDynamicStackPlanFunction* dynamic_stack_plan = nullptr;
   const prepare::PreparedCallPlansFunction* call_plans = nullptr;
-  const PreparedCallPlanIndexes* call_plan_indexes = nullptr;
-  const PreparedAddressMaterializationIndexes* address_materialization_indexes = nullptr;
-  const PreparedMoveBundleIndexes* move_bundle_indexes = nullptr;
-  const PreparedValueHomeIndexes* value_home_indexes = nullptr;
+  const prepare::PreparedFunctionLookups* prepared_lookups = nullptr;
+  const prepare::PreparedCallPlanLookups* call_plan_lookups = nullptr;
+  const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups =
+      nullptr;
+  const prepare::PreparedMoveBundleLookups* move_bundle_lookups = nullptr;
+  const prepare::PreparedValueHomeLookups* value_home_lookups = nullptr;
 };
 
 struct BlockLoweringContext {

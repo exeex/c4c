@@ -1050,31 +1050,6 @@ materialize_missing_frame_slot_call_arguments(
   return lowered;
 }
 
-[[nodiscard]] const std::vector<const prepare::PreparedCallPreservedValue*>*
-first_stack_preserved_values_for_call(
-    const module::PreparedCallPlanIndexes& call_plan_indexes,
-    const prepare::PreparedCallPlansFunction& call_plans,
-    const prepare::PreparedCallPlan& current_call_plan) {
-  if (call_plans.calls.empty()) {
-    return nullptr;
-  }
-  const auto* begin = call_plans.calls.data();
-  const auto* end = begin + call_plans.calls.size();
-  const auto* current = &current_call_plan;
-  if (current >= begin && current < end) {
-    return &call_plan_indexes.first_stack_preserved_by_call_index
-                [static_cast<std::size_t>(current - begin)];
-  }
-  for (std::size_t call_index = 0; call_index < call_plans.calls.size(); ++call_index) {
-    const auto& call = call_plans.calls[call_index];
-    if (call.block_index == current_call_plan.block_index &&
-        call.instruction_index == current_call_plan.instruction_index) {
-      return &call_plan_indexes.first_stack_preserved_by_call_index[call_index];
-    }
-  }
-  return nullptr;
-}
-
 [[nodiscard]] std::vector<const prepare::PreparedCallPreservedValue*>
 first_stack_preserved_values_for_call_fallback(
     const prepare::PreparedCallPlansFunction& call_plans,
@@ -1128,12 +1103,12 @@ publish_stack_preserved_call_values(
                        context.function.control_flow->function_name)
                  : nullptr);
   const auto* first_stack_values =
-      call_plans == nullptr || context.function.call_plan_indexes == nullptr
+      call_plans == nullptr || context.function.call_plan_lookups == nullptr
           ? nullptr
-          : first_stack_preserved_values_for_call(
-                *context.function.call_plan_indexes, *call_plans, call_plan);
+          : prepare::first_indexed_stack_preserved_values_for_call(
+                *context.function.call_plan_lookups, *call_plans, call_plan);
   std::vector<const prepare::PreparedCallPreservedValue*> fallback_values;
-  if (call_plans != nullptr && context.function.call_plan_indexes == nullptr) {
+  if (call_plans != nullptr && context.function.call_plan_lookups == nullptr) {
     fallback_values =
         first_stack_preserved_values_for_call_fallback(*call_plans, call_plan);
   } else if (call_plans == nullptr) {

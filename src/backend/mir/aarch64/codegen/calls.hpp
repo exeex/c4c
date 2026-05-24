@@ -318,29 +318,11 @@ struct PreservedCallArgumentSource {
     const prepare::PreparedControlFlowFunction& function,
     std::size_t dominator_index,
     std::size_t block_index);
-[[nodiscard]] std::size_t argument_source_move_bundle_position_key(
-    prepare::PreparedMovePhase phase,
-    std::size_t block_index,
-    std::size_t instruction_index);
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
-[[nodiscard]] bool argument_source_prior_preserved_entry_position_less(
-    const module::PriorPreservedValueEntry& lhs,
-    const module::PriorPreservedValueEntry& rhs);
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_latest_prior_preserved_value_by_position(
-    const module::PreparedCallPlanIndexes& call_plan_indexes,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id);
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_preserved_value_by_dominating_position(
-    const module::PreparedCallPlanIndexes& call_plan_indexes,
-    const prepare::PreparedControlFlowFunction* control_flow,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id);
 [[nodiscard]] const prepare::PreparedCallPreservedValue*
 find_prior_preserved_value_for_call_argument(
     const module::BlockLoweringContext& context,

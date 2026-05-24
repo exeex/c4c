@@ -54,7 +54,7 @@ std::optional<c4c::ValueNameId> prepared_named_value_id(
 const prepare::PreparedValueHome* find_value_home(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id) {
-  return prepare::find_indexed_prepared_value_home(context.function.value_home_indexes,
+  return prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
                                                    context.function.value_locations,
                                                    value_id);
 }
@@ -62,7 +62,7 @@ const prepare::PreparedValueHome* find_value_home(
 std::optional<prepare::PreparedValueId> prepared_value_id(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name) {
-  return prepare::find_indexed_prepared_value_id(context.function.value_home_indexes,
+  return prepare::find_indexed_prepared_value_id(context.function.value_home_lookups,
                                                  context.function.regalloc,
                                                  context.function.value_locations,
                                                  value_name);
@@ -71,7 +71,7 @@ std::optional<prepare::PreparedValueId> prepared_value_id(
 const prepare::PreparedValueHome* find_value_home(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name) {
-  return prepare::find_indexed_prepared_value_home(context.function.value_home_indexes,
+  return prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
                                                    context.function.regalloc,
                                                    context.function.value_locations,
                                                    value_name);
