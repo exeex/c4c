@@ -67,3 +67,18 @@ progress from message-only changes.
 
 Reject if only one narrow named missing-fact testcase is handled while nearby
 missing authority categories still duplicate AArch64-only message logic.
+
+## Completion Note
+
+Closed after the active runbook added shared decoded Prepared home/storage
+diagnostic builders in prealloc, adapted AArch64 prepared-consumer diagnostics
+to use those builders while keeping target-local diagnostics local, and exposed
+a concrete x86 prepared-query reuse path.
+
+Validation covered direct prealloc diagnostic-builder behavior, AArch64 builder
+consumption, and x86 prepared query reuse through backend tests including
+`backend_prealloc_decoded_home_storage`,
+`backend_aarch64_operand_resolution`, and
+`backend_x86_prepared_decoded_home_storage`. No diagnostics or expectations
+were weakened or reclassified, and no functional lowering progress was claimed
+from message-only changes.
