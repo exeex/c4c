@@ -1313,38 +1313,54 @@ namespace mir = c4c::backend::mir;
                                    result_type);
 }
 
+struct ScalarFallbackOperandSelector {
+  const module::BlockLoweringContext& context;
+  std::size_t instruction_index;
+  const BlockScalarLoweringState& scalar_state;
+  module::ModuleLoweringDiagnostics& diagnostics;
+
+  [[nodiscard]] std::optional<OperandRecord> select(const bir::Value& value) const {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return make_immediate_scalar_operand(value);
+    }
+    const auto* home = find_named_value_home(value, context.function);
+    const auto emitted =
+        home == nullptr ? std::optional<RegisterOperand>{}
+                        : find_emitted_scalar_register(scalar_state, home->value_name);
+    if (emitted.has_value()) {
+      return make_register_operand(*emitted);
+    }
+    auto load_source =
+        make_unpublished_load_local_source_operand(context, value, instruction_index);
+    if (load_source.has_value()) {
+      return make_memory_operand(*load_source);
+    }
+    if (home != nullptr) {
+      auto value_home_operand = make_named_scalar_operand(value, context, diagnostics);
+      if (value_home_operand.has_value()) {
+        return value_home_operand;
+      }
+      auto source = make_prepared_scalar_load_source(context, *home);
+      if (source.has_value()) {
+        return make_memory_operand(*source);
+      }
+    }
+    return make_named_scalar_operand(value, context, diagnostics);
+  }
+};
+
 [[nodiscard]] std::optional<OperandRecord> make_scalar_fallback_operand(
     const bir::Value& value,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return make_immediate_scalar_operand(value);
-  }
-  const auto* home = find_named_value_home(value, context.function);
-  const auto emitted =
-      home == nullptr ? std::optional<RegisterOperand>{}
-                      : find_emitted_scalar_register(scalar_state, home->value_name);
-  if (emitted.has_value()) {
-    return make_register_operand(*emitted);
-  }
-  auto load_source =
-      make_unpublished_load_local_source_operand(context, value, instruction_index);
-  if (load_source.has_value()) {
-    return make_memory_operand(*load_source);
-  }
-  if (home != nullptr) {
-    auto value_home_operand = make_named_scalar_operand(value, context, diagnostics);
-    if (value_home_operand.has_value()) {
-      return value_home_operand;
-    }
-    auto source = make_prepared_scalar_load_source(context, *home);
-    if (source.has_value()) {
-      return make_memory_operand(*source);
-    }
-  }
-  return make_named_scalar_operand(value, context, diagnostics);
+  return ScalarFallbackOperandSelector{
+      .context = context,
+      .instruction_index = instruction_index,
+      .scalar_state = scalar_state,
+      .diagnostics = diagnostics,
+  }.select(value);
 }
 
 [[nodiscard]] std::optional<OperandRecord> make_control_publication_operand(
