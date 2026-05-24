@@ -258,6 +258,28 @@ set_tests_properties(backend_prepared_lookup_helper PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prealloc_decoded_home_storage_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prealloc_decoded_home_storage_test.cpp"
+)
+target_include_directories(backend_prealloc_decoded_home_storage_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_decoded_home_storage_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prealloc_decoded_home_storage_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prealloc_decoded_home_storage
+  COMMAND $<TARGET_FILE:backend_prealloc_decoded_home_storage_test>
+)
+set_tests_properties(backend_prealloc_decoded_home_storage PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_x86_prepared_handoff_label_authority_test
     "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_handoff_label_authority_test.cpp"
 )

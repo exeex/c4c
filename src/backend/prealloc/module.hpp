@@ -3,6 +3,7 @@
 #include "addressing.hpp"
 #include "calls.hpp"
 #include "control_flow.hpp"
+#include "decoded_home_storage.hpp"
 #include "frame.hpp"
 #include "liveness.hpp"
 #include "names.hpp"
