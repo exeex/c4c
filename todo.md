@@ -9,28 +9,27 @@ Current Step Title: Consolidate Remaining Family Boundaries
 ## Just Finished
 
 Completed Step 4 - Consolidate Remaining Family Boundaries. Moved the
-`lower_entry_formal_publications` declaration out of `dispatch.hpp` and into
-the prologue-family boundary in `prologue.hpp`, updated `dispatch.cpp` to
-include that boundary directly, and kept `prologue_entry_formals.cpp` aligned
-with its owning header with no behavior changes.
+`dispatch_publication.cpp` helper declarations out of `dispatch.hpp` and into
+the narrow `dispatch_publication.hpp` adapter/internal boundary, updated direct
+publication-helper users to include that header, and made
+`dispatch_publication.cpp` include its direct MIR query dependency instead of
+receiving it through `dispatch.hpp`, with no behavior changes.
 
 ## Suggested Next
 
-Continue Step 4 with one more narrow family-boundary cleanup from the retained
-prioritized list, or refresh the file-to-family map if the supervisor decides
-the remaining dispatch catch-all surface is small enough for this runbook slice.
+Continue Step 4 by reassessing the now-smaller `dispatch.hpp` surface. If only
+the public block-dispatch API remains, the next coherent packet is a
+supervisor/plan-owner decision on whether this runbook step is complete.
 
 ## Watchouts
 
-- `dispatch.hpp` no longer declares the prologue entry-formal lowering
-  function; remaining catch-all surface is now mostly dispatch/publication
-  helpers and should be moved only through similarly narrow ownership packets.
-- Several direct users still include both `dispatch.hpp` and narrow private
-  dispatch headers because the remaining public dispatch entry points have not
-  moved.
-- `dispatch.cpp` has a pre-existing local `EdgeProducerContext` type declaration
-  that is not part of the moved edge-copy public declarations; this packet left
-  it untouched to avoid unrelated cleanup.
+- `dispatch.hpp` now declares only the block-dispatch surface; it no longer
+  carries publication helper declarations or their transitive include needs.
+- Direct implementation shards may still include both `dispatch.hpp` and narrow
+  private dispatch headers when they need the block-dispatch context plus
+  private adapter helpers.
+- `dispatch_publication.hpp` intentionally depends on `alu.hpp` for
+  `BlockScalarLoweringState` and register operand vocabulary.
 
 ## Proof
 

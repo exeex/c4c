@@ -1,6 +1,6 @@
-#include "dispatch.hpp"
+#include "dispatch_publication.hpp"
 
-
+#include "../../query.hpp"
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "cast_ops.hpp"
