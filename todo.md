@@ -1,67 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-01-calls-dispatch-bridge-helper-absorption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repeat Only for Nearby Same-Shape Helpers
+Current Step ID: 4
+Current Step Title: Focused Behavior-Preservation Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 audited the remaining `calls_dispatch_bridge.cpp/.hpp` helpers after
-the Step 2 before-call move sequencing absorption.
+Step 4 recorded focused behavior-preservation proof for the completed Step 2
+AArch64 call bridge helper absorption.
 
-Decision: stop; no remaining helper family is same-shape enough for another
-bounded absorption packet under the Step 3 rule.
+Readback checks:
 
-Remaining exported bridge helpers and reasons to leave them in place:
-
-- `lower_scalar_call_argument_producers` drives recursive scalar argument
-  materialization, direct global select-chain argument publication, local
-  aggregate address fallback, and scalar-state publication.
-- `lower_call_instruction` remains a public dispatch bridge entry point for
-  dynamic-stack helper calls, variadic helper handling, prepared call-plan
-  diagnostics, and final prepared call lowering.
-- `materialize_call_boundary_source_to_destination` is the nearest-looking
-  before-call helper, but it materializes a missing frame-slot source value
-  into a call ABI destination and records scalar-state publication; that is a
-  wider semantic surface than Step 2's pure before-call move ordering/reload
-  skip helpers.
-- `materialize_indirect_call_callee_to_prepared_register` owns indirect callee
-  lowering, including local-load/store resolution, select-chain/csel emission,
-  scratch selection, and call ABI publication.
-- `record_call_result_source_register` records after-call GPR/FPR result source
-  registers from prepared move and result facts.
-- `materialize_missing_frame_slot_call_arguments` materializes missing
-  frame-slot call arguments into ABI registers and records scalar-state
-  publication.
-- `publish_stack_preserved_call_values` publishes stack-preserved values using
-  prepared call-plan lookup/fallback behavior and stack-slot stores.
+- The only implementation slice in this active plan is commit `1bf9f1c86`
+  (`Move AArch64 call move sequencing helpers`), which moved the before-call
+  move sequencing helper family across `calls_dispatch_bridge.*`,
+  `calls.hpp`, and `calls_moves.cpp` plus the packet `todo.md` update.
+- Step 3 was todo-only (`37fa0b122`) and found no remaining helper family
+  same-shape enough for another bounded absorption packet under this plan.
+- No test files or expectation files changed in the active plan diff, so there
+  is no expectation downgrade, unsupported-test conversion, or testcase-shaped
+  proof shortcut in this slice.
 
 ## Suggested Next
 
-Proceed to Step 4 focused behavior-preservation proof for the already-completed
-Step 2 absorption slice. Suggested coverage: build proof plus focused AArch64
-MIR/codegen tests covering normal calls, select-chain call arguments,
-call-result source registers, preserved-value materialization, and local-load
-fallback call arguments.
+Supervisor should call plan-owner for lifecycle closure review. The runbook's
+ordered steps are exhausted, the only code-changing packet has fresh backend
+proof, and the remaining bridge helpers have documented ownership reasons.
 
 ## Watchouts
 
-- Keep the work behavior-preserving.
-- Do not broaden into `dispatch.cpp`, whole-call-family cleanup, phase
-  extraction, ABI redesign, or expectation rewrites.
-- Treat `materialize_call_boundary_source_to_destination` as non-same-shape
-  despite being adjacent to before-call moves: it performs value publication
-  from a frame-slot source into the call ABI destination, not only move-record
-  sequencing.
-- Any future absorption of scalar argument materialization, indirect callee
-  lowering, call-result recording, missing frame-slot argument materialization,
-  or stack-preservation publication should be a separate plan or reviewed
-  route change with a wider proof surface.
+- Remaining helper caveat: `materialize_call_boundary_source_to_destination`
+  is adjacent to before-call moves, but it materializes a missing frame-slot
+  source value into a call ABI destination and records scalar-state
+  publication, so absorbing it would require a wider proof surface.
+- Other remaining bridge helpers own scalar argument materialization, public
+  dispatch bridge entry, indirect callee lowering, call-result source
+  recording, missing frame-slot argument materialization, or stack-preserved
+  value publication. Treat any future absorption of those helpers as a separate
+  plan or reviewed route change.
+- Keep closure review focused on behavior preservation; there was no
+  expectation churn or unsupported-path downgrade in this plan.
 
 ## Proof
 
-Delegated no-code audit proof: `git diff --check`.
+Delegated proof command:
 
-Result: passed. No build or `test_after.log` was required for this packet.
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+
+Result: passed. Build reported `ninja: no work to do`; `ctest -R
+"^backend_"` passed 162/162 tests with 0 failures. Proof log:
+`test_after.log`.
+
+Additional check: `git diff --check` passed.
