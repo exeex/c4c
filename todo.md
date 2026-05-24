@@ -1,82 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/edge-copy-block-entry-bookkeeping-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Edge-Copy And Block-Entry Bookkeeping
+Current Step ID: Step 2
+Current Step Title: Add The Shared Bookkeeping Helper
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventoried AArch64 edge-copy and block-entry bookkeeping and chose one
-narrow first extraction boundary.
+Step 2 added the selected prealloc block-entry publication bookkeeping helper.
 
-Inventory:
+`PreparedBlockEntryPublication` and
+`collect_prepared_block_entry_publications(...)` now live with
+`PreparedValueLocationFunction` in `src/backend/prealloc/value_locations.hpp`.
+The helper filters block-entry `OutOfSsaParallelCopy` bundles by successor
+label and returns fact/status records for each matching move.
 
-- `dispatch_edge_copies.cpp` mixes concrete AArch64 emission with some
-  Prepared bookkeeping. Producer-chain walking, select-chain materialization,
-  scratch-register selection, register spelling, frame-slot addressing, inline
-  asm records, and scalar-state updates are AArch64-local. The small
-  `prepared_edge_select_source_is_destination_register(...)` comparison reads
-  Prepared homes but depends on target register spelling, so it is not the
-  first move.
-- `dispatch_publication.cpp` has repeated target-neutral scans over
-  `PreparedMoveBundle` records for `BlockEntry` plus
-  `OutOfSsaParallelCopy` authority and the current block label. Those scans
-  distinguish value destinations, register storage, `to_value_id`, source
-  bundle labels, missing destination register fields, and value-home fallback.
-  The follow-on register parsing, alias checks, scalar-state recording,
-  load/store/inline-asm text, and diagnostics remain AArch64-local.
-- `dispatch_producers.cpp` repeats the same block-entry out-of-SSA
-  publication scan to decide whether a named producer should use an incoming
-  block-entry publication. The recursive same-block producer analysis is
-  target-local lowering strategy; the Prepared bundle filtering is shared
-  bookkeeping.
-- `prealloc/value_locations.hpp` already owns `PreparedMoveBundle`,
-  `PreparedMoveResolution`, value homes, move phases, authority kind, and
-  generic find helpers by phase/block/instruction.
-- `prealloc/control_flow.hpp` already owns route-local out-of-SSA
-  parallel-copy lookup by predecessor/successor labels and execution block.
-- `prealloc/prepared_lookups.hpp/.cpp` already owns indexed value-home and
-  move-bundle lookup surfaces, but not a decoded block-entry publication view.
+The returned facts preserve source `PreparedMoveBundle`, source
+`PreparedMoveResolution`, value home authority, destination value id/name,
+destination role, destination storage kind, and register-name availability.
+Statuses cover available publications, unsupported operation/destination
+forms, unsupported non-register storage, missing value home, and missing
+register name. The helper does not parse target registers, construct MIR
+operands, choose scratches, emit machine records, or select diagnostics.
 
-Chosen boundary: add a prealloc helper that collects/classifies block-entry
-out-of-SSA value publications for one successor block label from
-`PreparedValueLocationFunction` and value homes. The helper should return
-fact/status records preserving the source bundle, move, home, destination
-value id/name, destination storage kind, and register-name availability without
-parsing target registers or constructing MIR operands.
-
-Destination layer: prealloc, because the boundary consumes Prepared facts
-directly (`PreparedMoveBundle`, `PreparedMoveResolution`, `PreparedValueHome`,
-block-label authority). It is not shared MIR yet; the data has not become a
-target-independent machine-record concern.
-
-Target-local responsibilities: AArch64 keeps register parsing/spelling,
-physical-register aliasing, scalar-state recording, scratch choice, load/store
-mnemonics, frame-pointer vs stack-pointer address policy, inline asm and
-machine-instruction record construction, concrete edge-copy emission, and
-diagnostic behavior.
+Added direct backend/prealloc coverage in
+`backend_prealloc_block_entry_publications` for available explicit-register
+publications, value-home register fallback, stack/non-register destinations,
+missing home/register facts, wrong phase/authority/label filtering, and source
+Prepared record preservation.
 
 ## Suggested Next
 
-Step 2 should add the selected prealloc block-entry publication helper without
-adapting AArch64 yet. Focus direct helper coverage on available register
-publications, stack/non-register destinations, missing home/register facts,
-wrong phase/authority/label fallback, and preservation of source Prepared
-records.
+Step 3 should adapt AArch64 block-entry/publication consumers to use the
+prealloc helper for the repeated Prepared move-bundle bookkeeping only.
+Keep concrete move emission and target register handling local.
 
 ## Watchouts
 
-Keep the first helper scoped to block-entry out-of-SSA publication facts. Do
-not move edge producer walking, select-chain materialization, target register
-spelling/parsing, scratch-register selection, machine records, target operands,
-or move diagnostics into prealloc.
+Do not broaden Step 3 into edge producer walking, select-chain materialization,
+target register spelling/parsing, scratch-register selection, machine records,
+target operands, or move diagnostics. Those remain target-local.
 
-Avoid a shared-MIR helper for this first slice: the repeated code is still
-Prepared fact consumption, not target-independent machine-record bookkeeping.
+The helper intentionally reports facts and statuses for target consumers; it
+does not silently downgrade unsupported destination/storage forms to fallback
+emission.
 
 ## Proof
 
-Documentation/inventory-only packet. No implementation files were edited, so
-no build or ctest proof was required or run.
+Ran the delegated proof exactly:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+Result: passed, 155/155 backend tests. Proof log: `test_after.log`.

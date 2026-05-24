@@ -112,6 +112,47 @@ struct PreparedValueLocationFunction {
   std::vector<PreparedMoveBundle> move_bundles;
 };
 
+enum class PreparedBlockEntryPublicationStatus {
+  Available,
+  UnsupportedOperation,
+  UnsupportedDestinationKind,
+  UnsupportedDestinationStorage,
+  MissingValueHome,
+  MissingRegisterName,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_block_entry_publication_status_name(
+    PreparedBlockEntryPublicationStatus status) {
+  switch (status) {
+    case PreparedBlockEntryPublicationStatus::Available:
+      return "available";
+    case PreparedBlockEntryPublicationStatus::UnsupportedOperation:
+      return "unsupported_operation";
+    case PreparedBlockEntryPublicationStatus::UnsupportedDestinationKind:
+      return "unsupported_destination_kind";
+    case PreparedBlockEntryPublicationStatus::UnsupportedDestinationStorage:
+      return "unsupported_destination_storage";
+    case PreparedBlockEntryPublicationStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedBlockEntryPublicationStatus::MissingRegisterName:
+      return "missing_register_name";
+  }
+  return "unknown";
+}
+
+struct PreparedBlockEntryPublication {
+  PreparedBlockEntryPublicationStatus status =
+      PreparedBlockEntryPublicationStatus::MissingValueHome;
+  const PreparedMoveBundle* bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedValueHome* home = nullptr;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::string> destination_register_name;
+};
+
 struct PreparedValueLocations {
   std::vector<PreparedValueLocationFunction> functions;
 };
@@ -299,6 +340,69 @@ find_prepared_out_of_ssa_parallel_copy_move_for_step(
     match = &move_bundle;
   }
   return match;
+}
+
+[[nodiscard]] inline bool prepared_block_entry_publication_available(
+    const PreparedBlockEntryPublication& publication) {
+  return publication.status == PreparedBlockEntryPublicationStatus::Available;
+}
+
+[[nodiscard]] inline std::vector<PreparedBlockEntryPublication>
+collect_prepared_block_entry_publications(
+    const PreparedValueLocationFunction* function_locations,
+    BlockLabelId successor_label) {
+  std::vector<PreparedBlockEntryPublication> publications;
+  if (function_locations == nullptr || successor_label == kInvalidBlockLabel) {
+    return publications;
+  }
+
+  const std::optional<BlockLabelId> expected_successor{successor_label};
+  for (const auto& bundle : function_locations->move_bundles) {
+    if (bundle.phase != PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label != expected_successor) {
+      continue;
+    }
+
+    for (const auto& move : bundle.moves) {
+      PreparedBlockEntryPublication publication{
+          .bundle = &bundle,
+          .move = &move,
+          .destination_value_id = move.to_value_id,
+          .destination_kind = move.destination_kind,
+          .destination_storage_kind = move.destination_storage_kind,
+          .destination_register_name = move.destination_register_name,
+      };
+
+      const auto* home = find_prepared_value_home(*function_locations, move.to_value_id);
+      publication.home = home;
+      if (home != nullptr) {
+        publication.destination_value_name = home->value_name;
+      }
+
+      if (move.op_kind != PreparedMoveResolutionOpKind::Move) {
+        publication.status = PreparedBlockEntryPublicationStatus::UnsupportedOperation;
+      } else if (move.destination_kind != PreparedMoveDestinationKind::Value) {
+        publication.status =
+            PreparedBlockEntryPublicationStatus::UnsupportedDestinationKind;
+      } else if (move.destination_storage_kind != PreparedMoveStorageKind::Register) {
+        publication.status =
+            PreparedBlockEntryPublicationStatus::UnsupportedDestinationStorage;
+      } else if (home == nullptr) {
+        publication.status = PreparedBlockEntryPublicationStatus::MissingValueHome;
+      } else {
+        if (!publication.destination_register_name.has_value() &&
+            home->kind == PreparedValueHomeKind::Register) {
+          publication.destination_register_name = home->register_name;
+        }
+        publication.status = publication.destination_register_name.has_value()
+                                 ? PreparedBlockEntryPublicationStatus::Available
+                                 : PreparedBlockEntryPublicationStatus::MissingRegisterName;
+      }
+      publications.push_back(publication);
+    }
+  }
+  return publications;
 }
 
 }  // namespace c4c::backend::prepare
