@@ -1,168 +1,46 @@
 #include "dispatch.hpp"
 
-
 #include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
-#include <type_traits>
 #include <variant>
 
 namespace c4c::backend::aarch64::codegen {
 
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  for (const auto& inst : context.bir_block->insts) {
-    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-    if (binary != nullptr &&
-        binary->result.kind == bir::Value::Kind::Named &&
-        binary->result.name == value.name) {
-      return binary;
-    }
-  }
-  return nullptr;
+  return mir::find_same_block_binary_producer(context.bir_block, value).binary;
 }
 
 [[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return {};
-  }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const std::size_t candidate_index = index - 1;
-    const auto* select =
-        std::get_if<bir::SelectInst>(&context.bir_block->insts[candidate_index]);
-    if (select != nullptr &&
-        select->result.kind == bir::Value::Kind::Named &&
-        select->result.name == value.name) {
-      return SameBlockSelectProducer{.select = select,
-                                     .instruction_index = candidate_index};
-    }
-  }
-  return {};
+  return mir::find_same_block_select_producer(
+      context.bir_block, value, before_instruction_index);
 }
 
 [[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     unsigned depth) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return value.immediate;
-  }
-  if (depth > 4U) {
+  const auto constant =
+      mir::evaluate_same_block_integer_constant(context.bir_block, value, depth);
+  if (!constant.has_value()) {
     return std::nullopt;
   }
-  const auto* binary = find_same_block_binary_producer(context, value);
-  if (binary == nullptr) {
-    return std::nullopt;
-  }
-  const auto lhs = evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
-  const auto rhs = evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return std::nullopt;
-  }
-  switch (binary->opcode) {
-    case bir::BinaryOpcode::Add:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) +
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Sub:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) -
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Mul:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) *
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::And:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) &
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Or:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) |
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Xor:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) ^
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Shl:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       << static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::LShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       >> static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::AShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return *lhs >> static_cast<unsigned>(*rhs);
-    case bir::BinaryOpcode::SDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs / *rhs;
-    case bir::BinaryOpcode::UDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::SRem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs % *rhs;
-    case bir::BinaryOpcode::URem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Eq:
-      return *lhs == *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ne:
-      return *lhs != *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Slt:
-      return *lhs < *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sle:
-      return *lhs <= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sgt:
-      return *lhs > *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sge:
-      return *lhs >= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ult:
-      return static_cast<std::uint64_t>(*lhs) < static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ule:
-      return static_cast<std::uint64_t>(*lhs) <= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ugt:
-      return static_cast<std::uint64_t>(*lhs) > static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Uge:
-      return static_cast<std::uint64_t>(*lhs) >= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-  }
-  return std::nullopt;
+  return constant->value;
+}
+
+[[nodiscard]] static bool dependency_is_load_global(
+    const mir::DependencyTraversalRecord& record) {
+  return record.kind == mir::SameBlockProducerKind::LoadGlobal;
 }
 
 [[nodiscard]] bool select_chain_contains_direct_global_load(
@@ -170,82 +48,22 @@ namespace prepare = c4c::backend::prepare;
     const bir::Value& value,
     std::size_t before_instruction_index,
     unsigned depth) {
-  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return false;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context, value.name, before_instruction_index);
-  if (producer == nullptr) {
-    return false;
-  }
-  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
-    return true;
-  }
-  const auto producer_index = producer_instruction_index(context, producer);
-  const auto nested_before = producer_index.value_or(before_instruction_index);
-  if (const auto* select = std::get_if<bir::SelectInst>(producer);
-      select != nullptr) {
-    return select_chain_contains_direct_global_load(
-               context, select->true_value, nested_before, depth + 1) ||
-           select_chain_contains_direct_global_load(
-               context, select->false_value, nested_before, depth + 1);
-  }
-  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
-    return select_chain_contains_direct_global_load(
-        context, cast->operand, nested_before, depth + 1);
-  }
-  if (const auto* binary = std::get_if<bir::BinaryInst>(producer);
-      binary != nullptr) {
-    return select_chain_contains_direct_global_load(
-               context, binary->lhs, nested_before, depth + 1) ||
-           select_chain_contains_direct_global_load(
-               context, binary->rhs, nested_before, depth + 1);
-  }
-  return false;
+  return mir::select_chain_contains_dependency(
+      context.bir_block, value, before_instruction_index, dependency_is_load_global, depth);
 }
 
 [[nodiscard]] const bir::Inst* find_same_block_named_producer(
     const module::BlockLoweringContext& context,
     std::string_view value_name,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || value_name.empty()) {
-    return nullptr;
-  }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const auto& candidate = context.bir_block->insts[index - 1];
-    bool matches = false;
-    std::visit(
-        [&](const auto& typed_inst) {
-          using T = std::decay_t<decltype(typed_inst)>;
-          if constexpr (std::is_same_v<T, bir::BinaryInst> ||
-                        std::is_same_v<T, bir::CastInst> ||
-                        std::is_same_v<T, bir::SelectInst> ||
-                        std::is_same_v<T, bir::LoadLocalInst> ||
-                        std::is_same_v<T, bir::LoadGlobalInst>) {
-            matches = typed_inst.result.kind == bir::Value::Kind::Named &&
-                      typed_inst.result.name == value_name;
-          }
-        },
-        candidate);
-    if (matches) {
-      return &candidate;
-    }
-  }
-  return nullptr;
+  return mir::find_same_block_named_producer(
+      context.bir_block, value_name, before_instruction_index);
 }
 
 [[nodiscard]] std::optional<std::size_t> producer_instruction_index(
     const module::BlockLoweringContext& context,
     const bir::Inst* producer) {
-  if (context.bir_block == nullptr || producer == nullptr) {
-    return std::nullopt;
-  }
-  for (std::size_t index = 0; index < context.bir_block->insts.size(); ++index) {
-    if (&context.bir_block->insts[index] == producer) {
-      return index;
-    }
-  }
-  return std::nullopt;
+  return mir::producer_instruction_index(context.bir_block, producer);
 }
 
 [[nodiscard]] const bir::Global* find_load_global_target(

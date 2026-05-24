@@ -3,6 +3,7 @@
 #include "alu.hpp"
 #include "../abi/abi.hpp"
 #include "../module/module.hpp"
+#include "../../query.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -194,10 +195,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     module::ModuleLoweringDiagnostics& diagnostics);
 
 // dispatch_producers.hpp
-struct SameBlockSelectProducer {
-  const bir::SelectInst* select = nullptr;
-  std::size_t instruction_index = 0;
-};
+using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
 
 [[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
     const module::BlockLoweringContext& context,

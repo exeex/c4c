@@ -6,6 +6,7 @@ file(GLOB_RECURSE C4C_BACKEND_PREALLOC_SOURCES CONFIGURE_DEPENDS
 set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/backend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/printer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/query.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/api/api.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/alu.cpp"
