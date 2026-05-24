@@ -69,3 +69,17 @@ cannot plausibly be consumed by x86 without copying AArch64 entry dispatch.
 
 Reject if the old AArch64 publication logic is left active in parallel with a
 new unused prealloc helper and the route claims capability progress.
+
+## Completion Note
+
+Closed after the active runbook moved target-neutral function-entry formal
+publication planning into prealloc-owned helper records, adapted AArch64
+entry-formal dispatch to consume the shared plan while retaining ABI source
+selection and concrete copy emission locally, and exposed a concrete x86
+prepared-query reuse path.
+
+Validation covered the prealloc formal publication helper, the AArch64 consumer
+path, and x86 prepared query reuse through backend tests including
+`backend_prealloc_formal_publications`, `backend_aarch64_call_boundary_owner`,
+and `backend_x86_prepared_decoded_home_storage`. No tests or expectations were
+weakened or reclassified.
