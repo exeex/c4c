@@ -8,23 +8,23 @@ Current Step Title: Consume Store-Source Plan From AArch64
 
 ## Just Finished
 
-Completed the first Step 3 AArch64 consumption slice in
+Completed another Step 3 AArch64 consumption slice in
 `dispatch_store_sources.cpp`.
 
-The local store-source publication path now constructs
+The stack-homed pointer store writeback path now constructs
 `prepare::PreparedStoreSourcePublicationPlan` through a target-local
-`plan_store_local_source_publication` adapter. The adapter supplies the current
-Prepared/BIR source value, destination `PreparedMemoryAccess`, destination
-frame-slot/stack-object identity, source `PreparedValueHome`, and recovered
-narrow-store source facts.
+`plan_stack_homed_pointer_store_writeback` adapter. The adapter supplies the
+current Prepared/BIR source value, pointer-value destination
+`PreparedMemoryAccess`, source `PreparedValueHome`, pointer-base
+`PreparedValueHome`, and pointer-writeback intent.
 
 Behavior-preserving consumption points:
-- local publication uses the plan source value as the stored value
-- the prior wide-load-from-narrow-store predicate now reuses the recovered-source
-  lookup fact that is also passed into the plan
-- reserved-scratch stack-home publication uses the plan source home when present
-- the memory-destination branch checks the neutral destination frame-slot
-  base-plus-offset facts when the plan is available
+- pointer writeback uses the plan source value for source register lookup and
+  fallback publication emission
+- writeback validates the neutral pointer-value destination facts and uses the
+  plan destination byte offset for the final register-indirect store
+- writeback validates the neutral pointer-base stack-home facts and uses the
+  plan pointer-base stack offset for the address-register reload
 
 AArch64-local policy stayed local: memory operand spelling, store mnemonic and
 scalar view selection, scratch selection, register alias checks, publication
@@ -33,11 +33,11 @@ construction.
 
 ## Suggested Next
 
-Continue Step 3 with the next narrow AArch64 adapter slice: consume the
-store-source plan in either `lower_stack_homed_pointer_store_writeback` or
-`lower_pointer_base_plus_offset_store_local_publication`, starting with whichever
-can pass current Prepared/BIR pointer-base and destination facts without moving
-address materialization or store emission out of AArch64.
+Continue Step 3 with the remaining narrow AArch64 adapter slice:
+`lower_pointer_base_plus_offset_store_local_publication`. It can likely pass
+current Prepared/BIR source-home and destination-frame facts into the plan, then
+keep direct-global relocation, pointer address materialization, stack-store text,
+and scratch/register choices in AArch64.
 
 ## Watchouts
 
@@ -51,9 +51,9 @@ address materialization or store emission out of AArch64.
   boundary exists.
 - The current recovered-source helper still owns same-block producer scanning in
   AArch64; do not move that scan into prealloc in the next packet.
-- Pointer writeback and pointer-base-plus-offset publication still need AArch64
-  adapters. Keep global relocation, pointer address materialization, stack-store
-  text, and scratch/register choices local.
+- Pointer-base-plus-offset publication still needs an AArch64 adapter. Keep
+  global relocation, pointer address materialization, stack-store text, and
+  scratch/register choices local.
 
 ## Proof
 

@@ -437,6 +437,21 @@ plan_store_local_source_publication(
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
   });
 }
+[[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
+plan_stack_homed_pointer_store_writeback(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    const prepare::PreparedMemoryAccess* access,
+    const prepare::PreparedValueHome* pointer_home) {
+  return prepare::plan_prepared_store_source_publication({
+      .source_value = &store.value,
+      .destination_access = access,
+      .source_home = prepared_value_home_for_value(context, store.value),
+      .pointer_base_home = pointer_home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::PointerStoreWriteback,
+      .pointer_store_writeback = true,
+  });
+}
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_local_value_publication(
     const module::BlockLoweringContext& context,
@@ -706,10 +721,31 @@ lower_stack_homed_pointer_store_writeback(
       !pointer_home->offset_bytes.has_value()) {
     return std::nullopt;
   }
+  const auto store_source_plan =
+      plan_stack_homed_pointer_store_writeback(context, *store, access, pointer_home);
+  if (!prepare::prepared_store_source_publication_available(store_source_plan) ||
+      store_source_plan.intent !=
+          prepare::PreparedStoreSourcePublicationIntent::PointerStoreWriteback ||
+      !store_source_plan.pointer_store_writeback ||
+      store_source_plan.destination_base_kind !=
+          prepare::PreparedAddressBaseKind::PointerValue ||
+      !store_source_plan.destination_pointer_value_name.has_value() ||
+      !store_source_plan.destination_can_use_base_plus_offset ||
+      store_source_plan.destination_byte_offset < 0 ||
+      store_source_plan.pointer_base_home_kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !store_source_plan.pointer_base_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto pointer_base_stack_offset =
+      *store_source_plan.pointer_base_stack_offset_bytes;
+  const auto destination_byte_offset =
+      static_cast<std::size_t>(store_source_plan.destination_byte_offset);
 
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  const auto value_view = scalar_view_for_type(store->value.type);
-  const auto store_mnemonic = scalar_store_mnemonic(store->value.type);
+  const auto& value = store_source_plan.source_value;
+  const auto value_view = scalar_view_for_type(value.type);
+  const auto store_mnemonic = scalar_store_mnemonic(value.type);
   if (scratches.size() < 2U || !value_view.has_value() ||
       !store_mnemonic.has_value()) {
     return std::nullopt;
@@ -726,7 +762,7 @@ lower_stack_homed_pointer_store_writeback(
   std::vector<std::string> lines;
   std::string stored_register = *value_register;
   if (auto prepared_store_value =
-          make_named_prepared_result_register(context, store->value);
+          make_named_prepared_result_register(context, value);
       prepared_store_value.has_value() &&
       !register_operands_share_physical_register(
           *prepared_store_value,
@@ -737,7 +773,7 @@ lower_stack_homed_pointer_store_writeback(
     }
   } else {
     if (!emit_value_publication_to_register(context,
-                                            store->value,
+                                            value,
                                             instruction_index,
                                             scratches[0].index,
                                             scratches[1].index,
@@ -747,11 +783,10 @@ lower_stack_homed_pointer_store_writeback(
     }
   }
   lines.push_back("ldr " + *address_register + ", " +
-                  frame_slot_address(context.function, *pointer_home->offset_bytes));
+                  frame_slot_address(context.function, pointer_base_stack_offset));
   lines.push_back(std::string{*store_mnemonic} + " " + stored_register +
                   ", " + register_indirect_address(
-                              *address_register,
-                              static_cast<std::size_t>(access->address.byte_offset)));
+                              *address_register, destination_byte_offset));
 
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
