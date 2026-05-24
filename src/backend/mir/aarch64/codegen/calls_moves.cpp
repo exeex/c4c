@@ -2903,6 +2903,12 @@ make_immediate_cast_call_argument_publication_instruction(
          abi.size_bytes <= 16;
 }
 
+[[nodiscard]] std::vector<prepare::PreparedCallBoundaryEffectPlan>
+before_call_boundary_effects(const prepare::PreparedCallPlan& call_plan,
+                             const prepare::PreparedMoveBundle& bundle) {
+  return prepare::plan_prepared_call_boundary_effects(call_plan, &bundle, nullptr);
+}
+
 std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -2943,12 +2949,19 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
     }
   }
   std::vector<std::size_t> lowered_stack_byval_args;
-  for (const auto& move : bundle->moves) {
+  const auto boundary_effects = before_call_boundary_effects(call_plan, *bundle);
+  for (const auto& effect : boundary_effects) {
+    if (effect.effect_kind != prepare::PreparedCallBoundaryEffectKind::ExplicitMove ||
+        effect.phase != prepare::PreparedMovePhase::BeforeCall ||
+        effect.order_index >= bundle->moves.size()) {
+      continue;
+    }
+    const auto& move = bundle->moves[effect.order_index];
     if (auto instruction =
             lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
       if (move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
           move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
-          move.reason == "call_arg_byval_aggregate_register_lanes" &&
+          effect.reason == "call_arg_byval_aggregate_register_lanes" &&
           move.destination_abi_index.has_value()) {
         lowered_stack_byval_args.push_back(*move.destination_abi_index);
       }
