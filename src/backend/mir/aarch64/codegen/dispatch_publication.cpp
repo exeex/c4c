@@ -558,26 +558,25 @@ namespace prepare = c4c::backend::prepare;
 *value_name)
              : nullptr;
 }
+[[nodiscard]] std::vector<prepare::PreparedBlockEntryPublication>
+collect_current_block_entry_publications(const module::BlockLoweringContext& context) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return {};
+  }
+  return prepare::collect_prepared_block_entry_publications(
+      context.function.value_locations, context.control_flow_block->block_label);
+}
 [[nodiscard]] bool value_has_current_block_entry_publication(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home) {
-  if (context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr) {
-    return false;
-  }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-          move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
-          move.to_value_id == home.value_id) {
-        return true;
-      }
+  for (const auto& publication : collect_current_block_entry_publications(context)) {
+    const auto* move = publication.move;
+    if (move != nullptr &&
+        move->op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+        publication.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+        publication.destination_value_id == home.value_id) {
+      return true;
     }
   }
   return false;
@@ -615,96 +614,55 @@ namespace prepare = c4c::backend::prepare;
   if (home == nullptr) {
     return std::nullopt;
   }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+  for (const auto& publication : collect_current_block_entry_publications(context)) {
+    if (publication.destination_value_id != home->value_id ||
+        !prepare::prepared_block_entry_publication_available(publication) ||
+        !publication.destination_register_name.has_value()) {
       continue;
     }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-          move.to_value_id != home->value_id) {
-        continue;
-      }
-      std::optional<std::string> register_name = move.destination_register_name;
-      if (!register_name.has_value() &&
-          home->kind == prepare::PreparedValueHomeKind::Register) {
-        register_name = home->register_name;
-      }
-      if (!register_name.has_value()) {
-        continue;
-      }
-      const auto parsed = abi::parse_aarch64_register_name(*register_name);
-      if (!parsed.has_value() ||
-          parsed->bank != abi::RegisterBank::GeneralPurpose) {
-        continue;
-      }
-      auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
-      reg.view = expected_view;
-      return RegisterOperand{
-          .reg = reg,
-          .role = RegisterOperandRole::StoragePlan,
-          .value_id = home->value_id,
-          .value_name = home->value_name,
-          .expected_view = expected_view,
-      };
+    const auto parsed = abi::parse_aarch64_register_name(
+        *publication.destination_register_name);
+    if (!parsed.has_value() ||
+        parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      continue;
     }
+    auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
+    reg.view = expected_view;
+    return RegisterOperand{
+        .reg = reg,
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .expected_view = expected_view,
+    };
   }
   return std::nullopt;
 }
 void record_current_block_entry_publication_registers(
     const module::BlockLoweringContext& context,
     BlockScalarLoweringState& scalar_state) {
-  if (context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr) {
-    return;
-  }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+  for (const auto& publication : collect_current_block_entry_publications(context)) {
+    if (!prepare::prepared_block_entry_publication_available(publication) ||
+        publication.home == nullptr ||
+        !publication.destination_register_name.has_value()) {
       continue;
     }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
-        continue;
-      }
-      const auto* home =
-          find_value_home(context,
-move.to_value_id);
-      if (home == nullptr) {
-        continue;
-      }
-      std::optional<std::string> register_name = move.destination_register_name;
-      if (!register_name.has_value() &&
-          home->kind == prepare::PreparedValueHomeKind::Register) {
-        register_name = home->register_name;
-      }
-      if (!register_name.has_value()) {
-        continue;
-      }
-      const auto parsed = abi::parse_aarch64_register_name(*register_name);
-      if (!parsed.has_value() ||
-          parsed->bank != abi::RegisterBank::GeneralPurpose) {
-        continue;
-      }
-      record_emitted_scalar_register(
-          scalar_state,
-          home->value_name,
-          RegisterOperand{
-              .reg = *parsed,
-              .role = RegisterOperandRole::StoragePlan,
-              .value_id = home->value_id,
-              .value_name = home->value_name,
-              .expected_view = parsed->view,
-          });
+    const auto parsed = abi::parse_aarch64_register_name(
+        *publication.destination_register_name);
+    if (!parsed.has_value() ||
+        parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      continue;
     }
+    record_emitted_scalar_register(
+        scalar_state,
+        publication.home->value_name,
+        RegisterOperand{
+            .reg = *parsed,
+            .role = RegisterOperandRole::StoragePlan,
+            .value_id = publication.home->value_id,
+            .value_name = publication.home->value_name,
+            .expected_view = parsed->view,
+        });
   }
 }
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
@@ -719,47 +677,34 @@ move.to_value_id);
   if (move_record == nullptr || !move_record->destination_register.has_value()) {
     return false;
   }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+  for (const auto& publication : collect_current_block_entry_publications(context)) {
+    if (publication.status ==
+            prepare::PreparedBlockEntryPublicationStatus::UnsupportedOperation ||
+        publication.status ==
+            prepare::PreparedBlockEntryPublicationStatus::UnsupportedDestinationKind ||
+        publication.status ==
+            prepare::PreparedBlockEntryPublicationStatus::UnsupportedDestinationStorage ||
+        !publication.destination_register_name.has_value()) {
       continue;
     }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
-        continue;
-      }
-      const auto* home =
-          find_value_home(context,
-move.to_value_id);
-      std::optional<std::string> register_name = move.destination_register_name;
-      if (!register_name.has_value() &&
-          home != nullptr &&
-          home->kind == prepare::PreparedValueHomeKind::Register) {
-        register_name = home->register_name;
-      }
-      if (!register_name.has_value()) {
-        continue;
-      }
-      const auto parsed = abi::parse_aarch64_register_name(*register_name);
-      if (!parsed.has_value()) {
-        continue;
-      }
-      RegisterOperand published{
-          .reg = *parsed,
-          .role = RegisterOperandRole::StoragePlan,
-          .value_id = home != nullptr
-                          ? std::optional<prepare::PreparedValueId>{home->value_id}
-                          : std::nullopt,
-          .value_name = home != nullptr ? home->value_name : c4c::kInvalidValueName,
-          .expected_view = parsed->view,
-      };
-      if (registers_alias(published, *move_record->destination_register)) {
-        return true;
-      }
+    const auto parsed = abi::parse_aarch64_register_name(
+        *publication.destination_register_name);
+    if (!parsed.has_value()) {
+      continue;
+    }
+    RegisterOperand published{
+        .reg = *parsed,
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = publication.home != nullptr
+                        ? std::optional<prepare::PreparedValueId>{publication.home->value_id}
+                        : std::nullopt,
+        .value_name = publication.home != nullptr
+                          ? publication.home->value_name
+                          : c4c::kInvalidValueName,
+        .expected_view = parsed->view,
+    };
+    if (registers_alias(published, *move_record->destination_register)) {
+      return true;
     }
   }
   return false;

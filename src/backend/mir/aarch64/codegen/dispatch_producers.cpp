@@ -350,36 +350,29 @@ namespace prepare = c4c::backend::prepare;
   if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
     return false;
   }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+  for (const auto& publication : prepare::collect_prepared_block_entry_publications(
+           context.function.value_locations, context.control_flow_block->block_label)) {
+    const auto* move = publication.move;
+    if (move == nullptr ||
+        move->op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        publication.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        publication.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
       continue;
     }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
-        continue;
-      }
-      if (move.to_value_id == result_home->value_id) {
-        return true;
-      }
-      if (move.source_immediate_i32.has_value() ||
-          move.from_value_id != result_home->value_id ||
-          move.from_value_id == move.to_value_id) {
-        continue;
-      }
-      const auto* destination_home =
-          find_value_home(context,
-move.to_value_id);
-      if (destination_home != nullptr &&
-          (prepared_edge_select_source_is_destination_register(*result_home,
-                                                              *destination_home) ||
-           result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
-        return true;
-      }
+    if (publication.destination_value_id == result_home->value_id) {
+      return true;
+    }
+    if (move->source_immediate_i32.has_value() ||
+        move->from_value_id != result_home->value_id ||
+        move->from_value_id == publication.destination_value_id) {
+      continue;
+    }
+    const auto* destination_home = publication.home;
+    if (destination_home != nullptr &&
+        (prepared_edge_select_source_is_destination_register(*result_home,
+                                                            *destination_home) ||
+         result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
+      return true;
     }
   }
   return false;
