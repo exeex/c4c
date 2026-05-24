@@ -9,6 +9,7 @@
 #include <variant>
 
 namespace c4c::backend::aarch64::codegen {
+namespace mir = c4c::backend::mir;
 namespace {
 
 [[nodiscard]] std::optional<unsigned> branch_fusion_integer_bit_width(bir::TypeKind type) {
@@ -112,134 +113,6 @@ struct SameBlockLoadProducer {
     }
   }
   return {};
-}
-
-[[nodiscard]] const bir::BinaryInst* branch_fusion_find_same_block_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  for (const auto& inst : context.bir_block->insts) {
-    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-    if (binary != nullptr &&
-        binary->result.kind == bir::Value::Kind::Named &&
-        binary->result.name == value.name) {
-      return binary;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] std::optional<std::int64_t> branch_fusion_evaluate_same_block_integer_constant(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    unsigned depth = 0) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    return value.immediate;
-  }
-  if (depth > 4U) {
-    return std::nullopt;
-  }
-  const auto* binary = branch_fusion_find_same_block_binary_producer(context, value);
-  if (binary == nullptr) {
-    return std::nullopt;
-  }
-  const auto lhs = branch_fusion_evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
-  const auto rhs = branch_fusion_evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return std::nullopt;
-  }
-  switch (binary->opcode) {
-    case bir::BinaryOpcode::Add:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) +
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Sub:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) -
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Mul:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) *
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::And:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) &
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Or:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) |
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Xor:
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) ^
-                                       static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Shl:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       << static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::LShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
-                                       >> static_cast<unsigned>(*rhs));
-    case bir::BinaryOpcode::AShr:
-      if (*rhs < 0 || *rhs >= 64) {
-        return std::nullopt;
-      }
-      return *lhs >> static_cast<unsigned>(*rhs);
-    case bir::BinaryOpcode::SDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs / *rhs;
-    case bir::BinaryOpcode::UDiv:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::SRem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return *lhs % *rhs;
-    case bir::BinaryOpcode::URem:
-      if (*rhs == 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::int64_t>(
-          static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Eq:
-      return *lhs == *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ne:
-      return *lhs != *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Slt:
-      return *lhs < *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sle:
-      return *lhs <= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sgt:
-      return *lhs > *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Sge:
-      return *lhs >= *rhs ? 1 : 0;
-    case bir::BinaryOpcode::Ult:
-      return static_cast<std::uint64_t>(*lhs) < static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ule:
-      return static_cast<std::uint64_t>(*lhs) <= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Ugt:
-      return static_cast<std::uint64_t>(*lhs) > static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-    case bir::BinaryOpcode::Uge:
-      return static_cast<std::uint64_t>(*lhs) >= static_cast<std::uint64_t>(*rhs)
-                 ? 1
-                 : 0;
-  }
-  return std::nullopt;
 }
 
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
@@ -461,9 +334,10 @@ lower_fused_compare_branch_from_emitted_cast(
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
   auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
   if (!rhs_name.has_value()) {
-    const auto constant = branch_fusion_evaluate_same_block_integer_constant(context, *other_value);
-    if (constant.has_value() && is_cmp_immediate_encodable(*constant)) {
-      rhs_name = "#" + std::to_string(*constant);
+    const auto constant =
+        mir::evaluate_same_block_integer_constant(context.bir_block, *other_value);
+    if (constant.has_value() && is_cmp_immediate_encodable(constant->value)) {
+      rhs_name = "#" + std::to_string(constant->value);
     }
   }
   std::vector<std::string> lines;
@@ -769,20 +643,20 @@ lower_constant_rhs_fused_compare_branch(
   }
   auto rhs = *branch_condition->rhs;
   rhs.type = *branch_condition->compare_type;
-  const auto* rhs_producer = branch_fusion_find_same_block_binary_producer(context, rhs);
+  const auto rhs_producer = mir::find_same_block_binary_producer(context.bir_block, rhs);
   const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
       rhs_name.has_value() && context.function.value_locations != nullptr
           ? find_value_home(context, *rhs_name)
           : nullptr;
-  if (rhs_producer == nullptr ||
+  if (!rhs_producer ||
       rhs_home == nullptr ||
       rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       hooks.value_has_current_block_entry_publication(context, *rhs_home)) {
     return std::nullopt;
   }
-  const auto rhs_constant = branch_fusion_evaluate_same_block_integer_constant(context, rhs);
-  if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(*rhs_constant)) {
+  const auto rhs_constant = mir::evaluate_same_block_integer_constant(context.bir_block, rhs);
+  if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(rhs_constant->value)) {
     return std::nullopt;
   }
 
@@ -807,7 +681,7 @@ lower_constant_rhs_fused_compare_branch(
     return std::nullopt;
   }
   lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
-                  std::to_string(*rhs_constant));
+                  std::to_string(rhs_constant->value));
   lines.push_back("b." + std::string{*condition} + " " +
                   machine_block_label(branch_condition->function_name,
                                       branch_condition->true_label));
@@ -935,7 +809,7 @@ bool is_fused_compare_branch_support_instruction(
     };
     if ((matches_binary_result(*branch_condition->lhs) ||
          matches_binary_result(*branch_condition->rhs)) &&
-        branch_fusion_evaluate_same_block_integer_constant(context, binary->result).has_value()) {
+        mir::evaluate_same_block_integer_constant(context.bir_block, binary->result).has_value()) {
       return true;
     }
   }
