@@ -1,5 +1,15 @@
 # Target-Neutral Publication Plan Record
 
+Closure note: completed by introducing
+`prepare::PreparedScalarPublicationPlan` /
+`prepare::plan_prepared_scalar_publication`, adding focused neutral record
+coverage, routing selected AArch64 scalar publication fallbacks through a
+narrow target-local adapter, and adding the x86-labeled
+`backend_x86_publication_plan_reuse` record-level proof. Remaining direct
+AArch64 publication fallbacks are intentionally target-policy-adjacent
+reload, immediate, pointer/global address, scratch, register-alias, and
+instruction-emission cases rather than blockers for this plan-record idea.
+
 ## Intent
 
 Introduce a target-neutral publication-plan record for scalar value publication
