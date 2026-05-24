@@ -69,3 +69,12 @@ codegen audit.
   AArch64-owned query logic remains the real owner.
 - The purported x86/RISC-V reuse proof is only a comment or unused include with
   no compile or fixture coverage.
+
+## Closure Note
+
+Closed after the shared MIR query surface landed in `src/backend/mir/query.*`,
+selected AArch64 users were rewired to consume those target-neutral records, and
+`backend_x86_shared_producer_query` proved the query shape from an x86-facing
+backend test without AArch64 codegen headers. Remaining AArch64 compatibility
+wrappers are target-policy-adjacent follow-up candidates rather than blockers
+for this focused ownership migration.
