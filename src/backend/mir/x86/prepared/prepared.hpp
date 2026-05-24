@@ -27,6 +27,13 @@ struct Query {
     return c4c::backend::prepare::find_prepared_value_location_function(*module, *function_name);
   }
 
+  [[nodiscard]] const c4c::backend::prepare::PreparedCallPlansFunction* call_plans() const {
+    if (module == nullptr || !function_name.has_value()) {
+      return nullptr;
+    }
+    return c4c::backend::prepare::find_prepared_call_plans(*module, *function_name);
+  }
+
   [[nodiscard]] const c4c::backend::prepare::PreparedRegallocFunction* regalloc() const {
     if (module == nullptr || !function_name.has_value()) {
       return nullptr;
@@ -56,6 +63,15 @@ struct Query {
             .value_home_lookups = nullptr,
         },
         value_id);
+  }
+
+  [[nodiscard]] c4c::backend::prepare::PreparedCallBoundaryMoveClassification
+  classify_call_boundary_move(
+      const c4c::backend::prepare::PreparedCallPlan& call_plan,
+      const c4c::backend::prepare::PreparedMoveBundle& bundle,
+      const c4c::backend::prepare::PreparedMoveResolution& move) const {
+    return c4c::backend::prepare::classify_prepared_call_boundary_move(
+        call_plan, bundle, move);
   }
 };
 

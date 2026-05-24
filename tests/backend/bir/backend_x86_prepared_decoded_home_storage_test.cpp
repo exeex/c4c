@@ -93,6 +93,68 @@ prepare::PreparedBirModule make_fixture() {
               .offset_bytes = 72,
           },
       },
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeCall,
+          .block_index = 0,
+          .instruction_index = 3,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = 2,
+              .to_value_id = 2,
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .destination_register_name = std::string{"eax"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"eax"},
+              .block_index = 0,
+              .instruction_index = 3,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .destination_register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+          }},
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .destination_register_name = std::string{"eax"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"eax"},
+              .destination_register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+          }},
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 3,
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 3,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+              .destination_register_name = std::string{"eax"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"eax"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+          }},
+      }},
   });
   return prepared;
 }
@@ -105,7 +167,9 @@ int check_query_exposes_decoded_home_storage_inputs() {
       !expect(query.storage_plan() != nullptr,
               "x86 prepared query did not expose storage plan") ||
       !expect(query.locations() != nullptr,
-              "x86 prepared query did not expose value locations")) {
+              "x86 prepared query did not expose value locations") ||
+      !expect(query.call_plans() != nullptr,
+              "x86 prepared query did not expose call plans")) {
     return 1;
   }
   return 0;
@@ -162,6 +226,58 @@ int check_query_decodes_shared_home_storage_precedence() {
   return 0;
 }
 
+int check_query_reuses_shared_call_boundary_classification() {
+  const auto prepared = make_fixture();
+  const auto query = x86_prepared::make_query(prepared, "x86.decode");
+  const auto* call_plans = query.call_plans();
+  const auto* locations = query.locations();
+  if (call_plans == nullptr || call_plans->calls.empty() || locations == nullptr ||
+      locations->move_bundles.empty() || locations->move_bundles.front().moves.empty()) {
+    return fail("x86 prepared query fixture did not expose call-boundary inputs");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto& bundle = locations->move_bundles.front();
+  const auto& move = bundle.moves.front();
+  const auto classified =
+      query.classify_call_boundary_move(call_plan, bundle, move);
+
+  if (!expect(prepare::prepared_call_boundary_move_classification_available(classified),
+              "x86 prepared query did not reuse available shared call-boundary classification") ||
+      !expect(classified.phase == prepare::PreparedMovePhase::BeforeCall,
+              "x86 prepared classification did not preserve phase") ||
+      !expect(classified.destination_kind ==
+                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              "x86 prepared classification did not preserve destination role") ||
+      !expect(classified.storage_kind == prepare::PreparedMoveStorageKind::Register,
+              "x86 prepared classification did not preserve storage kind") ||
+      !expect(classified.abi_index == std::optional<std::size_t>{0},
+              "x86 prepared classification did not preserve ABI index") ||
+      !expect(classified.argument_plan == &call_plan.arguments.front(),
+              "x86 prepared classification did not preserve argument plan authority") ||
+      !expect(classified.abi_binding == &bundle.abi_bindings.front(),
+              "x86 prepared classification did not preserve ABI binding authority") ||
+      !expect(classified.move == &move && classified.bundle == &bundle &&
+                  classified.call_plan == &call_plan,
+              "x86 prepared classification did not preserve source Prepared records")) {
+    return 1;
+  }
+
+  auto drifted_move = move;
+  drifted_move.destination_register_name = std::string{"ecx"};
+  const auto missing_binding =
+      query.classify_call_boundary_move(call_plan, bundle, drifted_move);
+  if (!expect(missing_binding.status ==
+                  prepare::PreparedCallBoundaryMoveClassificationStatus::MissingAbiBinding,
+              "x86 prepared classification should surface missing binding without target fallback") ||
+      !expect(missing_binding.argument_plan == &call_plan.arguments.front(),
+              "x86 missing-binding classification should still preserve argument authority")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_query_reports_no_authority() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "missing");
@@ -182,6 +298,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_query_decodes_shared_home_storage_precedence();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_query_reuses_shared_call_boundary_classification();
       status != 0) {
     return EXIT_FAILURE;
   }

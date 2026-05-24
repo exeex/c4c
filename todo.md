@@ -1,44 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/call-boundary-move-classification-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Adapt AArch64 To Consume The Shared Classification
+Current Step ID: Step 4
+Current Step Title: Prove Reuse Path For x86 Prepared Calls
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 adapted AArch64 before-call and after-call move resolution to consume
-`prepare::classify_prepared_call_boundary_move(...)` for the shared
-call-boundary classification surface.
+Step 4 added concrete x86 prepared reuse evidence for the shared prealloc
+call-boundary classification helper.
 
-The AArch64-local argument/result plan and ABI binding lookup helpers were
-removed from `calls_argument_sources.cpp`/`calls.hpp`; `calls_moves.cpp` now
-uses the shared classification's matched Prepared argument plan, result plan,
-and ABI binding pointers. AArch64 still owns register conversion/spelling, MIR
-operand construction, diagnostics, byval/f128/sret policy, preservation
-emission, printed records, and final instruction emission.
+`x86::prepared::Query` now exposes prepared call plans through `call_plans()`
+and provides `classify_call_boundary_move(...)`, a narrow forwarding helper
+that returns `prepare::PreparedCallBoundaryMoveClassification` from
+`prepare::classify_prepared_call_boundary_move(...)`.
 
-The shared helper was kept target-neutral while preserving matched ABI binding
-authority for missing or mismatched call-result plans. This preserves existing
-AArch64 HFA lane fallback behavior without reintroducing target-local raw
-binding decoding.
+Focused x86 prepared query coverage now builds call-boundary Prepared facts,
+classifies a call-argument move through the x86 query surface, verifies phase,
+destination role, storage kind, ABI index, matched argument plan, matched ABI
+binding, and source Prepared record pointers, and checks missing-binding status
+without falling back to target-local raw decoding.
 
 ## Suggested Next
 
-Step 4 should prove the reuse path for x86 prepared operands by exposing or
-using the same prealloc call-boundary classification helper from the x86
-prepared surface, without rewriting x86 lowering or moving x86-specific
-operand spelling/encoding into prealloc.
+Step 5 should validate the completed route and summarize the anti-overfit
+coverage: prealloc helper coverage, AArch64 consumer coverage, and x86 prepared
+reuse coverage, with no test weakening or expectation reclassification.
 
 ## Watchouts
 
-AArch64 now consumes only the narrow move-to-plan and move-to-binding facts.
-Preservation lookup/emission remains target-local and was not extracted.
+x86 now proves the shared classification can be reused from a target prepared
+query surface. This remains evidence only; x86 lowering, x86 operand spelling,
+ABI policy, and emission were not rewritten.
 
-Keep the classification result as facts/status only in future consumers; do
-not move target register spelling, MIR operands, diagnostics, or instruction
-encoding into prealloc.
+The shared classification still returns facts/status only. Keep preservation
+lookup/emission and target-specific operand construction out of prealloc unless
+a later packet explicitly owns that extraction.
 
 ## Proof
 
