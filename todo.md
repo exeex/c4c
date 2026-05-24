@@ -1,54 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-regalloc-coordinator-contraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Contract A Second Stable Boundary
+Current Step ID: 4
+Current Step Title: Audit Printer And Public Contract Alignment
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: audited for one remaining stable regalloc
-coordinator boundary after assignment expiry and stack-slot publication were
-moved.
+Completed Step 4 from `plan.md`: audited prepared-printer output and the public
+`regalloc.hpp` allocation-plan aggregates after the assignment expiry and
+stack-slot helper relocations.
 
-Decision: no code relocation in this packet. The remaining coordinator-local
-helpers are not a clean second helper-family boundary:
-- `assign_from_pool` and allocation fallback still coordinate mutable register
-  pools, spill points, eviction state, and stack-slot seeds in one allocation
-  pass, so moving them would be a broad allocation-order change risk.
-- `append_prepared_call_abi_bindings(...)` and
-  `append_prepared_abi_binding(...)` publish value-location ABI bundles, but
-  they cross call-return ABI facts, regalloc value lookup, prepared move bundle
-  grouping, and public dump meaning. Moving them now would belong with the
-  Step 4 printer/public-contract audit rather than this helper-family packet.
-- `build_prepared_value_location_function(...)` is coordinator glue that joins
-  value homes, move-resolution records, and call ABI bindings; no existing
-  `regalloc/` helper file owns that full contract without mixing unrelated
-  families.
-
-This keeps Step 3 behavior-preserving by leaving implementation files
-unchanged rather than extracting an unstable mixed-boundary helper.
+Decision: no code or printer/public-contract edit is needed.
+- The helper relocation commits touched `regalloc.cpp`, internal
+  `regalloc/assignment.*`, internal `regalloc/stack_slots.*`, and `todo.md`;
+  they did not change `regalloc.hpp`, `prepared_printer/regalloc.cpp`, or
+  `prepared_printer/value_locations.cpp`.
+- `regalloc.hpp` still exposes the same assignment, stack-slot, spill/reload,
+  move-resolution, and ABI-binding fields and meanings.
+- The prepared-printer labels still mirror those public fields:
+  `prepared-regalloc` prints spill/reload register placement, spill slot, slot
+  id, and stack offset; `prepared-value-locations` prints value homes,
+  move-resolution destinations, and ABI bindings with the same destination
+  storage/register/stack fields.
+- The relocated helpers are implementation-local under `regalloc_detail`; no
+  public name or printed meaning drifted.
 
 ## Suggested Next
 
-Move to Step 4 with a printer/public-contract audit. Check whether the current
-prepared-printer output and `regalloc.hpp` aggregate contract still match the
-new assignment and stack-slot helper boundaries; make only mirror edits if a
-printed meaning or public name actually changed.
+Move to the closure-audit packet. Re-check the active plan/todo/source idea
+against the completed contraction work, verify there are no missing public
+contract or printer follow-ups, and decide whether the runbook is ready for
+plan-owner closure handling.
 
 ## Watchouts
 
-`regalloc.cpp` still owns allocation phase order, mutable pool selection,
-spill-point timing, value-location bundle assembly, and the final prepared
-stack-layout frame-size/frame-alignment maxima. Avoid moving call ABI binding
-or prepared value-location bundle helpers before auditing the public dump
-contract, because that code affects printer-visible meaning even if it is
-mechanically local.
+This was intentionally a no-code audit. Keep the next closure audit focused on
+contract completion and residual lifecycle state; do not expand into call ABI
+binding or prepared value-location bundle relocation unless the supervisor
+opens a separate implementation packet.
 
 ## Proof
 
-No code changes were made, per the delegated no-code path.
+No code changes were made, per the delegated no-code path. `test_after.log` was
+not produced.
 
 Ran `git diff --check`; passed.
 
