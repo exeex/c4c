@@ -32,7 +32,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_lookup.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_producers.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_publication.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_store_sources.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory_store_sources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_value_materialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/f128.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/float_ops.cpp"

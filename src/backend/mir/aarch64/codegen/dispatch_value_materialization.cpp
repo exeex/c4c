@@ -6,7 +6,7 @@
 #include "comparison_branch_fusion.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
-#include "dispatch_store_sources.hpp"
+#include "memory_store_sources.hpp"
 #include "float_ops.hpp"
 #include "machine_printer.hpp"
 #include "operands.hpp"

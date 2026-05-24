@@ -9,36 +9,35 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
-the durable memory-family dynamic-stack shard from
-`dispatch_dynamic_stack.cpp`/`.hpp` to `memory_dynamic_stack.cpp`/`.hpp`,
+the durable memory-family store-source shard from
+`dispatch_store_sources.cpp`/`.hpp` to `memory_store_sources.cpp`/`.hpp`,
 updated the CMake source list, and moved direct include sites to the new header
 with no behavior changes.
 
-This shard remains separate from `memory.cpp` because dynamic alloca helper-call
-lowering is cohesive, large enough to review independently, and still bridges
-prepared dynamic-stack plans with dispatch call handling. The durable-family
+This shard remains separate from `memory.cpp` because store-source publication,
+pointer-address writeback, global-store stack publication, and related prepared
+home helpers form a cohesive reviewable implementation shard. The durable-family
 rename fixes the historical `dispatch_*` label without forcing a low-value merge
 into the main memory implementation.
 
 ## Suggested Next
 
 Recommended next packet: continue Step 3 with one bounded historical
-`dispatch_*` shard decision. Good candidates are either a mechanical
-durable-family rename for another cohesive mapped shard, or an explicit
-keep-as-dispatch-internal justification for a shard whose responsibility still
-crosses family boundaries.
+`dispatch_*` shard decision. Good candidates are either a mechanical prologue
+family rename for `dispatch_entry_formals.cpp`, or an explicit grouped
+keep-as-dispatch-internal justification for the remaining adapter/internal
+shards whose responsibilities still cross family boundaries.
 
 ## Watchouts
 
-- `memory_dynamic_stack.hpp` keeps the existing
-  `lower_dynamic_stack_helper_call` API because symbol churn would not improve
-  this mechanical file-boundary slice.
-- `memory_dynamic_stack.cpp` still depends on dispatch diagnostics and prepared
-  dynamic-stack plan context, so this packet does not claim the implementation
-  is independent of the dispatcher.
-- `dispatch_store_sources.cpp` still includes `dispatch.hpp` for publication,
+- `memory_store_sources.hpp` keeps the existing store-source publication APIs
+  because symbol churn would not improve this mechanical file-boundary slice.
+- `memory_store_sources.cpp` still includes `dispatch.hpp` for publication,
   edge-copy, value-materialization, lookup, and shared frame/address helper
   declarations; moving those boundaries is outside this packet.
+- `memory_dynamic_stack.cpp` still depends on dispatch diagnostics and prepared
+  dynamic-stack plan context, so its earlier durable-family rename did not claim
+  the implementation is independent of the dispatcher.
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.
@@ -95,7 +94,6 @@ File-to-family map:
 | `dispatch_lookup.cpp` | `adapter/internal` | Thin prepared-value/home lookup helpers; temporarily justified as dispatch-internal and a possible private-header split after diagnostics. |
 | `dispatch_producers.cpp` | `adapter/internal` | Same-block producer analysis used by fusion/publication; temporarily justified as dispatch-internal. |
 | `dispatch_publication.cpp` | `adapter/internal` | Current-block prepared-value publication helpers; cross-cuts memory/alu/comparison, so keep private adapter/internal until a cleaner family boundary emerges. |
-| `dispatch_store_sources.cpp` | `memory` | Store-source publication and pointer/global store helpers; durable memory/store responsibility but still coupled to dispatch publication. |
 | `dispatch_value_materialization.cpp` | `adapter/internal` | Prepared value materialization to registers/stacks; cross-cutting glue, temporarily justified as adapter/internal. |
 | `f128.cpp` | `f128` | Durable binary128 lowering/printing/runtime-helper support. |
 | `f128.hpp` | `f128` | Durable f128 declarations. |
@@ -117,6 +115,8 @@ File-to-family map:
 | `memory_dynamic_stack.cpp` | `memory` | Durable dynamic alloca helper-call lowering, now using a memory-family filename. Keep as a separate implementation shard because it is cohesive and still bridges prepared dynamic-stack plans with dispatch call handling. |
 | `memory_dynamic_stack.hpp` | `memory` | Narrow dynamic-stack helper-call declaration surface used by direct lowering callers. |
 | `memory.hpp` | `memory` | Durable memory lowering declarations. |
+| `memory_store_sources.cpp` | `memory` | Store-source publication and pointer/global store helpers, now using a memory-family filename. Keep as a separate implementation shard because it is cohesive and still coupled to dispatch publication. |
+| `memory_store_sources.hpp` | `memory` | Narrow store-source declaration surface used by direct lowering callers. |
 | `module_compile.cpp` | `codegen/module` | Public compile entry point wrapping traversal/projection. |
 | `module_compile.hpp` | `codegen/module` | Narrow module compile declaration. |
 | `operands.cpp` | `operands/instruction` | Durable operand resolution helpers. |
@@ -162,8 +162,10 @@ Specific dispatch surface notes:
 - `dispatch_publication.cpp`: maps to `adapter/internal`; current-block value
   publication is broad internal glue and should not be forced into a durable
   family yet.
-- `dispatch_store_sources.cpp`: maps to `memory`; store-source publication is
-  memory/store responsibility but too coupled for the first packet.
+- `memory_store_sources.cpp`: maps to `memory`; store-source publication now
+  has a memory-family filename while remaining separate from `memory.cpp`
+  because the implementation is cohesive and still coupled to dispatch
+  publication.
 - `dispatch_value_materialization.cpp`: maps to `adapter/internal`; value-home
   materialization is shared internal glue and should remain private until its
   callers are narrowed.
@@ -195,9 +197,9 @@ Prioritized consolidation list:
    dispatch internals.
 4. Revisit whether `comparison_branch_fusion.hpp` should move closer to
    `comparison.hpp` once the hook dependency can remain private.
-5. Revisit memory/prologue-adjacent dispatch shards:
-   `dispatch_store_sources.cpp` and `dispatch_entry_formals.cpp`; keep
-   `memory_dynamic_stack.cpp` as a separate memory-family shard unless a later
+5. Revisit prologue-adjacent dispatch shards such as
+   `dispatch_entry_formals.cpp`; keep `memory_dynamic_stack.cpp` and
+   `memory_store_sources.cpp` as separate memory-family shards unless a later
    memory-only cleanup finds a real merge benefit.
 6. Leave large cohesive family files (`alu`, `memory`, `calls_moves`, `f128`,
    `i128_ops`, `machine_printer`, `instruction`) split as durable families; do
