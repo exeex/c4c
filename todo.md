@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-reference-layout-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rename Or Merge Thin Historical Shards
+Current Step ID: 4
+Current Step Title: Consolidate Remaining Family Boundaries
 
 # Current Packet
 
@@ -16,10 +16,11 @@ owner of those definitions with no behavior changes.
 
 ## Suggested Next
 
-Recommended next packet: advance Step 3 to Step 4 after supervisor review and
-commit, because the planned thin-shard/header-boundary cleanup now has the
-diagnostics, lookup, edge-copy, value-materialization, and publication-common
-declarations out of `dispatch.hpp`.
+Step 3 is complete after supervisor review of the dispatch header-extraction
+sequence. Recommended next packet: execute Step 4 by selecting the next narrow
+family-boundary cleanup from the retained prioritized list, refreshing the
+file-to-family map afterward, and keeping any target-neutral migration
+candidate as a separate open idea instead of expanding this layout cleanup.
 
 ## Watchouts
 
