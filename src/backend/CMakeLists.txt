@@ -26,7 +26,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_calls.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_diagnostics.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_dynamic_stack.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory_dynamic_stack.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_edge_copies.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_entry_formals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_lookup.cpp"

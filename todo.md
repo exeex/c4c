@@ -9,33 +9,33 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
-the durable comparison-family branch-fusion shard from
-`dispatch_branch_fusion.cpp`/`.hpp` to
-`comparison_branch_fusion.cpp`/`.hpp`, updated the CMake source list, and moved
-direct include sites to the new header with no behavior changes.
+the durable memory-family dynamic-stack shard from
+`dispatch_dynamic_stack.cpp`/`.hpp` to `memory_dynamic_stack.cpp`/`.hpp`,
+updated the CMake source list, and moved direct include sites to the new header
+with no behavior changes.
 
-This shard remains separate from `comparison.cpp` because the fused
-compare/branch lowering implementation is large, cohesive, and still uses
-dispatch publication hooks. The durable-family rename fixes the historical
-`dispatch_*` label without forcing a low-value merge into the main comparison
-implementation.
+This shard remains separate from `memory.cpp` because dynamic alloca helper-call
+lowering is cohesive, large enough to review independently, and still bridges
+prepared dynamic-stack plans with dispatch call handling. The durable-family
+rename fixes the historical `dispatch_*` label without forcing a low-value merge
+into the main memory implementation.
 
 ## Suggested Next
 
 Recommended next packet: continue Step 3 with one bounded historical
-`dispatch_*` shard decision. Prefer another mechanical durable-family rename
-only when the target shard is already cohesive and mapped to a durable family;
-otherwise record an explicit keep-as-dispatch-internal justification rather than
-merging unrelated responsibilities.
+`dispatch_*` shard decision. Good candidates are either a mechanical
+durable-family rename for another cohesive mapped shard, or an explicit
+keep-as-dispatch-internal justification for a shard whose responsibility still
+crosses family boundaries.
 
 ## Watchouts
 
-- `comparison_branch_fusion.hpp` intentionally keeps the existing
-  `DispatchBranchFusionHooks` type name because renaming the hook API would add
-  churn outside this mechanical file-boundary slice.
-- `comparison_branch_fusion.cpp` still depends on dispatch lookup/publication
-  hooks, so this packet does not claim the implementation is independent of the
-  dispatcher.
+- `memory_dynamic_stack.hpp` keeps the existing
+  `lower_dynamic_stack_helper_call` API because symbol churn would not improve
+  this mechanical file-boundary slice.
+- `memory_dynamic_stack.cpp` still depends on dispatch diagnostics and prepared
+  dynamic-stack plan context, so this packet does not claim the implementation
+  is independent of the dispatcher.
 - `dispatch_store_sources.cpp` still includes `dispatch.hpp` for publication,
   edge-copy, value-materialization, lookup, and shared frame/address helper
   declarations; moving those boundaries is outside this packet.
@@ -53,14 +53,6 @@ Result: passed. `cmake --build --preset default` completed, and CTest reported
 162/162 `^backend_` tests passed. Proof log: `test_after.log`.
 
 Also ran `git diff --check`; result: passed.
-
-Supervisor route-boundary validation for the Step 2 to Step 3 transition also
-passed:
-
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } 2>&1 | tee /tmp/c4c_step3_route_boundary_full.log'`
-
-Result: passed. `cmake --build --preset default` completed, and CTest reported
-3410/3410 tests passed.
 
 # Retained Step 1 Output
 
@@ -93,11 +85,11 @@ File-to-family map:
 | `compatibility_projection.cpp` | `adapter/internal` | Compatibility projection from prepared/module records; historical boundary adapter, not a reference family. |
 | `compatibility_projection.hpp` | `adapter/internal` | Narrow adapter header for compatibility projection. |
 | `dispatch.cpp` | `adapter/internal` | Main block dispatcher and retargeting glue; should shrink but not be merged into one giant dispatch file. |
-| `dispatch.hpp` | `adapter/internal` | Current catch-all dispatch/internal header. It exposes block dispatch plus branch fusion, calls glue, diagnostics, dynamic stack, producer lookup, publication, edge copies, store sources, entry formals, and lookup declarations. Step 2 should narrow this. |
-| `dispatch_branch_fusion.cpp` | `comparison` | Durable fused compare/branch lowering, but temporarily depends on dispatch hooks. Candidate to move declarations toward `comparison.hpp` or a private branch-fusion header after hook boundary is narrowed. |
+| `dispatch.hpp` | `adapter/internal` | Current catch-all dispatch/internal header. It exposes block dispatch plus calls glue, diagnostics, producer lookup, publication, edge copies, store sources, entry formals, and lookup declarations. Step 2 has narrowed some shard declarations, but this header still needs continued shrinkage. |
+| `comparison_branch_fusion.cpp` | `comparison` | Durable fused compare/branch lowering, now using a comparison-family filename while temporarily depending on dispatch hooks. Keep separate until hook dependencies are narrow enough to justify moving declarations toward `comparison.hpp` or a private branch-fusion header. |
+| `comparison_branch_fusion.hpp` | `comparison` | Narrow branch-fusion declaration surface for the comparison-family shard; still exposes dispatch hook plumbing by necessity. |
 | `dispatch_calls.cpp` | `calls` | Durable dispatch-to-calls bridge: scalar call producers, call lowering, call boundary materialization, indirect callee materialization, missing frame-slot args, stack-preserved values. Should move toward `calls.hpp`/calls-private surface instead of `dispatch.hpp`. |
 | `dispatch_diagnostics.cpp` | `adapter/internal` | Thin diagnostics helper; first low-risk header extraction candidate because the declarations are self-contained and used by dispatch/calls/dynamic-stack paths. |
-| `dispatch_dynamic_stack.cpp` | `memory` | Durable dynamic alloca helper-call lowering; should move toward `memory` or a narrow dynamic-stack private header. |
 | `dispatch_edge_copies.cpp` | `adapter/internal` | Join/edge copy publication glue across predecessor/successor contexts; temporarily justified as dispatch-internal. |
 | `dispatch_entry_formals.cpp` | `prologue` | Entry formal publication complements frame/prologue setup; durable responsibility but currently dispatch-internal. |
 | `dispatch_lookup.cpp` | `adapter/internal` | Thin prepared-value/home lookup helpers; temporarily justified as dispatch-internal and a possible private-header split after diagnostics. |
@@ -122,6 +114,8 @@ File-to-family map:
 | `machine_printer.cpp` | `machine_printer` | Durable central instruction printer, dispatching to family printers. |
 | `machine_printer.hpp` | `machine_printer` | Narrow printer class and helper declarations. |
 | `memory.cpp` | `memory` | Durable load/store/address lowering and printing implementation. |
+| `memory_dynamic_stack.cpp` | `memory` | Durable dynamic alloca helper-call lowering, now using a memory-family filename. Keep as a separate implementation shard because it is cohesive and still bridges prepared dynamic-stack plans with dispatch call handling. |
+| `memory_dynamic_stack.hpp` | `memory` | Narrow dynamic-stack helper-call declaration surface used by direct lowering callers. |
 | `memory.hpp` | `memory` | Durable memory lowering declarations. |
 | `module_compile.cpp` | `codegen/module` | Public compile entry point wrapping traversal/projection. |
 | `module_compile.hpp` | `codegen/module` | Narrow module compile declaration. |
@@ -145,16 +139,18 @@ Specific dispatch surface notes:
   public-looking header. The safest shrink is extracting self-contained
   declarations into narrow private headers used only by implementation shards,
   starting with diagnostics.
-- `dispatch_branch_fusion.cpp`: maps to `comparison`; keep temporarily while
-  hooks still need dispatch publication callbacks, then move branch-fusion
-  declarations out of `dispatch.hpp`.
+- `comparison_branch_fusion.cpp`: maps to `comparison`; now has a
+  durable-family filename but still needs dispatch publication callbacks. Keep
+  separate while hook dependencies remain, then consider whether declarations
+  should move further toward `comparison.hpp`.
 - `dispatch_calls.cpp`: maps to `calls`; should stop being declared from
   `dispatch.hpp` once the calls bridge has a calls-owned or private dispatch-call
   surface.
 - `dispatch_diagnostics.cpp`: maps to `adapter/internal`; declarations are thin,
   cohesive, and low-risk to extract first.
-- `dispatch_dynamic_stack.cpp`: maps to `memory`; dynamic alloca helper-call
-  lowering should eventually have a memory/dynamic-stack boundary.
+- `memory_dynamic_stack.cpp`: maps to `memory`; dynamic alloca helper-call
+  lowering now has a memory-family filename and a narrow direct header while
+  remaining separate from `memory.cpp`.
 - `dispatch_edge_copies.cpp`: maps to `adapter/internal`; cross-block join copy
   publication is genuine dispatch glue and should stay private.
 - `dispatch_entry_formals.cpp`: maps to `prologue`; entry-formal publication is
@@ -197,11 +193,12 @@ Prioritized consolidation list:
    dispatch header.
 3. Split `dispatch_lookup` declarations into a private lookup header used by
    dispatch internals.
-4. Move branch-fusion declarations toward `comparison` once the hook dependency
-   can remain private.
+4. Revisit whether `comparison_branch_fusion.hpp` should move closer to
+   `comparison.hpp` once the hook dependency can remain private.
 5. Revisit memory/prologue-adjacent dispatch shards:
-   `dispatch_dynamic_stack.cpp`, `dispatch_store_sources.cpp`, and
-   `dispatch_entry_formals.cpp`.
+   `dispatch_store_sources.cpp` and `dispatch_entry_formals.cpp`; keep
+   `memory_dynamic_stack.cpp` as a separate memory-family shard unless a later
+   memory-only cleanup finds a real merge benefit.
 6. Leave large cohesive family files (`alu`, `memory`, `calls_moves`, `f128`,
    `i128_ops`, `machine_printer`, `instruction`) split as durable families; do
    not merge them just to reduce file count.
