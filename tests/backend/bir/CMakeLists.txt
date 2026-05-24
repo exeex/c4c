@@ -236,6 +236,28 @@ set_tests_properties(backend_prepared_printer PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepared_lookup_helper_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prepared_lookup_helper_test.cpp"
+)
+target_include_directories(backend_prepared_lookup_helper_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepared_lookup_helper_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepared_lookup_helper_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepared_lookup_helper
+  COMMAND $<TARGET_FILE:backend_prepared_lookup_helper_test>
+)
+set_tests_properties(backend_prepared_lookup_helper PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_x86_prepared_handoff_label_authority_test
     "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_handoff_label_authority_test.cpp"
 )
