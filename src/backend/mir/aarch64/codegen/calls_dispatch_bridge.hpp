@@ -46,14 +46,6 @@ void record_call_result_source_register(
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state);
 
-[[nodiscard]] bool call_boundary_move_reloads_materialized_address(
-    const module::MachineInstruction& instruction,
-    const std::vector<module::MachineInstruction>& materialized_addresses);
-
-[[nodiscard]] std::vector<module::MachineInstruction>
-order_before_call_moves_for_source_preservation(
-    std::vector<module::MachineInstruction> moves);
-
 [[nodiscard]] std::vector<module::MachineInstruction>
 materialize_missing_frame_slot_call_arguments(
     const module::BlockLoweringContext& context,

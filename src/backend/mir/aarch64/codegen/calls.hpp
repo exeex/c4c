@@ -281,6 +281,12 @@ class ScopedPreparedCallPreserveEffectPublication {
     const prepare::PreparedCallPlan& call_plan,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] bool call_boundary_move_reloads_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses);
+[[nodiscard]] std::vector<module::MachineInstruction>
+order_before_call_moves_for_source_preservation(
+    std::vector<module::MachineInstruction> moves);
 [[nodiscard]] std::vector<module::MachineInstruction> lower_before_return_moves(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,

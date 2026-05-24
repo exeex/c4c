@@ -2,6 +2,7 @@
 #include "dispatch_diagnostics.hpp"
 #include "dispatch.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_publication_common.hpp"
 #include "f128.hpp"
 #include "machine_printer.hpp"
 #include "float_ops.hpp"
@@ -2877,8 +2878,82 @@ make_immediate_cast_call_argument_publication_instruction(
       make_call_boundary_move_instruction(std::move(move_record)));
 }
 
+[[nodiscard]] bool move_source_aliases_destination(
+    const module::MachineInstruction& source_instruction,
+    const module::MachineInstruction& destination_instruction) {
+  const auto* source =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&source_instruction.target.payload);
+  const auto* destination =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&destination_instruction.target.payload);
+  return source != nullptr &&
+         destination != nullptr &&
+         destination->move.reason != "callee_saved_preservation_home_population" &&
+         source->source_register.has_value() &&
+         destination->destination_register.has_value() &&
+         registers_alias(*source->source_register, *destination->destination_register);
+}
 
 }  // namespace
+
+[[nodiscard]] bool call_boundary_move_reloads_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses) {
+  const auto* move =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move == nullptr ||
+      move->phase != prepare::PreparedMovePhase::BeforeCall ||
+      move->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move->move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !move->source_memory.has_value() ||
+      !move->destination_register.has_value() ||
+      (!move->source_memory->result_value_id.has_value() &&
+       !move->source_memory->result_value_name.has_value())) {
+    return false;
+  }
+  for (const auto& materialized : materialized_addresses) {
+    const auto* address =
+        std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
+    if (address == nullptr || !address->result_register.has_value() ||
+        !registers_alias(*address->result_register, *move->destination_register)) {
+      continue;
+    }
+    const bool same_value_id =
+        move->source_memory->result_value_id.has_value() &&
+        address->result_value_id == move->source_memory->result_value_id;
+    const bool same_value_name =
+        move->source_memory->result_value_name.has_value() &&
+        address->result_value_name == *move->source_memory->result_value_name;
+    if (same_value_id || same_value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+order_before_call_moves_for_source_preservation(
+    std::vector<module::MachineInstruction> moves) {
+  std::vector<module::MachineInstruction> ordered;
+  ordered.reserve(moves.size());
+  while (!moves.empty()) {
+    auto selected = moves.begin();
+    for (auto candidate = moves.begin(); candidate != moves.end(); ++candidate) {
+      const bool protects_live_source =
+          std::any_of(moves.begin(), moves.end(), [&](const auto& other) {
+            return &other != &*candidate &&
+                   move_source_aliases_destination(*candidate, other);
+          });
+      if (protects_live_source) {
+        selected = candidate;
+        break;
+      }
+    }
+    ordered.push_back(std::move(*selected));
+    moves.erase(selected);
+  }
+  return ordered;
+}
 
 [[nodiscard]] bool prepared_argument_is_small_byval_stack_lane(
     const module::BlockLoweringContext& context,
