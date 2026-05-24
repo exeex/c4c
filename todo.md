@@ -1,63 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-01-calls-dispatch-bridge-helper-absorption.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Absorb One Bounded Helper Family
+Current Step ID: 3
+Current Step Title: Repeat Only for Nearby Same-Shape Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 absorbed the before-call move sequencing helper family from the dispatch
-bridge into the call-move owner.
+Step 3 audited the remaining `calls_dispatch_bridge.cpp/.hpp` helpers after
+the Step 2 before-call move sequencing absorption.
 
-Completed work:
+Decision: stop; no remaining helper family is same-shape enough for another
+bounded absorption packet under the Step 3 rule.
 
-- Moved `move_source_aliases_destination`,
-  `call_boundary_move_reloads_materialized_address`, and
-  `order_before_call_moves_for_source_preservation` from
-  `calls_dispatch_bridge.cpp` to `calls_moves.cpp`.
-- Kept `move_source_aliases_destination` private to `calls_moves.cpp`.
-- Removed the two dispatch-facing helper declarations from
-  `calls_dispatch_bridge.hpp`.
-- Declared `call_boundary_move_reloads_materialized_address` and
-  `order_before_call_moves_for_source_preservation` in `calls.hpp`, because
-  `dispatch.cpp` still calls them while call-boundary sequencing remains split
-  across dispatch and call moves.
-- Added the needed `dispatch_publication_common.hpp` include to
-  `calls_moves.cpp` for `registers_alias`.
+Remaining exported bridge helpers and reasons to leave them in place:
 
-Owner rationale:
-
-`calls_moves.cpp` already owns `lower_before_call_moves`,
-`lower_after_call_moves`, and `CallBoundaryMoveInstructionRecord`
-construction. The relocated helpers only inspect before-call move records and
-materialized-address records to preserve source ordering and skip redundant
-reloads, so the call-move owner is the durable home. No recursive scalar
-argument, indirect callee, missing frame-slot argument, call-result recording,
-or stack-preservation helpers were absorbed.
+- `lower_scalar_call_argument_producers` drives recursive scalar argument
+  materialization, direct global select-chain argument publication, local
+  aggregate address fallback, and scalar-state publication.
+- `lower_call_instruction` remains a public dispatch bridge entry point for
+  dynamic-stack helper calls, variadic helper handling, prepared call-plan
+  diagnostics, and final prepared call lowering.
+- `materialize_call_boundary_source_to_destination` is the nearest-looking
+  before-call helper, but it materializes a missing frame-slot source value
+  into a call ABI destination and records scalar-state publication; that is a
+  wider semantic surface than Step 2's pure before-call move ordering/reload
+  skip helpers.
+- `materialize_indirect_call_callee_to_prepared_register` owns indirect callee
+  lowering, including local-load/store resolution, select-chain/csel emission,
+  scratch selection, and call ABI publication.
+- `record_call_result_source_register` records after-call GPR/FPR result source
+  registers from prepared move and result facts.
+- `materialize_missing_frame_slot_call_arguments` materializes missing
+  frame-slot call arguments into ABI registers and records scalar-state
+  publication.
+- `publish_stack_preserved_call_values` publishes stack-preserved values using
+  prepared call-plan lookup/fallback behavior and stack-slot stores.
 
 ## Suggested Next
 
-Supervisor can either review and commit this completed Step 2 slice or delegate
-Step 3 only if a nearby same-shape bridge helper is selected with an equally
-bounded owner/proof surface.
+Proceed to Step 4 focused behavior-preservation proof for the already-completed
+Step 2 absorption slice. Suggested coverage: build proof plus focused AArch64
+MIR/codegen tests covering normal calls, select-chain call arguments,
+call-result source registers, preserved-value materialization, and local-load
+fallback call arguments.
 
 ## Watchouts
 
 - Keep the work behavior-preserving.
 - Do not broaden into `dispatch.cpp`, whole-call-family cleanup, phase
   extraction, ABI redesign, or expectation rewrites.
-- The remaining bridge helpers have wider semantic or publication surfaces than
-  the pure before-call move sequencing family; do not absorb them without a
-  separately delegated packet and proof.
+- Treat `materialize_call_boundary_source_to_destination` as non-same-shape
+  despite being adjacent to before-call moves: it performs value publication
+  from a frame-slot source into the call ABI destination, not only move-record
+  sequencing.
+- Any future absorption of scalar argument materialization, indirect callee
+  lowering, call-result recording, missing frame-slot argument materialization,
+  or stack-preservation publication should be a separate plan or reviewed
+  route change with a wider proof surface.
 
 ## Proof
 
-Delegated proof passed and was written to `test_after.log`:
+Delegated no-code audit proof: `git diff --check`.
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability|backend_prepare_frame_stack_call_contract|backend_call_boundary_effect_plan|backend_aarch64_instruction_dispatch)$"; } 2>&1 | tee test_after.log'`
-
-Focused subset result: 5/5 tests passed.
-
-`git diff --check` passed.
+Result: passed. No build or `test_after.log` was required for this packet.
