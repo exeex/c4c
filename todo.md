@@ -1,31 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-runtime-carrier-naming-alignment.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Align Printer Mirrors
+Current Step ID: 5
+Current Step Title: Closure Audit
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 printer mirror audit for
-`src/backend/prealloc/prepared_printer/runtime_helpers.cpp` and
-`src/backend/prealloc/prepared_printer/special_carriers.cpp`.
+Completed Step 5 closure audit for
+`ideas/open/prealloc-runtime-carrier-naming-alignment.md`.
 
-No printer edits were required. Steps 2 and 3 only clarified comments and
-grouping in the runtime-helper and special-carrier headers; they did not rename
-public prepared data contracts. The runtime-helper printer already reports
-helper-call resources, ABI/marshal ownership, live preservation, clobbers, and
-selected call ownership under existing field names. The special-carrier printer
-already reports i128 and f128 carrier facts under carrier/fact terminology. No
-second taxonomy or stale public label was found.
+The accumulated source changes are limited to comment/grouping clarification in
+`src/backend/prealloc/runtime_helpers.hpp` and
+`src/backend/prealloc/special_carriers.hpp`. Runtime-helper comments now call
+out helper-call marshal plans, helper-call resource obligations, and selected
+call/ABI ownership. Special-carrier comments now call out value, instruction,
+operand, and completeness facts consumed by later prealloc phases.
+
+No helper-call selection, marshal behavior, carrier requirements, intrinsic
+support decisions, atomics, inline-asm behavior, tests, or prepared dump meaning
+changed. `src/backend/prealloc/prepared_printer/runtime_helpers.cpp` and
+`src/backend/prealloc/prepared_printer/special_carriers.cpp` were audited and
+intentionally left unchanged because no public prepared data contract or printed
+field meaning was renamed. The printer files still mirror the data contracts
+without introducing a second ownership taxonomy.
 
 ## Suggested Next
 
-Execute Step 5 closure audit as a no-code packet. Confirm that the source idea's
-acceptance criteria were satisfied by comment/grouping clarification plus the
-printer mirror audit, and recommend plan-owner closure if no remaining public
-rename is needed.
+Ask the plan owner to close the active plan. The source idea's acceptance
+criteria are satisfied by the comment/grouping clarification plus the printer
+mirror audit, and no narrower follow-up idea is required for this naming slice.
 
 ## Watchouts
 
@@ -44,9 +49,12 @@ rename is needed.
   terminology churn just to mirror comments.
 - Step 4 deliberately kept dump labels unchanged because printed dump meaning
   and public prepared data names did not change.
+- Any future public rename of runtime-helper resources or carrier facts should
+  be a separate plan that updates matching prepared-printer labels in the same
+  slice.
 
 ## Proof
 
-No code changed, so no `test_after.log` was created.
+No code changed in this Step 5 audit, so no `test_after.log` was created.
 
 Whitespace proof passed: `git diff --check`
