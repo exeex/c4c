@@ -9,36 +9,35 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_lookup.hpp` as the narrow private
-declaration surface for the helpers implemented in `dispatch_lookup.cpp`,
-removed those declarations from `dispatch.hpp`, and updated direct
-implementation users to include the new header.
+`src/backend/mir/aarch64/codegen/dispatch_branch_fusion.hpp` as the narrow
+private declaration surface for branch-fusion helpers and
+`DispatchBranchFusionHooks`, removed those declarations from `dispatch.hpp`,
+and updated direct implementation users to include the new header.
 
 Direct callers updated:
 
-- Dispatch shards that use prepared named value/home lookup and same-block
-  scalar/load-local producer helpers now include `dispatch_lookup.hpp` directly:
-  `dispatch.cpp`, `dispatch_calls.cpp`, `dispatch_branch_fusion.cpp`,
-  `dispatch_edge_copies.cpp`, `dispatch_publication.cpp`,
-  `dispatch_producers.cpp`, `dispatch_store_sources.cpp`, and
-  `dispatch_value_materialization.cpp`.
-- Calls implementation shards that still use prepared value-home lookup helpers
-  now include `dispatch_lookup.hpp` directly: `calls_byval_aggregates.cpp`,
-  `calls_preservation.cpp`, and `calls_moves.cpp`.
-- `dispatch_lookup.cpp` includes its own narrow header so its definitions are
-  checked against the extracted declaration surface.
+- `dispatch_branch_fusion.cpp` now includes its own narrow header so its
+  definitions are checked against the extracted declaration surface.
+- `dispatch.cpp` includes `dispatch_branch_fusion.hpp` directly for the hook
+  construction and branch-fusion lowering calls.
+- `dispatch_calls.cpp`, `dispatch_edge_copies.cpp`, and
+  `dispatch_value_materialization.cpp` include `dispatch_branch_fusion.hpp`
+  directly for shared branch condition/immediate helpers.
 
 ## Suggested Next
 
-Recommended next packet: extract the branch-fusion declarations and
-`DispatchBranchFusionHooks` from `dispatch.hpp` into a narrow private
-branch-fusion header, then update only direct branch-fusion users.
+Recommended next packet: extract the dispatch producer declarations from
+`dispatch.hpp` into a narrow private producer header, then update only direct
+same-block producer users.
 
 ## Watchouts
 
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.
+- `dispatch_branch_fusion.cpp` needs `../../query.hpp` directly for MIR
+  same-block producer/constant query helpers that were previously available
+  through `dispatch.hpp`.
 - `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
   publication, producer lookup, select-chain, and stack/frame helper
   declarations; those are separate header-narrowing candidates and were not
@@ -51,6 +50,8 @@ branch-fusion header, then update only direct branch-fusion users.
   the lookup helper declarations from the catch-all header.
 
 ## Proof
+
+Initial compile check passed with `cmake --build --preset default`.
 
 Ran delegated proof command:
 

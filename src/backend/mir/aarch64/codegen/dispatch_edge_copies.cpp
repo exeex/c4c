@@ -3,6 +3,7 @@
 
 #include "../abi/abi.hpp"
 #include "alu.hpp"
+#include "dispatch_branch_fusion.hpp"
 #include "dispatch_lookup.hpp"
 #include "instruction.hpp"
 #include "operands.hpp"

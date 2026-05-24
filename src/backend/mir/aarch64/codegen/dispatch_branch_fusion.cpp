@@ -1,7 +1,8 @@
-#include "dispatch.hpp"
+#include "dispatch_branch_fusion.hpp"
 
 #include "dispatch_lookup.hpp"
 #include "instruction.hpp"
+#include "../../query.hpp"
 
 #include <cstdint>
 #include <optional>
