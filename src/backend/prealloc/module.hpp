@@ -15,6 +15,7 @@
 #include "value_locations.hpp"
 #include "variadic.hpp"
 #include "prepared_lookups.hpp"
+#include "publication_plans.hpp"
 
 #include "../bir/bir.hpp"
 #include "../../target_profile.hpp"
