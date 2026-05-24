@@ -9,26 +9,26 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 ## Just Finished
 
 Completed Step 3 - Rename Or Merge Thin Historical Shards. Extracted the
-value-materialization declarations from `dispatch.hpp` into the private
-`dispatch_value_materialization.hpp` header, updated the direct implementation
-include sites, and kept `dispatch_value_materialization.cpp` as the owner of
-those definitions with no behavior changes.
+remaining `dispatch_publication_common` helper declarations from
+`dispatch.hpp` into the private `dispatch_publication_common.hpp` header,
+updated direct implementation users, and kept `dispatch_publication.cpp` as the
+owner of those definitions with no behavior changes.
 
 ## Suggested Next
 
-Recommended next packet: continue shrinking `dispatch.hpp` by extracting the
-remaining `dispatch_publication_common` helper declarations into a narrow
-private header and updating only direct helper users.
+Recommended next packet: advance Step 3 to Step 4 after supervisor review and
+commit, because the planned thin-shard/header-boundary cleanup now has the
+diagnostics, lookup, edge-copy, value-materialization, and publication-common
+declarations out of `dispatch.hpp`.
 
 ## Watchouts
 
-- `dispatch.hpp` still owns `dispatch_publication_common`,
-  `dispatch_publication`, and `prologue_entry_formals` declaration blocks; the
-  edge-copy and value-materialization blocks are now out of the catch-all
-  header.
+- `dispatch.hpp` still owns `dispatch_publication` and
+  `prologue_entry_formals` declaration blocks; this packet intentionally moved
+  only the common helper block named by the delegated slice.
 - Several direct users still include both `dispatch.hpp` and narrow private
-  dispatch headers because this route is only moving one declaration block per
-  packet.
+  dispatch headers because the remaining public dispatch entry points have not
+  moved.
 - `dispatch.cpp` has a pre-existing local `EdgeProducerContext` type declaration
   that is not part of the moved edge-copy public declarations; this packet left
   it untouched to avoid unrelated cleanup.

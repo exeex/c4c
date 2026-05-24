@@ -6,6 +6,7 @@
 #include "cast_ops.hpp"
 #include "comparison.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_publication_common.hpp"
 #include "float_ops.hpp"
 #include "globals.hpp"
 #include "instruction.hpp"
