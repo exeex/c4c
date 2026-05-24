@@ -1,20 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-03-alu-fallback-operand-phase-extraction.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract The Phase-Local Fallback Boundary
+Current Step ID: 3
+Current Step Title: Rewire Call Sites Without Semantic Drift
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Extract The Phase-Local Fallback Boundary completed a
-behavior-preserving in-file extraction in `alu.cpp`.
+Step 3 - Rewire Call Sites Without Semantic Drift audited the scalar binary
+fallback call sites in `lower_scalar_instruction` after the Step 2 extraction.
 
-`make_scalar_fallback_operand` now delegates to a local
-`ScalarFallbackOperandSelector` in the anonymous namespace. The selector owns
-the scalar ALU fallback decision boundary while preserving the exact previous
-selection order:
+No `alu.cpp` code change was needed. The existing
+`make_scalar_fallback_operand` calls are already the correct call-site
+boundary: they keep `ScalarFallbackOperandSelector` private to the anonymous
+namespace, avoid exposing fallback internals in `lower_scalar_instruction`, and
+preserve the exact fallback selection order:
 
 - immediate value
 - already-emitted scalar register
@@ -28,24 +29,25 @@ were changed.
 
 ## Suggested Next
 
-Delegate Step 3 - Rewire Call Sites Without Semantic Drift to decide whether
-`lower_scalar_instruction` should instantiate or otherwise expose the local
-fallback selector at the fallback call-site boundary, while keeping behavior and
-control-publication paths unchanged.
+Delegate the next plan step to validate the completed extraction boundary and
+decide whether this runbook is ready for broader supervisor-side validation or
+plan-owner review.
 
 ## Watchouts
 
-- `make_scalar_fallback_operand` remains the only fallback call-site helper
-  used by `lower_scalar_instruction`; Step 2 did not require call-site rewiring.
+- `make_scalar_fallback_operand` remains the only scalar binary fallback
+  call-site helper used by `lower_scalar_instruction`.
 - Keep `make_control_publication_operand` and all `materialize_control_*` /
   `append_control_*` helpers outside this fallback boundary.
-- If Step 3 would require changing control-publication materialization, stop for
-  plan review instead of widening the extraction.
+- Rewiring `lower_scalar_instruction` to instantiate
+  `ScalarFallbackOperandSelector` directly would be churn and would leak a
+  private fallback concept into the call-site surface.
 
 ## Proof
 
-Delegated proof passed and wrote `test_after.log`:
+Delegated no-code-change proof passed:
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value)$"; } 2>&1 | tee test_after.log'`
+`git diff --check`
 
-`git diff --check` passed.
+No code changed, so the delegated build/ctest command was not run and no log
+file was created or touched for this packet.
