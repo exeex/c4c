@@ -79,3 +79,17 @@ Reject the implementation route if it requires any of the following:
 - One fallback operand-selection helper group has a clearer phase-local home.
 - Scalar ALU lowering behavior and generated output are unchanged.
 - The slice is small enough for one focused future run.
+
+## Closure
+
+Closed after the active runbook extracted the scalar ALU fallback operand
+selection helper group behind the phase-local `ScalarFallbackOperandSelector`
+boundary while preserving the existing `make_scalar_fallback_operand` call-site
+surface.
+
+Close-time proof passed with:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"`:
+  162/162 passed.
+- `check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`:
+  no new failures and unchanged 162/162 pass count.
