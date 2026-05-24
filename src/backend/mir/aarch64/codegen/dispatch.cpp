@@ -9,6 +9,7 @@
 #include "dispatch_branch_fusion.hpp"
 #include "dispatch_calls.hpp"
 #include "dispatch_diagnostics.hpp"
+#include "dispatch_dynamic_stack.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
 #include "f128.hpp"

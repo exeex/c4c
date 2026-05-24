@@ -35,13 +35,6 @@ struct InstructionDispatchResult {
     module::MachineBlock& block,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// dispatch_dynamic_stack.hpp
-[[nodiscard]] std::optional<module::MachineInstruction> lower_dynamic_stack_helper_call(
-    const module::BlockLoweringContext& context,
-    const bir::CallInst& call_inst,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-
 // dispatch_publication_common.hpp
 [[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
                                    const RegisterOperand& rhs);

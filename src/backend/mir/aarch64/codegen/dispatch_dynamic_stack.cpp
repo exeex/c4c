@@ -1,5 +1,6 @@
-#include "dispatch.hpp"
+#include "dispatch_dynamic_stack.hpp"
 
+#include "dispatch.hpp"
 #include "instruction.hpp"
 
 #include <cstddef>

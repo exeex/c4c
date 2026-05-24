@@ -9,52 +9,42 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_producers.hpp` as the narrow private
-declaration surface for same-block producer helpers implemented in
-`dispatch_producers.cpp`, removed those declarations from `dispatch.hpp`, and
-updated direct implementation users to include the new header.
+`src/backend/mir/aarch64/codegen/dispatch_dynamic_stack.hpp` as the narrow
+private declaration surface for `lower_dynamic_stack_helper_call`, removed that
+declaration from `dispatch.hpp`, and updated direct implementation users to
+include the new header.
 
 Direct callers updated:
 
-- `dispatch_producers.cpp` now includes its own narrow header so definitions are
-  checked against the extracted declaration surface.
-- `dispatch.cpp` includes `dispatch_producers.hpp` directly for load-global
-  materialization, branch-fusion hook wiring, and current-block join-copy source
-  checks.
-- `dispatch_calls.cpp`, `dispatch_edge_copies.cpp`,
-  `dispatch_store_sources.cpp`, and `dispatch_value_materialization.cpp` include
-  `dispatch_producers.hpp` directly for same-block producer lookup, select-chain
-  checks, load-global labels, and producer instruction indexes.
-- `alu.cpp` includes `dispatch_producers.hpp` directly for the direct
-  global-load select-chain check.
+- `dispatch_dynamic_stack.cpp` now includes its own narrow header so the
+  definition is checked against the extracted declaration surface.
+- `dispatch.cpp` includes `dispatch_dynamic_stack.hpp` directly for lowering
+  dynamic-stack helper calls during generic block dispatch.
+- `dispatch_calls.cpp` includes `dispatch_dynamic_stack.hpp` directly for the
+  call-lowering bridge path that recognizes dynamic-stack helper calls.
 
 ## Suggested Next
 
-Recommended next packet: extract the dynamic-stack dispatch declaration from
-`dispatch.hpp` into a narrow `dispatch_dynamic_stack.hpp`, then update only the
-helper implementation and direct dispatch user.
+Recommended next packet: extract the store-source dispatch declarations from
+`dispatch.hpp` into a narrow `dispatch_store_sources.hpp`, then update
+`dispatch_store_sources.cpp` and direct implementation users that publish or
+materialize store sources.
 
 ## Watchouts
 
+- `dispatch_dynamic_stack.cpp` still includes `dispatch.hpp` for publication
+  and frame/address helper declarations; this packet only moved the dynamic
+  stack entry declaration.
+- `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
+  publication, select-chain materialization, and stack/frame helper
+  declarations; those are separate header-narrowing candidates and were not
+  widened into this packet.
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.
-- `dispatch_branch_fusion.cpp` needs `../../query.hpp` directly for MIR
-  same-block producer/constant query helpers that were previously available
-  through `dispatch.hpp`.
-- `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
-  publication, select-chain materialization, and stack/frame helper declarations;
-  those are separate header-narrowing candidates and were not widened into this
-  packet.
 - `prepared_value_home_for_value` remains in `dispatch.hpp` because it is
   implemented in `dispatch_publication.cpp`; moving publication or
   value-materialization declarations was intentionally outside this packet.
-- Several files still include both `dispatch.hpp` and `dispatch_lookup.hpp`
-  because they also use non-lookup dispatch internals; this packet only removed
-  the producer helper declarations from the catch-all header.
-- `dispatch.cpp` has local join-copy cache helpers with names close to the
-  extracted producer helper names; this packet only moved the declarations
-  implemented in `dispatch_producers.cpp`.
 
 ## Proof
 
