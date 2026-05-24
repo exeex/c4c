@@ -1,69 +1,112 @@
 Status: Active
 Source Idea Path: ideas/open/subsystem-entropy-reduction-refactor-generator.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select And Baseline One Subsystem
+Current Step ID: 2
+Current Step Title: Build The Entropy Map
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected `src/backend/mir/aarch64/codegen/` as the first umbrella
-entropy-audit subsystem and recorded baseline shape data for Step 2.
+Step 2 built an evidence-backed entropy map for
+`src/backend/mir/aarch64/codegen/` from the Step 1 baseline plus targeted
+inspection of the named route, record, compatibility, call, fallback, and
+printer files.
 
-Baseline facts:
-- Source shape: 77 `.cpp`/`.hpp` files, split as 41 `.cpp` and 36 `.hpp`;
-  `scripts/count_src_lines.py | rg 'src/backend/mir/aarch64/codegen|Total:'`
-  reports 48,070 lines in this subsystem.
-- Largest `.cpp` files by `wc -l`: `alu.cpp` 3,999, `calls_moves.cpp` 3,435,
-  `dispatch.cpp` 2,770, `i128_ops.cpp` 2,630, `memory.cpp` 2,547,
-  `f128.cpp` 2,070, `machine_printer.cpp` 1,929,
-  `instruction.cpp` 1,879, `dispatch_value_materialization.cpp` 1,597,
-  `variadic.cpp` 1,471.
-- Largest `.hpp` files by `wc -l`: `instruction.hpp` 1,923, `calls.hpp` 401,
-  `memory_store_sources.hpp` 158, `dispatch_edge_copies.hpp` 115,
-  `i128_ops.hpp` 114, `dispatch_value_materialization.hpp` 103,
-  `alu.hpp` 102, `memory.hpp` 101,
-  `comparison_branch_fusion.hpp` 95, `dispatch_publication.hpp` 92.
-- Broad internal include fan-out is concentrated in `alu.hpp` 28 includers,
-  `instruction.hpp` 18, `memory.hpp` 15, `calls.hpp` 15, `dispatch.hpp` 14,
-  `machine_printer.hpp` 13, and `dispatch_lookup.hpp` 12. The largest include
-  aggregators are `dispatch.cpp` 43 includes, `memory_store_sources.cpp` 31,
-  `dispatch_publication.cpp` 27, `calls_dispatch_bridge.cpp` 24,
-  `dispatch_value_materialization.cpp` 23, and `dispatch_edge_copies.cpp` 21.
-- Route/compatibility search hits: `README.md` explicitly describes legacy
-  module surface; `compatibility_projection.*` is legacy compatibility surface;
-  `module_compile.cpp` includes compatibility projection; `calls_dispatch_bridge.*`
-  names a bridge route and has stack-preserved-value `fallback` logic;
-  `alu.cpp` has scalar fallback operand helpers; `memory.cpp` has fallback link
-  name handling; `instruction.hpp` keeps compatibility spelling and temporary
-  prepared value vocabulary.
-- Nearby proof surfaces already present: targeted CTest names in
-  `tests/backend/mir/CMakeLists.txt` include `backend_aarch64_*` C++ tests,
-  `backend_cli_aarch64_asm_no_machine_nodes_fails`, and optional external
-  AArch64 CLI smoke tests; `tests/backend/CMakeLists.txt` also registers
-  backend route cases such as
-  `backend_codegen_route_aarch64_prepared_call_boundary_scalability` and
-  `backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call`.
-  Step 1 did not run broad validation.
+Entropy map:
+- Data contract hub: `instruction.hpp` / `instruction.cpp`. Evidence:
+  `instruction.hpp` defines the core record vocabulary and payload variants
+  (`OperandKind`, `RecordSurfaceKind`, `InstructionFamily`, `MachineOpcode`,
+  `MachinePrinterMnemonicKind`, `MachineNodeSelectionStatus`, many
+  `Prepared*RecordError` enums, `RegisterOperand`, `MemoryOperand`,
+  `CallBoundaryMoveInstructionRecord`, `AssemblerInstructionRecord`,
+  `ObjectInstructionRecord`, and `InstructionRecord`). `instruction.cpp`
+  mixes enum spelling, printer mnemonic mapping, effect derivation, selection
+  status, and record constructors such as `make_scalar_instruction`,
+  `make_frame_instruction`, `make_assembler_instruction`, and
+  `make_unsupported_machine_instruction`. This is justified as a contract hub,
+  but high entropy because it also owns policy-like selection/effect logic.
+- Phase logic hub: `dispatch.cpp`. Evidence: 43 includes in the Step 1
+  baseline and local helpers around BIR/prepared lookup, same-block producer
+  queries, select/materialization paths, store retargeting, edge producer
+  context, branch-fusion hooks, and the exported `dispatch_prepared_block`.
+  It calls family lowerers while also owning cross-family publication,
+  retargeting, and materialization decisions, so this is the broadest route
+  hub and the highest-risk extraction target.
+- Phase-plus-emission hotspot: `alu.cpp` / `alu.hpp`. Evidence:
+  `alu.hpp` has 28 includers and exposes state (`BlockScalarLoweringState`),
+  record builders, scalar operand conversion, emitted-register tracking, and
+  `lower_scalar_instruction`. `alu.cpp` combines scalar record construction,
+  prepared home lookup, fallback operand selection (`make_scalar_fallback_operand`),
+  control publication materialization, emitted-register cache maintenance, and
+  printer-facing helpers (`make_scalar_alu_print_lines`). This is a justified
+  combination today, but its fallback/control-publication helpers are concrete
+  extraction candidates.
+- Call-boundary phase hub: `calls_moves.cpp` plus broad `calls.hpp`. Evidence:
+  `calls_moves.cpp` lowers before-call, after-call, before-return, value moves,
+  stack copies, byval lanes, immediate bindings, and callee-saved
+  republication via helpers such as `lower_before_call_move`,
+  `lower_after_call_move`, `lower_before_call_moves`, `lower_after_call_moves`,
+  and `lower_value_moves`. `calls.hpp` exposes ABI sizing, prepared-call-plan
+  lookup, call-boundary lowering, preservation analysis, byval helpers, and
+  call printing declarations. This is broad phase logic with some adapter and
+  emission leakage through inline asm payload construction.
+- Adapter bridge hotspot: `calls_dispatch_bridge.cpp` /
+  `calls_dispatch_bridge.hpp`. Evidence: includes dispatch and call/move
+  surfaces, exports bridge entry points such as `lower_call_instruction`,
+  `lower_select_chain_call_arguments`, `record_call_result_source_register`,
+  and materialization helpers, and contains recursive scalar call-argument
+  materialization plus preserved-value/local-load fallback paths. This is a
+  good Step 3 candidate because it is route-specific glue rather than a core
+  data contract.
+- Compatibility bridge: `compatibility_projection.cpp` /
+  `compatibility_projection.hpp` and `module_compile.cpp`. Evidence:
+  `module_compile.cpp` derives compatibility records after
+  `lower_prepared_functions`, while `compatibility_projection.cpp` filters
+  selected target records through `selected_compatibility_nodes` and exports
+  `derive_compatibility_function_records` /
+  `derive_compatibility_projection`. This is intentionally narrow adapter
+  logic and a low-risk follow-up candidate, not the first high-value entropy
+  reduction.
+- Emission/debug/print boundary: `machine_printer.cpp`,
+  `machine_printer.hpp`, `asm_emitter.cpp`, `asm_emitter.hpp`, and family
+  print helpers such as `calls_printing.cpp`, `f128.cpp`, `intrinsics.cpp`,
+  and `variadic.cpp`. Evidence: `machine_printer.cpp` owns
+  `MachineInstructionPrinter::print_instruction` and dispatches through
+  `print_machine_instruction_line_payloads` to `print_branch`, `print_memory`,
+  `print_frame`, `print_call`, `print_scalar`, `print_assembler`, etc.;
+  `asm_emitter.cpp` owns `print_prepared_machine_nodes` and global/string
+  object text emission. These are large but lower-risk when kept as printer
+  consumers of structured nodes.
+- Text-emission leakage watchlist: several phase files still build
+  `AssemblerInstructionRecord` / `inline_asm_template` payloads directly,
+  including `dispatch.cpp`, `alu.cpp`, `calls_moves.cpp`,
+  `comparison_branch_fusion.cpp`, `memory_store_sources.cpp`,
+  `memory_dynamic_stack.cpp`, `prologue_entry_formals.cpp`, and `cast_ops.cpp`.
+  This is not one file's fault; it marks a cross-cutting adapter/emission
+  boundary to avoid widening Step 3 beyond one coherent extraction.
 
 ## Suggested Next
 
-Execute Step 2 by turning the AArch64 codegen baseline into one or two bounded
-refactor candidates. Start by separating broad ownership surfaces from
-low-risk extraction candidates: `dispatch.cpp`, `alu.cpp`, `calls_moves.cpp`,
-and `instruction.hpp` are high-entropy hubs, while the route/compatibility
-markers around `compatibility_projection.*`, `calls_dispatch_bridge.*`, and
-the fallback helpers are good places to define audit questions.
+For Step 3, prefer a bounded extraction around `calls_dispatch_bridge.*` and
+its call-argument/materialized-address bridge helpers, with explicit
+non-goals for `dispatch.cpp`, `instruction.hpp`, and broad `calls_moves.cpp`
+rewrites. The next-best low-risk candidate is documenting or tightening the
+`compatibility_projection.*` adapter boundary. Avoid picking `dispatch.cpp` or
+`instruction.hpp` first unless Step 3 is explicitly a design-only split,
+because both are broad hubs whose first implementation slice would likely
+touch too many families.
 
 ## Watchouts
 
-Keep the next packet planning-only unless the supervisor explicitly delegates
-implementation. The selected subsystem is broad enough that Step 2 should avoid
-claiming a rewrite target from line count alone; use include fan-out and
-route-era terminology to identify a coherent ownership boundary first.
+`dispatch.cpp`, `alu.cpp`, `calls_moves.cpp`, and `instruction.hpp` are real
+hotspots, but they are not equally good first refactor targets. Treat
+`instruction.hpp` as a durable contract until a smaller adapter split proves
+where the contract is leaking. Treat printer/debug files as follow-up cleanup
+unless a concrete extraction needs to move text-emission leakage out of phase
+logic.
 
 ## Proof
 
-Packet proof required: `git diff --check`. No build, test run, or
-`test_after.log` is needed for this planning-only packet.
+`git diff --check` passed. No build, test run, or `test_after.log` was needed
+for this planning-only packet.
