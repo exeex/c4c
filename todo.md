@@ -9,33 +9,36 @@ Current Step Title: Rewire AArch64 Users To The Shared Query
 ## Just Finished
 
 Step 3: Rewire AArch64 Users To The Shared Query completed as a narrow code
-slice. `dispatch_publication.cpp` now calls
-`mir::find_same_block_named_producer_record` directly in
-`value_publication_may_read_register_index` and consumes the shared producer
-record for the policy-free producer pointer/index facts used by recursive
-read-register analysis.
+slice. `dispatch_store_sources.cpp` now calls
+`mir::find_same_block_select_producer` directly in
+`store_local_value_has_select_producer`, replacing the remaining AArch64
+named-producer wrapper use for that policy-free select-producer fact.
 
 The AArch64 compatibility wrapper remains in `dispatch_producers.cpp` for
-unmigrated users, and no publication/store/call planning semantics moved.
+unmigrated users, and no store-source planning, pointer writeback,
+frame-slot addressing, publication planning, or call-boundary semantics moved.
 
 ## Suggested Next
 
-Continue Step 3 with one more narrow consumer migration if the supervisor wants
-more AArch64 rewiring before review. The remaining wrapper-heavy users are
-producer-index and named-producer lookups in value materialization and store
-sources; migrate only policy-free facts and leave frame-slot, store-source,
-call-boundary, and publication-planning decisions local.
+Proceed to Step 4 or supervisor review before another code slice. The remaining
+wrapper consumers in value materialization and store sources are mostly coupled
+to prepared-memory access, local-load offset reuse, direct-global-load
+materialization, scalar FP emission, cast emission, pointer base writeback, or
+store/publication planning, so another migration should start from a tighter
+API boundary instead of broad rewiring.
 
 ## Watchouts
 
 - Step 3 is not fully complete yet: compatibility wrappers still have live
   AArch64 consumers.
-- `dispatch_producers.cpp` remains the AArch64 compatibility surface for other
-  consumers. Avoid deleting wrappers before call, publication, store, and
-  branch-fusion users are migrated coherently.
-- `dispatch_publication.cpp` no longer calls the AArch64 named-producer or
-  producer-index wrappers directly, but its publication policy helpers still
-  belong in the target layer.
+- `dispatch_store_sources.cpp` still has direct AArch64 wrapper users for
+  byval frame-slot load checks, wide-load/narrow-store checks, cast producer
+  emission, scalar FP binary producer checks, stored value materialization, and
+  pointer-base offset emission.
+- `dispatch_value_materialization.cpp` still has direct AArch64 wrapper users
+  in FP value materialization and generic value publication. Those flows mix
+  producer/index facts with frame-slot addressing, load-global symbol policy,
+  current-block entry publication, and prepared value homes.
 - The shared traversal is predicate-based; keep target-specific questions such
   as direct-global-load materialization decisions outside `src/backend/mir`.
 

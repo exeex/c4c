@@ -30,6 +30,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] bool store_local_uses_pointer_value_address(
@@ -245,9 +246,8 @@ find_latest_narrow_store_for_wide_local_load(
   if (store.value.kind != bir::Value::Kind::Named) {
     return false;
   }
-  const auto* producer =
-      find_same_block_named_producer(context, store.value.name, instruction_index);
-  return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
+  return static_cast<bool>(
+      mir::find_same_block_select_producer(context.bir_block, store.value, instruction_index));
 }
 [[nodiscard]] bool store_local_value_has_scalar_fp_binary_producer(
     const module::BlockLoweringContext& context,
