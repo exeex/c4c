@@ -1,126 +1,161 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-responsibility-map-and-layout-plan.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build The Responsibility Map
+Current Step ID: 3
+Current Step Title: Propose The Stable Package Model
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: classified all 109 `src/backend/prealloc`
-`.cpp` / `.hpp` files by primary durable responsibility, target-shape, mixed
-ownership boundary, and prepared-printer mirror behavior. No implementation
-files were changed.
+Completed Step 3 from `plan.md`: turned the Step 1/2 inventory and
+responsibility map into a proposed durable package model for
+`src/backend/prealloc`, separated aggregate contracts from future contraction
+candidates, and grouped cleanup candidates by slice type. No implementation
+files, tests, `plan.md`, or source idea files were changed.
 
-### Responsibility Map
+### Proposed Stable Package Model
 
-All file paths in the table are relative to `src/backend/prealloc/`.
+`prealloc` should remain the target-parameterized preparation layer between
+semantic BIR and target MIR/codegen. Its internal layout should make five
+boundaries visible:
 
-Target-shape legend: `neutral` means independent of concrete target profiles;
-`parameterized` means valid prealloc ownership using `TargetProfile`, ABI facts,
-or stable target register identities; `specific-watch` means architecture names
-or final target-shaped details are present and should be watched during layout
-cleanup.
+1. stable prepared-data contracts consumed by codegen and printers
+2. semantic planning phases that build or mutate prepared facts
+3. publication/accessor packages that translate prepared data for later
+   consumers
+4. target-profile facts that are concrete but non-emitting
+5. prepared-printer mirrors that follow data-family ownership
 
-| Primary responsibility | Files | Target shape | Mixed boundary notes |
+The package model below is proposed as the durable ownership map for follow-up
+layout ideas. File paths are relative to `src/backend/prealloc/`.
+
+| Proposed family | Durable owner | Files | Contract rule |
 | --- | --- | --- | --- |
-| Pipeline coordination and phase ordering | `prealloc.cpp`, `prealloc.hpp`, `legalize.cpp`, `module.hpp`, `names.hpp` | `prealloc.cpp`, `prealloc.hpp`, `module.hpp`, and `names.hpp` are mostly neutral; `legalize.cpp` is parameterized through `TargetProfile` legalization and ABI inference. | `module.hpp` is deliberately mixed as the aggregate prepared-module contract and inline lookup host; do not split it mechanically in Step 3. `prealloc.cpp` is the phase-order coordinator. `legalize.cpp` mutates BIR before later planning and is a semantic phase, not layout-only cleanup. |
-| Control-flow normalization, out-of-SSA, and move bundles | `control_flow.hpp`, `out_of_ssa.cpp`, `label_identity.cpp`, `label_identity.hpp` | neutral. | `control_flow.hpp` is the largest mixed contract: route name, branch conditions, join transfers, parallel copies, authoritative join/branch sources, invariants, and label metadata all live together. The mixed shape is durable at the contract level but a future package model should separate control-flow facts from route/invariant diagnostics before any physical file split. |
-| Liveness and register-allocation planning | `liveness.cpp`, `liveness.hpp`, `regalloc.cpp`, `regalloc.hpp`, `regalloc/assignment.cpp`, `regalloc/assignment.hpp`, `regalloc/call_moves.cpp`, `regalloc/call_moves.hpp`, `regalloc/call_return_abi.cpp`, `regalloc/call_return_abi.hpp`, `regalloc/classification.cpp`, `regalloc/classification.hpp`, `regalloc/consumer_moves.cpp`, `regalloc/consumer_moves.hpp`, `regalloc/intervals.cpp`, `regalloc/intervals.hpp`, `regalloc/move_records.cpp`, `regalloc/move_records.hpp`, `regalloc/phi_moves.cpp`, `regalloc/phi_moves.hpp`, `regalloc/pointer_carriers.cpp`, `regalloc/pointer_carriers.hpp`, `regalloc/runtime_helpers.cpp`, `regalloc/runtime_helpers.hpp`, `regalloc/spill_reload.cpp`, `regalloc/spill_reload.hpp`, `regalloc/stack_slots.cpp`, `regalloc/stack_slots.hpp`, `regalloc/storage.cpp`, `regalloc/storage.hpp`, `regalloc/value_homes.cpp`, `regalloc/value_homes.hpp`, `regalloc/values.cpp`, `regalloc/values.hpp`, `regalloc_placement_identity.cpp`, `regalloc_placement_identity.hpp` | liveness is neutral; core regalloc is parameterized; `regalloc/call_return_abi.cpp` is `specific-watch` because it contains AArch64/x86/RISC-V ABI branches and concrete register sequences; `regalloc_placement_identity.*` is parameterized target-register identity publication. | `regalloc.cpp` is a durable coordinator over split helper files, stack layout, dynamic stack, target register profile, and value homes. `regalloc.hpp` mixes public allocation state, move resolution, ABI bindings, constraints, and target-register identities. `regalloc/call_moves.cpp` and `regalloc/value_homes.cpp` deliberately bridge call ABI/profile facts into value-home planning. |
-| Stack layout and frame planning | `frame.hpp`, `frame_plan.cpp`, `frame_plan.hpp`, `stack_layout/alloca_coalescing.cpp`, `stack_layout/analysis.cpp`, `stack_layout/coordinator.cpp`, `stack_layout/copy_coalescing.cpp`, `stack_layout/inline_asm.cpp`, `stack_layout/regalloc_helpers.cpp`, `stack_layout/slot_assignment.cpp`, `stack_layout/stack_layout.hpp` | mostly parameterized; `frame_plan.cpp` uses target register pools and target-sized save slots; `stack_layout/coordinator.cpp` is `specific-watch` for fallback size/address paths but still owns target-parameterized planning rather than final emission. | `stack_layout/coordinator.cpp` is the main mixed boundary: object collection, slot assignment orchestration, address materialization publication, and fallback address facts. `module.hpp` currently declares stack-layout helper APIs, so Step 3 should decide whether those declarations stay with the aggregate contract or move under stack-layout ownership. |
-| Call/return ABI movement plans | `calls.hpp`, `call_plans.cpp`, `call_plans.hpp`, `formal_publications.cpp`, `formal_publications.hpp` | parameterized; call plans consume ABI and target register profile facts but do not emit target instructions. | `calls.hpp` is deliberately mixed: argument/result storage encodings, clobbers, preservation routes, indirect callee plans, memory return plans, call-boundary classification, and boundary effects are one call ABI contract. `call_plans.cpp` spans direct/indirect calls, preservation, clobbers, and boundary-effect derivation; future cleanup should treat it as phase extraction, not arbitrary file movement. |
-| Value homes, storage encodings, and publication plans | `addressing.hpp`, `decoded_home_storage.cpp`, `decoded_home_storage.hpp`, `prepared_lookups.cpp`, `prepared_lookups.hpp`, `publication_plans.cpp`, `publication_plans.hpp`, `storage.hpp`, `storage_plans.cpp`, `storage_plans.hpp`, `value_locations.hpp` | mostly parameterized; `storage_plans.cpp` resolves typed register placement from target profile; `decoded_home_storage.*` is target-aware diagnostic decoding; `addressing.hpp` carries target-shaped TLS/address materialization models but not final instruction selection. | `decoded_home_storage.hpp` intentionally crosses prepared lookups, regalloc, storage, and value locations as a reader-facing decode contract. `publication_plans.hpp` mixes scalar and store-source publication because both serve codegen-facing publication. `value_locations.hpp` bridges regalloc homes and move bundles; its bridge comments mark compatibility boundaries to preserve until consumers converge. |
-| Runtime helper carriers for i128/f128/atomics/intrinsics/inline asm | `atomics.cpp`, `atomics.hpp`, `f128_runtime_helpers.cpp`, `f128_runtime_helpers.hpp`, `i128_runtime_helpers.cpp`, `i128_runtime_helpers.hpp`, `inline_asm.cpp`, `inline_asm.hpp`, `intrinsics.cpp`, `intrinsics.hpp`, `runtime_helpers.hpp`, `special_carriers.cpp`, `special_carriers.hpp` | parameterized overall; `intrinsics.cpp` is `specific-watch` for AArch64 CRC/NEON feature checks; `inline_asm.cpp` is `specific-watch` for target inline-asm register/home identity; i128/f128 helpers use target register profile facts. | `runtime_helpers.hpp` is a broad carrier contract that mixes helper families, ABI transitions, marshal directions, ownership, and value homes. `special_carriers.hpp` is another broad carrier contract for i128/f128/atomics/intrinsics/inline asm. These mixed headers are durable as data-family aggregates, but Step 3 should decide whether runtime helper contracts and special carrier contracts remain separate public surfaces. |
-| Dynamic stack and variadic entry plans | `dynamic_stack.cpp`, `dynamic_stack.hpp`, `variadic.hpp`, `variadic_entry_plans.cpp`, `variadic_entry_plans.hpp` | `dynamic_stack.*` is neutral except LLVM intrinsic names; `variadic*` is `specific-watch` because AAPCS64 HFA/helper resource authority is currently explicit. | `variadic_entry_plans.cpp` mixes AAPCS64 ABI facts, helper scratch requirements, operand-home authority, and storage authority. That is target-parameterized prealloc ownership, but the AAPCS64-specific names are a candidate for Step 3 package boundaries rather than a generic variadic-only file. |
-| Target register profile facts | `target_register_profile.cpp`, `target_register_profile.hpp` | `specific-watch` by design: it centralizes x86, AArch64, and RISC-V caller/callee/ABI register facts. | This is the correct home for concrete register pool facts inside prealloc. It should remain isolated from final register spelling/emission and should be reused by call, frame, storage, and regalloc helpers instead of duplicating architecture tables. |
-| Prepared printer/debug dump support | `prepared_printer.cpp`, `prepared_printer.hpp`, `prepared_printer/private.hpp`, `prepared_printer/addressing.cpp`, `prepared_printer/atomics.cpp`, `prepared_printer/calls.cpp`, `prepared_printer/control_flow.cpp`, `prepared_printer/frame.cpp`, `prepared_printer/functions.cpp`, `prepared_printer/inline_asm.cpp`, `prepared_printer/intrinsics.cpp`, `prepared_printer/regalloc.cpp`, `prepared_printer/runtime_helpers.cpp`, `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, `prepared_printer/value_locations.cpp`, `prepared_printer/variadic.cpp` | neutral debug formatting over prepared data; output includes target/profile fields but does not own target policy. | The directory is already family-split. `private.hpp` deliberately imports `module.hpp`, so each mirror file sees the aggregate module contract. Printer files should follow future data-family moves rather than lead them. |
+| Pipeline and prepared-module aggregate | top-level phase coordinator and aggregate prepared-module surface | `prealloc.cpp`, `prealloc.hpp`, `legalize.cpp`, `module.hpp`, `names.hpp` | Keep `module.hpp` as the aggregate read/write prepared-module contract until consumers no longer need one top-level view. Do not split it merely because it includes many families. |
+| Control-flow preparation | neutral CFG normalization, label identity, out-of-SSA, join/branch movement facts | `control_flow.hpp`, `out_of_ssa.cpp`, `label_identity.cpp`, `label_identity.hpp` | Keep one control-flow contract for route, branch, join, parallel-copy, and invariant facts, but mark diagnostics/route-history comments as candidates for later contraction. |
+| Liveness and allocation planning | liveness, value classification, interval planning, value homes, placement identities, spill/reload, stack slots, and call-boundary move records | `liveness.*`, `regalloc.cpp`, `regalloc.hpp`, `regalloc/*`, `regalloc_placement_identity.*` | Keep `regalloc.hpp` as the public allocation-plan contract for now. Future cleanup should split helper implementation phases before splitting the aggregate header. |
+| Stack and frame planning | frame plan, stack object collection, slot assignment, coalescing, inline-asm stack facts, and address-materialization planning | `frame.hpp`, `frame_plan.*`, `stack_layout/*` | Keep `frame.hpp`/`frame_plan.hpp` as public contracts. Move stack-layout declarations now hosted by `module.hpp` only after a focused data-contract split proves consumer clarity. |
+| Call and return ABI plans | call argument/result homes, call preservation, clobbers, indirect callee plans, memory returns, formals, and boundary effects | `calls.hpp`, `call_plans.*`, `formal_publications.*` | Keep `calls.hpp` as the aggregate call ABI contract. Split implementation phases from `call_plans.cpp` before attempting a header split. |
+| Publication and prepared accessors | codegen-facing publication plans, lookups, decoded homes, storage/value-location views, and address models | `addressing.hpp`, `decoded_home_storage.*`, `prepared_lookups.*`, `publication_plans.*`, `storage.hpp`, `storage_plans.*`, `value_locations.hpp` | Treat this as a first-class package, not as leftover helpers. Publication/accessor contracts bridge families and should be reviewed as API boundaries, not line-count cleanup. |
+| Runtime and special carriers | i128/f128/atomics/intrinsics/inline-asm carrier discovery, helper calls, marshal plans, and runtime helper metadata | `runtime_helpers.hpp`, `special_carriers.*`, `i128_runtime_helpers.*`, `f128_runtime_helpers.*`, `atomics.*`, `intrinsics.*`, `inline_asm.*` | Keep runtime-helper and special-carrier contracts separate. Runtime helpers describe helper call resources; special carriers describe value-carrier requirements across special operations. |
+| Dynamic stack and variadic entry | dynamic-stack allocation facts and variadic entry resource/home plans | `dynamic_stack.*`, `variadic.hpp`, `variadic_entry_plans.*` | Keep separate from generic call plans because entry ABI facts and dynamic-stack facts are consumed at different phase points. Target-specific ABI details must stay parameterized facts, not codegen emission. |
+| Target register profile facts | centralized target register pools, ABI register facts, and profile queries | `target_register_profile.*` | Preserve as the only concrete target-register fact owner in prealloc. New architecture tables elsewhere should be rejected unless they are local decode/print views over this contract. |
+| Prepared-printer support | debug dump entry points, shared print helpers, and mirrors for prepared data families | `prepared_printer.*`, `prepared_printer/*` | Printers follow data-family movement. They should not drive package splits, but every durable data-family move should update the matching printer mirror in the same follow-up idea. |
 
-### Mixed Ownership Boundaries
+### Aggregate Contracts Versus Split Candidates
 
-- Durable aggregate boundaries: `module.hpp`, `calls.hpp`, `runtime_helpers.hpp`,
-  `special_carriers.hpp`, `regalloc.hpp`, and `control_flow.hpp` are broad
-  because they define cross-family prepared data consumed by codegen and debug
-  printing. Step 3 should mark which are aggregate contracts instead of treating
-  size alone as a defect.
-- Temporary or compatibility boundaries: bridge/legacy comments in
-  `control_flow.hpp`, `value_locations.hpp`, and
-  `prepared_printer/calls.cpp` look like consumer-transition markers. They are
-  not proof of wrong ownership, but they should become named package notes or
-  follow-up ideas if Step 3 finds a stable split.
-- Phase coordinator boundaries: `prealloc.cpp`, `regalloc.cpp`,
-  `stack_layout/coordinator.cpp`, `call_plans.cpp`, `out_of_ssa.cpp`,
-  `i128_runtime_helpers.cpp`, `f128_runtime_helpers.cpp`, and
-  `variadic_entry_plans.cpp` are large because they perform phase orchestration.
-  Extraction should be by durable sub-phase, not by line-count trimming.
-- Cross-family decode/publication boundaries: `decoded_home_storage.*`,
-  `publication_plans.*`, `prepared_lookups.*`, `storage_plans.cpp`, and
-  `formal_publications.*` intentionally translate between planning families and
-  codegen-facing views. These are good candidates for a stable
-  "publication/accessor" package in Step 3.
-- Target-specific watch points: `target_register_profile.cpp`,
-  `regalloc/call_return_abi.cpp`, `variadic_entry_plans.cpp`,
-  `intrinsics.cpp`, `inline_asm.cpp`, `frame_plan.cpp`, `storage_plans.cpp`,
-  and `stack_layout/coordinator.cpp` contain concrete architecture or ABI
-  branches. None appear to own final instruction emission, but Step 3 should
-  prevent those details from spreading into generic data contracts.
+| Header or contract | Step 3 decision | Reasoning | Future movement trigger |
+| --- | --- | --- | --- |
+| `module.hpp` | Keep as aggregate contract. | It is the prepared-module surface and shared lookup host across phases and printers. Splitting it first would make consumers include many small headers before stable package APIs exist. | Split only after publication/accessor and stack-layout ownership have stable smaller contracts. |
+| `control_flow.hpp` | Keep broad, consider contraction later. | Route names, branch/join facts, parallel copies, label metadata, and invariants are one control-flow data model. | Split diagnostics/route-history helpers if they become independent of the authoritative CFG facts. |
+| `regalloc.hpp` | Keep as aggregate allocation-plan contract. | It publishes allocation state and ABI-aware move plans consumed across prealloc and codegen. | Split only after helper implementation packages stop needing private aggregate state. |
+| `calls.hpp` | Keep as aggregate call ABI contract. | Argument/result storage, clobbers, preservation, indirect callee, memory returns, and boundary effects must be reasoned about together. | Split after `call_plans.cpp` phase extraction clarifies which subcontracts are independently consumed. |
+| `runtime_helpers.hpp` | Keep as runtime-helper aggregate. | Helper call resources, marshal direction, ownership, and value homes form one helper-call contract. | Consider contraction only if i128/f128 helper-call APIs diverge from atomics/intrinsics helper APIs. |
+| `special_carriers.hpp` | Keep separate from runtime helpers. | Carrier facts for i128/f128/atomics/intrinsics/inline asm are related but not identical to helper-call resources. | Split carrier subfamilies only when callers consume one carrier kind without the rest. |
+| `value_locations.hpp` | Candidate for future bridge contraction. | It bridges regalloc homes and move bundles with compatibility comments that likely reflect consumer migration. | Contract after consumers converge on publication/accessor views or regalloc-home views. |
+| `publication_plans.hpp` / `prepared_lookups.hpp` / `decoded_home_storage.hpp` | Keep as a named publication/accessor package. | These cross family boundaries deliberately and are the main codegen-facing prepared-data adapters. | Split by consumer API only if a follow-up proves independent call sites and no duplicated decode logic. |
+| `frame.hpp` / `frame_plan.hpp` / `stack_layout/stack_layout.hpp` | Keep public frame/stack planning contracts; inspect module-hosted declarations later. | Stack layout is a durable phase family, but some declarations live outside its directory. | Move declarations under stack-layout ownership if consumers do not need the full module aggregate. |
 
-### Target Classification Notes
+### Prioritized Cleanup Candidates
 
-- Target-neutral: naming tables, control-flow facts, label identity,
-  out-of-SSA planning, liveness intervals, prepared lookups, most printer
-  formatting, and dynamic-stack intrinsic detection.
-- Target-parameterized: frame planning, storage plans, call plans, regalloc
-  assignment/value homes, runtime helper facts, decoded home storage, and
-  address materialization facts. These use `TargetProfile`, ABI metadata, or
-  prepared register identity as inputs while still producing target-independent
-  prepared contracts for codegen.
-- Accidentally target-specific candidates: no file clearly moves final target
-  instruction emission or register spelling into prealloc. The closest watch
-  surfaces are architecture-named ABI helpers in `regalloc/call_return_abi.cpp`
-  and `variadic_entry_plans.cpp`, AArch64 feature validation in
-  `intrinsics.cpp`, inline-asm home identity in `inline_asm.cpp`, and fallback
-  address/size paths in `stack_layout/coordinator.cpp`. These should be
-  contained, not erased.
+#### Header and Data-Contract Splits
 
-### Prepared-Printer Mirror Notes
+| Priority | Candidate | Slice type | Durable owner | Reviewer reject signals |
+| --- | --- | --- | --- | --- |
+| P1 | Name and document the publication/accessor package around `publication_plans.*`, `prepared_lookups.*`, and `decoded_home_storage.*`; optionally contract compatibility comments in `value_locations.hpp` if consumers already use the new views. | header/data-contract split or contraction | Publication and prepared accessors | Reject if it duplicates decode/home logic, forces broad codegen include churn, or changes publication semantics under a layout label. |
+| P1 | Extract stack-layout-facing declarations currently exposed through `module.hpp` into a stack-layout-owned public contract only if call sites can include that contract directly. | header/data-contract split | Stack and frame planning | Reject if `module.hpp` remains the real dependency and the new header is just a forwarding shell. |
+| P2 | Contract `control_flow.hpp` by separating durable CFG/move facts from route-history or invariant diagnostic helpers. | header/data-contract contraction | Control-flow preparation | Reject if branch/join/source-of-truth facts are split into multiple inconsistent contracts. |
+| P2 | Split `calls.hpp` only after implementation extraction proves stable subcontracts for boundary effects, preservation, and indirect callee/memory-return plans. | header/data-contract split | Call and return ABI plans | Reject if targets must include many tiny call headers to build one call plan. |
+| P3 | Review `runtime_helpers.hpp` and `special_carriers.hpp` for naming consistency while preserving two aggregate contracts. | header/data-contract contraction | Runtime and special carriers | Reject if helper-call resources and carrier facts are merged into one less precise mega-contract. |
 
-- Clean mirrors: `prepared_printer/addressing.cpp`,
-  `prepared_printer/atomics.cpp`, `prepared_printer/control_flow.cpp`,
-  `prepared_printer/frame.cpp`, `prepared_printer/inline_asm.cpp`,
-  `prepared_printer/intrinsics.cpp`, `prepared_printer/regalloc.cpp`,
-  `prepared_printer/storage.cpp`, `prepared_printer/value_locations.cpp`, and
-  `prepared_printer/variadic.cpp` each mirror a data family directly.
-- Aggregate mirrors: `prepared_printer.cpp`, `prepared_printer.hpp`, and
-  `prepared_printer/private.hpp` own dump entry point and shared print helpers;
-  `prepared_printer/functions.cpp` prints top-level function/module structure;
-  `prepared_printer/runtime_helpers.cpp` and
-  `prepared_printer/special_carriers.cpp` mirror broad carrier contracts.
-- Follow future moves: if Step 3 splits call boundary effects, runtime helper
-  families, or publication/accessor packages, the matching printer functions
-  should follow those data-family boundaries after the data contracts move.
+#### `.cpp` Phase Splits Or Merges
+
+| Priority | Candidate | Slice type | Durable owner | Reviewer reject signals |
+| --- | --- | --- | --- | --- |
+| P1 | Split `call_plans.cpp` by durable subphase: direct/indirect call argument plans, preservation/clobber derivation, boundary effects, and memory-return handling. | `.cpp` phase split | Call and return ABI plans | Reject if extraction is line-count-only, hides behavior changes, or moves ABI policy away from `TargetProfile`/call contracts. |
+| P1 | Split `stack_layout/coordinator.cpp` into orchestration, object collection, slot assignment orchestration, and address-materialization publication helpers. | `.cpp` phase split | Stack and frame planning | Reject if fallback address facts become target-emission logic or duplicate stack object authority. |
+| P1 | Split `regalloc.cpp` coordinator internals only along existing helper-family boundaries already present under `regalloc/`. | `.cpp` phase split | Liveness and allocation planning | Reject if extracted helpers require broad access to private mutable coordinator state without a clearer API. |
+| P2 | Review `i128_runtime_helpers.cpp` and `f128_runtime_helpers.cpp` for shared helper-plan extraction versus deliberate family separation. | `.cpp` phase merge/split assessment | Runtime and special carriers | Reject if shared code blurs i128/f128 ABI differences or creates generic helper dispatch with target-shaped shortcuts. |
+| P2 | Review `out_of_ssa.cpp` for extraction of parallel-copy or join-transfer helpers only if they map directly to `control_flow.hpp` data families. | `.cpp` phase split | Control-flow preparation | Reject if extraction creates another control-flow source of truth. |
+| P3 | Keep `liveness.cpp` intact unless future symbol review finds reusable interval helpers not already covered by `regalloc/intervals.*`. | no-op or small extraction | Liveness and allocation planning | Reject speculative extraction without repeated consumers. |
+
+#### Helper Relocation Or Renaming
+
+| Priority | Candidate | Slice type | Durable owner | Reviewer reject signals |
+| --- | --- | --- | --- | --- |
+| P1 | Move or rename stack-layout helper declarations now exposed from `module.hpp` so their names advertise stack-layout ownership. | helper relocation/renaming | Stack and frame planning | Reject if relocation requires broad unrelated include rewrites or changes prepared-module ownership. |
+| P1 | Rename bridge/compatibility comments in `value_locations.hpp` and `prepared_printer/calls.cpp` into explicit package-transition notes, or remove them if no longer true. | helper/comment naming repair | Publication/accessor and printer mirrors | Reject if comments are deleted without proving the compatibility boundary is gone. |
+| P2 | Audit architecture-named helper functions in `regalloc/call_return_abi.cpp` and `variadic_entry_plans.cpp` for naming that states "ABI fact planning" rather than target emission. | helper renaming | Allocation planning and variadic entry | Reject if renaming masks concrete target-specific policy that belongs in `target_register_profile.*`. |
+| P2 | Align runtime helper and special carrier helper names so i128/f128/atomics/intrinsics/inline-asm ownership is visible from file and function names. | helper renaming | Runtime and special carriers | Reject if naming collapses distinct helper-call and carrier concepts. |
+
+#### Prepared-Printer Alignment
+
+| Priority | Candidate | Slice type | Durable owner | Reviewer reject signals |
+| --- | --- | --- | --- | --- |
+| P1 | For any publication/accessor package split, update `prepared_printer/value_locations.cpp`, `prepared_printer/storage.cpp`, and related shared helpers to mirror the new data-family names. | prepared-printer alignment | Prepared-printer support | Reject printer-only movement that precedes or invents a data-contract split. |
+| P1 | If call-plan phases are split, align `prepared_printer/calls.cpp` labels and helper grouping with the new call subcontracts. | prepared-printer alignment | Prepared-printer support | Reject if printed output changes meaning or drops fields under a layout cleanup label. |
+| P2 | If runtime helper/carrier naming is repaired, align `prepared_printer/runtime_helpers.cpp` and `prepared_printer/special_carriers.cpp` in the same slice. | prepared-printer alignment | Prepared-printer support | Reject if printer files become a second source of ownership taxonomy not present in data files. |
+| P3 | Keep `prepared_printer/private.hpp` importing aggregate module state until the data contracts move. | no-op guardrail | Prepared-printer support | Reject isolated private-printer include churn without data-family movement. |
+
+#### Semantic Migration Candidates
+
+No confirmed semantic migration candidate should be mixed into layout cleanup
+from the Step 2 map. The following are watch points only and should become
+separate source ideas if later symbol-level review proves ownership drift:
+
+| Watch point | Why it is not a layout cleanup slice yet | Reviewer reject signals |
+| --- | --- | --- |
+| AArch64/AAPCS64-specific variadic entry planning in `variadic_entry_plans.cpp` | It appears to be target-parameterized ABI planning, which is valid prealloc ownership. | Reject any follow-up that moves final instruction selection, register spelling, or codegen emission into prealloc. |
+| Architecture branches in `regalloc/call_return_abi.cpp` | They describe ABI return/register facts and may belong near target register profile data, but Step 2 did not prove duplication or wrong ownership. | Reject if the slice creates testcase-shaped target branches or bypasses `target_register_profile.*`. |
+| AArch64 feature validation in `intrinsics.cpp` | Feature checks may be semantic validation for intrinsic carrier planning, not layout drift. | Reject if a layout idea changes supported/unsupported intrinsic behavior. |
+| Fallback size/address paths in `stack_layout/coordinator.cpp` | These may be conservative stack-layout facts, not target emission. | Reject if cleanup weakens stack object authority or hides runtime address semantics. |
+
+### Recommended Step 4 Handoff
+
+Create focused follow-up ideas in this order:
+
+1. `prealloc-publication-accessor-contracts`: define the publication/accessor
+   package around `publication_plans.*`, `prepared_lookups.*`,
+   `decoded_home_storage.*`, `storage_plans.*`, and `value_locations.hpp`;
+   include matching prepared-printer alignment only where data-family names
+   change.
+2. `prealloc-call-plan-phase-split`: split `call_plans.cpp` into durable
+   call-plan subphases without changing call ABI behavior; keep `calls.hpp`
+   aggregate unless extraction proves a stable contract split.
+3. `prealloc-stack-layout-contract-boundary`: move or document
+   stack-layout-facing declarations currently exposed through `module.hpp` and
+   split `stack_layout/coordinator.cpp` only along object collection,
+   orchestration, slot assignment, and address-publication boundaries.
+4. `prealloc-regalloc-coordinator-contraction`: contract `regalloc.cpp` and
+   related helper names along existing `regalloc/` package boundaries, leaving
+   `regalloc.hpp` aggregate until consumers prove smaller contracts.
+5. `prealloc-runtime-carrier-naming-alignment`: repair naming/comment drift
+   between runtime helper contracts, special carrier contracts, and their
+   prepared-printer mirrors without merging the two aggregate concepts.
+
+Each Step 4 idea should include target files, slice type, durable owner,
+behavior-preservation proof, out-of-scope semantic changes, and the reject
+signals from the table above. Do not create one giant prealloc refactor idea.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: propose the stable package model. Start with
-durable aggregate contracts (`module.hpp`, `control_flow.hpp`, `regalloc.hpp`,
-`calls.hpp`, `runtime_helpers.hpp`, `special_carriers.hpp`), then group
-implementation files into phase coordinators, helper packages,
-publication/accessor packages, target-profile facts, and prepared-printer
-mirrors. Produce a prioritized cleanup candidate table with slice type and
+Execute Step 4 from `plan.md`: create separate focused follow-up ideas under
+`ideas/open/` for the highest-value candidates above. Start with the P1
+publication/accessor, call-plan phase split, and stack-layout contract boundary
+ideas. Keep each idea small enough for one focused run and include concrete
 reviewer reject signals.
 
 ## Watchouts
 
-- Do not turn the Step 3 package model into implementation movement; this
-  remains an audit/planning runbook until follow-up ideas are created.
-- Preserve `target_register_profile.*` as the central target fact owner unless
-  Step 3 finds duplicated architecture tables elsewhere.
-- Keep final target instruction selection and assembly emission outside
-  prealloc. Target-parameterized ABI planning is acceptable; target codegen is
-  not.
-- Treat printer files as mirrors. They should follow data-family movement and
-  should not be used to justify splitting data contracts first.
+- Step 4 should generate source ideas, not perform implementation movement.
+- Preserve `module.hpp`, `control_flow.hpp`, `regalloc.hpp`, `calls.hpp`,
+  `runtime_helpers.hpp`, and `special_carriers.hpp` as aggregate contracts
+  unless a focused follow-up proves a consumer-facing split.
+- Printer work must follow data-family changes and should not lead them.
+- Treat semantic watch points as separate initiatives only after symbol-level
+  review proves ownership drift; none are confirmed migration candidates from
+  this audit packet.
 
 ## Proof
 
