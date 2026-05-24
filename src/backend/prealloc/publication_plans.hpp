@@ -1,6 +1,8 @@
 #pragma once
 
+#include "addressing.hpp"
 #include "calls.hpp"
+#include "frame.hpp"
 #include "names.hpp"
 #include "value_locations.hpp"
 
@@ -109,5 +111,121 @@ struct PreparedScalarPublicationInputs {
 
 [[nodiscard]] PreparedScalarPublicationPlan plan_prepared_scalar_publication(
     const PreparedScalarPublicationInputs& inputs);
+
+enum class PreparedStoreSourcePublicationStatus {
+  Available,
+  MissingSourceValue,
+  MissingDestinationAccess,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_store_source_publication_status_name(
+    PreparedStoreSourcePublicationStatus status) {
+  switch (status) {
+    case PreparedStoreSourcePublicationStatus::Available:
+      return "available";
+    case PreparedStoreSourcePublicationStatus::MissingSourceValue:
+      return "missing_source_value";
+    case PreparedStoreSourcePublicationStatus::MissingDestinationAccess:
+      return "missing_destination_access";
+  }
+  return "unknown";
+}
+
+enum class PreparedStoreSourcePublicationIntent {
+  None,
+  StoreLocalPublication,
+  StoreGlobalPublication,
+  PointerStoreWriteback,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_store_source_publication_intent_name(
+    PreparedStoreSourcePublicationIntent intent) {
+  switch (intent) {
+    case PreparedStoreSourcePublicationIntent::None:
+      return "none";
+    case PreparedStoreSourcePublicationIntent::StoreLocalPublication:
+      return "store_local_publication";
+    case PreparedStoreSourcePublicationIntent::StoreGlobalPublication:
+      return "store_global_publication";
+    case PreparedStoreSourcePublicationIntent::PointerStoreWriteback:
+      return "pointer_store_writeback";
+  }
+  return "unknown";
+}
+
+struct PreparedStoreSourcePublicationPlan {
+  PreparedStoreSourcePublicationStatus status =
+      PreparedStoreSourcePublicationStatus::MissingSourceValue;
+  PreparedStoreSourcePublicationIntent intent =
+      PreparedStoreSourcePublicationIntent::None;
+
+  bir::Value source_value;
+  PreparedValueId source_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+
+  const PreparedMemoryAccess* destination_access = nullptr;
+  PreparedAddressBaseKind destination_base_kind = PreparedAddressBaseKind::None;
+  std::optional<PreparedFrameSlotId> destination_frame_slot_id;
+  std::optional<ValueNameId> destination_pointer_value_name;
+  std::int64_t destination_byte_offset = 0;
+  std::size_t destination_size_bytes = 0;
+  std::size_t destination_align_bytes = 0;
+  bool destination_can_use_base_plus_offset = false;
+  bool destination_is_volatile = false;
+
+  const PreparedFrameSlot* destination_frame_slot = nullptr;
+  std::optional<PreparedObjectId> destination_object_id;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<std::size_t> destination_stack_size_bytes;
+  std::optional<std::size_t> destination_stack_align_bytes;
+  const PreparedStackObject* destination_stack_object = nullptr;
+
+  const PreparedValueHome* source_home = nullptr;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  PreparedStorageEncodingKind source_storage_encoding = PreparedStorageEncodingKind::None;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_size_bytes;
+  std::optional<std::size_t> source_align_bytes;
+  std::optional<ValueNameId> source_pointer_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+
+  std::optional<bir::Value> recovered_source_value;
+  std::optional<std::size_t> recovered_source_instruction_index;
+
+  bool pending_publication = false;
+  bool stack_homes_only = false;
+  bool pointer_store_writeback = false;
+  bool duplicate_publication = false;
+
+  const PreparedValueHome* pointer_base_home = nullptr;
+  PreparedValueHomeKind pointer_base_home_kind = PreparedValueHomeKind::None;
+  std::optional<PreparedFrameSlotId> pointer_base_slot_id;
+  std::optional<std::size_t> pointer_base_stack_offset_bytes;
+};
+
+struct PreparedStoreSourcePublicationInputs {
+  const bir::Value* source_value = nullptr;
+  const PreparedMemoryAccess* destination_access = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedFrameSlot* destination_frame_slot = nullptr;
+  const PreparedStackObject* destination_stack_object = nullptr;
+  const bir::Value* recovered_source_value = nullptr;
+  std::optional<std::size_t> recovered_source_instruction_index;
+  const PreparedValueHome* pointer_base_home = nullptr;
+  PreparedStoreSourcePublicationIntent intent =
+      PreparedStoreSourcePublicationIntent::None;
+  bool pending_publication = false;
+  bool stack_homes_only = false;
+  bool pointer_store_writeback = false;
+  bool duplicate_publication = false;
+};
+
+[[nodiscard]] bool prepared_store_source_publication_available(
+    const PreparedStoreSourcePublicationPlan& plan);
+
+[[nodiscard]] PreparedStoreSourcePublicationPlan
+plan_prepared_store_source_publication(
+    const PreparedStoreSourcePublicationInputs& inputs);
 
 }  // namespace c4c::backend::prepare
