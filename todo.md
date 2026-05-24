@@ -8,49 +8,115 @@ Current Step Title: Final Layout Review
 
 ## Just Finished
 
-Completed Step 4 - Consolidate Remaining Family Boundaries. The recent
-boundary packets moved entry-formal publication declarations to the prologue
-family and publication helper declarations to narrow dispatch publication
-headers. `dispatch.hpp` now declares only the block-dispatch surface:
-`InstructionDispatchResult`, `make_block_lowering_context`, and
-`dispatch_prepared_block`.
+Completed Step 5 - Final Layout Review.
 
-Plan-owner decision: Step 4 is complete. The codegen directory now reads closer
-to the reference inventory across multiple families, and the remaining
-adapter/internal files are either behind narrow private headers or explicitly
-queued for final review instead of another Step 4 extraction packet.
+Final direct inventory under `src/backend/mir/aarch64/codegen/`: 77 files,
+split into 41 `.cpp` and 36 `.hpp`.
+
+Final family comparison against the reference README inventory:
+
+| Family | Direct files | Review note |
+| --- | ---: | --- |
+| `codegen/module` | 5 | Covers the current `codegen.hpp` public entry plus module compile/traversal; this is the live replacement for reference `mod.rs`/`emit.rs` routing. |
+| `prologue` | 3 | Prologue/frame lowering plus entry-formal publication are family-named and intentionally split. |
+| `calls` | 10 | Calls remain split by ABI planning, argument sources, moves, preservation, printing, byval, and dispatch bridge responsibilities. |
+| `memory` | 6 | Memory lowering owns direct load/store plus dynamic stack and store-source publication helpers. |
+| `alu` | 2 | Reference scalar ALU family is represented by one narrow header and one implementation. |
+| `comparison` | 4 | Comparison/select/branch spelling is represented; branch fusion stays a cohesive comparison shard with dispatch hooks. |
+| `float_ops` | 2 | Reference floating-point operation family is represented. |
+| `cast_ops` | 2 | Reference cast operation family is represented. |
+| `f128` | 2 | Reference binary128 family is represented. |
+| `i128_ops` | 2 | Reference 128-bit integer family is represented. |
+| `atomics` | 2 | Reference atomic family is represented. |
+| `intrinsics` | 2 | Reference intrinsics family is represented. |
+| `globals` | 2 | Reference globals family is represented. |
+| `returns` | 2 | Reference returns family is represented. |
+| `variadic` | 2 | Reference variadic family is represented. |
+| `inline_asm` | 2 | Reference inline asm family is represented. |
+| `asm_emitter` | 2 | Reference asm emission surface is represented as the live assembly text consumer. |
+| `peephole` | 2 | Reference peephole family is represented as the current deferred optimizer boundary. |
+| `machine_printer` | 2 | Current C++ structured MIR printer support has no direct reference Rust shard but is a durable live output family. |
+| `operands/instruction` | 4 | Current C++ instruction and operand record support replaces the old centralized record/emit surface. |
+| `adapter/internal` | 17 | Remaining dispatch/projection glue is private boundary work, not a missing reference family. |
+
+Remaining intentionally separate adapter/internal files:
+
+- `compatibility_projection.{cpp,hpp}` stays separate as legacy flat-view
+  projection for migration callers and tests; terminal assembly printing now
+  walks structured MIR instead.
+- `dispatch.{cpp,hpp}` stays separate as the block-dispatch entry surface and
+  dispatcher implementation. `dispatch.hpp` now exposes only
+  `InstructionDispatchResult`, `make_block_lowering_context`, and
+  `dispatch_prepared_block`.
+- `dispatch_diagnostics.{cpp,hpp}` stays separate as narrow diagnostic helper
+  glue shared by dispatcher, calls, and dynamic-stack paths.
+- `dispatch_edge_copies.{cpp,hpp}` stays separate as cross-block join/edge copy
+  publication logic; forcing it into memory, comparison, or prologue would
+  blur the current authority boundary.
+- `dispatch_lookup.{cpp,hpp}` stays separate as prepared value/home lookup glue
+  shared by multiple lowering shards.
+- `dispatch_producers.{cpp,hpp}` stays separate as same-block producer
+  discovery shared by fusion, publication, and materialization paths.
+- `dispatch_publication.{cpp,hpp}` and
+  `dispatch_publication_common.hpp` stay separate as current-block prepared
+  value publication helpers and shared scalar/frame-slot vocabulary.
+- `dispatch_value_materialization.{cpp,hpp}` stays separate as prepared
+  value-home materialization glue across stack, register, global, pointer, and
+  FP cases.
+
+Other intentionally separate family/internal bridge files:
+
+- `calls_dispatch_bridge.{cpp,hpp}` stays separate because it bridges
+  dispatch-time lowering context into prepared call-plan handling and remains
+  large/cohesive enough to keep out of `calls.cpp`.
+- `comparison_branch_fusion.{cpp,hpp}` stays as a comparison-family shard while
+  fused branch lowering still needs dispatch publication hooks.
+- `memory_dynamic_stack.{cpp,hpp}` stays as a memory-family dynamic alloca
+  helper-call boundary.
+- `memory_store_sources.{cpp,hpp}` stays as a memory-family store-source and
+  store-publication boundary still coupled to dispatch publication helpers.
+- `prologue_entry_formals.cpp` stays as a prologue-family implementation shard
+  for ABI entry-formal publication.
+
+Target-neutral migration candidate check: none discovered during this final
+layout review. The remaining non-reference files are AArch64 codegen
+adapter/internal glue or durable live C++ support families, not hidden prealloc,
+BIR, or target-neutral ownership moves.
+
+Closure recommendation: ask the plan owner to close
+`ideas/open/aarch64-codegen-reference-layout-consolidation.md`. The visible
+AArch64 codegen layout now maps to the reference family inventory, the broad
+`dispatch.hpp` surface has been reduced to block dispatch, remaining
+adapter/internal files are explicitly justified, and no separate initiative was
+found that must be opened before closure.
 
 ## Suggested Next
 
-Execute Step 5 - Final Layout Review. Count final direct codegen files
-currently at 77 total: 41 `.cpp` and 36 `.hpp`. Compare the retained
-file-to-family map against the reference README inventory, refresh any stale
-adapter/internal notes, record why remaining separate files stay separate, and
-make a closure recommendation for
-`ideas/open/aarch64-codegen-reference-layout-consolidation.md`.
+Supervisor should hand this closure recommendation to the plan owner for the
+single-plan lifecycle decision. No executor implementation packet is
+recommended from this Step 5 audit.
 
 ## Watchouts
 
-- `dispatch.hpp` now declares only the block-dispatch surface; it no longer
-  carries publication helper declarations or their transitive include needs.
+- The retained Step 1 inventory below is historical packet output. The final
+  Step 5 count is the current authoritative count: 77 total, 41 `.cpp`, 36
+  `.hpp`.
 - Direct implementation shards may still include both `dispatch.hpp` and narrow
   private dispatch headers when they need the block-dispatch context plus
   private adapter helpers.
-- `dispatch_publication.hpp` intentionally depends on `alu.hpp` for
-  `BlockScalarLoweringState` and register operand vocabulary.
-- Step 5 should refresh the retained Step 1 count and notes rather than treating
-  the original audit count as final state.
+- `dispatch_publication.hpp`, `dispatch_publication_common.hpp`,
+  `dispatch_edge_copies.hpp`, and `dispatch_value_materialization.hpp`
+  intentionally depend on `alu.hpp` for `BlockScalarLoweringState` and register
+  operand vocabulary.
+- There is no target-neutral migration follow-up to create from this audit.
 
 ## Proof
 
 Ran delegated proof command:
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+`git diff --check`
 
-Result: passed. `cmake --build --preset default` completed, and CTest reported
-162/162 `^backend_` tests passed. Proof log: `test_after.log`.
-
-Also ran `git diff --check`; result: passed.
+Result: passed.
 
 # Retained Step 1 Output
 
