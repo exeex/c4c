@@ -747,30 +747,30 @@ void record_entry_formal_register_home(
       context.function.bir_function == nullptr) {
     return lowered;
   }
-  for (std::size_t param_index = 0;
-       param_index < context.function.bir_function->params.size();
-       ++param_index) {
-    const auto& param = context.function.bir_function->params[param_index];
-    if (param.is_varargs || param.is_sret) {
+  const auto publication_plans = prepare::plan_prepared_formal_publications(
+      prepare::PreparedFormalPublicationInputs{
+          .names = &context.function.prepared->names,
+          .function = context.function.bir_function,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = context.function.value_home_lookups,
+      });
+  for (const auto& publication : publication_plans) {
+    if (!prepare::prepared_formal_publication_available(publication) ||
+        publication.formal == nullptr ||
+        publication.home == nullptr) {
       continue;
     }
-    const auto value_name = prepare::resolve_prepared_value_name_id(
-        context.function.prepared->names, param.name);
-    if (!value_name.has_value()) {
-      continue;
-    }
-    const auto* home = find_value_home(context, *value_name);
-    if (home == nullptr) {
-      continue;
-    }
+    const auto param_index = publication.formal_index;
+    const auto& param = *publication.formal;
+    const auto& home = *publication.home;
     std::vector<std::string> lines;
     if (entry_formal_uses_incoming_stack(context.function.prepared->target_profile,
                                          *context.function.bir_function,
                                          param_index)) {
-      lines = entry_formal_stack_source_publication_lines(context, param, *home, param_index);
+      lines = entry_formal_stack_source_publication_lines(context, param, home, param_index);
       if (!lines.empty() && !param.is_byval &&
-          home->kind == prepare::PreparedValueHomeKind::Register) {
-        record_entry_formal_register_home(scalar_state, *home, param.type);
+          publication.home_kind == prepare::PreparedValueHomeKind::Register) {
+        record_entry_formal_register_home(scalar_state, home, param.type);
       }
     } else {
       const auto source = entry_formal_source_register(
@@ -780,27 +780,27 @@ void record_entry_formal_register_home(
       if (!source.has_value()) {
         continue;
       }
-      if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
-          home->offset_bytes.has_value()) {
+      if (publication.home_kind == prepare::PreparedValueHomeKind::StackSlot &&
+          home.offset_bytes.has_value()) {
         if (param.is_byval) {
           lines = entry_formal_byval_aggregate_store_lines(param,
                                                            *source,
-                                                           *home->offset_bytes,
+                                                           *home.offset_bytes,
                                                            entry_formal_fixed_home_base_register(
                                                                context.function));
         } else {
           lines = entry_formal_store_lines(*source,
                                            param.type,
-                                           *home->offset_bytes,
+                                           *home.offset_bytes,
                                            entry_formal_fixed_home_base_register(
                                                context.function));
         }
       } else if (!param.is_byval &&
-                 home->kind == prepare::PreparedValueHomeKind::Register) {
-        const auto destination = entry_formal_destination_register(*home, param.type);
+                 publication.home_kind == prepare::PreparedValueHomeKind::Register) {
+        const auto destination = entry_formal_destination_register(home, param.type);
         if (destination.has_value()) {
           lines = entry_formal_register_move_lines(*source, *destination);
-          record_entry_formal_register_home(scalar_state, *home, param.type);
+          record_entry_formal_register_home(scalar_state, home, param.type);
         }
       }
     }

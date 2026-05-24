@@ -1,41 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/entry-formal-publication-planning-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Prealloc Formal Publication Plan API
+Current Step ID: Step 3
+Current Step Title: Adapt AArch64 To Consume Formal Publication Plans
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the prealloc-owned target-neutral formal-publication planning API.
+Step 3 adapted AArch64 entry-formal dispatch to consume the prealloc formal
+publication plans.
 
-`formal_publications.hpp/.cpp` now exposes
-`plan_prepared_formal_publication(...)` and
-`plan_prepared_formal_publications(...)`. The returned
-`PreparedFormalPublicationPlan` preserves source Prepared facts only: formal
-index, prepared value name/id, BIR type/formal pointer, `PreparedValueHome*`,
-home kind, target-neutral action, and structured status.
+`lower_entry_formal_publications()` now calls
+`prepare::plan_prepared_formal_publications(...)` and uses each
+`PreparedFormalPublicationPlan` for the target-neutral formal/home iteration:
+formal index, formal pointer, prepared value/home authority, and home kind.
 
-The helper reports available incoming-register/incoming-stack publication
-intent, no-publication formals, missing inputs, missing formal name, missing
-value home, missing ABI info, missing register name, missing stack offset,
-unsupported home kind, and unsupported formal source. It reuses prepared
-value-home lookup inputs and does not compute target register names, target
-stack offsets, MIR operands, inline asm, prologue behavior, diagnostics, or
-copy emission.
-
-Focused direct coverage was added in `backend_prealloc_formal_publications`
-for register-home, stack-home, missing-home, missing stack-offset, missing
-register-name, missing ABI, unsupported-home, no-publication, and collection
-forms.
+AArch64 still owns incoming register vs stack source selection, overflow and
+frame-size policy, source/destination register spelling, byval/f128 special
+cases, scalar-state recording, inline asm/copy-line construction, prologue
+behavior, diagnostics/status handling, and final instruction emission.
 
 ## Suggested Next
 
-Step 3 should adapt AArch64 entry-formal dispatch to consume the prealloc
-formal-publication plans while keeping ABI source selection, target register
-spelling, stack offset policy, scalar-state recording, inline asm/copy
-emission, prologue behavior, and diagnostics target-local.
+Step 4 should prove the reuse path for x86 entry lowering by exposing or using
+the prealloc formal-publication plan from the x86 prepared/query surface,
+without rewriting x86 prologue/lowering or moving x86 ABI operands into
+prealloc.
 
 ## Watchouts
 
@@ -47,6 +38,10 @@ migrations.
 `dispatch_publication.cpp` block-entry move scans may be reusable later, but
 they are not the first formal-publication extraction. Keep this packet scoped
 to entry formal-to-home publication intent.
+
+The prealloc plan's source action remains target-neutral. AArch64 still
+rechecks its own incoming stack/register conditions because AAPCS64 overflow
+and frame-size behavior are target policy.
 
 ## Proof
 
