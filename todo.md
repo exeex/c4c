@@ -1,12 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-forward-migration-candidate-audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Produce the Audit Table and Priority List
+Current Step ID: Step 5
+Current Step Title: Generate Focused Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
+
+Step 5 - Generate Focused Follow-Up Ideas completed by turning the accepted
+Step 4 priority list into focused open source ideas. Generated ideas:
+
+- `ideas/open/prepared-move-publication-indexing-prealloc.md`
+- `ideas/open/value-home-storage-interpretation-prealloc.md`
+- `ideas/open/call-boundary-move-classification-prealloc.md`
+- `ideas/open/entry-formal-publication-planning-prealloc.md`
+- `ideas/open/edge-copy-block-entry-bookkeeping-prealloc.md`
+- `ideas/open/prepared-consumer-missing-fact-diagnostics.md`
+
+Each generated idea names the current AArch64-owned responsibility, proposed
+destination layer, x86/RISC-V reuse value, proof needed to avoid testcase
+overfit, and concrete reviewer reject signals. No generated idea was activated,
+and `plan.md` was not rewritten.
+
+Step 4 source evidence used for the generated ideas:
 
 Step 4 - Produce the Audit Table and Priority List completed by condensing
 Steps 1-3 into a reviewable audit table and forward-migration priority list.
@@ -115,12 +132,9 @@ Prioritized forward-migration candidates:
 
 ## Suggested Next
 
-Start Step 5 through lifecycle authority by drafting focused follow-up
-`ideas/open/*.md` entries for the top candidates, beginning with Prepared
-move/publication indexing and value-home/storage interpretation. Each idea
-should name the current AArch64-owned helper group, destination layer, x86 reuse
-path, proof requirements, and reject signals for testcase-overfit or accidental
-movement of AArch64 ABI/spelling policy.
+Proceed to Step 6 - Completion Review. Confirm the active audit source idea is
+satisfied by the Step 4 audit table plus the Step 5 generated ideas, then route
+closure or any remaining audit gap through lifecycle authority.
 
 ## Watchouts
 
@@ -138,6 +152,6 @@ really semantic fact production before preallocation.
 
 Documentation/audit-only packet. No build, ctest, clang-tools, or
 `test_after.log` was required by the delegated proof because the owned change
-was limited to canonical `todo.md` audit notes. Steps 1-3 were synthesized from
-existing `todo.md` history and current plan context; no implementation files,
-`plan.md`, `ideas/open/*`, or `ref/` files were touched.
+was limited to source idea drafting under `ideas/open/` and canonical `todo.md`
+progress notes. No implementation files under `src/` or `ref/` were touched,
+and `plan.md` was not rewritten.
