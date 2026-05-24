@@ -1,110 +1,112 @@
 Status: Active
 Source Idea Path: ideas/open/subsystem-entropy-reduction-refactor-generator.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build The Entropy Map
+Current Step ID: 3
+Current Step Title: Prioritize Hotspots
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 built an evidence-backed entropy map for
-`src/backend/mir/aarch64/codegen/` from the Step 1 baseline plus targeted
-inspection of the named route, record, compatibility, call, fallback, and
-printer files.
+Step 3 ranked the `src/backend/mir/aarch64/codegen/` entropy hotspots from the
+Step 2 map by safety, reuse value, and durable ownership clarity. Each accepted
+candidate below has exactly one source-idea refactor type and an expected
+behavior-preservation proof.
 
-Entropy map:
-- Data contract hub: `instruction.hpp` / `instruction.cpp`. Evidence:
-  `instruction.hpp` defines the core record vocabulary and payload variants
-  (`OperandKind`, `RecordSurfaceKind`, `InstructionFamily`, `MachineOpcode`,
-  `MachinePrinterMnemonicKind`, `MachineNodeSelectionStatus`, many
-  `Prepared*RecordError` enums, `RegisterOperand`, `MemoryOperand`,
-  `CallBoundaryMoveInstructionRecord`, `AssemblerInstructionRecord`,
-  `ObjectInstructionRecord`, and `InstructionRecord`). `instruction.cpp`
-  mixes enum spelling, printer mnemonic mapping, effect derivation, selection
-  status, and record constructors such as `make_scalar_instruction`,
-  `make_frame_instruction`, `make_assembler_instruction`, and
-  `make_unsupported_machine_instruction`. This is justified as a contract hub,
-  but high entropy because it also owns policy-like selection/effect logic.
-- Phase logic hub: `dispatch.cpp`. Evidence: 43 includes in the Step 1
-  baseline and local helpers around BIR/prepared lookup, same-block producer
-  queries, select/materialization paths, store retargeting, edge producer
-  context, branch-fusion hooks, and the exported `dispatch_prepared_block`.
-  It calls family lowerers while also owning cross-family publication,
-  retargeting, and materialization decisions, so this is the broadest route
-  hub and the highest-risk extraction target.
-- Phase-plus-emission hotspot: `alu.cpp` / `alu.hpp`. Evidence:
-  `alu.hpp` has 28 includers and exposes state (`BlockScalarLoweringState`),
-  record builders, scalar operand conversion, emitted-register tracking, and
-  `lower_scalar_instruction`. `alu.cpp` combines scalar record construction,
-  prepared home lookup, fallback operand selection (`make_scalar_fallback_operand`),
-  control publication materialization, emitted-register cache maintenance, and
-  printer-facing helpers (`make_scalar_alu_print_lines`). This is a justified
-  combination today, but its fallback/control-publication helpers are concrete
-  extraction candidates.
-- Call-boundary phase hub: `calls_moves.cpp` plus broad `calls.hpp`. Evidence:
-  `calls_moves.cpp` lowers before-call, after-call, before-return, value moves,
-  stack copies, byval lanes, immediate bindings, and callee-saved
-  republication via helpers such as `lower_before_call_move`,
-  `lower_after_call_move`, `lower_before_call_moves`, `lower_after_call_moves`,
-  and `lower_value_moves`. `calls.hpp` exposes ABI sizing, prepared-call-plan
-  lookup, call-boundary lowering, preservation analysis, byval helpers, and
-  call printing declarations. This is broad phase logic with some adapter and
-  emission leakage through inline asm payload construction.
-- Adapter bridge hotspot: `calls_dispatch_bridge.cpp` /
-  `calls_dispatch_bridge.hpp`. Evidence: includes dispatch and call/move
-  surfaces, exports bridge entry points such as `lower_call_instruction`,
-  `lower_select_chain_call_arguments`, `record_call_result_source_register`,
-  and materialization helpers, and contains recursive scalar call-argument
-  materialization plus preserved-value/local-load fallback paths. This is a
-  good Step 3 candidate because it is route-specific glue rather than a core
-  data contract.
-- Compatibility bridge: `compatibility_projection.cpp` /
-  `compatibility_projection.hpp` and `module_compile.cpp`. Evidence:
-  `module_compile.cpp` derives compatibility records after
-  `lower_prepared_functions`, while `compatibility_projection.cpp` filters
-  selected target records through `selected_compatibility_nodes` and exports
-  `derive_compatibility_function_records` /
-  `derive_compatibility_projection`. This is intentionally narrow adapter
-  logic and a low-risk follow-up candidate, not the first high-value entropy
-  reduction.
-- Emission/debug/print boundary: `machine_printer.cpp`,
-  `machine_printer.hpp`, `asm_emitter.cpp`, `asm_emitter.hpp`, and family
-  print helpers such as `calls_printing.cpp`, `f128.cpp`, `intrinsics.cpp`,
-  and `variadic.cpp`. Evidence: `machine_printer.cpp` owns
-  `MachineInstructionPrinter::print_instruction` and dispatches through
-  `print_machine_instruction_line_payloads` to `print_branch`, `print_memory`,
-  `print_frame`, `print_call`, `print_scalar`, `print_assembler`, etc.;
-  `asm_emitter.cpp` owns `print_prepared_machine_nodes` and global/string
-  object text emission. These are large but lower-risk when kept as printer
-  consumers of structured nodes.
-- Text-emission leakage watchlist: several phase files still build
-  `AssemblerInstructionRecord` / `inline_asm_template` payloads directly,
-  including `dispatch.cpp`, `alu.cpp`, `calls_moves.cpp`,
-  `comparison_branch_fusion.cpp`, `memory_store_sources.cpp`,
-  `memory_dynamic_stack.cpp`, `prologue_entry_formals.cpp`, and `cast_ops.cpp`.
-  This is not one file's fault; it marks a cross-cutting adapter/emission
-  boundary to avoid widening Step 3 beyond one coherent extraction.
+Prioritized hotspot list:
+- Rank 1: `calls_dispatch_bridge.cpp` / `calls_dispatch_bridge.hpp`.
+  Refactor type: `Helper absorption`. Durable owner: call-boundary adapter
+  logic that translates dispatch facts into call-lowering inputs. Why first:
+  the files are route-specific glue, have clear bridge ownership, and can be
+  tightened without changing call ABI semantics or the core dispatch contract.
+  Suggested follow-up shape: absorb or relocate thin bridge helpers into the
+  durable call/dispatch adapter owner while preserving the public entry points
+  needed by dispatch. Proof expectation: build plus focused AArch64 MIR/codegen
+  tests that exercise normal calls, select-chain call arguments, call-result
+  source registers, preserved-value materialization, and local-load fallback
+  call arguments.
+- Rank 2: `compatibility_projection.cpp` /
+  `compatibility_projection.hpp`, with the call site in `module_compile.cpp`
+  only as proof context. Refactor type: `Bridge retirement`. Durable owner:
+  compatibility bridge from selected target records to legacy projection
+  records. Why second: the boundary is intentionally narrow, the helper names
+  already describe a compatibility route, and retirement or contraction can be
+  proved by showing the newer selected-record contract still owns the behavior.
+  Suggested follow-up shape: remove or reduce compatibility projection glue
+  only where selected target records fully cover the projected records; defer
+  if any behavior still depends on the legacy projection surface. Proof
+  expectation: build plus focused module/AArch64 compatibility tests covering
+  selected target records, unsupported-node reporting, and object/global record
+  projection.
+- Rank 3: `alu.cpp` fallback/control-publication helpers behind `alu.hpp`.
+  Refactor type: `Phase extraction`. Durable owner: scalar phase logic for
+  prepared-home lookup, fallback operand selection, and control publication
+  materialization. Why third: the extraction has reuse value, but `alu.hpp` is
+  widely included and the implementation mixes real scalar lowering with
+  fallback and publication policy. Suggested follow-up shape: split only one
+  helper group, preferably fallback operand selection or control-publication
+  materialization, into a small phase-local implementation unit without
+  widening header exposure. Proof expectation: build plus scalar ALU, control
+  publication, fallback operand, and same-block producer tests.
+- Rank 4: printer/emitter boundary around `machine_printer.cpp`,
+  `asm_emitter.cpp`, and family print helpers. Refactor type:
+  `Printer alignment`. Durable owner: debug/print logic consuming structured
+  machine records. Why fourth: printer-only changes are usually lower semantic
+  risk, but the surface is broad enough that a follow-up must pick one family
+  printer alignment rather than the whole print pipeline. Suggested follow-up
+  shape: align one family printer with the data family it prints and avoid
+  changing record construction. Proof expectation: build plus machine-printer
+  and assembly text output tests for the selected family.
+- Rank 5: cross-cutting `AssemblerInstructionRecord` /
+  `inline_asm_template` construction in phase files such as `dispatch.cpp`,
+  `alu.cpp`, `calls_moves.cpp`, `comparison_branch_fusion.cpp`,
+  `memory_store_sources.cpp`, `memory_dynamic_stack.cpp`,
+  `prologue_entry_formals.cpp`, and `cast_ops.cpp`. Refactor type:
+  `Phase extraction`. Durable owner: target-local emission adapter between
+  phase decisions and assembler records. Why fifth: the reuse value is high,
+  but this is cross-cutting and should only become a follow-up if scoped to one
+  family or one helper group. Proof expectation: build plus targeted tests for
+  the selected family's inline-asm record emission and unchanged text output.
 
 ## Suggested Next
 
-For Step 3, prefer a bounded extraction around `calls_dispatch_bridge.*` and
-its call-argument/materialized-address bridge helpers, with explicit
-non-goals for `dispatch.cpp`, `instruction.hpp`, and broad `calls_moves.cpp`
-rewrites. The next-best low-risk candidate is documenting or tightening the
-`compatibility_projection.*` adapter boundary. Avoid picking `dispatch.cpp` or
-`instruction.hpp` first unless Step 3 is explicitly a design-only split,
-because both are broad hubs whose first implementation slice would likely
-touch too many families.
+Step 4 should create follow-up idea files in this order:
+
+1. A bounded `calls_dispatch_bridge.*` helper-absorption idea.
+2. A `compatibility_projection.*` bridge-retirement idea, explicitly blocked
+   unless selected target records fully own the projected behavior.
+3. Optionally one scalar `alu.cpp` phase-extraction idea if Step 4 wants a
+   third candidate, scoped to one helper group only.
+
+Each generated idea should include target files, the single refactor type,
+durable owner category, proof command expectations, and reject signals for
+semantic call ABI changes, expectation downgrades, testcase-shaped shortcuts,
+or file-count reductions that increase responsibility mixing.
 
 ## Watchouts
 
-`dispatch.cpp`, `alu.cpp`, `calls_moves.cpp`, and `instruction.hpp` are real
-hotspots, but they are not equally good first refactor targets. Treat
-`instruction.hpp` as a durable contract until a smaller adapter split proves
-where the contract is leaking. Treat printer/debug files as follow-up cleanup
-unless a concrete extraction needs to move text-emission leakage out of phase
-logic.
+Too-broad exclusions for Step 4:
+- Exclude `dispatch.cpp` as a first implementation target. It is the broadest
+  phase hub and mixes producer lookup, publication, materialization,
+  retargeting, family dispatch, and branch-fusion hooks. A first slice there
+  would likely require ownership redesign rather than behavior-preserving
+  cleanup.
+- Exclude `instruction.hpp` / `instruction.cpp` as a first target. They are
+  high-entropy but also the durable machine-record contract; splitting them
+  safely requires prior evidence from smaller adapter cleanups.
+- Exclude broad `calls_moves.cpp` refactors. The file spans before-call,
+  after-call, before-return, value moves, stack copies, byval lanes, immediate
+  bindings, and callee-saved republication. A follow-up may target one helper
+  group later, but not the whole file.
+- Defer whole-pipeline printer/emitter cleanup unless Step 4 narrows it to one
+  family printer or one emission adapter.
+- Defer cross-family inline-asm record construction cleanup unless it is scoped
+  to one family or one helper group with unchanged assembly output.
+
+Reject any follow-up candidate that needs semantic behavior changes, call ABI
+changes, selected-record contract changes, expectation downgrades,
+unsupported-test conversions, broad renames without durable concept proof, or
+target-specific instruction/register logic moved into generic layers.
 
 ## Proof
 
