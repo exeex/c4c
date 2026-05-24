@@ -84,3 +84,15 @@ Reject the implementation route if it requires any of the following:
 - Selected target records are the only accepted source of truth for any retired
   projected behavior.
 - The slice is small enough for one focused future run.
+
+## Closure
+
+Closed after localizing the selected non-return machine-node filtering rule to
+`module::selected_machine_nodes`. The broader `FunctionRecord` /
+`CompatibilityProjection` wrapper, prepared-name label behavior, object/global
+projection, and diagnostic ownership paths remain intentionally out of scope
+because the ownership gate did not clear them.
+
+Close proof used matching backend logs: `test_before.log` and `test_after.log`
+both reported 162 passed, 0 failed, and the monotonic regression guard passed
+with non-decreasing pass-count policy.
