@@ -26,6 +26,10 @@ struct ActiveRegisterAssignment {
     const std::vector<ActiveRegisterAssignment>& active,
     const std::vector<PreparedRegisterCandidateSpan>& candidate_spans);
 
+void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
+                                  std::size_t start_point,
+                                  bool preserve_call_boundary_pressure);
+
 [[nodiscard]] bool has_lower_allocation_rank(const PreparedRegallocValue& lhs,
                                              const PreparedRegallocValue& rhs);
 

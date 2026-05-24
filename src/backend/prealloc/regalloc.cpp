@@ -47,6 +47,7 @@ using regalloc_detail::call_arg_destination_stack_offset_bytes;
 using regalloc_detail::call_arg_storage_kind;
 using regalloc_detail::call_result_destination_register_names;
 using regalloc_detail::call_result_storage_kind;
+using regalloc_detail::expire_completed_assignments;
 using regalloc_detail::f128_call_arg_destination_placement;
 using regalloc_detail::find_regalloc_value;
 using regalloc_detail::interval_start_sort_key;
@@ -63,22 +64,6 @@ using regalloc_detail::value_priority;
 using regalloc_detail::weighted_use_score;
 
 constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
-
-void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
-                                  std::size_t start_point,
-                                  bool preserve_call_boundary_pressure) {
-  active.erase(std::remove_if(active.begin(),
-                              active.end(),
-                              [start_point, preserve_call_boundary_pressure](
-                                  const ActiveRegisterAssignment& assignment) {
-                                if (assignment.end_point < start_point) {
-                                  return true;
-                                }
-                                return !preserve_call_boundary_pressure &&
-                                       assignment.end_point == start_point;
-                              }),
-               active.end());
-}
 
 [[nodiscard]] PreparedMovePhase classify_prepared_move_phase(const PreparedMoveResolution& move) {
   switch (move.destination_kind) {

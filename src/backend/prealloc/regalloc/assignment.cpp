@@ -32,6 +32,22 @@ std::optional<PreparedRegisterCandidateSpan> choose_register_span(
   return std::nullopt;
 }
 
+void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
+                                  std::size_t start_point,
+                                  bool preserve_call_boundary_pressure) {
+  active.erase(std::remove_if(active.begin(),
+                              active.end(),
+                              [start_point, preserve_call_boundary_pressure](
+                                  const ActiveRegisterAssignment& assignment) {
+                                if (assignment.end_point < start_point) {
+                                  return true;
+                                }
+                                return !preserve_call_boundary_pressure &&
+                                       assignment.end_point == start_point;
+                              }),
+               active.end());
+}
+
 bool has_lower_allocation_rank(const PreparedRegallocValue& lhs,
                                const PreparedRegallocValue& rhs) {
   if (lhs.spill_weight != rhs.spill_weight) {
