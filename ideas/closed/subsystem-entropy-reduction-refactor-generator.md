@@ -125,3 +125,15 @@ Generated sub-ideas must reject:
   tiny mechanical probe is required and separately justified.
 - The active plan closes after producing the sub-ideas, or intentionally hands
   off to one activated sub-idea through normal lifecycle rules.
+
+## Closure Note
+
+Closed after the AArch64 codegen audit produced the required entropy map,
+prioritized hotspot list, and three ordered follow-up ideas:
+
+- `ideas/open/aarch64-codegen-01-calls-dispatch-bridge-helper-absorption.md`
+- `ideas/open/aarch64-codegen-02-compatibility-projection-bridge-retirement.md`
+- `ideas/open/aarch64-codegen-03-alu-fallback-operand-phase-extraction.md`
+
+The umbrella source idea is complete; generated follow-up ideas remain open for
+separate activation through the normal lifecycle.
