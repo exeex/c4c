@@ -147,6 +147,90 @@ int regalloc_assignment_precedes_storage_plan() {
   return diagnostics.empty() ? 0 : fail("expected regalloc resolution to be diagnostic-free");
 }
 
+int present_empty_authority_blocks_lower_precedence_fallback() {
+  {
+    prepare::PreparedBirModule prepared;
+    const auto function_name = prepared.names.function_names.intern("operand.empty_regalloc");
+    const auto value_name = prepared.names.value_names.intern("empty_regalloc_value");
+    const auto value_id = prepare::PreparedValueId{25};
+
+    auto context = make_context(prepared, function_name);
+    prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+        .function_name = function_name,
+        .values = {prepare::PreparedRegallocValue{
+            .value_id = value_id,
+            .function_name = function_name,
+            .value_name = value_name,
+        }},
+    });
+    prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+        .function_name = function_name,
+        .values = {prepare::PreparedStoragePlanValue{
+            .value_id = value_id,
+            .value_name = value_name,
+            .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+            .slot_id = prepare::PreparedFrameSlotId{31},
+            .stack_offset_bytes = std::size_t{48},
+        }},
+    });
+    context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, prepared.control_flow.functions.front());
+
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto resolved = aarch64_codegen::resolve_value_operand(value_id, context, diagnostics);
+    if (resolved.has_value()) {
+      return fail("expected present empty regalloc authority to block storage-plan fallback");
+    }
+    if (diagnostics.entries.empty() ||
+        diagnostics.entries.front().kind !=
+            aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+      return fail("expected empty regalloc authority to diagnose missing value authority");
+    }
+  }
+
+  {
+    prepare::PreparedBirModule prepared;
+    const auto function_name = prepared.names.function_names.intern("operand.empty_storage");
+    const auto value_name = prepared.names.value_names.intern("empty_storage_value");
+    const auto value_id = prepare::PreparedValueId{26};
+
+    auto context = make_context(prepared, function_name);
+    prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+        .function_name = function_name,
+        .values = {prepare::PreparedStoragePlanValue{
+            .value_id = value_id,
+            .value_name = value_name,
+            .encoding = prepare::PreparedStorageEncodingKind::None,
+        }},
+    });
+    prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+        .function_name = function_name,
+        .value_homes = {prepare::PreparedValueHome{
+            .value_id = value_id,
+            .function_name = function_name,
+            .value_name = value_name,
+            .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+            .immediate_i32 = 7,
+        }},
+    });
+    context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, prepared.control_flow.functions.front());
+
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto resolved = aarch64_codegen::resolve_value_operand(value_id, context, diagnostics);
+    if (resolved.has_value()) {
+      return fail("expected storage-plan none authority to block value-home fallback");
+    }
+    if (diagnostics.entries.empty() ||
+        diagnostics.entries.front().kind !=
+            aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan) {
+      return fail("expected empty storage-plan authority to diagnose unsupported storage plan");
+    }
+  }
+
+  return 0;
+}
+
 int literals_labels_symbols_and_register_spellings_are_narrow() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("operand.failclosed");
@@ -207,6 +291,10 @@ int main() {
     return status;
   }
   if (const int status = regalloc_assignment_precedes_storage_plan(); status != 0) {
+    return status;
+  }
+  if (const int status = present_empty_authority_blocks_lower_precedence_fallback();
+      status != 0) {
     return status;
   }
   if (const int status = literals_labels_symbols_and_register_spellings_are_narrow();

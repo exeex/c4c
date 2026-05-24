@@ -1,7 +1,7 @@
 #include "operands.hpp"
 
 #include <cstdint>
-#include <utility>
+#include <string>
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
@@ -49,217 +49,156 @@ namespace mir = c4c::backend::mir;
   };
 }
 
-[[nodiscard]] std::optional<ResolvedOperand> resolve_from_regalloc(
-    prepare::PreparedValueId value_id,
-    const module::FunctionLoweringContext& context,
+[[nodiscard]] OperandAuthority register_authority(
+    prepare::PreparedDecodedHomeStorageSource source) {
+  switch (source) {
+    case prepare::PreparedDecodedHomeStorageSource::RegallocAssignment:
+      return OperandAuthority::RegallocAssignment;
+    case prepare::PreparedDecodedHomeStorageSource::StoragePlan:
+      return OperandAuthority::StoragePlan;
+    case prepare::PreparedDecodedHomeStorageSource::ValueHome:
+    case prepare::PreparedDecodedHomeStorageSource::None:
+      return OperandAuthority::PreparedValueHome;
+  }
+  return OperandAuthority::None;
+}
+
+[[nodiscard]] OperandAuthority frame_slot_authority(
+    const prepare::PreparedDecodedHomeStorage& decoded) {
+  switch (decoded.source) {
+    case prepare::PreparedDecodedHomeStorageSource::StoragePlan:
+      return decoded.spill_slot_placement.has_value() ? OperandAuthority::SpillSlot
+                                                      : OperandAuthority::FrameSlot;
+    case prepare::PreparedDecodedHomeStorageSource::ValueHome:
+      return OperandAuthority::PreparedValueHome;
+    case prepare::PreparedDecodedHomeStorageSource::RegallocAssignment:
+    case prepare::PreparedDecodedHomeStorageSource::None:
+      return OperandAuthority::FrameSlot;
+  }
+  return OperandAuthority::None;
+}
+
+[[nodiscard]] OperandAuthority immediate_authority(
+    prepare::PreparedDecodedHomeStorageSource source) {
+  return source == prepare::PreparedDecodedHomeStorageSource::StoragePlan
+             ? OperandAuthority::Immediate
+             : OperandAuthority::PreparedValueHome;
+}
+
+[[nodiscard]] std::optional<ResolvedOperand> make_decoded_operand(
+    const prepare::PreparedDecodedHomeStorage& decoded,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  if (context.regalloc == nullptr) {
+  if (!prepare::prepared_decoded_home_storage_available(decoded)) {
     return std::nullopt;
   }
 
-  for (const auto& value : context.regalloc->values) {
-    if (value.value_id != value_id) {
-      continue;
-    }
-    if (value.assigned_register.has_value() &&
-        value.assigned_register->placement.has_value()) {
-      return make_register_operand(*value.assigned_register->placement,
-                                   value.assigned_register->reg_class,
-                                   OperandAuthority::RegallocAssignment,
-                                   value.value_id,
-                                   value.value_name,
-                                   value.function_name,
+  switch (decoded.kind) {
+    case prepare::PreparedDecodedHomeStorageKind::Register:
+      if (!decoded.register_placement.has_value()) {
+        return std::nullopt;
+      }
+      return make_register_operand(*decoded.register_placement,
+                                   decoded.register_class,
+                                   register_authority(decoded.source),
+                                   decoded.value_id,
+                                   decoded.value_name,
+                                   decoded.function_name,
                                    diagnostics);
-    }
-    if (value.assigned_stack_slot.has_value()) {
-      return ResolvedOperand{
-          .operand = mir::Operand{.payload = mir::Memory{
-                                      .base = std::nullopt,
-                                      .index = std::nullopt,
-                                      .displacement = static_cast<std::int64_t>(
-                                          value.assigned_stack_slot->offset_bytes),
-                                      .scale = 1,
-                                  }},
-          .authority = OperandAuthority::FrameSlot,
-          .frame_slot_id = value.assigned_stack_slot->slot_id,
-          .value_id = value.value_id,
-          .value_name = value.value_name,
-      };
-    }
-    return std::nullopt;
-  }
-
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<ResolvedOperand> resolve_from_storage_plan(
-    prepare::PreparedValueId value_id,
-    const module::FunctionLoweringContext& context,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  if (context.storage_plan == nullptr) {
-    return std::nullopt;
-  }
-
-  for (const auto& value : context.storage_plan->values) {
-    if (value.value_id != value_id) {
-      continue;
-    }
-
-    switch (value.encoding) {
-      case prepare::PreparedStorageEncodingKind::Register:
-        if (!value.register_placement.has_value()) {
-          diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-              .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
-              .function_name = context.storage_plan->function_name,
-              .value_id = value.value_id,
-              .value_name = value.value_name,
-              .message =
-                  "storage-plan register value is missing typed register placement",
-          });
-          return std::nullopt;
-        }
-        return make_register_operand(*value.register_placement,
-                                     std::nullopt,
-                                     OperandAuthority::StoragePlan,
-                                     value.value_id,
-                                     value.value_name,
-                                     context.storage_plan->function_name,
-                                     diagnostics);
-      case prepare::PreparedStorageEncodingKind::FrameSlot:
-        if (!value.slot_id.has_value()) {
-          break;
-        }
-        return ResolvedOperand{
-            .operand = mir::Operand{.payload = mir::Memory{
-                                        .base = std::nullopt,
-                                        .index = std::nullopt,
-                                        .displacement = value.stack_offset_bytes.has_value()
-                                                            ? static_cast<std::int64_t>(
-                                                                  *value.stack_offset_bytes)
-                                                            : 0,
-                                        .scale = 1,
-                                    }},
-            .authority = value.spill_slot_placement.has_value()
-                             ? OperandAuthority::SpillSlot
-                             : OperandAuthority::FrameSlot,
-            .frame_slot_id = value.slot_id,
-            .value_id = value.value_id,
-            .value_name = value.value_name,
-        };
-      case prepare::PreparedStorageEncodingKind::Immediate:
-        if (!value.immediate_i32.has_value()) {
-          break;
-        }
-        return ResolvedOperand{
-            .operand = mir::Operand{
-                .payload = mir::Immediate{
-                    .kind = mir::ImmediateKind::Signed,
-                    .signed_value = *value.immediate_i32,
-                    .unsigned_value = static_cast<std::uint64_t>(*value.immediate_i32),
-                }},
-            .authority = OperandAuthority::Immediate,
-            .value_id = value.value_id,
-            .value_name = value.value_name,
-        };
-      case prepare::PreparedStorageEncodingKind::SymbolAddress:
-        if (!value.symbol_name.has_value()) {
-          break;
-        }
-        return ResolvedOperand{
-            .operand = mir::Operand{.payload = mir::Symbol{.name = *value.symbol_name}},
-            .authority = OperandAuthority::Symbol,
-            .value_id = value.value_id,
-            .value_name = value.value_name,
-        };
-      case prepare::PreparedStorageEncodingKind::ComputedAddress:
-      case prepare::PreparedStorageEncodingKind::None:
-        break;
-    }
-
-    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-        .kind = module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan,
-        .function_name = context.storage_plan->function_name,
-        .value_id = value.value_id,
-        .value_name = value.value_name,
-        .message = "storage-plan value does not have a supported typed operand form",
-    });
-    return std::nullopt;
-  }
-
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<ResolvedOperand> resolve_from_value_home(
-    prepare::PreparedValueId value_id,
-    const module::FunctionLoweringContext& context,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  if (context.value_locations == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto* home = prepare::find_prepared_value_home(*context.value_locations, value_id);
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-
-  switch (home->kind) {
-    case prepare::PreparedValueHomeKind::StackSlot:
-      if (!home->slot_id.has_value()) {
-        break;
+    case prepare::PreparedDecodedHomeStorageKind::FrameSlot:
+      if (!decoded.slot_id.has_value()) {
+        return std::nullopt;
       }
       return ResolvedOperand{
           .operand = mir::Operand{.payload = mir::Memory{
                                       .base = std::nullopt,
                                       .index = std::nullopt,
-                                      .displacement = home->offset_bytes.has_value()
+                                      .displacement = decoded.stack_offset_bytes.has_value()
                                                           ? static_cast<std::int64_t>(
-                                                                *home->offset_bytes)
+                                                                *decoded.stack_offset_bytes)
                                                           : 0,
                                       .scale = 1,
                                   }},
-          .authority = OperandAuthority::PreparedValueHome,
-          .frame_slot_id = home->slot_id,
-          .value_id = home->value_id,
-          .value_name = home->value_name,
+          .authority = frame_slot_authority(decoded),
+          .frame_slot_id = decoded.slot_id,
+          .value_id = decoded.value_id,
+          .value_name = decoded.value_name,
       };
-    case prepare::PreparedValueHomeKind::RematerializableImmediate:
-      if (!home->immediate_i32.has_value()) {
-        break;
+    case prepare::PreparedDecodedHomeStorageKind::ImmediateI32:
+      if (!decoded.immediate_i32.has_value()) {
+        return std::nullopt;
       }
       return ResolvedOperand{
           .operand = mir::Operand{
               .payload = mir::Immediate{
                   .kind = mir::ImmediateKind::Signed,
-                  .signed_value = *home->immediate_i32,
-                  .unsigned_value = static_cast<std::uint64_t>(*home->immediate_i32),
+                  .signed_value = *decoded.immediate_i32,
+                  .unsigned_value = static_cast<std::uint64_t>(*decoded.immediate_i32),
               }},
-          .authority = OperandAuthority::PreparedValueHome,
-          .value_id = home->value_id,
-          .value_name = home->value_name,
+          .authority = immediate_authority(decoded.source),
+          .value_id = decoded.value_id,
+          .value_name = decoded.value_name,
       };
-    case prepare::PreparedValueHomeKind::Register:
-      diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-          .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
-          .function_name = home->function_name,
-          .value_id = home->value_id,
-          .value_name = home->value_name,
-          .message =
-              "value-home register spelling is diagnostic-only until typed placement exists",
-      });
+    case prepare::PreparedDecodedHomeStorageKind::SymbolAddress:
+      if (!decoded.symbol_name.has_value()) {
+        return std::nullopt;
+      }
+      return ResolvedOperand{
+          .operand = mir::Operand{.payload = mir::Symbol{.name = *decoded.symbol_name}},
+          .authority = OperandAuthority::Symbol,
+          .value_id = decoded.value_id,
+          .value_name = decoded.value_name,
+      };
+    case prepare::PreparedDecodedHomeStorageKind::ComputedAddress:
+    case prepare::PreparedDecodedHomeStorageKind::PointerBasePlusOffset:
+    case prepare::PreparedDecodedHomeStorageKind::None:
       return std::nullopt;
-    case prepare::PreparedValueHomeKind::PointerBasePlusOffset:
-    case prepare::PreparedValueHomeKind::None:
-      break;
   }
-
-  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
-      .kind = module::ModuleLoweringDiagnosticKind::UnsupportedValueHome,
-      .function_name = home->function_name,
-      .value_id = home->value_id,
-      .value_name = home->value_name,
-      .message = "prepared value home does not have a supported typed operand form",
-  });
   return std::nullopt;
+}
+
+[[nodiscard]] module::ModuleLoweringDiagnosticKind diagnostic_kind_for_decoded_failure(
+    const prepare::PreparedDecodedHomeStorage& decoded) {
+  if (decoded.status == prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement) {
+    return module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority;
+  }
+  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
+    return module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan;
+  }
+  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
+    return module::ModuleLoweringDiagnosticKind::UnsupportedValueHome;
+  }
+  return module::ModuleLoweringDiagnosticKind::MissingValueAuthority;
+}
+
+[[nodiscard]] std::string diagnostic_message_for_decoded_failure(
+    const prepare::PreparedDecodedHomeStorage& decoded) {
+  if (decoded.status == prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement) {
+    if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
+      return "storage-plan register value is missing typed register placement";
+    }
+    if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
+      return "value-home register spelling is diagnostic-only until typed placement exists";
+    }
+    return "regalloc register assignment is missing typed register placement";
+  }
+  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::StoragePlan) {
+    return "storage-plan value does not have a supported typed operand form";
+  }
+  if (decoded.source == prepare::PreparedDecodedHomeStorageSource::ValueHome) {
+    return "prepared value home does not have a supported typed operand form";
+  }
+  return "no typed prepared authority exists for value operand";
+}
+
+void diagnose_decoded_failure(const prepare::PreparedDecodedHomeStorage& decoded,
+                              module::ModuleLoweringDiagnostics& diagnostics) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = diagnostic_kind_for_decoded_failure(decoded),
+      .function_name = decoded.function_name,
+      .value_id = decoded.value_id,
+      .value_name = decoded.value_name,
+      .message = diagnostic_message_for_decoded_failure(decoded),
+  });
 }
 
 }  // namespace
@@ -277,14 +216,20 @@ std::optional<ResolvedOperand> resolve_value_operand(
     return std::nullopt;
   }
 
-  if (auto resolved = resolve_from_regalloc(value_id, context, diagnostics)) {
+  const auto decoded = prepare::decode_prepared_home_storage(
+      prepare::PreparedHomeStorageDecodeInputs{
+          .regalloc = context.regalloc,
+          .storage_plan = context.storage_plan,
+          .value_locations = context.value_locations,
+          .value_home_lookups = context.value_home_lookups,
+      },
+      value_id);
+  if (auto resolved = make_decoded_operand(decoded, diagnostics)) {
     return resolved;
   }
-  if (auto resolved = resolve_from_storage_plan(value_id, context, diagnostics)) {
-    return resolved;
-  }
-  if (auto resolved = resolve_from_value_home(value_id, context, diagnostics)) {
-    return resolved;
+  if (decoded.source != prepare::PreparedDecodedHomeStorageSource::None) {
+    diagnose_decoded_failure(decoded, diagnostics);
+    return std::nullopt;
   }
 
   diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
