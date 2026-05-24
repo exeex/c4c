@@ -1,18 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-responsibility-map-and-layout-plan.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Propose The Stable Package Model
+Current Step ID: 4
+Current Step Title: Create Focused Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: turned the Step 1/2 inventory and
-responsibility map into a proposed durable package model for
-`src/backend/prealloc`, separated aggregate contracts from future contraction
-candidates, and grouped cleanup candidates by slice type. No implementation
-files, tests, `plan.md`, or source idea files were changed.
+Completed Step 4 from `plan.md`: created focused follow-up source ideas under
+`ideas/open/` for the highest-value cleanup slices from the Step 3 package
+model. No implementation files, tests, `plan.md`, or the active source idea
+were changed.
+
+### Generated Follow-Up Ideas
+
+Recommended execution order:
+
+1. `ideas/open/prealloc-publication-accessor-contracts.md`
+   - Slice type: header/data-contract contraction plus prepared-printer
+     alignment.
+   - Durable owner: publication and prepared accessors.
+   - Focus: make `publication_plans.*`, `prepared_lookups.*`,
+     `decoded_home_storage.*`, `storage_plans.*`, and `value_locations.hpp`
+     read as a deliberate codegen-facing package without changing prepared-data
+     semantics.
+2. `ideas/open/prealloc-call-plan-phase-split.md`
+   - Slice type: `.cpp` phase split with optional call-printer grouping
+     alignment.
+   - Durable owner: call and return ABI plans.
+   - Focus: split `call_plans.cpp` by durable subphase while keeping
+     `calls.hpp` aggregate and preserving call ABI behavior.
+3. `ideas/open/prealloc-stack-layout-contract-boundary.md`
+   - Slice type: header/data-contract boundary cleanup plus focused `.cpp`
+     phase split.
+   - Durable owner: stack and frame planning.
+   - Focus: clarify stack-layout declarations currently exposed through
+     aggregate module surfaces and split coordinator internals only along object
+     collection, slot assignment, orchestration, and address-publication
+     boundaries.
+4. `ideas/open/prealloc-regalloc-coordinator-contraction.md`
+   - Slice type: `.cpp` phase contraction and helper relocation or renaming.
+   - Durable owner: liveness and allocation planning.
+   - Focus: contract `regalloc.cpp` along existing `regalloc/` helper-family
+     boundaries while preserving `regalloc.hpp` as the aggregate allocation
+     contract.
+5. `ideas/open/prealloc-runtime-carrier-naming-alignment.md`
+   - Slice type: helper/comment naming repair with prepared-printer alignment.
+   - Durable owner: runtime and special carriers.
+   - Focus: align runtime-helper and special-carrier naming while keeping the
+     two aggregate concepts separate.
+
+Each generated idea includes goal, target files, slice type, durable owner,
+in-scope work, out-of-scope work, behavior-preservation proof, acceptance
+criteria, and concrete reviewer reject signals.
+
+### Step 4 Source Inputs
+
+The Step 4 ideas were generated from this Step 3 package model and priority
+order.
 
 ### Proposed Stable Package Model
 
@@ -140,15 +186,15 @@ signals from the table above. Do not create one giant prealloc refactor idea.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: create separate focused follow-up ideas under
-`ideas/open/` for the highest-value candidates above. Start with the P1
-publication/accessor, call-plan phase split, and stack-layout contract boundary
-ideas. Keep each idea small enough for one focused run and include concrete
-reviewer reject signals.
+Step 4 is complete. Suggested next lifecycle action: execute Step 5 from
+`plan.md` by performing the final audit review, confirming that the generated
+follow-up ideas satisfy the active source idea acceptance criteria, and deciding
+whether the source idea can be closed.
 
 ## Watchouts
 
-- Step 4 should generate source ideas, not perform implementation movement.
+- Step 5 should review the audit output and generated source ideas, not perform
+  implementation movement.
 - Preserve `module.hpp`, `control_flow.hpp`, `regalloc.hpp`, `calls.hpp`,
   `runtime_helpers.hpp`, and `special_carriers.hpp` as aggregate contracts
   unless a focused follow-up proves a consumer-facing split.
