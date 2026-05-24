@@ -1,25 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-reference-layout-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Consolidate Remaining Family Boundaries
+Current Step ID: 5
+Current Step Title: Final Layout Review
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 - Consolidate Remaining Family Boundaries. Moved the
-`dispatch_publication.cpp` helper declarations out of `dispatch.hpp` and into
-the narrow `dispatch_publication.hpp` adapter/internal boundary, updated direct
-publication-helper users to include that header, and made
-`dispatch_publication.cpp` include its direct MIR query dependency instead of
-receiving it through `dispatch.hpp`, with no behavior changes.
+Completed Step 4 - Consolidate Remaining Family Boundaries. The recent
+boundary packets moved entry-formal publication declarations to the prologue
+family and publication helper declarations to narrow dispatch publication
+headers. `dispatch.hpp` now declares only the block-dispatch surface:
+`InstructionDispatchResult`, `make_block_lowering_context`, and
+`dispatch_prepared_block`.
+
+Plan-owner decision: Step 4 is complete. The codegen directory now reads closer
+to the reference inventory across multiple families, and the remaining
+adapter/internal files are either behind narrow private headers or explicitly
+queued for final review instead of another Step 4 extraction packet.
 
 ## Suggested Next
 
-Continue Step 4 by reassessing the now-smaller `dispatch.hpp` surface. If only
-the public block-dispatch API remains, the next coherent packet is a
-supervisor/plan-owner decision on whether this runbook step is complete.
+Execute Step 5 - Final Layout Review. Count final direct codegen files
+currently at 77 total: 41 `.cpp` and 36 `.hpp`. Compare the retained
+file-to-family map against the reference README inventory, refresh any stale
+adapter/internal notes, record why remaining separate files stay separate, and
+make a closure recommendation for
+`ideas/open/aarch64-codegen-reference-layout-consolidation.md`.
 
 ## Watchouts
 
@@ -30,6 +38,8 @@ supervisor/plan-owner decision on whether this runbook step is complete.
   private adapter helpers.
 - `dispatch_publication.hpp` intentionally depends on `alu.hpp` for
   `BlockScalarLoweringState` and register operand vocabulary.
+- Step 5 should refresh the retained Step 1 count and notes rather than treating
+  the original audit count as final state.
 
 ## Proof
 
