@@ -28,6 +28,32 @@ function(c4c_add_aarch64_cpp_test test_name)
   )
 endfunction()
 
+function(c4c_add_mir_cpp_test test_name)
+  add_executable(${test_name}_test
+      "${BACKEND_TEST_ROOT}/mir/${test_name}_test.cpp"
+  )
+  target_include_directories(${test_name}_test PRIVATE
+      "${PROJECT_SOURCE_DIR}"
+  )
+  target_link_libraries(${test_name}_test PRIVATE
+      c4c_backend
+  )
+  set_target_properties(${test_name}_test PROPERTIES
+      CXX_STANDARD 17
+      CXX_STANDARD_REQUIRED ON
+  )
+
+  add_test(
+    NAME ${test_name}
+    COMMAND $<TARGET_FILE:${test_name}_test>
+  )
+endfunction()
+
+c4c_add_mir_cpp_test(backend_x86_shared_producer_query)
+set_tests_properties(backend_x86_shared_producer_query PROPERTIES
+  LABELS "backend;internal;cpp;x86"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_signature_metadata SOURCE_TEXT_AUDIT)
 set_tests_properties(backend_aarch64_signature_metadata PROPERTIES
   LABELS "backend;internal;cpp"
