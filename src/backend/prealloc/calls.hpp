@@ -3,6 +3,7 @@
 #include "frame.hpp"
 #include "names.hpp"
 #include "regalloc.hpp"
+#include "value_locations.hpp"
 
 #include "../bir/bir.hpp"
 
@@ -184,5 +185,59 @@ struct PreparedCallPlansFunction {
 struct PreparedCallPlans {
   std::vector<PreparedCallPlansFunction> functions;
 };
+
+enum class PreparedCallBoundaryMoveClassificationStatus {
+  Available,
+  UnsupportedOpKind,
+  MissingAbiIndex,
+  MissingCallArgumentPlan,
+  MissingCallResultPlan,
+  MismatchedCallResultPlan,
+  MissingAbiBinding,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_boundary_move_classification_status_name(
+    PreparedCallBoundaryMoveClassificationStatus status) {
+  switch (status) {
+    case PreparedCallBoundaryMoveClassificationStatus::Available:
+      return "available";
+    case PreparedCallBoundaryMoveClassificationStatus::UnsupportedOpKind:
+      return "unsupported_op_kind";
+    case PreparedCallBoundaryMoveClassificationStatus::MissingAbiIndex:
+      return "missing_abi_index";
+    case PreparedCallBoundaryMoveClassificationStatus::MissingCallArgumentPlan:
+      return "missing_call_argument_plan";
+    case PreparedCallBoundaryMoveClassificationStatus::MissingCallResultPlan:
+      return "missing_call_result_plan";
+    case PreparedCallBoundaryMoveClassificationStatus::MismatchedCallResultPlan:
+      return "mismatched_call_result_plan";
+    case PreparedCallBoundaryMoveClassificationStatus::MissingAbiBinding:
+      return "missing_abi_binding";
+  }
+  return "unknown";
+}
+
+struct PreparedCallBoundaryMoveClassification {
+  PreparedCallBoundaryMoveClassificationStatus status =
+      PreparedCallBoundaryMoveClassificationStatus::Available;
+  const PreparedCallPlan* call_plan = nullptr;
+  const PreparedMoveBundle* bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
+  PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
+  PreparedMoveStorageKind storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::size_t> abi_index;
+  const PreparedCallArgumentPlan* argument_plan = nullptr;
+  const PreparedCallResultPlan* result_plan = nullptr;
+  const PreparedAbiBinding* abi_binding = nullptr;
+};
+
+[[nodiscard]] bool prepared_call_boundary_move_classification_available(
+    const PreparedCallBoundaryMoveClassification& classification);
+
+[[nodiscard]] PreparedCallBoundaryMoveClassification
+classify_prepared_call_boundary_move(const PreparedCallPlan& call_plan,
+                                     const PreparedMoveBundle& bundle,
+                                     const PreparedMoveResolution& move);
 
 }  // namespace c4c::backend::prepare

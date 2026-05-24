@@ -894,6 +894,79 @@ struct CallPreservationCandidates {
 
 }  // namespace
 
+[[nodiscard]] const PreparedCallArgumentPlan* find_call_boundary_argument_plan(
+    const PreparedCallPlan& call_plan,
+    const PreparedMoveResolution& move) {
+  if (!move.destination_abi_index.has_value()) {
+    return nullptr;
+  }
+  for (const auto& argument : call_plan.arguments) {
+    if (argument.arg_index == *move.destination_abi_index &&
+        ((!argument.source_value_id.has_value() &&
+          argument.source_encoding == PreparedStorageEncodingKind::Immediate) ||
+         argument.source_value_id == std::optional<PreparedValueId>{move.from_value_id})) {
+      return &argument;
+    }
+  }
+
+  for (const auto& argument : call_plan.arguments) {
+    if (argument.arg_index != *move.destination_abi_index ||
+        argument.source_encoding != PreparedStorageEncodingKind::FrameSlot ||
+        move.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+        argument.destination_stack_offset_bytes != move.destination_stack_offset_bytes) {
+      continue;
+    }
+    const bool no_register_destination =
+        !argument.destination_register_name.has_value() &&
+        !argument.destination_register_bank.has_value() &&
+        !argument.destination_register_placement.has_value() &&
+        !move.destination_register_name.has_value() &&
+        !move.destination_register_placement.has_value();
+    if (no_register_destination) {
+      return &argument;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool call_boundary_binding_matches_move(
+    const PreparedAbiBinding& binding,
+    const PreparedMoveResolution& move) {
+  return binding.destination_kind == move.destination_kind &&
+         binding.destination_storage_kind == move.destination_storage_kind &&
+         binding.destination_abi_index == move.destination_abi_index &&
+         binding.destination_register_name == move.destination_register_name &&
+         binding.destination_register_placement == move.destination_register_placement;
+}
+
+[[nodiscard]] const PreparedAbiBinding* find_call_boundary_abi_binding(
+    const PreparedMoveBundle& bundle,
+    const PreparedMoveResolution& move) {
+  if (move.destination_abi_index.has_value() &&
+      *move.destination_abi_index < bundle.abi_bindings.size()) {
+    const auto& indexed_binding = bundle.abi_bindings[*move.destination_abi_index];
+    if (call_boundary_binding_matches_move(indexed_binding, move)) {
+      return &indexed_binding;
+    }
+  }
+  for (const auto& binding : bundle.abi_bindings) {
+    if (call_boundary_binding_matches_move(binding, move)) {
+      return &binding;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool call_boundary_result_plan_matches_move(
+    const PreparedCallPlan& call_plan,
+    const PreparedCallResultPlan& result_plan,
+    const PreparedMoveResolution& move) {
+  return result_plan.instruction_index == call_plan.instruction_index &&
+         (!result_plan.destination_value_id.has_value() ||
+          result_plan.destination_value_id ==
+              std::optional<PreparedValueId>{move.to_value_id});
+}
+
 void populate_call_plans(PreparedBirModule& prepared) {
   prepared.call_plans.functions.clear();
 
@@ -1275,6 +1348,82 @@ void populate_call_plans(PreparedBirModule& prepared) {
       prepared.call_plans.functions.push_back(std::move(function_plan));
     }
   }
+}
+
+bool prepared_call_boundary_move_classification_available(
+    const PreparedCallBoundaryMoveClassification& classification) {
+  return classification.status == PreparedCallBoundaryMoveClassificationStatus::Available;
+}
+
+PreparedCallBoundaryMoveClassification classify_prepared_call_boundary_move(
+    const PreparedCallPlan& call_plan,
+    const PreparedMoveBundle& bundle,
+    const PreparedMoveResolution& move) {
+  PreparedCallBoundaryMoveClassification classification{
+      .call_plan = &call_plan,
+      .bundle = &bundle,
+      .move = &move,
+      .phase = bundle.phase,
+      .destination_kind = move.destination_kind,
+      .storage_kind = move.destination_storage_kind,
+      .abi_index = move.destination_abi_index,
+  };
+
+  if (move.op_kind != PreparedMoveResolutionOpKind::Move) {
+    classification.status =
+        PreparedCallBoundaryMoveClassificationStatus::UnsupportedOpKind;
+    return classification;
+  }
+
+  switch (move.destination_kind) {
+    case PreparedMoveDestinationKind::CallArgumentAbi:
+      if (!move.destination_abi_index.has_value()) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MissingAbiIndex;
+        return classification;
+      }
+      classification.argument_plan =
+          find_call_boundary_argument_plan(call_plan, move);
+      if (classification.argument_plan == nullptr) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MissingCallArgumentPlan;
+        return classification;
+      }
+      classification.abi_binding = find_call_boundary_abi_binding(bundle, move);
+      if (classification.abi_binding == nullptr) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MissingAbiBinding;
+        return classification;
+      }
+      return classification;
+
+    case PreparedMoveDestinationKind::CallResultAbi:
+      classification.result_plan =
+          call_plan.result.has_value() ? &*call_plan.result : nullptr;
+      if (classification.result_plan == nullptr) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MissingCallResultPlan;
+        return classification;
+      }
+      if (!call_boundary_result_plan_matches_move(
+              call_plan, *classification.result_plan, move)) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MismatchedCallResultPlan;
+        return classification;
+      }
+      classification.abi_binding = find_call_boundary_abi_binding(bundle, move);
+      if (classification.abi_binding == nullptr) {
+        classification.status =
+            PreparedCallBoundaryMoveClassificationStatus::MissingAbiBinding;
+        return classification;
+      }
+      return classification;
+
+    case PreparedMoveDestinationKind::FunctionReturnAbi:
+    case PreparedMoveDestinationKind::Value:
+      return classification;
+  }
+  return classification;
 }
 
 }  // namespace c4c::backend::prepare

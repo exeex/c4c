@@ -280,6 +280,28 @@ set_tests_properties(backend_prealloc_decoded_home_storage PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prealloc_call_boundary_classification_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prealloc_call_boundary_classification_test.cpp"
+)
+target_include_directories(backend_prealloc_call_boundary_classification_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_call_boundary_classification_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prealloc_call_boundary_classification_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prealloc_call_boundary_classification
+  COMMAND $<TARGET_FILE:backend_prealloc_call_boundary_classification_test>
+)
+set_tests_properties(backend_prealloc_call_boundary_classification PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_x86_prepared_handoff_label_authority_test
     "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_handoff_label_authority_test.cpp"
 )
