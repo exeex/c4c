@@ -452,6 +452,28 @@ plan_stack_homed_pointer_store_writeback(
       .pointer_store_writeback = true,
   });
 }
+[[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
+plan_pointer_base_plus_offset_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index,
+    const std::optional<c4c::ValueNameId>& value_name) {
+  const auto* access = prepared_memory_access(context, instruction_index);
+  const auto* destination_slot =
+      store_local_destination_frame_slot(context, access);
+  const auto* destination_object =
+      store_local_destination_stack_object(context, destination_slot);
+  const auto* source_home =
+      value_name.has_value() ? find_value_home(context, *value_name) : nullptr;
+  return prepare::plan_prepared_store_source_publication({
+      .source_value = &store.value,
+      .destination_access = access,
+      .source_home = source_home,
+      .destination_frame_slot = destination_slot,
+      .destination_stack_object = destination_object,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+  });
+}
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_local_value_publication(
     const module::BlockLoweringContext& context,
@@ -969,28 +991,6 @@ lower_stack_homed_pointer_store_writeback(
   }
   return false;
 }
-[[nodiscard]] std::optional<std::size_t> store_local_frame_slot_offset(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr) {
-    return std::nullopt;
-  }
-  const auto* access = prepared_memory_access(context, instruction_index);
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value() ||
-      !access->address.can_use_base_plus_offset ||
-      access->address.byte_offset < 0) {
-    return std::nullopt;
-  }
-  const auto* slot =
-      find_frame_slot(context.function.prepared->stack_layout,
-                      *access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-  return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
-}
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_pointer_base_plus_offset_store_local_publication(
     const module::BlockLoweringContext& context,
@@ -1006,9 +1006,22 @@ lower_pointer_base_plus_offset_store_local_publication(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  const auto destination_offset = store_local_frame_slot_offset(context, instruction_index);
+  const auto store_source_plan =
+      plan_pointer_base_plus_offset_store_local_publication(
+          context, *store, instruction_index, value_name);
+  if (!prepare::prepared_store_source_publication_available(store_source_plan) ||
+      store_source_plan.destination_base_kind !=
+          prepare::PreparedAddressBaseKind::FrameSlot ||
+      !store_source_plan.destination_can_use_base_plus_offset ||
+      store_source_plan.destination_byte_offset < 0 ||
+      !store_source_plan.destination_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto destination_offset =
+      *store_source_plan.destination_stack_offset_bytes +
+      static_cast<std::size_t>(store_source_plan.destination_byte_offset);
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (!destination_offset.has_value() || scratches.empty()) {
+  if (scratches.empty()) {
     return std::nullopt;
   }
 
@@ -1019,22 +1032,27 @@ lower_pointer_base_plus_offset_store_local_publication(
   }
 
   bool emitted = false;
-  if (auto symbol = prepared_global_symbol_from_value_name(context, *value_name)) {
+  const auto source_value_name =
+      store_source_plan.source_value_name != c4c::kInvalidValueName
+          ? store_source_plan.source_value_name
+          : *value_name;
+  if (auto symbol = prepared_global_symbol_from_value_name(context, source_value_name)) {
     emitted =
         emit_global_symbol_address_to_register(*symbol, 0, scratches.front().index, lines);
-  } else if (context.function.value_locations != nullptr) {
-    const auto* value_home =
-        find_value_home(context,
-*value_name);
-    emitted = value_home != nullptr &&
-              value_home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+  } else {
+    const auto* value_home = store_source_plan.source_home;
+    emitted = context.function.value_locations != nullptr &&
+              value_home != nullptr &&
+              store_source_plan.source_home_kind ==
+                  prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
               emit_pointer_base_plus_offset_to_register(
                   context, *value_home, instruction_index, scratches.front().index, lines);
   }
   if (!emitted) {
     return std::nullopt;
   }
-  lines.push_back("str " + *address_register + ", " + frame_slot_address(context.function, *destination_offset));
+  lines.push_back("str " + *address_register + ", " +
+                  frame_slot_address(context.function, destination_offset));
 
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
