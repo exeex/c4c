@@ -122,5 +122,8 @@ struct BuildResult {
   std::optional<abi::HandoffError> error;
 };
 
+[[nodiscard]] std::vector<codegen::InstructionRecord> selected_machine_nodes(
+    const MachineFunction& function);
+
 [[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
 }  // namespace c4c::backend::aarch64::module
