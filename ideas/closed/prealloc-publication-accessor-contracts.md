@@ -83,3 +83,24 @@ Also run `git diff --check`.
   boundary no longer exists.
 - Reject printer-only movement that invents a new ownership taxonomy not
   present in the data files.
+
+## Closure Notes
+
+Closed after Step 5 final boundary review.
+
+The publication/accessor package is now easier to identify through localized,
+behavior-preserving cleanup:
+
+- `prepared_lookups.hpp` no longer carries an unused `<optional>` include.
+- `value_locations.hpp` no longer uses stale step-fence, spelling-bridge, or
+  legacy-caller wording for current contracts.
+- `publication_plans.*` exposes the clearer helper name
+  `prepared_storage_encoding_from_value_home_kind`.
+- `prepared_publication_storage_encoding_from_home` remains as a compatibility
+  adapter because existing cross-package callers still use that public surface.
+
+Prepared-printer files required no edits because no prepared dump data-family
+name, helper family, or output label changed. The work did not split
+`module.hpp`, `regalloc.hpp`, or aggregate prealloc contracts, and it did not
+change publication, storage, decoded-home, value-location, or prepared dump
+semantics.
