@@ -1,50 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-regalloc-coordinator-contraction.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Audit Printer And Public Contract Alignment
+Current Step ID: 5
+Current Step Title: Closure Audit
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 from `plan.md`: audited prepared-printer output and the public
-`regalloc.hpp` allocation-plan aggregates after the assignment expiry and
-stack-slot helper relocations.
+Completed Step 5 from `plan.md`: audited the active source idea, runbook,
+current todo state, and committed slice history for closure readiness.
 
-Decision: no code or printer/public-contract edit is needed.
-- The helper relocation commits touched `regalloc.cpp`, internal
-  `regalloc/assignment.*`, internal `regalloc/stack_slots.*`, and `todo.md`;
-  they did not change `regalloc.hpp`, `prepared_printer/regalloc.cpp`, or
-  `prepared_printer/value_locations.cpp`.
-- `regalloc.hpp` still exposes the same assignment, stack-slot, spill/reload,
-  move-resolution, and ABI-binding fields and meanings.
-- The prepared-printer labels still mirror those public fields:
-  `prepared-regalloc` prints spill/reload register placement, spill slot, slot
-  id, and stack offset; `prepared-value-locations` prints value homes,
-  move-resolution destinations, and ABI bindings with the same destination
-  storage/register/stack fields.
-- The relocated helpers are implementation-local under `regalloc_detail`; no
-  public name or printed meaning drifted.
+Closure recommendation: ready for supervisor to call plan-owner for lifecycle
+closure handling.
+
+Source idea acceptance criteria are satisfied:
+- `regalloc.cpp` exposes less unrelated coordinator detail after two helper
+  contractions: assignment expiry now lives in `regalloc/assignment.*`, and
+  stack-slot frame seed/publication helpers now live in `regalloc/stack_slots.*`.
+- The extracted helpers use explicit inputs and remain under the existing
+  `regalloc_detail` helper-family boundary; they do not depend on broad mutable
+  coordinator state through unclear APIs.
+- Backend proof passed on both code-changing slices, and the later audits found
+  no public allocation-plan contract or prepared-printer meaning drift.
+
+No behavior-change or overfit signal was found in the committed slice history.
+The landed changes are mechanical helper relocations and no expectation
+downgrades, target-shaped shortcuts, named-case allocation rules, or
+allocation/spill/reload/interval/liveness/ABI semantic changes were introduced.
 
 ## Suggested Next
 
-Move to the closure-audit packet. Re-check the active plan/todo/source idea
-against the completed contraction work, verify there are no missing public
-contract or printer follow-ups, and decide whether the runbook is ready for
-plan-owner closure handling.
+Supervisor should call plan-owner to close or otherwise lifecycle-resolve this
+active plan. No further execution packet is recommended for this runbook.
 
 ## Watchouts
 
-This was intentionally a no-code audit. Keep the next closure audit focused on
-contract completion and residual lifecycle state; do not expand into call ABI
-binding or prepared value-location bundle relocation unless the supervisor
-opens a separate implementation packet.
+Remaining possible contraction around call ABI binding, prepared
+value-location bundle assembly, or public `regalloc.hpp` fragmentation would be
+a separate initiative, not an expansion of this plan. Step 3 and Step 4 already
+rejected those as unstable or unnecessary for this source idea.
 
 ## Proof
 
-No code changes were made, per the delegated no-code path. `test_after.log` was
-not produced.
+No code changes were made, per the delegated no-code closure audit.
+`test_after.log` was not produced.
 
 Ran `git diff --check`; passed.
 
