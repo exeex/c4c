@@ -1,43 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-call-plan-phase-split.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Argument Planning Subphases
+Current Step ID: 3
+Current Step Title: Separate Preservation, Clobber, And Boundary Effects
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 cleanup: extracted argument source materialization
-from the `populate_call_plans` per-argument loop into file-local
-`plan_call_argument_source(...)`.
+Completed `plan.md` Step 3 narrow clobber-derivation cleanup: extracted the
+caller-saved clobber span append/deduplication logic from
+`build_call_clobber_set(...)` into file-local
+`append_call_clobbered_register_spans(...)`.
 
 Changed files:
 - `src/backend/prealloc/call_plans.cpp`
 - `todo.md`
 
 Extraction result:
-- Added file-local `CallArgumentSourcePlan` with explicit source-side outputs
-  for storage encoding, value IDs, pointer-base IDs, literals, symbol names,
-  registers, slots, register banks, pointer deltas, and register placement.
-- Moved named value-home lookup, pointer-base ID resolution, symbol address
-  handling, immediate handling, F128 constant regalloc lookup, source value ID
-  lookup, and source register placement into `plan_call_argument_source(...)`.
-- Kept the shared direct/indirect argument path intact; the per-argument loop
-  now composes destination planning and source planning through separate
-  file-local helpers.
-- Preserved destination extraction behavior, result planning behavior,
-  memory-return behavior, boundary-effect code, and aggregate-subslot fallback
-  behavior.
+- Added file-local `append_call_clobbered_register_spans(...)` with explicit
+  clobber vector, target profile, register class, and contiguous-width inputs.
+- Moved the existing caller-saved span scan, duplicate check, reserved-scratch
+  placement conversion, and `PreparedClobberedRegister` append into that
+  helper.
+- Kept `build_call_clobber_set(...)` responsible for selecting the base
+  register classes and widened register groups from regalloc values.
+- Preserved target-profile ownership, caller-saved span selection, duplicate
+  ordering, reserved-scratch placement mapping, and null-regalloc behavior.
+- Audited preservation and boundary-effect helpers; they already have explicit
+  file-local helper boundaries, so this packet did not move save/restore or
+  boundary-effect construction.
 - Left `calls.hpp`, `call_plans.hpp`, tests, `plan.md`, and the source idea
   untouched.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 3 with a narrow mutable-state audit of the call-plan
-families, using the extracted destination/source helpers as the boundary for
-checking whether remaining local state should stay in `populate_call_plans` or
-move behind another helper.
+Proceed to `plan.md` Step 4 with a focused review of memory-return and formal
+publication boundaries. Start by auditing whether memory-return result
+construction has an equally clear file-local boundary after the argument and
+clobber extractions; only extract it if inputs and outputs stay explicit.
 
 ## Watchouts
 
@@ -47,14 +48,15 @@ move behind another helper.
   publication behavior, or prepared dump meaning.
 - Keep `calls.hpp` as the aggregate public contract unless usage proves a
   smaller independently consumed boundary.
-- Preserve the current stack-binding preference in `find_call_abi_binding`; the
-  destination helper deliberately calls that function unchanged.
-- Do not split by direct-vs-indirect argument planning; the argument path is
-  shared.
-- Keep memory-return and aggregate-subslot fallback behavior out of argument
-  source-materialization cleanup.
-- `plan_call_argument_source(...)` intentionally mutates `prepared.names` for
-  link-name interning exactly where the old loop did.
+- Clobber derivation still depends on `caller_saved_register_spans(...)` and
+  `TargetProfile`; keep target policy there instead of introducing local ABI
+  rules.
+- Preservation construction is still owned by `build_call_preserved_values(...)`;
+  it was not split because the existing helper already owns save/restore
+  route selection without leaking into `populate_call_plans(...)`.
+- Boundary-effect construction is already grouped behind
+  `plan_prepared_call_boundary_effects(...)` and its append helpers; this
+  packet did not alter classification or effect ordering.
 
 ## Proof
 
@@ -62,5 +64,7 @@ Ran delegated proof:
 `bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
 
 Result: passed, 162/162 backend tests passed.
+
+Also ran `git diff --check`; result: passed.
 
 Proof log: `test_after.log`.

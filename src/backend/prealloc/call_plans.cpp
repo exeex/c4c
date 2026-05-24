@@ -927,36 +927,41 @@ struct CallArgumentSourcePlan {
   return source;
 }
 
+void append_call_clobbered_register_spans(
+    std::vector<PreparedClobberedRegister>& clobbers,
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    std::size_t contiguous_width) {
+  const PreparedRegisterBank bank = register_bank_from_class(reg_class);
+  for (const auto& register_span :
+       caller_saved_register_spans(target_profile, reg_class, contiguous_width)) {
+    const auto duplicate = std::find_if(
+        clobbers.begin(),
+        clobbers.end(),
+        [&](const PreparedClobberedRegister& clobber) {
+          return clobber.bank == bank &&
+                 clobber.occupied_register_names == register_span.occupied_register_names;
+        });
+    if (duplicate != clobbers.end()) {
+      continue;
+    }
+    clobbers.push_back(PreparedClobberedRegister{
+        .bank = bank,
+        .register_name = register_span.register_name,
+        .contiguous_width = register_span.contiguous_width,
+        .occupied_register_names = register_span.occupied_register_names,
+        .placement = as_reserved_scratch_placement(register_span.placement),
+    });
+  }
+}
+
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function) {
   std::vector<PreparedClobberedRegister> clobbers;
-  auto append_spans_for_width = [&](PreparedRegisterClass reg_class, std::size_t contiguous_width) {
-    const PreparedRegisterBank bank = register_bank_from_class(reg_class);
-    for (const auto& register_span :
-         caller_saved_register_spans(target_profile, reg_class, contiguous_width)) {
-      const auto duplicate = std::find_if(
-          clobbers.begin(),
-          clobbers.end(),
-          [&](const PreparedClobberedRegister& clobber) {
-            return clobber.bank == bank &&
-                   clobber.occupied_register_names == register_span.occupied_register_names;
-          });
-      if (duplicate != clobbers.end()) {
-        continue;
-      }
-      clobbers.push_back(PreparedClobberedRegister{
-          .bank = bank,
-          .register_name = register_span.register_name,
-          .contiguous_width = register_span.contiguous_width,
-          .occupied_register_names = register_span.occupied_register_names,
-          .placement = as_reserved_scratch_placement(register_span.placement),
-      });
-    }
-  };
   for (PreparedRegisterClass reg_class :
        {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
-    append_spans_for_width(reg_class, 1);
+    append_call_clobbered_register_spans(clobbers, target_profile, reg_class, 1);
     if (regalloc_function == nullptr) {
       continue;
     }
@@ -964,7 +969,8 @@ struct CallArgumentSourcePlan {
       if (value.register_class != reg_class || value.register_group_width <= 1) {
         continue;
       }
-      append_spans_for_width(reg_class, value.register_group_width);
+      append_call_clobbered_register_spans(
+          clobbers, target_profile, reg_class, value.register_group_width);
     }
   }
   return clobbers;
