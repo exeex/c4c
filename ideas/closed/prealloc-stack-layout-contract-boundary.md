@@ -91,3 +91,21 @@ Also run `git diff --check`.
   semantics claimed as contract cleanup.
 - Reject broad include churn not tied to stack/frame ownership.
 - Reject printer changes that hide or drop frame/stack facts.
+
+## Closure Notes
+
+Closed after behavior-preserving stack-layout boundary cleanup:
+
+- stack-layout phase hook declarations and `FunctionInlineAsmSummary` moved
+  from aggregate `module.hpp` declarations to `stack_layout/stack_layout.hpp`
+  while keeping `module.hpp` as an intentional aggregate include for existing
+  consumers
+- `stack_layout/coordinator.cpp` now has file-local object-planning and
+  addressing-publication helpers for the clear coordinator boundaries
+- prepared frame printing was audited and did not need terminology changes
+  because public frame/stack data-family names and field meanings were
+  preserved
+
+Deferred follow-up candidates, if still useful, should remain separate open
+ideas: deeper slot-assignment orchestration decomposition and broader
+frame-plan naming cleanup.
