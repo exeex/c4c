@@ -6,6 +6,7 @@
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
+#include "dispatch_diagnostics.hpp"
 #include "f128.hpp"
 #include "float_ops.hpp"
 #include "globals.hpp"

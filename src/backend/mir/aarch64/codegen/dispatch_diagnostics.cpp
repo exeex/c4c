@@ -1,4 +1,4 @@
-#include "dispatch.hpp"
+#include "dispatch_diagnostics.hpp"
 
 #include <type_traits>
 #include <utility>

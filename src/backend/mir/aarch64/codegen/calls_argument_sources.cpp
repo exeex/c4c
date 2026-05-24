@@ -1,4 +1,5 @@
 #include "calls.hpp"
+#include "dispatch_diagnostics.hpp"
 
 #include <algorithm>
 #include <charconv>

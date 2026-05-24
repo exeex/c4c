@@ -1,12 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-reference-layout-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map AArch64 Codegen Files
+Current Step ID: 2
+Current Step Title: Reduce Catch-All Header Surface
 
 # Current Packet
 
 ## Just Finished
+
+Completed Step 2 - Reduce Catch-All Header Surface. Added
+`src/backend/mir/aarch64/codegen/dispatch_diagnostics.hpp` as the narrow private
+declaration surface for dispatch diagnostics helpers, removed those declarations
+from `dispatch.hpp`, and updated direct external callers to include the new
+header.
+
+Direct callers updated:
+
+- `dispatch.cpp` now includes `dispatch_diagnostics.hpp` for block,
+  unsupported-instruction, and unsupported-terminator diagnostics.
+- `dispatch_calls.cpp`, `calls.cpp`, `calls_argument_sources.cpp`, and
+  `calls_moves.cpp` now include `dispatch_diagnostics.hpp` for
+  `append_call_diagnostic`.
+- `dispatch_diagnostics.cpp` now includes its own header instead of the catch-all
+  `dispatch.hpp`.
+
+## Suggested Next
+
+Recommended next packet: move the `dispatch_calls.cpp` declarations out of
+`dispatch.hpp` into a calls-owned or narrow private bridge header, then update
+only the implementation files that call those dispatch/call bridge helpers.
+
+## Watchouts
+
+- `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
+  though direct implementation users now include `dispatch_diagnostics.hpp`;
+  removing that declaration would cross this packet's owned-files boundary.
+- Several calls shards still include `dispatch.hpp` for non-diagnostic
+  frame/value helper declarations. Check each dependency before narrowing the
+  calls bridge surface.
+- `inline_asm.cpp`, `variadic.cpp`, and `dispatch_dynamic_stack.cpp` have local
+  diagnostic helper functions and were not users of the extracted declarations.
+
+## Proof
+
+Ran delegated proof command:
+
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+
+Result: passed. `cmake --build --preset default` completed, and CTest reported
+162/162 `^backend_` tests passed. Proof log: `test_after.log`.
+
+# Retained Step 1 Output
 
 Completed Step 1 - Map AArch64 Codegen Files. The direct inventory under
 `src/backend/mir/aarch64/codegen/` is 66 files: 41 `.cpp` and 25 `.hpp`.
@@ -149,29 +193,3 @@ Prioritized consolidation list:
 6. Leave large cohesive family files (`alu`, `memory`, `calls_moves`, `f128`,
    `i128_ops`, `machine_printer`, `instruction`) split as durable families; do
    not merge them just to reduce file count.
-
-## Suggested Next
-
-Recommended Step 2 packet: extract the `dispatch_diagnostics` declarations from
-`dispatch.hpp` into a narrow private header such as `dispatch_diagnostics.hpp`,
-include it from `dispatch_diagnostics.cpp` and the implementation files that call
-those helpers, then remove the diagnostics block from `dispatch.hpp`. This is the
-lowest-risk catch-all reduction because the diagnostics declarations are small,
-cohesive, and behavior-free.
-
-## Watchouts
-
-- `dispatch.hpp` contains comments naming pseudo-headers, but those headers do
-  not exist yet. Step 2 should introduce only the narrow header it actually
-  needs, not materialize the whole commented list.
-- `calls.hpp` is broad but already family-scoped. Reducing `dispatch.hpp` is
-  more valuable than merging calls shards.
-- Several calls shards include `dispatch.hpp` only for diagnostics or frame/value
-  helper declarations. Avoid broad family moves until each dependency is checked
-  by include users.
-- No target-neutral migration candidate was identified in this inventory.
-
-## Proof
-
-No build required by delegated audit-only packet. Ran
-`git diff --check -- todo.md`; it passed.

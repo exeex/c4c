@@ -170,23 +170,6 @@ publish_stack_preserved_call_values(
     std::size_t instruction_index,
     const BlockScalarLoweringState& scalar_state);
 
-// dispatch_diagnostics.hpp
-void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
-                             module::ModuleLoweringDiagnosticKind kind,
-                             const module::BlockLoweringContext& context,
-                             std::string message);
-[[nodiscard]] std::string unsupported_terminator_message(bir::TerminatorKind kind);
-void append_unsupported_instruction_diagnostic(
-    module::ModuleLoweringDiagnostics& diagnostics,
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index);
-void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
-                            module::ModuleLoweringDiagnosticKind kind,
-                            const module::BlockLoweringContext& context,
-                            std::size_t instruction_index,
-                            std::string message);
-
 // dispatch_dynamic_stack.hpp
 [[nodiscard]] std::optional<module::MachineInstruction> lower_dynamic_stack_helper_call(
     const module::BlockLoweringContext& context,
