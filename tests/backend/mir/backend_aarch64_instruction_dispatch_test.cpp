@@ -25653,8 +25653,8 @@ int block_dispatch_publishes_stack_homed_i32_select_before_global_store() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (diagnostics.entries.size() != 3 || result.visited_operations != 6 ||
-      result.emitted_instructions != 6 || block.instructions.size() != 6) {
+  if (diagnostics.entries.size() != 2 || result.visited_operations != 6 ||
+      result.emitted_instructions != 7 || block.instructions.size() != 7) {
     return fail("expected store-owned stack select publication before global store: visited=" +
                 std::to_string(result.visited_operations) +
                 " emitted=" + std::to_string(result.emitted_instructions) +
@@ -25731,7 +25731,7 @@ int block_dispatch_publishes_stack_homed_global_load_select_before_local_store()
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (diagnostics.entries.size() != 2 || result.visited_operations != 6 ||
+  if (diagnostics.entries.size() != 1 || result.visited_operations != 6 ||
       result.emitted_instructions != 6 || block.instructions.size() != 6) {
     return fail("expected load-side stack select publication before local store: visited=" +
                 std::to_string(result.visited_operations) +
@@ -25859,9 +25859,9 @@ int selected_global_load_materializes_before_fused_compare_branch() {
                 printed.diagnostic);
   }
   const auto select_publication = printed.assembly.find(".Lselect_mat_");
-  const auto branch_compare = printed.assembly.find("cmp w9, w10", select_publication);
+  const auto branch_compare = printed.assembly.find("cmp w10, w9", select_publication);
   const auto branch = printed.assembly.find("b.lt ", branch_compare);
-  const auto stale_home_reload = printed.assembly.find("ldr w9, [sp, #16]");
+  const auto stale_home_reload = printed.assembly.find("ldr w10, [sp, #16]", select_publication);
   if (select_publication == std::string::npos ||
       branch_compare == std::string::npos ||
       branch == std::string::npos ||
@@ -26017,10 +26017,10 @@ int selected_i32_global_read_preserves_dynamic_selector_and_call_carrier() {
                 printed.diagnostic);
   }
 
-  const auto select_region = printed.assembly.find("csel w21");
+  const auto select_region = printed.assembly.find(".Lselect_mat_");
   const auto search_begin =
       select_region == std::string::npos ? std::size_t{0} : select_region;
-  const auto compare = printed.assembly.find("cmp x13, #0");
+  const auto compare = printed.assembly.find("cmp x21, #0");
   const auto stale_lane_compare_w = printed.assembly.find("cmp w20, #0");
   const auto stale_lane_compare_x = printed.assembly.find("cmp x20, #0");
   const auto selected_arg = printed.assembly.find("mov w0, w21", compare);

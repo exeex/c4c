@@ -1,5 +1,6 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
+#include "dispatch.hpp"
 #include "float_ops.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
@@ -2113,6 +2114,42 @@ lower_scalar_select_publication(
   const auto result = scalar_gp_register_name_with_view(result_register, *result_view);
   if (!result.has_value()) {
     return std::nullopt;
+  }
+  if (select_chain_contains_direct_global_load(context, select.result, instruction_index + 1U)) {
+    const auto scratch = scalar_gp_scratch_register(*result_view, {&result_register});
+    if (scratch.has_value()) {
+      std::vector<std::string> lines;
+      std::size_t label_index = 0;
+      std::vector<std::string_view> active_values;
+      if (emit_select_chain_value_to_register(context,
+                                              select.result,
+                                              instruction_index + 1U,
+                                              result_register.reg.index,
+                                              scratch->reg.index,
+                                              instruction_index,
+                                              result_register.value_name,
+                                              lines,
+                                              label_index,
+                                              active_values,
+                                              true)) {
+        const auto publication = scalar_alu_stack_publication_lines(
+            ScalarAluRecord{.result_type = select.result.type,
+                            .result_stack_offset_bytes = result_stack_offset_bytes,
+                            .result_uses_frame_pointer_base =
+                                context.function.frame_plan != nullptr &&
+                                context.function.frame_plan->uses_frame_pointer_for_fixed_slots},
+            *result);
+        if (publication.has_value()) {
+          lines.insert(lines.end(), publication->begin(), publication->end());
+          (void)diagnostics;
+          record_emitted_scalar_register(scalar_state,
+                                         result_register.value_name,
+                                         result_register);
+          return make_control_publication_assembler(
+              context, instruction_index, std::move(lines));
+        }
+      }
+    }
   }
   auto lhs_operand = make_control_publication_operand(
       select.lhs, context, scalar_state, true);
