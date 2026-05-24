@@ -8,38 +8,31 @@ Current Step Title: Rename Or Merge Thin Historical Shards
 
 ## Just Finished
 
-Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
-the durable calls-family dispatch bridge shard from `dispatch_calls.cpp`/
-`.hpp` to `calls_dispatch_bridge.cpp`/`.hpp`, updated the CMake source list,
-and refreshed direct include sites with no behavior changes.
-
-This shard remains separate from `calls.cpp` because it is a cohesive bridge
-between block dispatch, scalar call producer materialization, prepared call
-plans, call-boundary moves, indirect callees, missing frame-slot arguments, and
-stack-preserved value publication. The durable-family rename fixes the
-historical `dispatch_*` label without merging that bridge into the central calls
-entry point.
+Completed Step 3 - Rename Or Merge Thin Historical Shards. Extracted the
+edge-copy and select-chain declarations from `dispatch.hpp` into the private
+`dispatch_edge_copies.hpp` header, updated direct implementation include sites,
+and kept `dispatch_edge_copies.cpp` as the owner of those definitions with no
+behavior changes.
 
 ## Suggested Next
 
-Recommended next packet: continue Step 3 with one bounded grouped decision for
-the remaining historical `dispatch_*` shards, either justifying the adapter/
-internal names that still cross family boundaries or renaming one more clearly
-durable-family shard if the boundary is mechanical.
+Recommended next packet: continue the header-boundary cleanup by extracting the
+`dispatch_value_materialization` declaration block from `dispatch.hpp` into a
+narrow private header and updating only direct materialization/publication users.
 
 ## Watchouts
 
-- `calls_dispatch_bridge.cpp` keeps the existing exported bridge symbol names
-  because this packet was a mechanical file-boundary rename only.
-- `memory_store_sources.cpp` still includes `dispatch.hpp` for publication,
-  edge-copy, value-materialization, lookup, and shared frame/address helper
-  declarations; moving those boundaries is outside this packet.
-- `memory_dynamic_stack.cpp` still depends on dispatch diagnostics and prepared
-  dynamic-stack plan context, so its earlier durable-family rename did not claim
-  the implementation is independent of the dispatcher.
-- `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
-  though direct implementation users now include `dispatch_diagnostics.hpp`;
-  removing that declaration would cross this packet's owned-files boundary.
+- `dispatch.hpp` still owns `dispatch_publication_common`,
+  `dispatch_value_materialization`, `dispatch_publication`, and
+  `prologue_entry_formals` declaration blocks; the edge-copy block is now out
+  of the catch-all header.
+- Several direct users still include both `dispatch.hpp` and
+  `dispatch_edge_copies.hpp` because this packet only moved edge-copy
+  declarations, not the remaining publication/materialization declarations they
+  also use.
+- `dispatch.cpp` has a pre-existing local `EdgeProducerContext` type declaration
+  that is not part of the moved edge-copy public declarations; this packet left
+  it untouched to avoid unrelated cleanup.
 
 ## Proof
 

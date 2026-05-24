@@ -1,6 +1,8 @@
 #include "dispatch_producers.hpp"
 
 #include "dispatch.hpp"
+
+#include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
 
 #include <algorithm>

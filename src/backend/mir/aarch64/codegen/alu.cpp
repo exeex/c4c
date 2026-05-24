@@ -1,6 +1,8 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
 #include "dispatch.hpp"
+
+#include "dispatch_edge_copies.hpp"
 #include "dispatch_producers.hpp"
 #include "float_ops.hpp"
 #include "machine_printer.hpp"

@@ -1,5 +1,7 @@
 #include "dispatch.hpp"
 
+#include "dispatch_edge_copies.hpp"
+
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "calls_dispatch_bridge.hpp"
