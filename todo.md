@@ -1,53 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-03-alu-fallback-operand-phase-extraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rewire Call Sites Without Semantic Drift
+Current Step ID: 4
+Current Step Title: Prove Focused Behavior Preservation
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Rewire Call Sites Without Semantic Drift audited the scalar binary
-fallback call sites in `lower_scalar_instruction` after the Step 2 extraction.
+Step 4 - Prove Focused Behavior Preservation validated the completed scalar
+ALU fallback operand boundary extraction with the supervisor-delegated backend
+proof.
 
-No `alu.cpp` code change was needed. The existing
-`make_scalar_fallback_operand` calls are already the correct call-site
-boundary: they keep `ScalarFallbackOperandSelector` private to the anonymous
-namespace, avoid exposing fallback internals in `lower_scalar_instruction`, and
-preserve the exact fallback selection order:
+The fallback boundary remains phase-local: `ScalarFallbackOperandSelector`
+stays private to the implementation boundary and scalar lowering continues to
+use the existing `make_scalar_fallback_operand` call-site surface. No
+`alu.hpp`, control-publication, materialization, test, or expectation files
+were changed for this validation packet.
 
-- immediate value
-- already-emitted scalar register
-- unpublished same-block load-local prepared memory source
-- resolved named scalar operand
-- prepared scalar load source
-- final named scalar fallback
-
-No `alu.hpp`, control-publication, materialization, test, or expectation files
-were changed.
+The focused backend proof passed, so the runbook appears ready for supervisor
+validation and a plan-owner close decision.
 
 ## Suggested Next
 
-Delegate the next plan step to validate the completed extraction boundary and
-decide whether this runbook is ready for broader supervisor-side validation or
-plan-owner review.
+Supervisor should run any acceptance-level validation it wants for the completed
+runbook, then delegate the lifecycle close decision to the plan owner if the
+slice is accepted.
 
 ## Watchouts
 
-- `make_scalar_fallback_operand` remains the only scalar binary fallback
-  call-site helper used by `lower_scalar_instruction`.
-- Keep `make_control_publication_operand` and all `materialize_control_*` /
-  `append_control_*` helpers outside this fallback boundary.
-- Rewiring `lower_scalar_instruction` to instantiate
-  `ScalarFallbackOperandSelector` directly would be churn and would leak a
-  private fallback concept into the call-site surface.
+- This packet made no code, header, source idea, control-publication, test, or
+  expectation changes.
+- Keep closure review focused on behavior preservation and the phase-local
+  fallback boundary; do not expand this runbook into broader scalar ALU
+  decomposition.
 
 ## Proof
 
-Delegated no-code-change proof passed:
+Delegated Step 4 proof passed:
+
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+
+Result: build was up to date, and CTest reported `100% tests passed, 0 tests
+failed out of 162` for the `^backend_` subset. Proof log:
+`test_after.log`.
+
+Additional delegated check passed:
 
 `git diff --check`
-
-No code changed, so the delegated build/ctest command was not run and no log
-file was created or touched for this packet.
