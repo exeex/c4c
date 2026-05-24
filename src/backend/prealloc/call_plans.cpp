@@ -458,6 +458,19 @@ struct CallPreservationCandidates {
   return PreparedMoveStorageKind::None;
 }
 
+[[nodiscard]] PreparedStorageEncodingKind storage_encoding_from_move_storage_kind(
+    PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case PreparedMoveStorageKind::Register:
+      return PreparedStorageEncodingKind::Register;
+    case PreparedMoveStorageKind::StackSlot:
+      return PreparedStorageEncodingKind::FrameSlot;
+    case PreparedMoveStorageKind::None:
+      return PreparedStorageEncodingKind::None;
+  }
+  return PreparedStorageEncodingKind::None;
+}
+
 [[nodiscard]] PreparedStorageEncodingKind storage_encoding_from_home(
     const PreparedValueHome& home) {
   switch (home.kind) {
@@ -473,6 +486,22 @@ struct CallPreservationCandidates {
       return PreparedStorageEncodingKind::None;
   }
   return PreparedStorageEncodingKind::None;
+}
+
+[[nodiscard]] PreparedMoveStorageKind move_storage_kind_from_storage_encoding(
+    PreparedStorageEncodingKind encoding) {
+  switch (encoding) {
+    case PreparedStorageEncodingKind::Register:
+      return PreparedMoveStorageKind::Register;
+    case PreparedStorageEncodingKind::FrameSlot:
+      return PreparedMoveStorageKind::StackSlot;
+    case PreparedStorageEncodingKind::None:
+    case PreparedStorageEncodingKind::Immediate:
+    case PreparedStorageEncodingKind::ComputedAddress:
+    case PreparedStorageEncodingKind::SymbolAddress:
+      return PreparedMoveStorageKind::None;
+  }
+  return PreparedMoveStorageKind::None;
 }
 
 [[nodiscard]] PreparedRegisterBank published_bank_for_value(
@@ -1424,6 +1453,201 @@ PreparedCallBoundaryMoveClassification classify_prepared_call_boundary_move(
       return classification;
   }
   return classification;
+}
+
+namespace {
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_value_effect_endpoint(
+    std::optional<PreparedValueId> value_id,
+    ValueNameId value_name = kInvalidValueName) {
+  return PreparedCallBoundaryEffectEndpoint{
+      .value_id = value_id,
+      .value_name = value_name,
+  };
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_argument_source_endpoint(
+    const PreparedCallArgumentPlan& argument) {
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = argument.source_encoding,
+      .storage_kind = move_storage_kind_from_storage_encoding(argument.source_encoding),
+      .value_id = argument.source_value_id,
+      .value_name = argument.source_base_value_name.value_or(kInvalidValueName),
+      .register_bank = argument.source_register_bank,
+      .contiguous_width = 1,
+      .slot_id = argument.source_slot_id,
+      .stack_offset_bytes = argument.source_stack_offset_bytes,
+  };
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_argument_destination_endpoint(
+    const PreparedCallArgumentPlan& argument,
+    const PreparedMoveResolution& move) {
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = storage_encoding_from_move_storage_kind(move.destination_storage_kind),
+      .storage_kind = move.destination_storage_kind,
+      .register_bank = argument.destination_register_bank,
+      .contiguous_width = argument.destination_contiguous_width,
+      .stack_offset_bytes = argument.destination_stack_offset_bytes.has_value()
+                                ? argument.destination_stack_offset_bytes
+                                : move.destination_stack_offset_bytes,
+  };
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_result_source_endpoint(
+    const PreparedCallResultPlan& result) {
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = storage_encoding_from_move_storage_kind(result.source_storage_kind),
+      .storage_kind = result.source_storage_kind,
+      .register_bank = result.source_register_bank,
+      .contiguous_width = result.source_contiguous_width,
+      .stack_offset_bytes = result.source_stack_offset_bytes,
+  };
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_result_destination_endpoint(
+    const PreparedCallResultPlan& result) {
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = storage_encoding_from_move_storage_kind(result.destination_storage_kind),
+      .storage_kind = result.destination_storage_kind,
+      .value_id = result.destination_value_id,
+      .register_bank = result.destination_register_bank,
+      .contiguous_width = result.destination_contiguous_width,
+      .slot_id = result.destination_slot_id,
+      .stack_offset_bytes = result.destination_stack_offset_bytes,
+  };
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preserved_storage_endpoint(
+    const PreparedCallPreservedValue& preserved) {
+  const PreparedMoveStorageKind storage_kind =
+      preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister
+          ? PreparedMoveStorageKind::Register
+          : preserved.route == PreparedCallPreservationRoute::StackSlot
+                ? PreparedMoveStorageKind::StackSlot
+                : PreparedMoveStorageKind::None;
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = storage_encoding_from_move_storage_kind(storage_kind),
+      .storage_kind = storage_kind,
+      .value_id = preserved.value_id,
+      .value_name = preserved.value_name,
+      .register_bank = preserved.register_bank,
+      .contiguous_width = preserved.contiguous_width,
+      .slot_id = preserved.slot_id,
+      .stack_offset_bytes = preserved.stack_offset_bytes,
+      .stack_size_bytes = preserved.stack_size_bytes,
+      .stack_align_bytes = preserved.stack_align_bytes,
+      .callee_saved_save_index = preserved.callee_saved_save_index,
+  };
+}
+
+void append_explicit_call_boundary_effects(
+    std::vector<PreparedCallBoundaryEffectPlan>& effects,
+    const PreparedCallPlan& call_plan,
+    const PreparedMoveBundle* bundle) {
+  if (bundle == nullptr) {
+    return;
+  }
+  for (const auto& move : bundle->moves) {
+    const auto classification =
+        classify_prepared_call_boundary_move(call_plan, *bundle, move);
+    PreparedCallBoundaryEffectPlan effect{
+        .effect_kind = PreparedCallBoundaryEffectKind::ExplicitMove,
+        .phase = bundle->phase,
+        .block_index = call_plan.block_index,
+        .instruction_index = call_plan.instruction_index,
+        .order_index = effects.size(),
+        .classification_status = classification.status,
+        .destination_kind = move.destination_kind,
+        .storage_kind = move.destination_storage_kind,
+        .abi_index = move.destination_abi_index,
+        .source = make_value_effect_endpoint(move.from_value_id),
+        .destination = make_value_effect_endpoint(move.to_value_id),
+        .reason = move.reason,
+    };
+    effect.destination.encoding =
+        storage_encoding_from_move_storage_kind(move.destination_storage_kind);
+    effect.destination.storage_kind = move.destination_storage_kind;
+    effect.destination.stack_offset_bytes = move.destination_stack_offset_bytes;
+    if (classification.argument_plan != nullptr) {
+      effect.source = make_argument_source_endpoint(*classification.argument_plan);
+      effect.destination =
+          make_argument_destination_endpoint(*classification.argument_plan, move);
+    } else if (classification.result_plan != nullptr) {
+      effect.source = make_result_source_endpoint(*classification.result_plan);
+      effect.destination = make_result_destination_endpoint(*classification.result_plan);
+    }
+    effects.push_back(std::move(effect));
+  }
+}
+
+void append_preservation_call_boundary_effects(
+    std::vector<PreparedCallBoundaryEffectPlan>& effects,
+    const PreparedCallPlan& call_plan,
+    PreparedMovePhase phase,
+    PreparedCallBoundaryEffectKind effect_kind,
+    std::string reason) {
+  for (const auto& preserved : call_plan.preserved_values) {
+    if (preserved.route == PreparedCallPreservationRoute::Unknown) {
+      continue;
+    }
+    const auto value_endpoint =
+        make_value_effect_endpoint(preserved.value_id, preserved.value_name);
+    const auto storage_endpoint = make_preserved_storage_endpoint(preserved);
+    effects.push_back(PreparedCallBoundaryEffectPlan{
+        .effect_kind = effect_kind,
+        .phase = phase,
+        .block_index = call_plan.block_index,
+        .instruction_index = call_plan.instruction_index,
+        .order_index = effects.size(),
+        .classification_status =
+            PreparedCallBoundaryMoveClassificationStatus::Available,
+        .destination_kind = PreparedMoveDestinationKind::Value,
+        .storage_kind = storage_endpoint.storage_kind,
+        .source = effect_kind ==
+                      PreparedCallBoundaryEffectKind::PreservationHomePopulation
+                      ? value_endpoint
+                      : storage_endpoint,
+        .destination = effect_kind ==
+                           PreparedCallBoundaryEffectKind::PreservationHomePopulation
+                           ? storage_endpoint
+                           : value_endpoint,
+        .preservation_route = preserved.route,
+        .reason = reason,
+    });
+  }
+}
+
+}  // namespace
+
+std::vector<PreparedCallBoundaryEffectPlan> plan_prepared_call_boundary_effects(
+    const PreparedCallPlan& call_plan,
+    const PreparedMoveBundle* before_call_bundle,
+    const PreparedMoveBundle* after_call_bundle) {
+  std::vector<PreparedCallBoundaryEffectPlan> effects;
+  const std::size_t before_move_count =
+      before_call_bundle == nullptr ? 0 : before_call_bundle->moves.size();
+  const std::size_t after_move_count =
+      after_call_bundle == nullptr ? 0 : after_call_bundle->moves.size();
+  effects.reserve(before_move_count + after_move_count +
+                  (call_plan.preserved_values.size() * 2U));
+
+  append_explicit_call_boundary_effects(effects, call_plan, before_call_bundle);
+  append_preservation_call_boundary_effects(
+      effects,
+      call_plan,
+      PreparedMovePhase::BeforeCall,
+      PreparedCallBoundaryEffectKind::PreservationHomePopulation,
+      "preservation_home_population");
+  append_explicit_call_boundary_effects(effects, call_plan, after_call_bundle);
+  append_preservation_call_boundary_effects(
+      effects,
+      call_plan,
+      PreparedMovePhase::AfterCall,
+      PreparedCallBoundaryEffectKind::PreservationRepublication,
+      "preservation_republication");
+
+  return effects;
 }
 
 }  // namespace c4c::backend::prepare

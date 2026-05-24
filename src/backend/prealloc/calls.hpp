@@ -232,6 +232,58 @@ struct PreparedCallBoundaryMoveClassification {
   const PreparedAbiBinding* abi_binding = nullptr;
 };
 
+enum class PreparedCallBoundaryEffectKind {
+  ExplicitMove,
+  PreservationHomePopulation,
+  PreservationRepublication,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_boundary_effect_kind_name(
+    PreparedCallBoundaryEffectKind kind) {
+  switch (kind) {
+    case PreparedCallBoundaryEffectKind::ExplicitMove:
+      return "explicit_move";
+    case PreparedCallBoundaryEffectKind::PreservationHomePopulation:
+      return "preservation_home_population";
+    case PreparedCallBoundaryEffectKind::PreservationRepublication:
+      return "preservation_republication";
+  }
+  return "unknown";
+}
+
+struct PreparedCallBoundaryEffectEndpoint {
+  PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
+  PreparedMoveStorageKind storage_kind = PreparedMoveStorageKind::None;
+  std::optional<PreparedValueId> value_id;
+  ValueNameId value_name = kInvalidValueName;
+  std::optional<PreparedRegisterBank> register_bank;
+  std::size_t contiguous_width = 1;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
+  std::optional<std::size_t> callee_saved_save_index;
+};
+
+struct PreparedCallBoundaryEffectPlan {
+  PreparedCallBoundaryEffectKind effect_kind =
+      PreparedCallBoundaryEffectKind::ExplicitMove;
+  PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t order_index = 0;
+  PreparedCallBoundaryMoveClassificationStatus classification_status =
+      PreparedCallBoundaryMoveClassificationStatus::Available;
+  PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
+  PreparedMoveStorageKind storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::size_t> abi_index;
+  PreparedCallBoundaryEffectEndpoint source;
+  PreparedCallBoundaryEffectEndpoint destination;
+  PreparedCallPreservationRoute preservation_route =
+      PreparedCallPreservationRoute::Unknown;
+  std::string reason;
+};
+
 [[nodiscard]] bool prepared_call_boundary_move_classification_available(
     const PreparedCallBoundaryMoveClassification& classification);
 
@@ -239,5 +291,10 @@ struct PreparedCallBoundaryMoveClassification {
 classify_prepared_call_boundary_move(const PreparedCallPlan& call_plan,
                                      const PreparedMoveBundle& bundle,
                                      const PreparedMoveResolution& move);
+
+[[nodiscard]] std::vector<PreparedCallBoundaryEffectPlan>
+plan_prepared_call_boundary_effects(const PreparedCallPlan& call_plan,
+                                    const PreparedMoveBundle* before_call_bundle,
+                                    const PreparedMoveBundle* after_call_bundle);
 
 }  // namespace c4c::backend::prepare
