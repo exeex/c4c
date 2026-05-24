@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/prepared-move-publication-indexing-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add a Target-Neutral Prepared Lookup Helper
+Current Step ID: Step 3
+Current Step Title: Convert AArch64 to Consume the Shared Helper
 
 # Current Packet
 
@@ -68,3 +68,9 @@ Ran exactly:
 Result: passed. The proof built `src/backend/prealloc/prepared_lookups.cpp` and
 ran 149 matching backend tests with 0 failures. Proof log:
 `test_after.log`.
+
+Accepted baseline review:
+
+`scripts/plan_review_state.py accept-baseline` accepted the current
+`test_baseline.log` snapshot after Step 2 commit `56218f5ec`; the baseline
+reminder is cleared and execution should continue at Step 3.
