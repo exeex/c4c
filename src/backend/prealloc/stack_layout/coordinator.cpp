@@ -28,6 +28,11 @@ struct SlotSliceCoverage {
   std::int64_t end = 0;
 };
 
+struct FunctionStackObjectPlan {
+  std::vector<PreparedStackObject> objects;
+  stack_layout::FunctionInlineAsmSummary inline_asm_summary;
+};
+
 [[nodiscard]] bir::AddressSpace prepared_memory_address_space(
     const std::optional<bir::MemoryAddress>& address) {
   return address.has_value() ? address->address_space : bir::AddressSpace::Default;
@@ -1349,6 +1354,25 @@ void append_address_materializations(PreparedNameTables& names,
   }
 }
 
+[[nodiscard]] FunctionStackObjectPlan plan_function_stack_objects(PreparedNameTables& names,
+                                                                  const bir::NameTables& bir_names,
+                                                                  const bir::Function& function,
+                                                                  PreparedObjectId& next_object_id) {
+  auto objects =
+      stack_layout::collect_function_stack_objects(names, bir_names, function, next_object_id);
+  stack_layout::apply_alloca_coalescing_hints(names, function, objects);
+  stack_layout::apply_copy_coalescing_hints(names, function, objects);
+  stack_layout::apply_aggregate_address_publication_hints(names, function, objects);
+
+  auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
+  stack_layout::apply_regalloc_hints(names, function, inline_asm_summary, objects);
+
+  return FunctionStackObjectPlan{
+      .objects = std::move(objects),
+      .inline_asm_summary = inline_asm_summary,
+  };
+}
+
 }  // namespace
 
 void BirPreAlloc::run_stack_layout() {
@@ -1364,17 +1388,9 @@ void BirPreAlloc::run_stack_layout() {
       continue;
     }
 
-    auto function_objects =
-        stack_layout::collect_function_stack_objects(
-            prepared_.names, prepared_.module.names, function, next_object_id);
-    stack_layout::apply_alloca_coalescing_hints(prepared_.names, function, function_objects);
-    stack_layout::apply_copy_coalescing_hints(prepared_.names, function, function_objects);
-    stack_layout::apply_aggregate_address_publication_hints(
-        prepared_.names, function, function_objects);
-
-    const auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
-    stack_layout::apply_regalloc_hints(
-        prepared_.names, function, inline_asm_summary, function_objects);
+    auto object_plan = plan_function_stack_objects(
+        prepared_.names, prepared_.module.names, function, next_object_id);
+    auto& function_objects = object_plan.objects;
 
     std::size_t function_frame_size = 0;
     std::size_t function_frame_alignment = 1;
@@ -1421,11 +1437,11 @@ void BirPreAlloc::run_stack_layout() {
                    std::to_string(function_slots.size()) + " home slot(s) and " +
                    std::to_string(function_frame_size) + " bytes of frame space",
     });
-    if (inline_asm_summary.instruction_count != 0) {
+    if (object_plan.inline_asm_summary.instruction_count != 0) {
       prepared_.notes.push_back(PrepareNote{
           .phase = "stack_layout",
           .message = "stack layout observed " +
-                     std::to_string(inline_asm_summary.instruction_count) +
+                     std::to_string(object_plan.inline_asm_summary.instruction_count) +
                      " inline asm instruction(s) in '" + function.name + "'",
       });
     }

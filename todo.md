@@ -1,63 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-stack-layout-contract-boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Clarify Header Contract Ownership
+Current Step ID: 3
+Current Step Title: Split Coordinator Object And Slot Phases
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Clarify Header Contract Ownership completed the narrow header move.
+Step 3 - Split Coordinator Object And Slot Phases completed one narrow
+file-local coordinator extraction.
 
-Moved the stack-layout phase hook declarations and `FunctionInlineAsmSummary`
-out of `module.hpp` into `stack_layout/stack_layout.hpp`, where the real
-stack-layout contract now names object collection, coalescing hints, inline
-asm summarization, regalloc hinting, and slot assignment.
+Extracted `plan_function_stack_objects(...)` in
+`stack_layout/coordinator.cpp` to own the object-phase sequence inside
+`run_stack_layout()`:
+- collect function stack objects
+- apply alloca and copy coalescing hints
+- apply aggregate address-publication hints to object metadata
+- summarize inline asm
+- apply regalloc hints to the object set
 
 Changed files:
-- `src/backend/prealloc/module.hpp`
-- `src/backend/prealloc/stack_layout/stack_layout.hpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
 - `todo.md`
 
-Include pressure:
-- `stack_layout/stack_layout.hpp` now directly includes `../frame.hpp` for
-  `PreparedStackObject`, `PreparedFrameSlot`, `PreparedNameTables`, and their
-  ID types.
-- The first backend build showed
-  `tests/backend/bir/backend_prepare_stack_layout_test.cpp` still reaches
-  stack-layout hooks through aggregate `module.hpp`; tests are outside this
-  packet, so `module.hpp` now includes `stack_layout/stack_layout.hpp` as a
-  compatibility aggregate include while no longer declaring the hook block
-  itself.
-- No stack-layout implementation file needed a new include.
-
 Behavior notes:
-- No implementation semantics changed.
-- `PreparedBirModule`, `BirPreAlloc`, frame data types, and frame-plan
-  contracts stayed unchanged.
-- No public forwarding header or broad include churn was created.
+- The helper returns the same object vector plus the same inline-asm summary
+  that `run_stack_layout()` already needed for its note.
+- Slot assignment, frame size/alignment updates, frame-slot map construction,
+  and final publication into `prepared_.stack_layout` stay in `run_stack_layout()`.
+- Dynamic address materialization/publication remains untouched for Step 4.
+- No headers, tests, prepared printer files, slot order, alignment, frame
+  sizing, or object authority changed.
 
 ## Suggested Next
 
-Step 3 - Split Coordinator Object And Slot Phases: inspect
-`stack_layout/coordinator.cpp` after the header boundary move and perform only
-one small behavior-preserving extraction if object collection, slot
-assignment orchestration, or address publication has a clear file-local
-boundary. If the remaining coordinator state is still too coupled, record the
-no-code decision instead.
+Step 4 - Separate Address Publication From Orchestration: inspect direct
+frame-slot access and address-materialization helpers in
+`stack_layout/coordinator.cpp` and decide whether one publication-focused
+file-local helper rename or extraction can make the boundary clearer without
+moving target emission or changing stack address semantics.
 
 ## Watchouts
 
-- `module.hpp` still aggregates `stack_layout/stack_layout.hpp` for existing
-  transitive consumers; a future cleanup may move those consumers to the real
-  stack-layout contract directly, but that would need ownership over tests or
-  broader include sites.
-- Keep frame data structs in `frame.hpp`; moving them was not justified by
-  this packet.
-- Do not change stack object authority, frame sizing, slot assignment order,
-  alignment, inline-asm stack facts, dynamic address semantics, or prepared
-  printer frame output while splitting coordinator logic.
+- `apply_aggregate_address_publication_hints(...)` still belongs to object
+  metadata preparation; Step 4 should focus on final address facts and
+  `PreparedAddressMaterialization` publication, not this object-phase hint.
+- `run_stack_layout()` still owns the slot phase because it threads frame
+  sizing, frame alignment, function addressing creation, slot map construction,
+  and final prepared-state insertion in one place.
+- Keep final target instruction emission outside prealloc.
 
 ## Proof
 
