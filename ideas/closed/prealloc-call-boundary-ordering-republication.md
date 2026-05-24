@@ -70,3 +70,18 @@ This idea focuses on ownership of ordering and intent, not target ABI emission.
   helper, with no meaningful prealloc plan data.
 - The x86/RISC-V proof is absent or depends on including AArch64 call-lowering
   headers.
+
+## Closure Note
+
+Closed after introducing neutral prealloc call-boundary effect records and
+`plan_prepared_call_boundary_effects`, adding focused record-level coverage,
+adapting AArch64 explicit before-call and after-call move paths through narrow
+local adapters, and adding the x86-labeled
+`backend_x86_call_boundary_effect_ordering` reuse proof without AArch64 codegen
+dependencies.
+
+Preservation-home population and preservation republication emission remain
+target-local for this idea because their remaining behavior is tied to
+AArch64 ordering, register aliasing, operand conversion, and final instruction
+emission policy. Those target-policy-adjacent loops are not blockers for this
+generic effect-plan boundary.
