@@ -74,6 +74,19 @@ Reject the implementation route if it requires any of the following:
 - broad renames without durable concept proof
 - reducing file count while increasing responsibility mixing
 
+## Closure
+
+Closed on 2026-05-24 after absorbing the before-call move sequencing helper
+family from `calls_dispatch_bridge.*` into the existing AArch64 call move
+owner. Remaining bridge helpers were left in place because they own wider
+behavior such as scalar argument materialization, indirect callee lowering,
+call-result source recording, missing frame-slot argument materialization, or
+stack-preserved value publication.
+
+Close proof used matching backend logs: `test_before.log` and `test_after.log`
+both passed 162/162 backend tests with no failures, and the regression guard
+passed in non-decreasing refactor mode.
+
 ## Acceptance
 
 - The bridge surface is smaller or clearer because bounded helper glue has a
