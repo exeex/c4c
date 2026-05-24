@@ -1,45 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/edge-copy-block-entry-bookkeeping-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Adapt AArch64 To Consume The Shared Helper
+Current Step ID: Step 4
+Current Step Title: Prove Reuse Path For x86 Prepared Blocks
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 adapted AArch64 block-entry/publication consumers to use the prealloc
-block-entry publication helper.
+Step 4 proved the x86 prepared reuse path for the prealloc block-entry
+publication helper.
 
-`dispatch_publication.cpp` now calls
-`prepare::collect_prepared_block_entry_publications(...)` for the repeated
-current-block `BlockEntry` plus `OutOfSsaParallelCopy` bundle filtering used
-by current publication detection, publication register resolution,
-scalar-state recording, and clobber checks.
+`x86::prepared::Query` now exposes
+`collect_block_entry_publications(...)`, a narrow wrapper over
+`prepare::collect_prepared_block_entry_publications(...)` for prepared block
+facts by successor label.
 
-`dispatch_producers.cpp` now uses the same helper for the current block join
-parallel-copy source check, while preserving the existing AArch64-local
-producer/source rules.
+The existing x86 prepared internal test now builds block-entry
+`OutOfSsaParallelCopy` facts and verifies available publication facts,
+missing-home status, successor-label filtering, register-name availability,
+and preservation of source `PreparedMoveBundle`, source
+`PreparedMoveResolution`, and value-home authority.
 
-The adaptation keeps target register parsing/spelling, physical-register
-aliasing, scalar-state recording, scratch choice, load/store mnemonics,
-frame/sp address policy, inline asm and machine-instruction record
-construction, concrete edge-copy emission, and diagnostic behavior in AArch64.
-Unsupported/missing forms remain filtered by the local consumers with the same
-strictness as before.
+This is reuse evidence only. x86 block lowering was not rewritten, and x86
+target move emission, register classes, operand spelling, and instruction
+selection remain target-local.
 
 ## Suggested Next
 
-Step 4 should prove an x86 prepared block reuse path for the shared
-block-entry publication helper without rewriting x86 block lowering or moving
-x86 target emission into prealloc.
+Step 5 should validate behavior and anti-overfit coverage for the active
+edge-copy/block-entry plan.
 
 ## Watchouts
 
-Do not broaden the next packet into AArch64 edge producer walking,
-select-chain materialization, target register spelling/parsing,
-scratch-register selection, machine records, target operands, or move
-diagnostics. Those remain target-local.
+Do not broaden validation into implementation changes unless a real blocker is
+found. AArch64 edge producer walking, select-chain materialization, target
+register spelling/parsing, scratch-register selection, machine records, target
+operands, move diagnostics, and x86 target emission remain target-local.
 
 The helper intentionally reports facts and statuses for target consumers; it
 does not silently downgrade unsupported destination/storage forms to fallback

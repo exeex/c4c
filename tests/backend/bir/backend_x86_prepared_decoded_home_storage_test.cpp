@@ -26,10 +26,14 @@ bool expect(bool condition, std::string_view message) {
 prepare::PreparedBirModule make_fixture() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("x86.decode");
+  const auto predecessor_label = prepared.names.block_labels.intern("entry");
+  const auto successor_label = prepared.names.block_labels.intern("join");
+  const auto other_successor_label = prepared.names.block_labels.intern("other");
   const auto regalloc_value_name = prepared.names.value_names.intern("regalloc_stack");
   const auto storage_value_name = prepared.names.value_names.intern("storage_immediate");
   const auto empty_storage_value_name = prepared.names.value_names.intern("empty_storage");
   const auto home_value_name = prepared.names.value_names.intern("home_stack");
+  const auto block_entry_value_name = prepared.names.value_names.intern("block_entry_value");
   const auto formal_reg_name = prepared.names.value_names.intern("formal_reg");
   const auto formal_stack_name = prepared.names.value_names.intern("formal_stack");
   (void)prepared.names.value_names.intern("formal_missing_home");
@@ -148,6 +152,13 @@ prepare::PreparedBirModule make_fixture() {
               .offset_bytes = 72,
           },
           prepare::PreparedValueHome{
+              .value_id = 5,
+              .function_name = function_name,
+              .value_name = block_entry_value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"ebx"},
+          },
+          prepare::PreparedValueHome{
               .value_id = 10,
               .function_name = function_name,
               .value_name = formal_reg_name,
@@ -163,45 +174,95 @@ prepare::PreparedBirModule make_fixture() {
               .offset_bytes = 96,
           },
       },
-      .move_bundles = {prepare::PreparedMoveBundle{
-          .function_name = function_name,
-          .phase = prepare::PreparedMovePhase::BeforeCall,
-          .block_index = 0,
-          .instruction_index = 3,
-          .moves = {prepare::PreparedMoveResolution{
-              .from_value_id = 2,
-              .to_value_id = 2,
-              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
-              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-              .destination_abi_index = std::size_t{0},
-              .destination_register_name = std::string{"eax"},
-              .destination_contiguous_width = 1,
-              .destination_occupied_register_names = {"eax"},
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
               .block_index = 0,
               .instruction_index = 3,
-              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-              .destination_register_placement = prepare::PreparedRegisterPlacement{
-                  .bank = prepare::PreparedRegisterBank::Gpr,
-                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
-                  .slot_index = 0,
-                  .contiguous_width = 1,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 2,
+                  .to_value_id = 2,
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"eax"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"eax"},
+                  .block_index = 0,
+                  .instruction_index = 3,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .destination_register_placement = prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+              }},
+              .abi_bindings = {prepare::PreparedAbiBinding{
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"eax"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"eax"},
+                  .destination_register_placement = prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+              }},
+          },
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 1,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 2,
+                      .to_value_id = 5,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 3,
+                      .to_value_id = 99,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"edx"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
               },
-          }},
-          .abi_bindings = {prepare::PreparedAbiBinding{
-              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
-              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-              .destination_abi_index = std::size_t{0},
-              .destination_register_name = std::string{"eax"},
-              .destination_contiguous_width = 1,
-              .destination_occupied_register_names = {"eax"},
-              .destination_register_placement = prepare::PreparedRegisterPlacement{
-                  .bank = prepare::PreparedRegisterBank::Gpr,
-                  .pool = prepare::PreparedRegisterSlotPool::CallArgument,
-                  .slot_index = 0,
-                  .contiguous_width = 1,
-              },
-          }},
-      }},
+          },
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 2,
+              .source_parallel_copy_successor_label = other_successor_label,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 2,
+                  .to_value_id = 5,
+                  .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"wrong_label"},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              }},
+          },
+      },
   });
   prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
       .function_name = function_name,
@@ -412,6 +473,69 @@ int check_query_reuses_shared_formal_publication_plans() {
   return 0;
 }
 
+int check_query_reuses_shared_block_entry_publications() {
+  const auto prepared = make_fixture();
+  const auto query = x86_prepared::make_query(prepared, "x86.decode");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  const auto other_successor_label = prepared.names.block_labels.find("other");
+  if (!expect(successor_label != c4c::kInvalidBlockLabel &&
+                  other_successor_label != c4c::kInvalidBlockLabel,
+              "x86 prepared query fixture did not expose block labels")) {
+    return 1;
+  }
+
+  const auto publications = query.collect_block_entry_publications(successor_label);
+  if (!expect(publications.size() == 2,
+              "x86 prepared query did not reuse shared block-entry publication collection")) {
+    return 1;
+  }
+
+  const auto* locations = query.locations();
+  if (locations == nullptr || locations->move_bundles.size() < 2U) {
+    return fail("x86 prepared query fixture did not expose block-entry inputs");
+  }
+  const auto& block_entry_bundle = locations->move_bundles[1];
+
+  const auto& available = publications[0];
+  if (!expect(prepare::prepared_block_entry_publication_available(available),
+              "x86 block-entry publication should be available") ||
+      !expect(available.bundle == &block_entry_bundle &&
+                  available.move == &block_entry_bundle.moves.front(),
+              "x86 block-entry publication did not preserve source Prepared records") ||
+      !expect(available.home != nullptr && available.home->value_id == 5,
+              "x86 block-entry publication did not preserve value-home authority") ||
+      !expect(available.destination_value_id == 5 &&
+                  available.destination_value_name ==
+                      prepared.names.value_names.find("block_entry_value"),
+              "x86 block-entry publication did not preserve destination value facts") ||
+      !expect(available.destination_register_name == std::optional<std::string>{"ebx"},
+              "x86 block-entry publication did not preserve register-name availability")) {
+    return 1;
+  }
+
+  const auto& missing_home = publications[1];
+  if (!expect(missing_home.status ==
+                  prepare::PreparedBlockEntryPublicationStatus::MissingValueHome,
+              "x86 block-entry publication should surface missing home status") ||
+      !expect(missing_home.home == nullptr && missing_home.destination_value_id == 99,
+              "x86 missing-home block-entry publication should preserve value id") ||
+      !expect(missing_home.destination_register_name == std::optional<std::string>{"edx"},
+              "x86 missing-home block-entry publication should preserve move register fact")) {
+    return 1;
+  }
+
+  const auto other_publications =
+      query.collect_block_entry_publications(other_successor_label);
+  if (!expect(other_publications.size() == 1 &&
+                  other_publications.front().destination_register_name ==
+                      std::optional<std::string>{"wrong_label"},
+              "x86 block-entry publication query should filter by successor label")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_query_reports_no_authority() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "missing");
@@ -427,6 +551,10 @@ int check_missing_query_reports_no_authority() {
               "missing x86 prepared query should not report formal-publication authority") ||
       !expect(query.plan_formal_publications().empty(),
               "missing x86 prepared query should not collect formal-publication plans")) {
+    return 1;
+  }
+  if (!expect(query.collect_block_entry_publications(c4c::BlockLabelId{1}).empty(),
+              "missing x86 prepared query should not collect block-entry publications")) {
     return 1;
   }
   return 0;
@@ -447,6 +575,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_query_reuses_shared_formal_publication_plans();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_query_reuses_shared_block_entry_publications();
       status != 0) {
     return EXIT_FAILURE;
   }

@@ -110,6 +110,12 @@ struct Query {
             .value_home_lookups = nullptr,
         });
   }
+
+  [[nodiscard]] std::vector<c4c::backend::prepare::PreparedBlockEntryPublication>
+  collect_block_entry_publications(c4c::BlockLabelId successor_label) const {
+    return c4c::backend::prepare::collect_prepared_block_entry_publications(
+        locations(), successor_label);
+  }
 };
 
 [[nodiscard]] inline Query make_query(const c4c::backend::prepare::PreparedBirModule& module,
