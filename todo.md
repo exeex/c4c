@@ -1,59 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/prepared-move-publication-indexing-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Convert AArch64 to Consume the Shared Helper
+Current Step ID: Step 4
+Current Step Title: Name and Prove the x86 Consumption Path
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 in `plan.md` is complete: converted AArch64 to construct and consume
-the shared Prepared lookup helper while preserving AArch64 target policy.
+Step 4 in `plan.md` is complete: named and proved the x86 consumption path for
+the shared Prepared lookup helper.
 
-Conversion details:
-
-- Removed AArch64-local lookup record ownership from
-  `src/backend/mir/aarch64/module/module.hpp`; `FunctionLoweringContext` now
-  carries `prepare::PreparedFunctionLookups` plus pointers to the shared
-  call-plan, address-materialization, move-bundle, and value-home lookup
-  families.
-- Removed the duplicate AArch64 lookup builders and position-key helpers from
-  `src/backend/mir/aarch64/codegen/traversal.cpp`; each function now builds
-  `prepare::make_prepared_function_lookups(...)` and wires its family views
-  into the lowering context.
-- Routed call-plan lookup through
-  `prepare::find_indexed_prepared_call_plan(...)`.
-- Routed prior preserved call values and first stack-preserved call values
-  through `prepare::find_latest_indexed_prior_preserved_value(...)`,
-  `prepare::find_dominating_indexed_prior_preserved_value(...)`, and
-  `prepare::first_indexed_stack_preserved_values_for_call(...)`.
-- Routed move-bundle lookup through
-  `prepare::find_indexed_prepared_move_bundle(...)`.
-- Routed address-materialization block lookup through
-  `prepare::find_indexed_prepared_address_materializations(...)` and the shared
-  fallback collector.
-- Routed value-home lookup through the shared `prepare::PreparedValueHomeLookups`
-  surface used by the existing indexed value-home helpers.
-
-AArch64 still owns target emission and policy: register parsing/conversion,
-ABI lane policy, address-materialization MIR kind selection, GOT/TLS/global
-policy checks, frame-pointer/addressing legality, diagnostics, and assembly
-printing remain in AArch64 codegen.
+The x86 surface is `c4c::backend::x86::consume_prepared_function_lookups(...)`,
+which resolves a function's published `PreparedControlFlowFunction` and builds
+`prepare::PreparedFunctionLookups` through
+`prepare::make_prepared_function_lookups(...)`. `ConsumedPlans` now owns that
+optional shared lookup bundle and exposes `shared_function_lookups()` plus
+`shared_call_plan_lookups()` for family-specific consumption. Existing x86
+call-plan consumers now route through
+`prepare::find_indexed_prepared_call_plan(...)`, preserving the old prepared
+call-plan scan as the helper's fallback when indexed lookups are unavailable.
 
 ## Suggested Next
 
-Proceed to Step 4: name and prove the x86 consumption path for the shared
-Prepared lookup helper, using the existing prepared-plan consumption surfaces
-instead of copying AArch64 context objects or policy.
+Proceed to lifecycle review or the next supervisor-selected packet for this
+idea. The Step 4 x86 slice did not require copying AArch64 context objects or
+target policy into x86.
 
 ## Watchouts
 
-`src/backend/mir/aarch64/codegen/calls.hpp` needed declaration cleanup because
-the removed AArch64-local lookup types were exposed there. The remaining
-AArch64 fallback scans are for manually constructed contexts without shared
-lookup pointers; normal prepared traversal now wires the shared helper for each
-function.
+The x86 shared lookup path currently consumes the call-plan family through
+`ConsumedPlans`; address-materialization, move-bundle, and value-home family
+helpers are exposed by `shared_function_lookups()` for future integration, but
+this packet intentionally kept code changes to the smallest proven x86
+structural path.
 
 ## Proof
 
@@ -61,5 +41,5 @@ Ran exactly:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
-Result: passed. The proof rebuilt the AArch64 codegen conversion and ran 149
+Result: passed. The proof rebuilt the x86 consumption-path change and ran 149
 matching backend tests with 0 failures. Proof log: `test_after.log`.

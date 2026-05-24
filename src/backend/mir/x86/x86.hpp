@@ -13,9 +13,22 @@ namespace c4c::backend::x86 {
 struct ConsumedPlans {
   const c4c::backend::prepare::PreparedFramePlanFunction* frame = nullptr;
   const c4c::backend::prepare::PreparedDynamicStackPlanFunction* dynamic_stack = nullptr;
+  const c4c::backend::prepare::PreparedControlFlowFunction* control_flow = nullptr;
   const c4c::backend::prepare::PreparedCallPlansFunction* calls = nullptr;
   const c4c::backend::prepare::PreparedRegallocFunction* regalloc = nullptr;
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage = nullptr;
+  std::optional<c4c::backend::prepare::PreparedFunctionLookups> prepared_lookups;
+
+  [[nodiscard]] const c4c::backend::prepare::PreparedFunctionLookups*
+  shared_function_lookups() const {
+    return prepared_lookups.has_value() ? &*prepared_lookups : nullptr;
+  }
+
+  [[nodiscard]] const c4c::backend::prepare::PreparedCallPlanLookups*
+  shared_call_plan_lookups() const {
+    const auto* lookups = shared_function_lookups();
+    return lookups != nullptr ? &lookups->call_plans : nullptr;
+  }
 };
 
 [[nodiscard]] inline const c4c::backend::prepare::PreparedCallPlan* find_consumed_call_plan(
@@ -25,12 +38,21 @@ struct ConsumedPlans {
   if (consumed.calls == nullptr) {
     return nullptr;
   }
-  for (const auto& call : consumed.calls->calls) {
-    if (call.block_index == block_index && call.instruction_index == instruction_index) {
-      return &call;
-    }
+  return c4c::backend::prepare::find_indexed_prepared_call_plan(
+      consumed.shared_call_plan_lookups(), consumed.calls, block_index, instruction_index);
+}
+
+[[nodiscard]] inline std::optional<c4c::backend::prepare::PreparedFunctionLookups>
+consume_prepared_function_lookups(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name) {
+  const auto* control_flow =
+      c4c::backend::prepare::find_prepared_control_flow_function(module.control_flow,
+                                                                 function_name);
+  if (control_flow == nullptr) {
+    return std::nullopt;
   }
-  return nullptr;
+  return c4c::backend::prepare::make_prepared_function_lookups(module, *control_flow);
 }
 
 [[nodiscard]] inline const c4c::backend::prepare::PreparedCallArgumentPlan*
@@ -68,6 +90,9 @@ find_consumed_call_result_plan(const ConsumedPlans& consumed,
       .frame = c4c::backend::prepare::find_prepared_frame_plan(module, function_name),
       .dynamic_stack =
           c4c::backend::prepare::find_prepared_dynamic_stack_plan(module, function_name),
+      .control_flow =
+          c4c::backend::prepare::find_prepared_control_flow_function(module.control_flow,
+                                                                     function_name),
       .calls = c4c::backend::prepare::find_prepared_call_plans(module, function_name),
       .regalloc = [&]() -> const c4c::backend::prepare::PreparedRegallocFunction* {
         for (const auto& function_regalloc : module.regalloc.functions) {
@@ -78,6 +103,7 @@ find_consumed_call_result_plan(const ConsumedPlans& consumed,
         return nullptr;
       }(),
       .storage = c4c::backend::prepare::find_prepared_storage_plan(module, function_name),
+      .prepared_lookups = consume_prepared_function_lookups(module, function_name),
   };
 }
 
