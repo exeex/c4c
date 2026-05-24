@@ -9,25 +9,30 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_calls.hpp` as the narrow private
-declaration surface for the dispatch-to-calls bridge helpers, removed those
-declarations from `dispatch.hpp`, and updated direct implementation users to
-include the new header.
+`src/backend/mir/aarch64/codegen/dispatch_lookup.hpp` as the narrow private
+declaration surface for the helpers implemented in `dispatch_lookup.cpp`,
+removed those declarations from `dispatch.hpp`, and updated direct
+implementation users to include the new header.
 
 Direct callers updated:
 
-- `dispatch.cpp` now includes `dispatch_calls.hpp` for the call lowering,
-  argument producer, boundary materialization, indirect callee, result source,
-  preservation-ordering, missing frame-slot argument, and stack-preserved value
-  bridge helpers.
-- `dispatch_calls.cpp` now includes its own narrow header so its definitions are
+- Dispatch shards that use prepared named value/home lookup and same-block
+  scalar/load-local producer helpers now include `dispatch_lookup.hpp` directly:
+  `dispatch.cpp`, `dispatch_calls.cpp`, `dispatch_branch_fusion.cpp`,
+  `dispatch_edge_copies.cpp`, `dispatch_publication.cpp`,
+  `dispatch_producers.cpp`, `dispatch_store_sources.cpp`, and
+  `dispatch_value_materialization.cpp`.
+- Calls implementation shards that still use prepared value-home lookup helpers
+  now include `dispatch_lookup.hpp` directly: `calls_byval_aggregates.cpp`,
+  `calls_preservation.cpp`, and `calls_moves.cpp`.
+- `dispatch_lookup.cpp` includes its own narrow header so its definitions are
   checked against the extracted declaration surface.
 
 ## Suggested Next
 
-Recommended next packet: extract the `dispatch_lookup.cpp` declarations from
-`dispatch.hpp` into a narrow private lookup header, then update only the
-dispatch implementation shards that directly call those lookup helpers.
+Recommended next packet: extract the branch-fusion declarations and
+`DispatchBranchFusionHooks` from `dispatch.hpp` into a narrow private
+branch-fusion header, then update only direct branch-fusion users.
 
 ## Watchouts
 
@@ -38,8 +43,12 @@ dispatch implementation shards that directly call those lookup helpers.
   publication, producer lookup, select-chain, and stack/frame helper
   declarations; those are separate header-narrowing candidates and were not
   widened into this packet.
-- `inline_asm.cpp`, `variadic.cpp`, and `dispatch_dynamic_stack.cpp` have local
-  diagnostic helper functions and were not users of the extracted declarations.
+- `prepared_value_home_for_value` remains in `dispatch.hpp` because it is
+  implemented in `dispatch_publication.cpp`; moving publication or
+  value-materialization declarations was intentionally outside this packet.
+- Several files still include both `dispatch.hpp` and `dispatch_lookup.hpp`
+  because they also use non-lookup dispatch internals; this packet only removed
+  the lookup helper declarations from the catch-all header.
 
 ## Proof
 

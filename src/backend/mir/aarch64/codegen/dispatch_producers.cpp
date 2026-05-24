@@ -1,5 +1,7 @@
 #include "dispatch.hpp"
 
+#include "dispatch_lookup.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <optional>
