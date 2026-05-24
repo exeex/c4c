@@ -1,68 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-stack-layout-contract-boundary.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Separate Address Publication From Orchestration
+Current Step ID: 5
+Current Step Title: Align Prepared Frame Printing And Close
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Separate Address Publication From Orchestration completed one narrow
-file-local coordinator extraction.
+Step 5 - Align Prepared Frame Printing And Close completed the final
+prepared-printer and closure-readiness audit with no code changes.
 
-Extracted `publish_function_addressing_facts(...)` in
-`stack_layout/coordinator.cpp` to own the prepared addressing publication
-cluster after slot assignment:
-- build the slot-name to frame-slot lookup
-- append direct frame-slot memory-access facts
-- append address-materialization facts
-- preserve existing missing-fact notes for unresolved materializations
+Audited `src/backend/prealloc/prepared_printer/frame.cpp` against the completed
+stack-layout boundary cleanup:
+- `append_stack_layout(...)` still prints the public stack-layout object and
+  frame-slot families without hiding or reclassifying facts.
+- `append_frame_plan(...)` still prints frame sizing, alignment, saved
+  register slots, and frame-slot ordering with the same field meanings.
+- `append_dynamic_stack_plan(...)` still prints dynamic stack operation facts
+  under the existing dynamic-stack family.
+- No public data-family names changed during this plan, so printer terminology
+  does not need alignment.
 
 Changed files:
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
 - `todo.md`
 
 Behavior notes:
-- The helper reuses the same direct frame-slot access and
-  `PreparedAddressMaterialization` append helpers; only the call boundary moved.
-- Slot assignment, frame size/alignment updates, prepared stack-layout object
-  and frame-slot insertion, and final target instruction emission stay outside
-  this helper.
-- Address semantics are unchanged: frame-slot offsets, global/TLS/string/label
-  materialization policies, pointer-value handling, and missing-fact notes keep
-  their existing helper logic.
-- No headers, tests, prepared printer files, target emission, slot order,
-  alignment, frame sizing, or object authority changed.
+- Accumulated plan changes moved stack-layout hook declarations and
+  `FunctionInlineAsmSummary` to `stack_layout/stack_layout.hpp`, then extracted
+  file-local object-planning and addressing-publication helpers in
+  `stack_layout/coordinator.cpp`.
+- The prepared dump section names and field meanings remain aligned with the
+  durable data contracts: stack layout, frame plan, and dynamic stack plan.
+- No frame/stack facts were hidden, dropped, or renamed.
+- The source idea appears closure-ready: stack-layout ownership is clearer from
+  the contract header and helper names, `module.hpp` remains intentionally
+  aggregate, backend proof has stayed green, and prepared frame dump meaning is
+  preserved.
 
 ## Suggested Next
 
-Step 5 - Align Prepared Frame Printing And Close: inspect
-`prepared_printer/frame.cpp` only for terminology drift from the stack-layout
-contract cleanup. If no data-family names changed, record the no-code close
-decision and leave prepared frame dump semantics untouched.
+Ask the plan owner to close
+`ideas/open/prealloc-stack-layout-contract-boundary.md`.
 
 ## Watchouts
 
-- `apply_aggregate_address_publication_hints(...)` still belongs to object
-  metadata preparation; it was intentionally not moved into the new addressing
-  publication helper.
-- `run_stack_layout()` still owns the slot phase and final prepared stack-layout
-  publication because it threads frame sizing, frame alignment, function
-  addressing creation, object/frame-slot insertion, and notes in one place.
-- Keep final target instruction emission outside prealloc; Step 4 only
-  publishes prepared addressing facts.
+- Deferred follow-up candidates, if desired as separate ideas: further
+  `run_stack_layout()` decomposition around slot assignment orchestration, and
+  any broader frame-plan naming cleanup. Neither is required to close this
+  source idea.
+- Do not fold target instruction emission or register spelling into prealloc;
+  that stayed outside the stack-layout contract boundary throughout this plan.
 
 ## Proof
 
 Ran:
 
 ```sh
-bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'
+git diff --check
 ```
 
-Result: passed, `162/162` backend tests.
+Result: passed.
 
-Ran `git diff --check`; passed.
-
-Proof log path: `test_after.log`.
+Proof log path: none. This was a no-code audit packet, so no `test_after.log`
+was created.
