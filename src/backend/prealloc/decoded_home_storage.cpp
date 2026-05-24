@@ -264,4 +264,49 @@ PreparedDecodedHomeStorage decode_prepared_home_storage(
   return missing_authority(value_id);
 }
 
+PreparedDecodedHomeStorageDiagnostic build_prepared_decoded_home_storage_diagnostic(
+    const PreparedDecodedHomeStorage& decoded) {
+  PreparedDecodedHomeStorageDiagnostic diagnostic{
+      .source = decoded.source,
+      .kind = decoded.kind,
+      .status = decoded.status,
+      .function_name = decoded.function_name,
+      .value_id = decoded.value_id,
+      .value_name = decoded.value_name,
+  };
+
+  if (decoded.status == PreparedDecodedHomeStorageStatus::MissingRegisterPlacement) {
+    diagnostic.category =
+        PreparedDecodedHomeStorageDiagnosticCategory::MissingTypedRegisterAuthority;
+    if (decoded.source == PreparedDecodedHomeStorageSource::StoragePlan) {
+      diagnostic.message = "storage-plan register value is missing typed register placement";
+    } else if (decoded.source == PreparedDecodedHomeStorageSource::ValueHome) {
+      diagnostic.message =
+          "value-home register spelling is diagnostic-only until typed placement exists";
+    } else {
+      diagnostic.message = "regalloc register assignment is missing typed register placement";
+    }
+    return diagnostic;
+  }
+
+  if (decoded.source == PreparedDecodedHomeStorageSource::StoragePlan) {
+    diagnostic.category =
+        PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedStoragePlanAuthority;
+    diagnostic.message = "storage-plan value does not have a supported typed operand form";
+    return diagnostic;
+  }
+
+  if (decoded.source == PreparedDecodedHomeStorageSource::ValueHome) {
+    diagnostic.category =
+        PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedValueHomeAuthority;
+    diagnostic.message = "prepared value home does not have a supported typed operand form";
+    return diagnostic;
+  }
+
+  diagnostic.category =
+      PreparedDecodedHomeStorageDiagnosticCategory::MissingValueAuthority;
+  diagnostic.message = "no typed prepared authority exists for value operand";
+  return diagnostic;
+}
+
 }  // namespace c4c::backend::prepare

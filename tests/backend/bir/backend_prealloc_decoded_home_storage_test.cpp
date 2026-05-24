@@ -382,6 +382,143 @@ int verify_value_home_and_combined_decoding() {
   return 0;
 }
 
+int verify_diagnostic_builders() {
+  const auto missing = prepare::build_prepared_decoded_home_storage_diagnostic(
+      prepare::PreparedDecodedHomeStorage{
+          .source = prepare::PreparedDecodedHomeStorageSource::None,
+          .kind = prepare::PreparedDecodedHomeStorageKind::None,
+          .status = prepare::PreparedDecodedHomeStorageStatus::MissingAuthority,
+          .value_id = 900,
+      });
+  if (!expect(missing.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingValueAuthority,
+              "missing authority diagnostic category mismatch") ||
+      !expect(missing.value_id == 900,
+              "missing authority diagnostic should preserve value id") ||
+      !expect(missing.message == "no typed prepared authority exists for value operand",
+              "missing authority diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto regalloc_missing_placement =
+      prepare::build_prepared_decoded_home_storage_diagnostic(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::RegallocAssignment,
+              .kind = prepare::PreparedDecodedHomeStorageKind::Register,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement,
+              .function_name = static_cast<c4c::FunctionNameId>(91),
+              .value_id = 901,
+              .value_name = static_cast<c4c::ValueNameId>(101),
+          });
+  if (!expect(regalloc_missing_placement.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingTypedRegisterAuthority,
+              "regalloc missing-placement diagnostic category mismatch") ||
+      !expect(regalloc_missing_placement.function_name ==
+                  static_cast<c4c::FunctionNameId>(91) &&
+                  regalloc_missing_placement.value_name ==
+                      static_cast<c4c::ValueNameId>(101),
+              "regalloc missing-placement diagnostic should preserve identity") ||
+      !expect(regalloc_missing_placement.message ==
+                  "regalloc register assignment is missing typed register placement",
+              "regalloc missing-placement diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto storage_missing_placement =
+      prepare::build_prepared_decoded_home_storage_diagnostic(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::StoragePlan,
+              .kind = prepare::PreparedDecodedHomeStorageKind::Register,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement,
+              .value_id = 902,
+          });
+  if (!expect(storage_missing_placement.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingTypedRegisterAuthority,
+              "storage-plan missing-placement diagnostic category mismatch") ||
+      !expect(storage_missing_placement.message ==
+                  "storage-plan register value is missing typed register placement",
+              "storage-plan missing-placement diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto value_home_missing_placement =
+      prepare::build_prepared_decoded_home_storage_diagnostic(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::ValueHome,
+              .kind = prepare::PreparedDecodedHomeStorageKind::Register,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement,
+              .value_id = 903,
+          });
+  if (!expect(value_home_missing_placement.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      MissingTypedRegisterAuthority,
+              "value-home missing-placement diagnostic category mismatch") ||
+      !expect(value_home_missing_placement.message ==
+                  "value-home register spelling is diagnostic-only until typed placement exists",
+              "value-home missing-placement diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto unsupported_storage =
+      prepare::build_prepared_decoded_home_storage_diagnostic(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::StoragePlan,
+              .kind = prepare::PreparedDecodedHomeStorageKind::ComputedAddress,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::UnsupportedStorageEncoding,
+              .value_id = 904,
+          });
+  if (!expect(unsupported_storage.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      UnsupportedStoragePlanAuthority,
+              "unsupported storage diagnostic category mismatch") ||
+      !expect(unsupported_storage.message ==
+                  "storage-plan value does not have a supported typed operand form",
+              "unsupported storage diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto unsupported_home =
+      prepare::build_prepared_decoded_home_storage_diagnostic(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::ValueHome,
+              .kind = prepare::PreparedDecodedHomeStorageKind::PointerBasePlusOffset,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::UnsupportedValueHomeKind,
+              .value_id = 905,
+          });
+  if (!expect(unsupported_home.category ==
+                  prepare::PreparedDecodedHomeStorageDiagnosticCategory::
+                      UnsupportedValueHomeAuthority,
+              "unsupported value-home diagnostic category mismatch") ||
+      !expect(unsupported_home.source ==
+                  prepare::PreparedDecodedHomeStorageSource::ValueHome &&
+                  unsupported_home.kind ==
+                      prepare::PreparedDecodedHomeStorageKind::PointerBasePlusOffset &&
+                  unsupported_home.status ==
+                      prepare::PreparedDecodedHomeStorageStatus::UnsupportedValueHomeKind,
+              "unsupported value-home diagnostic should preserve decoded facts") ||
+      !expect(unsupported_home.message ==
+                  "prepared value home does not have a supported typed operand form",
+              "unsupported value-home diagnostic message mismatch")) {
+    return 1;
+  }
+
+  if (!expect(prepare::prepared_decoded_home_storage_diagnostic_category_name(
+                  unsupported_home.category) == "unsupported_value_home_authority",
+              "diagnostic category name mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -392,6 +529,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (verify_value_home_and_combined_decoding() != 0) {
+    return EXIT_FAILURE;
+  }
+  if (verify_diagnostic_builders() != 0) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

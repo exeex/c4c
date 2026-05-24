@@ -127,6 +127,42 @@ struct PreparedDecodedHomeStorage {
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
+enum class PreparedDecodedHomeStorageDiagnosticCategory {
+  MissingValueAuthority,
+  MissingTypedRegisterAuthority,
+  UnsupportedStoragePlanAuthority,
+  UnsupportedValueHomeAuthority,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_decoded_home_storage_diagnostic_category_name(
+    PreparedDecodedHomeStorageDiagnosticCategory category) {
+  switch (category) {
+    case PreparedDecodedHomeStorageDiagnosticCategory::MissingValueAuthority:
+      return "missing_value_authority";
+    case PreparedDecodedHomeStorageDiagnosticCategory::MissingTypedRegisterAuthority:
+      return "missing_typed_register_authority";
+    case PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedStoragePlanAuthority:
+      return "unsupported_storage_plan_authority";
+    case PreparedDecodedHomeStorageDiagnosticCategory::UnsupportedValueHomeAuthority:
+      return "unsupported_value_home_authority";
+  }
+  return "unknown";
+}
+
+struct PreparedDecodedHomeStorageDiagnostic {
+  PreparedDecodedHomeStorageDiagnosticCategory category =
+      PreparedDecodedHomeStorageDiagnosticCategory::MissingValueAuthority;
+  PreparedDecodedHomeStorageSource source = PreparedDecodedHomeStorageSource::None;
+  PreparedDecodedHomeStorageKind kind = PreparedDecodedHomeStorageKind::None;
+  PreparedDecodedHomeStorageStatus status =
+      PreparedDecodedHomeStorageStatus::MissingAuthority;
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  std::string message;
+};
+
 struct PreparedHomeStorageDecodeInputs {
   const PreparedRegallocFunction* regalloc = nullptr;
   const PreparedStoragePlanFunction* storage_plan = nullptr;
@@ -153,5 +189,9 @@ struct PreparedHomeStorageDecodeInputs {
 [[nodiscard]] PreparedDecodedHomeStorage decode_prepared_home_storage(
     const PreparedHomeStorageDecodeInputs& inputs,
     PreparedValueId value_id);
+
+[[nodiscard]] PreparedDecodedHomeStorageDiagnostic
+build_prepared_decoded_home_storage_diagnostic(
+    const PreparedDecodedHomeStorage& decoded);
 
 }  // namespace c4c::backend::prepare
