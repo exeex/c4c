@@ -69,6 +69,11 @@ set_tests_properties(backend_store_source_publication_plan PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+c4c_add_mir_cpp_test(backend_x86_store_source_publication_plan_reuse)
+set_tests_properties(backend_x86_store_source_publication_plan_reuse PROPERTIES
+  LABELS "backend;internal;cpp;x86"
+)
+
 c4c_add_mir_cpp_test(backend_call_boundary_effect_plan)
 set_tests_properties(backend_call_boundary_effect_plan PROPERTIES
   LABELS "backend;internal;cpp"
