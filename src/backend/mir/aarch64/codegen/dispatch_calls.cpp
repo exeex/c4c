@@ -3,6 +3,7 @@
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "dispatch_calls.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "variadic.hpp"
 

@@ -9,35 +9,35 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_diagnostics.hpp` as the narrow private
-declaration surface for dispatch diagnostics helpers, removed those declarations
-from `dispatch.hpp`, and updated direct external callers to include the new
-header.
+`src/backend/mir/aarch64/codegen/dispatch_calls.hpp` as the narrow private
+declaration surface for the dispatch-to-calls bridge helpers, removed those
+declarations from `dispatch.hpp`, and updated direct implementation users to
+include the new header.
 
 Direct callers updated:
 
-- `dispatch.cpp` now includes `dispatch_diagnostics.hpp` for block,
-  unsupported-instruction, and unsupported-terminator diagnostics.
-- `dispatch_calls.cpp`, `calls.cpp`, `calls_argument_sources.cpp`, and
-  `calls_moves.cpp` now include `dispatch_diagnostics.hpp` for
-  `append_call_diagnostic`.
-- `dispatch_diagnostics.cpp` now includes its own header instead of the catch-all
-  `dispatch.hpp`.
+- `dispatch.cpp` now includes `dispatch_calls.hpp` for the call lowering,
+  argument producer, boundary materialization, indirect callee, result source,
+  preservation-ordering, missing frame-slot argument, and stack-preserved value
+  bridge helpers.
+- `dispatch_calls.cpp` now includes its own narrow header so its definitions are
+  checked against the extracted declaration surface.
 
 ## Suggested Next
 
-Recommended next packet: move the `dispatch_calls.cpp` declarations out of
-`dispatch.hpp` into a calls-owned or narrow private bridge header, then update
-only the implementation files that call those dispatch/call bridge helpers.
+Recommended next packet: extract the `dispatch_lookup.cpp` declarations from
+`dispatch.hpp` into a narrow private lookup header, then update only the
+dispatch implementation shards that directly call those lookup helpers.
 
 ## Watchouts
 
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.
-- Several calls shards still include `dispatch.hpp` for non-diagnostic
-  frame/value helper declarations. Check each dependency before narrowing the
-  calls bridge surface.
+- `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
+  publication, producer lookup, select-chain, and stack/frame helper
+  declarations; those are separate header-narrowing candidates and were not
+  widened into this packet.
 - `inline_asm.cpp`, `variadic.cpp`, and `dispatch_dynamic_stack.cpp` have local
   diagnostic helper functions and were not users of the extracted declarations.
 
