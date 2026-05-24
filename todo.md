@@ -1,42 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-publication-accessor-contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Contract Naming And Helper Grouping Pass
+Current Step ID: 4
+Current Step Title: Align Prepared Printer Mirrors
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: performed the narrow contract naming/helper
-grouping pass for the publication/accessor package.
+Completed Step 4 from `plan.md`: verified the prepared-printer mirrors after
+the Step 2/3 publication/accessor cleanup.
 
-Changed files:
+Decision:
 
-- `src/backend/prealloc/publication_plans.hpp`: added
-  `prepared_storage_encoding_from_value_home_kind` as the clearer public helper
-  name for the value-home-kind to storage-encoding contract.
-- `src/backend/prealloc/publication_plans.cpp`: changed local scalar and
-  store-source publication planning to call the clearer helper name, while
-  keeping `prepared_publication_storage_encoding_from_home` as a compatibility
-  adapter for existing public callers.
+- No prepared-printer edit was required.
+- Step 2 changed stale wording and an unused include in publication/accessor
+  headers, not a prepared dump data-family name or label.
+- Step 3 added `prepared_storage_encoding_from_value_home_kind` as a clearer
+  helper for the value-home-kind to storage-encoding contract, while preserving
+  `prepared_publication_storage_encoding_from_home` as a compatibility adapter.
+  That helper rename does not change the value-location or storage-plan data
+  family names that the prepared printer mirrors.
 
-Deferred candidates:
+Checked mirrors:
 
-- Broad public helper families in `prepared_lookups.hpp`,
-  `decoded_home_storage.hpp`, `storage_plans.hpp`, and `value_locations.hpp`
-  still have cross-package AArch64, x86, and test call sites. No rename there
-  was local enough for this packet.
-- `prepared_publication_storage_encoding_from_home` remains available because
-  tests and existing publication-plan callers still depend on that public name;
-  removing it would create broad caller churn outside the Step 3 boundary.
+- `src/backend/prealloc/prepared_printer/value_locations.cpp` still prints the
+  unchanged `--- prepared-value-locations ---` section and value-home fields.
+- `src/backend/prealloc/prepared_printer/storage.cpp` still prints the
+  unchanged `--- prepared-storage-plans ---` section and storage-encoding
+  fields.
+- `src/backend/prealloc/prepared_printer/private.hpp` still exposes the same
+  append helpers for those data families.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: align prepared-printer mirrors only where the
-real publication/accessor data-family naming changed. Since Step 3 did not
-rename a data family or dump label, start by verifying that the prepared-printer
-value-location and storage mirrors need no label/helper changes.
+Execute Step 5 from `plan.md`: perform the final boundary review, confirm the
+diff remains behavior-preserving, and decide whether
+`ideas/open/prealloc-publication-accessor-contracts.md` is ready for lifecycle
+closure.
 
 ## Watchouts
 
@@ -44,19 +45,15 @@ value-location and storage mirrors need no label/helper changes.
   value-location, or prepared dump semantics changed in Step 3.
 - Do not split `module.hpp`, `regalloc.hpp`, or broad aggregate prealloc
   contracts as part of naming cleanup.
-- Keep compatibility comments or adapters when call sites still depend on the
-  old aggregate prepared-module view.
-- Avoid turning Step 4 into broad printer taxonomy churn unless a real
-  publication/accessor data-family name changed.
+- Step 4 deliberately made no printer taxonomy change because there was no
+  corresponding data-family rename or dump-label change to mirror.
+- `prepared_publication_storage_encoding_from_home` remains as a compatibility
+  adapter for existing cross-package callers.
 
 ## Proof
 
-Ran delegated proof:
+Ran delegated proof for this metadata-only packet:
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+`git diff --check`
 
-Result: passed; build completed and 162/162 backend tests passed.
-
-Ran `git diff --check`: passed.
-
-Proof log: `test_after.log`.
+Result: passed.
