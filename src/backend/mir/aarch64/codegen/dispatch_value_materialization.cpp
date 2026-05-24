@@ -21,6 +21,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
@@ -586,10 +587,10 @@ namespace prepare = c4c::backend::prepare;
   if (value.kind != bir::Value::Kind::Named) {
     return false;
   }
-  if (const auto constant = evaluate_same_block_integer_constant(
-          context, value);
+  if (const auto constant =
+          mir::evaluate_same_block_integer_constant(context.bir_block, value);
       constant.has_value()) {
-    lines.push_back("mov " + *target + ", #" + std::to_string(*constant));
+    lines.push_back("mov " + *target + ", #" + std::to_string(constant->value));
     return true;
   }
   if (auto published =

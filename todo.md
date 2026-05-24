@@ -9,31 +9,26 @@ Current Step Title: Rewire AArch64 Users To The Shared Query
 ## Just Finished
 
 Step 3: Rewire AArch64 Users To The Shared Query completed as a narrow code
-slice. `dispatch_branch_fusion.cpp` no longer owns its duplicated
-same-block binary-producer scan or recursive same-block integer-constant
-evaluator.
+slice. `dispatch_value_materialization.cpp` now calls
+`mir::evaluate_same_block_integer_constant` directly in
+`emit_value_publication_to_register` and consumes the shared
+`SameBlockIntegerConstant` record for the policy-free named constant fact.
 
-Branch-fusion now calls `mir::find_same_block_binary_producer` and
-`mir::evaluate_same_block_integer_constant` directly for the constant-RHS and
-support-instruction decisions that only need target-neutral producer/constant
-facts. AArch64-specific policy stayed local: condition suffix selection,
-compare-immediate encodability, register spelling, value publication, frame-slot
-load addressing, and assembler instruction construction remain in AArch64
-codegen.
+The AArch64 compatibility wrapper remains in `dispatch_producers.cpp` for
+unmigrated users, and no publication/store/call planning semantics moved.
 
 ## Suggested Next
 
 Continue Step 3 with one more narrow consumer migration if the supervisor wants
-more AArch64 rewiring before review. The safest next candidate is an existing
-direct `evaluate_same_block_integer_constant` wrapper consumer in value
-materialization, while preserving the compatibility wrappers until all AArch64
-call sites are settled.
+more AArch64 rewiring before review. The remaining wrapper-heavy users are
+mostly producer-index and named-producer lookups in value materialization, store
+sources, and publication; migrate only policy-free facts and leave frame-slot,
+store-source, call-boundary, and publication-planning decisions local.
 
 ## Watchouts
 
-- `dispatch_branch_fusion.cpp` still has local cast/load producer helpers
-  because those paths immediately cross into AArch64 emission and prepared
-  frame-slot addressing policy.
+- Step 3 is not fully complete yet: compatibility wrappers still have live
+  AArch64 consumers.
 - `dispatch_producers.cpp` remains the AArch64 compatibility surface for other
   consumers. Avoid deleting wrappers before call, publication, store, and
   branch-fusion users are migrated coherently.
