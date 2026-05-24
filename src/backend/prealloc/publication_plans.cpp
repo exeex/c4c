@@ -42,7 +42,7 @@ bool prepared_scalar_publication_available(
   return plan.status == PreparedScalarPublicationStatus::Available;
 }
 
-PreparedStorageEncodingKind prepared_publication_storage_encoding_from_home(
+PreparedStorageEncodingKind prepared_storage_encoding_from_value_home_kind(
     PreparedValueHomeKind home_kind) {
   switch (home_kind) {
     case PreparedValueHomeKind::Register:
@@ -57,6 +57,11 @@ PreparedStorageEncodingKind prepared_publication_storage_encoding_from_home(
       return PreparedStorageEncodingKind::None;
   }
   return PreparedStorageEncodingKind::None;
+}
+
+PreparedStorageEncodingKind prepared_publication_storage_encoding_from_home(
+    PreparedValueHomeKind home_kind) {
+  return prepared_storage_encoding_from_value_home_kind(home_kind);
 }
 
 PreparedScalarPublicationPlan plan_prepared_scalar_publication(
@@ -74,7 +79,7 @@ PreparedScalarPublicationPlan plan_prepared_scalar_publication(
       .source_value_name = home.value_name,
       .destination_home = &home,
       .destination_home_kind = home.kind,
-      .storage_encoding = prepared_publication_storage_encoding_from_home(home.kind),
+      .storage_encoding = prepared_storage_encoding_from_value_home_kind(home.kind),
       .current_block_entry_publication = inputs.current_block_entry_publication,
       .current_block_entry_publication_available =
           inputs.current_block_entry_publication != nullptr &&
@@ -182,7 +187,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     plan.source_value_name = home.value_name;
     plan.source_home_kind = home.kind;
     plan.source_storage_encoding =
-        prepared_publication_storage_encoding_from_home(home.kind);
+        prepared_storage_encoding_from_value_home_kind(home.kind);
     plan.source_slot_id = home.slot_id;
     plan.source_stack_offset_bytes = home.offset_bytes;
     plan.source_size_bytes = home.size_bytes;

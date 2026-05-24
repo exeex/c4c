@@ -106,6 +106,9 @@ struct PreparedScalarPublicationInputs {
 [[nodiscard]] bool prepared_scalar_publication_available(
     const PreparedScalarPublicationPlan& plan);
 
+[[nodiscard]] PreparedStorageEncodingKind prepared_storage_encoding_from_value_home_kind(
+    PreparedValueHomeKind home_kind);
+
 [[nodiscard]] PreparedStorageEncodingKind prepared_publication_storage_encoding_from_home(
     PreparedValueHomeKind home_kind);
 
