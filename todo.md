@@ -1,45 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-call-plan-phase-split.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Review Memory-Return And Formal Publication Boundaries
+Current Step ID: 5
+Current Step Title: Align Prepared Printer Calls Mirror
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 focused memory-return and publication-boundary
-review: extracted call result construction from `populate_call_plans(...)` into
-file-local `build_call_result_plan(...)` while leaving memory-return and formal
-publication behavior unchanged.
+Completed `plan.md` Step 5 prepared-printer call mirror audit: compared
+`src/backend/prealloc/prepared_printer/calls.cpp` against the call-plan helper
+families extracted in Steps 2-4 and made no printer code change.
 
 Changed files:
-- `src/backend/prealloc/call_plans.cpp`
 - `todo.md`
 
-Extraction result:
-- Added file-local `build_call_result_plan(...)` with explicit name tables,
-  target profile, regalloc, value-location, after-call bundle, instruction
-  index, and call inputs.
-- Moved the existing call-result ABI source binding lookup, fallback source
-  register placement, destination home lookup, destination value-id lookup, and
-  destination register placement logic into that helper.
-- Kept `build_memory_return_plan(...)` as the owned memory-return boundary; the
-  audit found it already isolates sret storage-slot lookup and frame-slot
-  selection from result-publication construction.
-- Verified formal publication remains separate: it consumes function formals,
-  formal ABI facts, value homes, and value-location lookups through
-  `PreparedFormalPublicationInputs`, and does not need call-plan ABI policy or
-  public contract movement for this slice.
-- Left `calls.hpp`, `call_plans.hpp`, `formal_publications.cpp`,
-  `formal_publications.hpp`, tests, `plan.md`, and the source idea untouched.
+No-code decision:
+- The printer still mirrors the aggregate `PreparedCallPlan` data families
+  directly: call header fields, indirect callee detail, memory-return detail,
+  argument source/destination fields, result source/destination fields,
+  preserved values, and clobbered registers.
+- Step 2 extracted argument source and destination construction helpers, but
+  did not rename or reshape `PreparedCallArgumentPlan` fields.
+- Step 3 extracted clobber span append/deduplication behind a file-local
+  helper, but did not change `PreparedClobberedRegister` fields or clobber dump
+  meaning. Preservation and boundary effects kept their existing data-family
+  boundaries.
+- Step 4 extracted call-result construction behind a file-local helper while
+  keeping `PreparedCallResultPlan`, `PreparedMemoryReturnPlan`, and formal
+  publication data independent.
+- Because the data contract and printed field meanings did not change, no
+  prepared-printer label, grouping, or helper rename was required.
+- Left `src/backend/prealloc/prepared_printer/calls.cpp`,
+  `src/backend/prealloc/call_plans.cpp`, public headers, tests, `plan.md`, and
+  the source idea untouched.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 5 and align the prepared-printer call mirror only if
-the earlier helper-family changes require naming or grouping updates. Preserve
-printed fields and meaning; if the current dump mirror already follows the
-aggregate call-plan data, record the no-code decision.
+Proceed to `plan.md` Step 6 for the final call-plan boundary review. Confirm
+the active diff remains behavior-preserving, summarize the final helper-family
+boundaries, and decide whether the source idea is ready for lifecycle closure.
 
 ## Watchouts
 
@@ -49,21 +49,22 @@ aggregate call-plan data, record the no-code decision.
   publication behavior, or prepared dump meaning.
 - Keep `calls.hpp` as the aggregate public contract unless usage proves a
   smaller independently consumed boundary.
-- `build_memory_return_plan(...)` still owns only sret storage and frame-slot
-  discovery; normal named result publication now stays behind
-  `build_call_result_plan(...)`.
-- Formal publication code deliberately remains independent from call plans; do
-  not move it into call-plan helpers without a separate public-contract reason.
-- Step 5 should inspect `prepared_printer/calls.cpp` against the new helper
-  families, not rewrite labels for cosmetic reasons.
+- The prepared printer is intentionally data-shape-driven; do not rewrite
+  labels or grouping for cosmetic alignment with file-local helper names.
+- `build_memory_return_plan(...)`, `build_call_result_plan(...)`,
+  `plan_call_argument_destination(...)`, `plan_call_argument_source(...)`, and
+  `build_call_clobber_set(...)` are construction boundaries only; they did not
+  create new public dump sections.
+- Step 6 should focus on final route quality, proof sufficiency, and closure
+  readiness rather than opening another extraction unless a real ownership
+  gap is found.
 
 ## Proof
 
-Ran delegated proof:
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
+Ran delegated no-code proof:
+`git diff --check`
 
-Result: passed, 162/162 backend tests passed.
+Result: passed.
 
-Also ran `git diff --check`; result: passed.
-
-Proof log: `test_after.log`.
+Proof log: none; no code changed, so the delegated proof did not produce
+`test_after.log`.
