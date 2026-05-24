@@ -64,6 +64,7 @@ struct PreparedI128LaneCarrier {
   std::optional<std::size_t> stack_offset_bytes;
 };
 
+// Value-carrier facts consumed by later prealloc phases; not helper-call policy.
 struct PreparedI128Carrier {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedValueId value_id = 0;
@@ -114,6 +115,7 @@ enum class PreparedF128CarrierKind {
   return "unknown";
 }
 
+// Full-width F128 value-carrier facts, separate from runtime helper resources.
 struct PreparedF128Carrier {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedValueId value_id = 0;
@@ -160,6 +162,7 @@ enum class PreparedAtomicOperationCarrierKind {
   return "unknown";
 }
 
+// Atomic instruction facts required for lowering completeness decisions.
 struct PreparedAtomicOperationCarrier {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedAtomicOperationCarrierKind carrier_kind =
@@ -219,6 +222,7 @@ enum class PreparedIntrinsicCarrierKind {
   return "unknown";
 }
 
+// Intrinsic instruction facts; call-plan references remain validation inputs.
 struct PreparedIntrinsicCarrier {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedIntrinsicCarrierKind carrier_kind = PreparedIntrinsicCarrierKind::Missing;
@@ -294,6 +298,7 @@ struct PreparedInlineAsmTiedHomeAuthority {
   PreparedTargetRegisterIdentity shared_register;
 };
 
+// Inline-asm operand facts and tied-home authorities for later lowering checks.
 struct PreparedInlineAsmOperand {
   c4c::backend::bir::InlineAsmOperandKind kind =
       c4c::backend::bir::InlineAsmOperandKind::Unsupported;

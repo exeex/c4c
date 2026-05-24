@@ -1,34 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-runtime-carrier-naming-alignment.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Clarify Runtime Helper Resource Names
+Current Step ID: 3
+Current Step Title: Clarify Special Carrier Fact Names
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 comment/grouping clarification in
-`src/backend/prealloc/runtime_helpers.hpp`.
+Completed Step 3 comment/grouping clarification in
+`src/backend/prealloc/special_carriers.hpp`.
 
-Added sparse comments around `PreparedF128RuntimeHelper::CarrierBinding`,
-`PreparedI128RuntimeHelper::LaneBinding`, both `ResourcePolicy` structs, and
-both `SelectedCallOwnershipPolicy` structs. The comments make the boundary
-explicit: carrier/lane bindings are source/result facts as bound for helper-call
-ABI marshaling, resource policies describe helper-call obligations, and selected
-call ownership is a helper-call completeness summary.
+Added sparse comments around the i128, f128, atomic, intrinsic, and inline-asm
+carrier aggregate families. The comments make the boundary explicit: special
+carriers record value, instruction, operand, and completeness facts consumed by
+later prealloc phases, not runtime helper-call resource policies.
 
-No public type names, fields, helper behavior, or prepared-printer labels were
-changed. Printer labels intentionally stay unchanged because this packet only
-clarified existing data-contract comments; it did not rename a public contract.
+No public type names, fields, carrier behavior, support decisions, implementation
+files, or prepared-printer labels were changed. Printer labels intentionally stay
+unchanged because this packet only clarified existing header comments; it did
+not rename a public prepared data contract.
 
 ## Suggested Next
 
-Execute Step 3 with one small comment/grouping repair in
-`src/backend/prealloc/special_carriers.hpp`: clarify that special carrier
-aggregates are value/fact completeness contracts for later prealloc phases, not
-runtime helper-call resource policies. Keep public type names and printer labels
-unchanged unless the supervisor explicitly delegates a public contract rename.
+Execute Step 4 printer mirror audit as a no-code or comment-only packet. Confirm
+that `src/backend/prealloc/prepared_printer/runtime_helpers.cpp` and
+`src/backend/prealloc/prepared_printer/special_carriers.cpp` still mirror the
+data-contract terminology after the Step 2 and Step 3 comment clarifications,
+and leave printed labels unchanged unless a real public contract rename is
+delegated.
 
 ## Watchouts
 
@@ -43,6 +43,8 @@ unchanged unless the supervisor explicitly delegates a public contract rename.
 - `intrinsic_carriers` references `prepared_call_plan` and `source_callee`
   because intrinsic validation depends on existing call-plan facts; this should
   stay separate from runtime-helper callee/resource ownership.
+- Step 3 deliberately avoided public renames; Step 4 should not invent printer
+  terminology churn just to mirror comments.
 
 ## Proof
 
