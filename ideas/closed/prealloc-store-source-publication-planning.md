@@ -69,3 +69,22 @@ This idea is intentionally narrower than full store lowering.
   avoid recovered-source or pointer-writeback behavior.
 - The new prealloc record is only a renamed AArch64 operand bundle.
 - The x86/RISC-V reuse proof is absent or only theoretical.
+
+## Closure Summary
+
+Closed after Step 5 review. The implementation added the prealloc-owned
+`PreparedStoreSourcePublicationPlan` API, routed touched AArch64 local store
+publication, recovered-source, and pointer-store writeback paths through
+target-local adapters over that neutral plan, and added the x86-labeled
+`backend_x86_store_source_publication_plan_reuse` fixture to prove record-level
+reuse without AArch64 memory operands or instruction records.
+
+The remaining AArch64 address legality, store mnemonic, scratch register,
+global materialization, stack-pointer sequence, and final instruction details
+remain target-local as intended; no separate follow-up initiative was identified
+for this source idea.
+
+Close proof: `test_before.log` records the latest backend proof with `162/162`
+backend tests passing. The close-time regression guard was run read-only against
+that current no-code-change backend proof with non-decreasing results allowed:
+`162/162` before and after, no new failures.
