@@ -9,36 +9,35 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_dynamic_stack.hpp` as the narrow
-private declaration surface for `lower_dynamic_stack_helper_call`, removed that
-declaration from `dispatch.hpp`, and updated direct implementation users to
-include the new header.
+`src/backend/mir/aarch64/codegen/dispatch_store_sources.hpp` as the narrow
+private declaration surface for store-source publication helpers implemented in
+`dispatch_store_sources.cpp`, removed those declarations from `dispatch.hpp`,
+and updated direct implementation users to include the new header.
 
 Direct callers updated:
 
-- `dispatch_dynamic_stack.cpp` now includes its own narrow header so the
-  definition is checked against the extracted declaration surface.
-- `dispatch.cpp` includes `dispatch_dynamic_stack.hpp` directly for lowering
-  dynamic-stack helper calls during generic block dispatch.
-- `dispatch_calls.cpp` includes `dispatch_dynamic_stack.hpp` directly for the
-  call-lowering bridge path that recognizes dynamic-stack helper calls.
+- `dispatch_store_sources.cpp` now includes its own narrow header so the
+  definitions are checked against the extracted declaration surface.
+- `dispatch.cpp` includes `dispatch_store_sources.hpp` directly for store local
+  and store global publication/writeback hooks during generic block dispatch.
+- `dispatch_value_materialization.cpp` includes `dispatch_store_sources.hpp`
+  directly for recovering a narrow store source behind a wide local load.
 
 ## Suggested Next
 
-Recommended next packet: extract the store-source dispatch declarations from
-`dispatch.hpp` into a narrow `dispatch_store_sources.hpp`, then update
-`dispatch_store_sources.cpp` and direct implementation users that publish or
-materialize store sources.
+Recommended next packet: extract the entry-formal dispatch declaration from
+`dispatch.hpp` into a narrow `dispatch_entry_formals.hpp`, then update
+`dispatch_entry_formals.cpp` and the direct dispatch user that emits entry
+formal publications.
 
 ## Watchouts
 
-- `dispatch_dynamic_stack.cpp` still includes `dispatch.hpp` for publication
-  and frame/address helper declarations; this packet only moved the dynamic
-  stack entry declaration.
-- `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
-  publication, select-chain materialization, and stack/frame helper
-  declarations; those are separate header-narrowing candidates and were not
-  widened into this packet.
+- `dispatch_store_sources.cpp` still includes `dispatch.hpp` for publication,
+  edge-copy, value-materialization, lookup, and shared frame/address helper
+  declarations; this packet only moved the store-source declaration surface.
+- `dispatch.cpp` already has an internal `NarrowLocalStorePublication` helper
+  type in its anonymous namespace; that pre-existing local type was left in
+  place and is separate from the store-source header declaration.
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.

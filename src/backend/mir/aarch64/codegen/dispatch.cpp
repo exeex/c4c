@@ -12,6 +12,7 @@
 #include "dispatch_dynamic_stack.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
+#include "dispatch_store_sources.hpp"
 #include "f128.hpp"
 #include "float_ops.hpp"
 #include "globals.hpp"
