@@ -619,6 +619,23 @@ namespace prepare = c4c::backend::prepare;
       fixed_slots_use_frame_pointer(context.function));
 }
 
+[[nodiscard]] bool emit_prepared_home_publication_plan_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const prepare::PreparedValueHome& home,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  const auto plan = prepare::plan_prepared_scalar_publication(
+      prepare::PreparedScalarPublicationInputs{
+          .source_value = &value,
+          .destination_home = &home,
+      });
+  return emit_prepared_scalar_publication_plan_to_register(context,
+                                                          plan,
+                                                          target_index,
+                                                          lines);
+}
+
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -666,41 +683,31 @@ namespace prepare = c4c::backend::prepare;
       is_current_block_join_parallel_copy_source(context, *producer)) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
-      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
-                                                     ? &context.function.prepared->stack_layout
-                                                     : nullptr,
-                                                 *home,
-                                                 value.type,
-                                                 target_index,
-                                                 lines,
-                                                 fixed_slots_use_frame_pointer(context.function));
+      return emit_prepared_home_publication_plan_to_register(context,
+                                                            value,
+                                                            *home,
+                                                            target_index,
+                                                            lines);
     }
   }
   if (producer == nullptr) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
-      const auto plan = prepare::plan_prepared_scalar_publication(
-          prepare::PreparedScalarPublicationInputs{
-              .source_value = &value,
-              .destination_home = home,
-          });
-      return emit_prepared_scalar_publication_plan_to_register(context,
-                                                              plan,
-                                                              target_index,
-                                                              lines);
+      return emit_prepared_home_publication_plan_to_register(context,
+                                                            value,
+                                                            *home,
+                                                            target_index,
+                                                            lines);
     }
     return false;
   }
   if (const auto* home = prepared_value_home_for_value(context, value);
       home != nullptr && value_has_current_block_entry_publication(context, *home)) {
-    return emit_prepared_value_home_to_register(context.function.prepared != nullptr
-                                                   ? &context.function.prepared->stack_layout
-                                                   : nullptr,
-                                               *home,
-                                               value.type,
-                                               target_index,
-                                               lines,
-                                               fixed_slots_use_frame_pointer(context.function));
+    return emit_prepared_home_publication_plan_to_register(context,
+                                                          value,
+                                                          *home,
+                                                          target_index,
+                                                          lines);
   }
 
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);

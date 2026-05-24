@@ -10,10 +10,12 @@ Current Step Title: Adapt AArch64 Publication Consumption
 
 Completed Step 3: `Adapt AArch64 Publication Consumption`.
 
-Adapted the early no-producer scalar publication fallback in
+Adapted the adjacent join-parallel-copy and
+current-block-entry-publication home fallbacks in
 `emit_value_publication_to_register` to construct
 `prepare::PreparedScalarPublicationPlan` with the source BIR value and prepared
-destination home, then consume it through a narrow AArch64 lowering adapter.
+destination home, then consume it through the same narrow AArch64 lowering
+adapter used by the no-producer fallback.
 
 The adapter accepts only neutral register-home and stack-slot hooks today. It
 checks plan availability, hook kind, storage encoding, and stack-offset facts,
@@ -23,10 +25,10 @@ construction remain target-local.
 
 ## Suggested Next
 
-Continue Step 3 by migrating the adjacent join-parallel-copy or
-current-block-entry-publication home fallback through the same neutral plan
-adapter, provided the slice can preserve the current AArch64 clobber and entry
-publication semantics without moving policy into prealloc.
+Continue Step 3 by reviewing the remaining direct prepared-home publication
+fallbacks, starting with the load-local/load-global reload-sensitive paths, and
+only migrate those whose reload and memory-source semantics can stay entirely
+target-local.
 
 ## Watchouts
 
@@ -35,7 +37,10 @@ The adapter intentionally does not lower `RematerializableImmediate` or
 target-policy-adjacent. Immediate materialization, scratch choice, recursive
 producer lowering, pointer-address construction, global-load sequences,
 narrow-store recovery, register alias checks, and machine instruction
-construction should stay in AArch64 for this plan.
+construction should stay in AArch64 for this plan. The direct
+`current_block_entry_publication_register` fast path and join-publication
+clobber check still parse AArch64 registers directly and should remain
+target-local unless a later plan introduces a neutral register-identity record.
 
 ## Proof
 
