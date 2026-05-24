@@ -6,7 +6,7 @@
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
-#include "dispatch_branch_fusion.hpp"
+#include "comparison_branch_fusion.hpp"
 #include "dispatch_calls.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "dispatch_dynamic_stack.hpp"

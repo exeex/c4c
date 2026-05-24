@@ -1,67 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/aarch64-codegen-reference-layout-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Reduce Catch-All Header Surface
+Current Step ID: 3
+Current Step Title: Rename Or Merge Thin Historical Shards
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_store_sources.hpp` as the narrow
-private declaration surface for store-source publication helpers implemented in
-`dispatch_store_sources.cpp`, removed those declarations from `dispatch.hpp`,
-and updated direct implementation users to include the new header.
+Completed Step 3 - Rename Or Merge Thin Historical Shards. Mechanically renamed
+the durable comparison-family branch-fusion shard from
+`dispatch_branch_fusion.cpp`/`.hpp` to
+`comparison_branch_fusion.cpp`/`.hpp`, updated the CMake source list, and moved
+direct include sites to the new header with no behavior changes.
 
-Direct callers updated:
-
-- `dispatch_store_sources.cpp` now includes its own narrow header so the
-  definitions are checked against the extracted declaration surface.
-- `dispatch.cpp` includes `dispatch_store_sources.hpp` directly for store local
-  and store global publication/writeback hooks during generic block dispatch.
-- `dispatch_value_materialization.cpp` includes `dispatch_store_sources.hpp`
-  directly for recovering a narrow store source behind a wide local load.
+This shard remains separate from `comparison.cpp` because the fused
+compare/branch lowering implementation is large, cohesive, and still uses
+dispatch publication hooks. The durable-family rename fixes the historical
+`dispatch_*` label without forcing a low-value merge into the main comparison
+implementation.
 
 ## Suggested Next
 
-Recommended next packet: make Step 2 a route-boundary packet, not another
-open-ended one-header extraction. Choose one of these outcomes and update this
-file with the decision:
-
-- Close Step 2 with a grouped remaining-boundary decision: either extract a
-  cohesive remaining private surface, or explicitly justify leaving
-  entry-formal, publication, value-materialization, and edge-copy declarations
-  in `dispatch.hpp` until Step 3 can rename, merge, or assign them to durable
-  families.
-- Transition to Step 3 by choosing one historical dispatch shard for
-  rename/merge/justify work now that the broadest catch-all declaration surface
-  has been reduced.
-
-Do not continue with isolated `dispatch_*.hpp` additions unless the extraction
-removes a meaningful remaining dependency from `dispatch.hpp` and directly
-prepares a Step 3 family rename, merge, or durable-boundary justification.
+Recommended next packet: continue Step 3 with one bounded historical
+`dispatch_*` shard decision. Prefer another mechanical durable-family rename
+only when the target shard is already cohesive and mapped to a durable family;
+otherwise record an explicit keep-as-dispatch-internal justification rather than
+merging unrelated responsibilities.
 
 ## Watchouts
 
+- `comparison_branch_fusion.hpp` intentionally keeps the existing
+  `DispatchBranchFusionHooks` type name because renaming the hook API would add
+  churn outside this mechanical file-boundary slice.
+- `comparison_branch_fusion.cpp` still depends on dispatch lookup/publication
+  hooks, so this packet does not claim the implementation is independent of the
+  dispatcher.
 - `dispatch_store_sources.cpp` still includes `dispatch.hpp` for publication,
   edge-copy, value-materialization, lookup, and shared frame/address helper
-  declarations; this packet only moved the store-source declaration surface.
-- `dispatch.cpp` already has an internal `NarrowLocalStorePublication` helper
-  type in its anonymous namespace; that pre-existing local type was left in
-  place and is separate from the store-source header declaration.
+  declarations; moving those boundaries is outside this packet.
 - `calls.hpp` still has a pre-existing `append_call_diagnostic` declaration even
   though direct implementation users now include `dispatch_diagnostics.hpp`;
   removing that declaration would cross this packet's owned-files boundary.
-- `prepared_value_home_for_value` remains in `dispatch.hpp` because it is
-  implemented in `dispatch_publication.cpp`; moving publication or
-  value-materialization declarations was intentionally outside this packet.
-- Reviewer checkpoint `review/aarch64-codegen-layout-step2-review.md` judged the
-  source idea and plan aligned, but the route is drifting into low-yield
-  repeated private-header extraction. The next packet should stop or redirect
-  that pattern at the Step 2 boundary.
-- Step 2 boundary validation should be broader than the per-packet backend
-  proof before the supervisor accepts the milestone or starts Step 3.
 
 ## Proof
 
@@ -73,6 +53,14 @@ Result: passed. `cmake --build --preset default` completed, and CTest reported
 162/162 `^backend_` tests passed. Proof log: `test_after.log`.
 
 Also ran `git diff --check`; result: passed.
+
+Supervisor route-boundary validation for the Step 2 to Step 3 transition also
+passed:
+
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } 2>&1 | tee /tmp/c4c_step3_route_boundary_full.log'`
+
+Result: passed. `cmake --build --preset default` completed, and CTest reported
+3410/3410 tests passed.
 
 # Retained Step 1 Output
 

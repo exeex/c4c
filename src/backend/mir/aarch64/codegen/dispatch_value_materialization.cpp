@@ -3,7 +3,7 @@
 
 #include "../abi/abi.hpp"
 #include "alu.hpp"
-#include "dispatch_branch_fusion.hpp"
+#include "comparison_branch_fusion.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
 #include "dispatch_store_sources.hpp"
