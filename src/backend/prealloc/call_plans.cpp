@@ -265,6 +265,15 @@ struct CallPreservationCandidates {
   std::vector<const PreparedRegallocValue*> by_start_point;
 };
 
+struct CallArgumentDestinationPlan {
+  std::optional<std::string> register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterBank> register_bank;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> register_placement;
+};
+
 [[nodiscard]] PreparedValueHomeLookup make_prepared_value_home_lookup(
     const PreparedValueLocationFunction* value_locations) {
   PreparedValueHomeLookup lookup;
@@ -722,6 +731,101 @@ struct CallPreservationCandidates {
   return nullptr;
 }
 
+[[nodiscard]] PreparedRegisterBank call_argument_destination_register_bank(
+    const bir::CallInst& call,
+    std::size_t arg_index,
+    PreparedRegisterBank value_bank) {
+  return arg_index < call.arg_abi.size() &&
+                 call.arg_abi[arg_index].type == bir::TypeKind::Ptr &&
+                 call.arg_abi[arg_index].sret_pointer
+             ? PreparedRegisterBank::Gpr
+             : value_bank;
+}
+
+[[nodiscard]] CallArgumentDestinationPlan plan_call_argument_destination(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    const PreparedMoveBundle* before_call_bundle,
+    std::size_t arg_index,
+    PreparedRegisterBank value_bank) {
+  CallArgumentDestinationPlan destination;
+  const auto abi_register_index =
+      regalloc_detail::call_arg_abi_register_index(target_profile, call, arg_index);
+
+  auto apply_register_binding = [&](const PreparedAbiBinding& binding) {
+    destination.register_name = binding.destination_register_name;
+    destination.contiguous_width = binding.destination_contiguous_width;
+    destination.occupied_register_names = binding.destination_occupied_register_names;
+    destination.register_bank = call_argument_destination_register_bank(call, arg_index, value_bank);
+    destination.register_placement = binding.destination_register_placement;
+    if (!destination.register_placement.has_value() &&
+        arg_index < call.arg_abi.size() && abi_register_index.has_value()) {
+      destination.register_placement =
+          call_arg_destination_register_placement(target_profile,
+                                                  call.arg_abi[arg_index],
+                                                  *abi_register_index,
+                                                  destination.contiguous_width);
+    }
+  };
+
+  if (const auto* binding = find_call_abi_binding(before_call_bundle,
+                                                  PreparedMoveDestinationKind::CallArgumentAbi,
+                                                  arg_index);
+      binding != nullptr) {
+    destination.register_name = binding->destination_register_name;
+    destination.contiguous_width = binding->destination_contiguous_width;
+    destination.occupied_register_names = binding->destination_occupied_register_names;
+    destination.stack_offset_bytes = binding->destination_stack_offset_bytes;
+    if (binding->destination_register_name.has_value()) {
+      apply_register_binding(*binding);
+    }
+  }
+  if (!destination.register_name.has_value()) {
+    if (const auto* register_binding =
+            find_call_register_abi_binding(before_call_bundle,
+                                           PreparedMoveDestinationKind::CallArgumentAbi,
+                                           arg_index);
+        register_binding != nullptr) {
+      apply_register_binding(*register_binding);
+    }
+  }
+
+  if (arg_index < call.arg_abi.size() &&
+      destination.register_name.has_value() && abi_register_index.has_value()) {
+    const std::size_t byval_lane_width =
+        aarch64_byval_register_lane_width(target_profile, call.arg_abi[arg_index]);
+    if (byval_lane_width > destination.contiguous_width) {
+      auto occupied_register_names =
+          regalloc_detail::call_arg_destination_register_names(
+              target_profile,
+              PreparedRegisterClass::General,
+              *abi_register_index,
+              *destination.register_name,
+              byval_lane_width);
+      if (occupied_register_names.empty()) {
+        destination.register_name = std::nullopt;
+        destination.contiguous_width = 1;
+        destination.occupied_register_names.clear();
+        destination.register_bank = std::nullopt;
+        destination.register_placement = std::nullopt;
+        destination.stack_offset_bytes =
+            regalloc_detail::call_arg_destination_stack_offset_bytes(
+                target_profile, call, arg_index);
+      } else {
+        destination.contiguous_width = byval_lane_width;
+        destination.occupied_register_names = std::move(occupied_register_names);
+        destination.register_placement =
+            call_arg_destination_register_placement(target_profile,
+                                                    call.arg_abi[arg_index],
+                                                    *abi_register_index,
+                                                    byval_lane_width);
+      }
+    }
+  }
+
+  return destination;
+}
+
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function) {
@@ -1105,163 +1209,68 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
           };
-          const auto abi_register_index =
-              regalloc_detail::call_arg_abi_register_index(
-                  prepared.target_profile, *call, arg_index);
+          const CallArgumentDestinationPlan destination =
+              plan_call_argument_destination(prepared.target_profile,
+                                             *call,
+                                             before_call_bundle,
+                                             arg_index,
+                                             arg_plan.value_bank);
+          arg_plan.destination_register_name = destination.register_name;
+          arg_plan.destination_contiguous_width = destination.contiguous_width;
+          arg_plan.destination_occupied_register_names =
+              destination.occupied_register_names;
+          arg_plan.destination_register_bank = destination.register_bank;
+          arg_plan.destination_stack_offset_bytes = destination.stack_offset_bytes;
+          arg_plan.destination_register_placement = destination.register_placement;
 
-          if (const auto* binding = find_call_abi_binding(before_call_bundle,
-                                                          PreparedMoveDestinationKind::CallArgumentAbi,
-                                                          arg_index);
-              binding != nullptr) {
-            arg_plan.destination_register_name = binding->destination_register_name;
-            arg_plan.destination_contiguous_width = binding->destination_contiguous_width;
-            arg_plan.destination_occupied_register_names =
-                binding->destination_occupied_register_names;
-            arg_plan.destination_stack_offset_bytes = binding->destination_stack_offset_bytes;
-            if (binding->destination_register_name.has_value()) {
-              arg_plan.destination_register_bank =
-                  arg_index < call->arg_abi.size() &&
-                          call->arg_abi[arg_index].type == bir::TypeKind::Ptr &&
-                          call->arg_abi[arg_index].sret_pointer
-                      ? PreparedRegisterBank::Gpr
-                      : arg_plan.value_bank;
-              arg_plan.destination_register_placement =
-                  binding->destination_register_placement;
-              if (!arg_plan.destination_register_placement.has_value() &&
-                  arg_index < call->arg_abi.size() && abi_register_index.has_value()) {
-                arg_plan.destination_register_placement =
-                    call_arg_destination_register_placement(prepared.target_profile,
-                                                            call->arg_abi[arg_index],
-                                                            *abi_register_index,
-                                                            arg_plan.destination_contiguous_width);
+          if (const auto value_name_id = maybe_named_value_id(prepared.names, call->args[arg_index]);
+              value_name_id.has_value() && value_locations != nullptr) {
+            if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
+                home != nullptr) {
+              arg_plan.source_encoding = storage_encoding_from_home(*home);
+              arg_plan.source_register_name = home->register_name;
+              arg_plan.source_slot_id = home->slot_id;
+              arg_plan.source_stack_offset_bytes = home->offset_bytes;
+              if (home->immediate_i32.has_value()) {
+                arg_plan.source_literal = bir::Value::immediate_i32(*home->immediate_i32);
               }
-            }
-          }
-          if (!arg_plan.destination_register_name.has_value()) {
-            if (const auto* register_binding =
-                    find_call_register_abi_binding(before_call_bundle,
-                                                   PreparedMoveDestinationKind::CallArgumentAbi,
-                                                   arg_index);
-                register_binding != nullptr) {
-              arg_plan.destination_register_name = register_binding->destination_register_name;
-              arg_plan.destination_contiguous_width =
-                  register_binding->destination_contiguous_width;
-              arg_plan.destination_occupied_register_names =
-                  register_binding->destination_occupied_register_names;
-              arg_plan.destination_register_bank =
-                  arg_index < call->arg_abi.size() &&
-                          call->arg_abi[arg_index].type == bir::TypeKind::Ptr &&
-                          call->arg_abi[arg_index].sret_pointer
-                      ? PreparedRegisterBank::Gpr
-                      : arg_plan.value_bank;
-              arg_plan.destination_register_placement =
-                  register_binding->destination_register_placement;
-              if (!arg_plan.destination_register_placement.has_value() &&
-                  arg_index < call->arg_abi.size() && abi_register_index.has_value()) {
-                arg_plan.destination_register_placement =
-                    call_arg_destination_register_placement(prepared.target_profile,
-                                                            call->arg_abi[arg_index],
-                                                            *abi_register_index,
-                                                            arg_plan.destination_contiguous_width);
-                }
-              }
-            }
-
-            if (arg_index < call->arg_abi.size() &&
-                arg_plan.destination_register_name.has_value() && abi_register_index.has_value()) {
-              const std::size_t byval_lane_width =
-                  aarch64_byval_register_lane_width(prepared.target_profile,
-                                                     call->arg_abi[arg_index]);
-              if (byval_lane_width > arg_plan.destination_contiguous_width) {
-                auto occupied_register_names =
-                    regalloc_detail::call_arg_destination_register_names(
-                        prepared.target_profile,
-                        PreparedRegisterClass::General,
-                        *abi_register_index,
-                        *arg_plan.destination_register_name,
-                        byval_lane_width);
-                if (occupied_register_names.empty()) {
-                  arg_plan.destination_register_name = std::nullopt;
-                  arg_plan.destination_contiguous_width = 1;
-                  arg_plan.destination_occupied_register_names.clear();
-                  arg_plan.destination_register_bank = std::nullopt;
-                  arg_plan.destination_register_placement = std::nullopt;
-                  arg_plan.destination_stack_offset_bytes =
-                      regalloc_detail::call_arg_destination_stack_offset_bytes(
-                          prepared.target_profile, *call, arg_index);
-                } else {
-                  arg_plan.destination_contiguous_width = byval_lane_width;
-                  arg_plan.destination_occupied_register_names =
-                      std::move(occupied_register_names);
-                  arg_plan.destination_register_placement =
-                      call_arg_destination_register_placement(prepared.target_profile,
-                                                              call->arg_abi[arg_index],
-                                                              *abi_register_index,
-                                                              byval_lane_width);
-                }
-              }
-            }
-
-            if (arg_index < call->args.size()) {
-            if (const auto value_name_id = maybe_named_value_id(prepared.names, call->args[arg_index]);
-                value_name_id.has_value() && value_locations != nullptr) {
-              if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
-                  home != nullptr) {
-                arg_plan.source_encoding = storage_encoding_from_home(*home);
-                arg_plan.source_register_name = home->register_name;
-                arg_plan.source_slot_id = home->slot_id;
-                arg_plan.source_stack_offset_bytes = home->offset_bytes;
-                if (home->immediate_i32.has_value()) {
-                  arg_plan.source_literal = bir::Value::immediate_i32(*home->immediate_i32);
-                }
-                arg_plan.source_base_value_name = home->pointer_base_value_name;
-                arg_plan.source_pointer_byte_delta = home->pointer_byte_delta;
-                if (home->pointer_base_value_name.has_value()) {
-                  if (const auto* base_home =
-                          find_prepared_value_home(*value_locations, *home->pointer_base_value_name);
-                      base_home != nullptr) {
-                    arg_plan.source_base_value_id = base_home->value_id;
-                  } else if (regalloc_function != nullptr) {
-                    if (const auto* base_regalloc_value =
-                            find_regalloc_value_by_name(*regalloc_function,
-                                                        *home->pointer_base_value_name);
-                        base_regalloc_value != nullptr) {
-                      arg_plan.source_base_value_id = base_regalloc_value->value_id;
-                    }
+              arg_plan.source_base_value_name = home->pointer_base_value_name;
+              arg_plan.source_pointer_byte_delta = home->pointer_byte_delta;
+              if (home->pointer_base_value_name.has_value()) {
+                if (const auto* base_home =
+                        find_prepared_value_home(*value_locations, *home->pointer_base_value_name);
+                    base_home != nullptr) {
+                  arg_plan.source_base_value_id = base_home->value_id;
+                } else if (regalloc_function != nullptr) {
+                  if (const auto* base_regalloc_value =
+                          find_regalloc_value_by_name(*regalloc_function,
+                                                      *home->pointer_base_value_name);
+                      base_regalloc_value != nullptr) {
+                    arg_plan.source_base_value_id = base_regalloc_value->value_id;
                   }
                 }
               }
-              if (regalloc_function != nullptr) {
-                if (const auto* regalloc_value =
-                        find_regalloc_value_by_name(*regalloc_function, *value_name_id);
+            }
+            if (regalloc_function != nullptr) {
+              if (const auto* regalloc_value =
+                      find_regalloc_value_by_name(*regalloc_function, *value_name_id);
                   regalloc_value != nullptr) {
-                  arg_plan.source_value_id = regalloc_value->value_id;
-                  arg_plan.source_register_bank =
-                      register_bank_from_class(regalloc_value->register_class);
-                  if (regalloc_value->assigned_register.has_value() &&
-                      arg_plan.source_register_name ==
-                          std::optional<std::string>{
-                              regalloc_value->assigned_register->register_name}) {
-                    arg_plan.source_register_placement =
-                        assignment_register_placement(prepared.target_profile,
-                                                      *regalloc_value->assigned_register);
-                  }
+                arg_plan.source_value_id = regalloc_value->value_id;
+                arg_plan.source_register_bank =
+                    register_bank_from_class(regalloc_value->register_class);
+                if (regalloc_value->assigned_register.has_value() &&
+                    arg_plan.source_register_name ==
+                        std::optional<std::string>{
+                            regalloc_value->assigned_register->register_name}) {
+                  arg_plan.source_register_placement =
+                      assignment_register_placement(prepared.target_profile,
+                                                    *regalloc_value->assigned_register);
                 }
               }
-              const auto symbol_name =
-                  resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
-              if (symbol_name.has_value()) {
-                arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
-                if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
-                  arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
-                  arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
-                } else {
-                  arg_plan.source_symbol_name = std::string(*symbol_name);
-                }
-              }
-            } else if (const auto symbol_name =
-                           resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
-                       symbol_name.has_value()) {
+            }
+            const auto symbol_name =
+                resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
+            if (symbol_name.has_value()) {
               arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
               if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
                 arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
@@ -1269,17 +1278,27 @@ void populate_call_plans(PreparedBirModule& prepared) {
               } else {
                 arg_plan.source_symbol_name = std::string(*symbol_name);
               }
-            } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
-              arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
-              arg_plan.source_literal = call->args[arg_index];
-              if (regalloc_function != nullptr) {
-                if (const auto* constant_value =
-                        find_f128_constant_regalloc_value(*regalloc_function, call->args[arg_index]);
-                    constant_value != nullptr) {
-                  arg_plan.source_value_id = constant_value->value_id;
-                  arg_plan.source_register_bank =
-                      register_bank_from_class(constant_value->register_class);
-                }
+            }
+          } else if (const auto symbol_name =
+                         resolve_symbol_pointer_name(prepared.module, call->args[arg_index]);
+                     symbol_name.has_value()) {
+            arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
+            if (call->args[arg_index].pointer_symbol_link_name_id != kInvalidLinkName) {
+              arg_plan.source_symbol_name_id = prepared.names.link_names.intern(*symbol_name);
+              arg_plan.source_symbol_name = display_symbol_pointer_name(*symbol_name);
+            } else {
+              arg_plan.source_symbol_name = std::string(*symbol_name);
+            }
+          } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
+            arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
+            arg_plan.source_literal = call->args[arg_index];
+            if (regalloc_function != nullptr) {
+              if (const auto* constant_value =
+                      find_f128_constant_regalloc_value(*regalloc_function, call->args[arg_index]);
+                  constant_value != nullptr) {
+                arg_plan.source_value_id = constant_value->value_id;
+                arg_plan.source_register_bank =
+                    register_bank_from_class(constant_value->register_class);
               }
             }
           }
@@ -1372,7 +1391,6 @@ void populate_call_plans(PreparedBirModule& prepared) {
         function_plan.calls.push_back(std::move(call_plan));
       }
     }
-
     if (!function_plan.calls.empty()) {
       prepared.call_plans.functions.push_back(std::move(function_plan));
     }
