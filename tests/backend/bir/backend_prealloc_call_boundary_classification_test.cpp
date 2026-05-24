@@ -259,6 +259,12 @@ int verify_missing_and_mismatched_statuses() {
       .destination_register_name = "x0",
       .destination_register_placement = placement,
   };
+  const prepare::PreparedMoveBundle result_mismatch_bundle{
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 3,
+      .instruction_index = 9,
+      .abi_bindings = {binding_for(mismatched_result)},
+  };
   const prepare::PreparedMoveResolution unsupported_op{
       .from_value_id = 10,
       .to_value_id = 10,
@@ -270,6 +276,12 @@ int verify_missing_and_mismatched_statuses() {
       .block_index = 3,
       .instruction_index = 9,
   };
+  const prepare::PreparedMoveBundle no_result_bundle{
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 3,
+      .instruction_index = 9,
+      .abi_bindings = {binding_for(mismatched_result)},
+  };
 
   const auto no_index = prepare::classify_prepared_call_boundary_move(
       call_plan, empty_bundle, missing_index);
@@ -278,9 +290,9 @@ int verify_missing_and_mismatched_statuses() {
   const auto no_binding = prepare::classify_prepared_call_boundary_move(
       call_plan, empty_bundle, missing_binding);
   const auto bad_result = prepare::classify_prepared_call_boundary_move(
-      call_plan, empty_bundle, mismatched_result);
+      call_plan, result_mismatch_bundle, mismatched_result);
   const auto no_result = prepare::classify_prepared_call_boundary_move(
-      no_result_call_plan, empty_bundle, mismatched_result);
+      no_result_call_plan, no_result_bundle, mismatched_result);
   const auto temp_op = prepare::classify_prepared_call_boundary_move(
       call_plan, empty_bundle, unsupported_op);
 
@@ -302,10 +314,14 @@ int verify_missing_and_mismatched_statuses() {
               "mismatched result plan status mismatch") ||
       !expect(bad_result.result_plan == &*call_plan.result,
               "mismatched result should preserve result plan authority") ||
+      !expect(bad_result.abi_binding == &result_mismatch_bundle.abi_bindings[0],
+              "mismatched result should preserve matched ABI binding") ||
       !expect(no_result.status ==
                   prepare::PreparedCallBoundaryMoveClassificationStatus::
                       MissingCallResultPlan,
               "missing result plan status mismatch") ||
+      !expect(no_result.abi_binding == &no_result_bundle.abi_bindings[0],
+              "missing result plan should preserve matched ABI binding") ||
       !expect(temp_op.status ==
                   prepare::PreparedCallBoundaryMoveClassificationStatus::UnsupportedOpKind,
               "unsupported op-kind status mismatch")) {

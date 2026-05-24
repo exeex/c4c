@@ -58,15 +58,6 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 
 // calls_argument_sources
 
-[[nodiscard]] const prepare::PreparedCallArgumentPlan* find_prepared_argument_plan(
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedMoveResolution& move);
-[[nodiscard]] const prepare::PreparedAbiBinding* find_prepared_argument_binding(
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedMoveResolution& move);
-[[nodiscard]] const prepare::PreparedAbiBinding* find_prepared_result_binding(
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedMoveResolution& move);
 [[nodiscard]] bool complete_full_width_f128_carrier(
     const prepare::PreparedF128Carrier* carrier);
 [[nodiscard]] bool complete_f128_constant_carrier(

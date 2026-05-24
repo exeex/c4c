@@ -1,53 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/call-boundary-move-classification-prealloc.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Prealloc Call-Boundary Classification API
+Current Step ID: Step 3
+Current Step Title: Adapt AArch64 To Consume The Shared Classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the prealloc-owned target-neutral call-boundary move
-classification API.
+Step 3 adapted AArch64 before-call and after-call move resolution to consume
+`prepare::classify_prepared_call_boundary_move(...)` for the shared
+call-boundary classification surface.
 
-`classify_prepared_call_boundary_move(...)` now returns decoded Prepared facts
-for a move without constructing MIR operands: phase, destination role, storage
-kind, ABI index, source Prepared call plan/bundle/move pointers, matched call
-argument/result plan, matched ABI binding, and authority status.
+The AArch64-local argument/result plan and ABI binding lookup helpers were
+removed from `calls_argument_sources.cpp`/`calls.hpp`; `calls_moves.cpp` now
+uses the shared classification's matched Prepared argument plan, result plan,
+and ABI binding pointers. AArch64 still owns register conversion/spelling, MIR
+operand construction, diagnostics, byval/f128/sret policy, preservation
+emission, printed records, and final instruction emission.
 
-The helper covers available classifications plus unsupported op kind, missing
-ABI index, missing call argument plan, missing call result plan, mismatched
-call result plan, and missing ABI binding. It preserves higher-level Prepared
-authority pointers when a later target mapper needs to choose diagnostics or
-emission locally.
-
-Focused direct coverage was added in
-`backend_prealloc_call_boundary_classification` for register arguments,
-immediate arguments without source value ids, structured stack-lane argument
-matching with mismatched source value ids, call results, function-return moves,
-ordinary value moves, and missing or mismatched authority statuses. The
-stack-lane match is based on Prepared ABI index, frame-slot source encoding,
-stack destination kind, and destination stack offset, not target/codegen reason
-strings.
+The shared helper was kept target-neutral while preserving matched ABI binding
+authority for missing or mismatched call-result plans. This preserves existing
+AArch64 HFA lane fallback behavior without reintroducing target-local raw
+binding decoding.
 
 ## Suggested Next
 
-Step 3 should adapt AArch64 call-boundary operand/move resolution to consume
-the prealloc classification helper while keeping AAPCS64 policy, register
-conversion, diagnostics, MIR operand construction, printing, and instruction
-emission target-local.
+Step 4 should prove the reuse path for x86 prepared operands by exposing or
+using the same prealloc call-boundary classification helper from the x86
+prepared surface, without rewriting x86 lowering or moving x86-specific
+operand spelling/encoding into prealloc.
 
 ## Watchouts
 
-The API deliberately reports facts and status only. Do not move AArch64
-register spelling, AAPCS64 sret/byval/f128 policy, memory/immediate/symbol MIR
-operand construction, printed records, or emitted instruction selection into
-prealloc when adapting the consumer.
+AArch64 now consumes only the narrow move-to-plan and move-to-binding facts.
+Preservation lookup/emission remains target-local and was not extracted.
 
-The helper currently classifies move-to-plan and move-to-binding authority. It
-does not replace preservation lookup/emission yet; that should remain a
-separate extraction if needed.
+Keep the classification result as facts/status only in future consumers; do
+not move target register spelling, MIR operands, diagnostics, or instruction
+encoding into prealloc.
 
 ## Proof
 

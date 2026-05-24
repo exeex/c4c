@@ -1398,6 +1398,7 @@ PreparedCallBoundaryMoveClassification classify_prepared_call_boundary_move(
       return classification;
 
     case PreparedMoveDestinationKind::CallResultAbi:
+      classification.abi_binding = find_call_boundary_abi_binding(bundle, move);
       classification.result_plan =
           call_plan.result.has_value() ? &*call_plan.result : nullptr;
       if (classification.result_plan == nullptr) {
@@ -1411,7 +1412,6 @@ PreparedCallBoundaryMoveClassification classify_prepared_call_boundary_move(
             PreparedCallBoundaryMoveClassificationStatus::MismatchedCallResultPlan;
         return classification;
       }
-      classification.abi_binding = find_call_boundary_abi_binding(bundle, move);
       if (classification.abi_binding == nullptr) {
         classification.status =
             PreparedCallBoundaryMoveClassificationStatus::MissingAbiBinding;

@@ -1179,8 +1179,10 @@ make_immediate_cast_call_argument_publication_instruction(
       context.function.value_locations == nullptr
           ? nullptr
           : find_value_home(context, move.from_value_id);
-  const auto* argument = find_prepared_argument_plan(call_plan, move);
-  const auto* binding = find_prepared_argument_binding(bundle, move);
+  const auto classification =
+      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* argument = classification.argument_plan;
+  const auto* binding = classification.abi_binding;
   const auto* f128_carriers =
       context.function.prepared == nullptr
           ? nullptr
@@ -2557,8 +2559,10 @@ make_immediate_cast_call_argument_publication_instruction(
       context.function.value_locations == nullptr
           ? nullptr
           : find_value_home(context, move.to_value_id);
-  const auto* result_plan = call_plan.result.has_value() ? &*call_plan.result : nullptr;
-  const auto* binding = find_prepared_result_binding(bundle, move);
+  const auto classification =
+      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* result_plan = classification.result_plan;
+  const auto* binding = classification.abi_binding;
   const auto* f128_carriers =
       context.function.prepared == nullptr
           ? nullptr
