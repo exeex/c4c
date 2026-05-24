@@ -77,3 +77,17 @@ case-shaped logic keyed to one storage spelling.
 Reject if the new API only wraps the old AArch64 helper names without moving
 ownership of Prepared storage interpretation, or if x86 would still need to
 reimplement the same decoding from raw Prepared records.
+
+## Completion Note
+
+Closed after the active runbook moved policy-free Prepared value-home and
+storage interpretation into prealloc-owned decoded helper APIs, adapted AArch64
+to consume those decoded forms while retaining final target operand
+construction locally, and exposed a concrete x86 prepared reuse path.
+
+Validation covered register, frame/stack, immediate, symbol, missing-field,
+unsupported, precedence, and fallback forms through backend tests including
+`backend_prealloc_decoded_home_storage`,
+`backend_aarch64_operand_resolution`, and
+`backend_x86_prepared_decoded_home_storage`. No tests or expectations were
+weakened or reclassified.
