@@ -10,6 +10,7 @@
 #include "dispatch_calls.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_producers.hpp"
 #include "f128.hpp"
 #include "float_ops.hpp"
 #include "globals.hpp"

@@ -5,6 +5,7 @@
 #include "alu.hpp"
 #include "dispatch_branch_fusion.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_producers.hpp"
 #include "instruction.hpp"
 #include "operands.hpp"
 

@@ -9,26 +9,30 @@ Current Step Title: Reduce Catch-All Header Surface
 ## Just Finished
 
 Completed Step 2 - Reduce Catch-All Header Surface. Added
-`src/backend/mir/aarch64/codegen/dispatch_branch_fusion.hpp` as the narrow
-private declaration surface for branch-fusion helpers and
-`DispatchBranchFusionHooks`, removed those declarations from `dispatch.hpp`,
-and updated direct implementation users to include the new header.
+`src/backend/mir/aarch64/codegen/dispatch_producers.hpp` as the narrow private
+declaration surface for same-block producer helpers implemented in
+`dispatch_producers.cpp`, removed those declarations from `dispatch.hpp`, and
+updated direct implementation users to include the new header.
 
 Direct callers updated:
 
-- `dispatch_branch_fusion.cpp` now includes its own narrow header so its
-  definitions are checked against the extracted declaration surface.
-- `dispatch.cpp` includes `dispatch_branch_fusion.hpp` directly for the hook
-  construction and branch-fusion lowering calls.
-- `dispatch_calls.cpp`, `dispatch_edge_copies.cpp`, and
-  `dispatch_value_materialization.cpp` include `dispatch_branch_fusion.hpp`
-  directly for shared branch condition/immediate helpers.
+- `dispatch_producers.cpp` now includes its own narrow header so definitions are
+  checked against the extracted declaration surface.
+- `dispatch.cpp` includes `dispatch_producers.hpp` directly for load-global
+  materialization, branch-fusion hook wiring, and current-block join-copy source
+  checks.
+- `dispatch_calls.cpp`, `dispatch_edge_copies.cpp`,
+  `dispatch_store_sources.cpp`, and `dispatch_value_materialization.cpp` include
+  `dispatch_producers.hpp` directly for same-block producer lookup, select-chain
+  checks, load-global labels, and producer instruction indexes.
+- `alu.cpp` includes `dispatch_producers.hpp` directly for the direct
+  global-load select-chain check.
 
 ## Suggested Next
 
-Recommended next packet: extract the dispatch producer declarations from
-`dispatch.hpp` into a narrow private producer header, then update only direct
-same-block producer users.
+Recommended next packet: extract the dynamic-stack dispatch declaration from
+`dispatch.hpp` into a narrow `dispatch_dynamic_stack.hpp`, then update only the
+helper implementation and direct dispatch user.
 
 ## Watchouts
 
@@ -39,19 +43,20 @@ same-block producer users.
   same-block producer/constant query helpers that were previously available
   through `dispatch.hpp`.
 - `dispatch_calls.cpp` still includes `dispatch.hpp` for frame/value
-  publication, producer lookup, select-chain, and stack/frame helper
-  declarations; those are separate header-narrowing candidates and were not
-  widened into this packet.
+  publication, select-chain materialization, and stack/frame helper declarations;
+  those are separate header-narrowing candidates and were not widened into this
+  packet.
 - `prepared_value_home_for_value` remains in `dispatch.hpp` because it is
   implemented in `dispatch_publication.cpp`; moving publication or
   value-materialization declarations was intentionally outside this packet.
 - Several files still include both `dispatch.hpp` and `dispatch_lookup.hpp`
   because they also use non-lookup dispatch internals; this packet only removed
-  the lookup helper declarations from the catch-all header.
+  the producer helper declarations from the catch-all header.
+- `dispatch.cpp` has local join-copy cache helpers with names close to the
+  extracted producer helper names; this packet only moved the declarations
+  implemented in `dispatch_producers.cpp`.
 
 ## Proof
-
-Initial compile check passed with `cmake --build --preset default`.
 
 Ran delegated proof command:
 
@@ -59,6 +64,8 @@ Ran delegated proof command:
 
 Result: passed. `cmake --build --preset default` completed, and CTest reported
 162/162 `^backend_` tests passed. Proof log: `test_after.log`.
+
+Also ran `git diff --check`; result: passed.
 
 # Retained Step 1 Output
 
