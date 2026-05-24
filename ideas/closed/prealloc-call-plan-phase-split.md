@@ -67,6 +67,14 @@ Also run `git diff --check`.
   state leakage.
 - Backend tests remain green with no intentional dump meaning changes.
 
+## Completion Notes
+
+Closed after behavior-preserving file-local call-plan phase split work. The
+final structure keeps `calls.hpp` as the aggregate public contract and leaves
+prepared-printer output semantics unchanged. Deferred public-contract or printer
+grouping work should start from a separate source idea when a real consumer
+boundary or data-family change appears.
+
 ## Reviewer Reject Signals
 
 - Reject line-count-only extraction where helper boundaries do not match call
