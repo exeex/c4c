@@ -1,44 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-call-plan-phase-split.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Separate Preservation, Clobber, And Boundary Effects
+Current Step ID: 4
+Current Step Title: Review Memory-Return And Formal Publication Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 narrow clobber-derivation cleanup: extracted the
-caller-saved clobber span append/deduplication logic from
-`build_call_clobber_set(...)` into file-local
-`append_call_clobbered_register_spans(...)`.
+Completed `plan.md` Step 4 focused memory-return and publication-boundary
+review: extracted call result construction from `populate_call_plans(...)` into
+file-local `build_call_result_plan(...)` while leaving memory-return and formal
+publication behavior unchanged.
 
 Changed files:
 - `src/backend/prealloc/call_plans.cpp`
 - `todo.md`
 
 Extraction result:
-- Added file-local `append_call_clobbered_register_spans(...)` with explicit
-  clobber vector, target profile, register class, and contiguous-width inputs.
-- Moved the existing caller-saved span scan, duplicate check, reserved-scratch
-  placement conversion, and `PreparedClobberedRegister` append into that
-  helper.
-- Kept `build_call_clobber_set(...)` responsible for selecting the base
-  register classes and widened register groups from regalloc values.
-- Preserved target-profile ownership, caller-saved span selection, duplicate
-  ordering, reserved-scratch placement mapping, and null-regalloc behavior.
-- Audited preservation and boundary-effect helpers; they already have explicit
-  file-local helper boundaries, so this packet did not move save/restore or
-  boundary-effect construction.
-- Left `calls.hpp`, `call_plans.hpp`, tests, `plan.md`, and the source idea
-  untouched.
+- Added file-local `build_call_result_plan(...)` with explicit name tables,
+  target profile, regalloc, value-location, after-call bundle, instruction
+  index, and call inputs.
+- Moved the existing call-result ABI source binding lookup, fallback source
+  register placement, destination home lookup, destination value-id lookup, and
+  destination register placement logic into that helper.
+- Kept `build_memory_return_plan(...)` as the owned memory-return boundary; the
+  audit found it already isolates sret storage-slot lookup and frame-slot
+  selection from result-publication construction.
+- Verified formal publication remains separate: it consumes function formals,
+  formal ABI facts, value homes, and value-location lookups through
+  `PreparedFormalPublicationInputs`, and does not need call-plan ABI policy or
+  public contract movement for this slice.
+- Left `calls.hpp`, `call_plans.hpp`, `formal_publications.cpp`,
+  `formal_publications.hpp`, tests, `plan.md`, and the source idea untouched.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 4 with a focused review of memory-return and formal
-publication boundaries. Start by auditing whether memory-return result
-construction has an equally clear file-local boundary after the argument and
-clobber extractions; only extract it if inputs and outputs stay explicit.
+Proceed to `plan.md` Step 5 and align the prepared-printer call mirror only if
+the earlier helper-family changes require naming or grouping updates. Preserve
+printed fields and meaning; if the current dump mirror already follows the
+aggregate call-plan data, record the no-code decision.
 
 ## Watchouts
 
@@ -48,15 +49,13 @@ clobber extractions; only extract it if inputs and outputs stay explicit.
   publication behavior, or prepared dump meaning.
 - Keep `calls.hpp` as the aggregate public contract unless usage proves a
   smaller independently consumed boundary.
-- Clobber derivation still depends on `caller_saved_register_spans(...)` and
-  `TargetProfile`; keep target policy there instead of introducing local ABI
-  rules.
-- Preservation construction is still owned by `build_call_preserved_values(...)`;
-  it was not split because the existing helper already owns save/restore
-  route selection without leaking into `populate_call_plans(...)`.
-- Boundary-effect construction is already grouped behind
-  `plan_prepared_call_boundary_effects(...)` and its append helpers; this
-  packet did not alter classification or effect ordering.
+- `build_memory_return_plan(...)` still owns only sret storage and frame-slot
+  discovery; normal named result publication now stays behind
+  `build_call_result_plan(...)`.
+- Formal publication code deliberately remains independent from call plans; do
+  not move it into call-plan helpers without a separate public-contract reason.
+- Step 5 should inspect `prepared_printer/calls.cpp` against the new helper
+  families, not rewrite labels for cosmetic reasons.
 
 ## Proof
 

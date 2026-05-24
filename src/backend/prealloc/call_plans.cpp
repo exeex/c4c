@@ -729,6 +729,98 @@ struct CallArgumentSourcePlan {
   return preferred;
 }
 
+[[nodiscard]] std::optional<PreparedCallResultPlan> build_call_result_plan(
+    const PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedMoveBundle* after_call_bundle,
+    std::size_t instruction_index,
+    const bir::CallInst& call) {
+  if (!call.result.has_value() || call.result->kind != bir::Value::Kind::Named ||
+      value_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  PreparedCallResultPlan result_plan{
+      .instruction_index = instruction_index,
+      .value_bank = call.result_abi.has_value()
+                        ? register_bank_from_result_abi(*call.result_abi)
+                        : register_bank_from_type(call.result->type),
+      .source_storage_kind = PreparedMoveStorageKind::None,
+      .destination_storage_kind = PreparedMoveStorageKind::None,
+      .destination_value_id = std::nullopt,
+      .source_register_name = std::nullopt,
+      .source_contiguous_width = 1,
+      .source_occupied_register_names = {},
+      .source_register_bank = std::nullopt,
+      .source_stack_offset_bytes = std::nullopt,
+      .destination_register_name = std::nullopt,
+      .destination_contiguous_width = 1,
+      .destination_occupied_register_names = {},
+      .destination_register_bank = std::nullopt,
+      .destination_slot_id = std::nullopt,
+      .destination_stack_offset_bytes = std::nullopt,
+      .source_register_placement = std::nullopt,
+      .destination_register_placement = std::nullopt,
+      .destination_spill_slot_placement = std::nullopt,
+  };
+
+  if (const auto* binding = find_call_abi_binding(after_call_bundle,
+                                                  PreparedMoveDestinationKind::CallResultAbi,
+                                                  std::nullopt);
+      binding != nullptr) {
+    result_plan.source_storage_kind = binding->destination_storage_kind;
+    result_plan.source_register_name = binding->destination_register_name;
+    result_plan.source_contiguous_width = binding->destination_contiguous_width;
+    result_plan.source_occupied_register_names = binding->destination_occupied_register_names;
+    result_plan.source_stack_offset_bytes = binding->destination_stack_offset_bytes;
+    if (binding->destination_register_name.has_value()) {
+      result_plan.source_register_bank = result_plan.value_bank;
+      result_plan.source_register_placement = binding->destination_register_placement;
+      if (!result_plan.source_register_placement.has_value() &&
+          call.result_abi.has_value()) {
+        result_plan.source_register_placement =
+            call_result_destination_register_placement(target_profile,
+                                                       *call.result_abi,
+                                                       result_plan.source_contiguous_width);
+      }
+    }
+  }
+
+  if (const auto value_name_id = maybe_named_value_id(names, *call.result);
+      value_name_id.has_value()) {
+    if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
+        home != nullptr) {
+      result_plan.destination_storage_kind = move_storage_kind_from_home(*home);
+      result_plan.destination_register_name = home->register_name;
+      result_plan.destination_slot_id = home->slot_id;
+      result_plan.destination_stack_offset_bytes = home->offset_bytes;
+      if (home->register_name.has_value()) {
+        result_plan.destination_register_bank = result_plan.value_bank;
+      }
+      result_plan.destination_spill_slot_placement =
+          make_spill_slot_placement(home->slot_id, home->offset_bytes);
+    }
+    if (regalloc_function != nullptr) {
+      if (const auto* regalloc_value =
+              find_regalloc_value_by_name(*regalloc_function, *value_name_id);
+          regalloc_value != nullptr) {
+        result_plan.destination_value_id = regalloc_value->value_id;
+        if (regalloc_value->assigned_register.has_value() &&
+            result_plan.destination_register_name ==
+                std::optional<std::string>{regalloc_value->assigned_register->register_name}) {
+          result_plan.destination_register_placement =
+              assignment_register_placement(target_profile,
+                                            *regalloc_value->assigned_register);
+        }
+      }
+    }
+  }
+
+  return result_plan;
+}
+
 [[nodiscard]] const PreparedAbiBinding* find_call_register_abi_binding(
     const PreparedMoveBundle* move_bundle,
     PreparedMoveDestinationKind destination_kind,
@@ -1354,87 +1446,13 @@ void populate_call_plans(PreparedBirModule& prepared) {
           call_plan.arguments.push_back(std::move(arg_plan));
         }
 
-        if (call->result.has_value() && call->result->kind == bir::Value::Kind::Named &&
-            value_locations != nullptr) {
-          PreparedCallResultPlan result_plan{
-              .instruction_index = instruction_index,
-              .value_bank = call->result_abi.has_value()
-                                ? register_bank_from_result_abi(*call->result_abi)
-                                : register_bank_from_type(call->result->type),
-              .source_storage_kind = PreparedMoveStorageKind::None,
-              .destination_storage_kind = PreparedMoveStorageKind::None,
-              .destination_value_id = std::nullopt,
-              .source_register_name = std::nullopt,
-              .source_contiguous_width = 1,
-              .source_occupied_register_names = {},
-              .source_register_bank = std::nullopt,
-              .source_stack_offset_bytes = std::nullopt,
-              .destination_register_name = std::nullopt,
-              .destination_contiguous_width = 1,
-              .destination_occupied_register_names = {},
-              .destination_register_bank = std::nullopt,
-              .destination_slot_id = std::nullopt,
-              .destination_stack_offset_bytes = std::nullopt,
-              .source_register_placement = std::nullopt,
-              .destination_register_placement = std::nullopt,
-              .destination_spill_slot_placement = std::nullopt,
-          };
-
-          if (const auto* binding = find_call_abi_binding(after_call_bundle,
-                                                          PreparedMoveDestinationKind::CallResultAbi,
-                                                          std::nullopt);
-              binding != nullptr) {
-            result_plan.source_storage_kind = binding->destination_storage_kind;
-            result_plan.source_register_name = binding->destination_register_name;
-            result_plan.source_contiguous_width = binding->destination_contiguous_width;
-            result_plan.source_occupied_register_names =
-                binding->destination_occupied_register_names;
-            result_plan.source_stack_offset_bytes = binding->destination_stack_offset_bytes;
-            if (binding->destination_register_name.has_value()) {
-              result_plan.source_register_bank = result_plan.value_bank;
-              result_plan.source_register_placement = binding->destination_register_placement;
-              if (!result_plan.source_register_placement.has_value() &&
-                  call->result_abi.has_value()) {
-                result_plan.source_register_placement =
-                    call_result_destination_register_placement(prepared.target_profile,
-                                                               *call->result_abi,
-                                                               result_plan.source_contiguous_width);
-              }
-            }
-          }
-
-          if (const auto value_name_id = maybe_named_value_id(prepared.names, *call->result);
-              value_name_id.has_value()) {
-            if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
-                home != nullptr) {
-              result_plan.destination_storage_kind = move_storage_kind_from_home(*home);
-              result_plan.destination_register_name = home->register_name;
-              result_plan.destination_slot_id = home->slot_id;
-              result_plan.destination_stack_offset_bytes = home->offset_bytes;
-              if (home->register_name.has_value()) {
-                result_plan.destination_register_bank = result_plan.value_bank;
-              }
-              result_plan.destination_spill_slot_placement =
-                  make_spill_slot_placement(home->slot_id, home->offset_bytes);
-            }
-            if (regalloc_function != nullptr) {
-              if (const auto* regalloc_value =
-                      find_regalloc_value_by_name(*regalloc_function, *value_name_id);
-                  regalloc_value != nullptr) {
-                result_plan.destination_value_id = regalloc_value->value_id;
-                if (regalloc_value->assigned_register.has_value() &&
-                    result_plan.destination_register_name ==
-                        std::optional<std::string>{
-                            regalloc_value->assigned_register->register_name}) {
-                  result_plan.destination_register_placement =
-                      assignment_register_placement(prepared.target_profile,
-                                                    *regalloc_value->assigned_register);
-                }
-              }
-            }
-          }
-          call_plan.result = std::move(result_plan);
-        }
+        call_plan.result = build_call_result_plan(prepared.names,
+                                                  prepared.target_profile,
+                                                  regalloc_function,
+                                                  value_locations,
+                                                  after_call_bundle,
+                                                  instruction_index,
+                                                  *call);
 
         function_plan.calls.push_back(std::move(call_plan));
       }
