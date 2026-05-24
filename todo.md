@@ -1,45 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-store-source-publication-planning.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Prealloc Store-Source Plan Record
+Current Step ID: 3
+Current Step Title: Consume Store-Source Plan From AArch64
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: added `prepare::PreparedStoreSourcePublicationPlan`,
-`PreparedStoreSourcePublicationInputs`,
-`PreparedStoreSourcePublicationStatus`,
-`PreparedStoreSourcePublicationIntent`, availability/status helpers, and
-`plan_prepared_store_source_publication` in `publication_plans.*`.
+Completed the first Step 3 AArch64 consumption slice in
+`dispatch_store_sources.cpp`.
 
-The new record/helper captures target-neutral store-source facts from
-Prepared/BIR inputs only:
-- logical source `bir::Value`, source `PreparedValueId`, and source
-  `ValueNameId`
-- destination `PreparedMemoryAccess` identity, address base kind, frame-slot or
-  pointer-value identity, byte offset, size/alignment, volatility, and
-  base-plus-offset capability
-- optional destination `PreparedFrameSlot` / `PreparedStackObject` identity
-- source `PreparedValueHome` kind, storage encoding, stack slot/offset/size, and
-  pointer base/byte-delta facts
-- optional recovered source value plus recovered instruction index
-- pending publication, stack-homes-only, duplicate-publication, and pointer
-  store-writeback intent bits
-- optional pointer-base home kind/slot/offset for pointer writeback adapters
+The local store-source publication path now constructs
+`prepare::PreparedStoreSourcePublicationPlan` through a target-local
+`plan_store_local_source_publication` adapter. The adapter supplies the current
+Prepared/BIR source value, destination `PreparedMemoryAccess`, destination
+frame-slot/stack-object identity, source `PreparedValueHome`, and recovered
+narrow-store source facts.
 
-Added `backend_store_source_publication_plan`, a focused backend MIR C++ test
-with no AArch64 codegen headers and no machine instruction records. It covers
-local frame-slot store identity, recovered source facts, pointer writeback
-intent, store-global pending-publication flags, and incomplete input statuses.
+Behavior-preserving consumption points:
+- local publication uses the plan source value as the stored value
+- the prior wide-load-from-narrow-store predicate now reuses the recovered-source
+  lookup fact that is also passed into the plan
+- reserved-scratch stack-home publication uses the plan source home when present
+- the memory-destination branch checks the neutral destination frame-slot
+  base-plus-offset facts when the plan is available
+
+AArch64-local policy stayed local: memory operand spelling, store mnemonic and
+scalar view selection, scratch selection, register alias checks, publication
+emission calls, assembler text, side effects, and final `MachineInstruction`
+construction.
 
 ## Suggested Next
 
-Execute Step 3 with the lowest-risk AArch64 adapter slice: construct
-`PreparedStoreSourcePublicationPlan` for the local store-source publication path
-inside `dispatch_store_sources.cpp`, consume only neutral source/destination
-facts from the plan, and preserve existing AArch64 emission behavior.
+Continue Step 3 with the next narrow AArch64 adapter slice: consume the
+store-source plan in either `lower_stack_homed_pointer_store_writeback` or
+`lower_pointer_base_plus_offset_store_local_publication`, starting with whichever
+can pass current Prepared/BIR pointer-base and destination facts without moving
+address materialization or store emission out of AArch64.
 
 ## Watchouts
 
@@ -51,11 +49,11 @@ facts from the plan, and preserve existing AArch64 emission behavior.
   helper should describe facts supplied by the caller; AArch64 can remain
   responsible for finding recovered producers until a tighter shared query
   boundary exists.
-- Step 3 should pass existing recovered-source and pointer-writeback facts into
-  the plan from AArch64 instead of moving producer scans into prealloc.
-- The new store-source plan intentionally reuses
-  `prepared_publication_storage_encoding_from_home` to keep source-home storage
-  classification aligned with scalar publication planning.
+- The current recovered-source helper still owns same-block producer scanning in
+  AArch64; do not move that scan into prealloc in the next packet.
+- Pointer writeback and pointer-base-plus-offset publication still need AArch64
+  adapters. Keep global relocation, pointer address materialization, stack-store
+  text, and scratch/register choices local.
 
 ## Proof
 
