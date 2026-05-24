@@ -25,10 +25,22 @@ Direct callers updated:
 
 ## Suggested Next
 
-Recommended next packet: extract the entry-formal dispatch declaration from
-`dispatch.hpp` into a narrow `dispatch_entry_formals.hpp`, then update
-`dispatch_entry_formals.cpp` and the direct dispatch user that emits entry
-formal publications.
+Recommended next packet: make Step 2 a route-boundary packet, not another
+open-ended one-header extraction. Choose one of these outcomes and update this
+file with the decision:
+
+- Close Step 2 with a grouped remaining-boundary decision: either extract a
+  cohesive remaining private surface, or explicitly justify leaving
+  entry-formal, publication, value-materialization, and edge-copy declarations
+  in `dispatch.hpp` until Step 3 can rename, merge, or assign them to durable
+  families.
+- Transition to Step 3 by choosing one historical dispatch shard for
+  rename/merge/justify work now that the broadest catch-all declaration surface
+  has been reduced.
+
+Do not continue with isolated `dispatch_*.hpp` additions unless the extraction
+removes a meaningful remaining dependency from `dispatch.hpp` and directly
+prepares a Step 3 family rename, merge, or durable-boundary justification.
 
 ## Watchouts
 
@@ -44,6 +56,12 @@ formal publications.
 - `prepared_value_home_for_value` remains in `dispatch.hpp` because it is
   implemented in `dispatch_publication.cpp`; moving publication or
   value-materialization declarations was intentionally outside this packet.
+- Reviewer checkpoint `review/aarch64-codegen-layout-step2-review.md` judged the
+  source idea and plan aligned, but the route is drifting into low-yield
+  repeated private-header extraction. The next packet should stop or redirect
+  that pattern at the Step 2 boundary.
+- Step 2 boundary validation should be broader than the per-packet backend
+  proof before the supervisor accepts the milestone or starts Step 3.
 
 ## Proof
 
