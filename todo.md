@@ -1,34 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-runtime-carrier-naming-alignment.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Clarify Special Carrier Fact Names
+Current Step ID: 4
+Current Step Title: Align Printer Mirrors
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 comment/grouping clarification in
-`src/backend/prealloc/special_carriers.hpp`.
+Completed Step 4 printer mirror audit for
+`src/backend/prealloc/prepared_printer/runtime_helpers.cpp` and
+`src/backend/prealloc/prepared_printer/special_carriers.cpp`.
 
-Added sparse comments around the i128, f128, atomic, intrinsic, and inline-asm
-carrier aggregate families. The comments make the boundary explicit: special
-carriers record value, instruction, operand, and completeness facts consumed by
-later prealloc phases, not runtime helper-call resource policies.
-
-No public type names, fields, carrier behavior, support decisions, implementation
-files, or prepared-printer labels were changed. Printer labels intentionally stay
-unchanged because this packet only clarified existing header comments; it did
-not rename a public prepared data contract.
+No printer edits were required. Steps 2 and 3 only clarified comments and
+grouping in the runtime-helper and special-carrier headers; they did not rename
+public prepared data contracts. The runtime-helper printer already reports
+helper-call resources, ABI/marshal ownership, live preservation, clobbers, and
+selected call ownership under existing field names. The special-carrier printer
+already reports i128 and f128 carrier facts under carrier/fact terminology. No
+second taxonomy or stale public label was found.
 
 ## Suggested Next
 
-Execute Step 4 printer mirror audit as a no-code or comment-only packet. Confirm
-that `src/backend/prealloc/prepared_printer/runtime_helpers.cpp` and
-`src/backend/prealloc/prepared_printer/special_carriers.cpp` still mirror the
-data-contract terminology after the Step 2 and Step 3 comment clarifications,
-and leave printed labels unchanged unless a real public contract rename is
-delegated.
+Execute Step 5 closure audit as a no-code packet. Confirm that the source idea's
+acceptance criteria were satisfied by comment/grouping clarification plus the
+printer mirror audit, and recommend plan-owner closure if no remaining public
+rename is needed.
 
 ## Watchouts
 
@@ -45,12 +42,11 @@ delegated.
   stay separate from runtime-helper callee/resource ownership.
 - Step 3 deliberately avoided public renames; Step 4 should not invent printer
   terminology churn just to mirror comments.
+- Step 4 deliberately kept dump labels unchanged because printed dump meaning
+  and public prepared data names did not change.
 
 ## Proof
 
-Delegated backend proof passed, 162/162 backend tests:
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } 2>&1 | tee test_after.log'`
-
-Proof log: `test_after.log`
+No code changed, so no `test_after.log` was created.
 
 Whitespace proof passed: `git diff --check`
