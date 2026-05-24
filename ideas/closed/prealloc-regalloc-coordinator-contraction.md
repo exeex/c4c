@@ -71,6 +71,17 @@ Also run `git diff --check`.
   unclear APIs.
 - Backend tests remain green and allocation-plan dump meaning is preserved.
 
+## Closure Note
+
+Closed after the active runbook completed two behavior-preserving helper
+contractions: assignment expiry now lives under `regalloc/assignment.*`, and
+stack-slot frame seed/publication helpers now live under
+`regalloc/stack_slots.*`. Closure audit found no allocation, spill/reload,
+interval, liveness, ABI, public contract, dump-meaning, or testcase-overfit
+drift. Remaining possible call-ABI binding, prepared value-location bundle, or
+`regalloc.hpp` fragmentation work is a separate initiative, not leftover scope
+for this idea.
+
 ## Reviewer Reject Signals
 
 - Reject extracted helpers that require wide access to private mutable
