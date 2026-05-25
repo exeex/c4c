@@ -70,6 +70,349 @@ const prepare::PreparedCallPlan* require_prepared_call_plan(
 }
 
 
+namespace {
+
+MachineNodeStatusRecord call_boundary_move_selection_status(
+    const CallBoundaryMoveInstructionRecord& instruction) {
+  if (instruction.source_bundle == nullptr ||
+      (instruction.source_move == nullptr && !instruction.source_immediate.has_value() &&
+       !instruction.source_memory.has_value()) ||
+      instruction.function_name == c4c::kInvalidFunctionName) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "call-boundary move node is missing prepared move provenance"};
+  }
+  const bool selected_register_argument_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_register_result_move =
+      instruction.phase == prepare::PreparedMovePhase::AfterCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_register_return_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeReturn &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_value_register_move =
+      (instruction.phase == prepare::PreparedMovePhase::BlockEntry ||
+       instruction.phase == prepare::PreparedMovePhase::BeforeInstruction) &&
+      instruction.move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+      instruction.move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_preservation_home_population =
+      instruction.phase == prepare::PreparedMovePhase::BeforeCall &&
+      instruction.move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+      instruction.move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      instruction.move.reason == "callee_saved_preservation_home_population";
+  const bool stack_argument_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::StackSlot &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  if (stack_argument_move) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary stack argument move requires AArch64 stack-copy lowering"};
+  }
+  if (!selected_register_argument_move && !selected_register_result_move &&
+      !selected_register_return_move && !selected_value_register_move &&
+      !selected_preservation_home_population) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node is outside the selected register call-boundary move subset"};
+  }
+  if ((!instruction.source_register.has_value() && !instruction.source_immediate.has_value() &&
+       !instruction.source_memory.has_value()) ||
+      !instruction.destination_register.has_value()) {
+    const bool selected_f128_constant_argument_move =
+        selected_register_argument_move &&
+        !instruction.source_register.has_value() &&
+        instruction.destination_register.has_value() &&
+        instruction.destination_register->prepared_bank ==
+            prepare::PreparedRegisterBank::Vreg &&
+        instruction.destination_register->expected_view == abi::RegisterView::Q &&
+        instruction.source_f128_carrier != nullptr &&
+        instruction.source_f128_carrier->source_type == bir::TypeKind::F128 &&
+        instruction.source_f128_carrier->kind ==
+            prepare::PreparedF128CarrierKind::Missing &&
+        instruction.source_f128_carrier->missing_required_facts.empty() &&
+        instruction.source_f128_carrier->total_size_bytes == 16 &&
+        instruction.source_f128_carrier->total_align_bytes == 16 &&
+        instruction.source_f128_carrier->constant_payload.has_value() &&
+        instruction.source_f128_constant_payload.has_value() &&
+        instruction.source_f128_constant_payload->low_bits ==
+            instruction.source_f128_carrier->constant_payload->low_bits &&
+        instruction.source_f128_constant_payload->high_bits ==
+            instruction.source_f128_carrier->constant_payload->high_bits;
+    if (selected_f128_constant_argument_move) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared register source and destination"};
+  }
+  if (instruction.source_immediate.has_value() &&
+      (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr ||
+       (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+        scalar_fp_register_view(instruction.source_immediate->type).has_value() &&
+        instruction.destination_register->expected_view ==
+            *scalar_fp_register_view(instruction.source_immediate->type)))) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (is_aggregate_register_lane_publication(instruction)) {
+    if (instruction.source_memory->base_kind == MemoryBaseKind::PointerValue &&
+        instruction.source_memory->base_register.has_value()) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    if (instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+        instruction.source_memory->frame_slot_id.has_value() &&
+        instruction.source_memory->byte_offset_is_prepared_snapshot &&
+        instruction.source_memory->can_use_base_plus_offset) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+  }
+  if (instruction.source_memory.has_value() &&
+      instruction.source_memory->support == MemoryOperandSupportKind::Prepared &&
+      instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+      instruction.source_memory->frame_slot_id.has_value() &&
+      instruction.source_memory->byte_offset_is_prepared_snapshot &&
+      instruction.source_memory->can_use_base_plus_offset &&
+      (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr ||
+       instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr ||
+       (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+        instruction.destination_register->expected_view == abi::RegisterView::Q &&
+        instruction.source_memory->size_bytes == 16))) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (instruction.source_memory.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared frame-slot source and GPR destination"};
+  }
+  if (!instruction.source_register.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared register source and destination"};
+  }
+  if (instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  const bool selected_scalar_fpr_register_move =
+      instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+      (instruction.source_register->expected_view == abi::RegisterView::S ||
+       instruction.source_register->expected_view == abi::RegisterView::D) &&
+      instruction.source_register->expected_view ==
+          instruction.destination_register->expected_view;
+  if (selected_scalar_fpr_register_move) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  const auto* f128_carrier =
+      instruction.source_f128_carrier != nullptr
+          ? instruction.source_f128_carrier
+          : instruction.destination_f128_carrier;
+  const bool selected_f128_register_move =
+      instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+      instruction.source_register->expected_view == abi::RegisterView::Q &&
+      instruction.destination_register->expected_view == abi::RegisterView::Q &&
+      f128_carrier != nullptr &&
+      f128_carrier->kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+      f128_carrier->missing_required_facts.empty() &&
+      f128_carrier->total_size_bytes == 16 && f128_carrier->total_align_bytes == 16;
+  if (!selected_f128_register_move) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared GPR registers, scalar FPR registers, or structured f128 q-register authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord call_boundary_abi_binding_selection_status(
+    const CallBoundaryAbiBindingInstructionRecord& instruction) {
+  if (instruction.source_bundle == nullptr || instruction.source_binding == nullptr ||
+      instruction.function_name == c4c::kInvalidFunctionName) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "call-boundary ABI binding node is missing prepared binding provenance"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instruction) {
+  if (auto variadic_status = variadic_call_selection_status(instruction)) {
+    return *variadic_status;
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+}  // namespace
+
+InstructionRecord make_call_boundary_move_instruction(
+    CallBoundaryMoveInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.destination_register.has_value()) {
+    const auto destination = make_register_operand(*instruction.destination_register);
+    operands.push_back(destination);
+    defs.push_back(machine_effect_from_operand(destination));
+  } else if (instruction.move.to_value_id != 0) {
+    defs.push_back(machine_prepared_value_def(instruction.move.to_value_id,
+                                              c4c::kInvalidValueName));
+  }
+  if (instruction.source_register.has_value()) {
+    const auto source = make_register_operand(*instruction.source_register);
+    operands.push_back(source);
+    uses.push_back(machine_effect_from_operand(source));
+  } else if (instruction.source_memory.has_value()) {
+    const auto source = make_memory_operand(*instruction.source_memory);
+    operands.push_back(source);
+    if (!instruction.source_memory_materializes_address) {
+      uses.push_back(machine_effect_from_operand(source));
+    }
+  } else if (instruction.source_immediate.has_value()) {
+    const auto source = make_immediate_operand(*instruction.source_immediate);
+    operands.push_back(source);
+    uses.push_back(machine_effect_from_operand(source));
+  } else if (instruction.move.from_value_id != 0) {
+    uses.push_back(machine_prepared_value_def(instruction.move.from_value_id,
+                                              c4c::kInvalidValueName));
+  }
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::CallBoundaryMove,
+      .selection = call_boundary_move_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = uses,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_call_boundary_abi_binding_instruction(
+    CallBoundaryAbiBindingInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::CallBoundaryAbiBinding,
+      .selection = call_boundary_abi_binding_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
+  complete_variadic_call_record(instruction);
+
+  std::vector<OperandRecord> operands = instruction.arguments;
+  if (instruction.indirect_callee.has_value()) {
+    operands.insert(operands.begin(), *instruction.indirect_callee);
+  } else if (instruction.direct_callee.has_value()) {
+    operands.insert(operands.begin(), make_symbol_operand(*instruction.direct_callee));
+  }
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result.has_value()) {
+    defs.push_back(machine_effect_from_operand(*instruction.result));
+  }
+  std::vector<MachineEffectResource> uses = machine_effects_from_operands(operands);
+  std::vector<MachineSideEffectKind> side_effects = {MachineSideEffectKind::Call};
+  if (instruction.memory_return_storage.has_value()) {
+    defs.push_back(machine_effect_from_operand(
+        make_memory_operand(*instruction.memory_return_storage)));
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+  if (instruction.variadic_va_start.has_value()) {
+    defs.push_back(machine_prepared_value_def(
+        instruction.variadic_va_start->destination_va_list.value_id,
+        instruction.variadic_va_start->destination_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+  if (instruction.variadic_scalar_va_arg.has_value()) {
+    defs.push_back(machine_prepared_value_def(
+        instruction.variadic_scalar_va_arg->result_home.value_id,
+        instruction.variadic_scalar_va_arg->result_home.value_name));
+    uses.push_back(machine_prepared_value_def(
+        instruction.variadic_scalar_va_arg->source_va_list.value_id,
+        instruction.variadic_scalar_va_arg->source_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+  if (instruction.variadic_aggregate_va_arg.has_value()) {
+    defs.push_back(machine_prepared_value_def(
+        instruction.variadic_aggregate_va_arg->destination_payload_home.value_id,
+        instruction.variadic_aggregate_va_arg->destination_payload_home.value_name));
+    uses.push_back(machine_prepared_value_def(
+        instruction.variadic_aggregate_va_arg->source_va_list.value_id,
+        instruction.variadic_aggregate_va_arg->source_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+  if (instruction.variadic_va_copy.has_value()) {
+    defs.push_back(machine_prepared_value_def(
+        instruction.variadic_va_copy->destination_va_list.value_id,
+        instruction.variadic_va_copy->destination_va_list.value_name));
+    uses.push_back(machine_prepared_value_def(
+        instruction.variadic_va_copy->source_va_list.value_id,
+        instruction.variadic_va_copy->source_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+  return InstructionRecord{
+      .family = InstructionFamily::Call,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = instruction.variadic_va_start.has_value()
+                    ? MachineOpcode::VariadicVaStart
+                    : (instruction.variadic_scalar_va_arg.has_value()
+                           ? MachineOpcode::VariadicVaArgScalar
+                           : (instruction.variadic_aggregate_va_arg.has_value()
+                                  ? MachineOpcode::VariadicVaArgAggregate
+                                  : (instruction.variadic_va_copy.has_value()
+                                         ? MachineOpcode::VariadicVaCopy
+                                         : (instruction.is_indirect
+                                                ? MachineOpcode::IndirectCall
+                                                : MachineOpcode::DirectCall)))),
+      .selection = call_selection_status(instruction),
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
+      .preserves = publish_prepared_call_preserve_effects()
+                       ? effects_from_prepared_call_preserved_values(
+                             instruction.preserved_values)
+                       : std::vector<MachineEffectResource>{},
+      .side_effects = std::move(side_effects),
+      .payload = std::move(instruction),
+  };
+}
+
+
 std::optional<module::MachineInstruction> lower_prepared_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,
