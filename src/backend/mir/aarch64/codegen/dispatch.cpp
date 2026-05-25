@@ -2355,7 +2355,8 @@ InstructionDispatchResult dispatch_prepared_block(
               variadic_entry_helper_kind(call->callee).has_value();
           auto argument_producers =
               lower_scalar_call_argument_producers(context,
-                                                   *call,
+                                                   *call_plan,
+                                                   call->args,
                                                    instruction_index,
                                                    scalar_state,
                                                    diagnostics);

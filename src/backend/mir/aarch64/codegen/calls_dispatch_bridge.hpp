@@ -15,7 +15,8 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_scalar_call_argument_producers(
     const module::BlockLoweringContext& context,
-    const bir::CallInst& call,
+    const prepare::PreparedCallPlan& call_plan,
+    const std::vector<bir::Value>& arguments,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);

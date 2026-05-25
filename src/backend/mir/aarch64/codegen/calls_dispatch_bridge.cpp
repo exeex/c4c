@@ -228,15 +228,14 @@ materialize_local_aggregate_address_call_argument(
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_scalar_call_argument_producers(
     const module::BlockLoweringContext& context,
-    const bir::CallInst& call,
+    const prepare::PreparedCallPlan& call_plan,
+    const std::vector<bir::Value>& arguments,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
-  const prepare::PreparedCallPlan* call_plan =
-      find_prepared_call_plan(context, instruction_index);
-  for (std::size_t argument_index = 0; argument_index < call.args.size(); ++argument_index) {
-    const auto& argument = call.args[argument_index];
+  for (std::size_t argument_index = 0; argument_index < arguments.size(); ++argument_index) {
+    const auto& argument = arguments[argument_index];
     if (auto select_chain =
             materialize_direct_global_select_chain_call_argument(context,
                                                                  argument,
@@ -247,7 +246,7 @@ lower_scalar_call_argument_producers(
     }
     std::vector<std::string_view> active_values;
     const bool allow_local_aggregate_address_publication =
-        call_argument_allows_local_aggregate_address_publication(call_plan, argument_index);
+        call_argument_allows_local_aggregate_address_publication(&call_plan, argument_index);
     if (!materialize_scalar_call_argument_value(context,
                                                 argument,
                                                 instruction_index,

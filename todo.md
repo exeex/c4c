@@ -1,41 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove The Selected Publication Decision
+Current Step ID: 3
+Current Step Title: Consolidate The Publication Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 removed the selected aggregate-address publication decision from the
-AArch64 dispatch bridge.
+Step 3 consolidated the selected aggregate-address publication helper boundary.
 
-- Added `PreparedCallArgumentPlan::allows_local_aggregate_address_publication`
-  as the per-argument prepared authority for this gate.
-- Populated the fact while building prepared call plans from the existing call
-  semantic inputs: non-`llvm.*`, pointer-typed publication argument, and not a
-  byval copy.
-- Replaced the dispatch-bridge `CallInst::arg_abi`/`arg_types` decision with a
-  prepared-plan lookup that reads only the prepared argument fact.
-- Updated the two positive manual MIR fixtures to publish the prepared
-  authority explicitly; the byval and `llvm.va_start` guards keep the default
-  false fact.
+- Tightened `lower_scalar_call_argument_producers` so callers pass the already
+  selected `PreparedCallPlan` plus the BIR argument values needed for emission.
+- Removed the helper's internal prepared-plan lookup and retired its full
+  `CallInst` parameter; remaining `CallInst` parameters in this bridge are
+  emission context for call lowering or indirect-callee materialization.
+- Left `calls.hpp` untouched because this selected publication boundary is
+  exposed through `calls_dispatch_bridge.hpp`, not the shared calls helper API.
 
 ## Suggested Next
 
-Delegate the next Step 2 cleanup packet, if desired, to tighten any remaining
-manual prepared-call test fixtures or prepared debug output around the new
-argument fact. The selected dispatch decision itself has been removed.
+Delegate Step 4 broader backend checkpoint validation if the supervisor wants a
+milestone proof for the aggregate-address publication route.
 
 ## Watchouts
 
-- `lower_scalar_call_argument_producers` now finds the prepared call plan from
-  the existing block context and instruction index, keeping the public helper
-  signature unchanged because `dispatch.cpp` was outside this packet's owned
-  files.
-- The fact is intentionally semantic. Do not replace it later with inference
-  from source/destination placement fields.
+- `lower_scalar_call_argument_producers` still accepts the BIR argument vector
+  because scalar producer emission needs source `bir::Value` kinds, names, and
+  types; the selected publication decision itself now comes only from the
+  prepared argument fact.
+- `materialize_indirect_call_callee_to_prepared_register` still accepts
+  `CallInst` because it uses the callee value for emission, not selected
+  aggregate publication planning.
 
 ## Proof
 
