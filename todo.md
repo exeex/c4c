@@ -8,22 +8,24 @@ Current Step Title: Validate Emission-Only Boundary
 
 ## Just Finished
 
-Step 5 validation found a pre-existing AArch64 c_testsuite blocker for the
-current plan.
+Step 5 validation found an AArch64 c_testsuite regression introduced during
+Step 3 of the current plan.
 
 The Step 4 centralized fallback slice is still accepted on focused and backend
 proof. Broader Step 5 c_testsuite validation fails on
 `c_testsuite_aarch64_backend_src_00216_c` and
 `c_testsuite_aarch64_backend_src_00204_c`, but the same two tests also fail at
-`HEAD~1` (`b919e53a2`, Step 3) in a temporary worktree. Therefore the failing
-c_testsuite pair is not introduced by the Step 4 centralization commit
-`529c57977`.
+`HEAD~1` (`b919e53a2`, Step 3) in a temporary worktree. Reviewer follow-up
+showed the same pair passes at `d298bbbc8` after Step 2, so the failing
+c_testsuite pair regressed in Step 3 (`b919e53a2`) and is inside this active
+emission-only route.
 
 ## Suggested Next
 
-Decide whether Step 5 should repair the earlier AArch64 c_testsuite regression
-as part of this active plan or split it into a separate source-idea/lifecycle
-route before closing the emission-only boundary.
+Repair the Step 3 AArch64 source-selection regression for
+`c_testsuite_aarch64_backend_src_00216_c` and
+`c_testsuite_aarch64_backend_src_00204_c` without expectation weakening or
+named-case shortcuts.
 
 ## Watchouts
 
@@ -31,7 +33,7 @@ route before closing the emission-only boundary.
   `source_selection` is present.
 - Do not touch the transient `review/` artifacts unless explicitly delegated.
 - Treat expectation weakening or named-test shortcuts as route failures.
-- Step 5 is blocked by pre-existing AArch64 c_testsuite failures:
+- Step 5 is blocked by Step 3 AArch64 c_testsuite regressions:
   `c_testsuite_aarch64_backend_src_00216_c` segfaults and
   `c_testsuite_aarch64_backend_src_00204_c` reports a runtime output mismatch.
 - A failed speculative local fix in
@@ -65,3 +67,7 @@ Step 5 validation:
 - Temporary-worktree comparison at `HEAD~1` (`b919e53a2`) with
   `ctest --test-dir /tmp/c4c-head1/build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$'`
   failed the same two tests, showing the blocker predates Step 4.
+- Reviewer route check in
+  `review/aarch64_emission_step5_blocker_route_review.md` found the same pair
+  passes at `d298bbbc8` after Step 2, so the blocker is a Step 3 regression and
+  should be repaired inside this active plan.
