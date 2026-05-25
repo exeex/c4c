@@ -1,7 +1,7 @@
 Status: Active
 Source Idea Path: ideas/open/08_calls_argument_sources_retirement.md
 Source Plan Path: plan.md
-Current Step ID: 2
+Current Step ID: Step 2
 Current Step Title: Move Or Redirect Remaining Source Choice To Prepared Facts
 
 # Current Packet
@@ -16,6 +16,10 @@ Prepared call planning now publishes a
 local aggregate address arguments by selecting the prepared frame-slot
 materialization or the matching local-slot frame object in
 `src/backend/prealloc/call_plans.cpp`.
+
+Review `review/calls_argument_sources_step2_local_frame_address_review.md`
+found no blocking issues for the local-frame-address slice and recommended
+continuing the current Step 2 route.
 
 The AArch64 helper now consumes that prepared selection and no longer scans
 `stack_layout.objects`/`frame_slots` itself when no local-frame-address
