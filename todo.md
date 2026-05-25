@@ -10,40 +10,43 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 Step 2 of `plan.md` retired the explicit
 `PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane` selected-source
-fallback boundary for indirect large-byval frame-address publication into a
-call ABI register. When an explicit byval lane selection is present, the
-indirect-byval path now requires the complete prepared payload accepted by
-`make_byval_register_lane_prepared_source`; it no longer rebuilds the source
-from the legacy frame-slot home after the prepared-source helper rejects an
-incomplete selection.
+fallback boundary for stack-homed byval register-lane publication into a call
+ABI register. After `make_byval_register_lane_prepared_source` rejects an
+explicit byval lane selection, this path now fails closed instead of trying
+fragmented publication or `make_frame_slot_call_argument_source`.
 
 The instruction-dispatch coverage now includes an incomplete explicit
-`ByvalRegisterLane` selection for a large indirect byval argument while matching
-legacy frame-slot facts are still present; `lower_before_call_moves` fails
-closed instead of rederiving the source from the frame-slot home. A paired
-absent-selection case proves the retained no-`source_selection` compatibility
-path still uses the legacy frame-slot source path.
+`ByvalRegisterLane` selection for a stack-homed byval lane into `x0` while
+matching legacy frame-slot facts remain available; `lower_before_call_moves`
+fails with `MissingValueAuthority` instead of rederiving the source from the
+frame-slot home. A paired absent-selection case proves the retained
+no-`source_selection` compatibility path still loads from the legacy frame-slot
+source.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining selected-source helper surfaces for a
-small complete-payload-only boundary that can be retired without touching
-absent-selection compatibility. A good next packet is to look for remaining
-fallbacks after `make_byval_register_lane_prepared_source` or
-`make_selected_frame_slot_source`, but only where explicit prepared source facts
-fully cover the path.
+Continue Step 2 by auditing the remaining `make_selected_frame_slot_source`
+surfaces and non-byval frame-slot call sites for another small explicit
+selection boundary whose complete prepared facts fully cover the path. Keep the
+next slice to one helper/call-site boundary and pair fail-closed explicit
+selection coverage with absent-selection compatibility coverage.
 
 ## Watchouts
 
-- Do not retire fragmented byval lane fallback logic outside
+- Do not retire absent-selection fragmented byval lane fallback logic outside
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
-  covers complete byval register-lane selections with prepared source payload.
+  covers explicit complete byval register-lane selections with prepared source
+  payload.
 - Register-homed byval lane explicit selections now fail closed when the
   prepared-source helper lacks a complete payload. The absent-selection
   register-home aggregate address path remains as compatibility fallback.
 - Stack-slot byval lane explicit selections into outgoing stack arguments now
   fail closed when the prepared-source helper lacks a complete payload. The
   absent-selection stack-lane frame-slot path remains as compatibility
+  fallback.
+- Stack-slot byval lane explicit selections into call ABI registers now fail
+  closed when the prepared-source helper lacks a complete payload. The
+  absent-selection stack-home frame-slot load path remains as compatibility
   fallback.
 - Indirect large-byval explicit selections now fail closed when the
   prepared-source helper lacks a complete payload. The absent-selection

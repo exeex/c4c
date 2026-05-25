@@ -1947,7 +1947,16 @@ make_immediate_cast_call_argument_publication_instruction(
         instruction_index);
     if (!destination.has_value()) {
       return std::nullopt;
-      }
+    }
+    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires complete prepared selected source bytes");
+      return std::nullopt;
+    }
     if (!source.has_value()) {
       if (auto fragmented =
               make_fragmented_aggregate_register_lane_publication_instruction(
