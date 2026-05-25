@@ -1,34 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Retire One Proven Duplicate Helper Boundary
+Current Step ID: Step 3
+Current Step Title: Move Non-Emission Spelling To Its Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` retired the remaining explicit byval lane-extent
-rederivation boundary in `selected_byval_lane_extent_bytes`. Complete explicit
-`ByvalRegisterLane` selections still provide the prepared lane extent, but any
-other explicit `source_selection` now fails closed instead of rederiving a
-byval extent from the move/source home. Absent-selection byval compatibility
-still uses the legacy extent derivation.
+Lifecycle review found Step 2 exhausted after the latest committed
+helper-boundary retirements. The completed Step 2 route retired the prepared
+source-selection duplicate boundaries that had a valid mapping, including
+explicit frame-slot value/address, local-frame address, stack-slot prior
+preservation, SRET address, and complete byval register-lane source payload
+cases.
 
-Instruction-dispatch coverage now proves an explicit wrong-kind
-`FrameSlotValue` selection on the register-homed byval lane route does not
-rederive the legacy register-home byval source, while the existing
-absent-selection case still lowers through the compatibility path.
+The remaining audited source-helper paths are not valid Step 2 continuation
+targets without new prepared facts or mapping proof: absent-selection
+compatibility, fragmented byval fallback, callee-saved-register prior
+preservation, and emission/spelling helpers. Step 2 should not be expanded to
+cover those paths under the current runbook contract.
 
 ## Suggested Next
 
-Hand Step 2 back for supervisor route review. The remaining audited source
-helper discovery paths are absent-selection compatibility, fragmented byval
-fallback, callee-saved-register prior preservation, or emission/spelling
-helpers without a prepared source-selection retirement mapping in this packet.
+Advance execution to Step 3 of `plan.md`: identify call printing or effect
+spelling still owned by the AArch64 calls surface, then delegate a narrow
+behavior-preserving move to the owning machine-printer or shared MIR layer.
+
+Do not continue Step 2 source-selection retirement unless a fresh mapping proves
+another AArch64-local helper boundary duplicates prepared call-plan facts.
 
 ## Watchouts
 
+- Step 3 is about non-emission spelling ownership, not another source-selection
+  retirement pass.
 - Do not retire absent-selection fragmented byval lane fallback logic outside
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
   covers explicit complete byval register-lane selections with prepared source
