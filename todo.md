@@ -2,34 +2,35 @@ Status: Active
 Source Idea Path: ideas/open/05_prepared_call_argument_source_selection_completeness.md
 Source Plan Path: plan.md
 Current Step ID: Step 3
-Current Step Title: Update Emission, Printing, And Diagnostics
+Current Step Title: Update Printing/Diagnostics And Add Focused Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for `plan.md`: updated AArch64 call-argument emission so the
-selection overload of `make_prior_preserved_call_argument_source` consumes
-complete explicit callee-saved `PriorPreservation` selection facts directly.
+Completed Step 3 for `plan.md`: updated prepared call-plan printing so call
+arguments with structured source selections print `arg.source_selection` plus
+the source identity, selected prior call position, preservation route, and
+callee-saved register or stack-slot payload facts.
 
-The overload now constructs the preserved source register from the selected
-register name, bank, contiguous width, occupied register names, and register
-placement without consulting `PreparedCallPreservedValue`. Stack-slot selection
-behavior remains fail-closed on the existing complete stack fact set, and
-`lower_before_call_move` no longer falls back to preserved-record lookup when a
-complete explicit callee-saved prior-preservation selection fails emission.
+Added focused backend prepared-printer coverage for a real callee-saved
+prior-preservation argument source selection and for stack-slot
+prior-preservation selection payload printing via a manual prepared-printer
+fixture.
 
 ## Suggested Next
 
-Execute the next Step 3/4 packet by adding natural printer or diagnostic
-coverage for explicit prior-preservation source-selection facts if the
-supervisor wants surfaced observability beyond the current emission behavior.
+Execute the next Step 4 packet: supervisor should decide whether this Step 3
+observability slice is sufficient to advance to final validation, review, or
+plan closure work.
 
 ## Watchouts
 
-Legacy preserved-record fallback still exists for paths without a complete
-explicit callee-saved `PriorPreservation` selection. This packet did not edit
-shared prepared-record files or tests.
+The natural x86 stack-preservation fixture preserves through a stack slot, but
+its later argument-source path selects frame-slot value facts before the
+prior-preservation path; stack-slot prior-preservation printing is therefore
+covered with a manual prepared-printer fixture rather than claiming planner
+selection behavior that is not present.
 
 ## Proof
 

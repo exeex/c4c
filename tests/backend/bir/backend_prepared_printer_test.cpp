@@ -1142,12 +1142,20 @@ prepare::PreparedBirModule prepare_cross_call_preservation_dump_module() {
       .return_type_name = "i32",
       .return_type = bir::TypeKind::I32,
   });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out.2"),
+      .callee = "boundary_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "after"),
       .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
-      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .lhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out.2"),
   });
   entry.terminator =
       bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "after")};
@@ -1371,6 +1379,54 @@ prepare::PreparedBirModule prepare_grouped_cross_call_preservation_dump_module()
   regalloc_planner.run_regalloc();
   regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
+}
+
+prepare::PreparedBirModule manual_stack_prior_preservation_source_selection_dump_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("manual_stack_prior_selection_dump_contract");
+  const auto value_name = prepared.names.value_names.intern("stack.saved.arg");
+
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 8,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"manual_stack_sink"},
+                  .arguments =
+                      {
+                          prepare::PreparedCallArgumentPlan{
+                              .arg_index = 0,
+                              .value_bank = prepare::PreparedRegisterBank::Gpr,
+                              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                              .source_value_id = prepare::PreparedValueId{77},
+                              .destination_register_name = std::string{"rdi"},
+                              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .source_selection =
+                                  prepare::PreparedCallArgumentSourceSelection{
+                                      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+                                          PriorPreservation,
+                                      .source_value_id = prepare::PreparedValueId{77},
+                                      .source_value_name = value_name,
+                                      .preserved_call_block_index = std::size_t{0},
+                                      .preserved_call_instruction_index = std::size_t{5},
+                                      .preservation_route =
+                                          prepare::PreparedCallPreservationRoute::StackSlot,
+                                      .preserved_stack_slot_id =
+                                          prepare::PreparedFrameSlotId{9},
+                                      .preserved_stack_offset_bytes = std::size_t{64},
+                                      .preserved_stack_size_bytes = std::size_t{4},
+                                      .preserved_stack_align_bytes = std::size_t{4},
+                                  },
+                          },
+                      },
+              },
+          },
+  });
+  return prepared;
 }
 
 prepare::PreparedBirModule prepare_grouped_spill_reload_dump_module() {
@@ -5326,6 +5382,8 @@ int main() {
   const auto cross_call_prepared = prepare_cross_call_preservation_dump_module();
   const auto* cross_call_storage =
       find_storage_plan_function(cross_call_prepared, "cross_call_preservation_dump_contract");
+  const auto* cross_call_plans =
+      find_call_plans_function(cross_call_prepared, "cross_call_preservation_dump_contract");
   const auto* cross_call_carry =
       cross_call_storage == nullptr ? nullptr : find_storage_value(cross_call_prepared, *cross_call_storage, "carry");
   const auto cross_call_function_id =
@@ -5334,7 +5392,9 @@ int main() {
       cross_call_function_id == c4c::kInvalidFunctionName
           ? nullptr
           : prepare::find_prepared_frame_plan(cross_call_prepared, cross_call_function_id);
-  if (cross_call_storage == nullptr || cross_call_carry == nullptr || cross_call_frame_plan == nullptr) {
+  if (cross_call_storage == nullptr || cross_call_plans == nullptr ||
+      cross_call_plans->calls.size() < 2 || cross_call_carry == nullptr ||
+      cross_call_frame_plan == nullptr) {
     std::cerr << "[FAIL] missing prepared carry storage fixture for cross-call preservation dump\n";
     return EXIT_FAILURE;
   }
@@ -5387,6 +5447,35 @@ int main() {
                            register_placement_text(cross_call_saved_it->placement) +
                            " reg=s1 bank=gpr units=s1",
                        "cross-call preservation detail")) {
+    return EXIT_FAILURE;
+  }
+  const auto& cross_call_prior_arg = cross_call_plans->calls[1].arguments.front();
+  if (!cross_call_prior_arg.source_selection.has_value() ||
+      cross_call_prior_arg.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+      cross_call_prior_arg.source_selection->preservation_route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      cross_call_prior_arg.source_selection->source_value_id !=
+          std::optional<prepare::PreparedValueId>{cross_call_carry->value_id} ||
+      cross_call_prior_arg.source_selection->preserved_register_name !=
+          std::optional<std::string>{"s1"}) {
+    std::cerr << "[FAIL] missing callee-saved prior-preservation source selection fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(cross_call_dump,
+                       "arg.source_selection=prior_preservation selection_source_value_id=" +
+                           std::to_string(cross_call_carry->value_id) +
+                           " selection_source_value=carry",
+                       "callee-saved prior-preservation source selection identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(cross_call_dump,
+                       "selection_preserved_call_block=0 selection_preserved_call_inst=2 "
+                       "selection_preservation_route=callee_saved_register "
+                       "selection_preserved_reg=s1 selection_preserved_bank=gpr width=1 units=s1 " +
+                           register_placement_text(cross_call_saved_it->placement,
+                                                   "selection_preserved_placement"),
+                       "callee-saved prior-preservation source selection payload")) {
     return EXIT_FAILURE;
   }
 
@@ -5442,6 +5531,24 @@ int main() {
                            " stack_align=" +
                            std::to_string(*stack_preserved_it->stack_align_bytes),
                        "stack-preserved structured spill-slot extent detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto manual_stack_prior_prepared =
+      manual_stack_prior_preservation_source_selection_dump_module();
+  const std::string manual_stack_prior_dump = prepare::print(manual_stack_prior_prepared);
+  if (!expect_contains(manual_stack_prior_dump,
+                       "arg.source_selection=prior_preservation selection_source_value_id=77 "
+                       "selection_source_value=stack.saved.arg",
+                       "manual stack-slot prior-preservation source selection identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(manual_stack_prior_dump,
+                       "selection_preserved_call_block=0 selection_preserved_call_inst=5 "
+                       "selection_preservation_route=stack_slot selection_preserved_bank=none "
+                       "selection_preserved_slot=#9 selection_preserved_stack_offset=64 "
+                       "selection_preserved_stack_size=4 selection_preserved_stack_align=4",
+                       "manual stack-slot prior-preservation source selection payload")) {
     return EXIT_FAILURE;
   }
 

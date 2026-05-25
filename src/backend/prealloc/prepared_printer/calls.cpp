@@ -199,6 +199,112 @@ void append_register_occupancy(std::ostringstream& out,
   }
 }
 
+void append_call_argument_source_selection(
+    std::ostringstream& out,
+    const PreparedNameTables& names,
+    const PreparedCallArgumentSourceSelection& selection) {
+  out << " arg.source_selection="
+      << prepared_call_argument_source_selection_kind_name(selection.kind);
+  if (selection.source_value_id.has_value()) {
+    out << " selection_source_value_id=" << *selection.source_value_id;
+  }
+  if (selection.source_value_name.has_value()) {
+    out << " selection_source_value="
+        << maybe_value_name(names, *selection.source_value_name);
+  }
+  if (selection.source_home_kind.has_value()) {
+    out << " selection_source_home="
+        << prepared_value_home_kind_name(*selection.source_home_kind);
+  }
+  if (selection.source_slot_id.has_value()) {
+    out << " selection_source_slot=#" << *selection.source_slot_id;
+  }
+  if (selection.source_stack_offset_bytes.has_value()) {
+    out << " selection_source_stack_offset="
+        << *selection.source_stack_offset_bytes;
+  }
+  if (selection.source_size_bytes.has_value()) {
+    out << " selection_source_size=" << *selection.source_size_bytes;
+  }
+  if (selection.source_align_bytes.has_value()) {
+    out << " selection_source_align=" << *selection.source_align_bytes;
+  }
+  if (selection.source_base_value_id.has_value()) {
+    out << " selection_source_base_value_id="
+        << *selection.source_base_value_id;
+  }
+  if (selection.source_pointer_byte_delta.has_value()) {
+    out << " selection_source_delta=" << *selection.source_pointer_byte_delta;
+  }
+  if (selection.address_materialization_block_label.has_value()) {
+    out << " selection_materialization_block="
+        << prepared_block_label(names, *selection.address_materialization_block_label);
+  }
+  if (selection.address_materialization_inst_index.has_value()) {
+    out << " selection_materialization_inst="
+        << *selection.address_materialization_inst_index;
+  }
+  if (selection.address_materialization_frame_slot_id.has_value()) {
+    out << " selection_materialization_slot=#"
+        << *selection.address_materialization_frame_slot_id;
+  }
+  if (selection.address_materialization_byte_offset.has_value()) {
+    out << " selection_materialization_offset="
+        << *selection.address_materialization_byte_offset;
+  }
+  if (selection.preserved_call_block_index.has_value()) {
+    out << " selection_preserved_call_block="
+        << *selection.preserved_call_block_index;
+  }
+  if (selection.preserved_call_instruction_index.has_value()) {
+    out << " selection_preserved_call_inst="
+        << *selection.preserved_call_instruction_index;
+  }
+  if (selection.preservation_route != PreparedCallPreservationRoute::Unknown) {
+    out << " selection_preservation_route="
+        << prepared_call_preservation_route_name(selection.preservation_route);
+  }
+  if (selection.preserved_register_name.has_value()) {
+    out << " selection_preserved_reg=" << *selection.preserved_register_name;
+  }
+  out << " selection_preserved_bank="
+      << maybe_register_bank(selection.preserved_register_bank);
+  if (selection.preserved_register_contiguous_width.has_value() ||
+      !selection.preserved_occupied_register_names.empty()) {
+    append_register_occupancy(
+        out,
+        selection.preserved_register_contiguous_width.value_or(1),
+        selection.preserved_occupied_register_names);
+  }
+  append_register_placement(out,
+                            "selection_preserved_placement",
+                            selection.preserved_register_placement);
+  if (selection.preserved_stack_slot_id.has_value()) {
+    out << " selection_preserved_slot=#"
+        << *selection.preserved_stack_slot_id;
+  }
+  if (selection.preserved_stack_offset_bytes.has_value()) {
+    out << " selection_preserved_stack_offset="
+        << *selection.preserved_stack_offset_bytes;
+  }
+  if (selection.preserved_stack_size_bytes.has_value()) {
+    out << " selection_preserved_stack_size="
+        << *selection.preserved_stack_size_bytes;
+  }
+  if (selection.preserved_stack_align_bytes.has_value()) {
+    out << " selection_preserved_stack_align="
+        << *selection.preserved_stack_align_bytes;
+  }
+  if (selection.byval_lane_extent_bytes.has_value()) {
+    out << " selection_byval_lane_extent="
+        << *selection.byval_lane_extent_bytes;
+  }
+  if (selection.byval_lane_source_instruction_index.has_value()) {
+    out << " selection_byval_lane_source_inst="
+        << *selection.byval_lane_source_instruction_index;
+  }
+}
+
 }  // namespace
 
 void append_call_plans(std::ostringstream& out, const PreparedBirModule& module) {
@@ -276,6 +382,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         }
         if (arg.destination_stack_size_bytes.has_value()) {
           out << " dest_stack_size=" << *arg.destination_stack_size_bytes;
+        }
+        if (arg.source_selection.has_value()) {
+          append_call_argument_source_selection(out, module.names, *arg.source_selection);
         }
         out << "\n";
       }
