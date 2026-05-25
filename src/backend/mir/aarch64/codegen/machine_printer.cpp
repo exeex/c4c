@@ -4,6 +4,7 @@
 #include "cast_ops.hpp"
 #include "comparison.hpp"
 #include "f128.hpp"
+#include "float_ops.hpp"
 #include "globals.hpp"
 #include "i128_ops.hpp"
 #include "inline_asm.hpp"
@@ -1844,6 +1845,354 @@ std::vector<std::string> materialize_integer_constant_lines(
   }
   return lines;
 }
+
+namespace {
+
+std::optional<std::size_t> call_boundary_load_width_bytes(
+    const RegisterOperand& destination) {
+  switch (destination.reg.view) {
+    case abi::RegisterView::S:
+    case abi::RegisterView::W:
+      return 4U;
+    case abi::RegisterView::D:
+    case abi::RegisterView::X:
+      return 8U;
+    case abi::RegisterView::Q:
+      return 16U;
+    default:
+      return std::nullopt;
+  }
+}
+
+bool call_boundary_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t load_width_bytes) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      load_width_bytes == 0) {
+    return false;
+  }
+  if (load_width_bytes != 1 && load_width_bytes != 2 && load_width_bytes != 4 &&
+      load_width_bytes != 8 && load_width_bytes != 16) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % load_width_bytes == 0 && offset / load_width_bytes <= 4095U;
+}
+
+std::optional<abi::RegisterReference> call_boundary_address_scratch_register(
+    abi::RegisterReference destination) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (!same_gp_register_index(scratch, destination)) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& memory) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0) {
+    return {};
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  if (offset <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+std::optional<std::vector<std::string>> print_aggregate_register_lane_publication_lines(
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (!is_aggregate_register_lane_publication(move)) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  const auto scratch = aggregate_register_lane_scratch(*move.destination_register);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  const std::string scratch_x = abi::register_name(*scratch);
+  std::size_t remaining = move.source_memory->size_bytes;
+  std::size_t lane_index = 0;
+  std::size_t source_offset = 0;
+  while (remaining > 0) {
+    const std::size_t lane_bytes = std::min<std::size_t>(remaining, 8);
+    const auto lane_register =
+        aggregate_register_lane_destination(*move.destination_register, lane_index);
+    if (!lane_register.has_value()) {
+      return std::nullopt;
+    }
+    std::size_t lane_offset = 0;
+    while (lane_offset < lane_bytes) {
+      const auto printable_chunk =
+          aggregate_register_lane_printable_chunk(*move.source_memory,
+                                                  source_offset + lane_offset,
+                                                  lane_bytes - lane_offset);
+      if (!printable_chunk.has_value()) {
+        return std::nullopt;
+      }
+      const std::size_t chunk_width = *printable_chunk;
+      const auto chunk_memory =
+          aggregate_register_lane_memory(*move.source_memory,
+                                         source_offset + lane_offset,
+                                         chunk_width);
+      const auto mnemonic = aggregate_register_lane_load_mnemonic(chunk_width);
+      if (mnemonic.empty()) {
+        return std::nullopt;
+      }
+      const bool first_chunk = lane_offset == 0;
+      const auto load_register =
+          first_chunk
+              ? aggregate_register_lane_load_register(*lane_register, chunk_width)
+              : aggregate_register_lane_load_register(*scratch, chunk_width);
+      lines.push_back(std::string{mnemonic} + " " +
+                      std::string{abi::register_name(load_register)} + ", " +
+                      memory_address(chunk_memory));
+      if (!first_chunk) {
+        lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
+                        ", " + std::string{abi::register_name(*lane_register)} +
+                        ", " + scratch_x + ", lsl #" +
+                        std::to_string(lane_offset * 8));
+      }
+      lane_offset += chunk_width;
+    }
+    remaining -= lane_bytes;
+    source_offset += lane_bytes;
+    ++lane_index;
+  }
+  return lines;
+}
+
+std::optional<std::vector<std::string>> print_call_boundary_frame_slot_load_lines(
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (!move.source_memory.has_value() || !move.destination_register.has_value()) {
+    return std::nullopt;
+  }
+  std::string address;
+  std::vector<std::string> lines;
+  const auto load_width = call_boundary_load_width_bytes(*move.destination_register);
+  if (!load_width.has_value()) {
+    return std::nullopt;
+  }
+  if (call_boundary_frame_slot_direct_offset_is_encodable(*move.source_memory,
+                                                          *load_width)) {
+    address = memory_address(*move.source_memory);
+  } else {
+    const auto scratch =
+        call_boundary_address_scratch_register(move.destination_register->reg);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    lines =
+        materialize_call_boundary_frame_slot_address_lines(*scratch, *move.source_memory);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    address = "[" + std::string{abi::register_name(*scratch)} + "]";
+  }
+  if (address.empty()) {
+    return std::nullopt;
+  }
+  lines.push_back("ldr " + register_name(*move.destination_register) + ", " + address);
+  return lines;
+}
+
+std::optional<std::string> f128_call_boundary_vector_register_name(
+    const RegisterOperand& operand) {
+  if (operand.expected_view != abi::RegisterView::Q ||
+      operand.prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      operand.prepared_class != prepare::PreparedRegisterClass::Vector ||
+      operand.contiguous_width != 1 ||
+      !abi::is_fp_simd_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(operand.reg.index, abi::RegisterView::V);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return std::string{abi::register_name(*viewed)} + ".16b";
+}
+
+std::optional<unsigned> scalar_call_boundary_integer_width_bits(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+      return 64U;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::uint64_t scalar_call_boundary_integer_immediate_bits(
+    const ImmediateOperand& immediate,
+    unsigned width_bits) {
+  if (width_bits == 32U) {
+    return static_cast<std::uint32_t>(immediate.unsigned_value);
+  }
+  return immediate.unsigned_value;
+}
+
+bool is_single_move_wide_immediate(std::uint64_t value, unsigned width_bits) {
+  const unsigned chunks = width_bits == 64U ? 4U : 2U;
+  unsigned nonzero_chunks = 0;
+  for (unsigned chunk = 0; chunk < chunks; ++chunk) {
+    if (((value >> (chunk * 16U)) & 0xffffU) != 0U) {
+      ++nonzero_chunks;
+    }
+  }
+  return nonzero_chunks <= 1U;
+}
+
+mir::TargetInstructionPrintResult print_call_boundary_move(
+    const InstructionRecord& instruction,
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (move.source_bundle == nullptr ||
+      (move.source_move == nullptr && !move.source_immediate.has_value() &&
+       !move.source_memory.has_value())) {
+    return target_unsupported(bad_header(instruction) +
+                              "call-boundary move node is missing prepared move provenance");
+  }
+  if ((!move.source_register.has_value() && !move.source_immediate.has_value() &&
+       !move.source_memory.has_value()) ||
+      !move.destination_register.has_value()) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "call-boundary move node requires prepared register source and destination");
+  }
+  if (const auto lines = print_aggregate_register_lane_publication_lines(move);
+      lines.has_value()) {
+    return target_printed(*lines);
+  }
+  if (move.source_memory.has_value()) {
+    if (move.source_memory->support != MemoryOperandSupportKind::Prepared ||
+        move.source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        !move.source_memory->frame_slot_id.has_value() ||
+        !move.source_memory->byte_offset_is_prepared_snapshot ||
+        !move.source_memory->can_use_base_plus_offset) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "call-boundary frame-slot move requires a prepared frame-slot address");
+    }
+    if (move.source_memory_materializes_address) {
+      const auto lines = materialize_call_boundary_frame_slot_address_lines(
+          move.destination_register->reg, *move.source_memory);
+      if (lines.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "call-boundary frame-slot address is not printable");
+      }
+      return target_printed(lines);
+    }
+    const auto lines = print_call_boundary_frame_slot_load_lines(move);
+    if (!lines.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "call-boundary frame-slot address is not printable");
+    }
+    return target_printed(*lines);
+  }
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "call-boundary move mnemonic is not printable");
+  }
+  if (!move.source_register.has_value() && move.source_immediate.has_value()) {
+    if (abi::is_fp_simd_register(move.destination_register->reg)) {
+      const auto fp_view = scalar_fp_register_view(move.source_immediate->type);
+      if (!fp_view.has_value() || move.destination_register->reg.view != *fp_view) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move requires matching scalar FPR destination");
+      }
+      const auto gp_scratch_base = abi::reserved_mir_scratch_gp_registers().front();
+      const auto gp_scratch = abi::gp_register(
+          gp_scratch_base.index,
+          move.source_immediate->type == bir::TypeKind::F32 ? abi::RegisterView::W
+                                                            : abi::RegisterView::X);
+      if (!gp_scratch.has_value()) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move requires scratch GPR materialization");
+      }
+      const unsigned width_bits =
+          move.source_immediate->type == bir::TypeKind::F32 ? 32U : 64U;
+      auto lines = materialize_integer_constant_lines(
+          *gp_scratch, move.source_immediate->unsigned_value, width_bits);
+      if (lines.empty()) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "call-boundary immediate FP move could not materialize literal bits");
+      }
+      lines.push_back("fmov " + std::string{register_name(*move.destination_register)} +
+                      ", " + std::string{abi::register_name(*gp_scratch)});
+      return target_printed(std::move(lines));
+    }
+    const auto width_bits =
+        scalar_call_boundary_integer_width_bits(move.source_immediate->type);
+    if (!width_bits.has_value() || !abi::is_gp_register(move.destination_register->reg)) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "call-boundary immediate move requires scalar integer GPR materialization");
+    }
+    const auto value =
+        scalar_call_boundary_integer_immediate_bits(*move.source_immediate, *width_bits);
+    if (!is_single_move_wide_immediate(value, *width_bits)) {
+      return target_printed(materialize_integer_constant_lines(
+          move.destination_register->reg, value, *width_bits));
+    }
+  }
+  std::ostringstream out;
+  const bool f128_q_register_move =
+      move.source_register.has_value() &&
+      move.source_f128_carrier != nullptr &&
+      move.source_register->expected_view == abi::RegisterView::Q &&
+      move.destination_register->expected_view == abi::RegisterView::Q;
+  if (f128_q_register_move) {
+    const auto destination =
+        f128_call_boundary_vector_register_name(*move.destination_register);
+    const auto source =
+        f128_call_boundary_vector_register_name(*move.source_register);
+    if (!destination.has_value() || !source.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "binary128 call-boundary q-register move is not printable");
+    }
+    out << "mov " << *destination << ", " << *source;
+    return target_printed({out.str()});
+  }
+  const bool scalar_fp_register_move =
+      move.source_register.has_value() &&
+      abi::is_fp_simd_register(move.source_register->reg) &&
+      abi::is_fp_simd_register(move.destination_register->reg) &&
+      (move.source_register->reg.view == abi::RegisterView::S ||
+       move.source_register->reg.view == abi::RegisterView::D) &&
+      move.source_register->reg.view == move.destination_register->reg.view;
+  out << (scalar_fp_register_move ? "fmov" : mnemonic) << " "
+      << register_name(*move.destination_register) << ", ";
+  if (move.source_register.has_value()) {
+    out << register_name(*move.source_register);
+  } else {
+    out << "#" << move.source_immediate->signed_value;
+  }
+  return target_printed({out.str()});
+}
+
+}  // namespace
 
 mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
                                              const CallInstructionRecord& call) {

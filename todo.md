@@ -8,21 +8,22 @@ Current Step Title: Move Or Narrow Pure Printer Ownership
 
 ## Just Finished
 
-Step 2 moved the diagnostic-only `print_call_boundary_abi_binding` helper into
-`machine_printer.cpp` at the `CallBoundaryAbiBindingInstructionRecord` payload
-dispatch boundary. `calls.hpp` no longer exports
-`print_call_boundary_abi_binding`, and `calls_printing.cpp` no longer
-implements it.
+Step 2 moved the remaining pure `print_call_boundary_move` printer island into
+`machine_printer.cpp` at the `CallBoundaryMoveInstructionRecord` payload dispatch
+boundary. `calls.hpp` no longer exports `print_call_boundary_move`, and
+`calls_printing.cpp` no longer implements the printer-only call-boundary move
+spelling helpers.
 
-`make_call_boundary_abi_binding_instruction` and ABI-binding node
-construction/status remain calls-owned in `calls_printing.cpp`.
+The dependency split was viable: frame-slot load/address spelling, aggregate
+lane publication spelling, scalar immediate materialization checks, scalar FPR
+immediate spelling, and f128 q-register spelling moved as printer-local helpers.
+Call-boundary move construction, selection/status, operand/effect publication,
+and prepared provenance remain calls-owned.
 
 ## Suggested Next
 
-Continue Step 2 by deciding whether the larger
-`print_call_boundary_move` helper should move as one follow-up packet or be
-split first, since it still carries frame-slot load/address materialization,
-immediate materialization, scalar FPR, and f128 q-register spelling helpers.
+Supervisor should review the Step 2 slice for acceptance/commit readiness and
+decide whether Step 2 is exhausted or needs a follow-up route check.
 
 ## Watchouts
 
@@ -36,14 +37,13 @@ immediate materialization, scalar FPR, and f128 q-register spelling helpers.
   printer and effect-publication responsibilities.
 - Keep source-idea progress tied to deleted duplication, moved ownership, or a
   sharper emission-only boundary.
-- `print_call_boundary_move` is the remaining calls-family printer export, but
-  it drags frame-slot load/address materialization, immediate materialization,
-  scalar FPR, and f128 q-register spelling helpers; avoid treating that as a
-  trivial symbol move.
 - Do not move `effect_from_prepared_call_preserved_value` to the printer.
   Blocker: the prepared preserved-value route is currently converted into
   machine-node `preserves` by `make_call_instruction`; there is no separate
   printer-owned fact that can replace that effect publication.
+- `calls_moves.cpp` still owns construction-side frame-slot address
+  printability checks used to decide whether a call-boundary move can be
+  represented; this packet intentionally moved only printer spelling helpers.
 
 ## Proof
 
@@ -51,3 +51,9 @@ Step 2 proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_machine_printer|aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_printer|aarch64_instruction_dispatch)$' > test_after.log 2>&1`
 
 Proof log: `test_after.log`. The focused subset passed 5/5 tests.
+
+Supervisor broader backend guard also passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+
+Matching `test_before.log`/`test_after.log` backend comparison passed with
+162/162 tests before and after, with no new failures.
