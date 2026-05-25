@@ -19076,8 +19076,8 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
               .function_name = function_name,
               .value_name = value_name,
               .kind = prepare::PreparedValueHomeKind::StackSlot,
-              .slot_id = prepare::PreparedFrameSlotId{5},
-              .offset_bytes = std::size_t{32},
+              .slot_id = prepare::PreparedFrameSlotId{5005},
+              .offset_bytes = std::size_t{4096},
               .size_bytes = std::size_t{8},
               .align_bytes = std::size_t{8},
           }},
@@ -19120,8 +19120,8 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
               .value_bank = prepare::PreparedRegisterBank::Gpr,
               .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
               .source_value_id = value_id,
-              .source_slot_id = prepare::PreparedFrameSlotId{5},
-              .source_stack_offset_bytes = std::size_t{32},
+              .source_slot_id = prepare::PreparedFrameSlotId{5005},
+              .source_stack_offset_bytes = std::size_t{4096},
               .source_register_bank = prepare::PreparedRegisterBank::Gpr,
               .destination_stack_offset_bytes = std::size_t{0},
               .source_selection =
@@ -19181,6 +19181,15 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
       source->byte_offset != 32 ||
       source->size_bytes != 8) {
     return fail("expected selected stack call argument store to preserve source and destination facts");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+  if (!printed.ok ||
+      printed.instruction_lines !=
+          std::vector<std::string>{"ldr x9, [sp, #32]", "str x9, [x16]"}) {
+    return fail(
+        "expected prepared frame-slot value selection to emit from selected "
+        "source bytes, not stale source home");
   }
   return 0;
 }
@@ -19779,8 +19788,8 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
               .function_name = function_name,
               .value_name = value_name,
               .kind = prepare::PreparedValueHomeKind::StackSlot,
-              .slot_id = prepare::PreparedFrameSlotId{7},
-              .offset_bytes = std::size_t{48},
+              .slot_id = prepare::PreparedFrameSlotId{7007},
+              .offset_bytes = std::size_t{4096},
               .size_bytes = std::size_t{8},
               .align_bytes = std::size_t{8},
           }},
@@ -19827,8 +19836,8 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
               .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
               .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
               .source_value_id = value_id,
-              .source_slot_id = prepare::PreparedFrameSlotId{7},
-              .source_stack_offset_bytes = std::size_t{48},
+              .source_slot_id = prepare::PreparedFrameSlotId{7007},
+              .source_stack_offset_bytes = std::size_t{4096},
               .source_register_bank = prepare::PreparedRegisterBank::Gpr,
               .destination_register_name = std::string{"x1"},
               .destination_contiguous_width = 1,
