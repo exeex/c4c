@@ -1,47 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/15_aarch64_aggregate_hfa_stdarg_abi.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce And Localize The 00204 ABI Failure
+Current Step ID: Step 3
+Current Step Title: Repair The Narrow ABI Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced `c_testsuite_aarch64_backend_src_00204_c` with the delegated
-proof and localized the first bad owner. The first mismatch occurs in the
-ordinary `Arguments:` section at `fa_s1(s1)`, before stdarg; HFA fixed
-arguments and all return-value checks are still correct. `fa_s1` expects the
-small non-HFA aggregate payload in `x0` and unpacks it byte-wise, but `arg`
-stores `s1` into a local frame byte at stack offset 928 and branches to
-`fa_s1` without publishing that byte to `x0`. For `fa_s2`, prepared metadata
-records `arg0 bank=gpr from=frame_slot:stack+1224 to=x0`, but the actual
-aggregate bytes were just stored at stack offsets 929 and 930. The concrete
-suspect is the AArch64 byval aggregate register-lane call-argument source path:
-`call_arg_byval_aggregate_register_lanes` is sourcing the aggregate value home
-or prior-preservation spill instead of the byte-bearing aggregate frame slots
-created by the immediately preceding stores.
+Step 2/3 added focused dispatch coverage for both sides of the small non-HFA
+byval register-lane rule. The one-byte register-home case requires
+`ldrb w0, [sp, #128]` and rejects both the aggregate home register and the
+preservation spill. A new two-byte stack-home reduced test requires the two
+payload bytes to be packed from populated local slots with `ldrb`/`orr` instead
+of reading the aggregate home slot, and now includes an explicit selected
+byval source pointing at the aggregate home to match the real `fa_s2` hazard.
+
+Step 3 repaired the owned AArch64 call-boundary lowering so discovered payload
+stores win over aggregate home or preservation sources for small byval
+register-lane publication. The real `00204` path now emits `ldrb w0,
+[sp, #928]` for `fa_s1` and packs `fa_s2` from `[sp, #929]` plus `[sp, #930]`.
+The same payload-store source rule also feeds stack-slot byval lane
+publication, so later `fa1`/`fa2` overflow aggregate arguments are copied from
+populated payload slots into the outgoing stack area.
 
 ## Suggested Next
 
-Add a focused reduced test for a 1-2 byte non-HFA struct passed by value on
-AArch64, then repair the byval register-lane source selection so the call move
-loads from the populated aggregate bytes before publishing `x0`/`x1`.
+Supervisor review/commit for the completed Step 2/3 slice.
 
 ## Watchouts
 
-Do not reopen broad prior-preservation fallback. The failing prepared facts are
-visible around `src/backend/prealloc/call_plans.cpp` source selection and the
-AArch64 consumers in
-`src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp` /
-`src/backend/mir/aarch64/codegen/calls_moves.cpp`. The callee prologue path for
-small byval aggregates appears ABI-compatible for this first failure, and HFA
-fixed-argument paths are not the first bad owner.
+The repair is intentionally semantic rather than testcase-shaped: source-name
+variants, direct local-slot payload lookup, selected-source mismatch handling,
+and omitted stack-slot explicit moves are all generic call-boundary rules. Do
+not reintroduce aggregate home or prior-preservation fallback when payload
+stores are available.
 
 ## Proof
 
 Ran:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$') > test_after.log 2>&1`
 
-Result: build succeeded; the focused ctest failed with the reproduced
-`[RUNTIME_MISMATCH]`. Proof log: `test_after.log`.
+Result: passed. Build succeeded; `backend_aarch64_instruction_dispatch` passed,
+including the new one-byte register-home and two-byte stack-home reduced
+coverage; `c_testsuite_aarch64_backend_src_00204_c` passed. Proof log:
+`test_after.log`.

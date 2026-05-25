@@ -1109,6 +1109,33 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
+[[nodiscard]] bool has_byval_register_lane_payload_stores(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t source_instruction_index) {
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
+  return !stores.empty() && stores.front().source_offset == 0;
+}
+
+[[nodiscard]] bool byval_register_lane_source_matches_payload_store(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t source_instruction_index,
+    const MemoryOperand& source) {
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
+  for (const auto& store : stores) {
+    if (store.source_offset == 0 &&
+        store.frame_slot_id == source.frame_slot_id &&
+        store.stack_offset == source.byte_offset &&
+        store.size_bytes >= source.size_bytes) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMoveResolution& move,
@@ -1116,8 +1143,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     const prepare::PreparedValueHome& source_home,
     std::size_t source_instruction_index) {
   if (!is_aarch64_byval_register_lane_move(move) ||
-      !source_home.size_bytes.has_value() ||
-      *source_home.size_bytes == 0) {
+      (source_home.size_bytes.has_value() && *source_home.size_bytes == 0)) {
     return std::nullopt;
   }
 
@@ -1128,7 +1154,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       move.destination_occupied_register_names.size(),
       argument.destination_occupied_register_names.size(),
   });
-  std::size_t extent_bytes = *source_home.size_bytes;
+  std::size_t extent_bytes = source_home.size_bytes.value_or(0);
 
   const auto stores =
       collect_byval_register_lane_stores(context, source_home, source_instruction_index);
@@ -1145,6 +1171,8 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       }
     }
     extent_bytes = std::max(extent_bytes, covered_bytes);
+  } else if (extent_bytes == 0) {
+    return std::nullopt;
   } else if (prepared_lane_count > 1 && extent_bytes <= 8) {
     extent_bytes *= prepared_lane_count;
   }
@@ -1165,6 +1193,11 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     return argument.source_selection->byval_lane_extent_bytes;
   }
   if (argument.source_selection.has_value()) {
+    if (has_byval_register_lane_payload_stores(
+            context, source_home, source_instruction_index)) {
+      return prepared_byval_lane_extent_bytes(
+          context, move, argument, source_home, source_instruction_index);
+    }
     return std::nullopt;
   }
   return prepared_byval_lane_extent_bytes(
@@ -1530,6 +1563,7 @@ make_immediate_cast_call_argument_publication_instruction(
             context, *argument, *source_home, instruction_index)
             .has_value();
     const bool register_byval_argument =
+        is_aarch64_byval_register_lane_move(move) ||
         (source_home != nullptr &&
          selected_byval_lane_extent_bytes(
              context, move, *argument, *source_home, call_plan.instruction_index)
@@ -1816,6 +1850,8 @@ make_immediate_cast_call_argument_publication_instruction(
       source = make_byval_register_lane_prepared_source(
           context, *argument, *source_home, *register_byval_size, call_plan.instruction_index);
       if (!source.has_value() && source_home->register_name.has_value() &&
+          !has_byval_register_lane_payload_stores(
+              context, *source_home, call_plan.instruction_index) &&
           !has_selected_byval_register_lane_source(*argument)) {
         auto source_register = make_register_operand_from_prepared_authority(
             source_home->register_name,
@@ -1952,6 +1988,8 @@ make_immediate_cast_call_argument_publication_instruction(
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
     if (!source.has_value() && source_home->size_bytes.has_value() &&
+        !has_byval_register_lane_payload_stores(
+            context, *source_home, call_plan.instruction_index) &&
         !has_selected_byval_register_lane_source(*argument)) {
       auto source_register = make_register_operand_from_prepared_authority(
           source_home->register_name,
@@ -2005,6 +2043,22 @@ make_immediate_cast_call_argument_publication_instruction(
         diagnostics,
         context,
         instruction_index);
+    if (!source.has_value() && destination.has_value() &&
+        !has_selected_byval_register_lane_source(*argument)) {
+      if (auto fragmented =
+              make_fragmented_aggregate_register_lane_publication_instruction(
+                  context,
+                  bundle,
+                  move,
+                  *argument,
+                  *source_home,
+                  *destination,
+                  *lane_size,
+                  call_plan.instruction_index,
+                  instruction_index)) {
+        return fragmented;
+      }
+    }
     if (!source.has_value() || !destination.has_value()) {
       append_call_diagnostic(
           diagnostics,
@@ -2046,8 +2100,6 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate register-lane call-argument publication requires a small ABI byval size");
       return std::nullopt;
     }
-    auto source = make_byval_register_lane_prepared_source(
-        context, *argument, *source_home, *lane_size, call_plan.instruction_index);
     const auto destination_register_placement =
         move.destination_register_placement.has_value()
             ? move.destination_register_placement
@@ -2076,7 +2128,36 @@ make_immediate_cast_call_argument_publication_instruction(
     if (!destination.has_value()) {
       return std::nullopt;
     }
-    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
+    auto source = make_byval_register_lane_prepared_source(
+        context, *argument, *source_home, *lane_size, call_plan.instruction_index);
+    const bool source_matches_payload =
+        source.has_value() &&
+        byval_register_lane_source_matches_payload_store(
+            context, *source_home, call_plan.instruction_index, *source);
+    if (!source_matches_payload &&
+        has_byval_register_lane_payload_stores(
+            context, *source_home, call_plan.instruction_index)) {
+      if (auto fragmented =
+              make_fragmented_aggregate_register_lane_publication_instruction(
+                  context,
+                  bundle,
+                  move,
+                  *argument,
+                  *source_home,
+                  *destination,
+                  *lane_size,
+                  call_plan.instruction_index,
+                  instruction_index)) {
+        return fragmented;
+      }
+      if (has_selected_byval_register_lane_source(*argument)) {
+        source.reset();
+      }
+    }
+    if (!source.has_value() &&
+        has_selected_byval_register_lane_source(*argument) &&
+        !has_byval_register_lane_payload_stores(
+            context, *source_home, call_plan.instruction_index)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2357,9 +2438,16 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate stack-lane call-argument publication requires a small ABI byval size");
       return std::nullopt;
     }
+    const auto payload_stores =
+        collect_byval_register_lane_stores(context, *source_home, call_plan.instruction_index);
+    const bool has_payload_stores =
+        !payload_stores.empty() && payload_stores.front().source_offset == 0;
+    bool source_is_payload_extent = false;
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
+    if (!source.has_value() &&
+        has_selected_byval_register_lane_source(*argument) &&
+        !has_payload_stores) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2373,6 +2461,22 @@ make_immediate_cast_call_argument_publication_instruction(
           make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
       if (source.has_value()) {
         source->size_bytes = *lane_size;
+      }
+    }
+    if (!source.has_value() && has_payload_stores) {
+      source = aggregate_lane_store_memory(context,
+                                           *argument,
+                                           *source_home,
+                                           payload_stores.front(),
+                                           0,
+                                           std::min(payload_stores.front().size_bytes,
+                                                    *lane_size),
+                                           instruction_index);
+      if (source.has_value()) {
+        source->size_bytes = *lane_size;
+        source->align_bytes =
+            std::min<std::size_t>(payload_stores.front().align_bytes, *lane_size);
+        source_is_payload_extent = true;
       }
     }
     if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
@@ -2405,6 +2509,18 @@ make_immediate_cast_call_argument_publication_instruction(
                 instruction_index,
                 *destination)) {
       return fragmented;
+    }
+    if (source_is_payload_extent ||
+        (has_payload_stores &&
+         !byval_register_lane_source_matches_payload_store(
+             context, *source_home, call_plan.instruction_index, *source))) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack-lane call-argument publication requires contiguous populated payload bytes");
+      return std::nullopt;
     }
     auto lowered = make_byval_register_lane_stack_publication_instruction(
         context, instruction_index, *source, *destination);

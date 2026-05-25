@@ -244,6 +244,24 @@ namespace {
   return byte_offset;
 }
 
+void append_aggregate_lane_source_name_variants(std::vector<std::string>* names,
+                                                std::string_view name) {
+  if (name.empty()) {
+    return;
+  }
+  auto append_unique = [&](std::string candidate) {
+    if (std::find(names->begin(), names->end(), candidate) == names->end()) {
+      names->push_back(std::move(candidate));
+    }
+  };
+  append_unique(std::string{name});
+  if (name.front() == '%') {
+    append_unique(std::string{name.substr(1)});
+  } else {
+    append_unique("%" + std::string{name});
+  }
+}
+
 struct AggregateRegisterLaneLoadSource {
   std::string value_name;
   std::string slot_name;
@@ -309,10 +327,20 @@ collect_byval_register_lane_stores(
       source_home.value_name == c4c::kInvalidValueName) {
     return stores;
   }
+  std::vector<std::string> source_names;
   const auto source_name =
       prepare::prepared_value_name(context.function.prepared->names,
                                    source_home.value_name);
-  if (source_name.empty()) {
+  append_aggregate_lane_source_name_variants(&source_names, source_name);
+  if (instruction_index < context.bir_block->insts.size()) {
+    if (const auto* call =
+            std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+        call != nullptr && call->args.size() == 1 &&
+        call->args.front().kind == bir::Value::Kind::Named) {
+      append_aggregate_lane_source_name_variants(&source_names, call->args.front().name);
+    }
+  }
+  if (source_names.empty()) {
     return stores;
   }
   const auto* addressing = prepare::find_prepared_addressing(
@@ -340,6 +368,54 @@ collect_byval_register_lane_stores(
     if (store == nullptr) {
       continue;
     }
+
+    std::string_view store_slot_name = store->slot_name;
+    if (store_slot_name.empty() && store->address.has_value() &&
+        store->address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+        !store->address->base_name.empty()) {
+      store_slot_name = store->address->base_name;
+    }
+    std::optional<std::size_t> direct_source_offset;
+    for (const auto& candidate_source_name : source_names) {
+      direct_source_offset =
+          aggregate_slot_source_byte_offset(store_slot_name, candidate_source_name);
+      if (direct_source_offset.has_value()) {
+        break;
+      }
+    }
+    if (direct_source_offset.has_value()) {
+      const prepare::PreparedFrameSlot* selected_slot = nullptr;
+      for (const auto& object : context.function.prepared->stack_layout.objects) {
+        if (object.function_name != context.function.control_flow->function_name ||
+            object.source_kind != "local_slot" ||
+            prepare::prepared_stack_object_name(
+                context.function.prepared->names, object) != store_slot_name) {
+          continue;
+        }
+        for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
+          if (slot.object_id == object.object_id &&
+              (selected_slot == nullptr ||
+               slot.offset_bytes < selected_slot->offset_bytes)) {
+            selected_slot = &slot;
+          }
+        }
+      }
+      if (selected_slot != nullptr) {
+        stores.push_back(AggregateRegisterLaneStore{
+            .source_offset = *direct_source_offset,
+            .stack_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
+            .size_bytes = store->address.has_value() && store->address->size_bytes > 0
+                              ? store->address->size_bytes
+                              : selected_slot->size_bytes,
+            .align_bytes = store->address.has_value() && store->address->align_bytes > 0
+                               ? store->address->align_bytes
+                               : selected_slot->align_bytes,
+            .frame_slot_id = selected_slot->slot_id,
+        });
+        continue;
+      }
+    }
+
     const auto* access =
         prepare::find_prepared_memory_access(*addressing,
                                              context.control_flow_block->block_label,
@@ -408,8 +484,14 @@ collect_byval_register_lane_stores(
       });
     }
 
-    const auto source_offset =
-        aggregate_slot_source_byte_offset(store->slot_name, source_name);
+    std::optional<std::size_t> source_offset;
+    for (const auto& candidate_source_name : source_names) {
+      source_offset =
+          aggregate_slot_source_byte_offset(store_slot_name, candidate_source_name);
+      if (source_offset.has_value()) {
+        break;
+      }
+    }
     if (!source_offset.has_value()) {
       continue;
     }
