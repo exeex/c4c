@@ -87,6 +87,13 @@ make_load_global_got_materialization_instruction(
     BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_mul_with_distinct_rhs_scratch(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_cast_publication_to_prepared_register(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
