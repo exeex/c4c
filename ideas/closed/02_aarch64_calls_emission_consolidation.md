@@ -46,6 +46,22 @@ surface that converts prepared call facts into AArch64 machine nodes.
 - The line count reduction comes from deleted duplication or moved authority,
   not from hiding behavior in opaque helpers.
 
+## Closure Note
+
+Closed after Step 5 consolidation acceptance review. The active runbook retired
+the duplicate selected-source, byval fallback, preserve-effect spelling, and
+obsolete calls printing-unit boundaries, leaving fewer AArch64 calls emission
+files with clearer ownership. Remaining AArch64 calls helpers are retained as
+emission or bridge boundaries that consume prepared call-plan facts instead of
+owning the retired planning decisions.
+
+Close-time proof was accepted by the supervisor at commit
+`09f1aaa69 Retire AArch64 calls printing unit`: the Step 4 backend proof passed
+162/162 `^backend_` tests, canonical regression guard passed with
+`--allow-non-decreasing-passed`, and `test_baseline.log` records the accepted
+full-suite baseline at the same commit with 3410 total tests and the same 37
+known failures as the prior baseline.
+
 ## Resolved Lifecycle Blocker
 
 Step 5 closure review after the call move boundary checkpoint rejected closure
