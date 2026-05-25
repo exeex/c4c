@@ -18230,7 +18230,6 @@ int register_homed_local_address_argument_materializes_frame_address_register() 
   const auto bir_block_label =
       prepared.module.names.block_labels.intern("dispatch.local.address.arg.entry");
   const auto source_name = prepared.names.value_names.intern("%local.aggregate");
-  const auto source_lane_name = prepared.names.value_names.intern("%local.aggregate.0");
   constexpr auto source_value_id = prepare::PreparedValueId{181};
 
   prepared.module.functions.push_back(bir::Function{
@@ -18316,29 +18315,24 @@ int register_homed_local_address_argument_materializes_frame_address_register() 
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x0"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              LocalFrameAddressMaterialization,
+                      .source_value_id = source_value_id,
+                      .source_value_name = source_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                      .address_materialization_block_label = block_label,
+                      .address_materialization_inst_index = std::size_t{0},
+                      .address_materialization_frame_slot_id =
+                          prepare::PreparedFrameSlotId{42},
+                      .address_materialization_byte_offset = std::int64_t{64},
+                  },
           }},
   };
-  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
-      .object_id = prepare::PreparedObjectId{41},
-      .function_name = function_name,
-      .value_name = source_lane_name,
-      .source_kind = "local_slot",
-      .type = bir::TypeKind::I64,
-      .size_bytes = 8,
-      .align_bytes = 8,
-      .address_exposed = true,
-      .requires_home_slot = true,
-      .permanent_home_slot = true,
-  });
-  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
-      .slot_id = prepare::PreparedFrameSlotId{42},
-      .object_id = prepare::PreparedObjectId{41},
-      .function_name = function_name,
-      .offset_bytes = 64,
-      .size_bytes = 8,
-      .align_bytes = 8,
-      .fixed_location = true,
-  });
 
   const aarch64_module::FunctionLoweringContext function_context{
       .prepared = &prepared,

@@ -670,20 +670,69 @@ make_f128_q_register_operand_from_carrier(
           candidate_name.substr(source_name.size()) == ".0");
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_selected_local_frame_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    std::size_t instruction_index) {
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto frame_slot_id =
+      selection.address_materialization_frame_slot_id.has_value()
+          ? selection.address_materialization_frame_slot_id
+          : selection.source_slot_id;
+  std::optional<std::int64_t> byte_offset;
+  if (selection.address_materialization_byte_offset.has_value()) {
+    byte_offset = selection.address_materialization_byte_offset;
+  } else if (selection.source_stack_offset_bytes.has_value()) {
+    byte_offset = static_cast<std::int64_t>(*selection.source_stack_offset_bytes);
+  }
+  if (!frame_slot_id.has_value() || !byte_offset.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = selection.address_materialization_block_label.has_value()
+                         ? *selection.address_materialization_block_label
+                         : (context.control_flow_block != nullptr
+                                ? context.control_flow_block->block_label
+                                : c4c::kInvalidBlockLabel),
+      .instruction_index =
+          selection.address_materialization_inst_index.value_or(instruction_index),
+      .result_value_id = selection.source_value_id.has_value()
+                             ? selection.source_value_id
+                             : argument.source_value_id,
+      .result_value_name = selection.source_value_name.has_value()
+                               ? selection.source_value_name
+                               : std::optional<c4c::ValueNameId>{source_home.value_name},
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = frame_slot_id,
+      .byte_offset = *byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.source_size_bytes,
+      .align_bytes = *selection.source_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_local_frame_address_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
   if (argument.source_selection.has_value()) {
-    if (auto selected = make_selected_frame_slot_source(
-            context,
-            argument,
-            &source_home,
-            *argument.source_selection,
-            prepare::PreparedCallArgumentSourceSelectionKind::
-                LocalFrameAddressMaterialization,
-            true,
+    if (auto selected = make_selected_local_frame_address_source(
+            context, argument, source_home, *argument.source_selection,
             instruction_index)) {
       return selected;
     }
