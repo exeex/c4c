@@ -1089,6 +1089,123 @@ void retarget_store_local_value_to_emitted_scalar(
   }
   memory_record->value = make_register_operand(*value_register);
 }
+[[nodiscard]] std::optional<std::string_view> fixed_formal_scalar_store_mnemonic(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"strb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"strh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"str"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+[[nodiscard]] bool store_local_value_is_fixed_formal(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.bir_function == nullptr ||
+      store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  for (const auto& param : context.function.bir_function->params) {
+    if (param.is_varargs || param.is_sret || param.is_byval ||
+        param.type != store.value.type) {
+      continue;
+    }
+    const auto param_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, param.name);
+    if (param_name.has_value() && *param_name == value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value() ||
+      !store_local_value_is_fixed_formal(context, *store, *value_name)) {
+    return std::nullopt;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  const auto address = prepared_frame_slot_load_address(context, instruction_index);
+  const auto mnemonic = fixed_formal_scalar_store_mnemonic(store->value.type);
+  if (!emitted.has_value() || !address.has_value() || !mnemonic.has_value() ||
+      !abi::is_gp_register(emitted->reg)) {
+    return std::nullopt;
+  }
+  auto store_reg = emitted->reg;
+  if (const auto expected_view = scalar_register_view(store->value.type);
+      expected_view.has_value()) {
+    const auto resized = abi::gp_register(emitted->reg.index, *expected_view);
+    if (!resized.has_value()) {
+      return std::nullopt;
+    }
+    store_reg = *resized;
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = std::string{*mnemonic} + " " +
+                                 std::string{abi::register_name(store_reg)} +
+                                 ", " + *address,
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction) {

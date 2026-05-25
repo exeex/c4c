@@ -120,6 +120,13 @@ void retarget_store_local_value_to_emitted_scalar(
     const BlockScalarLoweringState& scalar_state,
     module::MachineInstruction& instruction);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state);
+
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction);

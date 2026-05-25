@@ -8,20 +8,21 @@ Current Step Title: Separate Publication And Producer Lookup
 
 ## Just Finished
 
-Step 3 - Separate Publication And Producer Lookup moved the missing
-conditional-branch condition publication and fused-compare operand publication
-helpers out of `dispatch.cpp` into `dispatch_publication.cpp`, with the helper
-API exposed from `dispatch_publication.hpp`.
+Step 3 - Separate Publication And Producer Lookup moved the fixed-formal
+store-local publication helpers out of `dispatch.cpp` into
+`dispatch_publication.cpp`, with `lower_fixed_formal_store_local_publication`
+exposed from `dispatch_publication.hpp`.
 
-Behavior is preserved: `dispatch.cpp` still calls the publication-owned helpers
-at the existing conditional terminator routing points, and diagnostics continue
-to flow through the same scalar-control and operand-resolution paths.
+Behavior is preserved: `dispatch.cpp` still calls the publication-owned helper
+at the same store-local address-materialization fallback routing points, and the
+same emitted-scalar lookup, prepared frame-slot address lookup, inline-asm
+payload construction, and diagnostic suppression behavior is retained.
 
 ## Suggested Next
 
-Supervisor review/commit this Step 3 publication extraction slice, then decide
-whether any remaining Step 3 dispatch-local helper ownership needs another
-publication/producer packet or whether Step 3 is ready for plan-owner review.
+Supervisor review/commit this Step 3 publication extraction slice, then check
+whether any remaining Step 3 dispatch-local helper ownership still belongs with
+publication/producer lookup or whether Step 3 is ready for plan-owner review.
 
 ## Watchouts
 
