@@ -688,8 +688,7 @@ make_callee_saved_preservation_home_population(
       .block_index = call_plan.block_index,
       .instruction_index = call_plan.instruction_index,
       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-      .reason = effect.reason.empty() ? "callee_saved_preservation_home_population"
-                                      : effect.reason,
+      .reason = "callee_saved_preservation_home_population",
       .destination_register_placement = storage.register_placement,
   };
   CallBoundaryMoveInstructionRecord move_record{

@@ -8,23 +8,16 @@ Current Step Title: Consume the Shared Decision in AArch64 Emission
 
 ## Just Finished
 
-Step 3 migrated AArch64 callee-saved preservation population and
-republication to consume shared
-`PreparedCallBoundaryEffectPlan` preservation effects.
+Step 3 regression fix kept migrated AArch64 callee-saved preservation helpers
+consuming `PreparedCallBoundaryEffectPlan` endpoint facts for source and
+destination data while normalizing the emitted population move reason back to
+`callee_saved_preservation_home_population`, the selected printable AArch64
+callee-saved preservation subset.
 
-`lower_before_call_moves()` now selects
-`PreservationHomePopulation` entries from
-`plan_prepared_call_boundary_effects()` instead of iterating
-`call_plan.preserved_values` as its preservation decision source.
-`lower_after_call_moves()` likewise selects
-`PreservationRepublication` entries from the prepared boundary-effect plan.
-
-The preservation emission helpers now receive the selected prepared effect and
-derive register, placement, width, occupied-register, value, and reason facts
-from the effect endpoints. Block-entry republication was kept aligned with the
-same endpoint-driven helper path. `backend_aarch64_call_boundary_owner_test`
-now covers callee-saved population and republication through the shared
-prepared effects without weakening existing contracts.
+`backend_aarch64_call_boundary_owner_test` now asserts that the shared-effect
+population still uses the prepared destination register but emits the selected
+AArch64 population reason instead of the shared planner's generic
+`preservation_home_population` reason.
 
 ## Suggested Next
 
@@ -44,12 +37,22 @@ broader or regression-guard subset for call-boundary preservation.
 - `find_prior_preserved_value_for_value()` still checks previous preservation
   state to avoid redundant population; it is not the current-call preservation
   decision source.
+- Shared planner reasons are not automatically printable AArch64 move-selector
+  reasons. Keep the selected AArch64 reason on emitted preservation population
+  records unless the selector contract is deliberately widened.
 
 ## Proof
 
-`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability)$"; } > test_after.log 2>&1'`
+`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00040_c|c_testsuite_aarch64_backend_src_00168_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00200_c|c_testsuite_aarch64_backend_src_00214_c|backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability)$"; } > test_after.log 2>&1'`
 
-Proof passed: build completed and all three selected tests passed:
+Proof passed: build completed and all ten selected tests passed:
+`backend_aarch64_instruction_dispatch`,
+`c_testsuite_aarch64_backend_src_00040_c`,
+`c_testsuite_aarch64_backend_src_00168_c`,
+`c_testsuite_aarch64_backend_src_00176_c`,
+`c_testsuite_aarch64_backend_src_00181_c`,
+`c_testsuite_aarch64_backend_src_00200_c`,
+`c_testsuite_aarch64_backend_src_00214_c`,
 `backend_call_boundary_effect_plan`,
 `backend_aarch64_call_boundary_owner`, and
 `backend_codegen_route_aarch64_prepared_call_boundary_scalability`.

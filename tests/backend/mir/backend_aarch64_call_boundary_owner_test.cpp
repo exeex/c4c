@@ -540,8 +540,8 @@ int callee_saved_preservation_uses_shared_boundary_effects() {
       !population->destination_register.has_value() ||
       population->source_register->reg != aarch64_abi::x_register(9) ||
       population->destination_register->reg != aarch64_abi::x_register(19) ||
-      population->move.reason != "preservation_home_population") {
-    return fail("expected population to consume the prepared preservation effect destination");
+      population->move.reason != "callee_saved_preservation_home_population") {
+    return fail("expected population to consume the prepared preservation effect destination inside the selected printable subset");
   }
 
   const auto* republication = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
