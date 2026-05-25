@@ -42,3 +42,19 @@ preservation routes are already known.
 - A patch accepts ambiguous prior preserved values without diagnostics or a
   stable tie-breaking contract.
 - A patch weakens tests to hide missing prepared lookup coverage.
+
+## Completion Note
+
+Closed on 2026-05-25 after final reviewer approval in
+`review/final_prepared_call_source_authority_review.md`.
+
+The accepted implementation moves prior-preserved source choice into shared
+prepared lookup and call-plan records, has AArch64 lowering consume explicit
+prepared `PriorPreservation` selections, keeps remaining AArch64 prior-stack
+lookup outside call-argument semantic source selection, and adds focused
+prepared/AArch64 coverage without weakening test contracts.
+
+Close-time regression guard used the existing 11-test AArch64 c_testsuite
+baseline in `test_before.log`, regenerated matching `test_after.log`, and
+passed with the documented non-decreasing mode because both logs were already
+green at 11/11 with no new failures.
