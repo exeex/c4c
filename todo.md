@@ -1,37 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Publication Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 consolidated the selected aggregate-address publication helper boundary.
+Step 4 completed the broader backend checkpoint for the aggregate-address
+publication authority route.
 
-- Tightened `lower_scalar_call_argument_producers` so callers pass the already
-  selected `PreparedCallPlan` plus the BIR argument values needed for emission.
-- Removed the helper's internal prepared-plan lookup and retired its full
-  `CallInst` parameter; remaining `CallInst` parameters in this bridge are
-  emission context for call lowering or indirect-callee materialization.
-- Left `calls.hpp` untouched because this selected publication boundary is
-  exposed through `calls_dispatch_bridge.hpp`, not the shared calls helper API.
+- Ran the supervisor-selected backend subset after the Step 3 helper-boundary
+  consolidation.
+- `test_after.log` records `100% tests passed, 0 tests failed out of 162`.
+- Relevant coverage includes backend-route (`83 tests`), AArch64 (`37 tests`),
+  byval (`3 tests`), publication (`2 tests`), aggregate (`1 test`), and
+  prepared-call-boundary (`1 test`) labeled coverage.
+- Named adjacent checkpoints in the subset include
+  `backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address`,
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`,
+  `backend_aarch64_call_boundary_owner`, `backend_call_boundary_effect_plan`,
+  `backend_store_source_publication_plan`, and
+  `backend_x86_call_boundary_effect_ordering`.
 
 ## Suggested Next
 
-Delegate Step 4 broader backend checkpoint validation if the supervisor wants a
-milestone proof for the aggregate-address publication route.
+Delegate Step 5 closure review so the lifecycle owner/reviewer can decide
+whether the source idea is complete or whether another runbook checkpoint is
+needed.
 
 ## Watchouts
 
-- `lower_scalar_call_argument_producers` still accepts the BIR argument vector
-  because scalar producer emission needs source `bir::Value` kinds, names, and
-  types; the selected publication decision itself now comes only from the
-  prepared argument fact.
-- `materialize_indirect_call_callee_to_prepared_register` still accepts
-  `CallInst` because it uses the callee value for emission, not selected
-  aggregate publication planning.
+- This packet was validation-only and did not re-scan surviving retained
+  `CallInst::arg_abi` or `CallInst::arg_types` reads; Step 5 owns that closure
+  decision.
+- `test_after.log` is the canonical proof log for this checkpoint.
 
 ## Proof
 
@@ -39,4 +44,5 @@ Proof passed:
 
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-`test_after.log` records `100% tests passed, 0 tests failed out of 162`.
+`test_after.log` records `100% tests passed, 0 tests failed out of 162` and
+`Total Test time (real) = 1.47 sec`.
