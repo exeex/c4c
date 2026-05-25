@@ -557,6 +557,8 @@ InstructionDispatchResult dispatch_prepared_block(
         }
       }
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        // Dispatch sequences call lowering; calls_dispatch_bridge owns the
+        // call-boundary mechanics invoked at each routing point.
         if (auto dynamic_stack = lower_dynamic_stack_helper_call(
                 context, *call, instruction_index, diagnostics)) {
           block.instructions.push_back(std::move(*dynamic_stack));

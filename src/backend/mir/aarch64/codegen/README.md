@@ -40,6 +40,12 @@ own the narrower lowering decisions. `asm_emitter` owns the current assembly
 text helper by walking the compiled module through the shared MIR printer and
 AArch64 target spelling hooks.
 
+Within block lowering, `dispatch.cpp` owns prepared block traversal plus the
+instruction and terminator routing order. Value materialization,
+publication/value-home updates, producer lookup, edge-copy handling, and
+call-boundary mechanics live behind the named `dispatch_*` and
+`calls_dispatch_bridge` owner surfaces that dispatch invokes at routing points.
+
 Historical references in this directory to `emit` or `codegen/emit.*` are
 legacy artifact names for the former internal coordinator/text-emission route.
 They should not be read as the live public entry or as permission to bypass

@@ -1,47 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/03_dispatch_responsibility_reduction.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Remove Or Justify Call-Specific Dispatch Glue
+Current Step ID: 6
+Current Step Title: Boundary Documentation And Final Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Remove Or Justify Call-Specific Dispatch Glue moved the remaining
-extractable call-boundary helper mechanics out of `dispatch.cpp` into
-`calls_dispatch_bridge.cpp`/`.hpp`.
+Step 6 - Boundary Documentation And Final Validation added boundary notes for
+the dispatch route.
 
-The final helper moved was
-`retarget_fpr_call_result_store_value_to_emitted_scalar`; `dispatch.cpp` still
-calls it at the same memory-store routing point after ordinary memory lowering,
-so behavior is preserved.
-
-Remaining call-specific code in `dispatch.cpp` is justified as routing:
-dispatch decides when already-owned bridge helpers run around the call
-instruction, materialized callee, materialized addresses, before-call moves,
-missing frame-slot arguments, call emission, after-call moves, and call-result
-recording. The source-selection mechanics remain in `calls_*` /
-`calls_dispatch_bridge` owners. No AArch64-local call argument source-selection
-logic was added or changed.
+`src/backend/mir/aarch64/codegen/README.md` now states that `dispatch.cpp` owns
+prepared block traversal and instruction/terminator routing while
+materialization, publication/value-home updates, producer lookup, edge-copy
+handling, and call-boundary mechanics live behind named owner surfaces.
+`dispatch.cpp` also has a concise call-routing comment pointing readers at
+`calls_dispatch_bridge`.
 
 ## Suggested Next
 
-Move to Step 6 for boundary comments/documentation review and final validation.
+Ask plan-owner to decide whether the active runbook can close or needs any
+final lifecycle update.
 
 ## Watchouts
 
-The moved FPR helper intentionally preserves the old behavior: it retargets
-only named `f32`/`f64` `StoreLocal` values whose emitted scalar is a call ABI
-FPR in the FP/SIMD bank and whose memory record already matches the store value
-type. The remaining call routing is intentionally not moved until a shared
-prepared call-argument source fact exists; do not add AArch64-local source
-selection to force more consolidation.
+No markdown shards were added under the codegen directory. The remaining call
+routing is intentionally not moved until a shared prepared call-argument source
+fact exists; do not add AArch64-local source selection to force more
+consolidation.
 
 ## Proof
 
-Passed. Backend proof log is `test_after.log`: 162/162 backend tests passed.
+Passed. Final backend proof log was rolled into `test_before.log`: 162/162
+backend tests passed before and after, with no new failures.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
