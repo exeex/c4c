@@ -48,3 +48,17 @@ AArch64 call-boundary source selection.
   layout semantics.
 - A patch broadly rewrites unrelated ABI or call-boundary code to make one
   compound-literal case pass.
+
+## Closure Note
+
+Closed after Step 4 validation recorded the corrected proof command:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^backend_aarch64_|^c_testsuite_aarch64_backend_src_00216_c$)') > test_after.log 2>&1`
+
+The recorded result was a successful build with all 28 selected
+`backend_aarch64_` tests passing and
+`c_testsuite_aarch64_backend_src_00216_c` passing. The focused coverage added
+for the repaired rule is the local aggregate frame-slot call argument
+materialization case in
+`backend_aarch64_instruction_dispatch`. The relevant implementation and
+validation commits are `c6a4b8d66` and `1b70e7f37`.
