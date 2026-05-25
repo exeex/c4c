@@ -8,38 +8,64 @@ Current Step Title: Select One Retained Metadata Authority Leak
 
 ## Just Finished
 
-Step 5 closure review rejected closing the source idea after the outgoing stack
-extent authority-removal slice.
+Step 1 selected one retained metadata authority leak for the next Step 2
+implementation packet: `aarch64_register_byval_argument_size_bytes` in
+`calls_byval_aggregates.cpp`.
 
-- `test_before.log` records the accepted broad backend checkpoint command
-  passing `162/162`.
-- `calls_common.cpp` no longer has retained `CallInst::arg_abi` or
-  `CallInst::arg_types` decision reads for outgoing stack extent.
-- Closure remains blocked because publication and byval helper paths still
-  read retained `CallInst::arg_abi` / `CallInst::arg_types` for call-boundary
-  decisions that must be owned by prepared call facts.
+- Selected target from the Step 1 primary targets: byval size predicates in
+  `calls_byval_aggregates.cpp`, specifically the small register-lane byval
+  size helper.
+- Retained metadata read: the helper reopens
+  `context.bir_block->insts[instruction_index]` as `bir::CallInst`, indexes
+  `call->arg_abi[argument.arg_index]`, then checks `type`, `byval_copy`,
+  `sret_pointer`, `passed_in_register`, `passed_on_stack`, `primary_class`, and
+  `size_bytes`.
+- Decision made by the retained read: whether the argument is an AArch64
+  integer-class byval aggregate passed in one or two registers with
+  `0 < size_bytes <= 16`, and the exact payload byte size to use for the
+  register-lane publication source.
+- Prepared replacement fact: `PreparedMoveResolution` already marks this path
+  with reason `call_arg_byval_aggregate_register_lanes` and carries the
+  destination lane width/occupied registers; `PreparedCallArgumentPlan` mirrors
+  destination register placement; `PreparedValueHome::size_bytes` carries the
+  aggregate extent. The existing `prepared_byval_lane_extent_bytes(...)` helper
+  in `calls_moves.cpp` already consumes those prepared facts without reopening
+  `CallInst::arg_abi`.
+- Missing-prepared-fact blocker: none for this selected small register-lane
+  byval size path.
+- Expected deletion path: replace remaining Step 2 callers of
+  `aarch64_register_byval_argument_size_bytes` in `lower_before_call_move` with
+  `prepared_byval_lane_extent_bytes(...)` where the prepared move and
+  source-home facts are already in scope, keep retained BIR only for identity or
+  diagnostics, then delete the helper declaration from `calls.hpp` and the
+  helper definition from `calls_byval_aggregates.cpp` if no callers remain.
 
 ## Suggested Next
 
-Route execution back to Step 1 of the updated publication/byval checkpoint.
-Select one surviving retained metadata authority leak:
-
-- `calls_dispatch_bridge.cpp` local aggregate address publication eligibility.
-- `calls_argument_sources.cpp` local frame address publication pointer/byval
-  checks.
-- `calls_byval_aggregates.cpp` byval size and indirect-register predicates.
+Execute Step 2 for the selected target: remove
+`aarch64_register_byval_argument_size_bytes` as a call-boundary authority by
+using the prepared byval lane extent facts already available in
+`lower_before_call_move`.
 
 ## Watchouts
 
-Do not reopen outgoing stack extent unless new evidence appears; the closure
-review found no surviving `calls_common.cpp` retained ABI/type decision read.
-Do not touch `ideas/open/03_dispatch_responsibility_reduction.md`.
+Keep the Step 2 slice limited to the small register-lane byval size path. Do
+not fold in `aarch64_indirect_byval_argument_size_bytes`,
+`aarch64_stack_byval_argument_size_bytes`, or
+`aarch64_indirect_register_byval_argument` unless the supervisor explicitly
+widens the packet.
+
+Changing byval aggregate lane lowering triggers the plan escalation rule: after
+the focused proof is green, Step 2 should also expect a `^backend_` backend
+checkpoint before acceptance.
 
 ## Proof
 
-No new build was required for this lifecycle-only closure review.
+No build or ctest was required for this todo-only Step 1 selection packet.
 
-Accepted broad proof baseline: `test_before.log` records
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_')`
-passing `162/162` backend tests with `100% tests passed, 0 tests failed out of
-162`.
+Proposed Step 2 focused proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`
+
+Step 2 escalation note: because this changes byval aggregate lane lowering,
+plan rules require `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+after the focused proof, unless the supervisor narrows that acceptance policy.
