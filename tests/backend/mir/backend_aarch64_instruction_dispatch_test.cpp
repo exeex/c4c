@@ -14930,6 +14930,157 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   return 0;
 }
 
+int selected_register_prior_preservation_publishes_from_preserved_home() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route =
+              prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6 ||
+      !diagnostics.empty()) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail(
+        "expected explicit register prior-preservation selection to use "
+        "prepared preserved home: " +
+        (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[3].target.payload);
+  if (move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::x_register(20) ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail(
+        "expected explicit register prior-preservation selection to publish "
+        "x20 into x0: " +
+        (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
+int after_call_result_publication_precedes_preservation_republication() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  const auto result_name = prepared.names.value_names.intern("%call.result");
+  constexpr auto result_value_id = prepare::PreparedValueId{991};
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = result_value_id,
+      .function_name = locations.function_name,
+      .value_name = result_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{77},
+      .offset_bytes = std::size_t{96},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = locations.function_name,
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 0,
+      .instruction_index = 0,
+      .moves =
+          {prepare::PreparedMoveResolution{
+              .from_value_id = result_value_id,
+              .to_value_id = result_value_id,
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .block_index = 0,
+              .instruction_index = 0,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .reason = "call_result_stack_to_register",
+          }},
+      .abi_bindings =
+          {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+          }},
+  });
+  auto& call_plan = prepared.call_plans.functions.front().calls.front();
+  call_plan.result = prepare::PreparedCallResultPlan{
+      .instruction_index = 0,
+      .value_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_value_id = result_value_id,
+      .source_register_name = std::string{"x0"},
+      .source_contiguous_width = 1,
+      .source_occupied_register_names = {"x0"},
+      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .destination_slot_id = prepare::PreparedFrameSlotId{77},
+      .destination_stack_offset_bytes = std::size_t{96},
+  };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_after_call_moves(block_context, call_plan, 0, diagnostics);
+  if (lowered.size() != 2 || !diagnostics.empty()) {
+    return fail("expected after-call result publication before preservation republication");
+  }
+  const auto* result_store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &lowered.front().target.payload);
+  const auto* republication =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.back().target.payload);
+  if (result_store == nullptr ||
+      result_store->memory_kind !=
+          aarch64_module::codegen::MemoryInstructionKind::Store ||
+      result_store->address.byte_offset != 96 ||
+      republication == nullptr ||
+      !republication->source_register.has_value() ||
+      !republication->destination_register.has_value() ||
+      republication->source_register->reg != aarch64_module::abi::x_register(20) ||
+      republication->destination_register->reg !=
+          aarch64_module::abi::x_register(1)) {
+    return fail("expected result store to be emitted before x20 republication");
+  }
+  return 0;
+}
+
 int cross_block_call_argument_publishes_from_prior_preservation_home() {
   auto prepared = prepared_with_cross_block_call_preserved_argument_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -28925,6 +29076,16 @@ int main() {
   }
   if (const int status =
           nested_call_argument_publishes_from_prior_preservation_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          selected_register_prior_preservation_publishes_from_preserved_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          after_call_result_publication_precedes_preservation_republication();
       status != 0) {
     return status;
   }

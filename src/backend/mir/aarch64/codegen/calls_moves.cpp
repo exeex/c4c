@@ -1446,7 +1446,13 @@ make_immediate_cast_call_argument_publication_instruction(
         if (!preserved_selection_source.has_value()) {
           preserved = find_prior_preserved_value_for_call_argument(
               context, call_plan, *argument, move);
-          if (preserved != nullptr) {
+          const bool can_use_prepared_prior_record =
+              argument->source_selection->kind ==
+                  prepare::PreparedCallArgumentSourceSelectionKind::
+                      PriorPreservation &&
+              argument->source_selection->preservation_route ==
+                  prepare::PreparedCallPreservationRoute::CalleeSavedRegister;
+          if (preserved != nullptr && !can_use_prepared_prior_record) {
             return std::nullopt;
           }
         }
@@ -3540,15 +3546,7 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
       .instruction_index = instruction_index,
   };
   if (bundle != nullptr) {
-    const auto boundary_effects =
-        prepare::plan_prepared_call_boundary_effects(call_plan, nullptr, bundle);
-    for (const auto& effect : boundary_effects) {
-      if (effect.effect_kind != prepare::PreparedCallBoundaryEffectKind::ExplicitMove ||
-          effect.phase != prepare::PreparedMovePhase::AfterCall ||
-          effect.order_index >= bundle->moves.size()) {
-        continue;
-      }
-      const auto& move = bundle->moves[effect.order_index];
+    for (const auto& move : bundle->moves) {
       if (auto instruction =
               lower_after_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
         lowered.push_back(std::move(*instruction));
