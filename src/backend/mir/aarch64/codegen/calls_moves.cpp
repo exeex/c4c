@@ -903,6 +903,49 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
+[[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t source_instruction_index) {
+  if (!is_aarch64_byval_register_lane_move(move) ||
+      !source_home.size_bytes.has_value() ||
+      *source_home.size_bytes == 0) {
+    return std::nullopt;
+  }
+
+  const std::size_t prepared_lane_count = std::max({
+      std::size_t{1},
+      move.destination_contiguous_width,
+      argument.destination_contiguous_width,
+      move.destination_occupied_register_names.size(),
+      argument.destination_occupied_register_names.size(),
+  });
+  std::size_t extent_bytes = *source_home.size_bytes;
+
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
+  if (!stores.empty() && stores.front().source_offset == 0) {
+    std::size_t covered_bytes = 0;
+    for (const auto& store : stores) {
+      if (store.source_offset > covered_bytes) {
+        break;
+      }
+      covered_bytes =
+          std::max(covered_bytes, store.source_offset + store.size_bytes);
+      if (covered_bytes > 16) {
+        return std::nullopt;
+      }
+    }
+    extent_bytes = std::max(extent_bytes, covered_bytes);
+  } else if (prepared_lane_count > 1 && extent_bytes <= 8) {
+    extent_bytes *= prepared_lane_count;
+  }
+
+  return extent_bytes <= 16 ? std::optional<std::size_t>{extent_bytes} : std::nullopt;
+}
+
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -1232,9 +1275,6 @@ make_immediate_cast_call_argument_publication_instruction(
       .source_bundle = &bundle,
       .source_move = &move,
   };
-  const auto aggregate_lane_size =
-      byval_register_lane_size_bytes(context, move, call_plan.instruction_index);
-
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
@@ -1595,8 +1635,8 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size =
-        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    const auto lane_size = prepared_byval_lane_extent_bytes(
+        context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,
@@ -1701,8 +1741,8 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size =
-        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    const auto lane_size = prepared_byval_lane_extent_bytes(
+        context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,
@@ -2006,8 +2046,8 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
-    const auto lane_size =
-        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    const auto lane_size = prepared_byval_lane_extent_bytes(
+        context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,

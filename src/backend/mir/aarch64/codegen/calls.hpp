@@ -192,10 +192,6 @@ struct AggregateRegisterLaneStore {
 
 [[nodiscard]] bool is_aarch64_byval_register_lane_move(
     const prepare::PreparedMoveResolution& move);
-[[nodiscard]] std::optional<std::size_t> byval_register_lane_size_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    std::size_t instruction_index);
 [[nodiscard]] std::vector<AggregateRegisterLaneStore> collect_byval_register_lane_stores(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& source_home,

@@ -223,32 +223,6 @@ namespace {
          move.reason == "call_arg_byval_aggregate_register_lanes";
 }
 
-[[nodiscard]] std::optional<std::size_t> byval_register_lane_size_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    std::size_t instruction_index) {
-  if (!is_aarch64_byval_register_lane_move(move) ||
-      context.bir_block == nullptr ||
-      !move.destination_abi_index.has_value() ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return std::nullopt;
-  }
-  const auto* call = std::get_if<bir::CallInst>(
-      &context.bir_block->insts[instruction_index]);
-  if (call == nullptr || *move.destination_abi_index >= call->arg_abi.size()) {
-    return std::nullopt;
-  }
-  const auto& arg_abi = call->arg_abi[*move.destination_abi_index];
-  if (arg_abi.type != bir::TypeKind::Ptr || !arg_abi.byval_copy ||
-      arg_abi.sret_pointer ||
-      (!arg_abi.passed_in_register && !arg_abi.passed_on_stack) ||
-      arg_abi.primary_class != bir::AbiValueClass::Integer ||
-      arg_abi.size_bytes == 0 || arg_abi.size_bytes > 16) {
-    return std::nullopt;
-  }
-  return arg_abi.size_bytes;
-}
-
 namespace {
 
 [[nodiscard]] std::optional<std::size_t> aggregate_slot_source_byte_offset(
