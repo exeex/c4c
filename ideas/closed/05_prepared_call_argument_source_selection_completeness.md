@@ -48,3 +48,16 @@ fragile.
 - A patch weakens or removes incomplete-selection tests.
 - A patch makes shared prepared records depend on AArch64-only register names
   without an ABI-neutral representation or target-policy boundary.
+
+## Closure Notes
+
+Closed on 2026-05-25. The active runbook completed the selection audit,
+completed stack-slot and callee-saved prior-preservation source facts, updated
+AArch64 emission to consume the completed payloads, exposed the new facts
+through prepared printing, and added focused coverage for complete and
+intentionally incomplete prior-preservation selections.
+
+Close validation used the final full-suite `test_after.log`, which reported
+3410/3410 tests passed. For the close gate, `test_before.log` was normalized
+from the accepted full-suite `test_baseline.log`, and
+`c4c-regression-guard` passed with no new failures and no pass-count decrease.
