@@ -1,31 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove Or Narrow The Selected Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 narrowed `find_prior_preserved_value_for_value` so it consumes
-`context.function.call_plan_lookups` through
-`prepare::find_dominating_indexed_prior_preserved_value` and returns no prior
-preserved value when prepared lookup authority is unavailable. The AArch64
-fallback that walked raw `call_plans->calls` and locally recomputed prepared CFG
-dominance was removed.
+Step 3 found no remaining helper/API cleanup for the selected
+`find_prior_preserved_value_for_value` boundary beyond the already committed
+Step 2 deletions. The obsolete AArch64 dominance helpers and declarations were
+already removed, and the surviving selected boundary surface is explicitly
+prepared-lookup consumption plus AArch64 emission use.
 
-The now-unused AArch64 dominance helpers
-`argument_source_prepared_block_index_by_label`,
-`argument_source_prepared_block_successors`, and `prepared_block_dominates`
-were deleted from `calls_preservation.cpp` and removed from `calls.hpp`.
+Step 4 broader backend checkpoint completed successfully with the
+supervisor-selected backend proof scope.
 
 ## Suggested Next
 
-Continue with the next preservation-boundary slice selected by the supervisor,
-likely the remaining non-dominating
-`find_prior_preserved_value_for_call_argument` fallback if that is still in
-scope for this source idea.
+Proceed to Step 5 closure review so the supervisor/plan-owner can decide
+whether the active source idea can close or needs another checkpoint.
 
 ## Watchouts
 
@@ -36,14 +31,17 @@ scope for this source idea.
   shortcuts as progress.
 - `find_prior_preserved_value_for_call_argument` still has a non-dominating
   fallback through `prepare::find_latest_indexed_prior_preserved_value`; this
-  packet intentionally left it unchanged.
+  checkpoint intentionally left it unchanged and Step 5 should decide whether
+  that remains in scope for this source idea.
 - `calls_moves.cpp` consumes `make_prior_preserved_call_argument_source`, not
   the selected `find_prior_preserved_value_for_value` helper directly.
 
 ## Proof
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_call_boundary_owner|call_boundary_effect_plan)'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Step 2 proof completed successfully and was written to `test_after.log`.
+Step 4 broader backend proof completed successfully and was written to
+`test_after.log`: build succeeded, and CTest reported 162/162 backend tests
+passed with 0 failures.
