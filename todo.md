@@ -1,55 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broader Backend Checkpoint
+Current Step ID: 1
+Current Step Title: Select The Next Surviving Boundary Leak
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Broader Backend Checkpoint: reran the supervisor-selected backend
-subset after the block-entry preservation republication helper consolidation.
+Step 5 - Closure Review: source-idea closure rejected after the block-entry
+preservation republication checkpoint.
 
-The backend checkpoint passed and covered preservation-adjacent AArch64 routes,
-block-entry prepared-BIR focus cases, prepared-call boundary scalability,
-byval runtime helpers, local-frame/publication checks, aggregate/backend-route
-tests, and prepared/printer contract coverage.
+Decision: keep the source idea active with a regenerated checkpoint focused on
+the next surviving AArch64 calls boundary leak.
+
+Closure blockers:
+
+- The source idea acceptance criteria cover the full AArch64 `calls*`
+  consolidation, not only the completed block-entry republication route.
+- Multiple `calls*.cpp` files and a broad `calls.hpp` helper surface remain.
+- `calls_dispatch_bridge.cpp` still mixes call-emission bridge work with
+  dispatch recovery, same-block scalar materialization, local aggregate address
+  publication, indirect callee/result materialization, and prepared-call helper
+  selection.
+- Adjacent argument-source, byval, move, preservation, and printing helpers
+  still need boundary review before the source idea can be called complete.
+- Close-time regression guard was not accepted because source-idea completion
+  is false; the canonical `test_after.log` referenced by the previous Step 4
+  packet was also absent in this checkout.
 
 ## Suggested Next
 
-Delegate Step 5 closure review to decide whether the source idea is complete
-after this block-entry republication checkpoint or whether another runbook
-checkpoint is needed.
+Execute Step 1 - Select The Next Surviving Boundary Leak.
+
+Start with `calls_dispatch_bridge.cpp` and `calls.hpp`. Pick one concrete
+boundary leak, identify the correct prepared/emission/dispatch/printer owner,
+and record the focused proof command before implementation.
 
 ## Watchouts
 
-- This was validation-only; no implementation files, `plan.md`, or source idea
-  files were touched.
-- `test_after.log` now contains the exact broader backend proof output.
-- The checkpoint exercised shared prepared-call/backend-route coverage, so Step
-  5 should decide lifecycle completion rather than assuming runbook exhaustion
-  completes the source idea.
+- Do not touch `ideas/open/03_dispatch_responsibility_reduction.md`.
+- Keep any dispatch work limited to AArch64 call-emission bridge boundaries.
+- Do not invent a new shared prepared-call API unless the selected boundary
+  proves a required prepared fact is missing.
+- Do not weaken unsupported or expected-output contracts.
+- Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
+  progress.
 
 ## Proof
 
-Proof passed:
+Lifecycle-only review; no build or test command was run.
+
+Prior executor note reported:
 
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-`test_after.log` reports 100% tests passed, 0 tests failed out of 162.
-
-Relevant coverage summary from the backend subset:
-
-- AArch64/backend-route coverage included `aarch64` label coverage across 37
-  tests and `backend_route` label coverage across 83 tests.
-- Block-entry/prepared coverage included prepared-BIR focus block-entry cases,
-  `backend_prepare_block_only_control_flow`, `backend_prealloc_block_entry_publications`,
-  `backend_prepared_lookup_helper`, and prepared-BIR contract dumps.
-- Prepared-call boundary coverage included
-  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`,
-  `backend_aarch64_call_boundary_owner`, `backend_call_boundary_effect_plan`,
-  and `backend_prealloc_call_boundary_classification`.
-- Byval/publication/aggregate/local-frame coverage included the `byval`,
-  `publication`, `aggregate`, `local_address`, and related local aggregate
-  backend-route tests.
+with 100% tests passed, 0 tests failed out of 162, but `test_after.log` was not
+present in this checkout during the closure review.

@@ -1,4 +1,4 @@
-# AArch64 Calls Block-Entry Preservation Republication Authority Checkpoint
+# AArch64 Calls Surviving Boundary Consolidation Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,167 +6,171 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review for the prior stack-preservation lookup checkpoint rejected source-idea
-closure.
+review for the block-entry preservation republication checkpoint rejected
+source-idea closure.
 
 ## Goal
 
-Remove or narrow the remaining AArch64-local preservation republication and
-block-entry use-selection paths that duplicate shared prepared call-plan
-authority, while keeping target-local code responsible only for AArch64
-machine-node emission.
+Identify and remove the next remaining AArch64-local call-emission boundary
+that still rederives prepared call-plan, argument-source, dispatch-bridge,
+byval, preservation, or printing decisions instead of consuming shared prepared
+facts.
 
 ## Core Rule
 
-Target-local AArch64 calls code may consume prepared preservation,
-boundary-effect, move, and value-home facts to emit machine instructions. It
-must not walk prepared call lists, scan BIR instructions, or decide preserved
-value liveness when those decisions belong in shared prepared-call planning or
-prepared lookup indexes.
+Target-local AArch64 calls code may turn prepared call facts into AArch64
+machine nodes and assembly spelling. It must not reconstruct call-plan
+authority by scanning retained BIR, walking raw prepared-call lists, or
+duplicating argument, byval, preservation, or dispatch decisions that shared
+prepared data already owns.
 
 ## Latest Closure Review Finding
 
-The Step 5 closure review after the selected prior stack-preservation lookup
-route rejected source-idea closure.
+The Step 5 closure review after the block-entry preservation republication
+checkpoint rejects source-idea closure.
 
-The completed route replaced the selected reverse call-plan walk with prepared
-lookup authority and the broader backend subset was green before review.
+The completed checkpoint removed the selected block-entry republication route's
+local call-plan walking and retained-BIR use scan from AArch64 block-entry move
+selection. Step 4 backend validation was reported green before this review.
 
-The source idea remains open because durable acceptance is broader than that
-single preservation lookup route:
+The source idea remains open because its durable acceptance criteria are wider
+than the completed block-entry route:
 
-- `lower_value_moves` still performs an AArch64-local block-entry selection of
-  prior callee-saved preservation republication effects by walking all prepared
-  calls before the current block.
-- `preserved_value_has_block_entry_non_call_use` still scans retained BIR block
-  instructions and terminator/branch condition spelling to decide whether a
-  preservation republication effect is needed at block entry.
-- `make_callee_saved_preservation_home_republication_instruction` still
-  synthesizes republication moves from selected preservation effects; that may
-  be emission-only, but only after the selection authority is removed or
-  proven to be prepared-owned.
-- `calls_preservation.cpp` and `calls_moves.cpp` still expose helper
-  signatures in `calls.hpp` whose boundaries mix prepared preservation facts,
-  BIR-use checks, and AArch64 move emission.
-- `calls_printing.cpp` remains a possible later source-idea target, but this
-  checkpoint should not absorb printing unless the preservation boundary work
-  exposes a small direct dependency.
-
-Close-time regression guard generation was not needed because closure was
-rejected before the close gate.
+- AArch64 calls are still spread across multiple `calls*.cpp` implementation
+  files and a broad `calls.hpp` helper surface.
+- `calls_dispatch_bridge.cpp` still mixes dispatch recovery, same-block scalar
+  materialization, local aggregate address publication, indirect callee/result
+  materialization, and prepared-call bridge work.
+- `calls_argument_sources.cpp`, `calls_byval_aggregates.cpp`,
+  `calls_moves.cpp`, `calls_preservation.cpp`, and `calls_printing.cpp` still
+  need a boundary review against the source idea's emission-only acceptance
+  criteria.
+- `calls_printing.cpp` remains a possible source-idea target when printing or
+  effect spelling is not true AArch64 call emission.
+- Closure-time regression guard was not accepted because source-idea
+  completion is false; this checkout also did not contain the canonical
+  `test_after.log` referenced by the prior Step 4 packet.
 
 ## Read First
 
 - `ideas/open/02_aarch64_calls_emission_consolidation.md`
 - `src/backend/mir/aarch64/codegen/calls.hpp`
-- `src/backend/mir/aarch64/codegen/calls_preservation.cpp`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
+- `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp`
+- `src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp`
 - `src/backend/mir/aarch64/codegen/calls_moves.cpp`
+- `src/backend/mir/aarch64/codegen/calls_preservation.cpp`
 - `src/backend/mir/aarch64/codegen/calls_printing.cpp`
-- Shared prepared-call and lookup helpers under `src/backend/prealloc/`
-- Focused backend preservation, prepared-call boundary, block-entry, byval, and
-  AArch64 call tests under `tests/backend/mir/`
+- Shared prepared-call, value-home, move-bundle, addressing, and lookup helpers
+  under `src/backend/prealloc/`
+- Focused backend call-boundary, prepared-call, byval, aggregate, local-frame,
+  block-entry, AArch64 route, printer, and dispatch tests under
+  `tests/backend/mir/`
 
 ## Current Targets / Scope
 
-- The block-entry preservation republication selection in `lower_value_moves`.
-- `preserved_value_has_block_entry_non_call_use`.
-- `make_callee_saved_preservation_home_republication_instruction` only as
-  needed to keep the surviving boundary emission-only.
-- `find_prior_preserved_value_for_value` only if the selected block-entry route
-  proves it still blocks prepared-owned selection.
-- Helper declarations in `calls.hpp` that expose BIR-use or preservation
-  planning authority as AArch64 call-emission API.
+- The next AArch64 `calls*` helper boundary that still owns non-emission
+  authority.
+- `calls_dispatch_bridge.cpp` first, unless Step 1 proves a smaller adjacent
+  helper boundary is the direct blocker.
+- `calls.hpp` declarations that expose broad call-planning, BIR-recovery, or
+  dispatch authority as AArch64 call-emission API.
+- `calls_printing.cpp` only when the selected boundary shows printing or effect
+  spelling is the next coherent consolidation target.
+- Build metadata only when a helper translation unit is retired.
 
 ## Non-Goals
 
 - Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
+- Do not perform broad dispatch cleanup outside AArch64 call emission.
 - Do not invent a new shared prepared-call API unless the selected blocker
   proves a required prepared fact is missing.
-- Do not move AArch64-specific register, frame-slot, or instruction emission
-  details into shared planning.
+- Do not move AArch64-specific register, frame-slot, instruction, or assembly
+  spelling details into shared planning.
 - Do not weaken unsupported or expected-output contracts.
 - Do not change behavior solely to reduce line count.
-- Do not treat printing relocation as part of this checkpoint unless the
-  preservation boundary work directly exposes a small, coherent printing
-  dependency.
-- Do not revisit aggregate-address, local-frame publication, or prior
-  stack-preservation lookup unless this block-entry republication route proves
-  one of those completed routes still owns duplicate authority.
+- Do not absorb ALU, memory, comparison, variadic, prologue, or unrelated
+  dispatch lowering cleanup into this checkpoint.
+- Do not revisit the completed aggregate-address, local-frame publication,
+  prior stack-preservation lookup, or block-entry republication routes unless
+  this checkpoint proves one still owns duplicate authority.
 
 ## Working Model
 
-- Prefer prepared lookup indexes when target-local code only needs a prior
-  prepared preservation fact.
-- Prefer `prepare::plan_prepared_call_boundary_effects` output when
-  target-local code only needs ordered preservation effects to emit.
-- Move block-entry preserved-value-use eligibility into prepared data if the
-  current AArch64 BIR scan is making a planning decision.
-- Keep BIR inspection only for emission context, diagnostics, or identity
-  checks that prepared data cannot represent.
-- If the block-entry republication decision needs a fact that is genuinely
-  missing, stop and record the missing prepared authority in `todo.md` instead
-  of reconstructing the decision locally.
-- A surviving helper boundary is acceptable only when its parameters describe
-  AArch64 emission work, not preservation planning authority.
+- Start from a surviving helper boundary and classify each responsibility as
+  prepared-owned, AArch64 emission-owned, printer-owned, or dispatch-owned.
+- Delete or narrow local reconstruction before adding replacement helper
+  layers.
+- Prefer existing prepared lookup indexes, move bundles, value homes, call
+  plans, and addressing facts when target-local code only needs prepared data.
+- Keep retained BIR inspection only for identity validation, diagnostics, or
+  emission context that prepared data cannot represent.
+- If the selected boundary needs a fact that is genuinely missing, stop and
+  record the missing prepared authority in `todo.md` instead of reconstructing
+  the decision locally.
+- A surviving helper boundary is acceptable only when its parameters and
+  callers describe AArch64 emission work.
 
 ## Execution Rules
 
-- Start with the exact block-entry preservation republication route.
-- Delete local selection or use-reconstruction before adding replacement
-  helper layers.
+- Start with `calls_dispatch_bridge.cpp` and `calls.hpp` boundary mapping.
 - Keep each code slice narrow enough for a fresh build plus focused backend
   proof.
-- Escalate to `^backend_` after changing preservation-effect ordering,
-  prepared lookup consumption, call-boundary effects, block-entry move
-  behavior, or shared prepared-call behavior.
+- Escalate to `^backend_` after changing call-boundary effects, prepared lookup
+  consumption, byval/aggregate moves, dispatch-bridge call lowering, preserved
+  value publication, or printer/effect spelling behavior.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
 
-## Step 1: Select The Block-Entry Republication Authority Leak
+## Step 1: Select The Next Surviving Boundary Leak
 
-Goal: prove which part of block-entry preservation republication still owns
-planning authority locally and whether the needed prepared fact already exists.
+Goal: identify the next concrete AArch64 calls boundary that still owns
+prepared-call, BIR-recovery, dispatch-bridge, byval, argument-source,
+preservation, or printing authority locally.
 
 Primary targets:
 
-- The `call_plans->calls` walk and `selected_preservation_effects` collection
-  in `lower_value_moves`.
-- `preserved_value_has_block_entry_non_call_use`.
-- The `make_callee_saved_preservation_home_republication_instruction` call site
-  for `PreparedMovePhase::BlockEntry`.
+- `calls_dispatch_bridge.cpp` local aggregate address publication, scalar
+  materialization, retained-BIR value lookup, indirect callee/result
+  materialization, and prior-call lookup paths.
+- `calls.hpp` declarations that expose those bridge helpers or preservation
+  helpers beyond an emission-only surface.
+- Adjacent `calls_argument_sources.cpp`, `calls_byval_aggregates.cpp`,
+  `calls_moves.cpp`, `calls_preservation.cpp`, and `calls_printing.cpp`
+  boundaries only as needed to choose the smallest coherent checkpoint.
 
 Actions:
 
-- Map the block-entry republication decision to existing prepared preservation,
-  boundary-effect, move-bundle, value-home, or lookup data.
-- Decide whether local code should consume an existing prepared fact, whether a
-  small shared prepared fact is missing, or whether the surviving work is
-  emission-only.
-- Record the selected deletion path, missing-prepared-fact blocker if any, and
-  focused proof command in `todo.md`.
+- Map surviving helper responsibilities to source-idea acceptance criteria.
+- Decide whether the next checkpoint should delete a local decision, move a
+  helper to an existing owner, retire a translation unit, or stop on a missing
+  prepared fact.
+- Record the selected boundary leak, expected replacement owner or missing
+  prepared-fact blocker, and focused proof command in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the selected block-entry preservation authority leak, the
-  prepared replacement fact or missing-prepared-fact blocker, and the focused
-  proof scope.
+- `todo.md` names one selected surviving boundary leak, the intended authority
+  owner, and the focused proof scope.
 
-## Step 2: Remove The Selected Local Decision
+## Step 2: Remove Or Narrow The Selected Boundary
 
-Goal: replace the selected block-entry republication decision with
-prepared-fact consumption or stop with a precise missing-prepared-fact blocker.
+Goal: replace the selected local decision with prepared-fact consumption or
+move the helper to the correct existing owner without broadening the active
+idea.
 
 Actions:
 
-- Delete the selected AArch64-local prepared-call walk or BIR-use scan from the
-  block-entry republication path.
-- Consume prepared preservation, boundary-effect, move-bundle, value-home, or
-  lookup facts instead of rebuilding selection from retained BIR or raw call
-  plan lists.
+- Delete the selected local prepared-call reconstruction, retained-BIR scan, or
+  duplicate argument/byval/preservation/dispatch decision.
+- Consume existing prepared call-plan, lookup, move-bundle, value-home,
+  addressing, or boundary-effect facts when sufficient.
+- Move printer/effect spelling to the printer surface only if Step 1 selects
+  that boundary.
 - Keep retained BIR checks only for instruction identity validation,
-  diagnostics, or emission context.
-- Tighten helper signatures so obsolete context parameters do not remain when
-  prepared facts are sufficient.
+  diagnostics, or unavoidable emission context.
+- Tighten helper signatures so obsolete context parameters do not remain.
 - Update focused tests only to preserve or strengthen the prepared-authority
   contract.
 - Run `cmake --build --preset default` plus the focused backend proof selected
@@ -174,46 +178,44 @@ Actions:
 
 Completion check:
 
-- The selected block-entry preservation route no longer owns call-planning or
-  preserved-value-use authority locally, and `test_after.log` records passing
-  build plus focused proof.
+- The selected boundary no longer owns duplicate call-planning authority, and
+  `test_after.log` records passing build plus focused proof.
 
-## Step 3: Consolidate The Surviving Republication Helper Boundary
+## Step 3: Consolidate Helper/API Surface
 
-Goal: remove helper/API boundaries made obsolete by Step 2 or document why each
-surviving preservation republication boundary is emission-only.
+Goal: remove declarations, helper wrappers, includes, or translation-unit
+boundaries made obsolete by Step 2.
 
 Actions:
 
-- Remove obsolete declarations from `calls.hpp` and helper-local prototypes.
-- Merge helper code back into a surviving owner when the helper no longer
-  describes a real emission-only boundary.
-- Keep `make_callee_saved_preservation_home_republication_instruction` only if
-  it consumes prepared effect facts and emits AArch64 machine nodes without
-  selecting preservation eligibility.
-- Update build metadata only if a translation unit is retired.
+- Remove obsolete declarations from `calls.hpp`.
+- Merge helper code back into the smallest surviving emission owner when a
+  separate helper no longer describes a real boundary.
+- Retire a `calls_*` translation unit only when its remaining code has a clear
+  existing owner and build metadata can be updated coherently.
+- Preserve AArch64-specific emission details in AArch64 code.
 - Run a fresh build and the focused backend proof after each coherent helper
   boundary change.
 
 Completion check:
 
-- The affected republication helper boundary is retired or explicitly
-  emission-only, with build metadata and include graphs matching the new
-  boundary.
+- The affected helper/API surface is smaller or explicitly emission-only, with
+  build metadata and include graphs matching the new boundary.
 
 ## Step 4: Broader Backend Checkpoint
 
-Goal: prove the latest block-entry republication checkpoint did not regress
-adjacent preservation, call-boundary, byval, aggregate, local-frame
-publication, prepared-call boundary, or printer behavior.
+Goal: prove the latest surviving-boundary checkpoint did not regress adjacent
+call emission, prepared-call, dispatch bridge, byval, aggregate, preservation,
+local-frame, or printer behavior.
 
 Actions:
 
 - Run the supervisor-selected broader backend validation scope.
-- Include focused AArch64 preservation, block-entry move, prepared-call
-  boundary, local-frame/publication, byval, aggregate, and call printer tests.
-- Include affected x86 shared-boundary tests if shared prepared-call behavior
-  was touched.
+- Include focused AArch64 call-boundary, dispatch-bridge, prepared-call,
+  argument-source, byval, aggregate, local-frame/publication, preservation, and
+  printer tests.
+- Include affected shared-boundary and x86 tests if shared prepared-call
+  behavior was touched.
 - Record exact proof commands and results in `todo.md`.
 
 Completion check:
@@ -223,18 +225,18 @@ Completion check:
 
 ## Step 5: Closure Review
 
-Goal: decide whether the source idea is complete after this block-entry
-republication checkpoint or whether another runbook checkpoint is needed.
+Goal: decide whether the source idea is complete after this checkpoint or
+whether another runbook checkpoint is needed.
 
 Actions:
 
-- Recheck all surviving `calls*.cpp`/`calls*.hpp` preservation, argument,
-  dispatch, move, and printing helpers against the source idea acceptance
-  criteria.
+- Recheck all surviving `calls*.cpp` and `calls.hpp` boundaries against the
+  source idea acceptance criteria.
 - Confirm target-local calls code no longer rederives decisions already
   present in shared prepared facts.
-- Confirm surviving helper files have explicit emission-only ownership or are
-  identified as the next checkpoint target.
+- Confirm surviving helper files are emission-only, printer-owned,
+  dispatch-owned outside this source idea, or identified as the next checkpoint
+  target.
 - If durable remaining work exists, keep the idea open and request another
   runbook checkpoint instead of closing.
 
