@@ -2146,6 +2146,17 @@ make_immediate_cast_call_argument_publication_instruction(
         }
       }
     }
+    if (!address_source.has_value() && argument->source_selection.has_value() &&
+        argument->source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 frame-slot address call-argument move requires complete prepared selected source address");
+      return std::nullopt;
+    }
     source =
         address_source.has_value()
             ? address_source
