@@ -38,6 +38,27 @@ destinations into AArch64 machine instructions.
 - Any remaining fallback is explicitly documented as temporary and not a broad
   prior-home rederivation path.
 
+## Closure Note
+
+Closed after Step 5 validation at `50f59b90a` (`Repair AArch64 prepared call
+source fallbacks`). The Step 3 AArch64 prepared source-selection regression for
+`c_testsuite_aarch64_backend_src_00216_c` and
+`c_testsuite_aarch64_backend_src_00204_c` was repaired in-plan, and reviewer
+coverage found no testcase-overfit or expectation weakening.
+
+Validation accepted for closure:
+
+- focused Step 5 repair proof passed 6/6
+- `^c_testsuite_aarch64_backend_` passed 220/220
+- `^backend_` passed 162/162
+- backend regression guard passed with 162/162 before and after, no new
+  failures
+- accepted full-suite baseline passed 3410/3410 at `50f59b90a`
+
+Known follow-up debt remains outside this closed idea: retire the documented
+temporary absent-selection fallbacks once prepared facts are complete for local
+aggregate address publication and indirect byval lane payloads.
+
 ## Reviewer Reject Signals
 
 - A patch claims emission-only status while still scanning call plans or value
