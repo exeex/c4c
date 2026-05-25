@@ -673,33 +673,6 @@ move.to_value_id);
   return std::get_if<bir::StoreLocalInst>(&inst) != nullptr;
 }
 
-void record_address_materialization_result(
-    BlockScalarLoweringState& scalar_state,
-    const module::MachineInstruction& instruction) {
-  const auto* address_record =
-      std::get_if<AddressMaterializationRecord>(&instruction.target.payload);
-  if (address_record == nullptr || !address_record->result_register.has_value()) {
-    return;
-  }
-  record_emitted_scalar_register(scalar_state,
-                                 address_record->result_value_name,
-                                 *address_record->result_register);
-}
-
-void record_memory_result(BlockScalarLoweringState& scalar_state,
-                          const module::MachineInstruction& instruction) {
-  const auto* memory_record =
-      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
-  if (memory_record == nullptr ||
-      memory_record->result_stack_offset_bytes.has_value() ||
-      !memory_record->result_register.has_value()) {
-    return;
-  }
-  record_emitted_scalar_register(scalar_state,
-                                 memory_record->result_value_name,
-                                 *memory_record->result_register);
-}
-
 [[nodiscard]] bool before_return_publication_already_emitted(
     const BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction) {
