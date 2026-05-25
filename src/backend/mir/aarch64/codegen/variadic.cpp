@@ -1,5 +1,6 @@
 #include "variadic.hpp"
-#include "machine_printer.hpp"
+#include "constant_materialization.hpp"
+#include "mir/printer.hpp"
 
 #include <cstdint>
 #include <sstream>

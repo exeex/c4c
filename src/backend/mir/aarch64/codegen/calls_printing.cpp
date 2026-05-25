@@ -1,4 +1,5 @@
 #include "calls.hpp"
+#include "constant_materialization.hpp"
 #include "float_ops.hpp"
 #include "memory.hpp"
 #include "variadic.hpp"
@@ -20,10 +21,6 @@ namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
 [[nodiscard]] bool publish_prepared_call_preserve_effects();
-[[nodiscard]] std::vector<std::string> materialize_integer_constant_lines(
-    abi::RegisterReference destination,
-    std::uint64_t value,
-    unsigned width_bits);
 
 namespace {
 

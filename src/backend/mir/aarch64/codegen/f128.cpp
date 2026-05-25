@@ -1,8 +1,9 @@
 #include "f128.hpp"
 #include "calls.hpp"
 #include "comparison.hpp"
-#include "machine_printer.hpp"
+#include "constant_materialization.hpp"
 #include "memory.hpp"
+#include "mir/printer.hpp"
 
 #include <cstddef>
 #include <cstdint>

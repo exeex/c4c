@@ -3,7 +3,7 @@
 #include "dispatch.hpp"
 
 #include "../abi/abi.hpp"
-#include "machine_printer.hpp"
+#include "constant_materialization.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 
 #include <algorithm>
