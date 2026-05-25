@@ -1502,6 +1502,36 @@ void copy_materialization_source_selection_fields(
   return nullptr;
 }
 
+[[nodiscard]] std::size_t count_call_instructions(const bir::Function& function) {
+  std::size_t count = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::CallInst>(inst)) {
+        ++count;
+      }
+    }
+  }
+  return count;
+}
+
+void append_incremental_prior_preserved_values(PreparedCallPlanLookups& lookups,
+                                               const PreparedCallPlan& call_plan) {
+  for (const auto& preserved : call_plan.preserved_values) {
+    if (preserved.route == PreparedCallPreservationRoute::Unknown) {
+      continue;
+    }
+    if (preserved.value_id >= lookups.prior_preserved_by_value.size()) {
+      lookups.prior_preserved_by_value.resize(preserved.value_id + 1U);
+    }
+    lookups.prior_preserved_by_value[preserved.value_id].push_back(
+        PreparedPriorPreservedValueEntry{
+            .block_index = call_plan.block_index,
+            .instruction_index = call_plan.instruction_index,
+            .preserved = &preserved,
+        });
+  }
+}
+
 [[nodiscard]] std::optional<PreparedCallArgumentSourceSelection>
 select_prepared_call_argument_source(const PreparedBirModule& prepared,
                                      const PreparedNameTables& names,
@@ -1545,26 +1575,6 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
       copy_access_source_selection_fields(selection, *source_access, prepared.stack_layout);
     }
     return selection;
-  }
-
-  if (source_home != nullptr &&
-      argument.source_encoding == PreparedStorageEncodingKind::Register &&
-      argument.allows_local_aggregate_address_publication) {
-    if (const auto* materialization =
-            find_latest_frame_slot_materialization(addressing,
-                                                   names,
-                                                   block_label,
-                                                   call_plan.instruction_index,
-                                                   source_home->value_name,
-                                                   true);
-        materialization != nullptr) {
-      selection.kind =
-          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
-      copy_materialization_source_selection_fields(selection, *materialization);
-      selection.source_size_bytes = source_home->size_bytes;
-      selection.source_align_bytes = source_home->align_bytes;
-      return selection;
-    }
   }
 
   if (argument.source_encoding == PreparedStorageEncodingKind::FrameSlot) {
@@ -1721,6 +1731,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
         .function_name = function_name_id,
         .calls = {},
     };
+    function_plan.calls.reserve(count_call_instructions(function));
     const auto* frame_plan = find_prepared_frame_plan(prepared, function_name_id);
     const auto* control_flow_function =
         find_prepared_control_flow_function(prepared.control_flow, function_name_id);
@@ -1734,6 +1745,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
         make_call_preservation_candidates(regalloc_function);
     const std::vector<PreparedClobberedRegister> call_clobbers =
         build_call_clobber_set(prepared.target_profile, regalloc_function);
+    PreparedCallPlanLookups prior_preserved_lookups;
 
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
       const auto& block = function.blocks[block_index];
@@ -1789,11 +1801,6 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 ? nullptr
                 : find_prepared_move_bundle(
                       *value_locations, PreparedMovePhase::AfterCall, block_index, instruction_index);
-        const PreparedCallPlanLookups prior_preserved_lookups =
-            control_flow_function == nullptr
-                ? PreparedCallPlanLookups{}
-                : make_prepared_call_plan_lookups(
-                      prepared, &function_plan, *control_flow_function);
 
         for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
           PreparedCallArgumentPlan arg_plan{
@@ -1892,6 +1899,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                   *call);
 
         function_plan.calls.push_back(std::move(call_plan));
+        append_incremental_prior_preserved_values(prior_preserved_lookups,
+                                                  function_plan.calls.back());
       }
     }
     if (!function_plan.calls.empty()) {
