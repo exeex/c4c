@@ -6,7 +6,7 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review rejected closure for the register byval size authority-removal
+review rejected closure for the stack byval ABI size fallback removal
 checkpoint.
 
 ## Goal
@@ -24,13 +24,13 @@ already present in `PreparedCallPlan` or its argument/effect records.
 
 ## Latest Closure Review Finding
 
-The broader backend checkpoint after register byval size authority removal
-recorded `^backend_` passing 162/162 in `test_before.log`, and the regression
-guard accepted that canonical artifact for the unchanged lifecycle review
-state. The source idea is not complete. The closure review confirmed that
-target-local calls code still has retained `CallInst::arg_abi` or
-`CallInst::arg_types` decision reads that decide publication and byval shape
-where prepared call-plan facts should own the decision:
+The broader backend checkpoint after stack byval ABI size fallback removal
+recorded `^backend_` passing 162/162 in `test_before.log`. The source idea is
+not complete, so close-time regression guard generation was not needed for
+closure acceptance. The closure review confirmed that target-local calls code
+still has retained `CallInst::arg_abi` or `CallInst::arg_types` decision reads
+that decide publication and byval shape where prepared call-plan facts should
+own the decision:
 
 - `calls_dispatch_bridge.cpp` still decides local aggregate address
   publication eligibility from retained `CallInst::arg_abi` and
@@ -39,8 +39,7 @@ where prepared call-plan facts should own the decision:
   frame address publication from retained `CallInst::arg_types` and
   `CallInst::arg_abi`.
 - `calls_byval_aggregates.cpp` still rechecks retained `CallInst::arg_abi`
-  shape in `aarch64_indirect_byval_argument_size_bytes`,
-  `aarch64_stack_byval_argument_size_bytes`, and
+  shape in `aarch64_indirect_byval_argument_size_bytes` and
   `aarch64_indirect_register_byval_argument`.
 - `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
   boundaries that need to be retired or justified as emission-only once the
