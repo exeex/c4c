@@ -37,6 +37,34 @@ struct LocalAggregateAddressPublication {
   RegisterOperand result_register;
 };
 
+struct PreparedFrameSlotCallArgumentMove {
+  const prepare::PreparedMoveBundle* bundle = nullptr;
+  const prepare::PreparedMoveResolution* move = nullptr;
+  const prepare::PreparedAbiBinding* binding = nullptr;
+};
+
+[[nodiscard]] module::MachineInstruction make_dispatch_bridge_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    InstructionRecord target) {
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
 [[nodiscard]] std::optional<LocalAggregateAddressPublication>
 materialize_local_aggregate_address_call_argument(
     const module::BlockLoweringContext& context,
@@ -89,6 +117,41 @@ materialize_local_aggregate_address_call_argument(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] std::optional<PreparedFrameSlotCallArgumentMove>
+find_prepared_frame_slot_call_argument_move(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  const auto* bundle = find_move_bundle(context,
+                                        prepare::PreparedMovePhase::BeforeCall,
+                                        context.block_index,
+                                        instruction_index);
+  if (bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : bundle->moves) {
+    const auto classification =
+        prepare::classify_prepared_call_boundary_move(call_plan, *bundle, move);
+    if (!prepare::prepared_call_boundary_move_classification_available(classification) ||
+        classification.argument_plan != &argument ||
+        classification.destination_kind !=
+            prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        classification.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        argument.source_value_id !=
+            std::optional<prepare::PreparedValueId>{move.from_value_id}) {
+      continue;
+    }
+    return PreparedFrameSlotCallArgumentMove{
+        .bundle = bundle,
+        .move = &move,
+        .binding = classification.abi_binding,
+    };
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
@@ -912,32 +975,51 @@ materialize_missing_frame_slot_call_arguments(
         argument.destination_contiguous_width > 1) {
       continue;
     }
-    const auto* home =
-        find_value_home(context,
-*argument.source_value_id);
+    const auto* home = find_value_home(context, *argument.source_value_id);
     if (home == nullptr ||
+        home->kind != prepare::PreparedValueHomeKind::StackSlot ||
         find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
       continue;
     }
-    const auto source_value =
-        find_bir_value_for_prepared_name(context, home->value_name, instruction_index);
-    if (!source_value.has_value()) {
+    const auto prepared_move =
+        find_prepared_frame_slot_call_argument_move(
+            context, call_plan, argument, instruction_index);
+    if (!prepared_move.has_value()) {
       continue;
     }
-    const auto expected_view = scalar_view_for_type(source_value->type);
+    const auto source =
+        make_frame_slot_call_argument_source(context, argument, *home, instruction_index);
+    if (!source.has_value()) {
+      continue;
+    }
+    const auto expected_view = scalar_integer_register_view_from_size(source->size_bytes);
     if (!expected_view.has_value()) {
       continue;
     }
+    const auto& move = *prepared_move->move;
+    const auto* binding = prepared_move->binding;
+    const auto destination_register_placement =
+        binding != nullptr && binding->destination_register_placement.has_value()
+            ? binding->destination_register_placement
+            : (move.destination_register_placement.has_value()
+                   ? move.destination_register_placement
+                   : argument.destination_register_placement);
+    const auto destination_register_name =
+        destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : (binding != nullptr && binding->destination_register_name.has_value()
+                   ? binding->destination_register_name
+                   : move.destination_register_name);
     const auto prepared_class = prepare::PreparedRegisterClass::General;
     abi::PreparedRegisterConversionResult converted;
-    if (argument.destination_register_placement.has_value()) {
+    if (destination_register_placement.has_value()) {
       converted =
-          abi::convert_prepared_register(*argument.destination_register_placement,
+          abi::convert_prepared_register(*destination_register_placement,
                                          prepared_class,
                                          expected_view);
-    } else if (argument.destination_register_name.has_value()) {
+    } else if (destination_register_name.has_value()) {
       converted =
-          abi::convert_prepared_register(*argument.destination_register_name,
+          abi::convert_prepared_register(*destination_register_name,
                                          argument.destination_register_bank,
                                          prepared_class,
                                          expected_view);
@@ -947,46 +1029,54 @@ materialize_missing_frame_slot_call_arguments(
     if (!converted.reg.has_value()) {
       continue;
     }
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    if (scratches.empty()) {
-      continue;
-    }
-    const std::uint8_t target_index = converted.reg->index;
-    const std::uint8_t scratch_index =
-        scratches.front().index == target_index && scratches.size() > 1
-            ? scratches[1].index
-            : scratches.front().index;
-    if (scratch_index == target_index) {
-      continue;
-    }
-    std::vector<std::string> lines;
-    if (!emit_value_publication_to_register(context,
-                                            *source_value,
-                                            instruction_index,
-                                            target_index,
-                                            scratch_index,
-                                            lines) ||
-        lines.empty()) {
-      continue;
-    }
-    RegisterOperand emitted{
+    RegisterOperand destination{
         .reg = *converted.reg,
         .role = RegisterOperandRole::CallAbi,
-        .value_id = home->value_id,
+        .value_id = move.to_value_id != 0
+                        ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                        : argument.source_value_id,
         .value_name = home->value_name,
         .prepared_class = prepared_class,
-        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
-        .expected_view = expected_view,
-        .contiguous_width = argument.destination_contiguous_width,
+        .prepared_bank = argument.destination_register_bank.value_or(
+            prepare::PreparedRegisterBank::None),
+        .expected_view = *expected_view,
+        .contiguous_width = binding != nullptr ? binding->destination_contiguous_width
+                                               : move.destination_contiguous_width,
         .occupied_register_references = {*converted.reg},
-        .occupied_registers = {abi::register_name(*converted.reg)},
+        .occupied_registers =
+            binding != nullptr && !binding->destination_occupied_register_names.empty()
+                ? std::vector<std::string_view>(
+                      binding->destination_occupied_register_names.begin(),
+                      binding->destination_occupied_register_names.end())
+                : (!move.destination_occupied_register_names.empty()
+                       ? std::vector<std::string_view>(
+                             move.destination_occupied_register_names.begin(),
+                             move.destination_occupied_register_names.end())
+                       : std::vector<std::string_view>{abi::register_name(*converted.reg)}),
     };
-    record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
-    if (auto materialized =
-            make_select_chain_materialization_instruction(
-                context, instruction_index, std::move(lines))) {
-      lowered.push_back(std::move(*materialized));
-    }
+    CallBoundaryMoveInstructionRecord move_record{
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .phase = prepared_move->bundle->phase,
+        .authority_kind = prepared_move->bundle->authority_kind,
+        .block_index = prepared_move->bundle->block_index,
+        .instruction_index = prepared_move->bundle->instruction_index,
+        .source_parallel_copy_predecessor_label =
+            prepared_move->bundle->source_parallel_copy_predecessor_label,
+        .source_parallel_copy_successor_label =
+            prepared_move->bundle->source_parallel_copy_successor_label,
+        .move = move,
+        .source_memory = *source,
+        .destination_register = destination,
+        .source_bundle = prepared_move->bundle,
+        .source_move = prepared_move->move,
+    };
+    record_emitted_scalar_register(scalar_state, destination.value_name, destination);
+    lowered.push_back(make_dispatch_bridge_machine_instruction(
+        context,
+        instruction_index,
+        make_call_boundary_move_instruction(std::move(move_record))));
   }
   return lowered;
 }
