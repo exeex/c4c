@@ -220,26 +220,6 @@ make_callee_saved_preservation_home_republication_instruction(
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
-make_callee_saved_preservation_home_republication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallBoundaryEffectPlan& effect,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  return make_callee_saved_preservation_home_republication_instruction(
-      context,
-      bundle,
-      effect,
-      prepare::PreparedMovePhase::BeforeInstruction,
-      call_plan.block_index,
-      call_plan.instruction_index,
-      effect.reason.empty() ? "callee_saved_preservation_home_republication"
-                            : effect.reason,
-      diagnostics);
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
 make_callee_saved_preservation_home_population(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,

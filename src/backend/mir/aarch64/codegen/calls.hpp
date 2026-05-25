@@ -315,14 +315,6 @@ make_callee_saved_preservation_home_republication_instruction(
     std::string reason,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<module::MachineInstruction>
-make_callee_saved_preservation_home_republication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallBoundaryEffectPlan& effect,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] std::optional<module::MachineInstruction>
 make_callee_saved_preservation_home_population(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
