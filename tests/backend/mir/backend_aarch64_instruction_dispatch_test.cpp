@@ -20988,6 +20988,20 @@ int block_dispatch_publishes_direct_local_aggregate_address_call_argument() {
                       .destination_contiguous_width = 1,
                       .destination_occupied_register_names = {"x0"},
                       .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind =
+                                  prepare::PreparedCallArgumentSourceSelectionKind::
+                                      LocalFrameAddressMaterialization,
+                              .source_value_id = source_value_id,
+                              .source_value_name = source_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::Register,
+                              .source_slot_id = prepare::PreparedFrameSlotId{402},
+                              .source_stack_offset_bytes = std::size_t{64},
+                              .source_size_bytes = std::size_t{8},
+                              .source_align_bytes = std::size_t{8},
+                          },
                   }},
           }},
   };
@@ -21157,6 +21171,20 @@ int block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument()
                       .destination_contiguous_width = 1,
                       .destination_occupied_register_names = {"x0"},
                       .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind =
+                                  prepare::PreparedCallArgumentSourceSelectionKind::
+                                      LocalFrameAddressMaterialization,
+                              .source_value_id = source_value_id,
+                              .source_value_name = source_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::Register,
+                              .source_slot_id = prepare::PreparedFrameSlotId{412},
+                              .source_stack_offset_bytes = std::size_t{96},
+                              .source_size_bytes = std::size_t{8},
+                              .source_align_bytes = std::size_t{8},
+                          },
                   }},
           }},
   };

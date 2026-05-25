@@ -1427,6 +1427,47 @@ void copy_materialization_source_selection_fields(
   }
 }
 
+struct LocalFrameAddressSource {
+  const PreparedStackObject* object = nullptr;
+  const PreparedFrameSlot* slot = nullptr;
+};
+
+[[nodiscard]] LocalFrameAddressSource find_local_frame_address_source(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    FunctionNameId function_name,
+    ValueNameId source_value_name) {
+  const auto source_name = names.value_names.spelling(source_value_name);
+  if (source_name.empty() || function_name == kInvalidFunctionName) {
+    return {};
+  }
+
+  LocalFrameAddressSource selected;
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name ||
+        object.source_kind != "local_slot") {
+      continue;
+    }
+    const auto object_name = prepared_stack_object_name(names, object);
+    if (!local_frame_address_name_matches(source_name, object_name)) {
+      continue;
+    }
+    const auto* slot = find_prepared_frame_slot(stack_layout, object.object_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    if (selected.slot == nullptr || object_name == source_name ||
+        slot->offset_bytes < selected.slot->offset_bytes) {
+      selected.object = &object;
+      selected.slot = slot;
+      if (object_name == source_name) {
+        break;
+      }
+    }
+  }
+  return selected;
+}
+
 [[nodiscard]] bool copy_prior_preservation_source_selection_fields(
     PreparedCallArgumentSourceSelection& selection,
     const PreparedCallPreservedValue& preserved) {
@@ -1620,6 +1661,49 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
                    selection.source_stack_offset_bytes.has_value()
                ? std::optional<PreparedCallArgumentSourceSelection>{selection}
                : std::nullopt;
+  }
+
+  if (argument.allows_local_aggregate_address_publication &&
+      argument.source_encoding == PreparedStorageEncodingKind::Register &&
+      source_home != nullptr &&
+      source_home->kind == PreparedValueHomeKind::Register &&
+      selection.source_value_name.has_value()) {
+    if (const auto* materialization =
+            find_latest_frame_slot_materialization(addressing,
+                                                   names,
+                                                   block_label,
+                                                   call_plan.instruction_index,
+                                                   *selection.source_value_name,
+                                                   true);
+        materialization != nullptr) {
+      selection.kind =
+          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
+      copy_materialization_source_selection_fields(selection, *materialization);
+      selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
+      selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      return selection;
+    }
+
+    const auto local_source =
+        find_local_frame_address_source(names,
+                                        prepared.stack_layout,
+                                        control_flow != nullptr
+                                            ? control_flow->function_name
+                                            : names.function_names.find(function.name),
+                                        *selection.source_value_name);
+    if (local_source.object != nullptr && local_source.slot != nullptr) {
+      selection.kind =
+          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
+      selection.source_slot_id = local_source.slot->slot_id;
+      selection.source_stack_offset_bytes = local_source.slot->offset_bytes;
+      selection.source_size_bytes =
+          local_source.object->size_bytes == 0 ? std::size_t{8}
+                                               : local_source.object->size_bytes;
+      selection.source_align_bytes =
+          local_source.object->align_bytes == 0 ? std::size_t{8}
+                                                : local_source.object->align_bytes;
+      return selection;
+    }
   }
 
   const auto value_id = argument.source_value_id.value_or(move->from_value_id);

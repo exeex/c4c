@@ -577,59 +577,7 @@ namespace abi = c4c::backend::aarch64::abi;
     };
   }
 
-  const prepare::PreparedStackObject* selected_object = nullptr;
-  const prepare::PreparedFrameSlot* selected_slot = nullptr;
-  for (const auto& object : context.function.prepared->stack_layout.objects) {
-    if (object.function_name != context.function.control_flow->function_name ||
-        object.source_kind != "local_slot") {
-      continue;
-    }
-    const auto object_name =
-        prepare::prepared_stack_object_name(context.function.prepared->names, object);
-    if (!local_frame_address_name_matches(source_name, object_name)) {
-      continue;
-    }
-    const prepare::PreparedFrameSlot* object_slot = nullptr;
-    for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
-      if (slot.object_id == object.object_id) {
-        object_slot = &slot;
-        break;
-      }
-    }
-    if (object_slot == nullptr) {
-      continue;
-    }
-    if (selected_slot == nullptr ||
-        object_name == source_name ||
-        object_slot->offset_bytes < selected_slot->offset_bytes) {
-      selected_object = &object;
-      selected_slot = object_slot;
-      if (object_name == source_name) {
-        break;
-      }
-    }
-  }
-  if (selected_object == nullptr || selected_slot == nullptr) {
-    return std::nullopt;
-  }
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = context.function.control_flow->function_name,
-      .block_label = context.control_flow_block->block_label,
-      .instruction_index = instruction_index,
-      .result_value_id = argument.source_value_id,
-      .result_value_name = source_home.value_name,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = selected_slot->slot_id,
-      .byte_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = selected_object->size_bytes == 0 ? std::size_t{8}
-                                                     : selected_object->size_bytes,
-      .align_bytes = selected_object->align_bytes == 0 ? std::size_t{8}
-                                                       : selected_object->align_bytes,
-      .can_use_base_plus_offset = true,
-  };
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
