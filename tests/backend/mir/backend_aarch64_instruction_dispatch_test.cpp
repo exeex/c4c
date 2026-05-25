@@ -17864,6 +17864,234 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
   return 0;
 }
 
+int incomplete_frame_slot_value_selection_does_not_rederive_legacy_home() {
+  constexpr auto function_name = c4c::FunctionNameId{191};
+  constexpr auto block_label = c4c::BlockLabelId{192};
+  constexpr auto value_id = prepare::PreparedValueId{193};
+  constexpr auto value_name = c4c::ValueNameId{194};
+
+  prepare::PreparedBirModule prepared;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = value_id,
+              .function_name = function_name,
+              .value_name = value_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{15},
+              .offset_bytes = std::size_t{40},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 4,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = value_id,
+                      .to_value_id = value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 4,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = value_id,
+              .source_slot_id = prepare::PreparedFrameSlotId{15},
+              .source_stack_offset_bytes = std::size_t{40},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_stack_offset_bytes = std::size_t{0},
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              FrameSlotValue,
+                      .source_value_id = value_id,
+                      .source_slot_id = prepare::PreparedFrameSlotId{15},
+                      .source_stack_offset_bytes = std::size_t{40},
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                  },
+          }},
+  };
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 4, diagnostics);
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected incomplete explicit frame-slot value selection not to rederive "
+        "legacy home: lowered=" +
+        std::to_string(lowered.size()) +
+        " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+        (diagnostics.entries.empty()
+             ? std::string{}
+             : " kind=" +
+                   std::to_string(static_cast<int>(diagnostics.entries.front().kind))));
+  }
+  return 0;
+}
+
+int absent_frame_slot_value_selection_still_uses_legacy_home() {
+  constexpr auto function_name = c4c::FunctionNameId{195};
+  constexpr auto block_label = c4c::BlockLabelId{196};
+  constexpr auto value_id = prepare::PreparedValueId{197};
+  constexpr auto value_name = c4c::ValueNameId{198};
+
+  prepare::PreparedBirModule prepared;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = value_id,
+              .function_name = function_name,
+              .value_name = value_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{16},
+              .offset_bytes = std::size_t{48},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 4,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = value_id,
+                      .to_value_id = value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 4,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = value_id,
+              .source_slot_id = prepare::PreparedFrameSlotId{16},
+              .source_stack_offset_bytes = std::size_t{48},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_stack_offset_bytes = std::size_t{0},
+          }},
+  };
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 4, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail(
+        "expected absent frame-slot value selection to keep legacy home "
+        "compatibility");
+  }
+  const auto* store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &lowered.front().target.payload);
+  const auto* source =
+      store != nullptr && store->value.has_value()
+          ? std::get_if<aarch64_module::codegen::MemoryOperand>(
+                &store->value->payload)
+          : nullptr;
+  if (store == nullptr ||
+      lowered.front().target.opcode != aarch64_module::codegen::MachineOpcode::Store ||
+      source == nullptr ||
+      source->result_value_name !=
+          std::optional<c4c::ValueNameId>{value_name} ||
+      source->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{16}} ||
+      source->byte_offset != 48 ||
+      source->size_bytes != 8) {
+    return fail("expected absent frame-slot value selection to lower from legacy home");
+  }
+  return 0;
+}
+
 int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -27779,6 +28007,16 @@ int main() {
   }
   if (const int status =
           prepared_frame_slot_stack_call_argument_lowers_to_selected_store();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_frame_slot_value_selection_does_not_rederive_legacy_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          absent_frame_slot_value_selection_still_uses_legacy_home();
       status != 0) {
     return status;
   }

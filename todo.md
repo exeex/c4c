@@ -9,26 +9,28 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 ## Just Finished
 
 Step 2 of `plan.md` retired the explicit
-`PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization`
-fallback boundary for AArch64 local-frame address call arguments. When a call
-argument carries this explicit selection kind, the helper now consumes the
-selected local-frame address payload only if it is complete and no longer
-rederives the same address through prepared address materialization or
-stack-object lookup.
+`PreparedCallArgumentSourceSelectionKind::FrameSlotValue` selected-source
+fallback boundary for AArch64 frame-slot stack call arguments. Explicit
+`FrameSlotValue` selections now require a complete prepared payload including
+source identity, stack slot, offset, size, alignment, and stack-slot home kind;
+the helper no longer borrows the legacy `source_home` identity to complete an
+explicit selection.
 
 The instruction-dispatch coverage now includes an incomplete explicit
-local-frame address selection while matching legacy prepared addressing and
-stack-object facts are still present; `lower_before_call_moves` emits no
-rederived x0 address move. Existing no-selection local-frame address coverage
-still proves absent `source_selection` compatibility through the legacy lookup.
+`FrameSlotValue` selection while matching legacy value-home facts are still
+present; `lower_before_call_moves` fails closed instead of rederiving the
+source from the legacy home. A paired absent-selection case proves the retained
+no-`source_selection` compatibility path still lowers from the legacy
+frame-slot home.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining selected-source helpers for another
-complete-payload-only duplicate boundary that can be retired without touching
-absent-selection compatibility. A good next packet is the remaining
-frame-slot value source surface that still keeps explicit incomplete
-selection handling adjacent to legacy compatibility.
+Continue Step 2 by auditing the remaining selected-source helper surfaces for a
+small complete-payload-only boundary that can be retired without touching
+absent-selection compatibility. A good next packet is to look at the remaining
+register-destination frame-slot value and aggregate/byval-adjacent call
+argument paths that still probe helper results before choosing legacy fallback
+behavior.
 
 ## Watchouts
 
@@ -36,10 +38,11 @@ selection handling adjacent to legacy compatibility.
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
   covers complete byval register-lane selections with prepared source payload.
 - `make_frame_slot_call_argument_source` still keeps the legacy fallback when
-  no explicit `FrameSlotValue` selection is present. A full fail-closed removal
-  crossed into an existing byval-sized hand fixture with no frame-slot
-  source-selection fact, so absent-selection compatibility remains outside this
-  packet.
+  no explicit `FrameSlotValue` selection is present; this packet preserves that
+  compatibility and proves it with focused dispatch coverage.
+- Explicit `FrameSlotValue` selections now require `source_value_id`,
+  `source_value_name`, `source_home_kind == StackSlot`, `source_slot_id`,
+  `source_stack_offset_bytes`, `source_size_bytes`, and `source_align_bytes`.
 - Do not retire callee-saved-register prior preservation in the same slice;
   `PreparedCallArgumentSourceSelection` only proves the stack-slot
   `PriorPreservation` source path for this consolidation step.

@@ -335,6 +335,15 @@ make_f128_q_register_operand_from_carrier(
       !selection.source_align_bytes.has_value()) {
     return std::nullopt;
   }
+  if (expected_kind ==
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue &&
+      (!selection.source_value_id.has_value() ||
+       !selection.source_value_name.has_value() ||
+       selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::StackSlot})) {
+    return std::nullopt;
+  }
   return MemoryOperand{
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .support = MemoryOperandSupportKind::Prepared,
@@ -348,10 +357,15 @@ make_f128_q_register_operand_from_carrier(
                                 : c4c::kInvalidBlockLabel),
       .instruction_index =
           selection.address_materialization_inst_index.value_or(instruction_index),
-      .result_value_id = argument.source_value_id,
-      .result_value_name = source_home != nullptr
-                               ? std::optional<c4c::ValueNameId>{source_home->value_name}
-                               : selection.source_value_name,
+      .result_value_id = selection.source_value_id.has_value()
+                             ? selection.source_value_id
+                             : argument.source_value_id,
+      .result_value_name = selection.source_value_name.has_value()
+                               ? selection.source_value_name
+                               : (source_home != nullptr
+                                      ? std::optional<c4c::ValueNameId>{
+                                            source_home->value_name}
+                                      : std::nullopt),
       .base_kind = MemoryBaseKind::FrameSlot,
       .frame_slot_id = materialized_address &&
                                selection.address_materialization_frame_slot_id
