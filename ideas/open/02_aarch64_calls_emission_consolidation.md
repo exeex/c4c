@@ -72,6 +72,33 @@ checkpoint unless either:
 - a fresh mapping proves a different remaining helper duplicates an already
   available prepared fact without needing new shared call-plan authority.
 
+## Parked Lifecycle Note
+
+The reactivation prerequisite mapping was rerun and confirmed the blocker
+above is still present. The active lifecycle has been switched to
+`ideas/open/01_shared_prepared_call_argument_source_selection.md`, which owns
+the missing shared prepared call-argument source-selection fact. Reactivate
+this consolidation idea only after that prerequisite is implemented or a fresh
+mapping proves a different already-prepared duplicate route.
+
+Confirmed mapping highlights:
+
+- `lower_before_call_move` already sees prepared destination and argument-plan
+  identity, but still chooses the selected `BeforeCall` source locally.
+- Frame-slot and memory-return sources partially map to existing prepared
+  argument-plan or memory-return facts, but target-local code still constructs
+  the selected source path.
+- Local-frame address and frame-slot address sources can use prepared address
+  materialization when available, but still have local fallback selection.
+- Byval register-lane sources still reconstruct selected source bytes from
+  local scans plus prepared memory-access/addressing facts.
+- Prior-preserved argument sources can find prepared preserved values, but the
+  final choice to source a selected argument move from preservation is still
+  local.
+- Preservation home population and republication already map to prepared
+  boundary effects; they are not the remaining selected argument-source
+  blocker.
+
 ## Reviewer Reject Signals
 
 - A patch only concatenates `calls*.cpp` files into a larger file and claims
