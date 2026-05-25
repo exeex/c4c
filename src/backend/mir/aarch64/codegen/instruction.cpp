@@ -1256,7 +1256,7 @@ MachineOpcode machine_opcode_from_address_materialization(
   return MachineOpcode::Unspecified;
 }
 
-MachineEffectResource effect_from_operand(const OperandRecord& operand) {
+MachineEffectResource machine_effect_from_operand_impl(const OperandRecord& operand) {
   MachineEffectResource resource;
   resource.operand = operand;
   switch (operand.kind) {
@@ -1337,7 +1337,7 @@ MachineEffectResource effect_from_operand(const OperandRecord& operand) {
   return resource;
 }
 
-MachineEffectResource prepared_value_def(
+MachineEffectResource machine_prepared_value_def_impl(
     std::optional<prepare::PreparedValueId> value_id,
     c4c::ValueNameId value_name) {
   return MachineEffectResource{
@@ -1412,12 +1412,12 @@ std::vector<OperandRecord> branch_instruction_operands(const BranchInstructionRe
   return operands;
 }
 
-std::vector<MachineEffectResource> effects_from_operands(
+std::vector<MachineEffectResource> machine_effects_from_operands_impl(
     const std::vector<OperandRecord>& operands) {
   std::vector<MachineEffectResource> effects;
   effects.reserve(operands.size());
   for (const auto& operand : operands) {
-    effects.push_back(effect_from_operand(operand));
+    effects.push_back(machine_effect_from_operand_impl(operand));
   }
   return effects;
 }
@@ -1678,6 +1678,21 @@ MachineNodeStatusRecord frame_selection_status(const FrameInstructionRecord& ins
 
 }  // namespace
 
+MachineEffectResource machine_effect_from_operand(const OperandRecord& operand) {
+  return machine_effect_from_operand_impl(operand);
+}
+
+MachineEffectResource machine_prepared_value_def(
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name) {
+  return machine_prepared_value_def_impl(value_id, value_name);
+}
+
+std::vector<MachineEffectResource> machine_effects_from_operands(
+    const std::vector<OperandRecord>& operands) {
+  return machine_effects_from_operands_impl(operands);
+}
+
 std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
     const std::vector<prepare::PreparedClobberedRegister>& clobbers) {
   std::vector<MachineEffectResource> effects;
@@ -1725,7 +1740,7 @@ InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
       .function_name = instruction.target.function_name,
       .block_label = instruction.target.block_label,
       .operands = operands,
-      .uses = effects_from_operands(operands),
+      .uses = machine_effects_from_operands(operands),
       .side_effects = {MachineSideEffectKind::ControlFlowTransfer},
       .payload = instruction,
   };
@@ -1734,9 +1749,11 @@ InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
 InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
   std::vector<MachineEffectResource> defs;
   if (instruction.result_register.has_value()) {
-    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+    defs.push_back(
+        machine_effect_from_operand(make_register_operand(*instruction.result_register)));
   } else if (instruction.result_value_id.has_value()) {
-    defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+    defs.push_back(machine_prepared_value_def(instruction.result_value_id,
+                                              instruction.result_value_name));
   }
   const auto selection = scalar_selection_status(instruction);
   return InstructionRecord{
@@ -1746,7 +1763,7 @@ InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
       .selection = selection,
       .operands = instruction.inputs,
       .defs = defs,
-      .uses = effects_from_operands(instruction.inputs),
+      .uses = machine_effects_from_operands(instruction.inputs),
       .payload = instruction,
   };
 }
@@ -1759,10 +1776,10 @@ InstructionRecord make_address_materialization_instruction(
   if (instruction.result_register.has_value()) {
     const auto result = make_register_operand(*instruction.result_register);
     operands.push_back(result);
-    defs.push_back(effect_from_operand(result));
+    defs.push_back(machine_effect_from_operand(result));
   } else if (instruction.result_value_id.has_value()) {
     defs.push_back(
-        prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+        machine_prepared_value_def(instruction.result_value_id, instruction.result_value_name));
   }
   if (instruction.symbol_name.has_value()) {
     const auto symbol = make_symbol_operand(SymbolOperand{
@@ -1771,7 +1788,7 @@ InstructionRecord make_address_materialization_instruction(
         .byte_offset = instruction.byte_offset,
     });
     operands.push_back(symbol);
-    uses.push_back(effect_from_operand(symbol));
+    uses.push_back(machine_effect_from_operand(symbol));
   } else if (instruction.target_label.has_value()) {
     const auto target = make_branch_target_operand(BranchTargetOperand{
         .surface = RecordSurfaceKind::RecordOnly,
@@ -1779,7 +1796,7 @@ InstructionRecord make_address_materialization_instruction(
         .function_name = instruction.function_name,
     });
     operands.push_back(target);
-    uses.push_back(effect_from_operand(target));
+    uses.push_back(machine_effect_from_operand(target));
   }
   const auto selection = address_materialization_selection_status(instruction);
   return InstructionRecord{
@@ -1812,10 +1829,11 @@ InstructionRecord make_spill_reload_instruction(SpillReloadInstructionRecord ins
     operands.push_back(make_register_operand(*instruction.scratch));
   }
   std::vector<MachineEffectResource> defs;
-  std::vector<MachineEffectResource> uses = effects_from_operands(operands);
+  std::vector<MachineEffectResource> uses = machine_effects_from_operands(operands);
   if (instruction.pseudo_kind == MachinePseudoKind::ReloadFromSlot &&
       instruction.scratch.has_value()) {
-    defs.push_back(effect_from_operand(make_register_operand(*instruction.scratch)));
+    defs.push_back(
+        machine_effect_from_operand(make_register_operand(*instruction.scratch)));
   }
   const auto selection = spill_reload_selection_status(instruction);
   return InstructionRecord{
@@ -1854,18 +1872,18 @@ InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
         .occupied_registers = {"x30"},
     });
     if (instruction.frame_kind == FrameInstructionKind::EpilogueTeardown) {
-      defs.push_back(effect_from_operand(link_register));
+      defs.push_back(machine_effect_from_operand(link_register));
     } else if (instruction.frame_kind == FrameInstructionKind::PrologueSetup) {
-      uses.push_back(effect_from_operand(link_register));
+      uses.push_back(machine_effect_from_operand(link_register));
     }
   }
   if (instruction.callee_save.has_value() &&
       instruction.callee_save->register_operand.has_value()) {
     const auto reg_operand = make_register_operand(*instruction.callee_save->register_operand);
     if (instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) {
-      defs.push_back(effect_from_operand(reg_operand));
+      defs.push_back(machine_effect_from_operand(reg_operand));
     } else {
-      uses.push_back(effect_from_operand(reg_operand));
+      uses.push_back(machine_effect_from_operand(reg_operand));
     }
   }
   for (const auto& saved : instruction.saved_callee_registers) {
@@ -1875,9 +1893,9 @@ InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
     }
     const auto reg_operand = make_register_operand(*saved_register);
     if (instruction.frame_kind == FrameInstructionKind::EpilogueTeardown) {
-      defs.push_back(effect_from_operand(reg_operand));
+      defs.push_back(machine_effect_from_operand(reg_operand));
     } else if (instruction.frame_kind == FrameInstructionKind::PrologueSetup) {
-      uses.push_back(effect_from_operand(reg_operand));
+      uses.push_back(machine_effect_from_operand(reg_operand));
     }
   }
   if (instruction.callee_save.has_value() &&
@@ -1908,7 +1926,7 @@ InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruct
           MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
                                   .diagnostic = "external assembler input is not a selected node"},
       .operands = instruction.operands,
-      .uses = effects_from_operands(instruction.operands),
+      .uses = machine_effects_from_operands(instruction.operands),
       .side_effects = instruction.side_effects
                           ? std::vector<MachineSideEffectKind>{
                                 MachineSideEffectKind::InlineAssembly}
@@ -1935,7 +1953,7 @@ InstructionRecord make_object_instruction(ObjectInstructionRecord instruction) {
           MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
                                   .diagnostic = "object records are future encoder input"},
       .operands = operands,
-      .uses = effects_from_operands(operands),
+      .uses = machine_effects_from_operands(operands),
       .side_effects = {MachineSideEffectKind::ObjectEmission},
       .payload = instruction,
   };

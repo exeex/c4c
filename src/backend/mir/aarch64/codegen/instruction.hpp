@@ -1765,6 +1765,13 @@ struct InstructionRecord {
 [[nodiscard]] OperandRecord make_symbol_operand(SymbolOperand operand);
 [[nodiscard]] OperandRecord make_branch_target_operand(BranchTargetOperand operand);
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
+[[nodiscard]] MachineEffectResource machine_effect_from_operand(
+    const OperandRecord& operand);
+[[nodiscard]] MachineEffectResource machine_prepared_value_def(
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name);
+[[nodiscard]] std::vector<MachineEffectResource> machine_effects_from_operands(
+    const std::vector<OperandRecord>& operands);
 [[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
     const std::vector<prepare::PreparedClobberedRegister>& clobbers);
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
