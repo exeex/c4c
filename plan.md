@@ -1,4 +1,4 @@
-# AArch64 Calls Emission Consolidation Publication/Byval Checkpoint
+# AArch64 Calls Emission Consolidation Residual Authority Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,7 +6,7 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review rejected closure for the outgoing stack extent authority-removal
+review rejected closure for the register byval size authority-removal
 checkpoint.
 
 ## Goal
@@ -22,14 +22,15 @@ Target-local AArch64 calls code may inspect retained BIR for identity checks,
 diagnostics, and emission context. It must not rederive call-plan decisions
 already present in `PreparedCallPlan` or its argument/effect records.
 
-## Closure Review Finding
+## Latest Closure Review Finding
 
-The broader backend checkpoint after outgoing stack extent authority removal
-recorded `^backend_` passing 162/162 in `test_before.log`, but the source idea
-is not complete. The closure review confirmed that `calls_common.cpp` no
-longer has retained `CallInst::arg_abi` or `CallInst::arg_types` decision
-reads for outgoing stack extent, but found surviving durable source-idea
-acceptance gaps:
+The broader backend checkpoint after register byval size authority removal
+recorded `^backend_` passing 162/162 in `test_before.log`, and the regression
+guard accepted that canonical artifact for the unchanged lifecycle review
+state. The source idea is not complete. The closure review confirmed that
+target-local calls code still has retained `CallInst::arg_abi` or
+`CallInst::arg_types` decision reads that decide publication and byval shape
+where prepared call-plan facts should own the decision:
 
 - `calls_dispatch_bridge.cpp` still decides local aggregate address
   publication eligibility from retained `CallInst::arg_abi` and
@@ -38,7 +39,9 @@ acceptance gaps:
   frame address publication from retained `CallInst::arg_types` and
   `CallInst::arg_abi`.
 - `calls_byval_aggregates.cpp` still rechecks retained `CallInst::arg_abi`
-  shape in byval size and indirect-register predicates.
+  shape in `aarch64_indirect_byval_argument_size_bytes`,
+  `aarch64_stack_byval_argument_size_bytes`, and
+  `aarch64_indirect_register_byval_argument`.
 - `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
   boundaries that need to be retired or justified as emission-only once the
   publication path no longer reconstructs call-plan decisions.
