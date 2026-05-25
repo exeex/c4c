@@ -946,6 +946,30 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   return extent_bytes <= 16 ? std::optional<std::size_t>{extent_bytes} : std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
+      is_aarch64_byval_register_lane_move(move) ||
+      move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !source_home.size_bytes.has_value() ||
+      *source_home.size_bytes <= 16 ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
+      (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr &&
+       argument.source_register_bank != prepare::PreparedRegisterBank::AggregateAddress) ||
+      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return std::nullopt;
+  }
+  return source_home.size_bytes;
+}
+
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -1955,8 +1979,8 @@ make_immediate_cast_call_argument_publication_instruction(
           context, *argument, *source_home, instruction_index);
     }
     if (!address_source.has_value()) {
-      if (const auto byval_size = aarch64_indirect_byval_argument_size_bytes(
-              context, *argument, call_plan.instruction_index);
+      if (const auto byval_size =
+              prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home);
           byval_size.has_value()) {
         address_source = make_byval_register_lane_prepared_source(
             context, *argument, *source_home, *byval_size, call_plan.instruction_index);
