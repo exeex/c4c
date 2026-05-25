@@ -552,6 +552,31 @@ make_f128_q_register_operand_from_carrier(
   };
 }
 
+[[nodiscard]] bool call_argument_is_pointer_operand(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return context.bir_block == nullptr;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->args.size()) {
+    return false;
+  }
+  const auto& value = call->args[argument.arg_index];
+  if (value.type != bir::TypeKind::Ptr) {
+    return false;
+  }
+  if (context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto value_name = context.function.prepared->names.value_names.find(value.name);
+  return value_name == std::optional<c4c::ValueNameId>{source_home.value_name};
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
@@ -598,7 +623,8 @@ make_f128_q_register_operand_from_carrier(
     }
   }
   if (selected == nullptr) {
-    if (!argument.allows_local_aggregate_address_publication) {
+    if (!argument.allows_local_aggregate_address_publication &&
+        !call_argument_is_pointer_operand(context, argument, source_home, instruction_index)) {
       return std::nullopt;
     }
     const auto source_name =
