@@ -589,33 +589,6 @@ make_byval_register_lane_prepared_source(
   return abi.size_bytes;
 }
 
-[[nodiscard]] std::optional<std::size_t> aarch64_register_byval_argument_size_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  if (context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return std::nullopt;
-  }
-  const auto* call =
-      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
-    return std::nullopt;
-  }
-  const auto& abi = call->arg_abi[argument.arg_index];
-  if (abi.type != bir::TypeKind::Ptr ||
-      !abi.byval_copy ||
-      abi.sret_pointer ||
-      !abi.passed_in_register ||
-      abi.passed_on_stack ||
-      abi.primary_class != bir::AbiValueClass::Integer ||
-      abi.size_bytes == 0 ||
-      abi.size_bytes > 16) {
-    return std::nullopt;
-  }
-  return abi.size_bytes;
-}
-
 [[nodiscard]] bool aarch64_indirect_register_byval_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,

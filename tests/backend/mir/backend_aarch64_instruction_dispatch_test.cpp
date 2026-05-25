@@ -16332,7 +16332,7 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
   return 0;
 }
 
-int generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
+int prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -16434,7 +16434,7 @@ int generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
                       .destination_contiguous_width = 1,
                       .destination_occupied_register_names = {"x0"},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-                      .reason = "generic_call_argument_move",
+                      .reason = "call_arg_byval_aggregate_register_lanes",
                   }},
           }},
   });
@@ -16502,7 +16502,7 @@ int generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
   if (lowered.size() != 1 || !diagnostics.empty()) {
-    return fail("expected generic small byval call argument to lower one payload publication");
+    return fail("expected prepared small byval call argument to lower one payload publication");
   }
 
   const auto* move =
@@ -16515,18 +16515,18 @@ int generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
       move->source_memory->size_bytes != 1 ||
       move->destination_register->reg != aarch64_abi::x_register(0) ||
       move->move.reason != "call_arg_byval_aggregate_register_lanes") {
-    return fail("expected generic byval move to select prepared payload storage, not the object address");
+    return fail("expected prepared byval move to select prepared payload storage, not the object address");
   }
 
   const auto printed =
       aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
   if (!printed.ok ||
       printed.instruction_lines != std::vector<std::string>{"ldrb w0, [sp, #128]"}) {
-    return fail("expected generic small byval aggregate to load payload byte into w0");
+    return fail("expected prepared small byval aggregate to load payload byte into w0");
   }
   for (const auto& line : printed.instruction_lines) {
     if (line.find("#4096") != std::string::npos || line.find("add x0") != std::string::npos) {
-      return fail("generic small byval publication forwarded the prepared object address");
+      return fail("prepared small byval publication forwarded the prepared object address");
     }
   }
   return 0;
@@ -27337,7 +27337,7 @@ int main() {
     return status;
   }
   if (const int status =
-          generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane();
+          prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane();
       status != 0) {
     return status;
   }

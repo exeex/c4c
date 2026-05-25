@@ -1290,8 +1290,9 @@ make_immediate_cast_call_argument_publication_instruction(
              context, *argument, *source_home, instruction_index)
              .has_value());
     const bool register_byval_argument =
-        aarch64_register_byval_argument_size_bytes(
-            context, *argument, call_plan.instruction_index)
+        source_home != nullptr &&
+        prepared_byval_lane_extent_bytes(
+            context, move, *argument, *source_home, call_plan.instruction_index)
             .has_value();
     if (!frame_slot_address_argument && !structured_f128_register_argument_move &&
         !register_byval_argument) {
@@ -1516,8 +1517,8 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto register_byval_size = aarch64_register_byval_argument_size_bytes(
-        context, *argument, call_plan.instruction_index);
+    const auto register_byval_size = prepared_byval_lane_extent_bytes(
+        context, move, *argument, *source_home, call_plan.instruction_index);
     std::optional<MemoryOperand> source;
     std::optional<MemoryOperand> address_source;
     if (register_byval_size.has_value()) {
@@ -1945,8 +1946,8 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto register_byval_size = aarch64_register_byval_argument_size_bytes(
-        context, *argument, call_plan.instruction_index);
+    const auto register_byval_size = prepared_byval_lane_extent_bytes(
+        context, move, *argument, *source_home, call_plan.instruction_index);
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
     if (register_byval_size.has_value()) {
