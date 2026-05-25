@@ -1,4 +1,4 @@
-# AArch64 Calls Emission Consolidation Retained-Read Checkpoint
+# AArch64 Calls Emission Consolidation Publication/Byval Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,15 +6,15 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review rejected closure for the byval register-lane authority removal
+review rejected closure for the outgoing stack extent authority-removal
 checkpoint.
 
 ## Goal
 
 Remove the remaining target-local uses of retained call ABI/type metadata that
-still decide call-boundary argument placement, stack sizing, aggregate address
-publication eligibility, or byval shape when prepared call-plan facts should
-own those decisions.
+still decide call-boundary argument placement, aggregate address publication
+eligibility, or byval shape when prepared call-plan facts should own those
+decisions.
 
 ## Core Rule
 
@@ -24,13 +24,13 @@ already present in `PreparedCallPlan` or its argument/effect records.
 
 ## Closure Review Finding
 
-The broader backend checkpoint after the byval register-lane authority removal
+The broader backend checkpoint after outgoing stack extent authority removal
 recorded `^backend_` passing 162/162 in `test_before.log`, but the source idea
-is not complete. The closure review found surviving durable source-idea
-acceptance gaps, not routine executor notes:
+is not complete. The closure review confirmed that `calls_common.cpp` no
+longer has retained `CallInst::arg_abi` or `CallInst::arg_types` decision
+reads for outgoing stack extent, but found surviving durable source-idea
+acceptance gaps:
 
-- `calls_common.cpp` still computes outgoing stack argument bytes from
-  `call.arg_abi[argument.arg_index]` instead of prepared argument authority.
 - `calls_dispatch_bridge.cpp` still decides local aggregate address
   publication eligibility from retained `CallInst::arg_abi` and
   `CallInst::arg_types`.
@@ -39,9 +39,9 @@ acceptance gaps, not routine executor notes:
   `CallInst::arg_abi`.
 - `calls_byval_aggregates.cpp` still rechecks retained `CallInst::arg_abi`
   shape in byval size and indirect-register predicates.
-- The surviving helper file set is still broad enough that closure requires
-  another ownership pass before claiming every helper boundary is
-  emission-only.
+- `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
+  boundaries that need to be retired or justified as emission-only once the
+  publication path no longer reconstructs call-plan decisions.
 
 ## Read First
 
@@ -49,6 +49,7 @@ acceptance gaps, not routine executor notes:
 - `src/backend/mir/aarch64/codegen/calls.hpp`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
 - `src/backend/mir/aarch64/codegen/calls_common.cpp`
+- `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp`
 - `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
 - `src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp`
 - `src/backend/mir/aarch64/codegen/calls_moves.cpp`
@@ -58,8 +59,8 @@ acceptance gaps, not routine executor notes:
 ## Current Targets / Scope
 
 - Retained `bir::CallInst::arg_abi` and `arg_types` reads inside
-  `calls*.cpp` that decide argument stack size, aggregate publication
-  eligibility, or byval lane size.
+  `calls*.cpp` that decide aggregate publication eligibility or byval lane
+  size.
 - Prepared argument facts that can replace those reads.
 - Helper declarations in `calls.hpp` that expose obsolete ABI-reconstruction
   boundaries.
@@ -92,8 +93,8 @@ acceptance gaps, not routine executor notes:
 - Delete local reconstruction before adding any new helper.
 - Keep each code slice narrow enough for a fresh build plus focused backend
   proof.
-- Escalate to `^backend_` after changing outgoing stack sizing, byval
-  aggregate lane lowering, or call-boundary effect ordering.
+- Escalate to `^backend_` after changing byval aggregate lane lowering,
+  publication eligibility, or call-boundary effect ordering.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
 
@@ -104,7 +105,6 @@ needed prepared fact already exists.
 
 Primary targets:
 
-- `outgoing_stack_argument_bytes` in `calls_common.cpp`
 - `call_argument_allows_local_aggregate_address_publication` in
   `calls_dispatch_bridge.cpp`
 - `call_argument_allows_local_frame_address_publication` and its
