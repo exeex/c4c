@@ -1,40 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate Helper/API Surface
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Consolidate Helper/API Surface: checked the Step 2 frame-slot
-call-argument boundary narrowing for obsolete helper/API surface and found no
-coherent code cleanup left for the selected boundary.
+Step 4 - Broader Backend Checkpoint: recorded the supervisor-completed broader
+backend validation checkpoint for the active AArch64 calls emission
+consolidation plan.
 
-`materialize_missing_frame_slot_call_arguments` is still the dispatch bridge
-entry point used by `dispatch.cpp`, its new prepared-move lookup helper is
-private to `calls_dispatch_bridge.cpp`, and `find_bir_value_for_prepared_name`
-is still live through `materialize_call_boundary_source_to_destination`.
-`make_frame_slot_call_argument_source` remains a shared call-emission helper
-needed by the bridge fallback, so removing or relocating it would broaden this
-packet beyond the selected Step 2 boundary.
+The matching before/after backend checkpoint command passed with 162/162 tests
+passing before and after. Regression guard passed with
+`--allow-non-decreasing-passed` and reported no new failures.
 
 ## Suggested Next
 
-Proceed to Step 4 - Broader Backend Checkpoint with the supervisor-selected
-backend validation scope.
+Proceed to Step 5 closure review so the plan owner can decide whether to close,
+retire, or replace the active runbook state.
 
 ## Watchouts
 
-- AST-backed checks confirmed `find_bir_value_for_prepared_name` has a direct
-  caller in `materialize_call_boundary_source_to_destination`.
-- Text reference checks confirmed the two bridge entry points remain declared
-  in `calls_dispatch_bridge.hpp` and are called only from `dispatch.cpp`.
-- No implementation files, tests, or expectation contracts were changed.
+- This packet recorded validation results only; it did not run new validation.
+- No implementation files, tests, expectation contracts, `plan.md`,
+  source ideas, `test_before.log`, or `test_after.log` were changed.
 
 ## Proof
 
-No build/test run; this packet changed only `todo.md` after verifying that no
-coherent Step 3 implementation cleanup remained for the selected boundary.
-No `test_after.log` was produced for this todo-only packet.
+No new build/test run by this executor packet. The supervisor already ran the
+matching broader backend checkpoint command before and after:
+
+```sh
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_before.log 2>&1
+```
+
+and the same command into `test_after.log`.
+
+Result: 162/162 backend tests passed before and after. Regression guard passed
+with `--allow-non-decreasing-passed` and no new failures.
