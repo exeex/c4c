@@ -18112,6 +18112,23 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x1"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              FrameSlotAddress,
+                      .source_value_id = value_id,
+                      .source_value_name = value_name,
+                      .source_slot_id = prepare::PreparedFrameSlotId{7},
+                      .source_stack_offset_bytes = std::size_t{48},
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                      .address_materialization_block_label = block_label,
+                      .address_materialization_inst_index = std::size_t{3},
+                      .address_materialization_frame_slot_id =
+                          prepare::PreparedFrameSlotId{7},
+                      .address_materialization_byte_offset = std::int64_t{48},
+                  },
           }},
       .preserved_values =
           {prepare::PreparedCallPreservedValue{
@@ -18130,6 +18147,7 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
                   },
           }},
   };
+  prepared.addressing.functions.clear();
   const prepare::PreparedControlFlowFunction control_flow{
       .function_name = function_name,
       .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},

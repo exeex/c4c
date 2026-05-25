@@ -298,6 +298,13 @@ make_prior_preserved_call_argument_source(
     const prepare::PreparedValueHome* source_home,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<PreservedCallArgumentSource>
+make_prior_preserved_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    const prepare::PreparedValueHome* source_home,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 // calls_emission_nodes
 

@@ -320,11 +320,73 @@ make_f128_q_register_operand_from_carrier(
   return nullptr;
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_selected_frame_slot_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome* source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
+    bool materialized_address,
+    std::size_t instruction_index) {
+  if (selection.kind != expected_kind ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = selection.address_materialization_block_label.has_value()
+                         ? *selection.address_materialization_block_label
+                         : (context.control_flow_block != nullptr
+                                ? context.control_flow_block->block_label
+                                : c4c::kInvalidBlockLabel),
+      .instruction_index =
+          selection.address_materialization_inst_index.value_or(instruction_index),
+      .result_value_id = argument.source_value_id,
+      .result_value_name = source_home != nullptr
+                               ? std::optional<c4c::ValueNameId>{source_home->value_name}
+                               : selection.source_value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = materialized_address &&
+                               selection.address_materialization_frame_slot_id
+                                   .has_value()
+                           ? selection.address_materialization_frame_slot_id
+                           : selection.source_slot_id,
+      .byte_offset =
+          materialized_address &&
+                  selection.address_materialization_byte_offset.has_value()
+              ? *selection.address_materialization_byte_offset
+              : static_cast<std::int64_t>(*selection.source_stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.source_size_bytes,
+      .align_bytes = *selection.source_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
+  if (argument.source_selection.has_value()) {
+    if (auto selected = make_selected_frame_slot_source(
+            context,
+            argument,
+            &source_home,
+            *argument.source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+            false,
+            instruction_index)) {
+      return selected;
+    }
+  }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -432,6 +494,18 @@ make_f128_q_register_operand_from_carrier(
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index) {
+  if (argument.source_selection.has_value()) {
+    if (auto selected = make_selected_frame_slot_source(
+            context,
+            argument,
+            nullptr,
+            *argument.source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            true,
+            instruction_index)) {
+      return selected;
+    }
+  }
   if (!call_plan.memory_return.has_value() ||
       !call_plan.memory_return->sret_arg_index.has_value() ||
       *call_plan.memory_return->sret_arg_index != argument.arg_index ||
@@ -467,6 +541,18 @@ make_f128_q_register_operand_from_carrier(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
+  if (argument.source_selection.has_value()) {
+    if (auto selected = make_selected_frame_slot_source(
+            context,
+            argument,
+            &source_home,
+            *argument.source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            true,
+            instruction_index)) {
+      return selected;
+    }
+  }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -581,6 +667,19 @@ make_f128_q_register_operand_from_carrier(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
+  if (argument.source_selection.has_value()) {
+    if (auto selected = make_selected_frame_slot_source(
+            context,
+            argument,
+            &source_home,
+            *argument.source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization,
+            true,
+            instruction_index)) {
+      return selected;
+    }
+  }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -922,5 +1021,51 @@ make_prior_preserved_call_argument_source(
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<PreservedCallArgumentSource>
+make_prior_preserved_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    const prepare::PreparedValueHome* source_home,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  (void)diagnostics;
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+      selection.preservation_route !=
+          prepare::PreparedCallPreservationRoute::StackSlot ||
+      !selection.source_value_id.has_value() ||
+      !selection.source_value_name.has_value() ||
+      !selection.preserved_stack_slot_id.has_value() ||
+      !selection.preserved_stack_offset_bytes.has_value() ||
+      !selection.preserved_stack_size_bytes.has_value() ||
+      !selection.preserved_stack_align_bytes.has_value() ||
+      *selection.preserved_stack_size_bytes == 0) {
+    return std::nullopt;
+  }
+  (void)source_home;
+  PreservedCallArgumentSource result;
+  result.source_memory = MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = selection.source_value_id,
+      .result_value_name = selection.source_value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = selection.preserved_stack_slot_id,
+      .byte_offset =
+          static_cast<std::int64_t>(*selection.preserved_stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.preserved_stack_size_bytes,
+      .align_bytes = *selection.preserved_stack_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+  return result;
+}
 
 }  // namespace c4c::backend::aarch64::codegen

@@ -1,71 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/01_shared_prepared_call_argument_source_selection.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Shared Prepared Source-Selection Fact
+Current Step ID: Step 3
+Current Step Title: Consume The Shared Selection In AArch64
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` added the target-independent
-`PreparedCallArgumentSourceSelection` fact to `PreparedCallArgumentPlan` and
-populates it during shared call planning without changing AArch64 emission.
+Step 3 of `plan.md` made AArch64 `BeforeCall` argument lowering consume
+`PreparedCallArgumentSourceSelection` when the shared fact is present and
+complete, while keeping machine-node emission target-local.
 
-Implemented fields:
+Consumed source kinds:
 
-- `kind` covers `None`, `PriorPreservation`,
-  `LocalFrameAddressMaterialization`, `FrameSlotAddress`, `FrameSlotValue`,
-  and `ByvalRegisterLane`.
-- Shared source identity and home fields: `source_value_id`,
-  `source_value_name`, `source_home_kind`, `source_slot_id`,
-  `source_stack_offset_bytes`, `source_size_bytes`, `source_align_bytes`,
-  `source_base_value_id`, and `source_pointer_byte_delta`.
-- Local frame/address materialization fields:
-  `address_materialization_block_label`,
-  `address_materialization_inst_index`,
-  `address_materialization_frame_slot_id`, and
-  `address_materialization_byte_offset`.
-- Prior-preservation fields: `preserved_call_block_index`,
-  `preserved_call_instruction_index`, `preservation_route`, and preserved stack
-  slot fields.
-- Byval lane fields: `byval_lane_extent_bytes` and
-  `byval_lane_source_instruction_index`.
+- `FrameSlotValue`: `make_frame_slot_call_argument_source` now prefers the
+  shared slot, offset, size, and alignment fact before consulting prepared
+  addressing.
+- `FrameSlotAddress`: frame-slot address lowering now prefers the shared
+  address/materialization fact; the AArch64 dispatch test clears the old
+  prepared-addressing input and still proves `add x1, sp, #48`.
+- `LocalFrameAddressMaterialization`: local aggregate address lowering now
+  prefers the shared materialization block, instruction, slot, offset, size,
+  and alignment fact before scanning same-block materializations or local-slot
+  objects.
+- `PriorPreservation`: stack-slot prior preservation can now be sourced from
+  the shared preserved stack-slot fields without reselecting the prior call.
+- `ByvalRegisterLane`: byval lane extent and complete frame-slot payload source
+  can now come from the shared selection before AArch64 reconstructs lane
+  stores.
 
-Covered source kinds:
+Deferred source kinds and reasons:
 
-- `FrameSlotValue` is populated from prepared value homes and unique prepared
-  memory accesses; the prepared-plan contract test now asserts a byval
-  frame-slot argument publishes this fact.
-- `FrameSlotAddress` is populated for matching frame-slot address
-  materializations and for sret memory-return slots when the selected call
-  argument source is frame-slot encoded in the shared plan.
-- `LocalFrameAddressMaterialization` is populated from matching
-  `PreparedAddressMaterializationKind::FrameSlot` facts in the same prepared
-  block at or before the call.
-- `PriorPreservation` is populated from the latest prior
-  `PreparedCallPreservedValue` in the current prepared call-plan function.
-- `ByvalRegisterLane` is populated for existing
-  `call_arg_byval_aggregate_register_lanes` move reasons with prepared byval
-  ABI size and selected source-home extent capped at 16 bytes.
-
-Deferred cases:
-
-- The Step 2 tests visibly assert `FrameSlotValue`; the other kinds are
-  represented and populated but not all have dedicated per-kind assertions yet.
-  Step 3 should add consumer-side assertions while replacing AArch64 local
-  source-choice reads.
-- Byval lane store-fragment coverage still uses the selected source-home extent
-  and ABI lane count in shared planning; detailed lane-store reconstruction
-  remains available to AArch64 until Step 3 consumption proves the exact shared
-  fact requirements.
+- `PriorPreservation` for callee-saved register preservation is deferred
+  because `PreparedCallArgumentSourceSelection` does not carry the preserved
+  register name, bank, occupied register set, or register placement needed for
+  AArch64 register-source emission.
+- `ByvalRegisterLane` fragmented lane reconstruction remains as a fallback when
+  the shared fact has an extent but no complete source slot, stack offset, size,
+  and alignment. The shared fact selects the source kind and extent; AArch64
+  still owns target-local fragmented load/store emission.
+- Legacy fallback scans remain for absent or incomplete shared facts so this
+  prerequisite slice does not broaden into unsupported call-plan population
+  repairs.
 
 ## Suggested Next
 
-Execute Step 3 of `plan.md`: consume
-`PreparedCallArgumentSourceSelection` from AArch64 `BeforeCall` argument
-lowering, replacing local source-choice reconstruction only for cases where the
-shared fact is present and complete.
+Execute Step 4 of `plan.md`: run the prerequisite acceptance checkpoint and
+decide whether the parked AArch64 calls consolidation idea can be reactivated.
 
 ## Watchouts
 
@@ -82,9 +64,11 @@ shared fact is present and complete.
   reason as source classification input, but it must publish the resulting
   selected source and extent as shared prepared data so AArch64 no longer owns
   that source-choice decision after Step 3.
-- `FrameSlotAddress`, `LocalFrameAddressMaterialization`,
-  `PriorPreservation`, and `ByvalRegisterLane` should get direct consumer
-  assertions during Step 3; Step 2 kept AArch64 behavior unchanged.
+- Step 3 did not consolidate or remove AArch64 call files.
+- The direct consumer assertion currently covers `FrameSlotAddress`; the other
+  consumed kinds are covered through existing backend behavior plus the full
+  backend subset. Step 4 should decide whether that is sufficient for
+  acceptance or whether to request more per-kind consumer assertions.
 
 ## Proof
 

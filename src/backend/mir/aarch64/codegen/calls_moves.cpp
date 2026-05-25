@@ -1048,6 +1048,22 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   return extent_bytes <= 16 ? std::optional<std::size_t>{extent_bytes} : std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::size_t> selected_byval_lane_extent_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t source_instruction_index) {
+  if (argument.source_selection.has_value() &&
+      argument.source_selection->kind ==
+          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
+      argument.source_selection->byval_lane_extent_bytes.has_value()) {
+    return argument.source_selection->byval_lane_extent_bytes;
+  }
+  return prepared_byval_lane_extent_bytes(
+      context, move, argument, source_home, source_instruction_index);
+}
+
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -1397,10 +1413,10 @@ make_immediate_cast_call_argument_publication_instruction(
             context, *argument, *source_home, instruction_index)
             .has_value();
     const bool register_byval_argument =
-        source_home != nullptr &&
-        prepared_byval_lane_extent_bytes(
-            context, move, *argument, *source_home, call_plan.instruction_index)
-            .has_value();
+        (source_home != nullptr &&
+         selected_byval_lane_extent_bytes(
+             context, move, *argument, *source_home, call_plan.instruction_index)
+             .has_value());
     const bool indirect_byval_argument =
         source_home != nullptr &&
         prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home)
@@ -1408,11 +1424,26 @@ make_immediate_cast_call_argument_publication_instruction(
     if (!frame_slot_address_argument && !local_frame_address_argument &&
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
-      const auto* preserved = find_prior_preserved_value_for_call_argument(
-          context, call_plan, *argument, move);
-      if (preserved != nullptr) {
-        auto preserved_source = make_prior_preserved_call_argument_source(
-            context, *preserved, source_home, instruction_index, diagnostics);
+      std::optional<PreservedCallArgumentSource> preserved_selection_source;
+      if (argument->source_selection.has_value()) {
+        preserved_selection_source = make_prior_preserved_call_argument_source(
+            context,
+            *argument->source_selection,
+            source_home,
+            instruction_index,
+            diagnostics);
+      }
+      const auto* preserved =
+          preserved_selection_source.has_value()
+              ? nullptr
+              : find_prior_preserved_value_for_call_argument(
+                    context, call_plan, *argument, move);
+      if (preserved_selection_source.has_value() || preserved != nullptr) {
+        auto preserved_source =
+            preserved_selection_source.has_value()
+                ? preserved_selection_source
+                : make_prior_preserved_call_argument_source(
+                      context, *preserved, source_home, instruction_index, diagnostics);
         if (preserved_source.has_value()) {
           auto destination = make_register_operand_from_prepared_authority(
               binding != nullptr && binding->destination_register_name.has_value()
@@ -1426,9 +1457,15 @@ make_immediate_cast_call_argument_publication_instruction(
               move.to_value_id != 0
                   ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                   : argument->source_value_id,
-              preserved_source->preserved != nullptr
-                  ? preserved_source->preserved->value_name
-                  : c4c::kInvalidValueName,
+              argument->source_selection.has_value() &&
+                      argument->source_selection->kind ==
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              PriorPreservation &&
+                      argument->source_selection->source_value_name.has_value()
+                  ? *argument->source_selection->source_value_name
+                  : preserved_source->preserved != nullptr
+                        ? preserved_source->preserved->value_name
+                        : c4c::kInvalidValueName,
               binding != nullptr ? binding->destination_contiguous_width
                                  : move.destination_contiguous_width,
               binding != nullptr ? binding->destination_occupied_register_names
@@ -1628,7 +1665,7 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto register_byval_size = prepared_byval_lane_extent_bytes(
+    const auto register_byval_size = selected_byval_lane_extent_bytes(
         context, move, *argument, *source_home, call_plan.instruction_index);
     std::optional<MemoryOperand> source;
     std::optional<MemoryOperand> address_source;
@@ -1747,7 +1784,7 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size = prepared_byval_lane_extent_bytes(
+    const auto lane_size = selected_byval_lane_extent_bytes(
         context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
@@ -1853,7 +1890,7 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size = prepared_byval_lane_extent_bytes(
+    const auto lane_size = selected_byval_lane_extent_bytes(
         context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
@@ -2141,7 +2178,7 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
-    const auto lane_size = prepared_byval_lane_extent_bytes(
+    const auto lane_size = selected_byval_lane_extent_bytes(
         context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
