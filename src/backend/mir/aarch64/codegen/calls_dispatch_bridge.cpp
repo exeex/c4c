@@ -190,11 +190,7 @@ make_missing_local_aggregate_frame_address_source(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& home,
     std::size_t instruction_index) {
-  if ((argument.source_selection.has_value() &&
-       argument.source_selection->kind !=
-           prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
-       argument.source_selection->kind !=
-           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) ||
+  if (argument.source_selection.has_value() ||
       context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -1281,14 +1277,25 @@ materialize_missing_frame_slot_call_arguments(
     if (!prepared_move.has_value()) {
       continue;
     }
-    const auto address_source =
-        make_missing_local_aggregate_frame_address_source(
-            context, argument, *home, instruction_index);
-    const auto source =
-        address_source.has_value()
-            ? address_source
-            : make_frame_slot_call_argument_source(
-                  context, argument, *home, instruction_index);
+    std::optional<MemoryOperand> address_source;
+    std::optional<MemoryOperand> source;
+    if (argument.source_selection.has_value()) {
+      if (argument.source_selection->kind ==
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) {
+        source =
+            make_frame_slot_call_argument_source(
+                context, argument, *home, instruction_index);
+      }
+    } else {
+      address_source =
+          make_missing_local_aggregate_frame_address_source(
+              context, argument, *home, instruction_index);
+      source =
+          address_source.has_value()
+              ? address_source
+              : make_frame_slot_call_argument_source(
+                    context, argument, *home, instruction_index);
+    }
     if (!source.has_value()) {
       continue;
     }

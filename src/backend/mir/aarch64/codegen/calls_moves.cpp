@@ -85,11 +85,7 @@ make_call_move_local_aggregate_frame_address_source(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
-  if ((argument.source_selection.has_value() &&
-       argument.source_selection->kind !=
-           prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
-       argument.source_selection->kind !=
-           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) ||
+  if (argument.source_selection.has_value() ||
       context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -1172,13 +1168,14 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t source_instruction_index) {
-  if (argument.source_selection.has_value() &&
-      argument.source_selection->kind ==
-          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
-      argument.source_selection->byval_lane_extent_bytes.has_value()) {
-    return argument.source_selection->byval_lane_extent_bytes;
-  }
   if (argument.source_selection.has_value()) {
+    if (argument.source_selection->kind ==
+        prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+      if (argument.source_selection->byval_lane_extent_bytes.has_value()) {
+        return argument.source_selection->byval_lane_extent_bytes;
+      }
+      return std::nullopt;
+    }
     if (has_byval_register_lane_payload_stores(
             context, source_home, source_instruction_index)) {
       return prepared_byval_lane_extent_bytes(
@@ -1531,23 +1528,35 @@ make_immediate_cast_call_argument_publication_instruction(
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       argument != nullptr) {
+    const auto* source_selection = argument->source_selection.has_value()
+                                       ? &*argument->source_selection
+                                       : nullptr;
     const bool frame_slot_address_argument =
         source_home != nullptr &&
         argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
-        (make_sret_memory_return_address_source(
-             context, call_plan, *argument, instruction_index)
-             .has_value() ||
-         make_frame_slot_call_argument_address_source(
-             context, *argument, *source_home, instruction_index)
-             .has_value() ||
-         make_call_move_local_aggregate_frame_address_source(
-             context, *argument, *source_home, instruction_index)
-             .has_value());
+        ((source_selection != nullptr &&
+          source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) ||
+         (source_selection == nullptr &&
+          (make_sret_memory_return_address_source(
+               context, call_plan, *argument, instruction_index)
+               .has_value() ||
+           make_frame_slot_call_argument_address_source(
+               context, *argument, *source_home, instruction_index)
+               .has_value() ||
+           make_call_move_local_aggregate_frame_address_source(
+               context, *argument, *source_home, instruction_index)
+               .has_value())));
     const bool local_frame_address_argument =
         source_home != nullptr &&
-        make_local_frame_address_call_argument_source(
-            context, *argument, *source_home, instruction_index)
-            .has_value();
+        ((source_selection != nullptr &&
+          source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  LocalFrameAddressMaterialization) ||
+         (source_selection == nullptr &&
+          make_local_frame_address_call_argument_source(
+              context, *argument, *source_home, instruction_index)
+              .has_value()));
     const bool register_byval_argument =
         is_aarch64_byval_register_lane_move(move) ||
         (source_home != nullptr &&
@@ -1556,8 +1565,12 @@ make_immediate_cast_call_argument_publication_instruction(
              .has_value());
     const bool indirect_byval_argument =
         source_home != nullptr &&
-        prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home)
-            .has_value();
+        ((source_selection != nullptr &&
+          source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) ||
+         (source_selection == nullptr &&
+          prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home)
+              .has_value()));
     if (!frame_slot_address_argument && !local_frame_address_argument &&
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
@@ -1875,6 +1888,18 @@ make_immediate_cast_call_argument_publication_instruction(
           make_local_frame_address_call_argument_source(
               context, *argument, *source_home, instruction_index);
       source = address_source;
+      if (!source.has_value() && argument->source_selection.has_value() &&
+          argument->source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  LocalFrameAddressMaterialization) {
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+            context,
+            instruction_index,
+            "AArch64 prior-preserved call argument requires prepared PriorPreservation source selection");
+        return std::nullopt;
+      }
     }
     if (source.has_value()) {
       const auto destination_register_placement =
@@ -2145,9 +2170,7 @@ make_immediate_cast_call_argument_publication_instruction(
       }
     }
     if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument) &&
-        !has_byval_register_lane_payload_stores(
-            context, *source_home, call_plan.instruction_index)) {
+        has_selected_byval_register_lane_source(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2321,39 +2344,72 @@ make_immediate_cast_call_argument_publication_instruction(
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
-    address_source = make_sret_memory_return_address_source(
-        context, call_plan, *argument, instruction_index);
-    if (!address_source.has_value()) {
-      address_source = make_frame_slot_call_argument_address_source(
-          context, *argument, *source_home, instruction_index);
-    }
-    if (!address_source.has_value()) {
-      address_source = make_call_move_local_aggregate_frame_address_source(
-          context, *argument, *source_home, instruction_index);
-    }
-    if (!address_source.has_value()) {
-      if (const auto byval_size =
-              prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home);
-          byval_size.has_value()) {
-        address_source = make_byval_register_lane_prepared_source(
-            context, *argument, *source_home, *byval_size, call_plan.instruction_index);
-        if (!address_source.has_value() &&
-            has_selected_byval_register_lane_source(*argument)) {
-          append_call_diagnostic(
-              diagnostics,
-              module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-              context,
-              instruction_index,
-              "AArch64 indirect byval call-argument publication requires complete prepared selected source bytes");
-          return std::nullopt;
+    if (argument->source_selection.has_value()) {
+      switch (argument->source_selection->kind) {
+        case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+          address_source = make_sret_memory_return_address_source(
+              context, call_plan, *argument, instruction_index);
+          if (!address_source.has_value()) {
+            address_source = make_frame_slot_call_argument_address_source(
+                context, *argument, *source_home, instruction_index);
+          }
+          break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::
+            LocalFrameAddressMaterialization:
+          address_source = make_local_frame_address_call_argument_source(
+              context, *argument, *source_home, instruction_index);
+          break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+          if (const auto byval_size = selected_byval_lane_extent_bytes(
+                  context, move, *argument, *source_home, call_plan.instruction_index);
+              byval_size.has_value()) {
+            address_source = make_byval_register_lane_prepared_source(
+                context, *argument, *source_home, *byval_size, call_plan.instruction_index);
+          }
+          if (!address_source.has_value()) {
+            append_call_diagnostic(
+                diagnostics,
+                module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                context,
+                instruction_index,
+                "AArch64 indirect byval call-argument publication requires complete prepared selected source bytes");
+            return std::nullopt;
+          }
+          break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+        case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+        case prepare::PreparedCallArgumentSourceSelectionKind::None:
+          break;
+      }
+    } else {
+      address_source = make_sret_memory_return_address_source(
+          context, call_plan, *argument, instruction_index);
+      if (!address_source.has_value()) {
+        address_source = make_frame_slot_call_argument_address_source(
+            context, *argument, *source_home, instruction_index);
+      }
+      if (!address_source.has_value()) {
+        address_source = make_call_move_local_aggregate_frame_address_source(
+            context, *argument, *source_home, instruction_index);
+      }
+      if (!address_source.has_value()) {
+        if (const auto byval_size =
+                prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home);
+            byval_size.has_value()) {
+          address_source = make_byval_register_lane_prepared_source(
+              context, *argument, *source_home, *byval_size, call_plan.instruction_index);
         }
       }
     }
-    source =
-        address_source.has_value()
-            ? address_source
-            : make_frame_slot_call_argument_source(
-                  context, *argument, *source_home, instruction_index);
+    if (!address_source.has_value() &&
+        (!argument->source_selection.has_value() ||
+         argument->source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue)) {
+      source = make_frame_slot_call_argument_source(
+          context, *argument, *source_home, instruction_index);
+    } else {
+      source = address_source;
+    }
     const auto destination_register_placement =
         binding != nullptr && binding->destination_register_placement.has_value()
             ? binding->destination_register_placement
@@ -2436,8 +2492,7 @@ make_immediate_cast_call_argument_publication_instruction(
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
     if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument) &&
-        !has_payload_stores) {
+        has_selected_byval_register_lane_source(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
