@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/15_aarch64_aggregate_hfa_stdarg_abi.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair The Narrow ABI Owner
+Current Step ID: Step 4
+Current Step Title: Validate The Aggregate/HFA/Stdarg Family
 
 # Current Packet
 
@@ -24,9 +24,14 @@ The same payload-store source rule also feeds stack-slot byval lane
 publication, so later `fa1`/`fa2` overflow aggregate arguments are copied from
 populated payload slots into the outgoing stack area.
 
+Step 4 metadata refresh recorded the supervisor-accepted broader validation
+evidence after commit `ee1790c10`: the full-suite baseline candidate in
+`test_baseline.log` passed with 3410/3410 tests passing.
+
 ## Suggested Next
 
-Supervisor review/commit for the completed Step 2/3 slice.
+Plan-owner lifecycle closure review for the active AArch64 aggregate/HFA/stdarg
+ABI plan.
 
 ## Watchouts
 
@@ -37,6 +42,10 @@ not reintroduce aggregate home or prior-preservation fallback when payload
 stores are available.
 
 ## Proof
+
+No new test run required for this metadata-only refresh. Broader validation
+evidence is the supervisor-accepted full-suite baseline candidate in
+`test_baseline.log` after commit `ee1790c10`, with 3410/3410 tests passing.
 
 Ran:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$') > test_after.log 2>&1`
