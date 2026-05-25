@@ -1,79 +1,53 @@
 Status: Active
-Source Idea Path: ideas/open/01_shared_prepared_call_argument_source_selection.md
+Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Consume The Shared Selection In AArch64
+Current Step ID: Step 1
+Current Step Title: Reactivation Mapping With Prepared Source Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md` made AArch64 `BeforeCall` argument lowering consume
-`PreparedCallArgumentSourceSelection` when the shared fact is present and
-complete, while keeping machine-node emission target-local.
+Step 4 of the shared prepared call-argument source-selection prerequisite
+accepted and closed
+`ideas/open/01_shared_prepared_call_argument_source_selection.md`.
 
-Consumed source kinds:
+Acceptance basis:
 
-- `FrameSlotValue`: `make_frame_slot_call_argument_source` now prefers the
-  shared slot, offset, size, and alignment fact before consulting prepared
-  addressing.
-- `FrameSlotAddress`: frame-slot address lowering now prefers the shared
-  address/materialization fact; the AArch64 dispatch test clears the old
-  prepared-addressing input and still proves `add x1, sp, #48`.
-- `LocalFrameAddressMaterialization`: local aggregate address lowering now
-  prefers the shared materialization block, instruction, slot, offset, size,
-  and alignment fact before scanning same-block materializations or local-slot
-  objects.
-- `PriorPreservation`: stack-slot prior preservation can now be sourced from
-  the shared preserved stack-slot fields without reselecting the prior call.
-- `ByvalRegisterLane`: byval lane extent and complete frame-slot payload source
-  can now come from the shared selection before AArch64 reconstructs lane
-  stores.
-
-Deferred source kinds and reasons:
-
-- `PriorPreservation` for callee-saved register preservation is deferred
-  because `PreparedCallArgumentSourceSelection` does not carry the preserved
-  register name, bank, occupied register set, or register placement needed for
-  AArch64 register-source emission.
-- `ByvalRegisterLane` fragmented lane reconstruction remains as a fallback when
-  the shared fact has an extent but no complete source slot, stack offset, size,
-  and alignment. The shared fact selects the source kind and extent; AArch64
-  still owns target-local fragmented load/store emission.
-- Legacy fallback scans remain for absent or incomplete shared facts so this
-  prerequisite slice does not broaden into unsupported call-plan population
-  repairs.
+- Shared `PreparedCallArgumentSourceSelection` exists on prepared call
+  argument plans.
+- AArch64 consumes complete shared selections for frame-slot values,
+  frame-slot addresses, local-frame address materialization, stack-slot prior
+  preservation, and complete byval register-lane selections.
+- Deferred callee-saved-register preservation and fragmented byval fallback
+  paths are outside the accepted prerequisite because the shared selection does
+  not yet carry enough target-neutral placement/source payload to retire those
+  emission paths.
+- The latest accepted backend proof was
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`,
+  with 162/162 backend tests passing. `test_before.log` has been rolled
+  forward to that accepted proof.
 
 ## Suggested Next
 
-Execute Step 4 of `plan.md`: run the prerequisite acceptance checkpoint and
-decide whether the parked AArch64 calls consolidation idea can be reactivated.
+Execute Step 1 of `plan.md`: map the remaining AArch64 call helper boundaries
+against available prepared call-plan facts, prioritizing routes made actionable
+by `PreparedCallArgumentSourceSelection`, then delegate the first coherent
+implementation slice if the mapping identifies one.
 
 ## Watchouts
 
-- Do not consolidate or delete AArch64 `calls*.cpp` files in this prerequisite
-  runbook.
-- Do not encode AArch64-specific machine-node emission details in the shared
-  prepared fact.
-- Do not claim progress through testcase-shaped matching, expectation
-  weakening, or wrapper-only renames of the existing local decision tree.
-- The first implementation slice should not move destination-register or
-  destination-stack selection into the new fact. The new fact owns source
-  choice only.
-- `ByvalRegisterLane` is allowed to carry the existing target-neutral move
-  reason as source classification input, but it must publish the resulting
-  selected source and extent as shared prepared data so AArch64 no longer owns
-  that source-choice decision after Step 3.
-- Step 3 did not consolidate or remove AArch64 call files.
-- The direct consumer assertion currently covers `FrameSlotAddress`; the other
-  consumed kinds are covered through existing backend behavior plus the full
-  backend subset. Step 4 should decide whether that is sufficient for
-  acceptance or whether to request more per-kind consumer assertions.
+- Do not perform another AArch64-local move/source cleanup unless the chosen
+  helper boundary maps to prepared facts that now exist.
+- Do not invent a new call-plan API under this source idea.
+- Do not move AArch64 emission details into the shared planner.
+- Do not claim progress through file concatenation, expectation weakening, or
+  hidden helper rewrites.
+- Callee-saved-register prior-preservation and fragmented byval fallback paths
+  still require fresh mapping before they can justify deletion or consolidation.
 
 ## Proof
 
-Delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-Result: passed. `test_after.log` contains the canonical proof log with all 162
-matching `backend_` tests passing.
+Close gate used the accepted backend proof rolled into `test_before.log`.
+Regression guard checker was run read-only against the rolled-forward proof
+with non-decreasing mode and reported 162 passed, 0 failed.

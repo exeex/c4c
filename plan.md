@@ -1,164 +1,185 @@
-# Shared Prepared Call-Argument Source Selection Runbook
+# AArch64 Calls Emission Consolidation Runbook
 
 Status: Active
-Source Idea: ideas/open/01_shared_prepared_call_argument_source_selection.md
-Supersedes: parked active runbook from ideas/open/02_aarch64_calls_emission_consolidation.md
+Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 
 ## Purpose
 
-Add shared call-plan authority for selected `BeforeCall` argument source
-choices so target-local call emission can consume prepared facts instead of
-rederiving caller-side planning decisions.
+Consolidate the AArch64 `calls*.cpp` family after shared prepared call-plan
+authority is available, leaving target-local calls code responsible for
+emission rather than planning.
 
 ## Goal
 
-Create and prove a shared prepared call-argument source-selection fact covering
-prior preservation, local-frame address materialization, frame-slot/address
-sources, and byval register-lane materialization for selected call-argument
-moves.
+Reduce and clarify the AArch64 call emission surface by deleting duplicate
+local planning logic only when equivalent prepared call-plan facts already
+exist or have been introduced by the shared call-plan authority work.
 
 ## Core Rule
 
-Keep source selection in the shared prepared call-plan layer and machine-node
-emission in the target-local layer. Do not use this prerequisite runbook to
-consolidate AArch64 call files or move target-specific emission details into
-shared planning.
+The shared prepared call-argument source-selection prerequisite is satisfied
+for the covered selected `BeforeCall` source cases. Continue consolidation only
+through helper boundaries whose decisions are now represented by prepared
+call-plan facts, or through a fresh mapping that proves another duplicate
+helper route is already prepared.
 
 ## Read First
 
-- `ideas/open/01_shared_prepared_call_argument_source_selection.md`
 - `ideas/open/02_aarch64_calls_emission_consolidation.md`
-- Current shared prepared call-plan data structures and lookup helpers
-- AArch64 caller-side `BeforeCall` lowering around `lower_before_call_move`
-- Existing prepared preservation, address-materialization, frame-slot, and
-  byval-related facts
+- AArch64 call emission owners, currently expected around `calls.cpp`,
+  `calls.hpp`, and remaining `calls_*` helpers
+- Shared prepared call-plan facts and any prior `01_shared_call_plan_authority`
+  result that describes the owned planning boundary
+- Build metadata that lists AArch64 calls translation units
 
 ## Current Targets
 
-- Shared prepared call-plan representation for argument source choices
-- Population logic for selected `BeforeCall` argument moves
-- Lookup or attachment API for target emitters
-- AArch64 caller-side emission consumption of the new fact
+- Remaining AArch64-local call move, argument-source, and preservation helpers
+- Build metadata entries for retired `calls_*` files
+- Call printing or effect spelling that belongs in machine-printer or shared
+  MIR layers instead of AArch64 emission
 
 ## Non-Goals
 
-- Do not retire or merge AArch64 calls translation units in this runbook.
-- Do not create target-specific source-selection rules in the shared planner.
-- Do not broaden into unrelated ABI, dispatch, ALU, memory, comparison,
-  variadic, or prologue cleanup.
-- Do not weaken or delete tests to make the new fact appear complete.
+- Do not invent a new call-plan API inside this plan.
+- Do not move AArch64 emission details into the shared planner.
+- Do not perform broad dispatch, ALU, memory, comparison, variadic, or prologue
+  cleanup.
+- Do not change behavior solely to reduce line count.
+- Do not weaken or delete tests to make consolidation appear complete.
 
 ## Working Model
 
-- Shared prepared call planning owns the decision that a selected call argument
-  should be sourced from prior preservation, prepared address materialization,
-  frame-slot/address materialization, or byval register lanes.
-- Target-local calls code owns lowering the already-selected source into
-  target machine nodes.
-- The proof of readiness for the parked AArch64 consolidation idea is that
-  AArch64 consumes the shared selection for its formerly local source-choice
-  cases.
+- Shared prepared call-plan facts own call-boundary planning decisions.
+- AArch64-local calls code converts prepared facts into AArch64 machine nodes.
+- Consolidation is valid only when deleted local logic is duplicated by shared
+  facts or moved to the layer that owns the concern.
+- File count and line count reduction must come from removed duplication or
+  moved authority, not opaque helpers.
 
 ## Execution Rules
 
-- Start with a mapping step that names the existing local choices and the
-  shared facts needed to populate them.
-- Keep representation changes narrow and target-independent.
+- Keep each code slice behavior-preserving unless the source idea explicitly
+  requires an ownership move with equivalent proof.
+- Prefer small consolidation steps that retire one redundant helper family or
+  one obsolete translation unit at a time.
+- Update build metadata in the same slice that retires a file.
 - After each code-changing step, run a fresh build plus focused call tests.
-- Escalate validation if the shared prepared call-plan API or broad call
-  lowering behavior changes across targets.
+- Escalate to a broader backend or full validation checkpoint after retiring
+  translation units or moving ownership across layers.
 - Treat testcase-shaped shortcuts, expectation downgrades, and named-case-only
   fixes as route failures.
 
 ## Steps
 
-### Step 1: Source-Choice Contract Mapping
+### Step 1: Reactivation Mapping With Prepared Source Selection
 
-Goal: define the exact shared source-selection contract before editing code.
+Goal: choose the first valid consolidation route now that prepared
+call-argument source selection exists.
 
-Primary target: existing prepared call-plan facts and AArch64
-`lower_before_call_move` source-choice sites.
-
-Actions:
-
-- List each selected `BeforeCall` argument source choice still made by AArch64.
-- Map each choice to the existing prepared facts needed to decide it.
-- Name the new prepared source-selection representation and its minimum fields.
-- Identify the lookup key or attachment point target emitters will use.
-
-Completion check:
-
-- `todo.md` records the source-choice contract, required fields, and proof
-  target for the first implementation slice.
-
-### Step 2: Add Shared Prepared Source-Selection Fact
-
-Goal: introduce the target-independent representation and populate it during
-shared call planning.
-
-Primary target: shared prepared call-plan data structures and construction
-logic.
+Primary target: remaining AArch64 call move/source/preservation helpers and
+shared prepared call-plan facts, including
+`PreparedCallArgumentSourceSelection`.
 
 Actions:
 
-- Add the prepared source-selection type or field for selected `BeforeCall`
-  argument moves.
-- Populate prior-preservation, address-materialization, frame-slot/address,
-  and byval register-lane source choices from existing shared inputs.
-- Keep target-specific machine-node details out of the shared representation.
-- Add focused internal assertions or tests where the repo already has an
-  appropriate prepared-plan test surface.
+- Inspect the remaining AArch64 `calls_*` helpers and list which ones still
+  rederive source, move, preservation, byval, or call-boundary facts.
+- Inspect available shared prepared call-plan facts and identify which local
+  helper decisions are already represented.
+- Prioritize helper routes made actionable by
+  `PreparedCallArgumentSourceSelection` for frame-slot values, frame-slot
+  addresses, local-frame address materialization, stack-slot prior
+  preservation, and complete byval register-lane selections.
+- If no valid route exists, stop execution and report the blocker in `todo.md`
+  without attempting local cleanup.
 
 Completion check:
 
-- The shared call plan exposes selected source choices without requiring
-  target-local BIR rescans or local source-choice reconstruction.
-- A fresh build and focused call-plan tests pass.
+- `todo.md` records the exact helper-to-prepared-fact mapping and names the
+  first implementation slice, or records that execution is blocked.
 
-### Step 3: Consume The Shared Selection In AArch64
+### Step 2: Retire One Proven Duplicate Helper Boundary
 
-Goal: prove the shared fact replaces AArch64-local caller-side source
-selection.
+Goal: remove one AArch64-local planning boundary whose decisions are already
+owned by prepared call-plan facts.
 
-Primary target: AArch64 caller-side `BeforeCall` argument lowering.
+Primary target: the helper family proven actionable by Step 1.
 
 Actions:
 
-- Replace the local source-choice decision path with reads from the prepared
-  source-selection fact.
-- Keep AArch64 code responsible only for materializing the selected source into
-  AArch64 machine nodes.
-- Remove now-obsolete local source-choice helper branches only when equivalent
-  shared facts drive the behavior.
+- Replace local rederivation with reads from the prepared call-plan facts.
+- Keep AArch64-local code limited to emission of machine nodes.
+- Delete obsolete helper code once callers no longer need it.
+- Update includes and build metadata if a translation unit becomes empty or
+  obsolete.
 
 Completion check:
 
-- AArch64 no longer owns the selected source choice for the covered
-  `BeforeCall` argument move cases.
-- A fresh build and focused AArch64 call tests pass.
+- The chosen helper boundary no longer duplicates prepared call-plan decisions.
+- A fresh build and focused call tests pass.
 
-### Step 4: Prerequisite Acceptance Checkpoint
+### Step 3: Move Non-Emission Spelling To Its Owner
 
-Goal: decide whether the parked AArch64 consolidation idea can be reactivated.
+Goal: remove call printing or effect spelling that is not AArch64 emission from
+the AArch64 calls surface.
 
-Primary target: shared prepared source-selection proof and AArch64 consumption.
+Primary target: machine-printer or shared MIR layers for non-emission spelling.
 
 Actions:
 
-- Compare the implemented fact against the blocker recorded in
-  `ideas/open/02_aarch64_calls_emission_consolidation.md`.
-- Confirm prior preservation, local-frame address materialization,
-  frame-slot/address sources, and byval register-lane materialization are
-  either represented or explicitly documented as unsupported by existing
-  semantics.
-- Run the supervisor-selected broader validation checkpoint before closure or
-  switching back to AArch64 consolidation.
-- Record remaining blockers in `todo.md` instead of closing prematurely.
+- Identify spelling logic that belongs outside target-local call emission.
+- Move the logic to the owning printer or shared MIR layer without changing
+  printed behavior.
+- Keep AArch64 calls code consuming the shared representation instead of
+  formatting or classifying it locally.
 
 Completion check:
 
-- The source idea can close only if the shared fact exists, AArch64 consumes it
-  for the required source-choice cases, and close-time regression proof is
-  available.
-- Otherwise, `todo.md` names the remaining blocker and the plan stays active or
+- AArch64 calls code no longer owns the moved spelling concern.
+- Focused printer or call tests plus a fresh build pass.
+
+### Step 4: Retire Obsolete Calls Translation Units
+
+Goal: shrink the AArch64 calls file family after duplicate decision logic has
+been removed.
+
+Primary target: obsolete `calls_*` translation units and corresponding build
+metadata.
+
+Actions:
+
+- Merge remaining emission-only code into the small call emission owner when
+  the helper file no longer has a clear boundary.
+- Delete retired files and remove them from build metadata.
+- Keep optional helper files only when they have an emission-only boundary.
+
+Completion check:
+
+- AArch64 call emission files are fewer and responsibilities are clearer.
+- Retired files are absent from build metadata and include graphs.
+- A fresh build and focused call tests pass.
+
+### Step 5: Consolidation Acceptance Checkpoint
+
+Goal: decide whether the source idea is complete or whether a narrower
+follow-up runbook is needed.
+
+Primary target: the final AArch64 calls emission surface and validation logs.
+
+Actions:
+
+- Compare the remaining AArch64 calls surface against the source idea's
+  acceptance criteria.
+- Confirm target-local calls code no longer rederives call-plan decisions that
+  prepared facts already provide.
+- Run the supervisor-selected broader validation checkpoint before closure.
+- Record any remaining blockers in `todo.md` instead of closing the idea
+  prematurely.
+
+Completion check:
+
+- The source idea can be closed only if the acceptance criteria are satisfied
+  and close-time regression guard proof is available.
+- Otherwise, `todo.md` names the remaining blocker and the plan stays open or
   is retired by lifecycle decision.

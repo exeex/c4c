@@ -1,5 +1,27 @@
 # Shared Prepared Call-Argument Source Selection
 
+Status: Closed
+
+## Closure Note
+
+Closed after Step 4 acceptance. The shared
+`PreparedCallArgumentSourceSelection` fact exists on prepared call argument
+plans, is populated from existing shared prepared call-plan inputs, and is
+consumed by AArch64 for the covered selected `BeforeCall` source-choice cases:
+frame-slot values, frame-slot addresses, local-frame address materialization,
+stack-slot prior preservation, and complete byval register-lane selections.
+
+Close-time proof used the accepted backend subset:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`,
+162/162 passing, with the canonical proof rolled forward into
+`test_before.log`.
+
+Remaining caveats belong to future mapping under the AArch64 consolidation
+idea, not this prerequisite: callee-saved-register prior preservation still
+lacks target-neutral preserved-register placement/source payload in this
+selection, and fragmented byval fallback emission remains target-local when no
+complete shared source slot payload exists.
+
 ## Goal
 
 Introduce a shared prepared call-argument source-selection fact for selected

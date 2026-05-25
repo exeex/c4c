@@ -46,54 +46,59 @@ surface that converts prepared call facts into AArch64 machine nodes.
 - The line count reduction comes from deleted duplication or moved authority,
   not from hiding behavior in opaque helpers.
 
-## Current Lifecycle Blocker
+## Resolved Lifecycle Blocker
 
 Step 5 closure review after the call move boundary checkpoint rejected closure
 and deactivated the active runbook. The checkpoint passed its broader full-suite
 monotonic regression proof according to `todo.md` and canonical before/after
-logs, but regression proof alone is not sufficient for closure while the
-semantic blocker below remains.
+logs, but regression proof alone was not sufficient for closure while the
+semantic blocker below remained.
 
-The source idea remains open because the remaining call move/source surface in
+The source idea remained open because the remaining call move/source surface in
 `calls_moves.cpp`, `calls_argument_sources.cpp`, `calls_byval_aggregates.cpp`,
 and `calls.hpp` still depends on target-local caller-side argument source
 selection. The completed checkpoint identified a precise remaining blocker:
 there is no single prepared call-argument source fact that says a selected
 `BeforeCall` argument move should source from prior preservation, local-frame
 address materialization, frame-slot/address sources, or byval register-lane
-materialization. Until that shared prepared fact exists, AArch64 caller-side
-source selection in `lower_before_call_move` is not actionable as another
-consolidation checkpoint under this source idea.
+materialization.
 
-Do not reactivate this idea for another AArch64-local move/source cleanup
-checkpoint unless either:
+That blocker was resolved by
+`ideas/closed/01_shared_prepared_call_argument_source_selection.md`.
+`PreparedCallArgumentSourceSelection` now provides a shared source-choice fact
+for covered selected `BeforeCall` moves, and AArch64 consumes complete shared
+selections for frame-slot values, frame-slot addresses, local-frame address
+materialization, stack-slot prior preservation, and complete byval
+register-lane selections.
 
-- the missing shared prepared call-argument source fact has been introduced, or
-- a fresh mapping proves a different remaining helper duplicates an already
-  available prepared fact without needing new shared call-plan authority.
+Reactivate this idea only through a fresh mapping that proves the next
+AArch64-local helper boundary duplicates prepared call-plan facts. The closed
+prerequisite does not authorize deleting fallback emission for incomplete
+source-selection facts, callee-saved-register prior preservation, or fragmented
+byval lanes without another prepared fact or mapping proof.
 
-## Parked Lifecycle Note
+## Reactivation Note
 
 The reactivation prerequisite mapping was rerun and confirmed the blocker
-above is still present. The active lifecycle has been switched to
-`ideas/open/01_shared_prepared_call_argument_source_selection.md`, which owns
-the missing shared prepared call-argument source-selection fact. Reactivate
-this consolidation idea only after that prerequisite is implemented or a fresh
-mapping proves a different already-prepared duplicate route.
+above was present before the shared prerequisite. The lifecycle was switched to
+`ideas/open/01_shared_prepared_call_argument_source_selection.md`, which
+implemented and closed the missing shared prepared call-argument
+source-selection fact. This consolidation idea is active again for a new
+mapping pass.
 
-Confirmed mapping highlights:
+Historical mapping highlights before the prerequisite:
 
-- `lower_before_call_move` already sees prepared destination and argument-plan
-  identity, but still chooses the selected `BeforeCall` source locally.
-- Frame-slot and memory-return sources partially map to existing prepared
-  argument-plan or memory-return facts, but target-local code still constructs
-  the selected source path.
-- Local-frame address and frame-slot address sources can use prepared address
-  materialization when available, but still have local fallback selection.
-- Byval register-lane sources still reconstruct selected source bytes from
-  local scans plus prepared memory-access/addressing facts.
-- Prior-preserved argument sources can find prepared preserved values, but the
-  final choice to source a selected argument move from preservation is still
+- `lower_before_call_move` already saw prepared destination and argument-plan
+  identity, but chose the selected `BeforeCall` source locally.
+- Frame-slot and memory-return sources partially mapped to existing prepared
+  argument-plan or memory-return facts, but target-local code constructed the
+  selected source path.
+- Local-frame address and frame-slot address sources could use prepared address
+  materialization when available, but had local fallback selection.
+- Byval register-lane sources reconstructed selected source bytes from local
+  scans plus prepared memory-access/addressing facts.
+- Prior-preserved argument sources could find prepared preserved values, but
+  the final choice to source a selected argument move from preservation was
   local.
 - Preservation home population and republication already map to prepared
   boundary effects; they are not the remaining selected argument-source
