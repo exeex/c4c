@@ -76,6 +76,10 @@ void record_address_materialization_result(
 void record_memory_result(BlockScalarLoweringState& scalar_state,
                           const module::MachineInstruction& instruction);
 
+void retarget_memory_result_to_prepared_home(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction);
+
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction);
