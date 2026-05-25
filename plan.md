@@ -6,7 +6,7 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review rejected closure for the stack byval ABI size fallback removal
+review rejected closure for the indirect byval ABI size fallback removal
 checkpoint.
 
 ## Goal
@@ -24,13 +24,17 @@ already present in `PreparedCallPlan` or its argument/effect records.
 
 ## Latest Closure Review Finding
 
-The broader backend checkpoint after stack byval ABI size fallback removal
-recorded `^backend_` passing 162/162 in `test_before.log`. The source idea is
-not complete, so close-time regression guard generation was not needed for
-closure acceptance. The closure review confirmed that target-local calls code
-still has retained `CallInst::arg_abi` or `CallInst::arg_types` decision reads
-that decide publication and byval shape where prepared call-plan facts should
-own the decision:
+The Step 5 closure review after indirect byval ABI size fallback removal
+rejected closure. The checkpoint removed
+`aarch64_indirect_byval_argument_size_bytes` and left
+`prepared_indirect_byval_extent_bytes` local to `calls_moves.cpp`, but the
+source idea is not complete. Close-time regression guard generation was not
+needed because closure was rejected before the close gate.
+
+The review confirmed that target-local calls code still has retained
+`CallInst::arg_abi` or `CallInst::arg_types` decision reads that decide
+publication and byval shape where prepared call-plan facts should own the
+decision:
 
 - `calls_dispatch_bridge.cpp` still decides local aggregate address
   publication eligibility from retained `CallInst::arg_abi` and
@@ -39,8 +43,7 @@ own the decision:
   frame address publication from retained `CallInst::arg_types` and
   `CallInst::arg_abi`.
 - `calls_byval_aggregates.cpp` still rechecks retained `CallInst::arg_abi`
-  shape in `aarch64_indirect_byval_argument_size_bytes` and
-  `aarch64_indirect_register_byval_argument`.
+  shape in `aarch64_indirect_register_byval_argument`.
 - `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
   boundaries that need to be retired or justified as emission-only once the
   publication path no longer reconstructs call-plan decisions.
@@ -62,7 +65,7 @@ own the decision:
 
 - Retained `bir::CallInst::arg_abi` and `arg_types` reads inside
   `calls*.cpp` that decide aggregate publication eligibility or byval lane
-  size.
+  shape.
 - Prepared argument facts that can replace those reads.
 - Helper declarations in `calls.hpp` that expose obsolete ABI-reconstruction
   boundaries.
@@ -111,7 +114,7 @@ Primary targets:
   `calls_dispatch_bridge.cpp`
 - `call_argument_allows_local_frame_address_publication` and its
   pointer/byval helpers in `calls_argument_sources.cpp`
-- byval size and indirect-register predicates in `calls_byval_aggregates.cpp`
+- the indirect-register byval predicate in `calls_byval_aggregates.cpp`
 
 Actions:
 
