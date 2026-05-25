@@ -8,34 +8,37 @@ Current Step Title: Select The Next Surviving Boundary Leak
 
 ## Just Finished
 
-Step 5 - Closure Review: source-idea closure rejected after the block-entry
-preservation republication checkpoint.
+Step 1 - Select The Next Surviving Boundary Leak: selected the
+`calls_dispatch_bridge.cpp` frame-slot call argument materialization bridge as
+the next checkpoint target.
 
-Decision: keep the source idea active with a regenerated checkpoint focused on
-the next surviving AArch64 calls boundary leak.
+Selected boundary leak:
 
-Closure blockers:
-
-- The source idea acceptance criteria cover the full AArch64 `calls*`
-  consolidation, not only the completed block-entry republication route.
-- Multiple `calls*.cpp` files and a broad `calls.hpp` helper surface remain.
-- `calls_dispatch_bridge.cpp` still mixes call-emission bridge work with
-  dispatch recovery, same-block scalar materialization, local aggregate address
-  publication, indirect callee/result materialization, and prepared-call helper
-  selection.
-- Adjacent argument-source, byval, move, preservation, and printing helpers
-  still need boundary review before the source idea can be called complete.
-- Close-time regression guard was not accepted because source-idea completion
-  is false; the canonical `test_after.log` referenced by the previous Step 4
-  packet was also absent in this checkout.
+- `materialize_missing_frame_slot_call_arguments` walks
+  `PreparedCallPlan::arguments`, then calls `find_bir_value_for_prepared_name`
+  to recover a retained BIR value by prepared value name and emits a synthetic
+  publication into the prepared call ABI register.
+- That makes the AArch64 dispatch/calls bridge rederive value-source and
+  publication authority from retained BIR after prepared call planning and
+  prepared move bundles have already classified the call argument as a
+  frame-slot source.
+- The intended owner is the prepared call-boundary move/argument-source
+  surface: Step 2 should remove or narrow this bridge by consuming existing
+  `PreparedCallArgumentPlan`, `PreparedMoveBundle`, and `PreparedValueHome`
+  facts through `calls_moves.cpp` / `calls_argument_sources.cpp`; if those
+  facts cannot describe the needed source publication, stop and record the
+  missing prepared fact instead of keeping the BIR-name scan.
 
 ## Suggested Next
 
-Execute Step 1 - Select The Next Surviving Boundary Leak.
+Execute Step 2 - Remove Or Narrow The Selected Boundary.
 
-Start with `calls_dispatch_bridge.cpp` and `calls.hpp`. Pick one concrete
-boundary leak, identify the correct prepared/emission/dispatch/printer owner,
-and record the focused proof command before implementation.
+Remove or narrow `materialize_missing_frame_slot_call_arguments` and its
+dependency on `find_bir_value_for_prepared_name` for frame-slot call arguments.
+Prefer routing the needed before-call publication through prepared move and
+argument-source helpers. If Step 2 proves there is no prepared fact that
+identifies the source value/publication input without retained-BIR recovery,
+record that missing prepared authority as the blocker.
 
 ## Watchouts
 
@@ -43,17 +46,23 @@ and record the focused proof command before implementation.
 - Keep any dispatch work limited to AArch64 call-emission bridge boundaries.
 - Do not invent a new shared prepared-call API unless the selected boundary
   proves a required prepared fact is missing.
+- Do not broaden into `materialize_indirect_call_callee_to_prepared_register`
+  or local aggregate address publication during this Step 2 packet.
+- `find_bir_value_for_prepared_name` is also used by
+  `materialize_call_boundary_source_to_destination`; do not delete the shared
+  helper unless Step 2 removes all current call sites.
 - Do not weaken unsupported or expected-output contracts.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
 
 ## Proof
 
-Lifecycle-only review; no build or test command was run.
+Mapping-only Step 1 packet; no build or test command was required or run.
 
-Prior executor note reported:
+Focused Step 2 proof scope:
 
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_call_boundary_effect_plan)$') > test_after.log 2>&1`
 
-with 100% tests passed, 0 tests failed out of 162, but `test_after.log` was not
-present in this checkout during the closure review.
+Escalate to `^backend_` if the implementation changes shared prepared lookup,
+move-bundle, or call-boundary effect behavior beyond this AArch64 frame-slot
+argument bridge.
