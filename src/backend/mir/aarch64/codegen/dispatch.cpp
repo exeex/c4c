@@ -556,53 +556,6 @@ InstructionDispatchResult dispatch_prepared_block(
   record_current_block_entry_publication_registers(context, scalar_state);
   const auto branch_fusion_hooks = make_dispatch_branch_fusion_hooks();
   std::unordered_set<c4c::ValueNameId> published_store_global_stack_values;
-  auto record_call_boundary_destination =
-      [&](const module::MachineInstruction& instruction) {
-    const auto* move_record =
-        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
-    if (move_record != nullptr && move_record->destination_register.has_value()) {
-      record_emitted_scalar_register(scalar_state,
-                                     move_record->destination_register->value_name,
-                                     *move_record->destination_register);
-    }
-  };
-  auto record_call_boundary_source_in_destination =
-      [&](const module::MachineInstruction& instruction) {
-    const auto* move_record =
-        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
-    if (move_record == nullptr || !move_record->destination_register.has_value()) {
-      return;
-    }
-    std::optional<prepare::PreparedValueId> source_value_id;
-    c4c::ValueNameId source_value_name = c4c::kInvalidValueName;
-    if (move_record->source_memory.has_value() &&
-        move_record->source_memory->result_value_name.has_value()) {
-      source_value_id = move_record->source_memory->result_value_id;
-      source_value_name = *move_record->source_memory->result_value_name;
-    } else if (move_record->source_register.has_value() &&
-               move_record->source_register->value_name != c4c::kInvalidValueName) {
-      source_value_id = move_record->source_register->value_id;
-      source_value_name = move_record->source_register->value_name;
-    }
-    if (source_value_name == c4c::kInvalidValueName) {
-      return;
-    }
-    auto source_alias = *move_record->destination_register;
-    source_alias.value_id = source_value_id;
-    source_alias.value_name = source_value_name;
-    record_emitted_scalar_register(scalar_state, source_value_name, source_alias);
-  };
-  auto call_boundary_move_reloads_prepared_stack_source =
-      [](const module::MachineInstruction& instruction) {
-    const auto* move_record =
-        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
-    return move_record != nullptr &&
-           move_record->phase == prepare::PreparedMovePhase::BeforeInstruction &&
-           move_record->source_memory.has_value() &&
-           move_record->source_memory->support == MemoryOperandSupportKind::Prepared &&
-           move_record->source_memory->base_kind == MemoryBaseKind::FrameSlot &&
-           move_record->source_memory->byte_offset_is_prepared_snapshot;
-  };
 
   auto retarget_call_boundary_source_to_emitted_scalar =
       [&](module::MachineInstruction& instruction) {
@@ -715,7 +668,7 @@ InstructionDispatchResult dispatch_prepared_block(
     if (!should_emit_block_entry_edge_copy_move(context, block_entry_move)) {
       continue;
     }
-    record_call_boundary_destination(block_entry_move);
+    record_call_boundary_destination(block_entry_move, scalar_state);
     block.instructions.push_back(std::move(block_entry_move));
   }
   if (context.bir_block != nullptr) {
@@ -782,8 +735,9 @@ InstructionDispatchResult dispatch_prepared_block(
           if (stack_home_fused_compare_branch) {
             continue;
           }
-          record_call_boundary_destination(before_instruction_move);
-          record_call_boundary_source_in_destination(before_instruction_move);
+          record_call_boundary_destination(before_instruction_move, scalar_state);
+          record_call_boundary_source_in_destination(before_instruction_move,
+                                                     scalar_state);
           block.instructions.push_back(std::move(before_instruction_move));
         }
       }
@@ -856,7 +810,7 @@ InstructionDispatchResult dispatch_prepared_block(
             if (move_record != nullptr &&
                 source_register_conflicts_with_materialized_address(
                     *move_record, materialized_addresses)) {
-              record_call_boundary_destination(before_call_move);
+              record_call_boundary_destination(before_call_move, scalar_state);
               block.instructions.push_back(std::move(before_call_move));
             } else {
               deferred_before_call_moves.push_back(std::move(before_call_move));
@@ -885,7 +839,7 @@ InstructionDispatchResult dispatch_prepared_block(
                         context, before_call_move, instruction_index, scalar_state)) {
               block.instructions.push_back(std::move(*materialized));
             } else {
-              record_call_boundary_destination(before_call_move);
+              record_call_boundary_destination(before_call_move, scalar_state);
               block.instructions.push_back(std::move(before_call_move));
             }
           }
@@ -906,7 +860,7 @@ InstructionDispatchResult dispatch_prepared_block(
             auto after_call_moves =
                 lower_after_call_moves(context, *call_plan, instruction_index, diagnostics);
             for (auto& after_call_move : after_call_moves) {
-              record_call_boundary_destination(after_call_move);
+              record_call_boundary_destination(after_call_move, scalar_state);
               block.instructions.push_back(std::move(after_call_move));
             }
           }

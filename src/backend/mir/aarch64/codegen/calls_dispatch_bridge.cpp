@@ -488,6 +488,58 @@ materialize_call_boundary_source_to_destination(
 
 }
 
+void record_call_boundary_destination(
+    const module::MachineInstruction& instruction,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record != nullptr && move_record->destination_register.has_value()) {
+    record_emitted_scalar_register(scalar_state,
+                                   move_record->destination_register->value_name,
+                                   *move_record->destination_register);
+  }
+}
+
+void record_call_boundary_source_in_destination(
+    const module::MachineInstruction& instruction,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr || !move_record->destination_register.has_value()) {
+    return;
+  }
+  std::optional<prepare::PreparedValueId> source_value_id;
+  c4c::ValueNameId source_value_name = c4c::kInvalidValueName;
+  if (move_record->source_memory.has_value() &&
+      move_record->source_memory->result_value_name.has_value()) {
+    source_value_id = move_record->source_memory->result_value_id;
+    source_value_name = *move_record->source_memory->result_value_name;
+  } else if (move_record->source_register.has_value() &&
+             move_record->source_register->value_name != c4c::kInvalidValueName) {
+    source_value_id = move_record->source_register->value_id;
+    source_value_name = move_record->source_register->value_name;
+  }
+  if (source_value_name == c4c::kInvalidValueName) {
+    return;
+  }
+  auto source_alias = *move_record->destination_register;
+  source_alias.value_id = source_value_id;
+  source_alias.value_name = source_value_name;
+  record_emitted_scalar_register(scalar_state, source_value_name, source_alias);
+}
+
+[[nodiscard]] bool call_boundary_move_reloads_prepared_stack_source(
+    const module::MachineInstruction& instruction) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  return move_record != nullptr &&
+         move_record->phase == prepare::PreparedMovePhase::BeforeInstruction &&
+         move_record->source_memory.has_value() &&
+         move_record->source_memory->support == MemoryOperandSupportKind::Prepared &&
+         move_record->source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+         move_record->source_memory->byte_offset_is_prepared_snapshot;
+}
+
 [[nodiscard]] c4c::SlotNameId local_load_effective_slot_id(
     const bir::LoadLocalInst& load) {
   if (load.address.has_value() &&

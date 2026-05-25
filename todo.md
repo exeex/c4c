@@ -1,37 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/03_dispatch_responsibility_reduction.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Isolate Edge-Copy And Join-Value Handling
+Current Step ID: 5
+Current Step Title: Remove Or Justify Call-Specific Dispatch Glue
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Isolate Edge-Copy And Join-Value Handling moved block-entry
-edge-copy skip/filter ownership out of `dispatch.cpp` into
-`dispatch_edge_copies.cpp`, with
-`should_emit_block_entry_edge_copy_move` exposed from
-`dispatch_edge_copies.hpp`.
+Step 5 - Remove Or Justify Call-Specific Dispatch Glue started by moving simple
+call-boundary scalar-state helper ownership out of `dispatch.cpp` into
+`calls_dispatch_bridge`.
 
-Behavior is preserved: the block-entry loop still skips current-join
-publication clobbers, same-register out-of-SSA parallel copies, and
-source-memory out-of-SSA parallel copies before recording or pushing the move,
-but those decisions now live behind the edge-copy-owned predicate.
+`record_call_boundary_destination`,
+`record_call_boundary_source_in_destination`, and
+`call_boundary_move_reloads_prepared_stack_source` now live in
+`calls_dispatch_bridge.cpp`/`.hpp` and are called from the same dispatch routing
+points. No AArch64-local call argument source-selection logic changed.
 
 ## Suggested Next
 
-Continue Step 4 by isolating the next join-value helper cluster that still
-lives in `dispatch.cpp`, keeping call-boundary retargeting and publication
-helpers unchanged unless an include/declaration dependency proves unavoidable.
+Continue Step 5 by either moving or explicitly justifying the remaining
+call-specific dispatch glue in `dispatch.cpp`, with the next likely target being
+the call-boundary retarget/materialized-address conflict helper cluster.
 
 ## Watchouts
 
-`should_emit_block_entry_edge_copy_move` intentionally delegates the existing
-current-join publication clobber query to `dispatch_publication`; this packet
-only moved block-entry decision ownership and did not move publication helper
-implementation. No call-source files, call-boundary retargeting helpers,
-source tests, or expectation tests changed.
+The remaining retargeting helpers still read `scalar_state`, address
+materialization records, and ABI register details directly in `dispatch.cpp`.
+Keep future extraction semantic and do not add or change call argument
+source-selection behavior.
 
 ## Proof
 
