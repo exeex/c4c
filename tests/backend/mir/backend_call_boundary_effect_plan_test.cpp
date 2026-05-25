@@ -52,7 +52,16 @@ prepare::PreparedCallPlan make_call_plan() {
                .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
                .callee_saved_save_index = std::size_t{3},
                .contiguous_width = 2,
+               .register_name = std::string{"x19"},
                .register_bank = prepare::PreparedRegisterBank::Gpr,
+               .occupied_register_names = {std::string{"x19"}, std::string{"x20"}},
+               .register_placement =
+                   prepare::PreparedRegisterPlacement{
+                       .bank = prepare::PreparedRegisterBank::Gpr,
+                       .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                       .slot_index = 0,
+                       .contiguous_width = 2,
+                   },
            },
            prepare::PreparedCallPreservedValue{
                .value_id = prepare::PreparedValueId{32},
@@ -62,6 +71,11 @@ prepare::PreparedCallPlan make_call_plan() {
                .stack_offset_bytes = std::size_t{80},
                .stack_size_bytes = std::size_t{8},
                .stack_align_bytes = std::size_t{8},
+               .spill_slot_placement =
+                   prepare::PreparedSpillSlotPlacement{
+                       .slot_id = prepare::PreparedFrameSlotId{7},
+                       .offset_bytes = 80,
+                   },
            }},
   };
 }
@@ -182,6 +196,21 @@ bool records_preservation_and_republication_intent() {
       !expect(callee_saved_population.destination.callee_saved_save_index ==
                   std::optional<std::size_t>{3},
               "expected callee-saved index") ||
+      !expect(callee_saved_population.destination.register_name ==
+                  std::optional<std::string>{"x19"},
+              "expected callee-saved register name") ||
+      !expect(callee_saved_population.destination.register_placement ==
+                  std::optional<prepare::PreparedRegisterPlacement>{
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 0,
+                          .contiguous_width = 2,
+                      }},
+              "expected callee-saved register placement") ||
+      !expect(callee_saved_population.destination.occupied_register_names ==
+                  std::vector<std::string>{std::string{"x19"}, std::string{"x20"}},
+              "expected callee-saved occupied register names") ||
       !expect(callee_saved_population.preservation_route ==
                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
               "expected callee-saved preservation route")) {
@@ -200,6 +229,15 @@ bool records_preservation_and_republication_intent() {
               "expected stack preservation size")) {
     return false;
   }
+  if (!expect(stack_population.destination.spill_slot_placement ==
+                  std::optional<prepare::PreparedSpillSlotPlacement>{
+                      prepare::PreparedSpillSlotPlacement{
+                          .slot_id = prepare::PreparedFrameSlotId{7},
+                          .offset_bytes = 80,
+                      }},
+              "expected stack preservation spill slot placement")) {
+    return false;
+  }
 
   const auto& callee_saved_republication = effects[4];
   const auto& stack_republication = effects[5];
@@ -209,12 +247,34 @@ bool records_preservation_and_republication_intent() {
          expect(callee_saved_republication.source.storage_kind ==
                     prepare::PreparedMoveStorageKind::Register,
                 "expected callee-saved republication source") &&
+         expect(callee_saved_republication.source.register_name ==
+                    std::optional<std::string>{"x19"},
+                "expected callee-saved republication register name") &&
+         expect(callee_saved_republication.source.register_placement ==
+                    std::optional<prepare::PreparedRegisterPlacement>{
+                        prepare::PreparedRegisterPlacement{
+                            .bank = prepare::PreparedRegisterBank::Gpr,
+                            .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                            .slot_index = 0,
+                            .contiguous_width = 2,
+                        }},
+                "expected callee-saved republication register placement") &&
+         expect(callee_saved_republication.source.occupied_register_names ==
+                    std::vector<std::string>{std::string{"x19"}, std::string{"x20"}},
+                "expected callee-saved republication occupied register names") &&
          expect(callee_saved_republication.destination.value_name ==
                     c4c::ValueNameId{41},
                 "expected callee-saved republication value name") &&
          expect(stack_republication.source.storage_kind ==
                     prepare::PreparedMoveStorageKind::StackSlot,
                 "expected stack republication source") &&
+         expect(stack_republication.source.spill_slot_placement ==
+                    std::optional<prepare::PreparedSpillSlotPlacement>{
+                        prepare::PreparedSpillSlotPlacement{
+                            .slot_id = prepare::PreparedFrameSlotId{7},
+                            .offset_bytes = 80,
+                        }},
+                "expected stack republication spill slot placement") &&
          expect(stack_republication.destination.value_id ==
                     std::optional<prepare::PreparedValueId>{32},
                 "expected stack republication destination value");

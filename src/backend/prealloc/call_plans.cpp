@@ -1615,13 +1615,17 @@ namespace {
       .storage_kind = storage_kind,
       .value_id = preserved.value_id,
       .value_name = preserved.value_name,
+      .register_name = preserved.register_name,
       .register_bank = preserved.register_bank,
       .contiguous_width = preserved.contiguous_width,
+      .occupied_register_names = preserved.occupied_register_names,
       .slot_id = preserved.slot_id,
       .stack_offset_bytes = preserved.stack_offset_bytes,
       .stack_size_bytes = preserved.stack_size_bytes,
       .stack_align_bytes = preserved.stack_align_bytes,
       .callee_saved_save_index = preserved.callee_saved_save_index,
+      .register_placement = preserved.register_placement,
+      .spill_slot_placement = preserved.spill_slot_placement,
   };
 }
 

@@ -256,13 +256,17 @@ struct PreparedCallBoundaryEffectEndpoint {
   PreparedMoveStorageKind storage_kind = PreparedMoveStorageKind::None;
   std::optional<PreparedValueId> value_id;
   ValueNameId value_name = kInvalidValueName;
+  std::optional<std::string> register_name;
   std::optional<PreparedRegisterBank> register_bank;
   std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::size_t> stack_size_bytes;
   std::optional<std::size_t> stack_align_bytes;
   std::optional<std::size_t> callee_saved_save_index;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
 
 struct PreparedCallBoundaryEffectPlan {

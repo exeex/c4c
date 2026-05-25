@@ -1,49 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/01_shared_call_plan_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit the Existing Boundary-Move Authority
+Current Step ID: 2
+Current Step Title: Strengthen Shared Prepared Facts for the Chosen Family
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audited prepared call-plan authority against the AArch64 call-boundary
-move and preservation surfaces.
+Step 2 strengthened the shared prepared call-boundary effect endpoint for the
+callee-saved preservation family.
 
-Chosen first migration family: callee-saved preservation boundary effects.
-Shared prepared facts already expose this as
-`PreparedCallBoundaryEffectPlan` entries with
-`effect_kind = PreservationHomePopulation` before the call and
-`effect_kind = PreservationRepublication` after the call, populated from
-`PreparedCallPlan::preserved_values`.
+`PreparedCallBoundaryEffectEndpoint` now carries the preservation storage
+facts needed by the next AArch64 consumer packet:
+`register_name`, `register_placement`, `occupied_register_names`, and
+`spill_slot_placement`, in addition to the existing value, bank, width,
+save-index, slot, offset, size, and alignment facts.
 
-Prepared facts to consume:
-
-- `PreparedCallPlan::preserved_values`
-- `PreparedCallPreservedValue::{value_id,value_name,route,register_name,register_bank,contiguous_width,occupied_register_names,callee_saved_save_index,slot_id,stack_offset_bytes,stack_size_bytes,stack_align_bytes,register_placement,spill_slot_placement}`
-- `plan_prepared_call_boundary_effects()` output, especially
-  `PreparedCallBoundaryEffectPlan::{effect_kind,phase,source,destination,preservation_route,reason}`
-
-AArch64 helpers that should stop owning this decision family:
-
-- `lower_before_call_moves()` should stop directly iterating
-  `call_plan.preserved_values` to decide preservation home population.
-- `lower_after_call_moves()` should stop directly iterating
-  `call_plan.preserved_values` to decide preservation republication.
-- `make_callee_saved_preservation_home_population()` and
-  `make_callee_saved_preservation_home_republication()` should become
-  emission helpers driven by a prepared boundary-effect record rather than the
-  local decision entry points for whether a preservation effect exists.
+`make_preserved_storage_endpoint()` populates those fields from
+`PreparedCallPreservedValue`, and
+`backend_call_boundary_effect_plan_test` asserts they are present on the
+storage endpoint for both `PreservationHomePopulation` and
+`PreservationRepublication` effects.
 
 ## Suggested Next
 
-Implement the first migration packet for callee-saved preservation boundary
+Implement the AArch64 consumer packet for callee-saved preservation boundary
 effects: route `lower_before_call_moves()` and `lower_after_call_moves()`
 through `plan_prepared_call_boundary_effects()` preservation entries, pass the
-selected prepared effect into the preservation emission helper, and keep the
-helper responsible only for AArch64 operand conversion and machine-instruction
-construction.
+selected prepared effect into the preservation emission helper, and stop using
+direct `call_plan.preserved_values` iteration as the preservation effect
+decision source.
 
 ## Watchouts
 
@@ -51,19 +38,14 @@ construction.
   proven.
 - Do not hard-code AArch64-only facts into the shared planner.
 - Do not weaken tests or add named-case matching as proof of progress.
-- The prepared effect endpoint currently carries the preservation storage
-  facts but not a pointer/reference back to the exact
-  `PreparedCallPreservedValue`; the next packet should either map effects back
-  by `value_id` plus `preservation_route` or add a minimal shared prepared fact
-  before changing AArch64 emission.
-- AArch64 still has local liveness/use gates for republication
-  (`preserved_value_has_later_non_call_use` and
-  `preserved_value_has_block_entry_non_call_use`). Do not silently move those
-  decisions unless the prepared layer exposes equivalent facts.
+- Preservation effect endpoints now carry storage placement facts, but they do
+  not carry the AArch64 live-use gates. Keep the existing AArch64
+  republication liveness decisions unless the prepared layer gains equivalent
+  facts in a separate packet.
 
 ## Proof
 
-`printf 'Audit-only Step 1; no code changed, no build/test run required.\n' > test_after.log`
+`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability)$"; } > test_after.log 2>&1'`
 
-Proof is sufficient for this audit-only packet because no implementation or
-test files changed. Proof log: `test_after.log`.
+Proof passed: build completed and all three selected tests passed. Proof log:
+`test_after.log`.
