@@ -8,32 +8,41 @@ Current Step Title: Select One Retained Metadata Authority Leak
 
 ## Just Finished
 
-Step 5 closure review rejected closure. The source idea remains open because
-the surviving AArch64 calls helper set still contains retained `CallInst`
-ABI/type metadata reads that decide call-boundary behavior:
-`outgoing_stack_argument_bytes` in `calls_common.cpp`,
-`call_argument_allows_local_aggregate_address_publication` in
-`calls_dispatch_bridge.cpp`, and `byval_register_lane_size_bytes` in
-`calls_byval_aggregates.cpp`.
+Step 1 of `plan.md` selected `byval_register_lane_size_bytes` in
+`src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp` as the next
+retained metadata authority leak to remove. The retained read is the helper's
+lookup of the current `bir::CallInst`, then `call->arg_abi[*move.destination_abi_index]`,
+to recheck pointer/byval/sret/register-or-stack/integer-class shape and return
+`arg_abi.size_bytes` for AArch64 byval aggregate register-lane emission.
 
 ## Suggested Next
 
-Execute Step 1 of `plan.md`: select one retained metadata authority leak,
-prove whether an existing prepared fact can replace it, and record the chosen
-focused proof command before implementation.
+Execute Step 2 of `plan.md`: delete the local `byval_register_lane_size_bytes`
+decision path and consume prepared facts instead. The prepared replacement
+authority is `PreparedMoveResolution` classification through
+`is_aarch64_byval_register_lane_move(move)` / reason
+`call_arg_byval_aggregate_register_lanes`, plus the matched
+`PreparedCallArgumentPlan` and `PreparedValueHome::size_bytes` already used by
+the call-argument publication branches as the lane byte width.
 
 ## Watchouts
 
-- Closure is rejected without editing the source idea; this is a runbook-layer
-  checkpoint, not source-intent churn.
-- Do not touch `ideas/open/03_dispatch_responsibility_reduction.md`.
-- Do not count retained BIR identity checks or diagnostics as blockers unless
-  they still decide call-planning facts.
-- If a required prepared fact is missing, stop and record that blocker instead
-  of recreating the decision in AArch64-local code.
+- Expected deletion path: remove the declaration from `calls.hpp`, remove the
+  definition from `calls_byval_aggregates.cpp`, remove the
+  `aggregate_lane_size` computation in `calls_moves.cpp`, and let the existing
+  lane-size guards use `source_home->size_bytes` after the prepared
+  byval-lane move classification has matched.
+- Retained BIR access for instruction identity or diagnostics may remain, but
+  the selected path should no longer inspect `CallInst::arg_abi` to decide
+  byval lane shape or byte width.
+- If `source_home->size_bytes` is not complete enough for any matched branch,
+  the precise missing prepared fact is an explicit byval register-lane byte
+  width on the prepared move or call-argument plan; do not recreate the
+  `CallInst::arg_abi` decision locally.
 
 ## Proof
 
-No new code validation was run during lifecycle review. The prior broader
-backend checkpoint is recorded in `test_before.log` after supervisor log
-roll-forward, with 162/162 `^backend_` tests passing.
+No build or ctest was required for this todo-only Step 1 selection packet.
+Proposed Step 2 proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`.
+No `test_after.log` was produced for this packet.
