@@ -12,6 +12,7 @@
 #include "instruction.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
+#include "memory_store_sources.hpp"
 #include "operands.hpp"
 #include "variadic.hpp"
 
@@ -849,6 +850,68 @@ void retarget_store_address_to_materialized_pointer(
   memory_record->address.address_space = store.address->address_space;
   memory_record->address.is_volatile = store.address->is_volatile;
   memory_record->address.can_use_base_plus_offset = true;
+}
+void retarget_pointer_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named ||
+      store->value.type != bir::TypeKind::Ptr) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      memory_record->value_type != bir::TypeKind::Ptr) {
+    return;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value()) {
+    return;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  if (!emitted.has_value()) {
+    return;
+  }
+  memory_record->value = make_register_operand(*emitted);
+}
+void retarget_store_local_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      !store_local_uses_pointer_value_address(*store) ||
+      store->value.kind != bir::Value::Kind::Named) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store) {
+    return;
+  }
+  const auto* current_register =
+      memory_record->value.has_value()
+          ? std::get_if<RegisterOperand>(&memory_record->value->payload)
+          : nullptr;
+  if (current_register == nullptr) {
+    return;
+  }
+  const auto value_register =
+      prepared_or_emitted_store_value_register(context, store->value, scalar_state);
+  if (!value_register.has_value()) {
+    return;
+  }
+  if (register_operands_share_physical_register(*current_register, *value_register)) {
+    return;
+  }
+  memory_record->value = make_register_operand(*value_register);
 }
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,

@@ -8,70 +8,39 @@ Current Step Title: Separate Publication And Producer Lookup
 
 ## Just Finished
 
-Step 3 - Separate Publication And Producer Lookup inspected the remaining
-publication and same-block producer lookup candidates after moving
-pointer-store publication retargeting.
+Step 3 - Separate Publication And Producer Lookup moved
+`retarget_pointer_store_value_to_emitted_scalar` and
+`retarget_store_local_value_to_emitted_scalar` out of `dispatch.cpp` into
+`dispatch_publication.cpp`, with declarations exposed in
+`dispatch_publication.hpp`.
 
-Remaining Step 3 candidates in `dispatch.cpp`:
-
-- Non-call store-value emitted-scalar retargeting:
-  `retarget_pointer_store_value_to_emitted_scalar` and
-  `retarget_store_local_value_to_emitted_scalar`.
-- Call-result store-value retargeting:
-  `retarget_fpr_call_result_store_value_to_emitted_scalar`.
-- Before-return publication recording:
-  `before_return_publication_already_emitted` and
-  `record_before_return_publication`.
-- Branch/compare missing publication:
-  `lower_missing_conditional_branch_condition_publication`,
-  `lower_missing_fused_compare_operand_publication`, and
-  `lower_missing_fused_compare_operand_publications`.
-- Same-block producer lookup/cache:
-  `named_operands_of_instruction`,
-  `is_join_parallel_copy_expression_instruction`,
-  `find_same_block_result_index`, `same_block_result_depends_on_value`,
-  `is_current_block_join_parallel_copy_incoming_expression`,
-  `CurrentBlockJoinParallelCopyCache`,
-  `build_current_block_join_parallel_copy_cache`, and cached query wrappers.
+Behavior is preserved: pointer store values can be retargeted to an already
+emitted scalar pointer register, and store-local values using pointer-value
+addresses can be retargeted to the prepared or emitted store value register
+when that avoids a stale physical register reference.
 
 ## Suggested Next
 
-Execute the next small non-call Step 3 publication target: move
-`retarget_pointer_store_value_to_emitted_scalar` and
-`retarget_store_local_value_to_emitted_scalar` from `dispatch.cpp` into
-`dispatch_publication.*`.
+Supervisor review/commit this Step 3 non-call store-value retargeting slice,
+then select the next publication/producer lookup extraction target.
 
-Suggested owned files for the code-changing packet:
+## Watchouts
 
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
-- `todo.md`
-- `test_after.log`
+The compile proof required a non-behavioral include adjustment:
+`dispatch_publication.cpp` now includes `memory_store_sources.hpp` for
+`store_local_uses_pointer_value_address` and
+`prepared_or_emitted_store_value_register`.
 
-Suggested focused proof command:
+`retarget_fpr_call_result_store_value_to_emitted_scalar` remains in
+`dispatch.cpp` because it is call-result specific. No fallback memory-lowering
+orchestration, `lower_store_local_value_publication`, call-source files,
+before/after-call source retargeting, producer-cache helpers, or branch/compare
+missing-publication helpers changed.
+
+## Proof
+
+Passed. Proof log: `test_after.log`.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R 'backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records' --output-on-failure > test_after.log 2>&1
 ```
-
-## Watchouts
-
-Keep the packet limited to the two non-call store-value retargeting helpers.
-Do not move fallback memory-lowering orchestration or
-`lower_store_local_value_publication`.
-
-Do not include `retarget_fpr_call_result_store_value_to_emitted_scalar` in this
-slice; it is call-result specific and should be handled separately or deferred.
-
-Do not touch `calls*`, `calls_dispatch_bridge.*`, before/after-call source
-retargeting, `lower_scalar_call_argument_producers`,
-`materialize_call_boundary_source_to_destination`, or
-`materialize_missing_frame_slot_call_arguments`.
-
-Leave before-return publication recording, branch/compare missing-publication
-helpers, and the current-block join producer/cache cluster for later packets.
-
-## Proof
-
-Mapping-only packet; no build/tests run and no proof logs touched.
