@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/06_prepared_call_preservation_source_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish Explicit Source Selection In Call Plans
+Current Step ID: Step 4
+Current Step Title: Add Focused Coverage
 
 # Current Packet
 
