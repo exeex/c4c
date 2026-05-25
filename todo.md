@@ -8,33 +8,33 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Completed Step 2 of `plan.md`: retired the AArch64-local before-call
-preservation population selection gate that rechecked prior preserved values
-after `prepare::plan_prepared_call_boundary_effects` had already produced
-ordered `PreservationHomePopulation` effects.
+Completed Step 2 of `plan.md`: retired the AArch64-local after-call
+preservation republication wrapper that only reshaped prepared
+`PreservationRepublication` effects before handing them to the shared
+emission helper.
 
 Concrete cleanup:
 
-- `lower_before_call_moves` now consumes the prepared preservation boundary
-  effect stream directly and leaves `make_callee_saved_preservation_home_population`
-  responsible only for AArch64 machine-node emission.
-- Deleted the now-unused `find_prior_preserved_value_for_value` helper and its
-  `calls.hpp` declaration.
-- Kept `find_prior_preserved_value_for_call_argument` intact because it still
-  backs argument-source preservation reuse and is outside this packet.
+- Deleted the anonymous `make_callee_saved_preservation_home_republication`
+  wrapper in `calls_moves.cpp`.
+- `lower_after_call_moves` now calls
+  `make_callee_saved_preservation_home_republication_instruction` directly with
+  the same `BeforeInstruction` phase, call-plan block/instruction indexes, and
+  reason fallback used by the wrapper.
+- Left block-entry republication emission unchanged; it still calls the same
+  emission helper with `BlockEntry` phase and its block-entry reason.
 
 ## Suggested Next
 
-Execute the next Step 2 preservation slice by removing one remaining
-effect-shaping wrapper around republication, only if the after-call and
-block-entry paths can still preserve their distinct emitted phases without
-moving planning back into AArch64-local code.
+Continue Step 2 by checking whether another narrow call-boundary helper can be
+reduced to direct consumption of prepared facts without changing emitted move
+phase, origin, or reason spelling.
 
 ## Watchouts
 
-- `make_callee_saved_preservation_home_republication_instruction` is shared by
-  after-call republication and block-entry republication; do not collapse its
-  phase parameters unless both call sites remain behavior-preserving.
+- `make_callee_saved_preservation_home_republication_instruction` remains the
+  shared emission boundary for both after-call and block-entry republication;
+  keep the phase/reason arguments explicit at each call site.
 - Local-frame address publication and byval register-lane helpers remain
   outside the clean deletion target set until a shared source-address or lane
   materialization fact exists.

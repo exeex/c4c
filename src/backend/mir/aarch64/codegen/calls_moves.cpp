@@ -3085,29 +3085,6 @@ after_call_explicit_boundary_effects(const prepare::PreparedCallPlan& call_plan,
   return explicit_effects;
 }
 
-namespace {
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_callee_saved_preservation_home_republication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallBoundaryEffectPlan& effect,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  return make_callee_saved_preservation_home_republication_instruction(
-      context,
-      bundle,
-      effect,
-      prepare::PreparedMovePhase::BeforeInstruction,
-      call_plan.block_index,
-      call_plan.instruction_index,
-      effect.reason.empty() ? "callee_saved_preservation_home_republication"
-                            : effect.reason,
-      diagnostics);
-}
-
-}  // namespace
-
 std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -3214,11 +3191,15 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
         effect.phase != prepare::PreparedMovePhase::AfterCall) {
       continue;
     }
-    if (auto instruction = make_callee_saved_preservation_home_republication(
+    if (auto instruction = make_callee_saved_preservation_home_republication_instruction(
             context,
-            call_plan,
             republication_bundle,
             effect,
+            prepare::PreparedMovePhase::BeforeInstruction,
+            call_plan.block_index,
+            call_plan.instruction_index,
+            effect.reason.empty() ? "callee_saved_preservation_home_republication"
+                                  : effect.reason,
             diagnostics)) {
       lowered.push_back(std::move(*instruction));
     }
