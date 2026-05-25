@@ -1,36 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/05_prepared_call_argument_source_selection_completeness.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Update Printing/Diagnostics And Add Focused Coverage
+Current Step ID: Step 4
+Current Step Title: Add Focused Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for `plan.md`: updated prepared call-plan printing so call
-arguments with structured source selections print `arg.source_selection` plus
-the source identity, selected prior call position, preservation route, and
-callee-saved register or stack-slot payload facts.
+Completed Step 4 for `plan.md`: closed the reviewer-identified AArch64
+explicit callee-saved prior-preservation gap by treating an explicit
+`PriorPreservation` selection with route `CalleeSavedRegister` as authoritative.
+If its structured register payload is incomplete, lowering now fails closed
+instead of falling back through `find_prior_preserved_value_for_call_argument`.
 
-Added focused backend prepared-printer coverage for a real callee-saved
-prior-preservation argument source selection and for stack-slot
-prior-preservation selection payload printing via a manual prepared-printer
-fixture.
+Added focused backend dispatch coverage for the incomplete explicit
+callee-saved selection behavior, and updated the positive explicit callee-saved
+prior-preservation fixture to carry complete register payload facts.
 
 ## Suggested Next
 
-Execute the next Step 4 packet: supervisor should decide whether this Step 3
-observability slice is sufficient to advance to final validation, review, or
-plan closure work.
+Supervisor should decide whether Step 4 coverage is now sufficient for reviewer
+re-check, broader milestone validation, or lifecycle closure work.
 
 ## Watchouts
 
-The natural x86 stack-preservation fixture preserves through a stack slot, but
-its later argument-source path selects frame-slot value facts before the
-prior-preservation path; stack-slot prior-preservation printing is therefore
-covered with a manual prepared-printer fixture rather than claiming planner
-selection behavior that is not present.
+The new fail-closed rule is scoped to explicit `PriorPreservation` selections
+with `CalleeSavedRegister` route. Local-frame-address selections still use their
+existing guarded prior-record path when appropriate.
 
 ## Proof
 

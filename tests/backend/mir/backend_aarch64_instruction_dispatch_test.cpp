@@ -14945,6 +14945,17 @@ int selected_register_prior_preservation_publishes_from_preserved_home() {
           .source_home_kind = prepare::PreparedValueHomeKind::Register,
           .preservation_route =
               prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .preserved_register_name = preserved.register_name,
+          .preserved_register_bank = preserved.register_bank,
+          .preserved_register_contiguous_width = preserved.contiguous_width,
+          .preserved_occupied_register_names = preserved.occupied_register_names,
+          .preserved_register_placement =
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 1,
+                  .contiguous_width = 1,
+              },
       };
 
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -14983,6 +14994,47 @@ int selected_register_prior_preservation_publishes_from_preserved_home() {
         "expected explicit register prior-preservation selection to publish "
         "x20 into x0: " +
         (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
+int incomplete_callee_saved_prior_preservation_selection_does_not_rederive_prior_home() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& call_plan = prepared.call_plans.functions.front().calls.back();
+  call_plan.arguments.front().source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route =
+              prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .preserved_register_name = preserved.register_name,
+          .preserved_register_bank = preserved.register_bank,
+          .preserved_register_contiguous_width = preserved.contiguous_width,
+          .preserved_occupied_register_names = preserved.occupied_register_names,
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
+  if (!lowered.empty() || !diagnostics.empty()) {
+    return fail(
+        "expected incomplete explicit callee-saved prior-preservation selection "
+        "not to rederive prior register home");
   }
   return 0;
 }
@@ -29874,6 +29926,11 @@ int main() {
   }
   if (const int status =
           selected_register_prior_preservation_publishes_from_preserved_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_callee_saved_prior_preservation_selection_does_not_rederive_prior_home();
       status != 0) {
     return status;
   }
