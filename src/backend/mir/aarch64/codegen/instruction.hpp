@@ -1774,6 +1774,8 @@ struct InstructionRecord {
     const std::vector<OperandRecord>& operands);
 [[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
     const std::vector<prepare::PreparedClobberedRegister>& clobbers);
+[[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_preserved_values(
+    const std::vector<prepare::PreparedCallPreservedValue>& preserved_values);
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(

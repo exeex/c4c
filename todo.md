@@ -8,31 +8,30 @@ Current Step Title: Move Non-Emission Spelling To Its Owner
 
 ## Just Finished
 
-Step 3 audit identified a valid non-emission ownership target but did not move
-code in this packet. `calls_printing.cpp` still owns prepared preserved-call
-effect conversion through `effect_from_prepared_call_preserved_value` and
-`effects_from_prepared_call_preserved_values`, while the matching clobber
-effect conversion helper already lives in `instruction.cpp`.
+Step 3 moved prepared preserved-call effect conversion out of
+`calls_printing.cpp` and into the machine-instruction record/effect layer.
+`effect_from_prepared_call_preserved_value` is now a private helper in
+`instruction.cpp` beside `effect_from_prepared_call_clobber`, and
+`effects_from_prepared_call_preserved_values` is declared in `instruction.hpp`
+beside `effects_from_prepared_call_clobbers`.
 
-The implementation move is blocked for this executor packet because the clear
-owner is the AArch64 machine-instruction record/effect layer in
-`src/backend/mir/aarch64/codegen/instruction.cpp`, which is outside the
-delegated owned file set.
+The call `InstructionRecord::preserves` population still uses the same
+preserve-effect conversion under `publish_prepared_call_preserve_effects()`;
+only the ownership location changed.
 
 ## Suggested Next
 
-Delegate a narrow Step 3 packet that adds `instruction.cpp` and
-`instruction.hpp` to the owned files, then move prepared preserved-call effect
-conversion next to `effects_from_prepared_call_clobbers` without changing the
-`InstructionRecord::preserves` behavior.
+Have the supervisor review the Step 3 slice for route alignment and commit it,
+then decide whether Step 3 has any remaining non-emission spelling owners or
+whether lifecycle review should advance the plan.
 
 ## Watchouts
 
 - Step 3 is about non-emission spelling ownership, not another source-selection
   retirement pass.
-- The first valid move target is effect metadata ownership, not assembly text
-  printing: call preserve-effect construction belongs beside the existing
-  clobber-effect helpers in the machine-instruction record layer.
+- Existing machine-printer and dispatch coverage exercises preserved register
+  and stack-slot effects through `InstructionRecord::preserves`; this packet
+  intentionally kept behavior unchanged rather than adding expectation churn.
 - Do not move the immediate-cast inline-assembly text from `calls_moves.cpp` in
   this same slice; that path is emission-like lowering for selected call
   argument publication and has a less clear Step 3 owner.
@@ -106,11 +105,11 @@ conversion next to `effects_from_prepared_call_clobbers` without changing the
 
 ## Proof
 
-No implementation or test files changed in this packet. Ran syntax-only diff
-check per the delegated no-code-change proof rule:
+Ran the delegated proof command:
 
-`git diff --check`
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } | tee test_after.log'`
 
-Result: passed.
+Result: passed. The build completed and CTest reported 162/162 `^backend_`
+tests passed.
 
-Proof log: none; no `test_after.log` was produced.
+Proof log: `test_after.log`.
