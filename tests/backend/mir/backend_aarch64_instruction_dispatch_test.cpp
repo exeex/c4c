@@ -16595,6 +16595,120 @@ int prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
   return 0;
 }
 
+int incomplete_byval_register_lane_selection_does_not_rederive_register_home() {
+  constexpr auto function_name = c4c::FunctionNameId{201};
+  constexpr auto block_label = c4c::BlockLabelId{202};
+  constexpr auto value_id = prepare::PreparedValueId{203};
+  constexpr auto value_name = c4c::ValueNameId{204};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueHome source_home{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"x5"},
+      .size_bytes = std::size_t{1},
+      .align_bytes = std::size_t{1},
+  };
+  const prepare::PreparedMoveResolution move{
+      .from_value_id = value_id,
+      .to_value_id = value_id,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_abi_index = std::size_t{0},
+      .destination_register_name = std::string{"x0"},
+      .destination_contiguous_width = 1,
+      .destination_occupied_register_names = {"x0"},
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "call_arg_byval_aggregate_register_lanes",
+  };
+  auto argument = prepare::PreparedCallArgumentPlan{
+      .instruction_index = 4,
+      .arg_index = 0,
+      .value_bank = prepare::PreparedRegisterBank::Gpr,
+      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+      .source_value_id = value_id,
+      .source_register_name = std::string{"x5"},
+      .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+      .destination_register_name = std::string{"x0"},
+      .destination_contiguous_width = 1,
+      .destination_occupied_register_names = {"x0"},
+      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {source_home},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 4,
+              .moves = {move},
+          }},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  auto selected_argument = argument;
+  selected_argument.source_selection = prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane,
+      .source_value_id = value_id,
+      .source_value_name = value_name,
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .byval_lane_extent_bytes = std::size_t{1},
+  };
+  const prepare::PreparedCallPlan selected_call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments = {selected_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics selected_diagnostics;
+  const auto selected_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, selected_call_plan, 4, selected_diagnostics);
+  if (!selected_lowered.empty() || selected_diagnostics.entries.size() != 1 ||
+      selected_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected incomplete explicit byval lane selection not to rederive "
+        "register home: lowered=" +
+        std::to_string(selected_lowered.size()) +
+        " diagnostics=" + std::to_string(selected_diagnostics.entries.size()));
+  }
+
+  const prepare::PreparedCallPlan absent_call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments = {argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
+  const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, absent_call_plan, 4, absent_diagnostics);
+  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
+    return fail("expected absent byval lane selection to keep register-home compatibility");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(absent_lowered.front().target);
+  if (!printed.ok || printed.instruction_lines != std::vector<std::string>{"ldrb w0, [x5]"}) {
+    return fail("expected absent byval lane selection to load through legacy register home");
+  }
+  return 0;
+}
+
 int aarch64_variadic_byval_register_lanes_do_not_overlap() {
   const auto target = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   const bir::CallArgAbiInfo format_abi{
@@ -27973,6 +28087,11 @@ int main() {
   }
   if (const int status =
           prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_byval_register_lane_selection_does_not_rederive_register_home();
       status != 0) {
     return status;
   }

@@ -1064,6 +1064,13 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       context, move, argument, source_home, source_instruction_index);
 }
 
+[[nodiscard]] bool has_selected_byval_register_lane_source(
+    const prepare::PreparedCallArgumentPlan& argument) {
+  return argument.source_selection.has_value() &&
+         argument.source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
+}
+
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -1680,7 +1687,8 @@ make_immediate_cast_call_argument_publication_instruction(
     if (register_byval_size.has_value()) {
       source = make_byval_register_lane_prepared_source(
           context, *argument, *source_home, *register_byval_size, call_plan.instruction_index);
-      if (!source.has_value() && source_home->register_name.has_value()) {
+      if (!source.has_value() && source_home->register_name.has_value() &&
+          !has_selected_byval_register_lane_source(*argument)) {
         auto source_register = make_register_operand_from_prepared_authority(
             source_home->register_name,
             argument->source_register_placement,
@@ -1815,7 +1823,8 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && source_home->size_bytes.has_value()) {
+    if (!source.has_value() && source_home->size_bytes.has_value() &&
+        !has_selected_byval_register_lane_source(*argument)) {
       auto source_register = make_register_operand_from_prepared_authority(
           source_home->register_name,
           argument->source_register_placement,
