@@ -1,35 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Affected Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md` verified the affected byval lane helper boundary after the
-selected `byval_register_lane_size_bytes` authority path was removed. Repo-wide
-search finds the retired helper only in planning text, AST lookup finds no
-declaration or definition in `calls_byval_aggregates.cpp`, and the replacement
-`prepared_byval_lane_extent_bytes` helper is an anonymous-namespace
-emission-only helper in `calls_moves.cpp` called only by `lower_before_call_move`.
+Step 4 of `plan.md` recorded the broader backend checkpoint for the byval lane
+authority-removal slice. The accepted canonical `test_before.log` records
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+passing 162/162 backend tests.
 
 ## Suggested Next
 
-Supervisor should decide the next lifecycle action for the active runbook.
+Route the next lifecycle action to Step 5 closure review.
 
 ## Watchouts
 
-- No additional narrow consolidation is required for the selected
-  `byval_register_lane_size_bytes` boundary: it is fully retired from the code
-  boundary rather than left as a cross-file helper.
-- The remaining byval lane-size calculation is deliberately emission-local in
-  `calls_moves.cpp`; broader byval helper reads of `CallInst::arg_abi` remain
-  outside this selected boundary.
+- Step 4 was checkpoint recording only; no new build was required or run.
+- Closure review still owns deciding whether the active source idea is complete
+  or whether another runbook checkpoint is needed.
 
 ## Proof
 
-No code changes were needed, so no build was required by the delegated proof
-contract. Existing accepted Step 2 broad proof remains `test_before.log`:
-162/162 `^backend_` tests passed.
+No new build was required by the delegated proof contract. Used the accepted
+canonical `test_before.log`, rolled forward after the broad guard:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+passed 162/162 backend tests.
