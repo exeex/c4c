@@ -1,25 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate Effect Publication And Declarations
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 moved `materialize_integer_constant_lines` out of the machine-printer
-API into neutral AArch64 codegen helper files,
-`constant_materialization.hpp` and `constant_materialization.cpp`.
-`machine_printer.hpp` no longer declares the helper, current materialization
-users include the neutral header directly, and `calls_printing.cpp` no longer
-keeps a private redeclaration.
+Step 4 ran the broader backend checkpoint for the completed call
+printing/effect-publication consolidation slices. The supervisor-selected
+backend proof passed, confirming the completed consolidation work still holds
+across the backend subset.
 
 ## Suggested Next
 
-Supervisor should review the Step 3 helper-ownership cleanup for acceptance and
-decide whether the remaining effect-publication/API boundary is complete for
-this checkpoint or needs another narrow packet.
+Supervisor should review the completed Step 4 checkpoint and decide whether to
+send the active source idea to plan-owner for close, deactivation, or a follow-up
+runbook decision.
 
 ## Watchouts
 
@@ -40,10 +38,12 @@ this checkpoint or needs another narrow packet.
 - `materialize_integer_constant_lines` remains AArch64-codegen-owned, not
   printer-owned. Keep any follow-up users pointed at
   `constant_materialization.hpp` instead of `machine_printer.hpp`.
+- No Step 4 validation blocker remains for the active source idea after this
+  backend checkpoint.
 
 ## Proof
 
-Step 3 proof passed:
+Step 4 proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 
 Proof log: `test_after.log`. The backend subset passed 162/162 tests.
