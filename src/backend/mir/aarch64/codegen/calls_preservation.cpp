@@ -77,21 +77,6 @@ find_prior_preserved_value_for_call_argument(
       *context.function.call_plan_lookups, current_call_plan, value_id);
 }
 
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_preserved_value_for_value(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id) {
-  if (context.function.call_plan_lookups == nullptr) {
-    return nullptr;
-  }
-  return prepare::find_dominating_indexed_prior_preserved_value(
-      *context.function.call_plan_lookups,
-      context.function.control_flow,
-      current_call_plan,
-      value_id);
-}
-
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_callee_saved_preservation_home_republication_instruction(
     const module::BlockLoweringContext& context,

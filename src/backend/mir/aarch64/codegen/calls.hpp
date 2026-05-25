@@ -292,10 +292,6 @@ find_prior_preserved_value_for_call_argument(
     const prepare::PreparedCallPlan& current_call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedMoveResolution& move);
-[[nodiscard]] const prepare::PreparedCallPreservedValue* find_prior_preserved_value_for_value(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& current_call_plan,
-    prepare::PreparedValueId value_id);
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
