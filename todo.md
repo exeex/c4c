@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move Or Narrow Pure Printer Ownership
+Current Step ID: 3
+Current Step Title: Consolidate Effect Publication And Declarations
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 moved the remaining pure `print_call_boundary_move` printer island into
-`machine_printer.cpp` at the `CallBoundaryMoveInstructionRecord` payload dispatch
-boundary. `calls.hpp` no longer exports `print_call_boundary_move`, and
-`calls_printing.cpp` no longer implements the printer-only call-boundary move
-spelling helpers.
+Step 3 started the calls API-surface cleanup after Step 2 removed the exported
+print helpers. `calls.hpp` no longer includes `mir/printer.hpp`, and the stale
+`// calls_printing` public section is now named `// calls_emission_nodes` to
+match the remaining call-boundary construction and effect-publication factories.
 
-The dependency split was viable: frame-slot load/address spelling, aggregate
-lane publication spelling, scalar immediate materialization checks, scalar FPR
-immediate spelling, and f128 q-register spelling moved as printer-local helpers.
-Call-boundary move construction, selection/status, operand/effect publication,
-and prepared provenance remain calls-owned.
+`calls_printing.cpp` no longer includes `machine_printer.hpp`; it keeps only a
+local declaration for `materialize_integer_constant_lines`, the remaining
+non-printer helper dependency used by immediate cast publication.
 
 ## Suggested Next
 
-Supervisor should review the Step 2 slice for acceptance/commit readiness and
-decide whether Step 2 is exhausted or needs a follow-up route check.
+Supervisor should review the Step 3 include/API-surface cleanup for acceptance
+and decide whether remaining helper ownership, such as
+`materialize_integer_constant_lines`, needs a separate neutral utility packet or
+should stay as an implementation dependency.
 
 ## Watchouts
 
@@ -41,19 +40,13 @@ decide whether Step 2 is exhausted or needs a follow-up route check.
   Blocker: the prepared preserved-value route is currently converted into
   machine-node `preserves` by `make_call_instruction`; there is no separate
   printer-owned fact that can replace that effect publication.
-- `calls_moves.cpp` still owns construction-side frame-slot address
-  printability checks used to decide whether a call-boundary move can be
-  represented; this packet intentionally moved only printer spelling helpers.
+- `calls_printing.cpp` still calls `materialize_integer_constant_lines`; this
+  packet removed the printer-facing include without moving the helper because
+  helper ownership was outside the delegated file set.
 
 ## Proof
 
-Step 2 proof passed:
+Step 3 proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_machine_printer|aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_printer|aarch64_instruction_dispatch)$' > test_after.log 2>&1`
 
 Proof log: `test_after.log`. The focused subset passed 5/5 tests.
-
-Supervisor broader backend guard also passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-
-Matching `test_before.log`/`test_after.log` backend comparison passed with
-162/162 tests before and after, with no new failures.

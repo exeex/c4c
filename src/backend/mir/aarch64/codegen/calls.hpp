@@ -2,7 +2,6 @@
 
 #include "../module/module.hpp"
 #include "instruction.hpp"
-#include "mir/printer.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -334,7 +333,7 @@ make_callee_saved_preservation_home_population(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// calls_printing
+// calls_emission_nodes
 
 [[nodiscard]] InstructionRecord make_call_boundary_move_instruction(
     CallBoundaryMoveInstructionRecord instruction);
