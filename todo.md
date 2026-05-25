@@ -8,34 +8,26 @@ Current Step Title: Separate Publication And Producer Lookup
 
 ## Just Finished
 
-Step 3 - Separate Publication And Producer Lookup moved
-`retarget_pointer_store_value_to_emitted_scalar` and
-`retarget_store_local_value_to_emitted_scalar` out of `dispatch.cpp` into
-`dispatch_publication.cpp`, with declarations exposed in
-`dispatch_publication.hpp`.
+Step 3 - Separate Publication And Producer Lookup moved the remaining
+same-block/current-block join parallel-copy source lookup helpers out of
+`dispatch.cpp` into `dispatch_producers.cpp`, with the cache/query API exposed
+from `dispatch_producers.hpp`.
 
-Behavior is preserved: pointer store values can be retargeted to an already
-emitted scalar pointer register, and store-local values using pointer-value
-addresses can be retargeted to the prepared or emitted store value register
-when that avoids a stale physical register reference.
+Behavior is preserved: `dispatch.cpp` still builds the join parallel-copy cache
+at the block routing point and only asks producer-owned helpers whether the
+current instruction is an incoming expression or source to skip.
 
 ## Suggested Next
 
-Supervisor review/commit this Step 3 non-call store-value retargeting slice,
-then select the next publication/producer lookup extraction target.
+Supervisor review/commit this Step 3 producer-lookup extraction slice, then
+decide whether any remaining Step 3 dispatch-local lookup helpers belong in
+`dispatch_producers` or whether Step 3 is ready for plan-owner review.
 
 ## Watchouts
 
-The compile proof required a non-behavioral include adjustment:
-`dispatch_publication.cpp` now includes `memory_store_sources.hpp` for
-`store_local_uses_pointer_value_address` and
-`prepared_or_emitted_store_value_register`.
-
-`retarget_fpr_call_result_store_value_to_emitted_scalar` remains in
-`dispatch.cpp` because it is call-result specific. No fallback memory-lowering
-orchestration, `lower_store_local_value_publication`, call-source files,
-before/after-call source retargeting, producer-cache helpers, or branch/compare
-missing-publication helpers changed.
+`clang-format` is not installed in this environment, so the touched files were
+manually kept in local style. No call-source files, call-specific retargeting,
+fallback memory-lowering orchestration, or expectation/source tests changed.
 
 ## Proof
 
