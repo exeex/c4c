@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/05_prepared_call_argument_source_selection_completeness.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Complete Prior-Preservation Selection Facts
+Current Step ID: none
+Current Step Title: none
 
 # Current Packet
 
