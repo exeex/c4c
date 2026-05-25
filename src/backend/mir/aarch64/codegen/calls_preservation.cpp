@@ -70,35 +70,11 @@ find_prior_preserved_value_for_call_argument(
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedMoveResolution& move) {
   const auto value_id = argument.source_value_id.value_or(move.from_value_id);
-  if (context.function.call_plan_lookups != nullptr) {
-    return prepare::find_latest_indexed_prior_preserved_value(
-        *context.function.call_plan_lookups, current_call_plan, value_id);
-  }
-  const auto* call_plans =
-      context.function.call_plans != nullptr
-          ? context.function.call_plans
-          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
-                 ? prepare::find_prepared_call_plans(
-                       *context.function.prepared, context.function.control_flow->function_name)
-                 : nullptr);
-  if (call_plans == nullptr) {
+  if (context.function.call_plan_lookups == nullptr) {
     return nullptr;
   }
-  const prepare::PreparedCallPreservedValue* selected = nullptr;
-  for (const auto& call : call_plans->calls) {
-    if (call.block_index > current_call_plan.block_index ||
-        (call.block_index == current_call_plan.block_index &&
-         call.instruction_index >= current_call_plan.instruction_index)) {
-      continue;
-    }
-    for (const auto& preserved : call.preserved_values) {
-      if (preserved.value_id == value_id &&
-          preserved.route != prepare::PreparedCallPreservationRoute::Unknown) {
-        selected = &preserved;
-      }
-    }
-  }
-  return selected;
+  return prepare::find_latest_indexed_prior_preserved_value(
+      *context.function.call_plan_lookups, current_call_plan, value_id);
 }
 
 [[nodiscard]] const prepare::PreparedCallPreservedValue*

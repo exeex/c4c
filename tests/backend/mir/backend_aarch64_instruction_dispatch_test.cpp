@@ -14847,8 +14847,11 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   auto prepared = prepared_with_nested_call_preserved_argument_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   if (function_context.call_plans == nullptr ||
       function_context.call_plans->calls.size() != 2 ||
       function_context.call_plans->calls.front().preserved_values.empty() ||
@@ -14930,8 +14933,11 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
 int cross_block_call_argument_publishes_from_prior_preservation_home() {
   auto prepared = prepared_with_cross_block_call_preserved_argument_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   if (function_cf.blocks.size() != 2 ||
       function_context.call_plans == nullptr ||
       function_context.call_plans->calls.size() != 2 ||
@@ -15008,8 +15014,11 @@ int cross_block_call_argument_publishes_from_prior_preservation_home() {
 int sibling_block_call_argument_repopulates_incoming_formal_home() {
   auto prepared = prepared_with_sibling_block_call_preserved_argument_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   if (function_cf.blocks.size() != 3 ||
       function_context.call_plans == nullptr ||
       function_context.call_plans->calls.size() != 2 ||
@@ -15078,8 +15087,11 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   if (function_context.call_plans == nullptr ||
       function_context.call_plans->calls.size() != 2 ||
       function_context.call_plans->calls.front().instruction_index != 0 ||
