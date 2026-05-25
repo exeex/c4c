@@ -483,54 +483,7 @@ make_byval_register_lane_prepared_source(
         .can_use_base_plus_offset = true,
     };
   }
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, instruction_index);
-  if (stores.empty()) {
-    return std::nullopt;
-  }
-
-  if (stores.front().source_offset != 0 || stores.front().stack_offset < 0) {
-    return std::nullopt;
-  }
-  const auto first_offset = stores.front().stack_offset;
-  std::size_t covered_bytes = 0;
-  std::size_t source_align = stores.front().align_bytes;
-  for (const auto& store : stores) {
-    if (store.stack_offset < 0 ||
-        store.source_offset > covered_bytes ||
-        static_cast<std::int64_t>(store.source_offset) !=
-            store.stack_offset - first_offset) {
-      return std::nullopt;
-    }
-    covered_bytes =
-        std::max(covered_bytes, store.source_offset + store.size_bytes);
-    source_align = std::min(source_align, store.align_bytes);
-    if (covered_bytes >= size_bytes) {
-      break;
-    }
-  }
-  if (covered_bytes < size_bytes || !stores.front().frame_slot_id.has_value()) {
-    return std::nullopt;
-  }
-
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = context.function.control_flow->function_name,
-      .block_label = context.control_flow_block->block_label,
-      .instruction_index = instruction_index,
-      .result_value_id = argument.source_value_id.has_value()
-                             ? argument.source_value_id
-                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
-      .result_value_name = std::nullopt,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = stores.front().frame_slot_id,
-      .byte_offset = first_offset,
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = size_bytes,
-      .align_bytes = source_align,
-      .can_use_base_plus_offset = true,
-  };
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<MemoryOperand> aggregate_lane_store_memory(

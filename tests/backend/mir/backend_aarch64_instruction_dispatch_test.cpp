@@ -16500,6 +16500,20 @@ int prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x0"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              ByvalRegisterLane,
+                      .source_value_id = aggregate_value_id,
+                      .source_value_name = aggregate_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_slot_id = prepare::PreparedFrameSlotId{13203},
+                      .source_stack_offset_bytes = std::size_t{128},
+                      .source_size_bytes = std::size_t{1},
+                      .source_align_bytes = std::size_t{1},
+                      .byval_lane_extent_bytes = std::size_t{1},
+                  },
           }},
   };
 
@@ -19304,6 +19318,20 @@ int large_byval_aggregate_indirect_argument_materializes_frame_address() {
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x0"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              ByvalRegisterLane,
+                      .source_value_id = prepare::PreparedValueId{127},
+                      .source_value_name = aggregate_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_slot_id = prepare::PreparedFrameSlotId{43},
+                      .source_stack_offset_bytes = std::size_t{96},
+                      .source_size_bytes = std::size_t{24},
+                      .source_align_bytes = std::size_t{8},
+                      .byval_lane_extent_bytes = std::size_t{24},
+                  },
           }},
   };
   const auto& function_cf = prepared.control_flow.functions.front();
