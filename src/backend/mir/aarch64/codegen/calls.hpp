@@ -299,9 +299,7 @@ find_prior_preserved_value_for_call_argument(
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& current_call_plan,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallPreservedValue& preserved,
     const prepare::PreparedValueHome* source_home,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
