@@ -1946,41 +1946,27 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto register_byval_size = prepared_byval_lane_extent_bytes(
-        context, move, *argument, *source_home, call_plan.instruction_index);
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
-    if (register_byval_size.has_value()) {
-      source = make_byval_register_lane_prepared_source(
-          context, *argument, *source_home, *register_byval_size, call_plan.instruction_index);
-      if (!source.has_value()) {
-        source = make_frame_slot_call_argument_source(
-            context, *argument, *source_home, instruction_index);
-        if (source.has_value()) {
-          source->size_bytes = *register_byval_size;
-        }
-      }
-    } else {
-      address_source = make_sret_memory_return_address_source(
-          context, call_plan, *argument, instruction_index);
-      if (!address_source.has_value()) {
-        address_source = make_frame_slot_call_argument_address_source(
-            context, *argument, *source_home, instruction_index);
-      }
-      if (!address_source.has_value()) {
-        if (const auto byval_size = aarch64_indirect_byval_argument_size_bytes(
-                context, *argument, call_plan.instruction_index);
-            byval_size.has_value()) {
-          address_source = make_byval_register_lane_prepared_source(
-              context, *argument, *source_home, *byval_size, call_plan.instruction_index);
-        }
-      }
-      source =
-          address_source.has_value()
-              ? address_source
-              : make_frame_slot_call_argument_source(
-                    context, *argument, *source_home, instruction_index);
+    address_source = make_sret_memory_return_address_source(
+        context, call_plan, *argument, instruction_index);
+    if (!address_source.has_value()) {
+      address_source = make_frame_slot_call_argument_address_source(
+          context, *argument, *source_home, instruction_index);
     }
+    if (!address_source.has_value()) {
+      if (const auto byval_size = aarch64_indirect_byval_argument_size_bytes(
+              context, *argument, call_plan.instruction_index);
+          byval_size.has_value()) {
+        address_source = make_byval_register_lane_prepared_source(
+            context, *argument, *source_home, *byval_size, call_plan.instruction_index);
+      }
+    }
+    source =
+        address_source.has_value()
+            ? address_source
+            : make_frame_slot_call_argument_source(
+                  context, *argument, *source_home, instruction_index);
     const auto destination_register_placement =
         binding != nullptr && binding->destination_register_placement.has_value()
             ? binding->destination_register_placement
@@ -2005,7 +1991,7 @@ make_immediate_cast_call_argument_publication_instruction(
                            : move.destination_contiguous_width,
         binding != nullptr ? binding->destination_occupied_register_names
                            : move.destination_occupied_register_names,
-        register_byval_size.has_value() || address_source.has_value()
+        address_source.has_value()
             ? std::optional<abi::RegisterView>{abi::RegisterView::X}
             : source.has_value()
             ? scalar_integer_register_view_from_size(source->size_bytes)
@@ -2025,9 +2011,6 @@ make_immediate_cast_call_argument_publication_instruction(
     move_record.source_memory = *source;
     move_record.source_memory_materializes_address = address_source.has_value();
     move_record.destination_register = *destination;
-    if (register_byval_size.has_value()) {
-      move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
-    }
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
