@@ -18249,6 +18249,7 @@ int register_homed_local_address_argument_materializes_frame_address_register() 
           {prepare::PreparedCallArgumentPlan{
               .instruction_index = 0,
               .arg_index = 0,
+              .allows_local_aggregate_address_publication = true,
               .value_bank = prepare::PreparedRegisterBank::Gpr,
               .source_encoding = prepare::PreparedStorageEncodingKind::Register,
               .source_value_id = source_value_id,

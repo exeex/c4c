@@ -462,53 +462,6 @@ make_f128_q_register_operand_from_carrier(
   };
 }
 
-[[nodiscard]] const bir::CallInst* call_argument_call(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return nullptr;
-  }
-  return std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-}
-
-[[nodiscard]] bool call_argument_is_pointer(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  const auto* call = call_argument_call(context, instruction_index);
-  if (call == nullptr || argument.arg_index >= call->args.size()) {
-    return false;
-  }
-  if (argument.arg_index < call->arg_types.size() &&
-      call->arg_types[argument.arg_index] == bir::TypeKind::Ptr) {
-    return true;
-  }
-  return call->args[argument.arg_index].type == bir::TypeKind::Ptr;
-}
-
-[[nodiscard]] bool call_argument_is_byval_copy(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  const auto* call = call_argument_call(context, instruction_index);
-  return call != nullptr &&
-         argument.arg_index < call->arg_abi.size() &&
-         call->arg_abi[argument.arg_index].byval_copy;
-}
-
-[[nodiscard]] bool call_argument_allows_local_frame_address_publication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  const auto* call = call_argument_call(context, instruction_index);
-  if (call == nullptr || call->callee.rfind("llvm.", 0) == 0) {
-    return false;
-  }
-  return call_argument_is_pointer(context, argument, instruction_index) &&
-         !call_argument_is_byval_copy(context, argument, instruction_index);
-}
-
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
@@ -542,8 +495,7 @@ make_f128_q_register_operand_from_carrier(
     }
   }
   if (selected == nullptr) {
-    if (!call_argument_allows_local_frame_address_publication(
-            context, argument, instruction_index)) {
+    if (!argument.allows_local_aggregate_address_publication) {
       return std::nullopt;
     }
     const auto source_name =
@@ -634,8 +586,7 @@ make_f128_q_register_operand_from_carrier(
       context.control_flow_block == nullptr ||
       source_home.value_name == c4c::kInvalidValueName ||
       argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
-      !call_argument_allows_local_frame_address_publication(
-          context, argument, instruction_index)) {
+      !argument.allows_local_aggregate_address_publication) {
     return std::nullopt;
   }
 
