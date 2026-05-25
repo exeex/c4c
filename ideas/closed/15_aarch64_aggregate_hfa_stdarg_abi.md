@@ -46,3 +46,26 @@ preservation issue.
   interchangeable without proving the AAPCS64 rule.
 - A patch restores broad target-local fallback selection as a substitute for
   ABI-correct prepared facts.
+
+## Closure Note
+
+Closed after the active runbook repaired the AArch64 small byval
+register-lane publication rule so discovered payload stores win over aggregate
+home or preservation sources. Focused dispatch coverage now covers the
+one-byte register-home and two-byte stack-home reduced cases, and
+`c_testsuite_aarch64_backend_src_00204_c` passes.
+
+Close proof used the canonical matching logs:
+
+- `test_before.log`
+- `test_after.log`
+
+Both logs cover:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$'`
+
+The close-time regression guard passed with
+`--allow-non-decreasing-passed`; both logs were already green for the same
+2-test scope, so the pass count was unchanged. Supervisor also accepted the
+post-commit full-suite baseline in `test_baseline.log` after commit
+`ee1790c10`, with 3410/3410 tests passing.
