@@ -3061,30 +3061,6 @@ order_before_call_moves_for_source_preservation(
   return ordered;
 }
 
-[[nodiscard]] std::vector<prepare::PreparedCallBoundaryEffectPlan>
-before_call_boundary_effects(const prepare::PreparedCallPlan& call_plan,
-                             const prepare::PreparedMoveBundle& bundle) {
-  return prepare::plan_prepared_call_boundary_effects(call_plan, &bundle, nullptr);
-}
-
-[[nodiscard]] std::vector<prepare::PreparedCallBoundaryEffectPlan>
-after_call_explicit_boundary_effects(const prepare::PreparedCallPlan& call_plan,
-                                     const prepare::PreparedMoveBundle& bundle) {
-  std::vector<prepare::PreparedCallBoundaryEffectPlan> explicit_effects;
-  auto boundary_effects =
-      prepare::plan_prepared_call_boundary_effects(call_plan, nullptr, &bundle);
-  explicit_effects.reserve(bundle.moves.size());
-  for (auto& effect : boundary_effects) {
-    if (effect.effect_kind != prepare::PreparedCallBoundaryEffectKind::ExplicitMove ||
-        effect.phase != prepare::PreparedMovePhase::AfterCall) {
-      continue;
-    }
-    effect.order_index = explicit_effects.size();
-    explicit_effects.push_back(std::move(effect));
-  }
-  return explicit_effects;
-}
-
 std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -3111,7 +3087,8 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
     lowered.push_back(
         make_outgoing_stack_base_instruction(context, instruction_index, outgoing_bytes));
   }
-  const auto boundary_effects = before_call_boundary_effects(call_plan, *bundle);
+  const auto boundary_effects =
+      prepare::plan_prepared_call_boundary_effects(call_plan, bundle, nullptr);
   for (const auto& effect : boundary_effects) {
     if (effect.effect_kind !=
             prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation ||
@@ -3168,9 +3145,11 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
   };
   if (bundle != nullptr) {
     const auto boundary_effects =
-        after_call_explicit_boundary_effects(call_plan, *bundle);
+        prepare::plan_prepared_call_boundary_effects(call_plan, nullptr, bundle);
     for (const auto& effect : boundary_effects) {
-      if (effect.order_index >= bundle->moves.size()) {
+      if (effect.effect_kind != prepare::PreparedCallBoundaryEffectKind::ExplicitMove ||
+          effect.phase != prepare::PreparedMovePhase::AfterCall ||
+          effect.order_index >= bundle->moves.size()) {
         continue;
       }
       const auto& move = bundle->moves[effect.order_index];
