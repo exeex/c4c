@@ -1,4 +1,4 @@
-# AArch64 Calls Emission Consolidation Authority-Leak Checkpoint
+# AArch64 Calls Emission Consolidation Retained-Read Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,13 +6,15 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review rejected closure.
+review rejected closure for the byval register-lane authority removal
+checkpoint.
 
 ## Goal
 
 Remove the remaining target-local uses of retained call ABI/type metadata that
-still decide call-boundary argument placement, stack sizing, or byval lane
-shape when prepared call-plan facts should own those decisions.
+still decide call-boundary argument placement, stack sizing, aggregate address
+publication eligibility, or byval shape when prepared call-plan facts should
+own those decisions.
 
 ## Core Rule
 
@@ -22,17 +24,21 @@ already present in `PreparedCallPlan` or its argument/effect records.
 
 ## Closure Review Finding
 
-The broader backend checkpoint after the byval stack-lane fallback removal
-passed, but the source idea is not complete. The remaining blockers are
-durable source-idea acceptance gaps, not routine executor notes:
+The broader backend checkpoint after the byval register-lane authority removal
+recorded `^backend_` passing 162/162 in `test_before.log`, but the source idea
+is not complete. The closure review found surviving durable source-idea
+acceptance gaps, not routine executor notes:
 
 - `calls_common.cpp` still computes outgoing stack argument bytes from
   `call.arg_abi[argument.arg_index]` instead of prepared argument authority.
 - `calls_dispatch_bridge.cpp` still decides local aggregate address
   publication eligibility from retained `CallInst::arg_abi` and
   `CallInst::arg_types`.
+- `calls_argument_sources.cpp` still decides call argument pointer/byval local
+  frame address publication from retained `CallInst::arg_types` and
+  `CallInst::arg_abi`.
 - `calls_byval_aggregates.cpp` still rechecks retained `CallInst::arg_abi`
-  shape in `byval_register_lane_size_bytes`.
+  shape in byval size and indirect-register predicates.
 - The surviving helper file set is still broad enough that closure requires
   another ownership pass before claiming every helper boundary is
   emission-only.
@@ -101,7 +107,9 @@ Primary targets:
 - `outgoing_stack_argument_bytes` in `calls_common.cpp`
 - `call_argument_allows_local_aggregate_address_publication` in
   `calls_dispatch_bridge.cpp`
-- `byval_register_lane_size_bytes` in `calls_byval_aggregates.cpp`
+- `call_argument_allows_local_frame_address_publication` and its
+  pointer/byval helpers in `calls_argument_sources.cpp`
+- byval size and indirect-register predicates in `calls_byval_aggregates.cpp`
 
 Actions:
 
