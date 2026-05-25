@@ -1,38 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Affected Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed the helper-boundary closeout for the selected indirect byval
-size path.
+Step 4 completed the broader backend checkpoint for the selected indirect byval
+size authority-removal slice.
 
 Completed work:
 
-- Verified no surviving `aarch64_indirect_byval_argument_size_bytes`
-  declaration, definition, source call site, or test call site remains under
-  `src` or `tests`.
-- Verified `prepared_indirect_byval_extent_bytes` remains a local
-  `calls_moves.cpp` emission helper with one local call site.
-- Confirmed `prepared_indirect_byval_extent_bytes` reads only prepared
-  context/move/argument/home facts and does not read retained `bir::CallInst`,
-  `CallInst::arg_abi`, or `CallInst::arg_types`.
-- No source edits were needed for this closeout packet.
+- Ran the supervisor-selected broad backend checkpoint after Step 2 removed
+  `aarch64_indirect_byval_argument_size_bytes` and Step 3 confirmed no active
+  helper boundary remains.
+- Confirmed the build succeeded and the `^backend_` CTest subset passed.
+- No source, test, plan, source-idea, or build metadata edits were made for
+  this validation-only checkpoint.
 
 ## Suggested Next
 
-Step 4 should run the broader backend checkpoint for the completed selected
-indirect byval size path and hand results to the supervisor for commit
-selection.
+Step 5 should perform closure review for the selected indirect byval size
+authority-removal slice and decide whether the completed slice is ready for the
+supervisor-owned commit.
 
 ## Watchouts
 
 - Do not close `ideas/open/02_aarch64_calls_emission_consolidation.md` while
-  these durable blockers remain.
+  durable blockers remain.
 - The stack byval fallback path is no longer a blocker; do not re-add
   `aarch64_stack_byval_argument_size_bytes`.
 - This selection still does not cover `aarch64_indirect_register_byval_argument`;
@@ -47,7 +44,8 @@ selection.
 
 ## Proof
 
-Required Step 3 proof command:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address)$') > test_after.log 2>&1`
+Required Step 4 proof command:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-Result: passed 3/3 selected tests; proof log preserved at `test_after.log`.
+Result: passed. The build completed and CTest reported 162/162 `^backend_`
+tests passing; proof log preserved at `test_after.log`.
