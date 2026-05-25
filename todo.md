@@ -8,46 +8,61 @@ Current Step Title: Select One Publication Authority Leak
 
 ## Just Finished
 
-Step 5 closure review rejected closure for the AArch64 calls emission
-consolidation checkpoint.
+Step 1 selected one remaining publication authority leak:
+`call_argument_allows_local_aggregate_address_publication` in
+`src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`.
 
-- The source idea remains open because retained `CallInst::arg_abi` and
-  `CallInst::arg_types` publication decisions still exist in
-  `calls_dispatch_bridge.cpp` and `calls_argument_sources.cpp`.
-- `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
-  boundaries that need to be retired or justified as emission-only after
-  publication no longer reconstructs call-plan decisions.
-- The close review did not run a close-time regression guard because closure
-  was rejected before the close gate.
+- Retained read and decision: the helper reads
+  `CallInst::arg_abi[argument_index].byval_copy` to reject byval arguments,
+  then reads `CallInst::arg_types[argument_index]` or
+  `CallInst::args[argument_index].type` to decide whether local aggregate
+  address publication is allowed for the scalar call-argument producer path.
+- Prepared-fact mapping result: `PreparedCallPlan::arguments[arg_index]`
+  already publishes source/destination placement facts such as
+  `source_encoding`, `source_value_id`, `source_base_value_name`,
+  `source_pointer_byte_delta`, `destination_register_*`, and
+  `destination_stack_*`, but it does not publish the semantic eligibility fact
+  this helper owns: non-LLVM call argument accepts a pointer value and is not a
+  byval copy.
+- Selected Step 2 route: replace this local `CallInst` eligibility decision
+  with a prepared argument fact for aggregate-address publication eligibility,
+  or stop if the supervisor wants no prepared-plan shape change in this
+  checkpoint.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor: select one remaining publication authority
-leak, map it to an existing prepared argument/move/boundary-effect fact or a
-precise missing-prepared-fact blocker, and record the focused proof command.
+Delegate Step 2 to add or consume the missing prepared argument authority for
+the selected aggregate-address publication gate, then delete the
+`CallInst::arg_abi`/`CallInst::arg_types` decision from
+`call_argument_allows_local_aggregate_address_publication`.
 
 ## Watchouts
 
-- Do not close `ideas/open/02_aarch64_calls_emission_consolidation.md` while
-  publication-helper authority blockers remain.
-- Do not touch unrelated
-  `ideas/open/03_dispatch_responsibility_reduction.md` dispatch cleanup.
-- Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
-  progress.
+- The precise missing prepared fact is a per-argument publication eligibility
+  fact equivalent to: this call is not an `llvm.*` helper call, the selected
+  argument is pointer-typed for call publication, and the selected ABI argument
+  is not a byval copy.
+- Existing `PreparedCallArgumentPlan` placement/source fields are not enough by
+  themselves because using them to infer pointer/non-byval eligibility would
+  move the duplicate decision instead of consuming a prepared authority.
+- The selected implementation path will likely need
+  `lower_scalar_call_argument_producers` to receive the matching
+  `PreparedCallPlan` or a prepared per-argument eligibility view.
 
 ## Proof
 
-Closure review evidence:
+Selection-only packet; no build was required and no `test_after.log` was
+created.
+
+Evidence commands used:
 
 - `rg -n "arg_abi|arg_types|CallInst" src/backend/mir/aarch64/codegen/calls*.cpp src/backend/mir/aarch64/codegen/calls*.hpp src/backend/mir/aarch64/codegen/calls.hpp`
 - `rg -n "publication|byval|aggregate|frame address|local frame|CallInst" src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp src/backend/mir/aarch64/codegen/calls_argument_sources.cpp src/backend/mir/aarch64/codegen/calls_dispatch_bridge.hpp`
+- `sed -n '60,270p' src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
+- `sed -n '1,220p' src/backend/prealloc/calls.hpp`
+- `sed -n '1240,1505p' src/backend/prealloc/call_plans.cpp`
+- `rg -n "lower_scalar_call_argument_producers\\(|call_plan.arguments|source_base_value_name|source_pointer_byte_delta|PreparedStorageEncodingKind::ComputedAddress|pointer_base_value_name" src/backend/mir/aarch64/codegen src/backend/prealloc -g '*.cpp' -g '*.hpp'`
 
-Durable blockers found:
+Next Step 2 proof command:
 
-- `calls_dispatch_bridge.cpp`: `call_argument_allows_local_aggregate_address_publication`
-  still reads retained `CallInst::arg_abi` and `CallInst::arg_types`.
-- `calls_argument_sources.cpp`: pointer/byval helpers under
-  `call_argument_allows_local_frame_address_publication` still read retained
-  `CallInst::arg_types` and `CallInst::arg_abi`.
-- `calls_dispatch_bridge.hpp`: helper declarations still expose
-  `bir::CallInst` parameters on publication/call-boundary helper boundaries.
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
