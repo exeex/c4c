@@ -48,4 +48,5 @@ binding node remains diagnostic-only.
 Step 2 proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_machine_printer|aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_printer|aarch64_instruction_dispatch)$'`
 
-Proof log: `test_after.log`. The focused subset passed 5/5 tests.
+Proof log accepted and rolled forward to canonical `test_before.log`. The
+focused subset passed 5/5 tests.
