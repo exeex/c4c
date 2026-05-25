@@ -282,16 +282,6 @@ struct PreservedCallArgumentSource {
   std::optional<MemoryOperand> source_memory;
 };
 
-[[nodiscard]] std::optional<std::size_t> argument_source_prepared_block_index_by_label(
-    const prepare::PreparedControlFlowFunction& function,
-    c4c::BlockLabelId label);
-[[nodiscard]] std::vector<std::size_t> argument_source_prepared_block_successors(
-    const prepare::PreparedControlFlowFunction& function,
-    const prepare::PreparedControlFlowBlock& block);
-[[nodiscard]] bool prepared_block_dominates(
-    const prepare::PreparedControlFlowFunction& function,
-    std::size_t dominator_index,
-    std::size_t block_index);
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,
     prepare::PreparedMovePhase phase,

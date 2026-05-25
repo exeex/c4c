@@ -2,17 +2,14 @@
 #include "dispatch.hpp"
 #include "dispatch_lookup.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
 namespace prepare = c4c::backend::prepare;
-namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
@@ -53,94 +50,6 @@ namespace {
 }
 
 }  // namespace
-
-[[nodiscard]] std::optional<std::size_t> argument_source_prepared_block_index_by_label(
-    const prepare::PreparedControlFlowFunction& function,
-    c4c::BlockLabelId label) {
-  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
-    if (function.blocks[index].block_label == label) {
-      return index;
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::vector<std::size_t> argument_source_prepared_block_successors(
-    const prepare::PreparedControlFlowFunction& function,
-    const prepare::PreparedControlFlowBlock& block) {
-  std::vector<std::size_t> successors;
-  auto append_label = [&](c4c::BlockLabelId label) {
-    if (label == c4c::kInvalidBlockLabel) {
-      return;
-    }
-    const auto index = argument_source_prepared_block_index_by_label(function, label);
-    if (index.has_value() &&
-        std::find(successors.begin(), successors.end(), *index) ==
-            successors.end()) {
-      successors.push_back(*index);
-    }
-  };
-
-  if (block.terminator_kind == bir::TerminatorKind::Branch) {
-    append_label(block.branch_target_label);
-  } else if (block.terminator_kind == bir::TerminatorKind::CondBranch) {
-    append_label(block.true_label);
-    append_label(block.false_label);
-  }
-  return successors;
-}
-
-[[nodiscard]] bool prepared_block_dominates(
-    const prepare::PreparedControlFlowFunction& function,
-    std::size_t dominator_index,
-    std::size_t block_index) {
-  const std::size_t count = function.blocks.size();
-  if (dominator_index >= count || block_index >= count) {
-    return false;
-  }
-  if (dominator_index == block_index) {
-    return true;
-  }
-  std::vector<std::vector<std::size_t>> predecessors(count);
-  for (std::size_t index = 0; index < count; ++index) {
-    for (const auto successor :
-         argument_source_prepared_block_successors(function, function.blocks[index])) {
-      if (successor < count) {
-        predecessors[successor].push_back(index);
-      }
-    }
-  }
-
-  std::vector<std::vector<bool>> dominates(
-      count, std::vector<bool>(count, true));
-  if (count != 0) {
-    std::fill(dominates.front().begin(), dominates.front().end(), false);
-    dominates.front().front() = true;
-  }
-
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    for (std::size_t index = 1; index < count; ++index) {
-      std::vector<bool> next(count, !predecessors[index].empty());
-      if (predecessors[index].empty()) {
-        std::fill(next.begin(), next.end(), false);
-      } else {
-        for (const auto predecessor : predecessors[index]) {
-          for (std::size_t candidate = 0; candidate < count; ++candidate) {
-            next[candidate] = next[candidate] && dominates[predecessor][candidate];
-          }
-        }
-      }
-      next[index] = true;
-      if (next != dominates[index]) {
-        dominates[index] = std::move(next);
-        changed = true;
-      }
-    }
-  }
-  return dominates[block_index][dominator_index];
-}
 
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,
@@ -197,46 +106,14 @@ find_prior_preserved_value_for_value(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     prepare::PreparedValueId value_id) {
-  if (context.function.call_plan_lookups != nullptr) {
-    return prepare::find_dominating_indexed_prior_preserved_value(
-        *context.function.call_plan_lookups,
-        context.function.control_flow,
-        current_call_plan,
-        value_id);
-  }
-  const auto* call_plans =
-      context.function.call_plans != nullptr
-          ? context.function.call_plans
-          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
-                 ? prepare::find_prepared_call_plans(
-                       *context.function.prepared, context.function.control_flow->function_name)
-                 : nullptr);
-  if (call_plans == nullptr) {
+  if (context.function.call_plan_lookups == nullptr) {
     return nullptr;
   }
-
-  for (auto call_it = call_plans->calls.rbegin();
-       call_it != call_plans->calls.rend();
-       ++call_it) {
-    const auto& call = *call_it;
-    if (call.block_index == current_call_plan.block_index) {
-      if (call.instruction_index >= current_call_plan.instruction_index) {
-        continue;
-      }
-    } else if (context.function.control_flow == nullptr ||
-               !prepared_block_dominates(*context.function.control_flow,
-                                         call.block_index,
-                                         current_call_plan.block_index)) {
-      continue;
-    }
-    for (const auto& preserved : call.preserved_values) {
-      if (preserved.value_id == value_id &&
-          preserved.route != prepare::PreparedCallPreservationRoute::Unknown) {
-        return &preserved;
-      }
-    }
-  }
-  return nullptr;
+  return prepare::find_dominating_indexed_prior_preserved_value(
+      *context.function.call_plan_lookups,
+      context.function.control_flow,
+      current_call_plan,
+      value_id);
 }
 
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
