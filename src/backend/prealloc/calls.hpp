@@ -101,6 +101,8 @@ struct PreparedCallArgumentSourceSelection {
   std::optional<std::size_t> preserved_stack_offset_bytes;
   std::optional<std::size_t> preserved_stack_size_bytes;
   std::optional<std::size_t> preserved_stack_align_bytes;
+  std::optional<std::size_t> preserved_callee_saved_save_index;
+  std::optional<PreparedSpillSlotPlacement> preserved_spill_slot_placement;
   std::optional<std::size_t> byval_lane_extent_bytes;
   std::optional<std::size_t> byval_lane_source_instruction_index;
 };

@@ -1093,6 +1093,66 @@ bir::Module make_cross_call_preservation_contract_module() {
   return module;
 }
 
+bir::Module make_prior_preservation_source_selection_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "selection_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "prior_preservation_source_selection_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "selection_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.consume"),
+      .callee = "selection_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "call.consume")};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_stack_cross_call_preservation_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3397,6 +3457,70 @@ int check_cross_call_preservation_contract() {
   return 0;
 }
 
+int check_prior_preservation_source_selection_contract() {
+  const auto prepared =
+      prepare_riscv_module(make_prior_preservation_source_selection_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "prior_preservation_source_selection_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "prior_preservation_source_selection_contract");
+  const auto* carry =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry");
+  if (call_plans == nullptr || call_plans->calls.size() != 2 || carry == nullptr) {
+    return fail("prior-preservation source-selection contract: missing call or carry publication");
+  }
+
+  const auto& preserving_call = call_plans->calls.front();
+  const auto preserved_it = std::find_if(
+      preserving_call.preserved_values.begin(),
+      preserving_call.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == preserving_call.preserved_values.end()) {
+    return fail("prior-preservation source-selection contract: missing prior preserved source");
+  }
+
+  const auto& consumer_call = call_plans->calls.back();
+  if (consumer_call.arguments.size() != 1 ||
+      !consumer_call.arguments.front().source_selection.has_value()) {
+    return fail("prior-preservation source-selection contract: missing argument source selection");
+  }
+  const auto& source_selection = *consumer_call.arguments.front().source_selection;
+  if (source_selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+      source_selection.source_value_id != std::optional<prepare::PreparedValueId>{carry->value_id} ||
+      source_selection.source_value_name != std::optional<c4c::ValueNameId>{preserved_it->value_name} ||
+      source_selection.preserved_call_block_index != std::optional<std::size_t>{0} ||
+      source_selection.preserved_call_instruction_index != std::optional<std::size_t>{2} ||
+      source_selection.preservation_route != preserved_it->route ||
+      source_selection.preserved_register_name != preserved_it->register_name ||
+      source_selection.preserved_register_bank != preserved_it->register_bank ||
+      source_selection.preserved_register_contiguous_width !=
+          std::optional<std::size_t>{preserved_it->contiguous_width} ||
+      source_selection.preserved_occupied_register_names != preserved_it->occupied_register_names ||
+      source_selection.preserved_register_placement != preserved_it->register_placement ||
+      source_selection.preserved_stack_slot_id != preserved_it->slot_id ||
+      source_selection.preserved_stack_offset_bytes != preserved_it->stack_offset_bytes ||
+      source_selection.preserved_stack_size_bytes != preserved_it->stack_size_bytes ||
+      source_selection.preserved_stack_align_bytes != preserved_it->stack_align_bytes ||
+      source_selection.preserved_callee_saved_save_index !=
+          preserved_it->callee_saved_save_index ||
+      source_selection.preserved_spill_slot_placement != preserved_it->spill_slot_placement) {
+    return fail("prior-preservation source-selection contract: selection lost prepared preservation fields");
+  }
+  const auto prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("arg.source_selection=prior_preservation") == std::string::npos ||
+      prepared_dump.find("selection_preserved_call_block=0") == std::string::npos ||
+      prepared_dump.find("selection_preserved_call_inst=2") == std::string::npos ||
+      (source_selection.preserved_callee_saved_save_index.has_value() &&
+       prepared_dump.find("selection_preserved_save_index=") == std::string::npos)) {
+    return fail("prior-preservation source-selection contract: printer hides prepared selection authority");
+  }
+
+  return 0;
+}
+
 int check_saved_register_slot_placement_carrier_contract() {
   const prepare::PreparedRegisterPlacement register_placement{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -5571,6 +5695,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_cross_call_preservation_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_prior_preservation_source_selection_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_saved_register_slot_placement_carrier_contract(); rc != 0) {

@@ -1442,6 +1442,8 @@ void copy_materialization_source_selection_fields(
   selection.preserved_stack_offset_bytes = preserved.stack_offset_bytes;
   selection.preserved_stack_size_bytes = preserved.stack_size_bytes;
   selection.preserved_stack_align_bytes = preserved.stack_align_bytes;
+  selection.preserved_callee_saved_save_index = preserved.callee_saved_save_index;
+  selection.preserved_spill_slot_placement = preserved.spill_slot_placement;
 
   if (preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister) {
     return selection.preserved_register_name.has_value() &&

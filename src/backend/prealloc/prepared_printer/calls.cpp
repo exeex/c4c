@@ -295,6 +295,13 @@ void append_call_argument_source_selection(
     out << " selection_preserved_stack_align="
         << *selection.preserved_stack_align_bytes;
   }
+  if (selection.preserved_callee_saved_save_index.has_value()) {
+    out << " selection_preserved_save_index="
+        << *selection.preserved_callee_saved_save_index;
+  }
+  append_spill_slot_placement(out,
+                              "selection_preserved_spill_slot",
+                              selection.preserved_spill_slot_placement);
   if (selection.byval_lane_extent_bytes.has_value()) {
     out << " selection_byval_lane_extent="
         << *selection.byval_lane_extent_bytes;
