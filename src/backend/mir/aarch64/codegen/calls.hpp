@@ -307,11 +307,6 @@ find_prior_preserved_value_for_call_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     prepare::PreparedValueId value_id);
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_stack_preserved_value_before_instruction(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedValueId value_id,
-    std::size_t instruction_index);
 [[nodiscard]] bool value_spelling_matches(const bir::Value& value,
                                           std::string_view spelling);
 [[nodiscard]] bool non_call_instruction_uses_value(const bir::Inst& inst,

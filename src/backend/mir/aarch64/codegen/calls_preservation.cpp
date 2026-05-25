@@ -241,31 +241,6 @@ find_prior_preserved_value_for_value(
   return nullptr;
 }
 
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_stack_preserved_value_before_instruction(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedValueId value_id,
-    std::size_t instruction_index) {
-  if (context.function.call_plan_lookups == nullptr) {
-    return nullptr;
-  }
-  const auto* preserved =
-      prepare::find_latest_indexed_prior_stack_preserved_value_before_instruction(
-          *context.function.call_plan_lookups,
-          value_id,
-          context.block_index,
-          instruction_index);
-  if (preserved == nullptr ||
-      preserved->route != prepare::PreparedCallPreservationRoute::StackSlot ||
-      !preserved->slot_id.has_value() ||
-      !preserved->stack_offset_bytes.has_value() ||
-      !preserved->stack_size_bytes.has_value() ||
-      *preserved->stack_size_bytes == 0) {
-    return nullptr;
-  }
-  return preserved;
-}
-
 [[nodiscard]] bool value_spelling_matches(const bir::Value& value,
                                           std::string_view spelling) {
   return value.kind == bir::Value::Kind::Named && value.name == spelling;
