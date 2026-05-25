@@ -3040,17 +3040,10 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
   if (bundle == nullptr) {
     bundle = &synthetic_bundle;
   }
-  if (context.bir_block != nullptr && instruction_index < context.bir_block->insts.size()) {
-    if (const auto* call =
-            std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-        call != nullptr) {
-      const std::size_t outgoing_bytes =
-          outgoing_stack_argument_bytes(*call, call_plan);
-      if (outgoing_bytes > 0) {
-        lowered.push_back(
-            make_outgoing_stack_base_instruction(context, instruction_index, outgoing_bytes));
-      }
-    }
+  const std::size_t outgoing_bytes = outgoing_stack_argument_bytes(call_plan);
+  if (outgoing_bytes > 0) {
+    lowered.push_back(
+        make_outgoing_stack_base_instruction(context, instruction_index, outgoing_bytes));
   }
   const auto boundary_effects = before_call_boundary_effects(call_plan, *bundle);
   for (const auto& effect : boundary_effects) {

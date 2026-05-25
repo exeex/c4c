@@ -274,6 +274,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *arg.destination_stack_offset_bytes;
         }
+        if (arg.destination_stack_size_bytes.has_value()) {
+          out << " dest_stack_size=" << *arg.destination_stack_size_bytes;
+        }
         out << "\n";
       }
       if (call.result.has_value()) {

@@ -172,6 +172,44 @@ namespace {
   return 1;
 }
 
+[[nodiscard]] std::size_t scalar_stack_argument_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
+      return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
+    case bir::TypeKind::Void:
+      return 0;
+  }
+  return 0;
+}
+
+[[nodiscard]] std::size_t align_stack_argument_size_bytes(std::size_t value,
+                                                          std::size_t alignment) {
+  if (alignment == 0) {
+    return value;
+  }
+  const std::size_t remainder = value % alignment;
+  return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+[[nodiscard]] std::size_t prepared_call_stack_argument_size_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  if (abi.aarch64_hfa_lane_count > 0) {
+    return std::max<std::size_t>(scalar_stack_argument_size_bytes(abi.type), 1);
+  }
+  return align_stack_argument_size_bytes(std::max<std::size_t>(abi.size_bytes, 8), 8);
+}
+
 [[nodiscard]] const PreparedRegallocFunction* find_regalloc_function(
     const PreparedRegalloc& regalloc,
     FunctionNameId function_name) {
@@ -271,6 +309,7 @@ struct CallArgumentDestinationPlan {
   std::vector<std::string> occupied_register_names;
   std::optional<PreparedRegisterBank> register_bank;
   std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
   std::optional<PreparedRegisterPlacement> register_placement;
 };
 
@@ -884,6 +923,10 @@ struct CallArgumentSourcePlan {
     destination.contiguous_width = binding->destination_contiguous_width;
     destination.occupied_register_names = binding->destination_occupied_register_names;
     destination.stack_offset_bytes = binding->destination_stack_offset_bytes;
+    if (destination.stack_offset_bytes.has_value() && arg_index < call.arg_abi.size()) {
+      destination.stack_size_bytes =
+          prepared_call_stack_argument_size_bytes(call.arg_abi[arg_index]);
+    }
     if (binding->destination_register_name.has_value()) {
       apply_register_binding(*binding);
     }
@@ -919,6 +962,10 @@ struct CallArgumentSourcePlan {
         destination.stack_offset_bytes =
             regalloc_detail::call_arg_destination_stack_offset_bytes(
                 target_profile, call, arg_index);
+        if (destination.stack_offset_bytes.has_value()) {
+          destination.stack_size_bytes =
+              prepared_call_stack_argument_size_bytes(call.arg_abi[arg_index]);
+        }
       } else {
         destination.contiguous_width = byval_lane_width;
         destination.occupied_register_names = std::move(occupied_register_names);
@@ -1405,6 +1452,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_occupied_register_names = {},
               .destination_register_bank = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
+              .destination_stack_size_bytes = std::nullopt,
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
           };
@@ -1420,6 +1468,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               destination.occupied_register_names;
           arg_plan.destination_register_bank = destination.register_bank;
           arg_plan.destination_stack_offset_bytes = destination.stack_offset_bytes;
+          arg_plan.destination_stack_size_bytes = destination.stack_size_bytes;
           arg_plan.destination_register_placement = destination.register_placement;
 
           const CallArgumentSourcePlan source =
@@ -1575,6 +1624,7 @@ namespace {
       .stack_offset_bytes = argument.destination_stack_offset_bytes.has_value()
                                 ? argument.destination_stack_offset_bytes
                                 : move.destination_stack_offset_bytes,
+      .stack_size_bytes = argument.destination_stack_size_bytes,
   };
 }
 

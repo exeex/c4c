@@ -97,8 +97,7 @@ std::optional<module::MachineInstruction> lower_prepared_call_instruction(
                               : std::vector<prepare::PreparedCallPreservedValue>{},
       .clobbered_registers = call_plan.clobbered_registers,
       .source_call = &call_plan,
-      .outgoing_stack_argument_bytes =
-          outgoing_stack_argument_bytes(call_inst, call_plan),
+      .outgoing_stack_argument_bytes = outgoing_stack_argument_bytes(call_plan),
       .source_variadic_entry = variadic_entry_plan,
       .source_variadic_helper_operand_homes = variadic_helper_operand_homes,
       .variadic_entry_helper = variadic_helper,

@@ -4451,6 +4451,7 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_stack_argum
                       .source_stack_offset_bytes = std::size_t{80},
                       .source_register_bank = prepare::PreparedRegisterBank::Fpr,
                       .destination_stack_offset_bytes = std::size_t{32},
+                      .destination_stack_size_bytes = std::size_t{16},
                   },
               },
       }},
@@ -16807,6 +16808,7 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
               .source_slot_id = prepare::PreparedFrameSlotId{13002},
               .source_stack_offset_bytes = std::size_t{7776},
               .destination_stack_offset_bytes = std::size_t{32},
+              .destination_stack_size_bytes = std::size_t{16},
           }},
   };
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -17937,6 +17939,7 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
                   .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
                   .source_literal = bir::Value::immediate_i32(75),
                   .destination_stack_offset_bytes = std::size_t{0},
+                  .destination_stack_size_bytes = std::size_t{8},
               }},
       }},
   });

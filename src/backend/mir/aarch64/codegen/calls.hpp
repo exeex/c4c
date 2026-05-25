@@ -20,10 +20,7 @@ namespace c4c::backend::aarch64::codegen {
     const bir::CallArgAbiInfo& abi);
 [[nodiscard]] std::size_t incoming_stack_argument_alignment_bytes(
     const bir::CallArgAbiInfo& abi);
-[[nodiscard]] std::size_t outgoing_stack_argument_size_bytes(
-    const bir::CallArgAbiInfo& abi);
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
-    const bir::CallInst& call,
     const prepare::PreparedCallPlan& call_plan);
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register();
 [[nodiscard]] bool entry_param_uses_incoming_stack(const bir::Param& param);

@@ -432,6 +432,9 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
                                          arg.destination_occupied_register_names);
           } else if (arg.destination_stack_offset_bytes.has_value()) {
             out << "stack+" << *arg.destination_stack_offset_bytes;
+            if (arg.destination_stack_size_bytes.has_value()) {
+              out << ":size=" << *arg.destination_stack_size_bytes;
+            }
           } else {
             out << "none";
           }

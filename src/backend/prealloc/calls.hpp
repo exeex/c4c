@@ -46,6 +46,7 @@ struct PreparedCallArgumentPlan {
   std::vector<std::string> destination_occupied_register_names;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<std::size_t> destination_stack_size_bytes;
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
 };

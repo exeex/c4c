@@ -37,23 +37,17 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }
 
-[[nodiscard]] std::size_t outgoing_stack_argument_size_bytes(
-    const bir::CallArgAbiInfo& abi) {
-  return align_to(std::max<std::size_t>(abi.size_bytes, 8), 8);
-}
-
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
-    const bir::CallInst& call,
     const prepare::PreparedCallPlan& call_plan) {
   std::size_t bytes = 0;
   for (const auto& argument : call_plan.arguments) {
     if (!argument.destination_stack_offset_bytes.has_value() ||
-        argument.arg_index >= call.arg_abi.size()) {
+        !argument.destination_stack_size_bytes.has_value()) {
       continue;
     }
     bytes = std::max(bytes,
                      *argument.destination_stack_offset_bytes +
-                         outgoing_stack_argument_size_bytes(call.arg_abi[argument.arg_index]));
+                         *argument.destination_stack_size_bytes);
   }
   return align_to(bytes, kStackPointerAlignmentBytes);
 }
