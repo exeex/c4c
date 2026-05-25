@@ -8,24 +8,34 @@ Current Step Title: Validate Emission-Only Boundary
 
 ## Just Finished
 
-Step 5 validation found an AArch64 c_testsuite regression introduced during
-Step 3 of the current plan.
+Step 5 repaired the Step 3 AArch64 prepared source-selection regression
+exposed by `c_testsuite_aarch64_backend_src_00216_c` and
+`c_testsuite_aarch64_backend_src_00204_c`.
 
-The Step 4 centralized fallback slice is still accepted on focused and backend
-proof. Broader Step 5 c_testsuite validation fails on
-`c_testsuite_aarch64_backend_src_00216_c` and
-`c_testsuite_aarch64_backend_src_00204_c`, but the same two tests also fail at
-`HEAD~1` (`b919e53a2`, Step 3) in a temporary worktree. Reviewer follow-up
-showed the same pair passes at `d298bbbc8` after Step 2, so the failing
-c_testsuite pair regressed in Step 3 (`b919e53a2`) and is inside this active
-emission-only route.
+The source path changed in Step 3 when explicit call-argument
+`source_selection` routing stopped letting `PriorPreservation` and
+`FrameSlotValue` selections use the legacy local aggregate frame-address
+publication path. That made `00216.c` publish preserved aggregate bytes as a
+pointer instead of publishing the aggregate address. Step 3 also made selected
+`ByvalRegisterLane` sources fatal before consulting prepared payload stores;
+`00204.c` has stack byval arguments whose selected slot records only the first
+8-byte lane while prepared payload stores contain the full 12/13-byte stack
+argument payload.
+
+The repair keeps explicit prepared source authority for
+`FrameSlotAddress`, `LocalFrameAddressMaterialization`, and
+`ByvalRegisterLane`, while restoring the old compatibility behavior only where
+the prepared facts are incomplete but payload/address facts already exist:
+`PriorPreservation`/`FrameSlotValue` may still publish a local aggregate address
+for pointer frame-slot arguments, and selected byval lane emission may fall back
+to prepared payload stores when the selected source slot is narrower than the
+lane extent.
 
 ## Suggested Next
 
-Repair the Step 3 AArch64 source-selection regression for
-`c_testsuite_aarch64_backend_src_00216_c` and
-`c_testsuite_aarch64_backend_src_00204_c` without expectation weakening or
-named-case shortcuts.
+Continue Step 5 validation with the supervisor-selected broader acceptance
+scope, or retire the remaining documented absent-selection fallbacks in a
+separate packet if validation remains green.
 
 ## Watchouts
 
@@ -33,13 +43,12 @@ named-case shortcuts.
   `source_selection` is present.
 - Do not touch the transient `review/` artifacts unless explicitly delegated.
 - Treat expectation weakening or named-test shortcuts as route failures.
-- Step 5 is blocked by Step 3 AArch64 c_testsuite regressions:
-  `c_testsuite_aarch64_backend_src_00216_c` segfaults and
-  `c_testsuite_aarch64_backend_src_00204_c` reports a runtime output mismatch.
-- A failed speculative local fix in
-  `calls_argument_sources.cpp` was discarded after proving the same failures
-  reproduce at `HEAD~1`; do not resurrect it without a fresh source-path
-  explanation.
+- Do not re-tighten selected byval lane fallback until prepared records provide
+  full selected source bytes for stack byval lanes wider than the first 8-byte
+  slot.
+- Do not remove the `PriorPreservation`/`FrameSlotValue` local aggregate
+  address compatibility path until prepared source selections distinguish
+  preserved value bytes from required pointer/address publication.
 - Remaining temporary fallback: absent-selection local aggregate pointer
   frame-address publication still needs prepared
   `LocalFrameAddressMaterialization`/`FrameSlotAddress` source selection with
@@ -59,15 +68,17 @@ Supervisor follow-up validation:
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
   passed 162/162.
 
-Step 5 validation:
+Step 5 regression repair proof:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_aarch64_prepared_memory_operand_records|backend_prepare_frame_stack_call_contract)$'`
+
+Passed 6/6. Proof log: `test_after.log`.
+
+Supervisor follow-up validation:
 
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_'`
-  failed 2/220 at `HEAD` (`529c57977`): `c_testsuite_aarch64_backend_src_00216_c`
-  and `c_testsuite_aarch64_backend_src_00204_c`.
-- Temporary-worktree comparison at `HEAD~1` (`b919e53a2`) with
-  `ctest --test-dir /tmp/c4c-head1/build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$'`
-  failed the same two tests, showing the blocker predates Step 4.
-- Reviewer route check in
-  `review/aarch64_emission_step5_blocker_route_review.md` found the same pair
-  passes at `d298bbbc8` after Step 2, so the blocker is a Step 3 regression and
-  should be repaired inside this active plan.
+  passed 220/220, including `00204.c` and `00216.c`.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed 162/162.
+- Backend regression guard passed with `test_before.log` and `test_after.log`:
+  162 passed before, 162 passed after, no new failures.

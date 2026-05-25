@@ -2067,7 +2067,9 @@ make_immediate_cast_call_argument_publication_instruction(
       }
     }
     if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument)) {
+        has_selected_byval_register_lane_source(*argument) &&
+        !has_byval_register_lane_payload_stores(
+            context, *source_home, call_plan.instruction_index)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2275,6 +2277,9 @@ make_immediate_cast_call_argument_publication_instruction(
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
         case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+          address_source = make_frame_slot_call_argument_address_source(
+              context, *argument, *source_home, instruction_index);
+          break;
         case prepare::PreparedCallArgumentSourceSelectionKind::None:
           break;
       }
@@ -2297,7 +2302,9 @@ make_immediate_cast_call_argument_publication_instruction(
     if (!address_source.has_value() &&
         (!argument->source_selection.has_value() ||
          argument->source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue)) {
+             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+         argument->source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation)) {
       source = make_frame_slot_call_argument_source(
           context, *argument, *source_home, instruction_index);
     } else {
@@ -2365,7 +2372,8 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
-       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot ||
+       move.destination_stack_offset_bytes.has_value())) {
     const auto lane_size = selected_byval_lane_extent_bytes(
         context, move, *argument, *source_home, call_plan.instruction_index);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
@@ -2385,7 +2393,8 @@ make_immediate_cast_call_argument_publication_instruction(
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
     if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument)) {
+        has_selected_byval_register_lane_source(*argument) &&
+        !has_payload_stores) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,

@@ -577,6 +577,29 @@ make_f128_q_register_operand_from_carrier(
   return value_name == std::optional<c4c::ValueNameId>{source_home.value_name};
 }
 
+[[nodiscard]] bool source_selection_allows_legacy_local_aggregate_address(
+    const prepare::PreparedCallArgumentPlan& argument) {
+  if (!argument.source_selection.has_value()) {
+    return true;
+  }
+  return argument.source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+         argument.source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue;
+}
+
+[[nodiscard]] bool call_argument_uses_missing_local_aggregate_frame_address(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t instruction_index) {
+  return !argument.allows_local_aggregate_address_publication &&
+         call_argument_is_pointer_operand(context, argument, source_home, instruction_index) &&
+         argument.source_value_id ==
+             std::optional<prepare::PreparedValueId>{source_home.value_id} &&
+         argument.destination_register_bank == prepare::PreparedRegisterBank::Gpr;
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
@@ -593,7 +616,9 @@ make_f128_q_register_operand_from_carrier(
             instruction_index)) {
       return selected;
     }
-    return std::nullopt;
+    if (!source_selection_allows_legacy_local_aggregate_address(argument)) {
+      return std::nullopt;
+    }
   }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
@@ -605,7 +630,10 @@ make_f128_q_register_operand_from_carrier(
   const auto* addressing = prepare::find_prepared_addressing(
       *context.function.prepared, context.function.control_flow->function_name);
   const prepare::PreparedAddressMaterialization* selected = nullptr;
-  if (addressing != nullptr) {
+  const bool use_missing_local_aggregate_frame_address =
+      call_argument_uses_missing_local_aggregate_frame_address(
+          context, argument, source_home, instruction_index);
+  if (!use_missing_local_aggregate_frame_address && addressing != nullptr) {
     for (const auto& materialization : addressing->address_materializations) {
       if (materialization.block_label == context.control_flow_block->block_label &&
           materialization.inst_index <= instruction_index &&
@@ -624,7 +652,7 @@ make_f128_q_register_operand_from_carrier(
   }
   if (selected == nullptr) {
     if (!argument.allows_local_aggregate_address_publication &&
-        !call_argument_is_pointer_operand(context, argument, source_home, instruction_index)) {
+        !use_missing_local_aggregate_frame_address) {
       return std::nullopt;
     }
     const auto source_name =
@@ -671,10 +699,16 @@ make_f128_q_register_operand_from_carrier(
         .frame_slot_id = selected_slot->slot_id,
         .byte_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
         .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = selected_object->size_bytes == 0 ? std::size_t{8}
-                                                       : selected_object->size_bytes,
-        .align_bytes = selected_object->align_bytes == 0 ? std::size_t{8}
-                                                         : selected_object->align_bytes,
+        .size_bytes =
+            use_missing_local_aggregate_frame_address
+                ? source_home.size_bytes.value_or(8)
+                : (selected_object->size_bytes == 0 ? std::size_t{8}
+                                                     : selected_object->size_bytes),
+        .align_bytes =
+            use_missing_local_aggregate_frame_address
+                ? source_home.align_bytes.value_or(8)
+                : (selected_object->align_bytes == 0 ? std::size_t{8}
+                                                      : selected_object->align_bytes),
         .can_use_base_plus_offset = true,
     };
   }

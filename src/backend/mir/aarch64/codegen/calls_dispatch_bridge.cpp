@@ -1183,10 +1183,17 @@ materialize_missing_frame_slot_call_arguments(
     std::optional<MemoryOperand> source;
     if (argument.source_selection.has_value()) {
       if (argument.source_selection->kind ==
-          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) {
-        source =
-            make_frame_slot_call_argument_source(
+              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+          argument.source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+        address_source =
+            make_frame_slot_call_argument_address_source(
                 context, argument, *home, instruction_index);
+        source =
+            address_source.has_value()
+                ? address_source
+                : make_frame_slot_call_argument_source(
+                      context, argument, *home, instruction_index);
       }
     } else {
       address_source =
