@@ -350,7 +350,7 @@ find_prior_stack_preserved_value_before_instruction(
     const prepare::PreparedCallPreservedValue& preserved);
 [[nodiscard]] bool preserved_value_has_block_entry_non_call_use(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPreservedValue& preserved);
+    const prepare::PreparedCallBoundaryEffectPlan& effect);
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -364,7 +364,7 @@ make_prior_preserved_call_argument_source(
 make_callee_saved_preservation_home_republication_instruction(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallPreservedValue& preserved,
+    const prepare::PreparedCallBoundaryEffectPlan& effect,
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -375,7 +375,7 @@ make_callee_saved_preservation_home_republication(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallPreservedValue& preserved,
+    const prepare::PreparedCallBoundaryEffectPlan& effect,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -383,7 +383,7 @@ make_callee_saved_preservation_home_population(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallPreservedValue& preserved,
+    const prepare::PreparedCallBoundaryEffectPlan& effect,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 

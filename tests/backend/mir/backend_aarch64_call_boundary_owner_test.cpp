@@ -466,6 +466,96 @@ int scalar_call_result_publishes_gpr_to_prepared_stack_home() {
   return 0;
 }
 
+int callee_saved_preservation_uses_shared_boundary_effects() {
+  constexpr auto function_name = c4c::FunctionNameId{4501};
+  constexpr auto block_label = c4c::BlockLabelId{4502};
+  constexpr auto value_id = prepare::PreparedValueId{4503};
+  constexpr auto value_name = c4c::ValueNameId{4504};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = value_id,
+          .function_name = function_name,
+          .value_name = value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"x9"},
+          .size_bytes = std::size_t{8},
+          .align_bytes = std::size_t{8},
+      }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 2,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"clobber_live"},
+      .preserved_values = {prepare::PreparedCallPreservedValue{
+          .value_id = value_id,
+          .value_name = value_name,
+          .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .callee_saved_save_index = std::size_t{0},
+          .contiguous_width = 1,
+          .register_name = std::string{"x19"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .occupied_register_names = {"x19"},
+          .register_placement = prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+      }},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto before =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 2, diagnostics);
+  const auto after =
+      aarch64_codegen::lower_after_call_moves(block_context, call_plan, 2, diagnostics);
+  if (!diagnostics.empty() || before.size() != 1 || after.size() != 1) {
+    return fail("expected callee-saved preservation population and republication to lower");
+  }
+
+  const auto* population = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+      &before.front().target.payload);
+  if (population == nullptr || !population->source_register.has_value() ||
+      !population->destination_register.has_value() ||
+      population->source_register->reg != aarch64_abi::x_register(9) ||
+      population->destination_register->reg != aarch64_abi::x_register(19) ||
+      population->move.reason != "preservation_home_population") {
+    return fail("expected population to consume the prepared preservation effect destination");
+  }
+
+  const auto* republication = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+      &after.front().target.payload);
+  if (republication == nullptr || !republication->source_register.has_value() ||
+      !republication->destination_register.has_value() ||
+      republication->source_register->reg != aarch64_abi::x_register(19) ||
+      republication->destination_register->reg != aarch64_abi::x_register(9) ||
+      republication->move.reason != "preservation_republication") {
+    return fail("expected republication to consume the prepared preservation effect source");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -474,5 +564,6 @@ int main() {
   status |= byval_callee_entry_consumes_byval_frame_slot();
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
   status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
+  status |= callee_saved_preservation_uses_shared_boundary_effects();
   return status == 0 ? 0 : 1;
 }
