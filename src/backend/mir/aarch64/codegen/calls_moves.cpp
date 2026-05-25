@@ -3118,6 +3118,14 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
         effect.phase != prepare::PreparedMovePhase::BeforeCall) {
       continue;
     }
+    const auto population_value_id = effect.source.value_id.has_value()
+                                         ? effect.source.value_id
+                                         : effect.destination.value_id;
+    if (!population_value_id.has_value() ||
+        find_prior_preserved_value_for_value(context, call_plan, *population_value_id) !=
+            nullptr) {
+      continue;
+    }
     if (auto instruction = make_callee_saved_preservation_home_population(
             context, call_plan, *bundle, effect, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));

@@ -261,8 +261,7 @@ make_callee_saved_preservation_home_population(
       value_name == c4c::kInvalidValueName ||
       storage.storage_kind != prepare::PreparedMoveStorageKind::Register ||
       !storage.register_name.has_value() ||
-      !storage.register_bank.has_value() ||
-      find_prior_preserved_value_for_value(context, call_plan, *value_id) != nullptr) {
+      !storage.register_bank.has_value()) {
     return std::nullopt;
   }
   const auto* source_home =
