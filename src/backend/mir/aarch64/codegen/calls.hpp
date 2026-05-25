@@ -47,7 +47,11 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             std::size_t instruction_index,
                             std::string message);
 
-// calls_argument_sources
+// calls_operand_adapters
+
+// Target-only operand adapters. These translate prepared register, view,
+// immediate, and F128 facts into AArch64 operands; they do not choose semantic
+// call-argument sources.
 
 [[nodiscard]] bool complete_full_width_f128_carrier(
     const prepare::PreparedF128Carrier* carrier);
@@ -96,6 +100,13 @@ make_f128_q_register_operand_from_carrier(
     std::size_t size_bytes);
 [[nodiscard]] std::optional<bir::TypeKind> scalar_integer_type_from_size(
     std::size_t size_bytes);
+
+// calls_argument_sources
+
+// Shared frame-slot lookup and argument-source helpers. The frame-slot and
+// local-frame-address helpers below still contain the remaining compatibility
+// source-choice paths when prepared source-selection facts are absent.
+
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id);
