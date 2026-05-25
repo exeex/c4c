@@ -24,6 +24,8 @@ struct PreparedCallPlanLookups {
   std::vector<std::vector<PreparedPriorPreservedValueEntry>> prior_preserved_by_value;
   std::vector<std::vector<const PreparedCallPreservedValue*>>
       first_stack_preserved_by_call_index;
+  std::unordered_map<std::size_t, std::vector<PreparedCallBoundaryEffectPlan>>
+      block_entry_republication_effects_by_block;
 };
 
 struct PreparedAddressMaterializationLookups {
@@ -59,6 +61,7 @@ struct PreparedFunctionLookups {
     const PreparedPriorPreservedValueEntry& rhs);
 
 [[nodiscard]] PreparedCallPlanLookups make_prepared_call_plan_lookups(
+    const PreparedBirModule& prepared,
     const PreparedCallPlansFunction* call_plans,
     const PreparedControlFlowFunction& function);
 
@@ -124,5 +127,10 @@ first_indexed_stack_preserved_values_for_call(
     const PreparedCallPlanLookups& lookups,
     const PreparedCallPlansFunction& call_plans,
     const PreparedCallPlan& current_call_plan);
+
+[[nodiscard]] const std::vector<PreparedCallBoundaryEffectPlan>*
+indexed_block_entry_republication_effects_for_block(
+    const PreparedCallPlanLookups& lookups,
+    std::size_t block_index);
 
 }  // namespace c4c::backend::prepare

@@ -3473,51 +3473,18 @@ std::vector<module::MachineInstruction> lower_value_moves(
     return lowered;
   }
 
-  const auto* call_plans =
-      context.function.call_plans != nullptr
-          ? context.function.call_plans
-          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
-                 ? prepare::find_prepared_call_plans(
-                       *context.function.prepared, context.function.control_flow->function_name)
-                 : nullptr);
-  if (call_plans == nullptr) {
+  if (context.function.call_plan_lookups == nullptr) {
+    return lowered;
+  }
+  const auto* selected_preservation_effects =
+      prepare::indexed_block_entry_republication_effects_for_block(
+          *context.function.call_plan_lookups, context.block_index);
+  if (selected_preservation_effects == nullptr) {
     return lowered;
   }
 
-  std::vector<prepare::PreparedCallBoundaryEffectPlan> selected_preservation_effects;
-  for (const auto& call : call_plans->calls) {
-    if (call.block_index >= context.block_index) {
-      continue;
-    }
-    const auto effects =
-        prepare::plan_prepared_call_boundary_effects(call, nullptr, nullptr);
-    for (const auto& effect : effects) {
-      if (effect.effect_kind !=
-              prepare::PreparedCallBoundaryEffectKind::PreservationRepublication ||
-          effect.preservation_route !=
-              prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
-          !effect.destination.value_id.has_value()) {
-        continue;
-      }
-      auto existing = std::find_if(
-          selected_preservation_effects.begin(),
-          selected_preservation_effects.end(),
-          [&](const prepare::PreparedCallBoundaryEffectPlan& candidate) {
-            return candidate.destination.value_id == effect.destination.value_id;
-          });
-      if (existing == selected_preservation_effects.end()) {
-        selected_preservation_effects.push_back(effect);
-      } else {
-        *existing = effect;
-      }
-    }
-  }
-
   const auto& republication_bundle = bundle != nullptr ? *bundle : synthetic_bundle;
-  for (const auto& effect : selected_preservation_effects) {
-    if (!preserved_value_has_block_entry_non_call_use(context, effect)) {
-      continue;
-    }
+  for (const auto& effect : *selected_preservation_effects) {
     if (auto instruction =
             make_callee_saved_preservation_home_republication_instruction(
                 context,

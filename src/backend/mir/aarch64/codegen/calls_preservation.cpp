@@ -332,32 +332,6 @@ find_prior_preserved_value_for_value(
          branch_condition_uses_value(context, spelling);
 }
 
-[[nodiscard]] bool preserved_value_has_block_entry_non_call_use(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallBoundaryEffectPlan& effect) {
-  const auto value_name = effect_value_name(effect.destination, effect.source);
-  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
-      value_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  const auto spelling =
-      prepare::prepared_value_name(context.function.prepared->names, value_name);
-  if (spelling.empty()) {
-    return false;
-  }
-
-  for (const auto& inst : context.bir_block->insts) {
-    if (std::holds_alternative<bir::CallInst>(inst)) {
-      return false;
-    }
-    if (non_call_instruction_uses_value(inst, spelling)) {
-      return true;
-    }
-  }
-  return terminator_uses_value(context.bir_block->terminator, spelling) ||
-         branch_condition_uses_value(context, spelling);
-}
-
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,

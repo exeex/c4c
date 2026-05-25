@@ -320,9 +320,6 @@ find_prior_preserved_value_for_call_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallPreservedValue& preserved);
-[[nodiscard]] bool preserved_value_has_block_entry_non_call_use(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallBoundaryEffectPlan& effect);
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,

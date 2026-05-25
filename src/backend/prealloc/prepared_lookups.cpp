@@ -3,6 +3,8 @@
 #include "module.hpp"
 
 #include <algorithm>
+#include <string_view>
+#include <variant>
 
 namespace c4c::backend::prepare {
 namespace {
@@ -117,6 +119,196 @@ namespace {
   return false;
 }
 
+[[nodiscard]] const bir::Function* prepared_bir_function(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function) {
+  if (function.function_name == kInvalidFunctionName) {
+    return nullptr;
+  }
+  const std::string_view function_name =
+      prepared_function_name(prepared.names, function.function_name);
+  if (function_name.empty()) {
+    return nullptr;
+  }
+  for (const auto& bir_function : prepared.module.functions) {
+    if (std::string_view{bir_function.name} == function_name) {
+      return &bir_function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Block* prepared_bir_block(
+    const PreparedBirModule& prepared,
+    const bir::Function& function,
+    const PreparedControlFlowBlock& block) {
+  if (block.block_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  const std::string_view block_label =
+      prepared_block_label(prepared.names, block.block_label);
+  if (block_label.empty()) {
+    return nullptr;
+  }
+  for (const auto& bir_block : function.blocks) {
+    if (bir_block.label_id != kInvalidBlockLabel &&
+        prepared.module.names.block_labels.spelling(bir_block.label_id) == block_label) {
+      return &bir_block;
+    }
+    if (std::string_view{bir_block.label} == block_label) {
+      return &bir_block;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_value_spelling_matches(const bir::Value& value,
+                                                   std::string_view spelling) {
+  return value.kind == bir::Value::Kind::Named && value.name == spelling;
+}
+
+[[nodiscard]] bool prepared_non_call_instruction_uses_value(const bir::Inst& inst,
+                                                            std::string_view spelling) {
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return prepared_value_spelling_matches(binary->lhs, spelling) ||
+           prepared_value_spelling_matches(binary->rhs, spelling);
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    return prepared_value_spelling_matches(select->lhs, spelling) ||
+           prepared_value_spelling_matches(select->rhs, spelling) ||
+           prepared_value_spelling_matches(select->true_value, spelling) ||
+           prepared_value_spelling_matches(select->false_value, spelling);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return prepared_value_spelling_matches(cast->operand, spelling);
+  }
+  if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+    return prepared_value_spelling_matches(store_global->value, spelling);
+  }
+  if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+    return prepared_value_spelling_matches(store_local->value, spelling);
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_terminator_uses_value(const bir::Terminator& terminator,
+                                                  std::string_view spelling) {
+  if (terminator.value.has_value() &&
+      prepared_value_spelling_matches(*terminator.value, spelling)) {
+    return true;
+  }
+  for (const auto& lane : terminator.return_lanes) {
+    if (prepared_value_spelling_matches(lane, spelling)) {
+      return true;
+    }
+  }
+  return terminator.kind == bir::TerminatorKind::CondBranch &&
+         prepared_value_spelling_matches(terminator.condition, spelling);
+}
+
+[[nodiscard]] bool prepared_branch_condition_uses_value(
+    const PreparedControlFlowFunction& function,
+    const PreparedControlFlowBlock& block,
+    std::string_view spelling) {
+  const auto* condition = find_prepared_branch_condition(function, block.block_label);
+  if (condition == nullptr) {
+    return false;
+  }
+  return prepared_value_spelling_matches(condition->condition_value, spelling) ||
+         (condition->lhs.has_value() &&
+          prepared_value_spelling_matches(*condition->lhs, spelling)) ||
+         (condition->rhs.has_value() &&
+          prepared_value_spelling_matches(*condition->rhs, spelling));
+}
+
+[[nodiscard]] bool prepared_block_entry_has_non_call_use(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function,
+    const PreparedControlFlowBlock& block,
+    const bir::Block& bir_block,
+    ValueNameId value_name) {
+  if (value_name == kInvalidValueName) {
+    return false;
+  }
+  const std::string_view spelling = prepared_value_name(prepared.names, value_name);
+  if (spelling.empty()) {
+    return false;
+  }
+  for (const auto& inst : bir_block.insts) {
+    if (std::holds_alternative<bir::CallInst>(inst)) {
+      return false;
+    }
+    if (prepared_non_call_instruction_uses_value(inst, spelling)) {
+      return true;
+    }
+  }
+  return prepared_terminator_uses_value(bir_block.terminator, spelling) ||
+         prepared_branch_condition_uses_value(function, block, spelling);
+}
+
+void collect_block_entry_republication_effects(
+    PreparedCallPlanLookups& lookups,
+    const PreparedBirModule& prepared,
+    const PreparedCallPlansFunction& call_plans,
+    const PreparedControlFlowFunction& function,
+    const std::vector<std::vector<bool>>& dominates) {
+  const auto* bir_function = prepared_bir_function(prepared, function);
+  if (bir_function == nullptr) {
+    return;
+  }
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    const auto* bir_block = prepared_bir_block(prepared, *bir_function, block);
+    if (bir_block == nullptr) {
+      continue;
+    }
+
+    std::vector<PreparedCallBoundaryEffectPlan> selected;
+    for (const auto& call : call_plans.calls) {
+      if (call.block_index == block_index ||
+          block_index >= dominates.size() ||
+          call.block_index >= dominates[block_index].size() ||
+          !dominates[block_index][call.block_index]) {
+        continue;
+      }
+      const auto effects = plan_prepared_call_boundary_effects(call, nullptr, nullptr);
+      for (auto effect : effects) {
+        if (effect.effect_kind !=
+                PreparedCallBoundaryEffectKind::PreservationRepublication ||
+            effect.preservation_route !=
+                PreparedCallPreservationRoute::CalleeSavedRegister ||
+            !effect.destination.value_id.has_value() ||
+            !prepared_block_entry_has_non_call_use(
+                prepared, function, block, *bir_block, effect.destination.value_name)) {
+          continue;
+        }
+        effect.phase = PreparedMovePhase::BlockEntry;
+        effect.block_index = block_index;
+        effect.instruction_index = 0;
+        effect.reason = "callee_saved_preservation_home_block_entry_republication";
+        auto existing = std::find_if(
+            selected.begin(),
+            selected.end(),
+            [&](const PreparedCallBoundaryEffectPlan& candidate) {
+              return candidate.destination.value_id == effect.destination.value_id;
+            });
+        if (existing == selected.end()) {
+          effect.order_index = selected.size();
+          selected.push_back(std::move(effect));
+        } else {
+          effect.order_index = existing->order_index;
+          *existing = std::move(effect);
+        }
+      }
+    }
+    if (!selected.empty()) {
+      lookups.block_entry_republication_effects_by_block.emplace(block_index,
+                                                                 std::move(selected));
+    }
+  }
+}
+
 }  // namespace
 
 [[nodiscard]] std::size_t prepared_call_position_key(std::size_t block_index,
@@ -142,6 +334,7 @@ namespace {
 }
 
 [[nodiscard]] PreparedCallPlanLookups make_prepared_call_plan_lookups(
+    const PreparedBirModule& prepared,
     const PreparedCallPlansFunction* call_plans,
     const PreparedControlFlowFunction& function) {
   PreparedCallPlanLookups lookups;
@@ -189,6 +382,8 @@ namespace {
     std::sort(entries.begin(), entries.end(),
               prepared_prior_preserved_value_entry_position_less);
   }
+  collect_block_entry_republication_effects(
+      lookups, prepared, *call_plans, function, dominates);
   return lookups;
 }
 
@@ -248,7 +443,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   const auto* value_locations =
       find_prepared_value_location_function(prepared, function.function_name);
   return PreparedFunctionLookups{
-      .call_plans = make_prepared_call_plan_lookups(call_plans, function),
+      .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =
           make_prepared_address_materialization_lookups(prepared, function.function_name),
       .move_bundles = make_prepared_move_bundle_lookups(value_locations),
@@ -455,6 +650,17 @@ first_indexed_stack_preserved_values_for_call(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] const std::vector<PreparedCallBoundaryEffectPlan>*
+indexed_block_entry_republication_effects_for_block(
+    const PreparedCallPlanLookups& lookups,
+    std::size_t block_index) {
+  const auto it = lookups.block_entry_republication_effects_by_block.find(block_index);
+  if (it == lookups.block_entry_republication_effects_by_block.end()) {
+    return nullptr;
+  }
+  return &it->second;
 }
 
 }  // namespace c4c::backend::prepare
