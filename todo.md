@@ -1,50 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Affected Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 closed out the Step 2 helper boundary for the removed indirect-register
-byval local decision.
+Step 4 completed the broader backend checkpoint for the AArch64 indirect byval
+authority-removal slice.
 
-- No `aarch64_indirect_register_byval_argument` declaration, definition, or code
-  caller remains.
-- The remaining `prepared_indirect_byval_extent_bytes` boundary is intentionally
-  retained as an emission-only shared predicate: `calls_preservation.cpp` uses it
-  only to suppress prior-preserved source reuse for prepared indirect byval
-  moves, while `calls_moves.cpp` uses the same prepared fact to choose the
-  publication source. It does not restore a `CallInst::arg_abi` authority read.
-- The remaining publication-helper blockers are still outside this closeout
-  packet.
+- The supervisor-selected broader proof rebuilt the default preset and ran the
+  full `^backend_` CTest subset.
+- The subset covered adjacent AArch64 call-boundary/prepared-call behavior,
+  byval helper runtime cases, publication-plan tests, and shared x86
+  call-boundary/backend-route tests.
+- The checkpoint passed with 162/162 `^backend_` tests passing.
 
 ## Suggested Next
 
-Supervisor route decision: either send the remaining publication-helper
-blockers to a separate packet/plan review, or close this Step 3 slice as the
-selected local-decision boundary cleanup.
+Supervisor route decision: proceed to Step 5 closure review for the current
+checkpoint, or keep the source idea active if the known publication-helper
+blockers still require another runbook checkpoint.
 
 ## Watchouts
 
+- This was a validation-only packet; no implementation files were touched.
 - Do not close `ideas/open/02_aarch64_calls_emission_consolidation.md` while
-  durable blockers remain.
+  durable publication-helper blockers remain.
 - The publication blockers in `calls_dispatch_bridge.cpp` and
-  `calls_argument_sources.cpp` remain separate durable candidates and were not
-  touched by this packet.
+  `calls_argument_sources.cpp` remain separate durable candidates.
 - The `calls_dispatch_bridge.hpp` `CallInst`-shaped helper boundary remains a
   separate durable candidate.
-- Treat retained `CallInst` reads as acceptable only for identity validation,
-  diagnostics, or emission context, not for rederiving prepared call-plan
-  decisions.
-- Do not restore `aarch64_stack_byval_argument_size_bytes`,
-  `aarch64_indirect_byval_argument_size_bytes`, or
-  `aarch64_indirect_register_byval_argument`.
 
 ## Proof
 
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
 Result: passed in `test_after.log`; 162/162 `^backend_` tests passed.
+
+Coverage notes from the backend subset: CTest reported 37 AArch64-labeled
+tests, 3 byval-labeled tests, 2 publication-labeled tests, 1 prepared call
+boundary scalability test, 83 backend-route tests, and 9 x86-labeled tests
+among the passing `^backend_` run.
