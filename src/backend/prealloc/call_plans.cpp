@@ -1,4 +1,5 @@
 #include "call_plans.hpp"
+#include "prepared_lookups.hpp"
 #include "regalloc/call_return_abi.hpp"
 #include "target_register_profile.hpp"
 
@@ -1370,35 +1371,6 @@ void copy_access_source_selection_fields(PreparedCallArgumentSourceSelection& se
   selection.source_align_bytes = access.address.align_bytes;
 }
 
-[[nodiscard]] const PreparedCallPreservedValue* find_latest_prior_preserved_value(
-    const PreparedCallPlansFunction& function_plan,
-    const PreparedCallPlan& current_call_plan,
-    PreparedValueId value_id) {
-  const PreparedCallPreservedValue* selected = nullptr;
-  std::size_t selected_block = 0;
-  std::size_t selected_instruction = 0;
-  for (const auto& prior_call : function_plan.calls) {
-    if (prior_call.block_index > current_call_plan.block_index ||
-        (prior_call.block_index == current_call_plan.block_index &&
-         prior_call.instruction_index >= current_call_plan.instruction_index)) {
-      continue;
-    }
-    for (const auto& preserved : prior_call.preserved_values) {
-      if (preserved.value_id != value_id) {
-        continue;
-      }
-      if (selected == nullptr || prior_call.block_index > selected_block ||
-          (prior_call.block_index == selected_block &&
-           prior_call.instruction_index > selected_instruction)) {
-        selected = &preserved;
-        selected_block = prior_call.block_index;
-        selected_instruction = prior_call.instruction_index;
-      }
-    }
-  }
-  return selected;
-}
-
 [[nodiscard]] const PreparedAddressMaterialization*
 find_latest_frame_slot_materialization(const PreparedAddressingFunction* addressing,
                                        const PreparedNameTables& names,
@@ -1531,8 +1503,8 @@ void copy_materialization_source_selection_fields(
 [[nodiscard]] std::optional<PreparedCallArgumentSourceSelection>
 select_prepared_call_argument_source(const PreparedBirModule& prepared,
                                      const PreparedNameTables& names,
-                                     const PreparedCallPlansFunction& function_plan,
                                      const PreparedCallPlan& call_plan,
+                                     const PreparedCallPlanLookups& call_plan_lookups,
                                      const bir::Function& function,
                                      const bir::CallInst& call,
                                      const PreparedControlFlowFunction* control_flow,
@@ -1639,23 +1611,18 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
   }
 
   const auto value_id = argument.source_value_id.value_or(move->from_value_id);
-  if (const auto* preserved =
-          find_latest_prior_preserved_value(function_plan, call_plan, value_id);
-      preserved != nullptr) {
+  const auto preserved_lookup = find_unique_indexed_prior_preserved_value_source(
+      call_plan_lookups, control_flow, call_plan, value_id);
+  if (preserved_lookup.status == PreparedPriorPreservedValueLookupStatus::Found &&
+      preserved_lookup.preserved != nullptr && preserved_lookup.entry != nullptr) {
     selection.kind = PreparedCallArgumentSourceSelectionKind::PriorPreservation;
-    if (!copy_prior_preservation_source_selection_fields(selection, *preserved)) {
+    if (!copy_prior_preservation_source_selection_fields(selection,
+                                                         *preserved_lookup.preserved)) {
       return std::nullopt;
     }
-    for (const auto& prior_call : function_plan.calls) {
-      for (const auto& prior_preserved : prior_call.preserved_values) {
-        if (&prior_preserved == preserved) {
-          selection.preserved_call_block_index = prior_call.block_index;
-          selection.preserved_call_instruction_index = prior_call.instruction_index;
-          return selection;
-        }
-      }
-    }
-    return std::nullopt;
+    selection.preserved_call_block_index = preserved_lookup.entry->block_index;
+    selection.preserved_call_instruction_index = preserved_lookup.entry->instruction_index;
+    return selection;
   }
 
   return std::nullopt;
@@ -1820,6 +1787,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 ? nullptr
                 : find_prepared_move_bundle(
                       *value_locations, PreparedMovePhase::AfterCall, block_index, instruction_index);
+        const PreparedCallPlanLookups prior_preserved_lookups =
+            control_flow_function == nullptr
+                ? PreparedCallPlanLookups{}
+                : make_prepared_call_plan_lookups(
+                      prepared, &function_plan, *control_flow_function);
 
         for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
           PreparedCallArgumentPlan arg_plan{
@@ -1896,8 +1868,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.source_selection =
               select_prepared_call_argument_source(prepared,
                                                    prepared.names,
-                                                   function_plan,
                                                    call_plan,
+                                                   prior_preserved_lookups,
                                                    function,
                                                    *call,
                                                    control_flow_function,

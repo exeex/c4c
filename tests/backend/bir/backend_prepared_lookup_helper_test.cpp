@@ -75,6 +75,46 @@ int verify_linear_function_lookup() {
               .instruction_index = 2,
               .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
               .direct_callee_name = std::string("callee_a"),
+              .preserved_values = {
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 4,
+                      .value_name = value_name,
+                      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                      .contiguous_width = 1,
+                      .register_name = std::string("x19"),
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {"x19"},
+                      .register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
+                  },
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 9,
+                      .value_name = value_name,
+                      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                      .slot_id = prepare::PreparedFrameSlotId{3},
+                      .stack_offset_bytes = std::size_t{24},
+                      .stack_size_bytes = std::size_t{8},
+                      .stack_align_bytes = std::size_t{8},
+                  },
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 9,
+                      .value_name = value_name,
+                      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                      .slot_id = prepare::PreparedFrameSlotId{4},
+                      .stack_offset_bytes = std::size_t{32},
+                      .stack_size_bytes = std::size_t{8},
+                      .stack_align_bytes = std::size_t{8},
+                  },
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 10,
+                      .value_name = value_name,
+                      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                  },
+              },
           },
           prepare::PreparedCallPlan{
               .block_index = 1,
@@ -204,6 +244,56 @@ int verify_linear_function_lookup() {
   if (prepare::find_indexed_prepared_call_plan(&lookups.call_plans, call_plans, 0, 9) !=
       nullptr) {
     return fail("indexed call-plan lookup returned an unmatched linear call");
+  }
+  const prepare::PreparedCallPlan same_block_current{
+      .block_index = 0,
+      .instruction_index = 4,
+  };
+  const auto same_block_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, &control_flow, same_block_current, prepare::PreparedValueId{4});
+  if (same_block_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::Found ||
+      same_block_prior.preserved != &call_plans->calls[0].preserved_values[0] ||
+      same_block_prior.entry == nullptr ||
+      same_block_prior.entry->block_index != 0 ||
+      same_block_prior.entry->instruction_index != 2) {
+    return fail("unique prior-preservation lookup missed same-block indexed source");
+  }
+  const auto cross_block_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, &control_flow, call_plans->calls[1],
+          prepare::PreparedValueId{4});
+  if (cross_block_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::Found ||
+      cross_block_prior.preserved != &call_plans->calls[0].preserved_values[0] ||
+      cross_block_prior.entry == nullptr ||
+      cross_block_prior.entry->block_index != 0 ||
+      cross_block_prior.entry->instruction_index != 2) {
+    return fail("unique prior-preservation lookup missed cross-block dominating source");
+  }
+  const auto no_prior = prepare::find_unique_indexed_prior_preserved_value_source(
+      lookups.call_plans, &control_flow, same_block_current, prepare::PreparedValueId{88});
+  if (no_prior.status != prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      no_prior.preserved != nullptr || no_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup did not explicitly reject no-source case");
+  }
+  const auto ambiguous_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, &control_flow, call_plans->calls[1],
+          prepare::PreparedValueId{9});
+  if (ambiguous_prior.status !=
+      prepare::PreparedPriorPreservedValueLookupStatus::Ambiguous) {
+    return fail("unique prior-preservation lookup did not explicitly reject ambiguity");
+  }
+  const auto invalid_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, &control_flow, call_plans->calls[1],
+          prepare::PreparedValueId{10});
+  if (invalid_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::InvalidPreservation ||
+      invalid_prior.preserved != &call_plans->calls[0].preserved_values[3]) {
+    return fail("unique prior-preservation lookup did not explicitly reject incomplete source");
   }
 
   const auto* entry_materializations =

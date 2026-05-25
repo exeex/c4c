@@ -333,6 +333,46 @@ void collect_block_entry_republication_effects(
   return lhs.instruction_index < rhs.instruction_index;
 }
 
+[[nodiscard]] bool prepared_prior_preserved_value_entry_same_position(
+    const PreparedPriorPreservedValueEntry& lhs,
+    const PreparedPriorPreservedValueEntry& rhs) {
+  return lhs.block_index == rhs.block_index &&
+         lhs.instruction_index == rhs.instruction_index;
+}
+
+[[nodiscard]] bool prepared_prior_preserved_value_entry_reaches_call(
+    const PreparedPriorPreservedValueEntry& entry,
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCallPlan& current_call_plan) {
+  if (entry.block_index == current_call_plan.block_index) {
+    return entry.instruction_index < current_call_plan.instruction_index;
+  }
+  return control_flow != nullptr &&
+         prepared_block_dominates(*control_flow, entry.block_index,
+                                  current_call_plan.block_index);
+}
+
+[[nodiscard]] bool prepared_prior_preserved_value_has_complete_source(
+    const PreparedCallPreservedValue& preserved) {
+  switch (preserved.route) {
+    case PreparedCallPreservationRoute::Unknown:
+      return false;
+    case PreparedCallPreservationRoute::CalleeSavedRegister:
+      return preserved.register_name.has_value() &&
+             preserved.register_bank.has_value() &&
+             preserved.contiguous_width != 0 &&
+             !preserved.occupied_register_names.empty() &&
+             preserved.register_placement.has_value();
+    case PreparedCallPreservationRoute::StackSlot:
+      return preserved.value_name != kInvalidValueName &&
+             preserved.slot_id.has_value() &&
+             preserved.stack_offset_bytes.has_value() &&
+             preserved.stack_size_bytes.has_value() &&
+             *preserved.stack_size_bytes != 0;
+  }
+  return false;
+}
+
 [[nodiscard]] PreparedCallPlanLookups make_prepared_call_plan_lookups(
     const PreparedBirModule& prepared,
     const PreparedCallPlansFunction* call_plans,
@@ -590,6 +630,65 @@ find_dominating_indexed_prior_preserved_value(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] PreparedPriorPreservedValueLookupResult
+find_unique_indexed_prior_preserved_value_source(
+    const PreparedCallPlanLookups& lookups,
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCallPlan& current_call_plan,
+    PreparedValueId value_id) {
+  if (value_id >= lookups.prior_preserved_by_value.size()) {
+    return {};
+  }
+  const auto& entries = lookups.prior_preserved_by_value[value_id];
+  if (entries.empty()) {
+    return {};
+  }
+  const PreparedPriorPreservedValueEntry current{
+      .block_index = current_call_plan.block_index,
+      .instruction_index = current_call_plan.instruction_index,
+      .preserved = nullptr,
+  };
+  auto it = std::lower_bound(entries.begin(),
+                             entries.end(),
+                             current,
+                             prepared_prior_preserved_value_entry_position_less);
+  const PreparedPriorPreservedValueEntry* selected = nullptr;
+  while (it != entries.begin()) {
+    --it;
+    if (!prepared_prior_preserved_value_entry_reaches_call(
+            *it, control_flow, current_call_plan)) {
+      continue;
+    }
+    if (selected == nullptr) {
+      selected = &*it;
+      continue;
+    }
+    if (prepared_prior_preserved_value_entry_same_position(*selected, *it)) {
+      return PreparedPriorPreservedValueLookupResult{
+          .status = PreparedPriorPreservedValueLookupStatus::Ambiguous,
+          .entry = selected,
+          .preserved = selected->preserved,
+      };
+    }
+    break;
+  }
+  if (selected == nullptr || selected->preserved == nullptr) {
+    return {};
+  }
+  if (!prepared_prior_preserved_value_has_complete_source(*selected->preserved)) {
+    return PreparedPriorPreservedValueLookupResult{
+        .status = PreparedPriorPreservedValueLookupStatus::InvalidPreservation,
+        .entry = selected,
+        .preserved = selected->preserved,
+    };
+  }
+  return PreparedPriorPreservedValueLookupResult{
+      .status = PreparedPriorPreservedValueLookupStatus::Found,
+      .entry = selected,
+      .preserved = selected->preserved,
+  };
 }
 
 [[nodiscard]] const PreparedCallPreservedValue*

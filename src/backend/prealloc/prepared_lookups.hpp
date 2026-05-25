@@ -19,6 +19,20 @@ struct PreparedPriorPreservedValueEntry {
   const PreparedCallPreservedValue* preserved = nullptr;
 };
 
+enum class PreparedPriorPreservedValueLookupStatus {
+  Found,
+  NotFound,
+  Ambiguous,
+  InvalidPreservation,
+};
+
+struct PreparedPriorPreservedValueLookupResult {
+  PreparedPriorPreservedValueLookupStatus status =
+      PreparedPriorPreservedValueLookupStatus::NotFound;
+  const PreparedPriorPreservedValueEntry* entry = nullptr;
+  const PreparedCallPreservedValue* preserved = nullptr;
+};
+
 struct PreparedCallPlanLookups {
   std::unordered_map<std::size_t, const PreparedCallPlan*> calls_by_position;
   std::vector<std::vector<PreparedPriorPreservedValueEntry>> prior_preserved_by_value;
@@ -110,6 +124,13 @@ find_latest_indexed_prior_preserved_value(
 
 [[nodiscard]] const PreparedCallPreservedValue*
 find_dominating_indexed_prior_preserved_value(
+    const PreparedCallPlanLookups& lookups,
+    const PreparedControlFlowFunction* control_flow,
+    const PreparedCallPlan& current_call_plan,
+    PreparedValueId value_id);
+
+[[nodiscard]] PreparedPriorPreservedValueLookupResult
+find_unique_indexed_prior_preserved_value_source(
     const PreparedCallPlanLookups& lookups,
     const PreparedControlFlowFunction* control_flow,
     const PreparedCallPlan& current_call_plan,
