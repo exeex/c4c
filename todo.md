@@ -8,30 +8,35 @@ Current Step Title: Remove Or Justify Call-Specific Dispatch Glue
 
 ## Just Finished
 
-Step 5 - Remove Or Justify Call-Specific Dispatch Glue continued by moving
-`retarget_fpr_call_result_store_value_to_emitted_scalar` out of `dispatch.cpp`
-into `calls_dispatch_bridge.cpp`/`.hpp`.
+Step 5 - Remove Or Justify Call-Specific Dispatch Glue moved the remaining
+extractable call-boundary helper mechanics out of `dispatch.cpp` into
+`calls_dispatch_bridge.cpp`/`.hpp`.
 
-`dispatch.cpp` still calls the helper at the same memory-store routing point
-after ordinary memory lowering, so the FPR call-result store-value retargeting
-behavior is preserved. No call argument source-selection logic was added or
-changed.
+The final helper moved was
+`retarget_fpr_call_result_store_value_to_emitted_scalar`; `dispatch.cpp` still
+calls it at the same memory-store routing point after ordinary memory lowering,
+so behavior is preserved.
+
+Remaining call-specific code in `dispatch.cpp` is justified as routing:
+dispatch decides when already-owned bridge helpers run around the call
+instruction, materialized callee, materialized addresses, before-call moves,
+missing frame-slot arguments, call emission, after-call moves, and call-result
+recording. The source-selection mechanics remain in `calls_*` /
+`calls_dispatch_bridge` owners. No AArch64-local call argument source-selection
+logic was added or changed.
 
 ## Suggested Next
 
-Continue Step 5 by either moving or explicitly justifying the remaining
-call-specific dispatch glue in `dispatch.cpp`. The remaining justification
-target is the small sequencing code that decides when bridge helpers are invoked
-around materialized callees, materialized addresses, missing frame-slot
-arguments, and call-result recording.
+Move to Step 6 for boundary comments/documentation review and final validation.
 
 ## Watchouts
 
 The moved FPR helper intentionally preserves the old behavior: it retargets
 only named `f32`/`f64` `StoreLocal` values whose emitted scalar is a call ABI
 FPR in the FP/SIMD bank and whose memory record already matches the store value
-type. Keep future extraction semantic and do not add or change call argument
-source-selection behavior.
+type. The remaining call routing is intentionally not moved until a shared
+prepared call-argument source fact exists; do not add AArch64-local source
+selection to force more consolidation.
 
 ## Proof
 
