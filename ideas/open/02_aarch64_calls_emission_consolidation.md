@@ -46,6 +46,31 @@ surface that converts prepared call facts into AArch64 machine nodes.
 - The line count reduction comes from deleted duplication or moved authority,
   not from hiding behavior in opaque helpers.
 
+## Current Lifecycle Blocker
+
+Step 5 closure review after the call move boundary checkpoint rejects closure
+and deactivates the active runbook. The checkpoint passed its broader backend
+proof according to `todo.md`, but the workspace no longer contains
+`test_after.log`, so close-time regression guard acceptance cannot be
+rechecked from the canonical before/after logs.
+
+The source idea remains open because `calls_moves.cpp`,
+`calls_argument_sources.cpp`, `calls_preservation.cpp`, and `calls.hpp` still
+expose a large call move/source/preservation surface. The completed checkpoint
+also identified a precise remaining blocker: there is no single prepared
+call-argument source fact that says a selected `BeforeCall` argument move
+should source from prior preservation, local-frame address materialization, or
+byval register-lane materialization. Until that shared prepared fact exists,
+AArch64 caller-side source selection in `lower_before_call_move` is not
+actionable as another consolidation checkpoint under this source idea.
+
+Do not reactivate this idea for another AArch64-local move/source cleanup
+checkpoint unless either:
+
+- the missing shared prepared call-argument source fact has been introduced, or
+- a fresh mapping proves a different remaining helper duplicates an already
+  available prepared fact without needing new shared call-plan authority.
+
 ## Reviewer Reject Signals
 
 - A patch only concatenates `calls*.cpp` files into a larger file and claims
