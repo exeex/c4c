@@ -1432,6 +1432,14 @@ make_immediate_cast_call_argument_publication_instruction(
             source_home,
             instruction_index,
             diagnostics);
+        if (argument->source_selection->kind ==
+                prepare::PreparedCallArgumentSourceSelectionKind::
+                    PriorPreservation &&
+            argument->source_selection->preservation_route ==
+                prepare::PreparedCallPreservationRoute::StackSlot &&
+            !preserved_selection_source.has_value()) {
+          return std::nullopt;
+        }
       }
       const auto* preserved =
           preserved_selection_source.has_value()

@@ -15296,6 +15296,43 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   return 0;
 }
 
+int incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home() {
+  auto prepared = prepared_with_stack_preserved_argument_call_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& call_plan = prepared.call_plans.functions.front().calls.back();
+  call_plan.arguments.front().source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .preserved_stack_offset_bytes = preserved.stack_offset_bytes,
+          .preserved_stack_size_bytes = preserved.stack_size_bytes,
+          .preserved_stack_align_bytes = preserved.stack_align_bytes,
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
+  if (!lowered.empty() || !diagnostics.empty()) {
+    return fail("expected incomplete explicit stack prior-preservation selection not to rederive prior stack home");
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -27361,6 +27398,11 @@ int main() {
   }
   if (const int status =
           stack_preserved_home_feeds_later_call_argument_after_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home();
       status != 0) {
     return status;
   }

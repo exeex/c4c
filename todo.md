@@ -8,26 +8,26 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired the next proven duplicate source boundary for
-`PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization`
-where the prepared materialization payload is complete: AArch64 now reads the
-selected local-frame address source directly from the prepared materialization
-fields without requiring the legacy source stack fields or rederiving the
-frame address from local address-materialization/stack-object scans.
+Step 2 of `plan.md` retired the explicit stack-slot
+`PreparedCallArgumentSourceSelectionKind::PriorPreservation` rediscovery path
+for before-call AArch64 register arguments. When an argument carries an
+explicit stack-slot prior-preservation selection, the move now consumes the
+prepared stack-slot payload only if it is complete and no longer rederives that
+same selected source through `find_prior_preserved_value_for_call_argument`.
 
-The local-address instruction-dispatch fixture now supplies a complete prepared
-`LocalFrameAddressMaterialization` source-selection fact and no longer provides
-the old stack-object fallback, proving the selected-source path is consumed.
-Incomplete or absent local-frame address selections still fall through to the
-existing compatibility fallback.
+The instruction-dispatch coverage now includes an incomplete explicit
+stack-slot `PriorPreservation` selection with prior-preservation lookup facts
+still present; `lower_before_call_moves` emits no rederived move from the
+legacy lookup, proving the fallback boundary was retired for this selected
+source path. Absent `source_selection` compatibility is unchanged.
 
 ## Suggested Next
 
-Continue Step 2 by retiring the stack-slot `PriorPreservation` helper boundary
-only where `PreparedCallArgumentSourceSelectionKind::PriorPreservation`
-contains a complete stack-slot preservation payload. Keep callee-saved-register
-prior preservation and incomplete/absent selection compatibility outside that
-packet.
+Continue Step 2 by auditing the remaining selected-source helpers for another
+complete-payload-only duplicate boundary that can be retired without touching
+absent-selection compatibility. A good next packet is the remaining frame-slot
+value/address compatibility surface, if the supervisor wants another narrow
+source-boundary slice.
 
 ## Watchouts
 
@@ -46,6 +46,9 @@ packet.
   selected-source paths are now consumed from prepared facts. Local-frame
   address materialization still intentionally preserves compatibility fallback
   for incomplete/absent selections.
+- Stack-slot `PriorPreservation` explicit selections now require a complete
+  stack payload; absent-selection prior-preservation lookup remains the
+  compatibility path.
 - Do not invent a new call-plan API under this source idea.
 - Do not move AArch64 emission details into the shared planner.
 - Do not claim progress through file concatenation, expectation weakening, or
