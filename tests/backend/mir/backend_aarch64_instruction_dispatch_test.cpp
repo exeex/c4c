@@ -50,6 +50,17 @@ mir::MachinePrintResult print_route_block(
       function, aarch64_codegen::MachineInstructionPrinter{});
 }
 
+void attach_prepared_function_lookups(
+    aarch64_module::FunctionLoweringContext& function_context,
+    const prepare::PreparedFunctionLookups& prepared_lookups) {
+  function_context.prepared_lookups = &prepared_lookups;
+  function_context.call_plan_lookups = &prepared_lookups.call_plans;
+  function_context.address_materialization_lookups =
+      &prepared_lookups.address_materializations;
+  function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
+  function_context.value_home_lookups = &prepared_lookups.value_homes;
+}
+
 prepare::PreparedF128Carrier dispatch_f128_register_carrier(
     c4c::FunctionNameId function_name,
     prepare::PreparedValueId value_id,
@@ -15135,8 +15146,19 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_stack_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  if (function_context.call_plans == nullptr ||
+      function_context.call_plan_lookups == nullptr ||
+      prepare::first_indexed_stack_preserved_values_for_call(
+          *function_context.call_plan_lookups,
+          *function_context.call_plans,
+          function_context.call_plans->calls.front()) == nullptr) {
+    return fail("expected stack-preserved publication to use shared prepared lookup facts");
+  }
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -15201,8 +15223,11 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   auto prepared = prepared_with_stack_preserved_argument_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -22250,8 +22275,11 @@ int preserved_stack_home_symbol_address_argument_not_reloaded_after_materializat
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -22465,8 +22493,11 @@ int stack_preserved_loaded_global_pointer_publishes_before_call_argument_reload(
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 

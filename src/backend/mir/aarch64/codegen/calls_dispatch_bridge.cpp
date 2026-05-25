@@ -986,42 +986,6 @@ materialize_missing_frame_slot_call_arguments(
   return lowered;
 }
 
-[[nodiscard]] std::vector<const prepare::PreparedCallPreservedValue*>
-first_stack_preserved_values_for_call_fallback(
-    const prepare::PreparedCallPlansFunction& call_plans,
-    const prepare::PreparedCallPlan& current_call_plan) {
-  std::vector<const prepare::PreparedCallPreservedValue*> values;
-  std::vector<unsigned char> seen_stack_values;
-  for (const auto& call : call_plans.calls) {
-    const bool is_current = call.block_index == current_call_plan.block_index &&
-                            call.instruction_index == current_call_plan.instruction_index;
-    for (const auto& preserved : call.preserved_values) {
-      if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
-          preserved.value_name == c4c::kInvalidValueName ||
-          !preserved.slot_id.has_value() ||
-          !preserved.stack_offset_bytes.has_value() ||
-          !preserved.stack_size_bytes.has_value() ||
-          *preserved.stack_size_bytes == 0) {
-        continue;
-      }
-      if (preserved.value_id >= seen_stack_values.size()) {
-        seen_stack_values.resize(preserved.value_id + 1U, 0U);
-      }
-      if (seen_stack_values[preserved.value_id] != 0U) {
-        continue;
-      }
-      seen_stack_values[preserved.value_id] = 1U;
-      if (is_current) {
-        values.push_back(&preserved);
-      }
-    }
-    if (is_current) {
-      break;
-    }
-  }
-  return values;
-}
-
 [[nodiscard]] std::vector<module::MachineInstruction>
 publish_stack_preserved_call_values(
     const module::BlockLoweringContext& context,
@@ -1038,24 +1002,16 @@ publish_stack_preserved_call_values(
                        *context.function.prepared,
                        context.function.control_flow->function_name)
                  : nullptr);
-  const auto* first_stack_values =
-      call_plans == nullptr || context.function.call_plan_lookups == nullptr
-          ? nullptr
-          : prepare::first_indexed_stack_preserved_values_for_call(
-                *context.function.call_plan_lookups, *call_plans, call_plan);
-  std::vector<const prepare::PreparedCallPreservedValue*> fallback_values;
-  if (call_plans != nullptr && context.function.call_plan_lookups == nullptr) {
-    fallback_values =
-        first_stack_preserved_values_for_call_fallback(*call_plans, call_plan);
-  } else if (call_plans == nullptr) {
-    fallback_values.reserve(call_plan.preserved_values.size());
-    for (const auto& preserved : call_plan.preserved_values) {
-      fallback_values.push_back(&preserved);
-    }
+  if (call_plans == nullptr || context.function.call_plan_lookups == nullptr) {
+    return lowered;
   }
-  const auto& values =
-      first_stack_values != nullptr ? *first_stack_values : fallback_values;
-  for (const auto* preserved_ptr : values) {
+  const auto* first_stack_values =
+      prepare::first_indexed_stack_preserved_values_for_call(
+          *context.function.call_plan_lookups, *call_plans, call_plan);
+  if (first_stack_values == nullptr) {
+    return lowered;
+  }
+  for (const auto* preserved_ptr : *first_stack_values) {
     if (preserved_ptr == nullptr) {
       continue;
     }
