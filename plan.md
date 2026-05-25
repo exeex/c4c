@@ -1,223 +1,222 @@
-# AArch64 Call Printing And Effect Publication Checkpoint
+# AArch64 Call Move Boundary Consolidation Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 
 ## Purpose
 
-Continue AArch64 call-emission consolidation after the Step 5 closure review
-for the call-argument preservation lookup checkpoint rejected source-idea
+Continue AArch64 calls-emission consolidation after the Step 5 closure review
+for the call printing/effect-publication checkpoint rejected source-idea
 closure.
 
 ## Goal
 
 Decide and execute the next narrow checkpoint for the surviving
-`calls_printing.cpp` call-boundary printing and effect-publication surface,
-leaving printer-only work in the machine-printer layer and target-local calls
-code responsible only for AArch64 call emission facts.
+`calls_moves.cpp` and call-boundary move surface, leaving target-local calls
+code responsible for AArch64 machine-node emission rather than rederiving
+prepared call-plan decisions.
 
 ## Core Rule
 
-Target-local AArch64 calls code may build AArch64 call and call-boundary
-machine nodes from prepared call facts. It must not own printer routing,
-print-only effect spelling, or duplicate call-boundary classification that
-belongs in the machine-printer layer or shared prepared facts.
+Target-local AArch64 calls code may convert prepared move, preservation, and
+call-boundary facts into AArch64 machine instructions. It must not duplicate
+call-plan authority, argument placement decisions, preservation eligibility, or
+call-boundary classification that is already available from shared prepared
+facts.
 
 ## Latest Closure Review Finding
 
-The Step 5 closure review after the call-argument preservation lookup
-checkpoint rejects source-idea closure.
+The Step 5 closure review after the call printing/effect-publication
+checkpoint rejects source-idea closure and keeps the idea active.
 
-The checkpoint's broader backend proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-reported 162/162 backend tests passed in the rolled-forward canonical
-`test_before.log`.
+The completed checkpoint moved pure call printing into the machine-printer
+layer and narrowed the remaining `calls_printing.cpp` declarations to
+machine-node construction:
 
-The source idea remains open because `calls_printing.cpp` is still a large
-separate calls-family translation unit with printer-result declarations
-exported through `calls.hpp`. It owns call-boundary selection diagnostics,
-machine-node effect publication helpers, prepared preserved-value effect
-conversion, immediate-cast publication assembly, and call/call-boundary
-printing. That surviving printer/effect-publication boundary is durable
-remaining work under the source idea's acceptance criteria, especially the
-scope item to move call printing or effect spelling that is not AArch64
-emission into the appropriate machine-printer or shared MIR layer.
+- `make_call_boundary_move_instruction`
+- `make_call_boundary_abi_binding_instruction`
+- `make_call_instruction`
+
+The checkpoint's broader backend proof was recorded in `todo.md` as:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`,
+with 162/162 backend tests passing. The current workspace does not contain
+`test_after.log`, so a close-time regression guard could not be accepted even
+if source completion were otherwise true.
+
+The source idea remains open because the AArch64 calls family still contains
+multiple large target-local translation units and a broad exported surface in
+`calls.hpp`. In particular, `calls_moves.cpp`, `calls_preservation.cpp`, and
+`calls_dispatch_bridge.cpp` still contain prepared lookup, preservation,
+call-boundary, argument-source, and diagnostic reconstruction paths that must
+be reviewed against the source idea's acceptance criteria.
 
 ## Read First
 
 - `ideas/open/02_aarch64_calls_emission_consolidation.md`
 - `src/backend/mir/aarch64/codegen/calls.hpp`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/mir/aarch64/codegen/calls_printing.cpp`
 - `src/backend/mir/aarch64/codegen/calls_moves.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.hpp`
-- Focused backend call-boundary, printer, and prepared-call tests under
-  `tests/backend/mir/`
+- `src/backend/mir/aarch64/codegen/calls_preservation.cpp`
+- `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp`
+- `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
+- `src/backend/mir/aarch64/codegen/calls_byval_aggregates.cpp`
+- Focused backend call-boundary, prepared-call, preservation, byval,
+  aggregate, and argument-source tests under `tests/backend/mir/`
 
 ## Current Targets / Scope
 
-- `calls_printing.cpp`
-- `print_call`
-- `print_call_boundary_move`
-- `print_call_boundary_abi_binding`
-- `make_call_boundary_move_instruction`
-- `make_call_boundary_abi_binding_instruction`
-- `effect_from_prepared_call_preserved_value`
-- `effects_from_prepared_call_preserved_values`
-- `call_boundary_move_selection_status`
-- `call_boundary_abi_binding_selection_status`
-- `call_selection_status`
-- Printer declarations in `calls.hpp`
-- Adjacent dispatch in `machine_printer.cpp` only where it already routes call
-  instruction payloads to call printers
+- `calls_moves.cpp`
+- `calls_preservation.cpp`
+- `calls_argument_sources.cpp`
+- `calls_dispatch_bridge.cpp` only where it feeds call-boundary move emission
+- `calls_byval_aggregates.cpp` only where Step 1 proves it owns call argument
+  move duplication
+- move and preservation declarations in `calls.hpp`
+- build metadata only if a calls translation unit is retired
 
 ## Non-Goals
 
 - Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
-- Do not perform broad dispatch cleanup outside AArch64 call printing and
-  call-boundary publication.
+- Do not perform broad dispatch cleanup outside AArch64 call move emission.
 - Do not invent a new shared call-plan API.
-- Do not move AArch64-specific register, memory operand, frame-slot address, or
-  assembly spelling details into shared planning.
+- Do not move AArch64-specific register, memory operand, frame-slot address,
+  byval lane, constant-materialization, or assembly spelling details into
+  shared planning.
 - Do not weaken unsupported or expected-output contracts.
 - Do not change behavior solely to reduce line count.
-- Do not absorb byval, aggregate, local-frame, variadic, ALU, memory,
-  comparison, prologue, or unrelated dispatch lowering cleanup into this
-  checkpoint.
+- Do not absorb unrelated ALU, memory, comparison, prologue, returns,
+  variadic, inline-asm, or whole-dispatch cleanup into this checkpoint.
 - Do not revisit completed aggregate-address, local-frame publication,
   prior stack-preservation lookup, block-entry republication, frame-slot call
-  argument narrowing, value-id prior-preservation lookup, or call-argument
-  prior-preservation lookup routes unless this checkpoint proves one still owns
-  duplicate printer/effect authority.
+  argument narrowing, value-id prior-preservation lookup, call-argument
+  prior-preservation lookup, or call printing/effect-publication routes unless
+  this checkpoint proves one still owns duplicate prepared-fact authority.
 
 ## Working Model
 
-- Treat `calls_printing.cpp` as a mixed boundary: some helpers create
-  call-boundary machine-node records, some helpers publish effects, and some
-  helpers are pure printing.
-- Keep AArch64-specific machine-node construction and operand assembly where
-  the emission layer needs them.
-- Move or narrow pure printer routing and line spelling toward
-  `machine_printer.cpp` when that reduces the calls-family API surface without
-  hiding emission behavior.
-- If effect publication is needed by both call emission and printing, decide
-  whether it belongs on the machine-node record, in the printer layer, or in a
-  smaller calls-owned emission helper.
-- A surviving helper is acceptable only when its parameters and callers
-  describe AArch64 emission-node construction rather than printer ownership or
-  prepared-call decision reconstruction.
+- Treat `calls_moves.cpp` as the next largest mixed boundary: it lowers
+  prepared move bundles into AArch64 machine instructions, but may still carry
+  target-local decision logic that should be represented by prepared facts.
+- Keep AArch64-specific operand assembly, instruction selection, byval lane
+  materialization, and diagnostics where emission needs them.
+- Prefer deleting or narrowing duplicate decision logic over moving it into a
+  different calls file.
+- A helper is acceptable when its parameters and callers describe emission from
+  prepared facts. It is suspect when it scans prepared structures to rediscover
+  call-plan decisions that a shared prepared lookup already owns.
+- Any surviving `calls.hpp` declaration should have a clear owner:
+  emission-node construction, source-operand assembly, preservation
+  publication, or a precise documented blocker.
 
 ## Execution Rules
 
-- Start by mapping every exported `calls_printing.cpp` declaration in
-  `calls.hpp` to either emission-node construction, machine-printer routing, or
-  shared prepared fact consumption.
+- Start by mapping every exported move, preservation, and argument-source
+  declaration in `calls.hpp` to either AArch64 emission, prepared-fact lookup,
+  duplicate planning, or unrelated dispatch bridge work.
 - Keep each code slice narrow enough for a fresh build plus focused backend
   proof.
-- Escalate to `^backend_` after changing printer routing, call-boundary effect
-  records, preserved-value effect conversion, inline assembly publication, or
-  call-boundary machine instruction printing.
+- Escalate to `^backend_` after changing prepared move classification,
+  preservation publication, argument-source reconstruction, byval aggregate
+  move emission, call-boundary machine instructions, or build metadata.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
+- If Step 1 proves the next coherent target is outside this source idea, stop
+  and record that as a lifecycle blocker instead of expanding this runbook.
 
-## Step 1: Map The Printing And Effect-Publication Boundary
+## Step 1: Map The Call Move And Preservation Boundary
 
-Goal: identify which surviving `calls_printing.cpp` responsibilities are pure
-printer work, which are emission-node construction, and which are duplicate
-prepared-call/effect decisions.
+Goal: identify which surviving calls-family move and preservation
+responsibilities are true AArch64 emission and which rederive prepared
+call-plan decisions.
 
 Primary targets:
 
-- `calls_printing.cpp`
-- printer declarations in `calls.hpp`
-- call payload routing in `machine_printer.cpp`
-- `make_call_boundary_move_instruction`
-- `make_call_boundary_abi_binding_instruction`
-- `print_call`
-- `print_call_boundary_move`
-- `print_call_boundary_abi_binding`
-- `effect_from_prepared_call_preserved_value`
+- `calls.hpp`
+- `calls_moves.cpp`
+- `calls_preservation.cpp`
+- `calls_argument_sources.cpp`
+- `calls_dispatch_bridge.cpp`
+- `calls_byval_aggregates.cpp`
 
 Actions:
 
-- Classify each exported helper as emission-node construction, pure printing,
-  effect publication, or duplicate prepared-call/effect decision logic.
-- Determine whether pure printing helpers can move to `machine_printer.cpp`
-  without dragging AArch64 call emission dependencies into generic prepared
-  planning.
-- Determine whether preserved-value effect conversion should remain calls-owned
-  or be represented on machine-node records before printing.
-- Identify a focused proof command that covers call printing, call-boundary
-  moves, prepared-call preservation effects, and AArch64 call output.
-- Record the selected ownership decision, any precise blocker, and the focused
-  proof command in `todo.md`.
+- Classify exported helpers for before-call moves, after-call moves,
+  before-return moves, value moves, preservation republication, prior
+  preserved-value lookup, and argument-source construction.
+- Identify helpers that scan prepared call plans, move bundles, value homes, or
+  ABI bindings to rediscover decisions instead of consuming a direct prepared
+  fact.
+- Decide whether each suspect helper should be deleted, narrowed to
+  emission-only operands, or left in place behind a precise shared-prepared-fact
+  blocker.
+- Select a focused proof command that covers AArch64 call moves,
+  call-boundary moves, preserved call arguments, byval aggregate arguments, and
+  prepared preservation effects.
+- Record the ownership map, blockers, and proof command in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the printer/effect boundary, the selected owner for each
-  helper family, any missing machine-node/effect fact blocker, and the focused
-  proof scope.
+- `todo.md` names the selected next code-changing target, the reason it remains
+  in this source idea, any missing prepared-fact blocker, and the focused proof
+  scope.
 
-## Step 2: Move Or Narrow Pure Printer Ownership
+## Step 2: Remove Or Narrow Duplicate Move Decision Logic
 
-Goal: remove printer-only declarations from the calls-family API or narrow them
-to machine-printer-owned implementation details.
+Goal: consolidate one coherent duplicate decision path from Step 1 while
+preserving AArch64 emission behavior.
 
 Actions:
 
-- Move pure `print_*` helper bodies to the machine-printer layer when Step 1
-  proves they do not need calls-owned emission authority.
-- Keep AArch64-specific mnemonic, register, frame-slot, immediate, and inline
-  assembly spelling in AArch64 machine-printer code.
-- Avoid moving prepared-call planning or preservation selection into the
-  printer.
-- Preserve diagnostics unless Step 1 proves a stronger machine-node fact makes
-  one obsolete.
+- Delete or narrow target-local logic that Step 1 proves is already represented
+  by prepared call-plan, move-bundle, preservation, or argument-source facts.
+- Keep AArch64 operand assembly, instruction record creation, and machine
+  instruction details local to the target.
+- Preserve diagnostics unless the prepared fact now provides an equivalent or
+  stronger contract.
+- Update `calls.hpp` declarations only when the exported helper boundary
+  changes.
 - Run `cmake --build --preset default` plus the focused backend proof selected
   in Step 1.
 
 Completion check:
 
-- Pure call printing no longer requires exported calls-family declarations
-  except for helpers that Step 1 classifies as emission-owned, and
-  `test_after.log` records a passing build plus focused proof.
+- One move or preservation boundary no longer duplicates prepared decision
+  authority, and `test_after.log` records a passing build plus focused proof.
 
-## Step 3: Consolidate Effect Publication And Declarations
+## Step 3: Consolidate The Remaining Export Surface
 
-Goal: shrink the remaining calls printing/effect API to emission-only helpers
-or retire it if ownership moved cleanly.
+Goal: shrink or explicitly justify the remaining calls-family move and
+preservation declarations after Step 2.
 
 Actions:
 
-- Remove obsolete printer declarations from `calls.hpp`.
-- Keep or move preserved-value effect conversion according to the Step 1
-  ownership decision.
-- Delete includes and translation-unit boundaries made obsolete by Step 2.
-- Update build metadata only if a file is retired or moved.
-- Run a fresh build and the focused backend proof after each coherent helper
-  boundary change.
+- Remove obsolete declarations and includes made unnecessary by Step 2.
+- Fold small emission-only helpers into their direct owner when that reduces
+  exported API without hiding behavior.
+- Keep helper files only when each has a clear emission-only boundary.
+- Update build metadata only if a file is retired.
+- Run a fresh build and focused backend proof after each coherent boundary
+  change.
 
 Completion check:
 
-- The call printing/effect-publication surface is smaller or explicitly owned
-  by the machine-printer layer, with build metadata and include graphs matching
-  the new boundary.
+- The affected calls-family API is smaller or each surviving exported helper
+  has a precise emission-only ownership reason recorded in `todo.md`.
 
 ## Step 4: Broader Backend Checkpoint
 
-Goal: prove the call printing/effect-publication checkpoint did not regress
-adjacent call emission, prepared-call, preservation, byval, aggregate,
-local-frame, dispatch-bridge, or printer behavior.
+Goal: prove the call move boundary checkpoint did not regress adjacent call
+emission, preservation, byval, aggregate, local-frame, dispatch-bridge, or
+printer behavior.
 
 Actions:
 
 - Run the supervisor-selected broader backend validation scope.
 - Include focused AArch64 call-boundary, prepared-call, preservation,
-  printer-output, argument-source, byval, aggregate, local-frame/publication,
-  and dispatch-bridge tests.
-- Include affected shared-boundary and x86 tests if shared MIR printer or
-  machine-node effect behavior was touched.
+  argument-source, byval, aggregate, local-frame/publication, and
+  dispatch-bridge tests.
+- Include affected shared-boundary and x86 tests if shared prepared facts or
+  machine-node effect behavior were touched.
 - Record exact proof commands and results in `todo.md`.
 
 Completion check:
@@ -236,9 +235,8 @@ Actions:
   source idea acceptance criteria.
 - Confirm target-local calls code no longer rederives decisions already present
   in shared prepared facts.
-- Confirm surviving helper files are emission-only, printer-owned,
-  dispatch-owned outside this source idea, or identified as the next checkpoint
-  target.
+- Confirm surviving helper files are emission-only, dispatch-owned outside
+  this source idea, or identified as the next checkpoint target.
 - If durable remaining work exists, keep the idea open and request another
   runbook checkpoint instead of closing.
 
