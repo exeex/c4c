@@ -1,29 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/01_shared_call_plan_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume the Shared Decision in AArch64 Emission
+Current Step ID: 4
+Current Step Title: Prove Behavior and Guard Against Overfit
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 regression fix kept migrated AArch64 callee-saved preservation helpers
-consuming `PreparedCallBoundaryEffectPlan` endpoint facts for source and
-destination data while normalizing the emitted population move reason back to
-`callee_saved_preservation_home_population`, the selected printable AArch64
-callee-saved preservation subset.
-
-`backend_aarch64_call_boundary_owner_test` now asserts that the shared-effect
-population still uses the prepared destination register but emits the selected
-AArch64 population reason instead of the shared planner's generic
-`preservation_home_population` reason.
+Step 4 proof/guard work recorded supervisor-run broader backend validation for
+the migrated callee-saved preservation boundary-effect family. The broader
+backend run passed with 162/162 backend tests, preserving the migrated shared
+prepared endpoint-fact consumption without downgrading expectations or adding
+named-case shortcuts.
 
 ## Suggested Next
 
-Run Step 4 proof/guard work for this migrated family: compare the current diff
-against the source idea for overfit risk, then run the supervisor-selected
-broader or regression-guard subset for call-boundary preservation.
+Proceed to Step 5 handoff documentation and closure decision for the shared
+call-plan authority runbook.
 
 ## Watchouts
 
@@ -43,17 +37,12 @@ broader or regression-guard subset for call-boundary preservation.
 
 ## Proof
 
-`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00040_c|c_testsuite_aarch64_backend_src_00168_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00200_c|c_testsuite_aarch64_backend_src_00214_c|backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_codegen_route_aarch64_prepared_call_boundary_scalability)$"; } > test_after.log 2>&1'`
+Supervisor-run broader validation command:
+`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } > test_after.log 2>&1'`
 
-Proof passed: build completed and all ten selected tests passed:
-`backend_aarch64_instruction_dispatch`,
-`c_testsuite_aarch64_backend_src_00040_c`,
-`c_testsuite_aarch64_backend_src_00168_c`,
-`c_testsuite_aarch64_backend_src_00176_c`,
-`c_testsuite_aarch64_backend_src_00181_c`,
-`c_testsuite_aarch64_backend_src_00200_c`,
-`c_testsuite_aarch64_backend_src_00214_c`,
-`backend_call_boundary_effect_plan`,
-`backend_aarch64_call_boundary_owner`, and
-`backend_codegen_route_aarch64_prepared_call_boundary_scalability`.
+Proof passed: build completed and all 162/162 backend tests passed.
+
+Executor proof check:
+`test -f test_after.log && tail -n 40 test_after.log >/dev/null`
+
 Proof log: `test_after.log`.
