@@ -1455,6 +1455,33 @@ void copy_materialization_source_selection_fields(
   }
 }
 
+[[nodiscard]] bool copy_prior_preservation_source_selection_fields(
+    PreparedCallArgumentSourceSelection& selection,
+    const PreparedCallPreservedValue& preserved) {
+  selection.source_value_id = preserved.value_id;
+  selection.source_value_name = preserved.value_name;
+  selection.preservation_route = preserved.route;
+  selection.preserved_register_name = preserved.register_name;
+  selection.preserved_register_bank = preserved.register_bank;
+  selection.preserved_register_contiguous_width = preserved.contiguous_width;
+  selection.preserved_occupied_register_names = preserved.occupied_register_names;
+  selection.preserved_register_placement = preserved.register_placement;
+  selection.preserved_stack_slot_id = preserved.slot_id;
+  selection.preserved_stack_offset_bytes = preserved.stack_offset_bytes;
+  selection.preserved_stack_size_bytes = preserved.stack_size_bytes;
+  selection.preserved_stack_align_bytes = preserved.stack_align_bytes;
+
+  if (preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister) {
+    return selection.preserved_register_name.has_value() &&
+           selection.preserved_register_bank.has_value() &&
+           selection.preserved_register_contiguous_width.has_value() &&
+           *selection.preserved_register_contiguous_width != 0 &&
+           !selection.preserved_occupied_register_names.empty() &&
+           selection.preserved_register_placement.has_value();
+  }
+  return true;
+}
+
 [[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
     const PreparedCallArgumentPlan& argument,
     const PreparedMoveResolution& move,
@@ -1616,13 +1643,9 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
           find_latest_prior_preserved_value(function_plan, call_plan, value_id);
       preserved != nullptr) {
     selection.kind = PreparedCallArgumentSourceSelectionKind::PriorPreservation;
-    selection.source_value_id = preserved->value_id;
-    selection.source_value_name = preserved->value_name;
-    selection.preservation_route = preserved->route;
-    selection.preserved_stack_slot_id = preserved->slot_id;
-    selection.preserved_stack_offset_bytes = preserved->stack_offset_bytes;
-    selection.preserved_stack_size_bytes = preserved->stack_size_bytes;
-    selection.preserved_stack_align_bytes = preserved->stack_align_bytes;
+    if (!copy_prior_preservation_source_selection_fields(selection, *preserved)) {
+      return std::nullopt;
+    }
     for (const auto& prior_call : function_plan.calls) {
       for (const auto& prior_preserved : prior_call.preserved_values) {
         if (&prior_preserved == preserved) {
@@ -1632,7 +1655,7 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
         }
       }
     }
-    return selection;
+    return std::nullopt;
   }
 
   return std::nullopt;

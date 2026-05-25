@@ -92,6 +92,11 @@ struct PreparedCallArgumentSourceSelection {
   std::optional<std::size_t> preserved_call_instruction_index;
   PreparedCallPreservationRoute preservation_route =
       PreparedCallPreservationRoute::Unknown;
+  std::optional<std::string> preserved_register_name;
+  std::optional<PreparedRegisterBank> preserved_register_bank;
+  std::optional<std::size_t> preserved_register_contiguous_width;
+  std::vector<std::string> preserved_occupied_register_names;
+  std::optional<PreparedRegisterPlacement> preserved_register_placement;
   std::optional<PreparedFrameSlotId> preserved_stack_slot_id;
   std::optional<std::size_t> preserved_stack_offset_bytes;
   std::optional<std::size_t> preserved_stack_size_bytes;
