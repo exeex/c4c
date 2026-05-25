@@ -1,19 +1,20 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove One Residual Reconstruction Path
+Current Step ID: 3
+Current Step Title: Consolidate the Affected Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 removed the residual post-boundary-effect small byval stack-lane
-reconstruction path in `calls_moves.cpp`. The deleted code no longer reads
-retained `bir::CallInst::arg_abi` through
-`prepared_argument_is_small_byval_stack_lane()`, and `lower_before_call_moves()`
-now relies on prepared boundary effects/move bundles for
-`"call_arg_byval_aggregate_register_lanes"` stack-lane moves.
+Step 3 checked whether the Step 2 small byval stack-lane fallback removal made
+any `calls_moves.cpp` helper declaration, file boundary, or build entry obsolete.
+No consolidation was justified: `calls_moves.cpp` still owns the exported
+before-call and after-call move entrypoints plus ordering/reload helpers used by
+dispatch, and its local helpers still cover outgoing stack setup, explicit
+prepared boundary effects, immediate binding moves, preservation publication,
+return moves, and non-call value moves.
 
 ## Suggested Next
 
@@ -25,18 +26,19 @@ retained call-argument ABI planning reads.
 
 ## Watchouts
 
+- Keeping `calls_moves.cpp` is still justified by the mixed public boundary:
+  call-boundary move lowering, return/value move lowering, and dispatch-facing
+  source-preservation helpers share local `CallBoundaryMoveInstructionRecord`
+  construction and prepared-move diagnostics.
 - The outgoing stack-byte computation still appears to need a new prepared slot
   width fact before retained `arg_abi` can be removed there.
 - The local aggregate address publication predicates in
   `calls_argument_sources.cpp` and `calls_dispatch_bridge.cpp` are a separate
-  coherent duplicate-authority family; keep them out of the selected Step 2
+  coherent duplicate-authority family; keep them out of this helper-boundary
   packet.
-- Existing aggregate stack-lane lowering diagnostics remain in
-  `lower_before_call_move()` when prepared source bytes or destination stack
-  offsets are missing; this packet did not add fallback reconstruction.
 
 ## Proof
 
 Supervisor-selected proof passed and is preserved in `test_after.log`:
 
-`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_call_boundary_owner|backend_aarch64_machine_printer|backend_call_boundary_effect_plan)$"; } > test_after.log 2>&1'`
+`git diff --check > test_after.log 2>&1`
