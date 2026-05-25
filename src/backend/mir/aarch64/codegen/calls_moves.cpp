@@ -2955,31 +2955,6 @@ order_before_call_moves_for_source_preservation(
   return ordered;
 }
 
-[[nodiscard]] bool prepared_argument_is_small_byval_stack_lane(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  if (context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size() ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      !argument.source_value_id.has_value() ||
-      !argument.destination_stack_offset_bytes.has_value()) {
-    return false;
-  }
-  const auto* call =
-      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
-    return false;
-  }
-  const auto& abi = call->arg_abi[argument.arg_index];
-  return abi.type == bir::TypeKind::Ptr &&
-         abi.byval_copy &&
-         !abi.sret_pointer &&
-         abi.primary_class == bir::AbiValueClass::Integer &&
-         abi.size_bytes > 0 &&
-         abi.size_bytes <= 16;
-}
-
 [[nodiscard]] std::vector<prepare::PreparedCallBoundaryEffectPlan>
 before_call_boundary_effects(const prepare::PreparedCallPlan& call_plan,
                              const prepare::PreparedMoveBundle& bundle) {
@@ -3049,7 +3024,6 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
       lowered.push_back(std::move(*instruction));
     }
   }
-  std::vector<std::size_t> lowered_stack_byval_args;
   for (const auto& effect : boundary_effects) {
     if (effect.effect_kind != prepare::PreparedCallBoundaryEffectKind::ExplicitMove ||
         effect.phase != prepare::PreparedMovePhase::BeforeCall ||
@@ -3057,34 +3031,6 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
       continue;
     }
     const auto& move = bundle->moves[effect.order_index];
-    if (auto instruction =
-            lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
-      if (move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-          move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
-          effect.reason == "call_arg_byval_aggregate_register_lanes" &&
-          move.destination_abi_index.has_value()) {
-        lowered_stack_byval_args.push_back(*move.destination_abi_index);
-      }
-      lowered.push_back(std::move(*instruction));
-    }
-  }
-  for (const auto& argument : call_plan.arguments) {
-    if (!prepared_argument_is_small_byval_stack_lane(context, argument, instruction_index) ||
-        std::find(lowered_stack_byval_args.begin(),
-                  lowered_stack_byval_args.end(),
-                  argument.arg_index) != lowered_stack_byval_args.end()) {
-      continue;
-    }
-    prepare::PreparedMoveResolution move{
-        .from_value_id = *argument.source_value_id,
-        .to_value_id = *argument.source_value_id,
-        .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
-        .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
-        .destination_abi_index = argument.arg_index,
-        .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
-        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
-        .reason = "call_arg_byval_aggregate_register_lanes",
-    };
     if (auto instruction =
             lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));
