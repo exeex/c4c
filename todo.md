@@ -20,9 +20,9 @@ payload construction, and diagnostic suppression behavior is retained.
 
 ## Suggested Next
 
-Supervisor review/commit this Step 3 publication extraction slice, then check
-whether any remaining Step 3 dispatch-local helper ownership still belongs with
-publication/producer lookup or whether Step 3 is ready for plan-owner review.
+Step 3 appears ready to hand off to the next runbook step. Remaining
+dispatch-local helper ownership is edge-copy handling, call-boundary glue, or
+general traversal rather than publication/producer lookup.
 
 ## Watchouts
 
@@ -32,8 +32,17 @@ fallback memory-lowering orchestration, or expectation/source tests changed.
 
 ## Proof
 
-Passed. Proof log: `test_after.log`.
+Passed. Narrow proof log was rolled into `test_before.log`.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R 'backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records' --output-on-failure > test_after.log 2>&1
+```
+
+Broader backend checkpoint passed after the Step 3 extraction series:
+162/162 backend tests passed before and after, with no new failures.
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_before.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
