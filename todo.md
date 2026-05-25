@@ -8,20 +8,20 @@ Current Step Title: Separate Publication And Producer Lookup
 
 ## Just Finished
 
-Step 3 - Separate Publication And Producer Lookup moved the remaining
-same-block/current-block join parallel-copy source lookup helpers out of
-`dispatch.cpp` into `dispatch_producers.cpp`, with the cache/query API exposed
-from `dispatch_producers.hpp`.
+Step 3 - Separate Publication And Producer Lookup moved the missing
+conditional-branch condition publication and fused-compare operand publication
+helpers out of `dispatch.cpp` into `dispatch_publication.cpp`, with the helper
+API exposed from `dispatch_publication.hpp`.
 
-Behavior is preserved: `dispatch.cpp` still builds the join parallel-copy cache
-at the block routing point and only asks producer-owned helpers whether the
-current instruction is an incoming expression or source to skip.
+Behavior is preserved: `dispatch.cpp` still calls the publication-owned helpers
+at the existing conditional terminator routing points, and diagnostics continue
+to flow through the same scalar-control and operand-resolution paths.
 
 ## Suggested Next
 
-Supervisor review/commit this Step 3 producer-lookup extraction slice, then
-decide whether any remaining Step 3 dispatch-local lookup helpers belong in
-`dispatch_producers` or whether Step 3 is ready for plan-owner review.
+Supervisor review/commit this Step 3 publication extraction slice, then decide
+whether any remaining Step 3 dispatch-local helper ownership needs another
+publication/producer packet or whether Step 3 is ready for plan-owner review.
 
 ## Watchouts
 

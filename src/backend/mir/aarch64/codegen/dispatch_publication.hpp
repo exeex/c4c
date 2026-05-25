@@ -69,6 +69,25 @@ void record_current_block_entry_publication_registers(
     const module::BlockLoweringContext& context,
     BlockScalarLoweringState& scalar_state);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_missing_conditional_branch_condition_publication(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_missing_fused_compare_operand_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_missing_fused_compare_operand_publications(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
+
 void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction);
