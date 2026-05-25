@@ -20510,7 +20510,7 @@ int sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0() {
   return 0;
 }
 
-int incomplete_sret_frame_slot_address_selection_does_not_rederive_memory_return() {
+int explicit_sret_selected_source_does_not_rederive_memory_return() {
   constexpr auto function_name = c4c::FunctionNameId{1211};
   constexpr auto block_label = c4c::BlockLabelId{1212};
   constexpr auto sret_value_id = prepare::PreparedValueId{1213};
@@ -20629,6 +20629,33 @@ int incomplete_sret_frame_slot_address_selection_does_not_rederive_memory_return
       diagnostics.entries.front().kind !=
           aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
     return fail("expected incomplete explicit sret frame-slot address selection not to rederive memory_return");
+  }
+
+  auto non_address_argument = call_plan.arguments.front();
+  non_address_argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = sret_value_id,
+          .source_value_name = sret_value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      };
+  const prepare::PreparedCallPlan non_address_call_plan{
+      .block_index = call_plan.block_index,
+      .instruction_index = call_plan.instruction_index,
+      .memory_return = call_plan.memory_return,
+      .arguments = {non_address_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics non_address_diagnostics;
+  const auto non_address_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, non_address_call_plan, 2, non_address_diagnostics);
+  if (!non_address_lowered.empty() ||
+      non_address_diagnostics.entries.size() != 1 ||
+      non_address_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected explicit non-address sret selection not to rederive "
+        "memory_return");
   }
   return 0;
 }
@@ -29077,7 +29104,7 @@ int main() {
     return status;
   }
   if (const int status =
-          incomplete_sret_frame_slot_address_selection_does_not_rederive_memory_return();
+          explicit_sret_selected_source_does_not_rederive_memory_return();
       status != 0) {
     return status;
   }

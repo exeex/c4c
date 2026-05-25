@@ -8,25 +8,24 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired one frame-slot address fallback boundary.
-`make_frame_slot_call_argument_address_source` now treats any explicit
-`source_selection` as authoritative for that frame-slot address source
-decision: a complete `FrameSlotAddress` selection still emits the prepared
-address source, but incomplete or non-address selections no longer fall through
-to AArch64-local address-materialization or stack-object reconstruction.
+Step 2 of `plan.md` retired the SRET memory-return selected-source fallback.
+`make_sret_memory_return_address_source` now treats any explicit
+`source_selection` as authoritative for the SRET address-source decision:
+complete `FrameSlotAddress` selections still consume prepared frame-slot
+address facts, while incomplete `FrameSlotAddress` selections and non-address
+selections no longer fall through to `call_plan.memory_return`.
 
-Instruction-dispatch coverage now proves an explicit non-address
-`FrameSlotValue` selection with matching legacy frame-slot address
-materialization facts fails closed instead of rederiving a frame-slot address.
-Existing absent-selection coverage still preserves the legacy frame-slot
-address/value compatibility path.
+Instruction-dispatch coverage now proves both explicit incomplete SRET
+`FrameSlotAddress` selection and explicit non-address `PriorPreservation`
+selection fail closed even when matching `memory_return` facts are present.
+Existing absent-selection SRET coverage still preserves the
+`call_plan.memory_return` compatibility path.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining SRET memory-return address selected
-source fallback. Only retire it if complete `FrameSlotAddress` prepared facts
-cover that source decision and the no-`source_selection` `call_plan.memory_return`
-compatibility path remains tested.
+Continue Step 2 by reviewing whether any duplicate helper boundary remains in
+the owned call-argument source family, or hand Step 2 back for supervisor route
+review if this was the final known fallback boundary.
 
 ## Watchouts
 
@@ -76,17 +75,14 @@ compatibility path remains tested.
   stack-preserved home through the prior-preservation caller. This slice keeps
   unrelated incomplete frame-slot/local-frame diagnostics on their existing
   paths when no prior home is available.
-- SRET `FrameSlotAddress` explicit selections now require a complete
-  frame-slot address payload; absent-selection SRET compatibility still uses
-  `call_plan.memory_return`.
+- SRET explicit selections now require a complete `FrameSlotAddress` payload;
+  incomplete address selections and non-address selections fail closed instead
+  of using `call_plan.memory_return`.
+- Absent-selection SRET compatibility still uses `call_plan.memory_return`.
 - `make_frame_slot_call_argument_address_source` now blocks all explicit
   non-`FrameSlotAddress` selections from falling back to legacy frame-slot
   address reconstruction. Absent-selection compatibility still uses the legacy
   address-materialization/stack-object lookup.
-- `make_sret_memory_return_address_source` still only fails closed for explicit
-  incomplete `FrameSlotAddress` selections; explicit non-address selections can
-  still fall through to `call_plan.memory_return` and remain the next live
-  audit boundary.
 - `make_local_frame_address_call_argument_source` now blocks all explicit
   non-`LocalFrameAddressMaterialization` selections from falling back to legacy
   local-frame address reconstruction. Absent-selection compatibility still

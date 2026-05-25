@@ -520,10 +520,7 @@ make_f128_q_register_operand_from_carrier(
             instruction_index)) {
       return selected;
     }
-    if (argument.source_selection->kind ==
-        prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
-      return std::nullopt;
-    }
+    return std::nullopt;
   }
   if (!call_plan.memory_return.has_value() ||
       !call_plan.memory_return->sret_arg_index.has_value() ||
