@@ -34,6 +34,10 @@ materialize_call_boundary_source_to_destination(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
+void retarget_call_boundary_source_to_emitted_scalar(
+    module::MachineInstruction& instruction,
+    const BlockScalarLoweringState& scalar_state);
+
 void record_call_boundary_destination(
     const module::MachineInstruction& instruction,
     BlockScalarLoweringState& scalar_state);
@@ -44,6 +48,10 @@ void record_call_boundary_source_in_destination(
 
 [[nodiscard]] bool call_boundary_move_reloads_prepared_stack_source(
     const module::MachineInstruction& instruction);
+
+[[nodiscard]] bool source_register_conflicts_with_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_indirect_call_callee_to_prepared_register(

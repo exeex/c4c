@@ -557,106 +557,6 @@ InstructionDispatchResult dispatch_prepared_block(
   const auto branch_fusion_hooks = make_dispatch_branch_fusion_hooks();
   std::unordered_set<c4c::ValueNameId> published_store_global_stack_values;
 
-  auto retarget_call_boundary_source_to_emitted_scalar =
-      [&](module::MachineInstruction& instruction) {
-    auto* move_record =
-        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
-    if (move_record == nullptr) {
-      return;
-    }
-    std::optional<c4c::ValueNameId> source_value_name;
-    std::optional<prepare::PreparedValueId> source_value_id;
-    if (move_record->source_memory.has_value() &&
-        !move_record->source_memory_materializes_address &&
-        move_record->source_memory->result_value_name.has_value()) {
-      source_value_name = *move_record->source_memory->result_value_name;
-      source_value_id = move_record->source_memory->result_value_id;
-    } else if (move_record->source_register.has_value() &&
-               move_record->source_register->value_name != c4c::kInvalidValueName) {
-      source_value_name = move_record->source_register->value_name;
-      source_value_id = move_record->source_register->value_id;
-    } else if (move_record->source_register.has_value()) {
-      source_value_id = move_record->source_register->value_id;
-    }
-    if (!source_value_name.has_value() && !source_value_id.has_value()) {
-      return;
-    }
-    auto emitted = source_value_name.has_value()
-                       ? find_emitted_scalar_register(scalar_state, *source_value_name)
-                       : std::nullopt;
-    if (!emitted.has_value() && source_value_id.has_value()) {
-      const bool floating_preserved_source =
-          move_record->source_register.has_value() &&
-          move_record->source_register->reg.bank == abi::RegisterBank::FpSimd;
-      if (floating_preserved_source) {
-        for (const auto& [_, candidate] : scalar_state.emitted_registers) {
-          if (candidate.value_id == source_value_id &&
-              candidate.reg.bank == abi::RegisterBank::FpSimd) {
-            emitted = candidate;
-            break;
-          }
-        }
-      }
-    }
-    if (!emitted.has_value()) {
-      return;
-    }
-    move_record->source_register = *emitted;
-    move_record->source_memory.reset();
-    if (move_record->destination_register.has_value() &&
-        emitted->reg.bank == abi::RegisterBank::GeneralPurpose &&
-        move_record->destination_register->reg.bank == abi::RegisterBank::GeneralPurpose &&
-        emitted->expected_view.has_value()) {
-      const auto retargeted_destination =
-          abi::gp_register(move_record->destination_register->reg.index,
-                           *emitted->expected_view);
-      if (retargeted_destination.has_value()) {
-        move_record->destination_register->reg = *retargeted_destination;
-        move_record->destination_register->expected_view = emitted->expected_view;
-      }
-    }
-  };
-  auto source_value_is_materialized_address =
-      [](const CallBoundaryMoveInstructionRecord& move_record,
-         const std::vector<module::MachineInstruction>& materialized_addresses) {
-    for (const auto& materialized : materialized_addresses) {
-      const auto* address_record =
-          std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
-      if (address_record == nullptr) {
-        continue;
-      }
-      if (address_record->result_value_id.has_value() &&
-          *address_record->result_value_id == move_record.move.from_value_id) {
-        return true;
-      }
-      if (move_record.source_register.has_value() &&
-          address_record->result_value_name != c4c::kInvalidValueName &&
-          move_record.source_register->value_name == address_record->result_value_name) {
-        return true;
-      }
-    }
-    return false;
-  };
-  auto source_register_conflicts_with_materialized_address =
-      [&](const CallBoundaryMoveInstructionRecord& move_record,
-          const std::vector<module::MachineInstruction>& materialized_addresses) {
-    if (!move_record.source_register.has_value() ||
-        source_value_is_materialized_address(move_record, materialized_addresses)) {
-      return false;
-    }
-    for (const auto& materialized : materialized_addresses) {
-      const auto* address_record =
-          std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
-      if (address_record == nullptr || !address_record->result_register.has_value()) {
-        continue;
-      }
-      if (registers_alias(*move_record.source_register,
-                          *address_record->result_register)) {
-        return true;
-      }
-    }
-    return false;
-  };
   for (auto& entry_formal : lower_entry_formal_publications(context, scalar_state)) {
     block.instructions.push_back(std::move(entry_formal));
   }
@@ -800,16 +700,13 @@ InstructionDispatchResult dispatch_prepared_block(
             block.instructions.push_back(std::move(*materialized_callee));
           }
           for (auto& before_call_move : before_call_moves) {
-            retarget_call_boundary_source_to_emitted_scalar(before_call_move);
+            retarget_call_boundary_source_to_emitted_scalar(
+                before_call_move, scalar_state);
           }
           std::vector<module::MachineInstruction> deferred_before_call_moves;
           for (auto& before_call_move : before_call_moves) {
-            const auto* move_record =
-                std::get_if<CallBoundaryMoveInstructionRecord>(
-                    &before_call_move.target.payload);
-            if (move_record != nullptr &&
-                source_register_conflicts_with_materialized_address(
-                    *move_record, materialized_addresses)) {
+            if (source_register_conflicts_with_materialized_address(
+                    before_call_move, materialized_addresses)) {
               record_call_boundary_destination(before_call_move, scalar_state);
               block.instructions.push_back(std::move(before_call_move));
             } else {
@@ -833,7 +730,8 @@ InstructionDispatchResult dispatch_prepared_block(
                     before_call_move, materialized_addresses)) {
               continue;
             }
-            retarget_call_boundary_source_to_emitted_scalar(before_call_move);
+            retarget_call_boundary_source_to_emitted_scalar(
+                before_call_move, scalar_state);
             if (auto materialized =
                     materialize_call_boundary_source_to_destination(
                         context, before_call_move, instruction_index, scalar_state)) {

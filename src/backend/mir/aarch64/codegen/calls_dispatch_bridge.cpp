@@ -488,6 +488,67 @@ materialize_call_boundary_source_to_destination(
 
 }
 
+void retarget_call_boundary_source_to_emitted_scalar(
+    module::MachineInstruction& instruction,
+    const BlockScalarLoweringState& scalar_state) {
+  auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr) {
+    return;
+  }
+  std::optional<c4c::ValueNameId> source_value_name;
+  std::optional<prepare::PreparedValueId> source_value_id;
+  if (move_record->source_memory.has_value() &&
+      !move_record->source_memory_materializes_address &&
+      move_record->source_memory->result_value_name.has_value()) {
+    source_value_name = *move_record->source_memory->result_value_name;
+    source_value_id = move_record->source_memory->result_value_id;
+  } else if (move_record->source_register.has_value() &&
+             move_record->source_register->value_name != c4c::kInvalidValueName) {
+    source_value_name = move_record->source_register->value_name;
+    source_value_id = move_record->source_register->value_id;
+  } else if (move_record->source_register.has_value()) {
+    source_value_id = move_record->source_register->value_id;
+  }
+  if (!source_value_name.has_value() && !source_value_id.has_value()) {
+    return;
+  }
+  auto emitted = source_value_name.has_value()
+                     ? find_emitted_scalar_register(scalar_state, *source_value_name)
+                     : std::nullopt;
+  if (!emitted.has_value() && source_value_id.has_value()) {
+    const bool floating_preserved_source =
+        move_record->source_register.has_value() &&
+        move_record->source_register->reg.bank == abi::RegisterBank::FpSimd;
+    if (floating_preserved_source) {
+      for (const auto& [_, candidate] : scalar_state.emitted_registers) {
+        if (candidate.value_id == source_value_id &&
+            candidate.reg.bank == abi::RegisterBank::FpSimd) {
+          emitted = candidate;
+          break;
+        }
+      }
+    }
+  }
+  if (!emitted.has_value()) {
+    return;
+  }
+  move_record->source_register = *emitted;
+  move_record->source_memory.reset();
+  if (move_record->destination_register.has_value() &&
+      emitted->reg.bank == abi::RegisterBank::GeneralPurpose &&
+      move_record->destination_register->reg.bank == abi::RegisterBank::GeneralPurpose &&
+      emitted->expected_view.has_value()) {
+    const auto retargeted_destination =
+        abi::gp_register(move_record->destination_register->reg.index,
+                         *emitted->expected_view);
+    if (retargeted_destination.has_value()) {
+      move_record->destination_register->reg = *retargeted_destination;
+      move_record->destination_register->expected_view = emitted->expected_view;
+    }
+  }
+}
+
 void record_call_boundary_destination(
     const module::MachineInstruction& instruction,
     BlockScalarLoweringState& scalar_state) {
@@ -538,6 +599,52 @@ void record_call_boundary_source_in_destination(
          move_record->source_memory->support == MemoryOperandSupportKind::Prepared &&
          move_record->source_memory->base_kind == MemoryBaseKind::FrameSlot &&
          move_record->source_memory->byte_offset_is_prepared_snapshot;
+}
+
+[[nodiscard]] bool source_value_is_materialized_address(
+    const CallBoundaryMoveInstructionRecord& move_record,
+    const std::vector<module::MachineInstruction>& materialized_addresses) {
+  for (const auto& materialized : materialized_addresses) {
+    const auto* address_record =
+        std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
+    if (address_record == nullptr) {
+      continue;
+    }
+    if (address_record->result_value_id.has_value() &&
+        *address_record->result_value_id == move_record.move.from_value_id) {
+      return true;
+    }
+    if (move_record.source_register.has_value() &&
+        address_record->result_value_name != c4c::kInvalidValueName &&
+        move_record.source_register->value_name == address_record->result_value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool source_register_conflicts_with_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr ||
+      !move_record->source_register.has_value() ||
+      source_value_is_materialized_address(*move_record, materialized_addresses)) {
+    return false;
+  }
+  for (const auto& materialized : materialized_addresses) {
+    const auto* address_record =
+        std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
+    if (address_record == nullptr || !address_record->result_register.has_value()) {
+      continue;
+    }
+    if (registers_alias(*move_record->source_register,
+                        *address_record->result_register)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] c4c::SlotNameId local_load_effective_slot_id(

@@ -8,28 +8,32 @@ Current Step Title: Remove Or Justify Call-Specific Dispatch Glue
 
 ## Just Finished
 
-Step 5 - Remove Or Justify Call-Specific Dispatch Glue started by moving simple
-call-boundary scalar-state helper ownership out of `dispatch.cpp` into
-`calls_dispatch_bridge`.
+Step 5 - Remove Or Justify Call-Specific Dispatch Glue continued by moving the
+before-call retarget/materialized-address conflict helper cluster out of
+`dispatch.cpp` into `calls_dispatch_bridge`.
 
-`record_call_boundary_destination`,
-`record_call_boundary_source_in_destination`, and
-`call_boundary_move_reloads_prepared_stack_source` now live in
-`calls_dispatch_bridge.cpp`/`.hpp` and are called from the same dispatch routing
-points. No AArch64-local call argument source-selection logic changed.
+`retarget_call_boundary_source_to_emitted_scalar`,
+`source_value_is_materialized_address`, and
+`source_register_conflicts_with_materialized_address` now live in
+`calls_dispatch_bridge.cpp`/`.hpp`, with `dispatch.cpp` calling the bridge at
+the same before-call routing points. No AArch64-local call argument
+source-selection logic was added or changed.
 
 ## Suggested Next
 
 Continue Step 5 by either moving or explicitly justifying the remaining
-call-specific dispatch glue in `dispatch.cpp`, with the next likely target being
-the call-boundary retarget/materialized-address conflict helper cluster.
+call-specific dispatch glue in `dispatch.cpp`. The next likely target is the
+small before-call/after-call sequencing code that still decides when bridge
+helpers are invoked around materialized callees, materialized addresses, and
+missing frame-slot arguments.
 
 ## Watchouts
 
-The remaining retargeting helpers still read `scalar_state`, address
-materialization records, and ABI register details directly in `dispatch.cpp`.
-Keep future extraction semantic and do not add or change call argument
-source-selection behavior.
+The moved conflict helper intentionally preserves the old behavior: a
+materialized address source is not treated as a register conflict, while a
+different source register that aliases an address materialization result is
+emitted before the address materialization. Keep future extraction semantic and
+do not add or change call argument source-selection behavior.
 
 ## Proof
 
