@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/04_aarch64_prior_preservation_baseline_drift.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Prior-Preservation Source Selection
+Current Step ID: Step 3
+Current Step Title: Validate Regression Family
 
 # Current Packet
 
