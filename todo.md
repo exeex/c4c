@@ -10,27 +10,27 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 Step 2 of `plan.md` retired the explicit
 `PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane` selected-source
-fallback boundary for register-homed AArch64 byval register-lane call
-arguments. When an explicit byval lane selection is present, the register-home
-path now requires the complete prepared payload accepted by
+fallback boundary for stack-slot byval register-lane publication into outgoing
+stack arguments. When an explicit byval lane selection is present, the
+stack-lane path now requires the complete prepared payload accepted by
 `make_byval_register_lane_prepared_source`; it no longer rebuilds the payload
-source from the legacy aggregate address register after the prepared-source
-helper rejects an incomplete selection.
+source from the legacy frame-slot home after the prepared-source helper rejects
+an incomplete selection.
 
 The instruction-dispatch coverage now includes an incomplete explicit
-`ByvalRegisterLane` selection while matching legacy register-home facts are
-still present; `lower_before_call_moves` fails closed instead of rederiving the
-source from the register home. A paired absent-selection case proves the
-retained no-`source_selection` compatibility path still lowers through the
-legacy register-home aggregate address.
+`ByvalRegisterLane` selection while matching legacy stack-slot facts are still
+present; `lower_before_call_moves` fails closed instead of rederiving the
+source from the frame-slot home. A paired absent-selection case proves the
+retained no-`source_selection` compatibility path still copies from the legacy
+frame-slot home to the outgoing stack argument.
 
 ## Suggested Next
 
 Continue Step 2 by auditing the remaining selected-source helper surfaces for a
 small complete-payload-only boundary that can be retired without touching
 absent-selection compatibility. A good next packet is to look at the remaining
-stack-slot byval lane and indirect-byval-adjacent fallbacks, but only where
-prepared source facts fully cover the path.
+indirect-byval-adjacent fallback paths, but only where prepared source facts
+fully cover the path.
 
 ## Watchouts
 
@@ -40,6 +40,10 @@ prepared source facts fully cover the path.
 - Register-homed byval lane explicit selections now fail closed when the
   prepared-source helper lacks a complete payload. The absent-selection
   register-home aggregate address path remains as compatibility fallback.
+- Stack-slot byval lane explicit selections into outgoing stack arguments now
+  fail closed when the prepared-source helper lacks a complete payload. The
+  absent-selection stack-lane frame-slot path remains as compatibility
+  fallback.
 - `make_frame_slot_call_argument_source` still keeps the legacy fallback when
   no explicit `FrameSlotValue` selection is present; this packet preserves that
   compatibility and proves it with focused dispatch coverage.
