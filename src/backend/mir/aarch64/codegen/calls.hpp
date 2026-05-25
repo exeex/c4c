@@ -273,7 +273,7 @@ order_before_call_moves_for_source_preservation(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// calls_preservation
+// calls_argument_sources
 
 struct PreservedCallArgumentSource {
   const prepare::PreparedCallPreservedValue* preserved = nullptr;
@@ -281,41 +281,21 @@ struct PreservedCallArgumentSource {
   std::optional<MemoryOperand> source_memory;
 };
 
+// calls_moves
+
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_preserved_value_for_call_argument(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& current_call_plan,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedMoveResolution& move);
+
+// calls_argument_sources
+
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPreservedValue& preserved,
     const prepare::PreparedValueHome* source_home,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-// Emission-only: consumes prepared effect facts and creates AArch64 machine nodes.
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_callee_saved_preservation_home_republication_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallBoundaryEffectPlan& effect,
-    prepare::PreparedMovePhase phase,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    std::string reason,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_callee_saved_preservation_home_population(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedCallBoundaryEffectPlan& effect,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
