@@ -400,10 +400,7 @@ make_f128_q_register_operand_from_carrier(
             instruction_index)) {
       return selected;
     }
-    if (argument.source_selection->kind ==
-        prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) {
-      return std::nullopt;
-    }
+    return std::nullopt;
   }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||

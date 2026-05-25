@@ -8,31 +8,31 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired one explicit `FrameSlotAddress` fallback boundary
-in the non-byval GPR frame-slot call-argument path. After
-`make_sret_memory_return_address_source` and
-`make_frame_slot_call_argument_address_source` reject an explicit incomplete
-`PreparedCallArgumentSourceSelectionKind::FrameSlotAddress`, the GPR
-frame-slot register publication now fails closed instead of falling through to
-`make_frame_slot_call_argument_source` and rederiving a value load from the
-legacy frame-slot home.
+Step 2 of `plan.md` retired the duplicate explicit-selection fallback boundary
+for non-byval frame-slot value sources. `make_frame_slot_call_argument_source`
+now treats any present `source_selection` as authoritative: a complete
+`FrameSlotValue` selection returns the prepared source, and any incomplete or
+different explicit selection fails closed instead of rederiving a legacy
+frame-slot value source. The GPR-only `FrameSlotAddress` guard in
+`lower_before_call_move` was removed because the shared frame-slot value helper
+now owns that boundary for GPR, FPR, binary128, and stack-slot publication
+callers.
 
 The instruction-dispatch coverage now includes an incomplete explicit
-`FrameSlotAddress` selection for a frame-slot aggregate-address argument into
-`x1` while matching legacy value-home facts remain available;
-`lower_before_call_moves` fails with `MissingValueAuthority` instead of loading
-the frame-slot value. A paired absent-selection case proves the retained
-no-`source_selection` compatibility path still uses the legacy frame-slot value
+`FrameSlotAddress` selection for a stack-published frame-slot argument while
+matching legacy value-home facts remain available; `lower_before_call_moves`
+fails with `MissingValueAuthority` instead of storing the frame-slot value. The
+existing absent-selection stack publication case still proves the retained
+no-`source_selection` compatibility path uses the legacy frame-slot value
 source.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining non-byval frame-slot call sites that
-still call `make_frame_slot_call_argument_source`, especially FPR, binary128,
-and stack-slot publication paths, for exactly one explicit selected-source
-boundary whose complete prepared facts fully cover the source decision. Keep the
-next slice paired with explicit incomplete-selection failure coverage and
-absent-selection compatibility coverage.
+Continue Step 2 by auditing whether any remaining prepared-source helper
+boundaries can be retired without changing absent-selection compatibility,
+especially local-frame address materialization and prior-preservation callers
+that still keep target-local fallback logic around explicit selected-source
+facts.
 
 ## Watchouts
 
@@ -54,8 +54,8 @@ absent-selection compatibility coverage.
 - Indirect large-byval explicit selections now fail closed when the
   prepared-source helper lacks a complete payload. The absent-selection
   indirect-byval frame-slot path remains as compatibility fallback.
-- `make_frame_slot_call_argument_source` still keeps the legacy fallback when
-  no explicit `FrameSlotValue` selection is present; this packet preserves that
+- `make_frame_slot_call_argument_source` still keeps the legacy fallback only
+  when no explicit `source_selection` is present; this packet preserves that
   compatibility and proves it with focused dispatch coverage.
 - Explicit `FrameSlotValue` selections now require `source_value_id`,
   `source_value_name`, `source_home_kind == StackSlot`, `source_slot_id`,
@@ -68,8 +68,13 @@ absent-selection compatibility coverage.
   incomplete selections fail closed. Absent-selection compatibility still uses
   legacy lookup.
 - The non-byval GPR frame-slot register path now fails closed for explicit
-  incomplete `FrameSlotAddress` selections before value-source fallback.
-  Absent-selection compatibility still permits the legacy frame-slot value load.
+  incomplete `FrameSlotAddress` selections through the shared frame-slot value
+  helper. Absent-selection compatibility still permits the legacy frame-slot
+  value load.
+- `make_frame_slot_call_argument_source` now blocks all explicit
+  non-`FrameSlotValue` selections from falling back to legacy frame-slot value
+  reconstruction; this covers the audited FPR, binary128, and outgoing stack
+  frame-slot value callers without adding per-call-site guards.
 - Stack-slot `PriorPreservation` explicit selections now require a complete
   stack payload; absent-selection prior-preservation lookup remains the
   compatibility path.
