@@ -49,6 +49,35 @@ without copying the reference text-emitter design.
 - The remaining target-local call code has a clearer boundary between
   decision-making and AArch64 machine instruction emission.
 
+## Completion Notes
+
+Closed after migrating callee-saved preservation boundary effects to shared
+prepared call-plan authority. `PreparedCallBoundaryEffectEndpoint` now exposes
+the endpoint facts needed for preservation storage, and AArch64 before/after
+call preservation consumes `PreparedCallBoundaryEffectPlan` entries for
+preservation population and republication instead of making the storage
+decision from target-local call-plan iteration.
+
+The AArch64 live-use gates for when a prepared preservation effect emits at
+block entry or around a call remain target-local emission concerns. The
+redundancy guard that checks prior preserved values also remains target-local,
+but it is not the current-call preservation decision source.
+
+Deferred follow-up boundaries for later ideas:
+
+- Consolidating the split AArch64 `calls*.cpp` emission files belongs to the
+  emission consolidation idea.
+- Reducing broader dispatch responsibility belongs to the dispatch reduction
+  idea.
+- Additional call decision families, such as argument/result placement,
+  byval/variadic details, and stack argument layout, should migrate only as
+  separate shared-authority slices with focused proof.
+
+Close proof used backend-scope regression guard logs generated with:
+`bash -lc '{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } > test_after.log 2>&1'`.
+The matching close gate passed with 162/162 backend tests before and after, no
+new failures, and no test-contract downgrades.
+
 ## Reviewer Reject Signals
 
 - A patch mainly renames helpers or moves code between AArch64 files while the
