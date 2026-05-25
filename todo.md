@@ -1,48 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Affected Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 consolidated the affected helper boundary after
-`aarch64_register_byval_argument_size_bytes` was removed.
+Step 4 recorded the broader backend checkpoint for the register byval size
+authority-removal/consolidation slice after Step 3.
 
-- Verified the removed helper has no surviving declaration or caller outside
-  this packet note.
-- Removed the dead `prepared_byval_lane_extent_bytes(...)` probe from the
-  non-byval frame-slot-to-register branch in `calls_moves.cpp`; that branch
-  already excludes `is_aarch64_byval_register_lane_move(move)`.
-- Kept `prepared_byval_lane_extent_bytes(...)` local to prepared small byval
-  register-lane emission, where it consumes prepared move, argument, and value
-  home authority.
-- Left the surviving retained ABI helpers as future blockers for separate
-  indirect and stack byval slices:
-  `aarch64_indirect_byval_argument_size_bytes`,
-  `aarch64_stack_byval_argument_size_bytes`, and
-  `aarch64_indirect_register_byval_argument`.
+- Used the accepted canonical `test_before.log`, rolled forward after Step 3,
+  as the broad backend proof artifact.
+- Confirmed the log records the backend build and `^backend_` CTest subset
+  passing all `162/162` backend tests.
+- No implementation, test, build metadata, `plan.md`, or source idea files were
+  touched for this recording-only packet.
 
 ## Suggested Next
 
-Supervisor should decide whether to commit this Step 3 consolidation slice or
-delegate the next slice for one surviving retained ABI byval helper boundary.
+Route the next lifecycle action to Step 5 closure review.
 
 ## Watchouts
 
-The surviving retained ABI helpers are not retired by this packet. They remain
-valid only for the current indirect-register and stack byval emission paths
-until those paths gain prepared size/class authority.
-
-The small register-lane byval path should continue to require prepared move
-reason `call_arg_byval_aggregate_register_lanes`; generic frame-slot register
-moves should not recover that classification locally.
+This packet only records an already accepted checkpoint. It did not rerun the
+broad backend command and did not create or modify `test_after.log`.
 
 ## Proof
 
-Ran the supervisor-selected proof exactly:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+No new build was required by the delegated packet.
 
-Result: passed, `162/162` backend tests in `test_after.log`.
+Accepted canonical proof artifact: `test_before.log`
+
+Recorded command:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+
+Result: passed, `162/162` backend tests in `test_before.log`.
