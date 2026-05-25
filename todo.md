@@ -8,42 +8,64 @@ Current Step Title: Select One Preservation Reconstruction Authority Leak
 
 ## Just Finished
 
-Step 5 closure review rejected source-idea closure after the local-frame
-publication checkpoint. The selected local-frame retained `CallInst::arg_abi`
-and `CallInst::arg_types` helper chain is complete, but preservation
-reconstruction and printing/helper-boundary consolidation remain within the
-source idea's acceptance criteria.
+Step 1 selected one preservation reconstruction authority leak for the next
+implementation packet: `find_prior_stack_preserved_value_before_instruction`
+in `calls_preservation.cpp`, consumed by before-instruction move lowering in
+`calls_moves.cpp`.
+
+Selected local reconstruction/fallback to remove:
+`find_prior_stack_preserved_value_before_instruction` locally refinds prepared
+call plans, walks `call_plans->calls` in reverse, filters same-block calls
+before an arbitrary instruction index, and rechecks stack-preservation shape
+near AArch64 emission.
+
+Prepared replacement route:
+use the existing `context.function.call_plan_lookups` authority backed by
+`PreparedCallPlanLookups::prior_preserved_by_value` and
+`prepare::find_latest_indexed_prior_preserved_value`. The Step 2 slice should
+query that indexed prior-preserved table at the current block/instruction
+position, then keep only emission-side validation that the returned
+`PreparedCallPreservedValue` is a complete `StackSlot` preservation record.
+If the current helper cannot safely use the existing indexed API without
+creating a synthetic current-position key, the precise blocker is a missing
+prepared lookup helper shaped as: latest prior stack-preserved value by
+`PreparedValueId`, `block_index`, and `instruction_index`.
 
 ## Suggested Next
 
-Execute Step 1 by selecting one preservation reconstruction authority leak from
-the regenerated runbook and recording the selected target plus proof command
-here.
+Execute Step 2 by replacing
+`find_prior_stack_preserved_value_before_instruction` with prepared lookup
+consumption or, if the synthetic-position route is rejected during
+implementation, stop with the missing prepared lookup helper blocker recorded
+above. Remove obsolete local call-plan fallback parameters only if the selected
+helper no longer needs them.
 
 ## Watchouts
 
 - Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
 - Do not weaken tests or mark nearby preservation/publication cases
   unsupported to claim progress.
-- If a needed prepared preservation fact is missing, stop and record that
-  blocker instead of rebuilding the decision locally.
+- Keep this slice to the selected before-instruction stack-preserved lookup;
+  do not fold in callee-saved republication/population or block-entry
+  non-call-use reconstruction.
+- The existing lookup returns prior preserved values by value id and position;
+  Step 2 must still validate `StackSlot`, slot id, stack offset, nonzero stack
+  size, and alignment fallback before building the `MemoryOperand`.
 
 ## Proof
 
-Closure review evidence:
+No build was required for this selection-only Step 1 packet, and no
+`test_after.log` was produced.
 
-- Retained `CallInst::arg_abi` and `CallInst::arg_types` publication reads were
-  not found in the surviving `calls*.cpp`/`calls*.hpp` scan.
-- `calls_preservation.cpp` still exposes preservation reconstruction helpers
-  and BIR/call-list scans that need authority review before the source idea can
-  close.
-- `calls_printing.cpp` still owns call and call-boundary printing/effect
-  spelling listed by the source idea as possible remaining consolidation work.
-- Existing Step 4 proof was recorded before this review as:
-  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
-- Current workspace check found `test_before.log` but no `test_after.log`;
-  this does not block the lifecycle decision because closure was rejected before
-  the close regression gate.
+Evidence commands used:
 
-Close decision: close rejected; no close-time regression guard was generated
-because source-idea completion is false.
+- `sed -n '1,220p' todo.md`
+- `sed -n '1,240p' plan.md`
+- `rg -n "find_prior_preserved_value|preserved_value_has_|lower_before_call_moves|lower_after_call_moves|plan_prepared_call_boundary_effects|Prepared" src/backend/mir/aarch64/codegen src/backend/prealloc tests/backend/mir`
+- `sed -n '220,620p' src/backend/mir/aarch64/codegen/calls_preservation.cpp`
+- `sed -n '3320,3405p' src/backend/mir/aarch64/codegen/calls_moves.cpp`
+- `sed -n '140,220p' src/backend/prealloc/prepared_lookups.cpp`
+- `sed -n '1,160p' src/backend/prealloc/prepared_lookups.hpp`
+
+Next Step 2 proof command:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
