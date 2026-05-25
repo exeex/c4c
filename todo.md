@@ -8,31 +8,37 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` removed the duplicate
-`collect_byval_register_lane_stores` reconstruction tail from
-`make_byval_register_lane_prepared_source`, leaving the helper to accept only a
-complete prepared `ByvalRegisterLane` source-selection payload and otherwise
-fail closed.
+Step 2 of `plan.md` retired the explicit `FrameSlotValue` fallback inside
+`make_frame_slot_call_argument_source`: when a prepared source-selection fact
+claims `PreparedCallArgumentSourceSelectionKind::FrameSlotValue`, the helper now
+accepts only the complete prepared payload through
+`make_selected_frame_slot_source` and otherwise fails closed instead of
+rederiving the same frame-slot value source from local addressing/home facts.
 
-The hand-built AArch64 instruction-dispatch byval fixtures now provide the
-prepared `ByvalRegisterLane` source-selection facts that production prepared
-call planning supplies. The small byval payload fixture selects
-`PreparedFrameSlotId{13203}` at stack offset `128` with size/alignment `1` and
-lane extent `1`; the large indirect byval fixture selects
-`PreparedFrameSlotId{43}` at stack offset `96` with size `24`, alignment `8`,
-and lane extent `24`.
+The existing hand-built AArch64 instruction-dispatch frame-slot stack argument
+fixture now provides the prepared `FrameSlotValue` source-selection facts that
+production prepared call planning supplies: value `PreparedValueId{93}` /
+`ValueNameId{94}` selects `PreparedFrameSlotId{5}` at stack offset `32` with
+size/alignment `8`.
 
 ## Suggested Next
 
-Continue Step 2 by retiring the next proven duplicate helper boundary only if
-its prepared source-selection payload is complete and its hand-built fixtures
-already model the prepared contract.
+Continue Step 2 by retiring the next proven duplicate helper boundary, likely a
+`FrameSlotAddress`, `LocalFrameAddressMaterialization`, or stack-slot
+`PriorPreservation` path, only where the prepared source-selection payload is
+complete and the fallback can be separated from incomplete/absent selection
+compatibility.
 
 ## Watchouts
 
 - Do not retire fragmented byval lane fallback logic outside
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
   covers complete byval register-lane selections with prepared source payload.
+- `make_frame_slot_call_argument_source` still keeps the legacy fallback when
+  no explicit `FrameSlotValue` selection is present. A full fail-closed removal
+  crossed into an existing byval-sized hand fixture with no frame-slot
+  source-selection fact, so absent-selection compatibility remains outside this
+  packet.
 - Do not retire callee-saved-register prior preservation in the same slice;
   `PreparedCallArgumentSourceSelection` only proves the stack-slot
   `PriorPreservation` source path for this consolidation step.

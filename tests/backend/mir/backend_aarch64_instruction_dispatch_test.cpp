@@ -17766,6 +17766,19 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
               .source_stack_offset_bytes = std::size_t{32},
               .source_register_bank = prepare::PreparedRegisterBank::Gpr,
               .destination_stack_offset_bytes = std::size_t{0},
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              FrameSlotValue,
+                      .source_value_id = value_id,
+                      .source_value_name = value_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_slot_id = prepare::PreparedFrameSlotId{5},
+                      .source_stack_offset_bytes = std::size_t{32},
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                  },
           }},
   };
   const prepare::PreparedControlFlowFunction control_flow{
