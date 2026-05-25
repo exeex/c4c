@@ -8,24 +8,27 @@ Current Step Title: Select The Preservation Boundary Leak
 
 ## Just Finished
 
-Step 5 closure review: rejected closure for the frame-slot call argument
-boundary narrowing checkpoint and regenerated the active runbook around the
-next surviving prior-preservation lookup boundary.
+Step 1 selected `find_prior_preserved_value_for_value` as the next concrete
+preservation boundary leak. Its fallback path in
+`calls_preservation.cpp` reconstructs prepared-call authority by walking
+`call_plans->calls` and rechecking prepared CFG dominance with AArch64-local
+`argument_source_prepared_block_index_by_label`,
+`argument_source_prepared_block_successors`, and `prepared_block_dominates`.
 
-Close-time regression guard used the existing canonical backend logs and
-passed: 162/162 tests before and after, no new failures.
-
-The source idea remains open because AArch64 calls consolidation still has
-durable remaining scope in surviving `calls*.cpp` files and broad `calls.hpp`
-helpers. The next checkpoint starts at preservation lookup rather than closing
-or moving the idea to `ideas/closed/`.
+Intended authority owner: existing prepared lookup ownership under
+`prepare::PreparedCallPlanLookups`, specifically
+`prepare::find_dominating_indexed_prior_preserved_value`. No missing prepared
+fact is currently indicated; the Step 2 checkpoint should require indexed
+prepared call-plan lookups for this query, remove the local fallback, and then
+retire or privatize any now-unused AArch64 dominance helper declarations.
 
 ## Suggested Next
 
-Execute Step 1 by mapping `calls_preservation.cpp` prior-preserved-value lookup
-helpers and their `calls_moves.cpp` consumers. Select one concrete boundary
-leak, identify the intended prepared/emission owner or missing prepared fact,
-and record the focused proof scope before implementation.
+Execute Step 2 by narrowing `find_prior_preserved_value_for_value` to consume
+`context.function.call_plan_lookups` through
+`prepare::find_dominating_indexed_prior_preserved_value`, then remove the raw
+prepared-call scan and local dominance fallback if no remaining AArch64 caller
+needs those helpers.
 
 ## Watchouts
 
@@ -34,19 +37,18 @@ and record the focused proof scope before implementation.
   calls-family rewrite.
 - Do not claim helper renames, expectation rewrites, or testcase-shaped
   shortcuts as progress.
-- Keep source-idea closure rejected until all durable acceptance criteria are
-  met, not merely this regenerated runbook.
+- `find_prior_preserved_value_for_call_argument` still has a non-dominating
+  fallback through `prepare::find_latest_indexed_prior_preserved_value`; leave
+  it for a separate packet unless Step 2 proves the two helpers must be
+  narrowed together.
+- `calls_moves.cpp` consumes `make_prior_preserved_call_argument_source`, not
+  the selected `find_prior_preserved_value_for_value` helper directly.
 
 ## Proof
 
-Lifecycle-only closure review. No implementation files, tests, build metadata,
-`test_before.log`, or `test_after.log` were changed.
-
-Regression guard command run by the plan owner:
-
 ```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_call_boundary_owner|call_boundary_effect_plan)'
 ```
 
-Result: PASS. Before: 162 passed, 0 failed, 162 total. After: 162 passed,
-0 failed, 162 total. New failures: 0.
+Recorded focused proof scope for Step 2. No build or ctest was required or run
+for this read-only selection packet, and `test_after.log` was not changed.
