@@ -1106,55 +1106,6 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   };
 }
 
-mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
-                                             const CallInstructionRecord& call) {
-  const auto mnemonic = required_primary_mnemonic(instruction);
-  if (auto variadic_print = print_variadic_call(call, bad_header(instruction), mnemonic)) {
-    return *variadic_print;
-  }
-  if (mnemonic.empty()) {
-    return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");
-  }
-  if (call.is_indirect) {
-    if (!call.indirect_callee.has_value() ||
-        !call.prepared_indirect_callee.has_value() || call.source_call == nullptr) {
-      return target_unsupported(bad_header(instruction) +
-                                "indirect call node is missing prepared callee provenance");
-    }
-    const auto* callee = std::get_if<RegisterOperand>(&call.indirect_callee->payload);
-    if (call.indirect_callee->kind != OperandKind::Register || callee == nullptr) {
-      return target_unsupported(bad_header(instruction) +
-                                "indirect call callee is not a register operand");
-    }
-    std::ostringstream out;
-    out << mnemonic << " " << register_name(*callee);
-    if (call.outgoing_stack_argument_bytes == 0) {
-      return target_printed({out.str()});
-    }
-    return target_printed({
-        "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-        out.str(),
-        "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-    });
-  }
-  if (!call.direct_callee.has_value() || call.direct_callee_label.empty() ||
-      call.source_call == nullptr || !call.wrapper_kind.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "direct call node is missing prepared callee provenance");
-  }
-
-  std::ostringstream out;
-  out << mnemonic << " " << call.direct_callee_label;
-  if (call.outgoing_stack_argument_bytes == 0) {
-    return target_printed({out.str()});
-  }
-  return target_printed({
-      "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-      out.str(),
-      "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-  });
-}
-
 mir::TargetInstructionPrintResult print_call_boundary_move(
     const InstructionRecord& instruction,
     const CallBoundaryMoveInstructionRecord& move) {

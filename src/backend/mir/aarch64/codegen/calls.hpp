@@ -341,9 +341,6 @@ make_callee_saved_preservation_home_population(
 [[nodiscard]] InstructionRecord make_call_boundary_abi_binding_instruction(
     CallBoundaryAbiBindingInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
-[[nodiscard]] mir::TargetInstructionPrintResult print_call(
-    const InstructionRecord& instruction,
-    const CallInstructionRecord& call);
 [[nodiscard]] mir::TargetInstructionPrintResult print_call_boundary_move(
     const InstructionRecord& instruction,
     const CallBoundaryMoveInstructionRecord& move);
