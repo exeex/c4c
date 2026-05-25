@@ -78,6 +78,12 @@ lower_predecessor_join_source_publication(
     const prepare::PreparedValueHome& destination_home,
     BlockScalarLoweringState& scalar_state);
 
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_predecessor_select_parallel_copy_sources(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
+
 [[nodiscard]] std::string select_chain_label(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
