@@ -51,11 +51,6 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             std::size_t instruction_index,
                             std::string message);
 
-// calls_printing effects
-
-[[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
-    const std::vector<prepare::PreparedClobberedRegister>& clobbers);
-
 // calls_argument_sources
 
 [[nodiscard]] bool complete_full_width_f128_carrier(

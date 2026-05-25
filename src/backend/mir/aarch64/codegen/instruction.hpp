@@ -1765,6 +1765,8 @@ struct InstructionRecord {
 [[nodiscard]] OperandRecord make_symbol_operand(SymbolOperand operand);
 [[nodiscard]] OperandRecord make_branch_target_operand(BranchTargetOperand operand);
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
+[[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
+    const std::vector<prepare::PreparedClobberedRegister>& clobbers);
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
