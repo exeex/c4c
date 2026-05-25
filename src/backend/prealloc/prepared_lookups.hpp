@@ -112,6 +112,13 @@ find_dominating_indexed_prior_preserved_value(
     const PreparedCallPlan& current_call_plan,
     PreparedValueId value_id);
 
+[[nodiscard]] const PreparedCallPreservedValue*
+find_latest_indexed_prior_stack_preserved_value_before_instruction(
+    const PreparedCallPlanLookups& lookups,
+    PreparedValueId value_id,
+    std::size_t block_index,
+    std::size_t instruction_index);
+
 [[nodiscard]] const std::vector<const PreparedCallPreservedValue*>*
 first_indexed_stack_preserved_values_for_call(
     const PreparedCallPlanLookups& lookups,

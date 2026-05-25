@@ -397,6 +397,41 @@ find_dominating_indexed_prior_preserved_value(
   return nullptr;
 }
 
+[[nodiscard]] const PreparedCallPreservedValue*
+find_latest_indexed_prior_stack_preserved_value_before_instruction(
+    const PreparedCallPlanLookups& lookups,
+    PreparedValueId value_id,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (value_id >= lookups.prior_preserved_by_value.size()) {
+    return nullptr;
+  }
+  const auto& entries = lookups.prior_preserved_by_value[value_id];
+  if (entries.empty()) {
+    return nullptr;
+  }
+  const PreparedPriorPreservedValueEntry current{
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .preserved = nullptr,
+  };
+  auto it = std::lower_bound(entries.begin(),
+                             entries.end(),
+                             current,
+                             prepared_prior_preserved_value_entry_position_less);
+  while (it != entries.begin()) {
+    --it;
+    if (it->block_index != block_index) {
+      break;
+    }
+    if (it->preserved != nullptr &&
+        it->preserved->route == PreparedCallPreservationRoute::StackSlot) {
+      return it->preserved;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const std::vector<const PreparedCallPreservedValue*>*
 first_indexed_stack_preserved_values_for_call(
     const PreparedCallPlanLookups& lookups,
