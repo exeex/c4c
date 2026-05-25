@@ -8,20 +8,34 @@ Current Step Title: Confirm The Call-Argument Lookup Boundary
 
 ## Just Finished
 
-Step 5 closure review rejected source-idea closure. The previous checkpoint's
-broader backend proof passed, but `find_prior_preserved_value_for_call_argument`
-still selects prior preservation through
-`prepare::find_latest_indexed_prior_preserved_value` and falls back to raw
-prepared-call-plan discovery and iteration when indexed call-plan lookups are
-unavailable.
+Step 1 confirmed the selected lookup boundary is
+`find_prior_preserved_value_for_call_argument` feeding
+`make_prior_preserved_call_argument_source`.
+
+The owner should be shared prepared-call lookup authority:
+`context.function.call_plan_lookups` is populated by normal AArch64 prepared
+lowering through `prepare::make_prepared_function_lookups`, and this path
+should fail closed when that indexed lookup state is unavailable instead of
+rediscovering `PreparedCallPlansFunction` and iterating raw `call_plans->calls`
+inside AArch64 emission.
+
+Call-argument prior-preservation sources should use dominating prior lookup
+semantics, matching `find_prior_preserved_value_for_value`, not latest-indexed
+lexical semantics. Non-dominating sibling preservation is not a valid prior
+source for an argument; when a sibling consumer needs the preservation home, the
+current call's prepared boundary effects own the home population before the
+argument move.
+
+No missing prepared fact blocks Step 2. Existing prepared facts cover the
+selection boundary: indexed prior preserved values plus control-flow dominance
+are available in `PreparedCallPlanLookups`/`PreparedControlFlowFunction`.
 
 ## Suggested Next
 
-Execute Step 1: confirm whether call-argument prior preservation should use
-latest-indexed or dominating prepared lookup semantics, whether all valid
-lowering contexts should provide `call_plan_lookups` for this path, decide the
-correct prepared owner or missing prepared-fact blocker, and record the focused
-proof command here.
+Execute Step 2 by deleting the raw prepared-call-plan fallback from
+`find_prior_preserved_value_for_call_argument` and switching the indexed lookup
+consumer to `prepare::find_dominating_indexed_prior_preserved_value`, preserving
+AArch64-local operand construction in `make_prior_preserved_call_argument_source`.
 
 ## Watchouts
 
@@ -33,11 +47,15 @@ proof command here.
 - Keep AArch64-specific operand construction in AArch64 code; the target of
   this checkpoint is the local call-argument prior-preserved-value selection
   boundary.
+- Step 2 may need to update focused tests that manually build
+  `FunctionLoweringContext` without attached `PreparedFunctionLookups`; valid
+  lowering contexts should either attach `call_plan_lookups` or observe the new
+  fail-closed behavior.
 
 ## Proof
 
-No new validation was run for this lifecycle-only review. The closure decision
-uses the executor-reported Step 4 proof now recorded in the rolled-forward
-canonical `test_before.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed with 162/162 backend tests.
+No build or ctest was required for this read-only selection packet, and no
+`test_after.log` was produced.
+
+Intended focused Step 2 proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_lookup_helper)$'`
