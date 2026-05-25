@@ -224,6 +224,32 @@ find_prior_stack_preserved_value_before_instruction(
   return preserved;
 }
 
+[[nodiscard]] MemoryOperand make_prior_stack_preserved_value_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPreservedValue& preserved,
+    std::size_t instruction_index) {
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = preserved.value_id,
+      .result_value_name = preserved.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = preserved.slot_id,
+      .byte_offset = static_cast<std::int64_t>(*preserved.stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *preserved.stack_size_bytes,
+      .align_bytes = preserved.stack_align_bytes.value_or(*preserved.stack_size_bytes),
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] module::MachineInstruction make_outgoing_stack_base_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -3410,24 +3436,8 @@ std::vector<module::MachineInstruction> lower_value_moves(
                              context, move.from_value_id, instruction_index)
                        : nullptr;
                prior_stack_preserved != nullptr) {
-      move_record.source_memory = MemoryOperand{
-          .surface = RecordSurfaceKind::MachineInstructionNode,
-          .support = MemoryOperandSupportKind::Prepared,
-          .function_name = context.function.control_flow->function_name,
-          .block_label = context.control_flow_block->block_label,
-          .instruction_index = instruction_index,
-          .result_value_id = prior_stack_preserved->value_id,
-          .result_value_name = prior_stack_preserved->value_name,
-          .base_kind = MemoryBaseKind::FrameSlot,
-          .frame_slot_id = prior_stack_preserved->slot_id,
-          .byte_offset =
-              static_cast<std::int64_t>(*prior_stack_preserved->stack_offset_bytes),
-          .byte_offset_is_prepared_snapshot = true,
-          .size_bytes = *prior_stack_preserved->stack_size_bytes,
-          .align_bytes = prior_stack_preserved->stack_align_bytes.value_or(
-              *prior_stack_preserved->stack_size_bytes),
-          .can_use_base_plus_offset = true,
-      };
+      move_record.source_memory = make_prior_stack_preserved_value_source(
+          context, *prior_stack_preserved, instruction_index);
     } else if (source_home != nullptr &&
                source_home->kind == prepare::PreparedValueHomeKind::Register &&
                source_home->register_name.has_value()) {
