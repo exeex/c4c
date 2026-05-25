@@ -59,3 +59,18 @@ to accumulate under a vague name.
   the internal handoff.
 - A patch uses call cleanup as a reason to silently change non-call lowering
   behavior.
+
+## Closure Note
+
+Closed after Step 6 of the active runbook. The completed route leaves
+`dispatch.cpp` responsible for prepared block traversal and instruction /
+terminator routing, with materialization, publication and value-home updates,
+producer lookup, edge-copy handling, and call-boundary mechanics behind named
+owner surfaces or documented justifications. The remaining call routing is
+intentionally bounded by the missing shared prepared call-argument source fact.
+
+Close gate: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_' > test_after.log 2>&1`, compared with the
+matching canonical `test_before.log` using
+`check_monotonic_regression.py --allow-non-decreasing-passed`; before and after
+were 162/162 with no new failures.
