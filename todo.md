@@ -1,42 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broader Backend Checkpoint
+Current Step ID: 1
+Current Step Title: Select The Preservation Boundary Leak
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Broader Backend Checkpoint: recorded the supervisor-completed broader
-backend validation checkpoint for the active AArch64 calls emission
-consolidation plan.
+Step 5 closure review: rejected closure for the frame-slot call argument
+boundary narrowing checkpoint and regenerated the active runbook around the
+next surviving prior-preservation lookup boundary.
 
-The matching before/after backend checkpoint command passed with 162/162 tests
-passing before and after. Regression guard passed with
-`--allow-non-decreasing-passed` and reported no new failures.
+Close-time regression guard used the existing canonical backend logs and
+passed: 162/162 tests before and after, no new failures.
+
+The source idea remains open because AArch64 calls consolidation still has
+durable remaining scope in surviving `calls*.cpp` files and broad `calls.hpp`
+helpers. The next checkpoint starts at preservation lookup rather than closing
+or moving the idea to `ideas/closed/`.
 
 ## Suggested Next
 
-Proceed to Step 5 closure review so the plan owner can decide whether to close,
-retire, or replace the active runbook state.
+Execute Step 1 by mapping `calls_preservation.cpp` prior-preserved-value lookup
+helpers and their `calls_moves.cpp` consumers. Select one concrete boundary
+leak, identify the intended prepared/emission owner or missing prepared fact,
+and record the focused proof scope before implementation.
 
 ## Watchouts
 
-- This packet recorded validation results only; it did not run new validation.
-- No implementation files, tests, expectation contracts, `plan.md`,
-  source ideas, `test_before.log`, or `test_after.log` were changed.
+- Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
+- Do not broaden this checkpoint into full dispatch cleanup or a whole
+  calls-family rewrite.
+- Do not claim helper renames, expectation rewrites, or testcase-shaped
+  shortcuts as progress.
+- Keep source-idea closure rejected until all durable acceptance criteria are
+  met, not merely this regenerated runbook.
 
 ## Proof
 
-No new build/test run by this executor packet. The supervisor already ran the
-matching broader backend checkpoint command before and after:
+Lifecycle-only closure review. No implementation files, tests, build metadata,
+`test_before.log`, or `test_after.log` were changed.
+
+Regression guard command run by the plan owner:
 
 ```sh
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_before.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
 
-and the same command into `test_after.log`.
-
-Result: 162/162 backend tests passed before and after. Regression guard passed
-with `--allow-non-decreasing-passed` and no new failures.
+Result: PASS. Before: 162 passed, 0 failed, 162 total. After: 162 passed,
+0 failed, 162 total. New failures: 0.
