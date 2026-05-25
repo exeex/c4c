@@ -1,54 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broader Backend Checkpoint
+Current Step ID: 1
+Current Step Title: Select One Preservation Reconstruction Authority Leak
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the broader backend checkpoint for the local-frame
-publication authority route.
-
-- Ran the supervisor-selected full backend subset after the local-frame helper
-  boundary consolidation.
-- Confirmed the backend subset remains green across local-frame publication,
-  byval runtime helper, aggregate, prepared-call, and backend-route coverage.
-- No implementation or lifecycle-source edit was needed for this validation
-  checkpoint.
+Step 5 closure review rejected source-idea closure after the local-frame
+publication checkpoint. The selected local-frame retained `CallInst::arg_abi`
+and `CallInst::arg_types` helper chain is complete, but preservation
+reconstruction and printing/helper-boundary consolidation remain within the
+source idea's acceptance criteria.
 
 ## Suggested Next
 
-Supervisor should route lifecycle handling for the active plan now that the
-Step 4 broader backend checkpoint is complete.
+Execute Step 1 by selecting one preservation reconstruction authority leak from
+the regenerated runbook and recording the selected target plus proof command
+here.
 
 ## Watchouts
 
 - Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
-- Do not weaken tests or mark a nearby publication case unsupported to claim
-  progress.
-- Step 4 is validation-only; commit and lifecycle closeout remain supervisor or
-  plan-owner responsibilities.
+- Do not weaken tests or mark nearby preservation/publication cases
+  unsupported to claim progress.
+- If a needed prepared preservation fact is missing, stop and record that
+  blocker instead of rebuilding the decision locally.
 
 ## Proof
 
-Step 4 delegated proof passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
+Closure review evidence:
 
-Proof log: `test_after.log` contains `100% tests passed, 0 tests failed out of 162`.
+- Retained `CallInst::arg_abi` and `CallInst::arg_types` publication reads were
+  not found in the surviving `calls*.cpp`/`calls*.hpp` scan.
+- `calls_preservation.cpp` still exposes preservation reconstruction helpers
+  and BIR/call-list scans that need authority review before the source idea can
+  close.
+- `calls_printing.cpp` still owns call and call-boundary printing/effect
+  spelling listed by the source idea as possible remaining consolidation work.
+- Existing Step 4 proof was recorded before this review as:
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
+- Current workspace check found `test_before.log` but no `test_after.log`;
+  this does not block the lifecycle decision because closure was rejected before
+  the close regression gate.
 
-Coverage summary from the backend subset:
-
-- `backend`: 162 tests.
-- `aarch64`: 37 tests.
-- `backend_route`: 83 tests.
-- `prepared_call_boundary`: 1 test,
-  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`.
-- `publication`: 2 tests, including
-  `backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address`.
-- `local_address`: 1 test, matching the local aggregate frame-address
-  publication route.
-- `byval`: 3 tests, covering the byval runtime helper payload cases.
-- `aggregate`: 1 labeled aggregate test, with additional aggregate-named
-  backend-route tests present in the full backend subset.
+Close decision: close rejected; no close-time regression guard was generated
+because source-idea completion is false.

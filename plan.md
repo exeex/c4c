@@ -1,4 +1,4 @@
-# AArch64 Calls Local Frame Publication Helper Authority Checkpoint
+# AArch64 Calls Preservation Reconstruction Helper Authority Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,39 +6,47 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review for the aggregate-address publication checkpoint rejected closure.
+review for the local-frame publication checkpoint rejected source-idea closure.
 
 ## Goal
 
-Remove the remaining local-frame address publication-helper decisions that
-still read retained `bir::CallInst::arg_abi` or `bir::CallInst::arg_types`
-instead of consuming prepared call-plan facts.
+Remove or narrow the remaining AArch64-local preservation reconstruction paths
+that duplicate shared prepared call-plan authority, while keeping target-local
+code responsible only for AArch64 emission.
 
 ## Core Rule
 
-Target-local AArch64 calls code may inspect retained BIR for identity checks,
-diagnostics, and emission context. It must not rederive call-plan decisions
-already present in `PreparedCallPlan` or its argument/effect records.
+Target-local AArch64 calls code may consume prepared preservation, move, and
+boundary-effect facts to emit machine nodes. It must not rediscover
+preservation liveness, prior-call dominance, or call-boundary effect identity
+when those facts are already available from shared prepared-call planning or
+prepared lookup indexes.
 
 ## Latest Closure Review Finding
 
-The Step 5 closure review after the aggregate-address broader backend
-checkpoint rejected closure. The aggregate-address publication gate now consumes
-`PreparedCallArgumentPlan::allows_local_aggregate_address_publication`, and the
-scan did not find retained `arg_abi` or `arg_types` decision reads in
-`calls_dispatch_bridge.cpp` for that route.
+The Step 5 closure review after the local-frame publication backend checkpoint
+rejected closure.
 
-The source idea remains open because `calls_argument_sources.cpp` still decides
-local-frame address publication eligibility by reading retained call metadata:
+The selected local-frame helper chain is complete for this route: the retained
+`CallInst::arg_abi` and `CallInst::arg_types` publication reads targeted by
+the previous checkpoint were removed, and the broader backend subset was green
+before review.
 
-- `call_argument_is_pointer` reads `CallInst::arg_types` and falls back to
-  `CallInst::args` to decide whether an argument is pointer-like.
-- `call_argument_is_byval_copy` reads `CallInst::arg_abi` to exclude byval
-  copies.
-- `call_argument_allows_local_frame_address_publication` combines those
-  retained reads with a callee spelling check before
-  `make_local_frame_address_call_argument_source` can publish a local-frame
-  address.
+The source idea remains open because the durable acceptance criteria are
+broader than the local-frame publication route:
+
+- `calls_preservation.cpp` still owns preservation reconstruction helpers that
+  walk prepared call lists, inspect BIR block contents, and decide later-use or
+  prior-preserved-value eligibility near emission.
+- `calls_moves.cpp` still has preservation-effect selection and
+  republication/population routing that should be checked against prepared
+  boundary-effect authority before being treated as emission-only.
+- `calls_printing.cpp` still owns call and call-boundary printing/effect
+  spelling, which the source idea explicitly lists as a remaining possible
+  move out of target-local call emission.
+- The AArch64 calls family still spans multiple helper translation units; no
+  closure-quality file-retirement or responsibility boundary review has been
+  completed for preservation and printing.
 
 Close-time regression guard generation was not needed because closure was
 rejected before the close gate.
@@ -48,106 +56,114 @@ rejected before the close gate.
 - `ideas/open/02_aarch64_calls_emission_consolidation.md`
 - `src/backend/mir/aarch64/codegen/calls.hpp`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp`
+- `src/backend/mir/aarch64/codegen/calls_preservation.cpp`
+- `src/backend/mir/aarch64/codegen/calls_moves.cpp`
+- `src/backend/mir/aarch64/codegen/calls_printing.cpp`
 - `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
 - `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.hpp`
-- `src/backend/mir/aarch64/codegen/calls_moves.cpp`
-- Focused backend local-frame, publication, byval, and prepared-call tests
-  under `tests/backend/mir/`
+- Shared prepared-call and lookup helpers under `src/backend/prealloc/`
+- Focused backend preservation, prepared-call boundary, byval, and AArch64 call
+  tests under `tests/backend/mir/`
 
 ## Current Targets / Scope
 
-- Retained `bir::CallInst::arg_types` reads in
-  `call_argument_is_pointer`.
-- Retained `bir::CallInst::arg_abi` reads in
-  `call_argument_is_byval_copy`.
-- The local-frame publication gate in
-  `call_argument_allows_local_frame_address_publication`.
-- Helper signatures that pass `instruction_index` or `CallInst`-derived
-  context only to reconstruct publication eligibility.
-- Focused tests that prove prepared facts own the selected local-frame
-  publication decision.
+- `find_prior_preserved_value_for_call_argument`.
+- `find_prior_preserved_value_for_value`.
+- `find_prior_stack_preserved_value_before_instruction`.
+- `preserved_value_has_later_non_call_use`.
+- `preserved_value_has_block_entry_non_call_use`.
+- Callee-saved preservation home republication and population helpers.
+- Preservation-effect filtering in `calls_moves.cpp`.
+- Helper signatures in `calls.hpp` that expose preservation reconstruction as
+  target-local call-emission API.
 
 ## Non-Goals
 
-- Do not invent a new shared call-plan API unless the selected blocker proves
-  a required prepared fact is missing.
-- Do not perform broad dispatch cleanup or work from
-  `ideas/open/03_dispatch_responsibility_reduction.md`.
-- Do not change behavior solely to reduce line count.
+- Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
+- Do not invent a new shared prepared-call API unless the selected blocker
+  proves a required prepared fact is missing.
+- Do not move AArch64-specific register, frame-slot, or instruction emission
+  details into shared planning.
 - Do not weaken unsupported or expected-output contracts.
-- Do not move AArch64 emission details into the shared planner.
-- Do not revisit aggregate-address or byval aggregate lane lowering unless this
-  checkpoint exposes a concrete retained-authority dependency there.
+- Do not change behavior solely to reduce line count.
+- Do not treat printing relocation as part of this checkpoint unless the
+  preservation boundary work directly exposes a small, coherent printing
+  dependency.
+- Do not revisit aggregate-address or local-frame publication unless a
+  preservation dependency proves that route still owns duplicate authority.
 
 ## Working Model
 
-- Prefer a prepared fact already present on `PreparedCallArgumentPlan`,
-  `PreparedMoveResolution`, or `PreparedCallBoundaryEffectPlan`.
-- If local-frame publication needs a fact that is genuinely missing, stop and
-  record the missing prepared authority in `todo.md` instead of rebuilding the
-  decision locally.
-- A retained `bir::CallInst` read is acceptable only when it validates that the
-  prepared plan matches the instruction being emitted or reports a diagnostic
-  for inconsistent prepared data.
+- Prefer prepared lookup indexes when the target-local code only needs to find
+  a prior preserved value already selected by shared planning.
+- Prefer `prepare::plan_prepared_call_boundary_effects` output when the
+  target-local code only needs ordered preservation effects to emit.
+- Keep BIR inspection only for emission context, diagnostics, or identity
+  checks that prepared data cannot represent.
+- If a preservation decision needs a fact that is genuinely missing, stop and
+  record the missing prepared authority in `todo.md` instead of reconstructing
+  the decision locally.
 - A surviving helper boundary is acceptable only when its parameters describe
-  emission context, not call-planning authority.
+  AArch64 emission work, not preservation planning authority.
 
 ## Execution Rules
 
-- Start with the exact retained metadata read being removed.
-- Delete local reconstruction before adding any new helper.
+- Start with one exact preservation reconstruction helper or caller.
+- Delete local reconstruction before adding any replacement helper.
 - Keep each code slice narrow enough for a fresh build plus focused backend
   proof.
-- Escalate to `^backend_` after changing publication eligibility,
-  call-boundary effect ordering, or shared prepared-call behavior.
+- Escalate to `^backend_` after changing preservation-effect ordering,
+  prepared lookup consumption, call-boundary effects, or shared prepared-call
+  behavior.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
 
-## Step 1: Select One Local-Frame Publication Authority Leak
+## Step 1: Select One Preservation Reconstruction Authority Leak
 
-Goal: choose the next duplicate-authority local-frame publication path to
-remove and prove whether the needed prepared fact already exists.
+Goal: choose the next duplicate-authority preservation path to remove and
+prove whether the needed prepared fact already exists.
 
 Primary targets:
 
-- `call_argument_is_pointer` in `calls_argument_sources.cpp`
-- `call_argument_is_byval_copy` in `calls_argument_sources.cpp`
-- `call_argument_allows_local_frame_address_publication` in
-  `calls_argument_sources.cpp`
-- Any helper declaration that survives only to pass retained call metadata into
-  that gate
+- `find_prior_preserved_value_for_call_argument`.
+- `find_prior_preserved_value_for_value`.
+- `find_prior_stack_preserved_value_before_instruction`.
+- `preserved_value_has_later_non_call_use`.
+- `preserved_value_has_block_entry_non_call_use`.
+- Preservation-effect filtering in `lower_before_call_moves` and
+  `lower_after_call_moves`.
 
 Actions:
 
-- Identify the exact retained `CallInst::arg_abi` or `CallInst::arg_types`
-  read and the publication decision it makes.
-- Map that decision to existing prepared argument, move, or boundary-effect
-  fields.
-- Select one coherent local-frame publication target for the next executor
-  packet.
+- Identify the exact helper or call site that still reconstructs preservation
+  authority near AArch64 emission.
+- Map that decision to existing prepared preservation, boundary-effect, or
+  lookup data.
+- Select one coherent preservation target for the next executor packet.
 - Record the selected target, expected deletion path, and proof command in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` names one local-frame publication authority leak, the prepared
-  replacement fact or missing prepared-fact blocker, and the focused proof
+- `todo.md` names one preservation reconstruction authority leak, the prepared
+  replacement fact or missing-prepared-fact blocker, and the focused proof
   scope.
 
-## Step 2: Remove The Selected Local-Frame Publication Decision
+## Step 2: Remove The Selected Preservation Decision
 
-Goal: replace the selected retained metadata publication decision with
+Goal: replace the selected retained preservation reconstruction with
 prepared-fact consumption or stop with a precise missing-prepared-fact blocker.
 
 Actions:
 
-- Delete the retained `CallInst::arg_abi` or `CallInst::arg_types` decision
-  from the selected local-frame publication path.
+- Delete the selected local preservation reconstruction from the target-local
+  path.
+- Consume prepared preservation, boundary-effect, or lookup facts instead of
+  rebuilding them from BIR scans or call-list walks.
 - Keep retained BIR checks only for instruction identity validation,
-  callee-specific diagnostics, or emission context.
-- Tighten helper signatures so obsolete `CallInst` or `instruction_index`
-  parameters do not remain when prepared facts are sufficient.
+  diagnostics, or emission context.
+- Tighten helper signatures so obsolete context parameters do not remain when
+  prepared facts are sufficient.
 - Update focused tests only to preserve or strengthen the prepared-authority
   contract.
 - Run `cmake --build --preset default` plus the focused backend proof selected
@@ -155,43 +171,44 @@ Actions:
 
 Completion check:
 
-- The selected local-frame publication path no longer owns call-planning
-  authority locally, and `test_after.log` records passing build plus focused
-  proof.
+- The selected preservation path no longer owns call-planning authority
+  locally, and `test_after.log` records passing build plus focused proof.
 
-## Step 3: Consolidate The Local-Frame Helper Boundary
+## Step 3: Consolidate The Preservation Helper Boundary
 
-Goal: remove the helper/API boundary made obsolete by Step 2 or document why
-the surviving boundary is emission-only.
+Goal: remove helper/API boundaries made obsolete by Step 2 or document why each
+surviving preservation boundary is emission-only.
 
 Actions:
 
-- Remove obsolete declarations from `calls.hpp` and helper-local prototypes
-  when local-frame publication no longer needs retained metadata context.
+- Remove obsolete declarations from `calls.hpp` and helper-local prototypes.
 - Merge helper code back into a surviving owner when the helper no longer
   describes a real emission-only boundary.
 - Update build metadata only if a translation unit is retired.
-- Keep edits limited to local-frame call-argument source publication
-  ownership.
+- Keep edits limited to preservation reconstruction and direct call-boundary
+  emission ownership.
 - Run a fresh build and the focused backend proof after each coherent helper
   boundary change.
 
 Completion check:
 
-- The affected helper boundary is retired or explicitly emission-only, with
-  build metadata and include graphs matching the new boundary.
+- The affected preservation helper boundary is retired or explicitly
+  emission-only, with build metadata and include graphs matching the new
+  boundary.
 
 ## Step 4: Broader Backend Checkpoint
 
-Goal: prove the latest local-frame publication-authority checkpoint did not
-regress adjacent call, byval, aggregate, or printer behavior.
+Goal: prove the latest preservation-authority checkpoint did not regress
+adjacent call, byval, aggregate, local-frame publication, prepared-call
+boundary, or printer behavior.
 
 Actions:
 
 - Run the supervisor-selected broader backend validation scope.
-- Include focused AArch64 local-frame, publication, byval, aggregate-address,
-  prepared-call boundary, and any affected x86 shared-boundary tests when
-  shared prepared-call behavior was touched.
+- Include focused AArch64 preservation, prepared-call boundary,
+  local-frame/publication, byval, aggregate, and call printer tests.
+- Include affected x86 shared-boundary tests if shared prepared-call behavior
+  was touched.
 - Record exact proof commands and results in `todo.md`.
 
 Completion check:
@@ -201,16 +218,18 @@ Completion check:
 
 ## Step 5: Closure Review
 
-Goal: decide whether the source idea is complete after this checkpoint or
-whether another runbook checkpoint is needed.
+Goal: decide whether the source idea is complete after this preservation
+checkpoint or whether another runbook checkpoint is needed.
 
 Actions:
 
-- Recheck all surviving `calls*.cpp`/`calls*.hpp` retained `CallInst` ABI/type
-  reads against the source idea acceptance criteria.
+- Recheck all surviving `calls*.cpp`/`calls*.hpp` preservation, argument,
+  dispatch, move, and printing helpers against the source idea acceptance
+  criteria.
 - Confirm target-local calls code no longer rederives decisions already
   present in shared prepared facts.
-- Confirm surviving helper files have explicit emission-only ownership.
+- Confirm surviving helper files have explicit emission-only ownership or are
+  identified as the next checkpoint target.
 - If durable remaining work exists, keep the idea open and request another
   runbook checkpoint instead of closing.
 
