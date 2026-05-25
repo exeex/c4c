@@ -8,46 +8,91 @@ Current Step Title: Reactivation Mapping With Prepared Source Selection
 
 ## Just Finished
 
-Step 4 of the shared prepared call-argument source-selection prerequisite
-accepted and closed
-`ideas/open/01_shared_prepared_call_argument_source_selection.md`.
+Step 1 of `plan.md` mapped the remaining AArch64 call helper boundaries
+against the prepared source-selection facts now available on
+`PreparedCallArgumentPlan::source_selection`.
 
-Acceptance basis:
+Exact helper-to-prepared-fact mapping:
 
-- Shared `PreparedCallArgumentSourceSelection` exists on prepared call
-  argument plans.
-- AArch64 consumes complete shared selections for frame-slot values,
-  frame-slot addresses, local-frame address materialization, stack-slot prior
-  preservation, and complete byval register-lane selections.
-- Deferred callee-saved-register preservation and fragmented byval fallback
-  paths are outside the accepted prerequisite because the shared selection does
-  not yet carry enough target-neutral placement/source payload to retire those
-  emission paths.
-- The latest accepted backend proof was
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`,
-  with 162/162 backend tests passing. `test_before.log` has been rolled
-  forward to that accepted proof.
+- `make_frame_slot_call_argument_source` in
+  `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp` duplicates the
+  `FrameSlotValue` path. Prepared facts already carry
+  `source_slot_id`, `source_stack_offset_bytes`, `source_size_bytes`, and
+  `source_align_bytes`; the remaining local fallback still re-finds a unique
+  prepared memory access by result value or falls back to the argument/home
+  stack offset.
+- `make_sret_memory_return_address_source` and
+  `make_frame_slot_call_argument_address_source` duplicate the
+  `FrameSlotAddress` path. Prepared facts already carry either the memory-return
+  slot/offset/size/alignment or the selected frame-slot address
+  materialization fields; the remaining local fallback still scans prepared
+  address materializations and reconstructs local aggregate address
+  publication.
+- `make_local_frame_address_call_argument_source` duplicates the
+  `LocalFrameAddressMaterialization` path. Prepared facts already carry the
+  selected address-materialization block label, instruction index, frame-slot
+  id, byte offset, size, and alignment; the remaining local fallback still
+  matches materialized value names and searches local-frame stack objects.
+- `make_prior_preserved_call_argument_source` plus the
+  `lower_call_boundary_move` preservation branch duplicates the stack-slot
+  `PriorPreservation` path. Prepared facts already carry the selected value id,
+  value name, preservation route, preserved stack slot, offset, size, and
+  alignment; the local fallback still asks call-plan lookups to choose a prior
+  preserved value. This route is only proven for stack-slot preservation; the
+  selected-source fact intentionally does not yet retire callee-saved-register
+  preservation.
+- `make_byval_register_lane_prepared_source` duplicates the complete
+  `ByvalRegisterLane` path. Prepared facts already carry
+  `byval_lane_extent_bytes`, source slot, stack offset, source size, and
+  alignment; the remaining fallback still recollects lane stores from local
+  addressing facts. Fragmented byval fallback paths remain outside the proven
+  mapping.
+
+First valid Step 2 implementation slice:
+
+Retire the fallback reconstruction inside
+`make_byval_register_lane_prepared_source` for complete `ByvalRegisterLane`
+selections, leaving it to accept only the prepared selection path and to fail
+closed when the prepared fact is absent or incomplete. This is the narrowest
+coherent slice because the helper already has a complete prepared-selection
+fast path, the source-selection fact carries the required lane extent and
+frame-slot payload, and the slice does not require changing the shared
+call-plan API.
 
 ## Suggested Next
 
-Execute Step 1 of `plan.md`: map the remaining AArch64 call helper boundaries
-against available prepared call-plan facts, prioritizing routes made actionable
-by `PreparedCallArgumentSourceSelection`, then delegate the first coherent
-implementation slice if the mapping identifies one.
+Execute Step 2 of `plan.md` for the byval register-lane helper boundary:
+remove the local `collect_byval_register_lane_stores` fallback from
+`make_byval_register_lane_prepared_source`, keep the prepared
+`ByvalRegisterLane` path behavior-preserving, and run a fresh build plus the
+focused backend call tests selected by the supervisor.
 
 ## Watchouts
 
-- Do not perform another AArch64-local move/source cleanup unless the chosen
-  helper boundary maps to prepared facts that now exist.
+- Do not retire fragmented byval lane fallback logic outside
+  `make_byval_register_lane_prepared_source`; the accepted prerequisite only
+  covers complete byval register-lane selections with prepared source payload.
+- Do not retire callee-saved-register prior preservation in the same slice;
+  `PreparedCallArgumentSourceSelection` only proves the stack-slot
+  `PriorPreservation` source path for this consolidation step.
+- Frame-slot value/address and local-frame address materialization fallbacks
+  are also mapped, but they have broader helper interactions and should follow
+  after the byval slice proves the pattern.
 - Do not invent a new call-plan API under this source idea.
 - Do not move AArch64 emission details into the shared planner.
 - Do not claim progress through file concatenation, expectation weakening, or
   hidden helper rewrites.
-- Callee-saved-register prior-preservation and fragmented byval fallback paths
-  still require fresh mapping before they can justify deletion or consolidation.
 
 ## Proof
 
-Close gate used the accepted backend proof rolled into `test_before.log`.
-Regression guard checker was run read-only against the rolled-forward proof
-with non-decreasing mode and reported 162 passed, 0 failed.
+Mapping-only packet; no build was run and no `test_after.log` was produced.
+Proof is `git diff -- todo.md` plus code inspection with:
+
+- `c4c-clang-tool-ccdb list-symbols` on
+  `calls_argument_sources.cpp`, `calls_moves.cpp`,
+  `calls_byval_aggregates.cpp`, and `call_plans.cpp`
+- `rg -n "PreparedCallArgumentSourceSelection|source_selection|Byval|PriorPreserved|FrameSlot|LocalFrame|ArgumentSource" ...`
+- targeted `sed -n` reads around `PreparedCallArgumentSourceSelection`,
+  `select_prepared_call_argument_source`,
+  `make_selected_frame_slot_source`,
+  `make_byval_register_lane_prepared_source`, and prior-preservation helpers
