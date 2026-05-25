@@ -410,10 +410,12 @@ make_prior_preserved_call_argument_source(
   if (preserved == nullptr) {
     return std::nullopt;
   }
-  if ((source_home != nullptr &&
-       make_local_frame_address_call_argument_source(
-           context, argument, *source_home, instruction_index).has_value()) ||
-      aarch64_indirect_register_byval_argument(context, argument, instruction_index)) {
+  if (source_home != nullptr &&
+      (make_local_frame_address_call_argument_source(
+           context, argument, *source_home, instruction_index)
+           .has_value() ||
+       prepared_indirect_byval_extent_bytes(context, move, argument, *source_home)
+           .has_value())) {
     return std::nullopt;
   }
 

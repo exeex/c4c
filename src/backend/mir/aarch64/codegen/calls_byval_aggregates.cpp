@@ -539,30 +539,4 @@ make_byval_register_lane_prepared_source(
   };
 }
 
-[[nodiscard]] bool aarch64_indirect_register_byval_argument(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
-      context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return false;
-  }
-  const auto* call =
-      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
-    return false;
-  }
-  const auto& abi = call->arg_abi[argument.arg_index];
-  return abi.type == bir::TypeKind::Ptr &&
-         abi.byval_copy &&
-         !abi.sret_pointer &&
-         abi.passed_in_register &&
-         !abi.passed_on_stack &&
-         abi.primary_class == bir::AbiValueClass::Integer &&
-         abi.size_bytes > 16;
-}
-
-
 }  // namespace c4c::backend::aarch64::codegen

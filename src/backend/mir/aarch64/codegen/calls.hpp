@@ -207,10 +207,11 @@ struct AggregateRegisterLaneStore {
     std::size_t byte_delta,
     std::size_t width_bytes,
     std::size_t instruction_index);
-[[nodiscard]] bool aarch64_indirect_register_byval_argument(
+[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
     const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
     const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index);
+    const prepare::PreparedValueHome& source_home);
 
 // calls
 

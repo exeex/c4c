@@ -25,6 +25,30 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
+[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
+      is_aarch64_byval_register_lane_move(move) ||
+      move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !source_home.size_bytes.has_value() ||
+      *source_home.size_bytes <= 16 ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
+      (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr &&
+       argument.source_register_bank != prepare::PreparedRegisterBank::AggregateAddress) ||
+      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return std::nullopt;
+  }
+  return source_home.size_bytes;
+}
+
 namespace {
 
 MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
@@ -944,30 +968,6 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
   }
 
   return extent_bytes <= 16 ? std::optional<std::size_t>{extent_bytes} : std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home) {
-  if (context.function.prepared == nullptr ||
-      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
-      is_aarch64_byval_register_lane_move(move) ||
-      move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-      source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
-      !source_home.size_bytes.has_value() ||
-      *source_home.size_bytes <= 16 ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      argument.source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
-      (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr &&
-       argument.source_register_bank != prepare::PreparedRegisterBank::AggregateAddress) ||
-      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
-    return std::nullopt;
-  }
-  return source_home.size_bytes;
 }
 
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
