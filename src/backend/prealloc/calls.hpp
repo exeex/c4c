@@ -28,6 +28,7 @@ enum class PreparedStorageEncodingKind {
 struct PreparedCallArgumentPlan {
   std::size_t instruction_index = 0;
   std::size_t arg_index = 0;
+  bool allows_local_aggregate_address_publication = false;
   PreparedRegisterBank value_bank = PreparedRegisterBank::None;
   PreparedStorageEncodingKind source_encoding = PreparedStorageEncodingKind::None;
   std::optional<PreparedValueId> source_value_id;

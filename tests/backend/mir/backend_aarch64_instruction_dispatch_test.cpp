@@ -18416,6 +18416,7 @@ int block_dispatch_publishes_direct_local_aggregate_address_call_argument() {
                   {prepare::PreparedCallArgumentPlan{
                       .instruction_index = 0,
                       .arg_index = 0,
+                      .allows_local_aggregate_address_publication = true,
                       .value_bank = prepare::PreparedRegisterBank::Gpr,
                       .source_encoding = prepare::PreparedStorageEncodingKind::Register,
                       .source_value_id = source_value_id,
@@ -18584,6 +18585,7 @@ int block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument()
                   {prepare::PreparedCallArgumentPlan{
                       .instruction_index = 1,
                       .arg_index = 0,
+                      .allows_local_aggregate_address_publication = true,
                       .value_bank = prepare::PreparedRegisterBank::Gpr,
                       .source_encoding = prepare::PreparedStorageEncodingKind::Register,
                       .source_value_id = source_value_id,

@@ -889,6 +889,24 @@ struct CallArgumentSourcePlan {
              : value_bank;
 }
 
+[[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  if (arg_index >= call.args.size()) {
+    return false;
+  }
+  if (call.callee.rfind("llvm.", 0) == 0) {
+    return false;
+  }
+  if (arg_index < call.arg_abi.size() && call.arg_abi[arg_index].byval_copy) {
+    return false;
+  }
+  if (arg_index < call.arg_types.size()) {
+    return call.arg_types[arg_index] == bir::TypeKind::Ptr;
+  }
+  return call.args[arg_index].type == bir::TypeKind::Ptr;
+}
+
 [[nodiscard]] CallArgumentDestinationPlan plan_call_argument_destination(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
@@ -1432,6 +1450,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
           PreparedCallArgumentPlan arg_plan{
               .instruction_index = instruction_index,
               .arg_index = arg_index,
+              .allows_local_aggregate_address_publication =
+                  call_argument_allows_local_aggregate_address_publication(*call, arg_index),
               .value_bank = arg_index < call->arg_abi.size()
                                 ? register_bank_from_arg_abi(call->arg_abi[arg_index])
                                 : register_bank_from_type(call->arg_types[arg_index]),

@@ -77,22 +77,26 @@ materialize_local_aggregate_address_call_argument(
                                           .result_register = *result_register};
 }
 
-[[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
-    const bir::CallInst& call,
+[[nodiscard]] const prepare::PreparedCallArgumentPlan* find_prepared_call_argument_plan(
+    const prepare::PreparedCallPlan* call_plan,
     std::size_t argument_index) {
-  if (argument_index >= call.args.size()) {
-    return false;
+  if (call_plan == nullptr) {
+    return nullptr;
   }
-  if (call.callee.rfind("llvm.", 0) == 0) {
-    return false;
+  for (const auto& argument : call_plan->arguments) {
+    if (argument.arg_index == argument_index) {
+      return &argument;
+    }
   }
-  if (argument_index < call.arg_abi.size() &&
-      call.arg_abi[argument_index].byval_copy) {
-    return false;
-  }
-  return (argument_index < call.arg_types.size() &&
-          call.arg_types[argument_index] == bir::TypeKind::Ptr) ||
-         call.args[argument_index].type == bir::TypeKind::Ptr;
+  return nullptr;
+}
+
+[[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
+    const prepare::PreparedCallPlan* call_plan,
+    std::size_t argument_index) {
+  const auto* argument = find_prepared_call_argument_plan(call_plan, argument_index);
+  return argument != nullptr &&
+         argument->allows_local_aggregate_address_publication;
 }
 
 [[nodiscard]] bool materialize_scalar_call_argument_value(
@@ -229,6 +233,8 @@ lower_scalar_call_argument_producers(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
+  const prepare::PreparedCallPlan* call_plan =
+      find_prepared_call_plan(context, instruction_index);
   for (std::size_t argument_index = 0; argument_index < call.args.size(); ++argument_index) {
     const auto& argument = call.args[argument_index];
     if (auto select_chain =
@@ -241,7 +247,7 @@ lower_scalar_call_argument_producers(
     }
     std::vector<std::string_view> active_values;
     const bool allow_local_aggregate_address_publication =
-        call_argument_allows_local_aggregate_address_publication(call, argument_index);
+        call_argument_allows_local_aggregate_address_publication(call_plan, argument_index);
     if (!materialize_scalar_call_argument_value(context,
                                                 argument,
                                                 instruction_index,
