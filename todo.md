@@ -8,24 +8,24 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired the SRET memory-return selected-source fallback.
-`make_sret_memory_return_address_source` now treats any explicit
-`source_selection` as authoritative for the SRET address-source decision:
-complete `FrameSlotAddress` selections still consume prepared frame-slot
-address facts, while incomplete `FrameSlotAddress` selections and non-address
-selections no longer fall through to `call_plan.memory_return`.
+Step 2 of `plan.md` retired the remaining explicit byval lane-extent
+rederivation boundary in `selected_byval_lane_extent_bytes`. Complete explicit
+`ByvalRegisterLane` selections still provide the prepared lane extent, but any
+other explicit `source_selection` now fails closed instead of rederiving a
+byval extent from the move/source home. Absent-selection byval compatibility
+still uses the legacy extent derivation.
 
-Instruction-dispatch coverage now proves both explicit incomplete SRET
-`FrameSlotAddress` selection and explicit non-address `PriorPreservation`
-selection fail closed even when matching `memory_return` facts are present.
-Existing absent-selection SRET coverage still preserves the
-`call_plan.memory_return` compatibility path.
+Instruction-dispatch coverage now proves an explicit wrong-kind
+`FrameSlotValue` selection on the register-homed byval lane route does not
+rederive the legacy register-home byval source, while the existing
+absent-selection case still lowers through the compatibility path.
 
 ## Suggested Next
 
-Continue Step 2 by reviewing whether any duplicate helper boundary remains in
-the owned call-argument source family, or hand Step 2 back for supervisor route
-review if this was the final known fallback boundary.
+Hand Step 2 back for supervisor route review. The remaining audited source
+helper discovery paths are absent-selection compatibility, fragmented byval
+fallback, callee-saved-register prior preservation, or emission/spelling
+helpers without a prepared source-selection retirement mapping in this packet.
 
 ## Watchouts
 
@@ -33,6 +33,11 @@ review if this was the final known fallback boundary.
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
   covers explicit complete byval register-lane selections with prepared source
   payload.
+- `selected_byval_lane_extent_bytes` now treats every explicit
+  `source_selection` as authoritative for byval extent selection: complete
+  `ByvalRegisterLane` provides the prepared extent; incomplete or wrong-kind
+  explicit selections do not rederive a legacy extent. Absent-selection byval
+  compatibility remains intact.
 - Register-homed byval lane explicit selections now fail closed when the
   prepared-source helper lacks a complete payload. The absent-selection
   register-home aggregate address path remains as compatibility fallback.

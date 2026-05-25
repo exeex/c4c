@@ -16730,6 +16730,35 @@ int incomplete_byval_register_lane_selection_does_not_rederive_register_home() {
         " diagnostics=" + std::to_string(selected_diagnostics.entries.size()));
   }
 
+  auto wrong_kind_argument = argument;
+  wrong_kind_argument.source_selection = prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+      .source_value_id = value_id,
+      .source_value_name = value_name,
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .source_slot_id = prepare::PreparedFrameSlotId{901},
+      .source_stack_offset_bytes = std::size_t{32},
+      .source_size_bytes = std::size_t{1},
+      .source_align_bytes = std::size_t{1},
+  };
+  const prepare::PreparedCallPlan wrong_kind_call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments = {wrong_kind_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics wrong_kind_diagnostics;
+  const auto wrong_kind_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, wrong_kind_call_plan, 4, wrong_kind_diagnostics);
+  if (!wrong_kind_lowered.empty() || wrong_kind_diagnostics.entries.size() != 1 ||
+      wrong_kind_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected wrong-kind explicit byval source selection not to rederive "
+        "register home: lowered=" +
+        std::to_string(wrong_kind_lowered.size()) +
+        " diagnostics=" + std::to_string(wrong_kind_diagnostics.entries.size()));
+  }
+
   const prepare::PreparedCallPlan absent_call_plan{
       .block_index = 0,
       .instruction_index = 4,

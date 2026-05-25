@@ -1060,6 +1060,9 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       argument.source_selection->byval_lane_extent_bytes.has_value()) {
     return argument.source_selection->byval_lane_extent_bytes;
   }
+  if (argument.source_selection.has_value()) {
+    return std::nullopt;
+  }
   return prepared_byval_lane_extent_bytes(
       context, move, argument, source_home, source_instruction_index);
 }
