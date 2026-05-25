@@ -211,10 +211,6 @@ struct AggregateRegisterLaneStore {
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index);
-[[nodiscard]] std::optional<std::size_t> aarch64_stack_byval_argument_size_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index);
 [[nodiscard]] bool aarch64_indirect_register_byval_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,

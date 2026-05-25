@@ -2138,11 +2138,9 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate stack call-argument source register disagrees with prepared value home");
       return std::nullopt;
     }
-    const auto size_bytes =
-        source_home->size_bytes.has_value()
-            ? source_home->size_bytes
-            : aarch64_stack_byval_argument_size_bytes(
-                  context, *argument, call_plan.instruction_index);
+    const auto size_bytes = source_home->size_bytes.has_value()
+                                ? source_home->size_bytes
+                                : argument->destination_stack_size_bytes;
     if (!size_bytes.has_value() || *size_bytes == 0) {
       append_call_diagnostic(
           diagnostics,
