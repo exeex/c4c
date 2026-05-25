@@ -316,6 +316,7 @@ struct CallArgumentDestinationPlan {
 struct CallArgumentSourcePlan {
   PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
   std::optional<PreparedValueId> value_id;
+  std::optional<ValueNameId> value_name;
   std::optional<PreparedValueId> base_value_id;
   std::optional<bir::Value> literal;
   std::optional<std::string> symbol_name;
@@ -385,6 +386,46 @@ struct CallArgumentSourcePlan {
     return nullptr;
   }
   return it->second;
+}
+
+[[nodiscard]] const PreparedMemoryAccess* find_unique_memory_access_by_result_name(
+    const PreparedAddressingFunction* addressing,
+    ValueNameId result_value_name) {
+  if (addressing == nullptr || result_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const PreparedMemoryAccess* matched = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.result_value_name != std::optional<ValueNameId>{result_value_name}) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &access;
+  }
+  return matched;
+}
+
+[[nodiscard]] BlockLabelId prepared_block_label_for_index(
+    const PreparedControlFlowFunction* control_flow,
+    const bir::Function& function,
+    std::size_t block_index) {
+  if (control_flow != nullptr && block_index < control_flow->blocks.size()) {
+    return control_flow->blocks[block_index].block_label;
+  }
+  if (block_index < function.blocks.size()) {
+    return function.blocks[block_index].label_id;
+  }
+  return kInvalidBlockLabel;
+}
+
+[[nodiscard]] bool local_frame_address_name_matches(std::string_view source_name,
+                                                    std::string_view candidate_name) {
+  return candidate_name == source_name ||
+         (candidate_name.size() == source_name.size() + 2 &&
+          candidate_name.compare(0, source_name.size(), source_name) == 0 &&
+          candidate_name.substr(source_name.size()) == ".0");
 }
 
 [[nodiscard]] DirectCalleeResolution resolve_direct_callee(const bir::Module& module,
@@ -1010,6 +1051,7 @@ struct CallArgumentSourcePlan {
 
   if (const auto value_name_id = maybe_named_value_id(names, argument);
       value_name_id.has_value() && value_locations != nullptr) {
+    source.value_name = value_name_id;
     if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
         home != nullptr) {
       source.encoding = storage_encoding_from_home(*home);
@@ -1289,6 +1331,313 @@ void append_call_clobbered_register_spans(
                                      *call_point);
 }
 
+void copy_home_source_selection_fields(PreparedCallArgumentSourceSelection& selection,
+                                       const PreparedValueHome* source_home) {
+  if (source_home == nullptr) {
+    return;
+  }
+  selection.source_value_id = source_home->value_id;
+  selection.source_value_name = source_home->value_name;
+  selection.source_home_kind = source_home->kind;
+  selection.source_slot_id = source_home->slot_id;
+  selection.source_stack_offset_bytes = source_home->offset_bytes;
+  selection.source_size_bytes = source_home->size_bytes;
+  selection.source_align_bytes = source_home->align_bytes;
+  selection.source_pointer_byte_delta = source_home->pointer_byte_delta;
+}
+
+void copy_access_source_selection_fields(PreparedCallArgumentSourceSelection& selection,
+                                         const PreparedMemoryAccess& access,
+                                         const PreparedStackLayout& stack_layout) {
+  if (access.address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !access.address.frame_slot_id.has_value()) {
+    return;
+  }
+  const PreparedFrameSlot* slot = nullptr;
+  for (const auto& frame_slot : stack_layout.frame_slots) {
+    if (frame_slot.slot_id == *access.address.frame_slot_id) {
+      slot = &frame_slot;
+      break;
+    }
+  }
+  selection.source_slot_id = access.address.frame_slot_id;
+  if (slot != nullptr) {
+    selection.source_stack_offset_bytes =
+        static_cast<std::size_t>(static_cast<std::int64_t>(slot->offset_bytes) +
+                                 access.address.byte_offset);
+  }
+  selection.source_size_bytes = access.address.size_bytes;
+  selection.source_align_bytes = access.address.align_bytes;
+}
+
+[[nodiscard]] const PreparedCallPreservedValue* find_latest_prior_preserved_value(
+    const PreparedCallPlansFunction& function_plan,
+    const PreparedCallPlan& current_call_plan,
+    PreparedValueId value_id) {
+  const PreparedCallPreservedValue* selected = nullptr;
+  std::size_t selected_block = 0;
+  std::size_t selected_instruction = 0;
+  for (const auto& prior_call : function_plan.calls) {
+    if (prior_call.block_index > current_call_plan.block_index ||
+        (prior_call.block_index == current_call_plan.block_index &&
+         prior_call.instruction_index >= current_call_plan.instruction_index)) {
+      continue;
+    }
+    for (const auto& preserved : prior_call.preserved_values) {
+      if (preserved.value_id != value_id) {
+        continue;
+      }
+      if (selected == nullptr || prior_call.block_index > selected_block ||
+          (prior_call.block_index == selected_block &&
+           prior_call.instruction_index > selected_instruction)) {
+        selected = &preserved;
+        selected_block = prior_call.block_index;
+        selected_instruction = prior_call.instruction_index;
+      }
+    }
+  }
+  return selected;
+}
+
+[[nodiscard]] const PreparedAddressMaterialization*
+find_latest_frame_slot_materialization(const PreparedAddressingFunction* addressing,
+                                       const PreparedNameTables& names,
+                                       BlockLabelId block_label,
+                                       std::size_t instruction_index,
+                                       ValueNameId source_value_name,
+                                       bool allow_lane_name) {
+  if (addressing == nullptr || block_label == kInvalidBlockLabel ||
+      source_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const auto source_name = names.value_names.spelling(source_value_name);
+  if (source_name.empty()) {
+    return nullptr;
+  }
+  const PreparedAddressMaterialization* selected = nullptr;
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.block_label != block_label ||
+        materialization.inst_index > instruction_index ||
+        materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+        !materialization.frame_slot_id.has_value() ||
+        !materialization.result_value_name.has_value()) {
+      continue;
+    }
+    const auto materialized_name =
+        names.value_names.spelling(*materialization.result_value_name);
+    const bool matched = allow_lane_name
+                             ? local_frame_address_name_matches(source_name, materialized_name)
+                             : materialized_name == source_name;
+    if (!matched) {
+      continue;
+    }
+    if (selected != nullptr && selected->inst_index == materialization.inst_index) {
+      return nullptr;
+    }
+    if (selected == nullptr || selected->inst_index < materialization.inst_index) {
+      selected = &materialization;
+    }
+  }
+  return selected;
+}
+
+void copy_materialization_source_selection_fields(
+    PreparedCallArgumentSourceSelection& selection,
+    const PreparedAddressMaterialization& materialization) {
+  selection.address_materialization_block_label = materialization.block_label;
+  selection.address_materialization_inst_index = materialization.inst_index;
+  selection.address_materialization_frame_slot_id = materialization.frame_slot_id;
+  selection.address_materialization_byte_offset = materialization.byte_offset;
+  selection.source_slot_id = materialization.frame_slot_id;
+  if (materialization.byte_offset >= 0) {
+    selection.source_stack_offset_bytes =
+        static_cast<std::size_t>(materialization.byte_offset);
+  }
+}
+
+[[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
+    const PreparedCallArgumentPlan& argument,
+    const PreparedMoveResolution& move,
+    const PreparedValueHome* source_home,
+    const bir::CallInst& call) {
+  if (move.reason != "call_arg_byval_aggregate_register_lanes" ||
+      source_home == nullptr || !source_home->size_bytes.has_value() ||
+      *source_home->size_bytes == 0 || argument.arg_index >= call.arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call.arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
+      !abi.passed_in_register || abi.size_bytes == 0 || abi.size_bytes > 16) {
+    return std::nullopt;
+  }
+  const std::size_t lane_count = std::max({
+      std::size_t{1},
+      move.destination_contiguous_width,
+      argument.destination_contiguous_width,
+      move.destination_occupied_register_names.size(),
+      argument.destination_occupied_register_names.size(),
+  });
+  std::size_t extent = *source_home->size_bytes;
+  if (lane_count > 1 && extent <= 8) {
+    extent *= lane_count;
+  }
+  extent = std::max(extent, abi.size_bytes);
+  return extent <= 16 ? std::optional<std::size_t>{extent} : std::nullopt;
+}
+
+[[nodiscard]] const PreparedMoveResolution* find_before_call_argument_move(
+    const PreparedMoveBundle* before_call_bundle,
+    const PreparedCallArgumentPlan& argument) {
+  if (before_call_bundle == nullptr) {
+    return nullptr;
+  }
+  for (const auto& move : before_call_bundle->moves) {
+    if (move.op_kind == PreparedMoveResolutionOpKind::Move &&
+        move.destination_kind == PreparedMoveDestinationKind::CallArgumentAbi &&
+        move.destination_abi_index == std::optional<std::size_t>{argument.arg_index}) {
+      return &move;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<PreparedCallArgumentSourceSelection>
+select_prepared_call_argument_source(const PreparedBirModule& prepared,
+                                     const PreparedNameTables& names,
+                                     const PreparedCallPlansFunction& function_plan,
+                                     const PreparedCallPlan& call_plan,
+                                     const bir::Function& function,
+                                     const bir::CallInst& call,
+                                     const PreparedControlFlowFunction* control_flow,
+                                     const PreparedAddressingFunction* addressing,
+                                     const PreparedMoveBundle* before_call_bundle,
+                                     const PreparedCallArgumentPlan& argument,
+                                     const PreparedValueHome* source_home) {
+  PreparedCallArgumentSourceSelection selection;
+  selection.source_value_id = argument.source_value_id;
+  selection.source_value_name = source_home != nullptr
+                                    ? std::optional<ValueNameId>{source_home->value_name}
+                                    : std::nullopt;
+  selection.source_base_value_id = argument.source_base_value_id;
+  selection.source_pointer_byte_delta = argument.source_pointer_byte_delta;
+  copy_home_source_selection_fields(selection, source_home);
+
+  const auto* move = find_before_call_argument_move(before_call_bundle, argument);
+  if (move == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto block_label =
+      prepared_block_label_for_index(control_flow, function, call_plan.block_index);
+  const auto* source_access =
+      selection.source_value_name.has_value()
+          ? find_unique_memory_access_by_result_name(addressing, *selection.source_value_name)
+          : nullptr;
+
+  if (const auto byval_extent =
+          prepared_byval_lane_extent_bytes(argument, *move, source_home, call);
+      byval_extent.has_value()) {
+    selection.kind = PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
+    selection.byval_lane_extent_bytes = byval_extent;
+    selection.byval_lane_source_instruction_index = call_plan.instruction_index;
+    if (source_access != nullptr) {
+      copy_access_source_selection_fields(selection, *source_access, prepared.stack_layout);
+    }
+    return selection;
+  }
+
+  if (source_home != nullptr &&
+      argument.source_encoding == PreparedStorageEncodingKind::Register &&
+      argument.allows_local_aggregate_address_publication) {
+    if (const auto* materialization =
+            find_latest_frame_slot_materialization(addressing,
+                                                   names,
+                                                   block_label,
+                                                   call_plan.instruction_index,
+                                                   source_home->value_name,
+                                                   true);
+        materialization != nullptr) {
+      selection.kind =
+          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
+      copy_materialization_source_selection_fields(selection, *materialization);
+      selection.source_size_bytes = source_home->size_bytes;
+      selection.source_align_bytes = source_home->align_bytes;
+      return selection;
+    }
+  }
+
+  if (argument.source_encoding == PreparedStorageEncodingKind::FrameSlot) {
+    if (call_plan.memory_return.has_value() &&
+        call_plan.memory_return->sret_arg_index == std::optional<std::size_t>{argument.arg_index} &&
+        call_plan.memory_return->slot_id.has_value() &&
+        call_plan.memory_return->stack_offset_bytes.has_value()) {
+      selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+      selection.source_slot_id = call_plan.memory_return->slot_id;
+      selection.source_stack_offset_bytes = call_plan.memory_return->stack_offset_bytes;
+      selection.source_size_bytes = call_plan.memory_return->size_bytes;
+      selection.source_align_bytes = call_plan.memory_return->align_bytes;
+      return selection;
+    }
+    if (source_home != nullptr) {
+      if (const auto* materialization =
+              find_latest_frame_slot_materialization(addressing,
+                                                     names,
+                                                     block_label,
+                                                     call_plan.instruction_index,
+                                                     source_home->value_name,
+                                                     false);
+          materialization != nullptr) {
+        selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+        copy_materialization_source_selection_fields(selection, *materialization);
+        selection.source_size_bytes = source_home->size_bytes;
+        selection.source_align_bytes = source_home->align_bytes;
+        return selection;
+      }
+    }
+
+    selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotValue;
+    if (source_access != nullptr) {
+      copy_access_source_selection_fields(selection, *source_access, prepared.stack_layout);
+    }
+    if (!selection.source_slot_id.has_value()) {
+      selection.source_slot_id = argument.source_slot_id;
+    }
+    if (!selection.source_stack_offset_bytes.has_value()) {
+      selection.source_stack_offset_bytes = argument.source_stack_offset_bytes;
+    }
+    return selection.source_slot_id.has_value() ||
+                   selection.source_stack_offset_bytes.has_value()
+               ? std::optional<PreparedCallArgumentSourceSelection>{selection}
+               : std::nullopt;
+  }
+
+  const auto value_id = argument.source_value_id.value_or(move->from_value_id);
+  if (const auto* preserved =
+          find_latest_prior_preserved_value(function_plan, call_plan, value_id);
+      preserved != nullptr) {
+    selection.kind = PreparedCallArgumentSourceSelectionKind::PriorPreservation;
+    selection.source_value_id = preserved->value_id;
+    selection.source_value_name = preserved->value_name;
+    selection.preservation_route = preserved->route;
+    selection.preserved_stack_slot_id = preserved->slot_id;
+    selection.preserved_stack_offset_bytes = preserved->stack_offset_bytes;
+    selection.preserved_stack_size_bytes = preserved->stack_size_bytes;
+    selection.preserved_stack_align_bytes = preserved->stack_align_bytes;
+    for (const auto& prior_call : function_plan.calls) {
+      for (const auto& prior_preserved : prior_call.preserved_values) {
+        if (&prior_preserved == preserved) {
+          selection.preserved_call_block_index = prior_call.block_index;
+          selection.preserved_call_instruction_index = prior_call.instruction_index;
+          return selection;
+        }
+      }
+    }
+    return selection;
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace
 
 [[nodiscard]] const PreparedCallArgumentPlan* find_call_boundary_argument_plan(
@@ -1381,6 +1730,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
         .calls = {},
     };
     const auto* frame_plan = find_prepared_frame_plan(prepared, function_name_id);
+    const auto* control_flow_function =
+        find_prepared_control_flow_function(prepared.control_flow, function_name_id);
+    const auto* addressing_function = find_prepared_addressing(prepared, function_name_id);
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
     const auto* liveness_function = find_liveness_function(prepared.liveness, function_name_id);
     const auto* value_locations = find_prepared_value_location_function(prepared, function_name_id);
@@ -1475,6 +1827,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_stack_size_bytes = std::nullopt,
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
+              .source_selection = std::nullopt,
           };
           const CallArgumentDestinationPlan destination =
               plan_call_argument_destination(prepared.target_profile,
@@ -1511,6 +1864,24 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.source_base_value_name = source.base_value_name;
           arg_plan.source_pointer_byte_delta = source.pointer_byte_delta;
           arg_plan.source_register_placement = source.register_placement;
+          const auto* source_home =
+              source.value_id.has_value()
+                  ? find_prepared_value_home(value_home_lookup, *source.value_id)
+                  : (source.value_name.has_value() && value_locations != nullptr
+                         ? find_prepared_value_home(*value_locations, *source.value_name)
+                         : nullptr);
+          arg_plan.source_selection =
+              select_prepared_call_argument_source(prepared,
+                                                   prepared.names,
+                                                   function_plan,
+                                                   call_plan,
+                                                   function,
+                                                   *call,
+                                                   control_flow_function,
+                                                   addressing_function,
+                                                   before_call_bundle,
+                                                   arg_plan,
+                                                   source_home);
 
           call_plan.arguments.push_back(std::move(arg_plan));
         }

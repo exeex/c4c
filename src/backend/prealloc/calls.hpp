@@ -25,6 +25,81 @@ enum class PreparedStorageEncodingKind {
   SymbolAddress,
 };
 
+enum class PreparedCallPreservationRoute {
+  Unknown,
+  CalleeSavedRegister,
+  StackSlot,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_preservation_route_name(
+    PreparedCallPreservationRoute route) {
+  switch (route) {
+    case PreparedCallPreservationRoute::Unknown:
+      return "unknown";
+    case PreparedCallPreservationRoute::CalleeSavedRegister:
+      return "callee_saved_register";
+    case PreparedCallPreservationRoute::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
+enum class PreparedCallArgumentSourceSelectionKind {
+  None,
+  PriorPreservation,
+  LocalFrameAddressMaterialization,
+  FrameSlotAddress,
+  FrameSlotValue,
+  ByvalRegisterLane,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_argument_source_selection_kind_name(
+    PreparedCallArgumentSourceSelectionKind kind) {
+  switch (kind) {
+    case PreparedCallArgumentSourceSelectionKind::None:
+      return "none";
+    case PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+      return "prior_preservation";
+    case PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization:
+      return "local_frame_address_materialization";
+    case PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      return "frame_slot_address";
+    case PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      return "frame_slot_value";
+    case PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+      return "byval_register_lane";
+  }
+  return "unknown";
+}
+
+struct PreparedCallArgumentSourceSelection {
+  PreparedCallArgumentSourceSelectionKind kind =
+      PreparedCallArgumentSourceSelectionKind::None;
+  std::optional<PreparedValueId> source_value_id;
+  std::optional<ValueNameId> source_value_name;
+  std::optional<PreparedValueHomeKind> source_home_kind;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_size_bytes;
+  std::optional<std::size_t> source_align_bytes;
+  std::optional<PreparedValueId> source_base_value_id;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  std::optional<BlockLabelId> address_materialization_block_label;
+  std::optional<std::size_t> address_materialization_inst_index;
+  std::optional<PreparedFrameSlotId> address_materialization_frame_slot_id;
+  std::optional<std::int64_t> address_materialization_byte_offset;
+  std::optional<std::size_t> preserved_call_block_index;
+  std::optional<std::size_t> preserved_call_instruction_index;
+  PreparedCallPreservationRoute preservation_route =
+      PreparedCallPreservationRoute::Unknown;
+  std::optional<PreparedFrameSlotId> preserved_stack_slot_id;
+  std::optional<std::size_t> preserved_stack_offset_bytes;
+  std::optional<std::size_t> preserved_stack_size_bytes;
+  std::optional<std::size_t> preserved_stack_align_bytes;
+  std::optional<std::size_t> byval_lane_extent_bytes;
+  std::optional<std::size_t> byval_lane_source_instruction_index;
+};
+
 struct PreparedCallArgumentPlan {
   std::size_t instruction_index = 0;
   std::size_t arg_index = 0;
@@ -50,6 +125,7 @@ struct PreparedCallArgumentPlan {
   std::optional<std::size_t> destination_stack_size_bytes;
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedCallArgumentSourceSelection> source_selection;
 };
 
 struct PreparedCallResultPlan {
@@ -81,25 +157,6 @@ struct PreparedClobberedRegister {
   std::vector<std::string> occupied_register_names;
   std::optional<PreparedRegisterPlacement> placement;
 };
-
-enum class PreparedCallPreservationRoute {
-  Unknown,
-  CalleeSavedRegister,
-  StackSlot,
-};
-
-[[nodiscard]] constexpr std::string_view prepared_call_preservation_route_name(
-    PreparedCallPreservationRoute route) {
-  switch (route) {
-    case PreparedCallPreservationRoute::Unknown:
-      return "unknown";
-    case PreparedCallPreservationRoute::CalleeSavedRegister:
-      return "callee_saved_register";
-    case PreparedCallPreservationRoute::StackSlot:
-      return "stack_slot";
-  }
-  return "unknown";
-}
 
 struct PreparedCallPreservedValue {
   PreparedValueId value_id = 0;

@@ -3129,7 +3129,6 @@ int check_memory_return_call_contract() {
       memory_return.size_bytes != 8 || memory_return.align_bytes != 4) {
     return fail("memory-return contract: call_plans lost the published sret destination authority");
   }
-
   return 0;
 }
 
@@ -3312,6 +3311,17 @@ int check_stack_argument_slot_contract() {
       arg.source_slot_id != std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
       arg.source_stack_offset_bytes != std::optional<std::size_t>{frame_slot->offset_bytes}) {
     return fail("stack-argument slot contract: call_plans lost frame-slot-backed argument authority");
+  }
+  if (!arg.source_selection.has_value() ||
+      arg.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+      arg.source_selection->source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      arg.source_selection->source_stack_offset_bytes !=
+          std::optional<std::size_t>{frame_slot->offset_bytes} ||
+      arg.source_selection->source_size_bytes != std::optional<std::size_t>{8} ||
+      arg.source_selection->source_align_bytes != std::optional<std::size_t>{4}) {
+    return fail("stack-argument slot contract: missing shared frame-slot value source selection");
   }
   if (!arg.destination_register_name.has_value() ||
       arg.destination_register_bank !=
