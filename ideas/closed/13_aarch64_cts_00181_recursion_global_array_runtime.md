@@ -45,3 +45,14 @@ call-boundary prior-preservation case.
   runtime mismatch.
 - A patch leaves the same recursion/global-array failure mode in nearby cases
   while only the named testcase passes.
+
+## Closure Note
+
+Closed after Step 4 validation recorded the corrected proof command:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^backend_aarch64_|^c_testsuite_aarch64_backend_src_00181_c$)') > test_after.log 2>&1`
+
+The recorded result was a successful build with all 28 selected
+`backend_aarch64_` tests passing and
+`c_testsuite_aarch64_backend_src_00181_c` passing. The relevant implementation
+slice is represented by commits `0a8890a6b`, `2a8fe93ff`, and `90f396984`.
