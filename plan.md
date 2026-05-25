@@ -1,4 +1,4 @@
-# AArch64 Calls Publication Helper Authority Checkpoint
+# AArch64 Calls Local Frame Publication Helper Authority Checkpoint
 
 Status: Active
 Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
@@ -6,13 +6,13 @@ Source Idea: ideas/open/02_aarch64_calls_emission_consolidation.md
 ## Purpose
 
 Continue the AArch64 call-emission consolidation after the Step 5 closure
-review for the indirect byval authority-removal checkpoint rejected closure.
+review for the aggregate-address publication checkpoint rejected closure.
 
 ## Goal
 
-Remove the remaining publication-helper uses of retained call ABI/type
-metadata that still decide whether aggregate or local-frame addresses may be
-published across a call boundary.
+Remove the remaining local-frame address publication-helper decisions that
+still read retained `bir::CallInst::arg_abi` or `bir::CallInst::arg_types`
+instead of consuming prepared call-plan facts.
 
 ## Core Rule
 
@@ -22,30 +22,26 @@ already present in `PreparedCallPlan` or its argument/effect records.
 
 ## Latest Closure Review Finding
 
-The Step 5 closure review after the broader backend checkpoint rejected
-closure. The source idea remains open because target-local calls code still
-uses retained `bir::CallInst::arg_abi` and `bir::CallInst::arg_types` to decide
-publication eligibility where prepared call-plan facts should own the
-decision. Close-time regression guard generation was not needed because
-closure was rejected before the close gate.
+The Step 5 closure review after the aggregate-address broader backend
+checkpoint rejected closure. The aggregate-address publication gate now consumes
+`PreparedCallArgumentPlan::allows_local_aggregate_address_publication`, and the
+scan did not find retained `arg_abi` or `arg_types` decision reads in
+`calls_dispatch_bridge.cpp` for that route.
 
-Surviving durable blockers:
+The source idea remains open because `calls_argument_sources.cpp` still decides
+local-frame address publication eligibility by reading retained call metadata:
 
-- `calls_dispatch_bridge.cpp` still decides local aggregate address
-  publication eligibility in
-  `call_argument_allows_local_aggregate_address_publication` from retained
-  `CallInst::arg_abi` and `CallInst::arg_types`.
-- `calls_argument_sources.cpp` still decides local frame address publication
-  in `call_argument_allows_local_frame_address_publication` and its
-  pointer/byval helpers from retained `CallInst::arg_types` and
-  `CallInst::arg_abi`.
-- `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
-  boundaries that must be retired or justified as emission-only once
-  publication no longer reconstructs call-plan decisions.
+- `call_argument_is_pointer` reads `CallInst::arg_types` and falls back to
+  `CallInst::args` to decide whether an argument is pointer-like.
+- `call_argument_is_byval_copy` reads `CallInst::arg_abi` to exclude byval
+  copies.
+- `call_argument_allows_local_frame_address_publication` combines those
+  retained reads with a callee spelling check before
+  `make_local_frame_address_call_argument_source` can publish a local-frame
+  address.
 
-The prior byval aggregate blocker is no longer listed in this checkpoint
-because the close review scan did not find retained `arg_abi`/`arg_types`
-decision reads in `calls_byval_aggregates.cpp`.
+Close-time regression guard generation was not needed because closure was
+rejected before the close gate.
 
 ## Read First
 
@@ -56,19 +52,21 @@ decision reads in `calls_byval_aggregates.cpp`.
 - `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp`
 - `src/backend/mir/aarch64/codegen/calls_dispatch_bridge.hpp`
 - `src/backend/mir/aarch64/codegen/calls_moves.cpp`
-- `src/backend/mir/aarch64/codegen/calls_preservation.cpp`
-- Focused backend call and publication tests under `tests/backend/mir/`
+- Focused backend local-frame, publication, byval, and prepared-call tests
+  under `tests/backend/mir/`
 
 ## Current Targets / Scope
 
-- Retained `bir::CallInst::arg_abi` and `arg_types` reads in publication helper
-  paths under `calls_dispatch_bridge.cpp` and `calls_argument_sources.cpp`.
-- Prepared argument, move, or boundary-effect facts that can replace those
-  publication decisions.
-- `calls_dispatch_bridge.hpp` helper declarations that expose obsolete
-  `CallInst`-shaped publication boundaries.
-- Focused tests that prove prepared facts own the selected publication
-  decision.
+- Retained `bir::CallInst::arg_types` reads in
+  `call_argument_is_pointer`.
+- Retained `bir::CallInst::arg_abi` reads in
+  `call_argument_is_byval_copy`.
+- The local-frame publication gate in
+  `call_argument_allows_local_frame_address_publication`.
+- Helper signatures that pass `instruction_index` or `CallInst`-derived
+  context only to reconstruct publication eligibility.
+- Focused tests that prove prepared facts own the selected local-frame
+  publication decision.
 
 ## Non-Goals
 
@@ -79,15 +77,16 @@ decision reads in `calls_byval_aggregates.cpp`.
 - Do not change behavior solely to reduce line count.
 - Do not weaken unsupported or expected-output contracts.
 - Do not move AArch64 emission details into the shared planner.
-- Do not revisit byval aggregate lane lowering unless publication work exposes
-  a concrete retained-authority dependency there.
+- Do not revisit aggregate-address or byval aggregate lane lowering unless this
+  checkpoint exposes a concrete retained-authority dependency there.
 
 ## Working Model
 
 - Prefer a prepared fact already present on `PreparedCallArgumentPlan`,
   `PreparedMoveResolution`, or `PreparedCallBoundaryEffectPlan`.
-- If a fact is genuinely missing, stop and record the missing prepared
-  authority in `todo.md` instead of rebuilding the decision locally.
+- If local-frame publication needs a fact that is genuinely missing, stop and
+  record the missing prepared authority in `todo.md` instead of rebuilding the
+  decision locally.
 - A retained `bir::CallInst` read is acceptable only when it validates that the
   prepared plan matches the instruction being emitted or reports a diagnostic
   for inconsistent prepared data.
@@ -105,20 +104,19 @@ decision reads in `calls_byval_aggregates.cpp`.
 - Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
   progress.
 
-## Step 1: Select One Publication Authority Leak
+## Step 1: Select One Local-Frame Publication Authority Leak
 
-Goal: choose the next duplicate-authority publication path to remove and prove
-whether the needed prepared fact already exists.
+Goal: choose the next duplicate-authority local-frame publication path to
+remove and prove whether the needed prepared fact already exists.
 
 Primary targets:
 
-- `call_argument_allows_local_aggregate_address_publication` in
-  `calls_dispatch_bridge.cpp`
-- `call_argument_allows_local_frame_address_publication`,
-  `call_argument_is_pointer`, and `call_argument_is_byval_copy` in
+- `call_argument_is_pointer` in `calls_argument_sources.cpp`
+- `call_argument_is_byval_copy` in `calls_argument_sources.cpp`
+- `call_argument_allows_local_frame_address_publication` in
   `calls_argument_sources.cpp`
-- `calls_dispatch_bridge.hpp` declarations that keep obsolete `CallInst`
-  publication boundaries alive
+- Any helper declaration that survives only to pass retained call metadata into
+  that gate
 
 Actions:
 
@@ -126,16 +124,18 @@ Actions:
   read and the publication decision it makes.
 - Map that decision to existing prepared argument, move, or boundary-effect
   fields.
-- Select one coherent publication target for the next executor packet.
+- Select one coherent local-frame publication target for the next executor
+  packet.
 - Record the selected target, expected deletion path, and proof command in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` names one publication authority leak, the prepared replacement fact
-  or missing prepared-fact blocker, and the focused proof scope.
+- `todo.md` names one local-frame publication authority leak, the prepared
+  replacement fact or missing prepared-fact blocker, and the focused proof
+  scope.
 
-## Step 2: Remove The Selected Publication Decision
+## Step 2: Remove The Selected Local-Frame Publication Decision
 
 Goal: replace the selected retained metadata publication decision with
 prepared-fact consumption or stop with a precise missing-prepared-fact blocker.
@@ -143,11 +143,11 @@ prepared-fact consumption or stop with a precise missing-prepared-fact blocker.
 Actions:
 
 - Delete the retained `CallInst::arg_abi` or `CallInst::arg_types` decision
-  from the selected publication path.
-- Keep retained BIR checks only for instruction identity validation or
-  diagnostics.
-- Tighten helper signatures so obsolete `CallInst` parameters do not remain
-  when prepared facts are sufficient.
+  from the selected local-frame publication path.
+- Keep retained BIR checks only for instruction identity validation,
+  callee-specific diagnostics, or emission context.
+- Tighten helper signatures so obsolete `CallInst` or `instruction_index`
+  parameters do not remain when prepared facts are sufficient.
 - Update focused tests only to preserve or strengthen the prepared-authority
   contract.
 - Run `cmake --build --preset default` plus the focused backend proof selected
@@ -155,22 +155,23 @@ Actions:
 
 Completion check:
 
-- The selected publication path no longer owns call-planning authority locally,
-  and `test_after.log` records passing build plus focused proof.
+- The selected local-frame publication path no longer owns call-planning
+  authority locally, and `test_after.log` records passing build plus focused
+  proof.
 
-## Step 3: Consolidate The Publication Helper Boundary
+## Step 3: Consolidate The Local-Frame Helper Boundary
 
 Goal: remove the helper/API boundary made obsolete by Step 2 or document why
 the surviving boundary is emission-only.
 
 Actions:
 
-- Remove obsolete declarations from `calls_dispatch_bridge.hpp` and
-  `calls.hpp`.
+- Remove obsolete declarations from `calls.hpp` and helper-local prototypes
+  when local-frame publication no longer needs retained metadata context.
 - Merge helper code back into a surviving owner when the helper no longer
   describes a real emission-only boundary.
 - Update build metadata only if a translation unit is retired.
-- Keep `calls_dispatch_bridge.*` edits limited to call-boundary publication
+- Keep edits limited to local-frame call-argument source publication
   ownership.
 - Run a fresh build and the focused backend proof after each coherent helper
   boundary change.
@@ -182,15 +183,15 @@ Completion check:
 
 ## Step 4: Broader Backend Checkpoint
 
-Goal: prove the latest publication-authority checkpoint did not regress
-adjacent call or printer behavior.
+Goal: prove the latest local-frame publication-authority checkpoint did not
+regress adjacent call, byval, aggregate, or printer behavior.
 
 Actions:
 
 - Run the supervisor-selected broader backend validation scope.
-- Include focused AArch64 call-boundary, prepared call boundary, publication,
-  byval, and any affected x86 shared-boundary tests when shared prepared-call
-  behavior was touched.
+- Include focused AArch64 local-frame, publication, byval, aggregate-address,
+  prepared-call boundary, and any affected x86 shared-boundary tests when
+  shared prepared-call behavior was touched.
 - Record exact proof commands and results in `todo.md`.
 
 Completion check:

@@ -1,48 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broader Backend Checkpoint
+Current Step ID: 1
+Current Step Title: Select One Local-Frame Publication Authority Leak
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the broader backend checkpoint for the aggregate-address
-publication authority route.
+Step 5 closure review rejected closure for the aggregate-address publication
+checkpoint and regenerated the active runbook around the surviving local-frame
+publication authority leak.
 
-- Ran the supervisor-selected backend subset after the Step 3 helper-boundary
-  consolidation.
-- `test_after.log` records `100% tests passed, 0 tests failed out of 162`.
-- Relevant coverage includes backend-route (`83 tests`), AArch64 (`37 tests`),
-  byval (`3 tests`), publication (`2 tests`), aggregate (`1 test`), and
-  prepared-call-boundary (`1 test`) labeled coverage.
-- Named adjacent checkpoints in the subset include
-  `backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address`,
-  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
-  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`,
-  `backend_aarch64_call_boundary_owner`, `backend_call_boundary_effect_plan`,
-  `backend_store_source_publication_plan`, and
-  `backend_x86_call_boundary_effect_ordering`.
+- Re-scan found no retained `arg_abi` or `arg_types` decision reads in the
+  aggregate-address publication path in `calls_dispatch_bridge.cpp`.
+- Re-scan found surviving retained `CallInst::arg_types` and
+  `CallInst::arg_abi` decision reads in `calls_argument_sources.cpp`.
+- The source idea remains open because local-frame address publication still
+  rederives pointer/byval eligibility from retained call metadata.
+- Close-time regression guard was not run because closure was rejected before
+  the close gate.
 
 ## Suggested Next
 
-Delegate Step 5 closure review so the lifecycle owner/reviewer can decide
-whether the source idea is complete or whether another runbook checkpoint is
-needed.
+Execute Step 1 by selecting one local-frame publication authority leak in
+`calls_argument_sources.cpp`, mapping it to an existing prepared fact or a
+precise missing-prepared-fact blocker, and recording the focused proof scope.
 
 ## Watchouts
 
-- This packet was validation-only and did not re-scan surviving retained
-  `CallInst::arg_abi` or `CallInst::arg_types` reads; Step 5 owns that closure
-  decision.
-- `test_after.log` is the canonical proof log for this checkpoint.
+- Do not work on `ideas/open/03_dispatch_responsibility_reduction.md`.
+- Do not weaken tests or mark a nearby publication case unsupported to claim
+  progress.
+- If the prepared fact needed for local-frame publication does not exist, stop
+  with that blocker in `todo.md` instead of reconstructing the decision from
+  `CallInst`.
 
 ## Proof
 
-Proof passed:
-
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-`test_after.log` records `100% tests passed, 0 tests failed out of 162` and
-`Total Test time (real) = 1.47 sec`.
+Lifecycle-only closure review. No build or test command was run.
