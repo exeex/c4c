@@ -608,6 +608,31 @@ lower_predecessor_join_source_publication(
       context, context.bir_block != nullptr ? context.bir_block->insts.size() : 0U,
       std::move(lines));
 }
+[[nodiscard]] bool should_emit_block_entry_edge_copy_move(
+    const module::BlockLoweringContext& context,
+    const module::MachineInstruction& instruction) {
+  if (block_entry_move_clobbers_current_join_publication(context, instruction)) {
+    return false;
+  }
+  const auto* move =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move == nullptr ||
+      move->authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      move->source_parallel_copy_predecessor_label !=
+          std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} ||
+      !move->source_parallel_copy_successor_label.has_value()) {
+    return true;
+  }
+  if (move->source_register.has_value() &&
+      move->destination_register.has_value() &&
+      registers_alias(*move->source_register, *move->destination_register)) {
+    return false;
+  }
+  if (move->source_memory.has_value()) {
+    return false;
+  }
+  return true;
+}
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_predecessor_select_parallel_copy_sources(
     const module::BlockLoweringContext& context,

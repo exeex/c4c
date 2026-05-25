@@ -8,28 +8,30 @@ Current Step Title: Isolate Edge-Copy And Join-Value Handling
 
 ## Just Finished
 
-Step 4 - Isolate Edge-Copy And Join-Value Handling moved predecessor select
-parallel-copy source lowering out of `dispatch.cpp` into
+Step 4 - Isolate Edge-Copy And Join-Value Handling moved block-entry
+edge-copy skip/filter ownership out of `dispatch.cpp` into
 `dispatch_edge_copies.cpp`, with
-`lower_predecessor_select_parallel_copy_sources` exposed from
+`should_emit_block_entry_edge_copy_move` exposed from
 `dispatch_edge_copies.hpp`.
 
-Behavior is preserved: `dispatch.cpp` still calls the helper at the branch
-terminator routing point, and the same bundle filters, successor lookup,
-source/destination home checks, select-source publication lowering, emitted
-scalar recording, and empty-on-failure behavior are retained.
+Behavior is preserved: the block-entry loop still skips current-join
+publication clobbers, same-register out-of-SSA parallel copies, and
+source-memory out-of-SSA parallel copies before recording or pushing the move,
+but those decisions now live behind the edge-copy-owned predicate.
 
 ## Suggested Next
 
-Continue Step 4 by isolating the next edge-copy or join-value helper cluster
-that still lives in `dispatch.cpp`, keeping call-boundary and publication
-owners unchanged unless a declaration dependency proves unavoidable.
+Continue Step 4 by isolating the next join-value helper cluster that still
+lives in `dispatch.cpp`, keeping call-boundary retargeting and publication
+helpers unchanged unless an include/declaration dependency proves unavoidable.
 
 ## Watchouts
 
-The moved helper still accepts the diagnostics parameter for call-site
-compatibility, matching the prior unused-parameter behavior. No call-source
-files, dispatch publication files, source tests, or expectation tests changed.
+`should_emit_block_entry_edge_copy_move` intentionally delegates the existing
+current-join publication clobber query to `dispatch_publication`; this packet
+only moved block-entry decision ownership and did not move publication helper
+implementation. No call-source files, call-boundary retargeting helpers,
+source tests, or expectation tests changed.
 
 ## Proof
 

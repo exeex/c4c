@@ -712,34 +712,7 @@ InstructionDispatchResult dispatch_prepared_block(
            prepare::PreparedMovePhase::BlockEntry,
            0,
            diagnostics)) {
-    if (block_entry_move_clobbers_current_join_publication(context,
-                                                           block_entry_move)) {
-      continue;
-    }
-    if (const auto* move =
-            std::get_if<CallBoundaryMoveInstructionRecord>(
-                &block_entry_move.target.payload);
-        move != nullptr &&
-        move->authority_kind ==
-            prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
-        move->source_parallel_copy_predecessor_label ==
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} &&
-        move->source_parallel_copy_successor_label.has_value() &&
-        move->source_register.has_value() &&
-        move->destination_register.has_value() &&
-        registers_alias(*move->source_register, *move->destination_register)) {
-      continue;
-    }
-    if (const auto* move =
-            std::get_if<CallBoundaryMoveInstructionRecord>(
-                &block_entry_move.target.payload);
-        move != nullptr &&
-        move->authority_kind ==
-            prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
-        move->source_parallel_copy_predecessor_label ==
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} &&
-        move->source_parallel_copy_successor_label.has_value() &&
-        move->source_memory.has_value()) {
+    if (!should_emit_block_entry_edge_copy_move(context, block_entry_move)) {
       continue;
     }
     record_call_boundary_destination(block_entry_move);

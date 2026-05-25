@@ -78,6 +78,10 @@ lower_predecessor_join_source_publication(
     const prepare::PreparedValueHome& destination_home,
     BlockScalarLoweringState& scalar_state);
 
+[[nodiscard]] bool should_emit_block_entry_edge_copy_move(
+    const module::BlockLoweringContext& context,
+    const module::MachineInstruction& instruction);
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_predecessor_select_parallel_copy_sources(
     const module::BlockLoweringContext& context,
