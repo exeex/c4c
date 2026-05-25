@@ -6,9 +6,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -241,97 +239,6 @@ find_prior_preserved_value_for_value(
   return nullptr;
 }
 
-[[nodiscard]] bool value_spelling_matches(const bir::Value& value,
-                                          std::string_view spelling) {
-  return value.kind == bir::Value::Kind::Named && value.name == spelling;
-}
-
-[[nodiscard]] bool non_call_instruction_uses_value(const bir::Inst& inst,
-                                                   std::string_view spelling) {
-  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
-    return value_spelling_matches(binary->lhs, spelling) ||
-           value_spelling_matches(binary->rhs, spelling);
-  }
-  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
-    return value_spelling_matches(select->lhs, spelling) ||
-           value_spelling_matches(select->rhs, spelling) ||
-           value_spelling_matches(select->true_value, spelling) ||
-           value_spelling_matches(select->false_value, spelling);
-  }
-  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
-    return value_spelling_matches(cast->operand, spelling);
-  }
-  if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
-    return value_spelling_matches(store_global->value, spelling);
-  }
-  if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
-    return value_spelling_matches(store_local->value, spelling);
-  }
-  return false;
-}
-
-[[nodiscard]] bool terminator_uses_value(const bir::Terminator& terminator,
-                                         std::string_view spelling) {
-  if (terminator.value.has_value() &&
-      value_spelling_matches(*terminator.value, spelling)) {
-    return true;
-  }
-  for (const auto& lane : terminator.return_lanes) {
-    if (value_spelling_matches(lane, spelling)) {
-      return true;
-    }
-  }
-  return terminator.kind == bir::TerminatorKind::CondBranch &&
-         value_spelling_matches(terminator.condition, spelling);
-}
-
-[[nodiscard]] bool branch_condition_uses_value(
-    const module::BlockLoweringContext& context,
-    std::string_view spelling) {
-  if (context.function.control_flow == nullptr || context.control_flow_block == nullptr) {
-    return false;
-  }
-  const auto* condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (condition == nullptr) {
-    return false;
-  }
-  return value_spelling_matches(condition->condition_value, spelling) ||
-         (condition->lhs.has_value() &&
-          value_spelling_matches(*condition->lhs, spelling)) ||
-         (condition->rhs.has_value() &&
-          value_spelling_matches(*condition->rhs, spelling));
-}
-
-[[nodiscard]] bool preserved_value_has_later_non_call_use(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedCallPreservedValue& preserved) {
-  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
-      preserved.value_name == c4c::kInvalidValueName ||
-      call_plan.instruction_index >= context.bir_block->insts.size()) {
-    return false;
-  }
-  const auto spelling =
-      prepare::prepared_value_name(context.function.prepared->names, preserved.value_name);
-  if (spelling.empty()) {
-    return false;
-  }
-
-  for (std::size_t index = call_plan.instruction_index + 1;
-       index < context.bir_block->insts.size();
-       ++index) {
-    if (std::holds_alternative<bir::CallInst>(context.bir_block->insts[index])) {
-      return false;
-    }
-    if (non_call_instruction_uses_value(context.bir_block->insts[index], spelling)) {
-      return true;
-    }
-  }
-  return terminator_uses_value(context.bir_block->terminator, spelling) ||
-         branch_condition_uses_value(context, spelling);
-}
-
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -423,6 +330,7 @@ make_callee_saved_preservation_home_republication_instruction(
     std::size_t instruction_index,
     std::string reason,
     module::ModuleLoweringDiagnostics& diagnostics) {
+  // Emission-only: prepared lookups select eligibility and block-entry reachability.
   const auto& storage = effect.source;
   const auto& value = effect.destination;
   const auto value_id = effect_value_id(value, storage);

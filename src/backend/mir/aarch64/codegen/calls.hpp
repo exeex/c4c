@@ -307,19 +307,6 @@ find_prior_preserved_value_for_call_argument(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& current_call_plan,
     prepare::PreparedValueId value_id);
-[[nodiscard]] bool value_spelling_matches(const bir::Value& value,
-                                          std::string_view spelling);
-[[nodiscard]] bool non_call_instruction_uses_value(const bir::Inst& inst,
-                                                   std::string_view spelling);
-[[nodiscard]] bool terminator_uses_value(const bir::Terminator& terminator,
-                                         std::string_view spelling);
-[[nodiscard]] bool branch_condition_uses_value(
-    const module::BlockLoweringContext& context,
-    std::string_view spelling);
-[[nodiscard]] bool preserved_value_has_later_non_call_use(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedCallPreservedValue& preserved);
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -329,6 +316,7 @@ make_prior_preserved_call_argument_source(
     const prepare::PreparedValueHome* source_home,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+// Emission-only: consumes prepared effect facts and creates AArch64 machine nodes.
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_callee_saved_preservation_home_republication_instruction(
     const module::BlockLoweringContext& context,
