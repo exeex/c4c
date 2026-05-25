@@ -276,7 +276,6 @@ order_before_call_moves_for_source_preservation(
 // calls_argument_sources
 
 struct PreservedCallArgumentSource {
-  const prepare::PreparedCallPreservedValue* preserved = nullptr;
   std::optional<RegisterOperand> source_register;
   std::optional<MemoryOperand> source_memory;
 };
@@ -291,13 +290,6 @@ struct PreservedCallArgumentSource {
 
 // calls_argument_sources
 
-[[nodiscard]] std::optional<PreservedCallArgumentSource>
-make_prior_preserved_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPreservedValue& preserved,
-    const prepare::PreparedValueHome* source_home,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<PreservedCallArgumentSource>
 make_prior_preserved_call_argument_source(
     const module::BlockLoweringContext& context,

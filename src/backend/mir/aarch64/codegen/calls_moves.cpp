@@ -25,14 +25,6 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
-[[nodiscard]] bool is_explicit_callee_saved_prior_selection(
-    const prepare::PreparedCallArgumentSourceSelection& selection) {
-  return selection.kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
-         selection.preservation_route ==
-             prepare::PreparedCallPreservationRoute::CalleeSavedRegister;
-}
-
 [[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMoveResolution& move,
@@ -373,20 +365,6 @@ find_prior_stack_preserved_value_before_instruction(
       .align_bytes = preserved.stack_align_bytes.value_or(*preserved.stack_size_bytes),
       .can_use_base_plus_offset = true,
   };
-}
-
-[[nodiscard]] const prepare::PreparedCallPreservedValue*
-find_prior_preserved_value_for_call_argument(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& current_call_plan,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedMoveResolution& move) {
-  const auto value_id = argument.source_value_id.value_or(move.from_value_id);
-  if (context.function.call_plan_lookups == nullptr) {
-    return nullptr;
-  }
-  return prepare::find_latest_indexed_prior_preserved_value(
-      *context.function.call_plan_lookups, current_call_plan, value_id);
 }
 
 [[nodiscard]] module::MachineInstruction make_outgoing_stack_base_instruction(
@@ -1583,73 +1561,74 @@ make_immediate_cast_call_argument_publication_instruction(
     if (!frame_slot_address_argument && !local_frame_address_argument &&
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
-      std::optional<PreservedCallArgumentSource> preserved_selection_source;
-      const prepare::PreparedCallPreservedValue* preserved = nullptr;
-      if (argument->source_selection.has_value()) {
-        preserved_selection_source = make_prior_preserved_call_argument_source(
+      const auto* prior_selection =
+          argument->source_selection.has_value() &&
+                  argument->source_selection->kind ==
+                      prepare::PreparedCallArgumentSourceSelectionKind::
+                          PriorPreservation
+              ? &*argument->source_selection
+              : nullptr;
+      std::optional<PreservedCallArgumentSource> preserved_source;
+      std::optional<ValueNameId> preserved_source_value_name;
+      if (prior_selection == nullptr && argument->source_selection.has_value() &&
+          argument->source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  LocalFrameAddressMaterialization) {
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
             context,
-            *argument->source_selection,
+            instruction_index,
+            "AArch64 prior-preserved call argument requires prepared PriorPreservation source selection");
+        return std::nullopt;
+      }
+      if (prior_selection != nullptr) {
+        preserved_source = make_prior_preserved_call_argument_source(
+            context,
+            *prior_selection,
             source_home,
             instruction_index,
             diagnostics);
-        if (!preserved_selection_source.has_value()) {
-          if (is_explicit_callee_saved_prior_selection(*argument->source_selection)) {
-            return std::nullopt;
-          }
-          preserved = find_prior_preserved_value_for_call_argument(
-              context, call_plan, *argument, move);
-          const bool can_use_prepared_prior_record =
-              (argument->source_selection->kind ==
-                   prepare::PreparedCallArgumentSourceSelectionKind::
-                       PriorPreservation &&
-               argument->source_selection->preservation_route ==
-                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister) ||
-              (argument->source_selection->kind ==
-                   prepare::PreparedCallArgumentSourceSelectionKind::
-                       LocalFrameAddressMaterialization &&
-               preserved != nullptr &&
-               preserved->route ==
-                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister);
-          if (preserved != nullptr && !can_use_prepared_prior_record) {
-            return std::nullopt;
-          }
+        preserved_source_value_name = prior_selection->source_value_name;
+        if (!preserved_source.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+              context,
+              instruction_index,
+              "AArch64 prior-preserved call argument requires complete prepared source selection");
+          return std::nullopt;
         }
-      } else {
-        preserved = find_prior_preserved_value_for_call_argument(
-            context, call_plan, *argument, move);
       }
-      if (preserved_selection_source.has_value() || preserved != nullptr) {
-        auto preserved_source =
-            preserved_selection_source.has_value()
-                ? preserved_selection_source
-                : make_prior_preserved_call_argument_source(
-                      context, *preserved, source_home, instruction_index, diagnostics);
+      if (prior_selection != nullptr || preserved_source.has_value()) {
         if (preserved_source.has_value()) {
-          auto destination = make_register_operand_from_prepared_authority(
-              binding != nullptr && binding->destination_register_name.has_value()
-                  ? binding->destination_register_name
-                  : move.destination_register_name,
+          const auto destination_register_placement =
               binding != nullptr && binding->destination_register_placement.has_value()
                   ? binding->destination_register_placement
-                  : move.destination_register_placement,
+                  : (move.destination_register_placement.has_value()
+                         ? move.destination_register_placement
+                         : argument->destination_register_placement);
+          const auto destination_register_name =
+              destination_register_placement.has_value()
+                  ? std::optional<std::string>{}
+                  : (binding != nullptr && binding->destination_register_name.has_value()
+                         ? binding->destination_register_name
+                         : (argument->destination_register_name.has_value()
+                                ? argument->destination_register_name
+                                : move.destination_register_name));
+          auto destination = make_register_operand_from_prepared_authority(
+              destination_register_name,
+              destination_register_placement,
               argument->destination_register_bank,
               RegisterOperandRole::CallAbi,
               move.to_value_id != 0
                   ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                   : argument->source_value_id,
-              argument->source_selection.has_value() &&
-                      argument->source_selection->kind ==
-                          prepare::PreparedCallArgumentSourceSelectionKind::
-                              PriorPreservation &&
-                      argument->source_selection->source_value_name.has_value()
-                  ? *argument->source_selection->source_value_name
-                  : preserved_source->preserved != nullptr
-                        ? preserved_source->preserved->value_name
-                        : c4c::kInvalidValueName,
+              preserved_source_value_name.value_or(c4c::kInvalidValueName),
               binding != nullptr ? binding->destination_contiguous_width
-                                 : move.destination_contiguous_width,
+                                 : argument->destination_contiguous_width,
               binding != nullptr ? binding->destination_occupied_register_names
-                                 : move.destination_occupied_register_names,
+                                 : argument->destination_occupied_register_names,
               preserved_source->source_memory.has_value()
                   ? scalar_integer_register_view_from_size(
                         preserved_source->source_memory->size_bytes)
@@ -1662,10 +1641,8 @@ make_immediate_cast_call_argument_publication_instruction(
           if (destination.has_value()) {
             move_record.source_register = preserved_source->source_register;
             move_record.source_memory = preserved_source->source_memory;
-            if (argument->source_selection.has_value() &&
-                argument->source_selection->kind ==
-                    prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
-                argument->source_selection->preservation_route ==
+            if (prior_selection != nullptr &&
+                prior_selection->preservation_route ==
                     prepare::PreparedCallPreservationRoute::StackSlot &&
                 move_record.source_memory.has_value()) {
               move_record.source_memory->result_value_name.reset();
@@ -1676,6 +1653,8 @@ make_immediate_cast_call_argument_publication_instruction(
                 instruction_index,
                 make_call_boundary_move_instruction(std::move(move_record)));
           }
+        } else {
+          return std::nullopt;
         }
       }
     }

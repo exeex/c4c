@@ -1,4 +1,8 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/calls.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
@@ -3521,6 +3525,183 @@ int check_prior_preservation_source_selection_contract() {
   return 0;
 }
 
+int check_aarch64_prior_preservation_consumes_prepared_source_selection() {
+  auto module = make_prior_preservation_source_selection_contract_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  const auto prepared = prepare_aarch64_module(module);
+  const auto* call_plans =
+      find_call_plans_function(prepared, "prior_preservation_source_selection_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 2 ||
+      call_plans->calls.back().arguments.size() != 1 ||
+      !call_plans->calls.back().arguments.front().source_selection.has_value()) {
+    return fail(
+        "aarch64 prior-preservation source-selection contract: missing prepared source selection");
+  }
+
+  const auto& consumer_call = call_plans->calls.back();
+  const auto& source_selection = *consumer_call.arguments.front().source_selection;
+  if (source_selection.kind !=
+      prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+    return fail(
+        "aarch64 prior-preservation source-selection contract: argument did not publish prior-preservation selection");
+  }
+
+  const auto built = c4c::backend::aarch64::api::build_prepared_module(prepared);
+  if (!built.module.has_value() || built.error.has_value()) {
+    return fail(
+        "aarch64 prior-preservation source-selection contract: prepared module was rejected");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("prior_preservation_source_selection_contract");
+  const c4c::backend::aarch64::codegen::CallBoundaryMoveInstructionRecord* lowered_move =
+      nullptr;
+  for (const auto& function : built.module->mir.functions) {
+    if (function.function_name != function_id) {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& instruction : block.instructions) {
+        const auto& target = instruction.target;
+        if (target.opcode !=
+            c4c::backend::aarch64::codegen::MachineOpcode::CallBoundaryMove) {
+          continue;
+        }
+        const auto* move =
+            std::get_if<c4c::backend::aarch64::codegen::CallBoundaryMoveInstructionRecord>(
+                &target.payload);
+        if (move != nullptr &&
+            move->phase == prepare::PreparedMovePhase::BeforeCall &&
+            move->instruction_index == consumer_call.instruction_index &&
+            move->move.destination_kind ==
+                prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+            move->move.from_value_id == source_selection.source_value_id &&
+            (move->source_register.has_value() || move->source_memory.has_value())) {
+          lowered_move = move;
+        }
+      }
+    }
+  }
+
+  if (lowered_move == nullptr) {
+    return fail(
+        "aarch64 prior-preservation source-selection contract: missing lowered argument move");
+  }
+
+  if (source_selection.preservation_route ==
+      prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    const auto selected_register =
+        source_selection.preserved_register_name.has_value()
+            ? c4c::backend::aarch64::abi::parse_aarch64_register_name(
+                  *source_selection.preserved_register_name)
+            : std::nullopt;
+    if (!source_selection.preserved_register_name.has_value() ||
+        !source_selection.preserved_register_bank.has_value() ||
+        !source_selection.preserved_register_contiguous_width.has_value() ||
+        !selected_register.has_value() ||
+        !lowered_move->source_register.has_value() ||
+        lowered_move->source_register->reg.index != selected_register->index ||
+        lowered_move->source_register->prepared_bank !=
+            *source_selection.preserved_register_bank ||
+        lowered_move->source_register->contiguous_width !=
+            *source_selection.preserved_register_contiguous_width ||
+        lowered_move->source_register->value_id != source_selection.source_value_id ||
+        lowered_move->source_register->value_name != c4c::kInvalidValueName) {
+      return fail(
+          "aarch64 prior-preservation source-selection contract: lowered register source did not consume prepared selection authority");
+    }
+    return 0;
+  }
+
+  if (source_selection.preservation_route ==
+      prepare::PreparedCallPreservationRoute::StackSlot) {
+    if (!source_selection.preserved_stack_offset_bytes.has_value() ||
+        !source_selection.preserved_stack_size_bytes.has_value() ||
+        !source_selection.preserved_stack_align_bytes.has_value() ||
+        !lowered_move->source_memory.has_value() ||
+        lowered_move->source_memory->frame_slot_id !=
+            source_selection.preserved_stack_slot_id ||
+        lowered_move->source_memory->byte_offset !=
+            static_cast<std::int64_t>(*source_selection.preserved_stack_offset_bytes) ||
+        lowered_move->source_memory->size_bytes !=
+            *source_selection.preserved_stack_size_bytes ||
+        lowered_move->source_memory->align_bytes !=
+            *source_selection.preserved_stack_align_bytes ||
+        lowered_move->source_memory->result_value_id !=
+            source_selection.source_value_id) {
+      return fail(
+          "aarch64 prior-preservation source-selection contract: lowered stack source did not consume prepared selection authority");
+    }
+    return 0;
+  }
+
+  return fail(
+      "aarch64 prior-preservation source-selection contract: unsupported prepared preservation route");
+}
+
+int check_aarch64_prior_preservation_rejects_missing_source_selection() {
+  auto module = make_prior_preservation_source_selection_contract_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  auto prepared = prepare_aarch64_module(module);
+  auto function_id =
+      prepared.names.function_names.find("prior_preservation_source_selection_contract");
+  prepare::PreparedCallPlansFunction* mutable_call_plans = nullptr;
+  for (auto& candidate : prepared.call_plans.functions) {
+    if (candidate.function_name == function_id) {
+      mutable_call_plans = &candidate;
+      break;
+    }
+  }
+  const auto* control_flow =
+      prepare::find_prepared_control_flow_function(prepared.control_flow, function_id);
+  if (mutable_call_plans == nullptr || control_flow == nullptr ||
+      mutable_call_plans->calls.size() != 2 ||
+      mutable_call_plans->calls.back().arguments.size() != 1 ||
+      !mutable_call_plans->calls.back().arguments.front().source_selection.has_value()) {
+    return fail(
+        "aarch64 missing prior-preservation source-selection contract: fixture lost prepared source selection");
+  }
+
+  auto& consumer_call = mutable_call_plans->calls.back();
+  consumer_call.arguments.front().source_selection.reset();
+  if (consumer_call.block_index >= control_flow->blocks.size()) {
+    return fail(
+        "aarch64 missing prior-preservation source-selection contract: fixture call block is out of range");
+  }
+
+  const auto function_context =
+      c4c::backend::aarch64::codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, *control_flow);
+  const auto block_context =
+      c4c::backend::aarch64::codegen::make_block_lowering_context(
+          function_context,
+          control_flow->blocks[consumer_call.block_index],
+          consumer_call.block_index);
+  c4c::backend::aarch64::module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = c4c::backend::aarch64::codegen::lower_before_call_moves(
+      block_context,
+      consumer_call,
+      consumer_call.instruction_index,
+      diagnostics);
+  bool emitted_call_argument_source = false;
+  for (const auto& instruction : lowered) {
+    const auto* move =
+        std::get_if<c4c::backend::aarch64::codegen::CallBoundaryMoveInstructionRecord>(
+            &instruction.target.payload);
+    if (move != nullptr &&
+        move->move.destination_kind ==
+            prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        (move->source_register.has_value() || move->source_memory.has_value())) {
+      emitted_call_argument_source = true;
+    }
+  }
+  if (emitted_call_argument_source || diagnostics.empty()) {
+    return fail(
+        "aarch64 missing prior-preservation source-selection contract: lowering selected a prior source without prepared authority");
+  }
+  return 0;
+}
+
 int check_saved_register_slot_placement_carrier_contract() {
   const prepare::PreparedRegisterPlacement register_placement{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -5698,6 +5879,14 @@ int main() {
     return rc;
   }
   if (const int rc = check_prior_preservation_source_selection_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aarch64_prior_preservation_consumes_prepared_source_selection();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aarch64_prior_preservation_rejects_missing_source_selection();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_saved_register_slot_placement_carrier_contract(); rc != 0) {

@@ -14846,6 +14846,31 @@ int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
 
 int nested_call_argument_publishes_from_prior_preservation_home() {
   auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route =
+              prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .preserved_register_name = preserved.register_name,
+          .preserved_register_bank = preserved.register_bank,
+          .preserved_register_contiguous_width = preserved.contiguous_width,
+          .preserved_occupied_register_names = preserved.occupied_register_names,
+          .preserved_register_placement =
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 1,
+                  .contiguous_width = 1,
+              },
+      };
+
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto prepared_lookups =
@@ -15031,10 +15056,14 @@ int incomplete_callee_saved_prior_preservation_selection_does_not_rederive_prior
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
-  if (!lowered.empty() || !diagnostics.empty()) {
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().message.find(
+          "complete prepared source selection") == std::string::npos) {
     return fail(
         "expected incomplete explicit callee-saved prior-preservation selection "
-        "not to rederive prior register home");
+        "to fail closed without rederiving prior register home");
   }
   return 0;
 }
@@ -15136,6 +15165,31 @@ int after_call_result_publication_precedes_preservation_republication() {
 
 int cross_block_call_argument_publishes_from_prior_preservation_home() {
   auto prepared = prepared_with_cross_block_call_preserved_argument_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route =
+              prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .preserved_register_name = preserved.register_name,
+          .preserved_register_bank = preserved.register_bank,
+          .preserved_register_contiguous_width = preserved.contiguous_width,
+          .preserved_occupied_register_names = preserved.occupied_register_names,
+          .preserved_register_placement =
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 1,
+                  .contiguous_width = 1,
+              },
+      };
+
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
@@ -15361,6 +15415,23 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
 
 int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_stack_preserved_argument_non_call_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .preserved_stack_slot_id = preserved.slot_id,
+          .preserved_stack_offset_bytes = preserved.stack_offset_bytes,
+          .preserved_stack_size_bytes = preserved.stack_size_bytes,
+          .preserved_stack_align_bytes = preserved.stack_align_bytes,
+      };
+
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto prepared_lookups =
@@ -15438,6 +15509,23 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
 
 int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   auto prepared = prepared_with_stack_preserved_argument_call_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .preserved_stack_slot_id = preserved.slot_id,
+          .preserved_stack_offset_bytes = preserved.stack_offset_bytes,
+          .preserved_stack_size_bytes = preserved.stack_size_bytes,
+          .preserved_stack_align_bytes = preserved.stack_align_bytes,
+      };
+
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto prepared_lookups =
@@ -15524,6 +15612,21 @@ int stack_preserved_caller_saved_home_feeds_later_second_call_argument() {
   argument.destination_occupied_register_names = {"x1"};
   prepared.call_plans.functions.front().calls.back().preserved_values =
       prepared.call_plans.functions.front().calls.front().preserved_values;
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .preservation_route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .preserved_stack_slot_id = preserved.slot_id,
+          .preserved_stack_offset_bytes = preserved.stack_offset_bytes,
+          .preserved_stack_size_bytes = preserved.stack_size_bytes,
+          .preserved_stack_align_bytes = preserved.stack_align_bytes,
+      };
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
@@ -15612,8 +15715,12 @@ int incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home()
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
-  if (!lowered.empty() || !diagnostics.empty()) {
-    return fail("expected incomplete explicit stack prior-preservation selection not to rederive prior stack home");
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().message.find(
+          "complete prepared source selection") == std::string::npos) {
+    return fail("expected incomplete explicit stack prior-preservation selection to fail closed without rederiving prior stack home");
   }
   return 0;
 }
@@ -15650,7 +15757,12 @@ int selected_local_frame_address_does_not_rederive_prior_home() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
-  if (!lowered.empty() || !diagnostics.empty()) {
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().message.find(
+          "requires prepared PriorPreservation source selection") ==
+          std::string::npos) {
     return fail(
         "expected explicit local-frame address selection not to rederive prior "
         "stack home");
@@ -15690,20 +15802,15 @@ int selected_local_frame_address_uses_callee_saved_prior_home() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
-  if (lowered.size() != 1 || !diagnostics.empty()) {
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().message.find(
+          "requires prepared PriorPreservation source selection") ==
+          std::string::npos) {
     return fail(
-        "expected explicit local-frame address selection to consume callee-saved "
-        "prior home");
-  }
-  const auto* move =
-      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
-          &lowered.front().target.payload);
-  if (move == nullptr || !move->source_register.has_value() ||
-      !move->destination_register.has_value() ||
-      move->source_register->reg != aarch64_module::abi::x_register(20) ||
-      move->destination_register->reg != aarch64_module::abi::x_register(0)) {
-    return fail(
-        "expected explicit local-frame address selection to publish x20 into x0");
+        "expected explicit local-frame address selection not to consume "
+        "callee-saved prior home");
   }
   return 0;
 }
@@ -20711,7 +20818,10 @@ int incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup() {
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 0, diagnostics);
   if (!lowered.empty() || diagnostics.entries.size() != 1 ||
       diagnostics.entries.front().kind !=
-          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily) {
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().message.find(
+          "requires prepared PriorPreservation source selection") ==
+          std::string::npos) {
     return fail("expected incomplete explicit local frame address selection not to rederive legacy lookup");
   }
 

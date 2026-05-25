@@ -2,49 +2,42 @@ Status: Active
 Source Idea Path: ideas/open/06_prepared_call_preservation_source_authority.md
 Source Plan Path: plan.md
 Current Step ID: Step 4
-Current Step Title: Add Focused Coverage
+Current Step Title: Redirect AArch64 Emission To Prepared Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 of `plan.md`: extended prepared call argument
-`PriorPreservation` source selections with the remaining structured
-prior-preservation source facts needed by downstream consumers, including the
-callee-saved save index and spill-slot placement carrier.
+Completed Step 4 of `plan.md`: redirected AArch64 prior-preserved call
+argument lowering to consume prepared `PriorPreservation` source-selection
+records in the hand-built AArch64 instruction-dispatch fixtures.
 
-`src/backend/prealloc/call_plans.cpp` now copies those fields from the selected
-`PreparedCallPreservedValue`, and the prepared calls printer publishes them as
-explicit selection fields.
-
-`backend_prepare_frame_stack_call_contract_test` now includes a dedicated
-two-call prior-preservation source-selection fixture that proves the second
-call argument carries the selected prior call position, route, register/stack
-storage facts, save index, and spill-slot placement without target-local source
-rediscovery.
+`nested_call_argument_publishes_from_prior_preservation_home` now publishes an
+explicit prepared callee-saved `PriorPreservation` source selection from the
+first call's preserved `x20` home before asserting the later argument move.
+The adjacent cross-block and stack-preserved fixture variants now publish the
+same prepared authority instead of relying on absent-selection rediscovery, and
+the local-frame-address negative checks now require the missing-authority
+diagnostic rather than fallback to prior-preservation homes.
 
 ## Suggested Next
 
-Execute the next supervisor-selected packet for AArch64 consumption of prepared
-prior-preservation source selections, using the explicit selection fields
-published by Step 3 instead of local prior-source discovery.
+Supervisor can review and commit the Step 4 code plus `todo.md` slice, or run
+any broader milestone validation it wants before accepting the completed step.
 
 ## Watchouts
 
 - `clang-format` is not installed in this environment; formatting was kept to
   the existing local style manually.
-- AArch64 source construction still has fallback lookup paths in files outside
-  this packet; this slice only publishes and proves the prepared-side authority
-  fields.
-- Ambiguous or incomplete prior-preservation records still produce no
-  `source_selection`; consumers should treat a present `PriorPreservation`
-  selection as the authoritative prepared source record.
+- The dispatch fixture had several related absent-selection expectations in
+  the same prior-preservation cluster; all failures observed by the delegated
+  backend proof are now corrected.
 
 ## Proof
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: passed. The CTest subset passed 2/2 tests. Proof log:
-`test_after.log`.
+Result: passed. The build passed and the backend CTest subset passed 162/162.
+Proof log: `test_after.log`.
