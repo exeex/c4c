@@ -1,33 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove The Selected Local Decision
+Current Step ID: 3
+Current Step Title: Consolidate The Affected Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 removed the selected retained AArch64 byval metadata authority leak from
-the aggregate stack call-argument copy path.
+Step 3 completed the helper-boundary closeout for the selected stack byval size
+path.
 
 Completed work:
 
-- `calls_moves.cpp` no longer calls
-  `aarch64_stack_byval_argument_size_bytes`; the selected path now takes the
-  copy extent from `PreparedValueHome::size_bytes` or, when absent, the
-  prepared `PreparedCallArgumentPlan::destination_stack_size_bytes`.
-- Deleted the now-dead `aarch64_stack_byval_argument_size_bytes` declaration
-  from `calls.hpp`.
-- Deleted the helper definition from `calls_byval_aggregates.cpp`, removing its
-  retained `CallInst::arg_abi[argument.arg_index]` byval-shape and size reads.
+- Verified there is no surviving source declaration, definition, or call site
+  for `aarch64_stack_byval_argument_size_bytes`.
+- Confirmed the remaining matches are lifecycle text in `plan.md` and
+  `todo.md`, not an active helper boundary.
+- Re-ran the focused build and AArch64 backend boundary tests with no include
+  or build fallout.
 
 ## Suggested Next
 
-Step 3 helper-boundary closeout for the affected selected path: confirm there
-is no surviving obsolete `aarch64_stack_byval_argument_size_bytes` API boundary
-or include/build fallout, then let the supervisor decide whether to advance to
-the broader backend checkpoint.
+Step 4 broader backend checkpoint for the selected stack byval path.
 
 ## Watchouts
 
@@ -41,7 +36,7 @@ the broader backend checkpoint.
 
 ## Proof
 
-Step 2 focused proof:
+Step 3 focused proof:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner)$') > test_after.log 2>&1`
 
 Result: passed, `2/2` focused tests in `test_after.log`.
