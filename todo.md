@@ -1,41 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove The Selected Local Decision
+Current Step ID: 3
+Current Step Title: Consolidate The Affected Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` repaired the byval register-lane extent replacement after
-the selected `byval_register_lane_size_bytes` authority path was removed. The
-helper is no longer declared or defined, and the matched AArch64 byval
-register-lane emission branches now derive their aggregate byte extent from
-prepared move, argument, source-home, and contiguous prepared store facts
-instead of re-reading `CallInst::arg_abi`.
+Step 3 of `plan.md` verified the affected byval lane helper boundary after the
+selected `byval_register_lane_size_bytes` authority path was removed. Repo-wide
+search finds the retired helper only in planning text, AST lookup finds no
+declaration or definition in `calls_byval_aggregates.cpp`, and the replacement
+`prepared_byval_lane_extent_bytes` helper is an anonymous-namespace
+emission-only helper in `calls_moves.cpp` called only by `lower_before_call_move`.
 
 ## Suggested Next
 
-Supervisor should route the next coherent packet for Step 3 of `plan.md`.
+Supervisor should decide the next lifecycle action for the active runbook.
 
 ## Watchouts
 
-- `source_home->size_bytes` can already be the prepared aggregate extent. The
-  replacement helper now preserves that total and only uses the prepared lane
-  count when the home is lane-sized and no contiguous store coverage proves a
-  larger extent.
-- Contiguous prepared store coverage remains the stronger prepared fact for
-  reconstructed fragmented byval publications.
-- Other byval helper reads of `CallInst::arg_abi` remain outside this selected
-  Step 2 removal path.
+- No additional narrow consolidation is required for the selected
+  `byval_register_lane_size_bytes` boundary: it is fully retired from the code
+  boundary rather than left as a cross-file helper.
+- The remaining byval lane-size calculation is deliberately emission-local in
+  `calls_moves.cpp`; broader byval helper reads of `CallInst::arg_abi` remain
+  outside this selected boundary.
 
 ## Proof
 
-Reproduced and fixed the focused guard:
-`ctest --test-dir build --output-on-failure -R '^backend_aarch64_call_boundary_owner$'`.
-Result after rebuild: passed.
-
-Ran the exact delegated final proof:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
-Result: passed, 162/162 tests. Proof log: `test_after.log`.
+No code changes were needed, so no build was required by the delegated proof
+contract. Existing accepted Step 2 broad proof remains `test_before.log`:
+162/162 `^backend_` tests passed.
