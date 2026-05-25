@@ -1,46 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Broader Backend Checkpoint
+Current Step ID: 1
+Current Step Title: Select One Publication Authority Leak
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the broader backend checkpoint for the AArch64 indirect byval
-authority-removal slice.
+Step 5 closure review rejected closure for the AArch64 calls emission
+consolidation checkpoint.
 
-- The supervisor-selected broader proof rebuilt the default preset and ran the
-  full `^backend_` CTest subset.
-- The subset covered adjacent AArch64 call-boundary/prepared-call behavior,
-  byval helper runtime cases, publication-plan tests, and shared x86
-  call-boundary/backend-route tests.
-- The checkpoint passed with 162/162 `^backend_` tests passing.
+- The source idea remains open because retained `CallInst::arg_abi` and
+  `CallInst::arg_types` publication decisions still exist in
+  `calls_dispatch_bridge.cpp` and `calls_argument_sources.cpp`.
+- `calls_dispatch_bridge.hpp` still exposes `CallInst`-shaped helper
+  boundaries that need to be retired or justified as emission-only after
+  publication no longer reconstructs call-plan decisions.
+- The close review did not run a close-time regression guard because closure
+  was rejected before the close gate.
 
 ## Suggested Next
 
-Supervisor route decision: proceed to Step 5 closure review for the current
-checkpoint, or keep the source idea active if the known publication-helper
-blockers still require another runbook checkpoint.
+Delegate Step 1 to an executor: select one remaining publication authority
+leak, map it to an existing prepared argument/move/boundary-effect fact or a
+precise missing-prepared-fact blocker, and record the focused proof command.
 
 ## Watchouts
 
-- This was a validation-only packet; no implementation files were touched.
 - Do not close `ideas/open/02_aarch64_calls_emission_consolidation.md` while
-  durable publication-helper blockers remain.
-- The publication blockers in `calls_dispatch_bridge.cpp` and
-  `calls_argument_sources.cpp` remain separate durable candidates.
-- The `calls_dispatch_bridge.hpp` `CallInst`-shaped helper boundary remains a
-  separate durable candidate.
+  publication-helper authority blockers remain.
+- Do not touch unrelated
+  `ideas/open/03_dispatch_responsibility_reduction.md` dispatch cleanup.
+- Reject helper renames, expectation rewrites, and testcase-shaped shortcuts as
+  progress.
 
 ## Proof
 
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+Closure review evidence:
 
-Result: passed in `test_after.log`; 162/162 `^backend_` tests passed.
+- `rg -n "arg_abi|arg_types|CallInst" src/backend/mir/aarch64/codegen/calls*.cpp src/backend/mir/aarch64/codegen/calls*.hpp src/backend/mir/aarch64/codegen/calls.hpp`
+- `rg -n "publication|byval|aggregate|frame address|local frame|CallInst" src/backend/mir/aarch64/codegen/calls_dispatch_bridge.cpp src/backend/mir/aarch64/codegen/calls_argument_sources.cpp src/backend/mir/aarch64/codegen/calls_dispatch_bridge.hpp`
 
-Coverage notes from the backend subset: CTest reported 37 AArch64-labeled
-tests, 3 byval-labeled tests, 2 publication-labeled tests, 1 prepared call
-boundary scalability test, 83 backend-route tests, and 9 x86-labeled tests
-among the passing `^backend_` run.
+Durable blockers found:
+
+- `calls_dispatch_bridge.cpp`: `call_argument_allows_local_aggregate_address_publication`
+  still reads retained `CallInst::arg_abi` and `CallInst::arg_types`.
+- `calls_argument_sources.cpp`: pointer/byval helpers under
+  `call_argument_allows_local_frame_address_publication` still read retained
+  `CallInst::arg_types` and `CallInst::arg_abi`.
+- `calls_dispatch_bridge.hpp`: helper declarations still expose
+  `bir::CallInst` parameters on publication/call-boundary helper boundaries.
