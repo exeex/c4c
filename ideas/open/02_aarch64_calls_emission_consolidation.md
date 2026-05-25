@@ -48,21 +48,22 @@ surface that converts prepared call facts into AArch64 machine nodes.
 
 ## Current Lifecycle Blocker
 
-Step 5 closure review after the call move boundary checkpoint rejects closure
-and deactivates the active runbook. The checkpoint passed its broader backend
-proof according to `todo.md`, but the workspace no longer contains
-`test_after.log`, so close-time regression guard acceptance cannot be
-rechecked from the canonical before/after logs.
+Step 5 closure review after the call move boundary checkpoint rejected closure
+and deactivated the active runbook. The checkpoint passed its broader full-suite
+monotonic regression proof according to `todo.md` and canonical before/after
+logs, but regression proof alone is not sufficient for closure while the
+semantic blocker below remains.
 
-The source idea remains open because `calls_moves.cpp`,
-`calls_argument_sources.cpp`, `calls_preservation.cpp`, and `calls.hpp` still
-expose a large call move/source/preservation surface. The completed checkpoint
-also identified a precise remaining blocker: there is no single prepared
-call-argument source fact that says a selected `BeforeCall` argument move
-should source from prior preservation, local-frame address materialization, or
-byval register-lane materialization. Until that shared prepared fact exists,
-AArch64 caller-side source selection in `lower_before_call_move` is not
-actionable as another consolidation checkpoint under this source idea.
+The source idea remains open because the remaining call move/source surface in
+`calls_moves.cpp`, `calls_argument_sources.cpp`, `calls_byval_aggregates.cpp`,
+and `calls.hpp` still depends on target-local caller-side argument source
+selection. The completed checkpoint identified a precise remaining blocker:
+there is no single prepared call-argument source fact that says a selected
+`BeforeCall` argument move should source from prior preservation, local-frame
+address materialization, frame-slot/address sources, or byval register-lane
+materialization. Until that shared prepared fact exists, AArch64 caller-side
+source selection in `lower_before_call_move` is not actionable as another
+consolidation checkpoint under this source idea.
 
 Do not reactivate this idea for another AArch64-local move/source cleanup
 checkpoint unless either:
