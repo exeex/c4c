@@ -2125,6 +2125,16 @@ make_immediate_cast_call_argument_publication_instruction(
           byval_size.has_value()) {
         address_source = make_byval_register_lane_prepared_source(
             context, *argument, *source_home, *byval_size, call_plan.instruction_index);
+        if (!address_source.has_value() &&
+            has_selected_byval_register_lane_source(*argument)) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+              context,
+              instruction_index,
+              "AArch64 indirect byval call-argument publication requires complete prepared selected source bytes");
+          return std::nullopt;
+        }
       }
     }
     source =

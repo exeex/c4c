@@ -20169,6 +20169,50 @@ int large_byval_aggregate_indirect_argument_materializes_frame_address() {
       printed.instruction_lines.front() != "add x0, sp, #96") {
     return fail("expected large byval indirect argument to print add x0, sp, #96");
   }
+
+  auto incomplete_argument = call_plan.arguments.front();
+  incomplete_argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  ByvalRegisterLane,
+          .source_value_id = prepare::PreparedValueId{127},
+          .source_value_name = aggregate_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+          .byval_lane_extent_bytes = std::size_t{24},
+      };
+  const prepare::PreparedCallPlan incomplete_call_plan{
+      .block_index = 0,
+      .instruction_index = 3,
+      .arguments = {incomplete_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics incomplete_diagnostics;
+  const auto incomplete_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, incomplete_call_plan, 3, incomplete_diagnostics);
+  if (!incomplete_lowered.empty() ||
+      incomplete_diagnostics.entries.size() != 1 ||
+      incomplete_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected incomplete explicit indirect byval source selection not to "
+        "rederive the frame-slot home");
+  }
+
+  auto absent_argument = call_plan.arguments.front();
+  absent_argument.source_selection.reset();
+  const prepare::PreparedCallPlan absent_call_plan{
+      .block_index = 0,
+      .instruction_index = 3,
+      .arguments = {absent_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
+  const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, absent_call_plan, 3, absent_diagnostics);
+  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
+    return fail(
+        "expected absent indirect byval source selection to keep legacy "
+        "frame-slot compatibility");
+  }
   return 0;
 }
 
