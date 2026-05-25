@@ -344,8 +344,5 @@ make_callee_saved_preservation_home_population(
 [[nodiscard]] mir::TargetInstructionPrintResult print_call_boundary_move(
     const InstructionRecord& instruction,
     const CallBoundaryMoveInstructionRecord& move);
-[[nodiscard]] mir::TargetInstructionPrintResult print_call_boundary_abi_binding(
-    const InstructionRecord& instruction,
-    const CallBoundaryAbiBindingInstructionRecord& binding);
 
 }  // namespace c4c::backend::aarch64::codegen

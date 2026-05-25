@@ -8,19 +8,21 @@ Current Step Title: Move Or Narrow Pure Printer Ownership
 
 ## Just Finished
 
-Step 2 moved the pure `print_call` assembly spelling helper into
-`machine_printer.cpp` at the `CallInstructionRecord` payload dispatch boundary.
-`calls.hpp` no longer exports `print_call`, and `calls_printing.cpp` no longer
+Step 2 moved the diagnostic-only `print_call_boundary_abi_binding` helper into
+`machine_printer.cpp` at the `CallBoundaryAbiBindingInstructionRecord` payload
+dispatch boundary. `calls.hpp` no longer exports
+`print_call_boundary_abi_binding`, and `calls_printing.cpp` no longer
 implements it.
 
-`make_call_instruction`, variadic call record completion/selection, and
-preserved-value effect publication remain calls-owned in `calls_printing.cpp`.
+`make_call_boundary_abi_binding_instruction` and ABI-binding node
+construction/status remain calls-owned in `calls_printing.cpp`.
 
 ## Suggested Next
 
-Continue Step 2 by deciding whether `print_call_boundary_abi_binding` is ready
-to move to `machine_printer.cpp`, or should first be narrowed/deleted if the
-binding node remains diagnostic-only.
+Continue Step 2 by deciding whether the larger
+`print_call_boundary_move` helper should move as one follow-up packet or be
+split first, since it still carries frame-slot load/address materialization,
+immediate materialization, scalar FPR, and f128 q-register spelling helpers.
 
 ## Watchouts
 
@@ -34,10 +36,10 @@ binding node remains diagnostic-only.
   printer and effect-publication responsibilities.
 - Keep source-idea progress tied to deleted duplication, moved ownership, or a
   sharper emission-only boundary.
-- Do not move `print_call_boundary_move` in the next Step 2 slice; it drags
-  frame-slot load/address materialization, immediate materialization, scalar
-  FPR, and f128 q-register spelling helpers, so it should follow after the
-  smaller `print_call` boundary proves clean.
+- `print_call_boundary_move` is the remaining calls-family printer export, but
+  it drags frame-slot load/address materialization, immediate materialization,
+  scalar FPR, and f128 q-register spelling helpers; avoid treating that as a
+  trivial symbol move.
 - Do not move `effect_from_prepared_call_preserved_value` to the printer.
   Blocker: the prepared preserved-value route is currently converted into
   machine-node `preserves` by `make_call_instruction`; there is no separate
@@ -46,7 +48,6 @@ binding node remains diagnostic-only.
 ## Proof
 
 Step 2 proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_machine_printer|aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_printer|aarch64_instruction_dispatch)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_machine_printer|aarch64_call_boundary_owner|call_boundary_effect_plan|prepared_printer|aarch64_instruction_dispatch)$' > test_after.log 2>&1`
 
-Proof log accepted and rolled forward to canonical `test_before.log`. The
-focused subset passed 5/5 tests.
+Proof log: `test_after.log`. The focused subset passed 5/5 tests.

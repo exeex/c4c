@@ -1236,18 +1236,4 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
   return target_printed({out.str()});
 }
 
-mir::TargetInstructionPrintResult print_call_boundary_abi_binding(
-    const InstructionRecord& instruction,
-    const CallBoundaryAbiBindingInstructionRecord& binding) {
-  if (binding.source_bundle == nullptr || binding.source_binding == nullptr) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "call-boundary ABI binding node is missing prepared binding provenance");
-  }
-  return target_unsupported(
-      bad_header(instruction) +
-      "call-boundary ABI binding node requires later AArch64 move lowering");
-}
-
-
 }  // namespace c4c::backend::aarch64::codegen

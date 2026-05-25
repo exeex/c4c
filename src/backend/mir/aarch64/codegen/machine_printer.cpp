@@ -1894,6 +1894,19 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
   });
 }
 
+mir::TargetInstructionPrintResult print_call_boundary_abi_binding(
+    const InstructionRecord& instruction,
+    const CallBoundaryAbiBindingInstructionRecord& binding) {
+  if (binding.source_bundle == nullptr || binding.source_binding == nullptr) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "call-boundary ABI binding node is missing prepared binding provenance");
+  }
+  return target_unsupported(
+      bad_header(instruction) +
+      "call-boundary ABI binding node requires later AArch64 move lowering");
+}
+
 mir::TargetInstructionPrintResult MachineInstructionPrinter::print_instruction(
     const mir::MachinePrintContext&,
     const mir::MachineInstruction<InstructionRecord>& instruction) const {
