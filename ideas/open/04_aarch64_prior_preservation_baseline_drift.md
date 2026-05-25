@@ -52,3 +52,24 @@ prior-preservation selected fallback in AArch64 call-boundary move lowering.
 - A patch weakens baseline or c_testsuite contracts.
 - A patch claims the drift is fixed without proving at least one failing case
   and the focused call-boundary path.
+
+## Deactivation Note
+
+The active runbook completed the prior-preservation/source-selection family and
+is deactivated. Commits `12d68c4d6`, `898884db5`, and `f3d8611c7` repaired the
+representative plus the remaining same-family cases covered by the final
+delegated subset: `backend_aarch64_instruction_dispatch`, `00173`, `00179`,
+`00186`, and `00187` passed.
+
+The final subset still reported `00181`, `00216`, and `00204` red, but those
+were classified as separate families rather than unresolved
+prior-preservation/source-selection drift. They are split into separate open
+ideas:
+
+- `ideas/open/13_aarch64_cts_00181_recursion_global_array_runtime.md`
+- `ideas/open/14_c_aggregate_initializer_compound_literal_layout.md`
+- `ideas/open/15_aarch64_aggregate_hfa_stdarg_abi.md`
+
+This idea was not moved to `ideas/closed/` because close-grade regression guard
+could not be accepted from the available canonical logs: `test_after.log` was
+absent, and the delegated ownership explicitly excluded test log mutation.
