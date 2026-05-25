@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/13_aarch64_cts_00181_recursion_global_array_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Prove The Missing Semantic Rule
+Current Step ID: Step 4
+Current Step Title: Validate The 00181 Family
 
 # Current Packet
 
@@ -20,9 +20,9 @@ recursive `Hanoi` call instead of `mov x1, x3`.
 
 ## Suggested Next
 
-Proceed to Step 3/Step 4 validation policy: the narrow owner is repaired, so
-the next packet should decide whether this slice needs broader AArch64 backend
-coverage beyond the delegated focused proof.
+Run Step 4's remaining nearby same-feature validation needed to reject a
+named-test-only fix beyond the already-green `00181` and focused backend/unit
+proof.
 
 ## Watchouts
 
