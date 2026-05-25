@@ -18412,6 +18412,180 @@ int register_homed_local_address_argument_materializes_frame_address_register() 
   return 0;
 }
 
+int incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.incomplete.local.address.arg");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.incomplete.local.address.arg.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern(
+          "dispatch.incomplete.local.address.arg.entry");
+  const auto source_name = prepared.names.value_names.intern("%incomplete.aggregate");
+  const auto source_lane_name =
+      prepared.names.value_names.intern("%incomplete.aggregate.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{182};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.incomplete.local.address.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.incomplete.local.address.arg.entry",
+              .insts =
+                  {bir::CallInst{
+                      .callee = "consume_incomplete_local_address",
+                      .args = {bir::Value::named(bir::TypeKind::Ptr,
+                                                 "%incomplete.aggregate")},
+                      .arg_types = {bir::TypeKind::Ptr},
+                      .return_type = bir::TypeKind::Void,
+                      .calling_convention = bir::CallingConv::C,
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .address_materializations =
+          {prepare::PreparedAddressMaterialization{
+              .function_name = function_name,
+              .block_label = block_label,
+              .inst_index = 0,
+              .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+              .result_value_name = source_name,
+              .result_value_id = source_value_id,
+              .frame_slot_id = prepare::PreparedFrameSlotId{1820},
+              .byte_offset = 96,
+          }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{1821},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{1822},
+      .object_id = prepare::PreparedObjectId{1821},
+      .function_name = function_name,
+      .offset_bytes = 112,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x21"},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .allows_local_aggregate_address_publication = true,
+              .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+              .source_value_id = source_value_id,
+              .source_register_name = std::string{"x21"},
+              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              LocalFrameAddressMaterialization,
+                      .source_value_id = source_value_id,
+                      .source_value_name = source_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                  },
+          }},
+  };
+
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 0, diagnostics);
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily) {
+    return fail("expected incomplete explicit local frame address selection not to rederive legacy lookup");
+  }
+  return 0;
+}
+
 int block_dispatch_publishes_direct_local_aggregate_address_call_argument() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -27620,6 +27794,11 @@ int main() {
   }
   if (const int status =
           register_homed_local_address_argument_materializes_frame_address_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup();
       status != 0) {
     return status;
   }
