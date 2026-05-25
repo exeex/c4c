@@ -1,44 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Remaining Export Surface
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 consolidated one remaining calls move/preservation export. The
-`make_callee_saved_preservation_home_republication` wrapper is now file-local
-to `calls_moves.cpp`, its `calls.hpp` declaration was removed, and the old
-cross-translation-unit wrapper definition was removed from
-`calls_preservation.cpp`.
+Step 4 broader backend checkpoint passed after the call move boundary
+consolidation checkpoint. The exact command completed successfully and
+`test_after.log` records 162 backend tests passing with no failures.
 
-Remaining calls move/preservation declarations in `calls.hpp` still have
-cross-translation-unit callers:
-
-- `lower_before_call_moves`, `lower_after_call_moves`,
-  `lower_before_return_moves`, and `lower_value_moves` are dispatch/test entry
-  points.
-- `call_boundary_move_reloads_materialized_address` and
-  `order_before_call_moves_for_source_preservation` are used by dispatch after
-  BeforeCall lowering.
-- `find_move_bundle` is used by `calls_dispatch_bridge.cpp` and
-  `calls_moves.cpp`.
-- `find_prior_preserved_value_for_call_argument` and
-  `find_prior_preserved_value_for_value` are defined in
-  `calls_preservation.cpp` and used from `calls_moves.cpp`.
-- `make_prior_preserved_call_argument_source` is defined outside the owned
-  files in `calls_argument_sources.cpp` and used from `calls_moves.cpp`.
-- `make_callee_saved_preservation_home_republication_instruction` and
-  `make_callee_saved_preservation_home_population` are defined in
-  `calls_preservation.cpp` and used from `calls_moves.cpp`.
+No blocker remains for this checkpoint.
 
 ## Suggested Next
 
-Next packet should advance to Step 4 broader backend checkpoint validation, or
-route to plan-owner if the supervisor wants a lifecycle review before broader
-validation.
+Next packet should route to plan-owner for Step 5 closure review or any
+lifecycle decision the supervisor wants before closing/deactivating this active
+plan.
 
 ## Watchouts
 
@@ -81,6 +61,6 @@ validation.
 ## Proof
 
 Proof passed with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_prepared_call_boundary_scalability|backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_runtime_byval_helper_payload_8_to_13|backend_runtime_byval_helper_payload_9_to_14|backend_runtime_byval_helper_mixed_hfa_payload)$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 
-`test_after.log` records 10 selected tests passing after the build.
+Backend result: `test_after.log` records 162/162 tests passing.
