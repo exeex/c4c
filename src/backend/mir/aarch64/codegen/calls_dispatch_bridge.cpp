@@ -154,6 +154,108 @@ find_prepared_frame_slot_call_argument_move(
   return std::nullopt;
 }
 
+[[nodiscard]] bool local_aggregate_lane_name_matches(
+    std::string_view aggregate_name,
+    std::string_view object_name) {
+  return object_name.size() == aggregate_name.size() + 2 &&
+         object_name.compare(0, aggregate_name.size(), aggregate_name) == 0 &&
+         object_name.substr(aggregate_name.size()) == ".0";
+}
+
+[[nodiscard]] bool call_argument_is_pointer_operand(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& home,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return context.bir_block == nullptr;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->args.size()) {
+    return false;
+  }
+  const auto& value = call->args[argument.arg_index];
+  if (value.type != bir::TypeKind::Ptr) {
+    return false;
+  }
+  const auto value_name = prepared_named_value_id(context, value);
+  return value_name == std::optional<c4c::ValueNameId>{home.value_name};
+}
+
+[[nodiscard]] std::optional<MemoryOperand>
+make_missing_local_aggregate_frame_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& home,
+    std::size_t instruction_index) {
+  if ((argument.source_selection.has_value() &&
+       argument.source_selection->kind !=
+           prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
+       argument.source_selection->kind !=
+           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) ||
+      context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      home.value_name == c4c::kInvalidValueName ||
+      !call_argument_is_pointer_operand(context, argument, home, instruction_index) ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.source_value_id != std::optional<prepare::PreparedValueId>{home.value_id} ||
+      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return std::nullopt;
+  }
+
+  const auto aggregate_name =
+      prepare::prepared_value_name(context.function.prepared->names, home.value_name);
+  if (aggregate_name.empty()) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedStackObject* selected_object = nullptr;
+  const prepare::PreparedFrameSlot* selected_slot = nullptr;
+  for (const auto& object : context.function.prepared->stack_layout.objects) {
+    if (object.function_name != context.function.control_flow->function_name ||
+        object.source_kind != "local_slot") {
+      continue;
+    }
+    const auto object_name =
+        prepare::prepared_stack_object_name(context.function.prepared->names, object);
+    if (!local_aggregate_lane_name_matches(aggregate_name, object_name)) {
+      continue;
+    }
+    for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
+      if (slot.object_id != object.object_id) {
+        continue;
+      }
+      if (selected_slot == nullptr || slot.offset_bytes < selected_slot->offset_bytes) {
+        selected_object = &object;
+        selected_slot = &slot;
+      }
+    }
+  }
+  if (selected_object == nullptr || selected_slot == nullptr) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id,
+      .result_value_name = home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = selected_slot->slot_id,
+      .byte_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = home.size_bytes.value_or(8),
+      .align_bytes = home.align_bytes.value_or(8),
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
     const prepare::PreparedCallPlan* call_plan,
     std::size_t argument_index) {
@@ -1179,12 +1281,21 @@ materialize_missing_frame_slot_call_arguments(
     if (!prepared_move.has_value()) {
       continue;
     }
+    const auto address_source =
+        make_missing_local_aggregate_frame_address_source(
+            context, argument, *home, instruction_index);
     const auto source =
-        make_frame_slot_call_argument_source(context, argument, *home, instruction_index);
+        address_source.has_value()
+            ? address_source
+            : make_frame_slot_call_argument_source(
+                  context, argument, *home, instruction_index);
     if (!source.has_value()) {
       continue;
     }
-    const auto expected_view = scalar_integer_register_view_from_size(source->size_bytes);
+    const auto expected_view =
+        address_source.has_value()
+            ? std::optional<abi::RegisterView>{abi::RegisterView::X}
+            : scalar_integer_register_view_from_size(source->size_bytes);
     if (!expected_view.has_value()) {
       continue;
     }
@@ -1260,6 +1371,7 @@ materialize_missing_frame_slot_call_arguments(
             prepared_move->bundle->source_parallel_copy_successor_label,
         .move = move,
         .source_memory = *source,
+        .source_memory_materializes_address = address_source.has_value(),
         .destination_register = destination,
         .source_bundle = prepared_move->bundle,
         .source_move = prepared_move->move,
