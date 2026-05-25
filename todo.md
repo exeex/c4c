@@ -1,29 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/02_aarch64_calls_emission_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consolidate The Preservation Helper Boundary
+Current Step ID: 4
+Current Step Title: Broader Backend Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 closed the selected before-instruction stack-preservation helper
-boundary after the Step 2 lookup-route change. The wrapper
-`find_prior_stack_preserved_value_before_instruction` is no longer declared in
-`calls.hpp` or implemented in `calls_preservation.cpp`; it now lives as a local
-emission-only helper in `calls_moves.cpp`, next to its sole call site.
+Step 4 completed the broader backend checkpoint for the selected
+stack-preservation prepared-lookup route. The delegated backend subset stayed
+green after the prior Step 2 lookup-route and Step 3 helper-boundary changes.
 
-The durable lookup authority remains in
-`prepare::find_latest_indexed_prior_stack_preserved_value_before_instruction`.
-The local emission wrapper only validates that the prepared result is a usable
-stack-slot preservation before `calls_moves.cpp` constructs the `MemoryOperand`.
+Coverage observed in `test_after.log` includes the prepared lookup helper,
+prepared BIR dumps, AArch64 call-boundary ownership and prepared-call-boundary
+scalability, byval runtime/codegen coverage, publication plan coverage, selected
+indirect call coverage, and the broader `backend_route` label bucket.
 
 ## Suggested Next
 
-Have the supervisor decide whether this Step 3 closeout is ready to commit or
-whether the active plan needs reviewer/plan-owner handling before the next
-packet.
+Have the supervisor decide whether this Step 4 checkpoint is ready to commit or
+whether the active plan needs reviewer/plan-owner handling.
 
 ## Watchouts
 
@@ -36,6 +33,8 @@ packet.
   performs operand-readiness validation for the sole move-emission use site.
 - Do not fold in callee-saved republication/population or block-entry
   non-call-use reconstruction under this completed selected route.
+- This packet made no implementation changes; it only refreshed the canonical
+  backend proof log and recorded the Step 4 checkpoint.
 
 ## Proof
 
@@ -44,5 +43,17 @@ Passed.
 Command:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-Result: build succeeded; `ctest` reported 162/162 backend tests passed.
+Result: build succeeded; `ctest` reported 162/162 backend tests passed. Relevant
+coverage includes `backend_prepared_lookup_helper`,
+`backend_cli_dump_prepared_bir_is_prepared`,
+`backend_cli_dump_prepared_bir_exposes_contract_sections`,
+`backend_aarch64_call_boundary_owner`,
+`backend_codegen_route_aarch64_prepared_call_boundary_scalability`,
+`backend_runtime_byval_helper_payload_8_to_13`,
+`backend_runtime_byval_helper_payload_9_to_14`,
+`backend_runtime_byval_helper_mixed_hfa_payload`,
+`backend_publication_plan_record`,
+`backend_store_source_publication_plan`,
+`backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call`,
+and the `backend_route` label bucket.
 Proof log: `test_after.log`.
