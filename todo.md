@@ -8,32 +8,34 @@ Current Step Title: Move Non-Emission Spelling To Its Owner
 
 ## Just Finished
 
-Lifecycle review found Step 2 exhausted after the latest committed
-helper-boundary retirements. The completed Step 2 route retired the prepared
-source-selection duplicate boundaries that had a valid mapping, including
-explicit frame-slot value/address, local-frame address, stack-slot prior
-preservation, SRET address, and complete byval register-lane source payload
-cases.
+Step 3 audit identified a valid non-emission ownership target but did not move
+code in this packet. `calls_printing.cpp` still owns prepared preserved-call
+effect conversion through `effect_from_prepared_call_preserved_value` and
+`effects_from_prepared_call_preserved_values`, while the matching clobber
+effect conversion helper already lives in `instruction.cpp`.
 
-The remaining audited source-helper paths are not valid Step 2 continuation
-targets without new prepared facts or mapping proof: absent-selection
-compatibility, fragmented byval fallback, callee-saved-register prior
-preservation, and emission/spelling helpers. Step 2 should not be expanded to
-cover those paths under the current runbook contract.
+The implementation move is blocked for this executor packet because the clear
+owner is the AArch64 machine-instruction record/effect layer in
+`src/backend/mir/aarch64/codegen/instruction.cpp`, which is outside the
+delegated owned file set.
 
 ## Suggested Next
 
-Advance execution to Step 3 of `plan.md`: identify call printing or effect
-spelling still owned by the AArch64 calls surface, then delegate a narrow
-behavior-preserving move to the owning machine-printer or shared MIR layer.
-
-Do not continue Step 2 source-selection retirement unless a fresh mapping proves
-another AArch64-local helper boundary duplicates prepared call-plan facts.
+Delegate a narrow Step 3 packet that adds `instruction.cpp` and
+`instruction.hpp` to the owned files, then move prepared preserved-call effect
+conversion next to `effects_from_prepared_call_clobbers` without changing the
+`InstructionRecord::preserves` behavior.
 
 ## Watchouts
 
 - Step 3 is about non-emission spelling ownership, not another source-selection
   retirement pass.
+- The first valid move target is effect metadata ownership, not assembly text
+  printing: call preserve-effect construction belongs beside the existing
+  clobber-effect helpers in the machine-instruction record layer.
+- Do not move the immediate-cast inline-assembly text from `calls_moves.cpp` in
+  this same slice; that path is emission-like lowering for selected call
+  argument publication and has a less clear Step 3 owner.
 - Do not retire absent-selection fragmented byval lane fallback logic outside
   `make_byval_register_lane_prepared_source`; the accepted prerequisite only
   covers explicit complete byval register-lane selections with prepared source
@@ -104,10 +106,11 @@ another AArch64-local helper boundary duplicates prepared call-plan facts.
 
 ## Proof
 
-Ran delegated proof command:
+No implementation or test files changed in this packet. Ran syntax-only diff
+check per the delegated no-code-change proof rule:
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"; } | tee test_after.log'`
+`git diff --check`
 
-Result: build succeeded and the backend subset passed, 162/162 tests.
+Result: passed.
 
-Proof log: `test_after.log`.
+Proof log: none; no `test_after.log` was produced.
