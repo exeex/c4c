@@ -80,6 +80,15 @@ void retarget_memory_result_to_prepared_home(
     const module::BlockLoweringContext& context,
     module::MachineInstruction& instruction);
 
+void retarget_pointer_store_value_to_materialized_address(
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address);
+
+void retarget_store_address_to_materialized_pointer(
+    const bir::StoreLocalInst& store,
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address);
+
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction);

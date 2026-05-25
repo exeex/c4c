@@ -808,6 +808,48 @@ void retarget_memory_result_to_prepared_home(
   memory_record->result_register->occupied_register_references = {viewed};
   memory_record->result_register->occupied_registers = {abi::register_name(viewed)};
 }
+void retarget_pointer_store_value_to_materialized_address(
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address) {
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      memory_record->value_type != bir::TypeKind::Ptr) {
+    return;
+  }
+  memory_record->value = make_register_operand(materialized_address);
+}
+void retarget_store_address_to_materialized_pointer(
+    const bir::StoreLocalInst& store,
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address) {
+  if (!store.address.has_value() ||
+      store.address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store) {
+    return;
+  }
+
+  memory_record->address.base_kind = MemoryBaseKind::Register;
+  memory_record->address.base_register = materialized_address;
+  memory_record->address.frame_slot_id.reset();
+  memory_record->address.symbol_name.reset();
+  memory_record->address.symbol_label.clear();
+  memory_record->address.pointer_value_name.reset();
+  memory_record->address.pointer_value_id.reset();
+  memory_record->address.byte_offset = store.address->byte_offset;
+  memory_record->address.byte_offset_is_prepared_snapshot = false;
+  memory_record->address.size_bytes = store.address->size_bytes;
+  memory_record->address.align_bytes = store.address->align_bytes;
+  memory_record->address.address_space = store.address->address_space;
+  memory_record->address.is_volatile = store.address->is_volatile;
+  memory_record->address.can_use_base_plus_offset = true;
+}
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction) {
