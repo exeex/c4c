@@ -1510,6 +1510,14 @@ make_immediate_cast_call_argument_publication_instruction(
           if (destination.has_value()) {
             move_record.source_register = preserved_source->source_register;
             move_record.source_memory = preserved_source->source_memory;
+            if (argument->source_selection.has_value() &&
+                argument->source_selection->kind ==
+                    prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
+                argument->source_selection->preservation_route ==
+                    prepare::PreparedCallPreservationRoute::StackSlot &&
+                move_record.source_memory.has_value()) {
+              move_record.source_memory->result_value_name.reset();
+            }
             move_record.destination_register = *destination;
             return make_call_boundary_machine_instruction(
                 context,

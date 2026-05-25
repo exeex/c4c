@@ -1,42 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/13_aarch64_cts_00181_recursion_global_array_runtime.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce And Localize Runtime Mismatch
+Current Step ID: Step 2
+Current Step Title: Prove The Missing Semantic Rule
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced `c_testsuite_aarch64_backend_src_00181_c` as a runtime
-segfault and localized the first bad owner to AArch64 call-boundary argument
-lowering. BIR for `Hanoi` is correct, but final AArch64 reuses caller-saved
-`x3` for the later `spare` argument after intervening calls instead of
-reloading the prepared stack-preserved `%p.spare` value from `sp+8`.
+Step 2 added focused backend coverage for a caller-saved value originally in
+`x3` that is stack-preserved across a call and later republished as ABI
+argument `x1`; the focused dispatch test passes and rejects stale `mov x1, x3`
+for that reduced same-feature shape. The remaining production/fixture split was
+the dispatch bridge retargeting an explicit stack `PriorPreservation` source
+back to a stale emitted scalar register for the same value name; the
+call-argument stack-preserved source now remains a frame-slot source through
+that retargeting pass. `00181` now emits `ldr x1, [sp, #8]` before the later
+recursive `Hanoi` call instead of `mov x1, x3`.
 
 ## Suggested Next
 
-Delegate Step 2 to create a focused recursive-call case where a fourth
-pointer/int argument must survive two calls and then be republished as a later
-call argument, independent of `00181` names or global array layout.
+Proceed to Step 3/Step 4 validation policy: the narrow owner is repaired, so
+the next packet should decide whether this slice needs broader AArch64 backend
+coverage beyond the delegated focused proof.
 
 ## Watchouts
 
-Observed fault: `Move` traps at `ldr w9, [x10]` with `x0 == 0`; the null
-source pointer comes from the third recursive `Hanoi` call path. Prepared BIR
-records `%p.spare` as `route=stack_slot slot#73 stack+8` and the before-call
-bundle for block 2 inst 4 says `move from_value_id=104 ... abi_index=1 ...
-reason=call_arg_stack_to_register`, but emitted assembly in `Hanoi` contains
-`mov x1, x3` after prior calls clobber `x3`. `PrintAll` global array reads are
-lowered through constant-offset selects, but they are not the first crash.
-Do not reopen the old prior-preservation selected fallback, weaken
-c_testsuite expectations, or special-case `00181`, Tower of Hanoi symbols, or
-one exact global array layout.
+Prepared BIR for `Hanoi` shows `%p.spare#104` as a stack-slot preserved value
+for block 2 calls at inst 1, inst 2, and inst 4, and the inst 4 argument plan
+says arg index 1 uses `source_reg=x3` and `dest_reg=x1`. The owner ambiguity
+resolved to explicit stack `PriorPreservation` call-argument sources carrying a
+`result_value_name`; `calls_dispatch_bridge.cpp` uses that name to retarget
+call-boundary memory sources to previously emitted scalar registers, which was
+correct for ordinary scalar producers but wrong for stack-preserved
+caller-saved values after an intervening call. The repair keeps only
+stack-prior-preservation call arguments non-retargetable by clearing the memory
+source value name while preserving the prepared value id and frame-slot facts.
+Do not special-case `00181`, Tower of Hanoi symbols, or one exact global array
+layout.
 
 ## Proof
 
 Ran:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00181_c$') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00181_c)$') > test_after.log 2>&1`
 
-Result: build succeeded; the single test failed with `[RUNTIME_NONZERO]` and
-`exit=Segmentation fault`. Proof log: `test_after.log`.
+Result: build succeeded; `backend_aarch64_instruction_dispatch` passed,
+including the new focused same-feature coverage, and
+`c_testsuite_aarch64_backend_src_00181_c` passed. Proof log:
+`test_after.log`.

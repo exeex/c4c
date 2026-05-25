@@ -15447,6 +15447,87 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   return 0;
 }
 
+int stack_preserved_caller_saved_home_feeds_later_second_call_argument() {
+  auto prepared = prepared_with_stack_preserved_argument_call_reuse();
+  auto& home = prepared.value_locations.functions.front().value_homes.front();
+  home.register_name = std::string{"x3"};
+
+  auto& move =
+      prepared.value_locations.functions.front().move_bundles.front().moves.front();
+  move.destination_abi_index = std::size_t{1};
+  move.destination_register_name = std::string{"x1"};
+  move.destination_occupied_register_names = {"x1"};
+
+  auto& clobber =
+      prepared.call_plans.functions.front().calls.front().clobbered_registers.front();
+  clobber.register_name = std::string{"x3"};
+  clobber.occupied_register_names = {"x3"};
+
+  auto& argument =
+      prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.arg_index = std::size_t{1};
+  argument.source_register_name = std::string{"x3"};
+  argument.destination_register_name = std::string{"x1"};
+  argument.destination_occupied_register_names = {"x1"};
+  prepared.call_plans.functions.front().calls.back().preserved_values =
+      prepared.call_plans.functions.front().calls.front().preserved_values;
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+      !diagnostics.empty()) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail(
+        "expected later second call argument to reload stack-preserved caller-saved home: " +
+        (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* reload =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (reload == nullptr || !reload->source_memory.has_value() ||
+      !reload->destination_register.has_value() ||
+      reload->source_memory->byte_offset != 32 ||
+      reload->destination_register->reg != aarch64_module::abi::x_register(1)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected later second call argument to reload stack home into x1: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-preserved second argument route to print: " +
+                printed.diagnostic);
+  }
+  const auto first_call = printed.assembly.find("bl clobber_arg");
+  const auto preserved_publish =
+      printed.assembly.find("ldr x1, [sp, #32]", first_call);
+  const auto stale_publish = printed.assembly.find("mov x1, x3", first_call);
+  const auto second_call = printed.assembly.find("bl consume_arg", preserved_publish);
+  if (first_call == std::string::npos ||
+      preserved_publish == std::string::npos ||
+      second_call == std::string::npos ||
+      (stale_publish != std::string::npos && stale_publish < second_call)) {
+    return fail(
+        "expected second call argument to reload stack-preserved caller-saved value: " +
+        printed.assembly);
+  }
+  return 0;
+}
+
 int incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home() {
   auto prepared = prepared_with_stack_preserved_argument_call_reuse();
   const auto& preserved =
@@ -29161,6 +29242,11 @@ int main() {
   }
   if (const int status =
           stack_preserved_home_feeds_later_call_argument_after_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          stack_preserved_caller_saved_home_feeds_later_second_call_argument();
       status != 0) {
     return status;
   }
