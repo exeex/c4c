@@ -66,6 +66,12 @@ void record_call_result_source_register(
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state);
 
+void retarget_fpr_call_result_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction);
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 materialize_missing_frame_slot_call_arguments(
     const module::BlockLoweringContext& context,

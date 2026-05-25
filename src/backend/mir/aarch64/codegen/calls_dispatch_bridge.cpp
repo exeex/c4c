@@ -1117,6 +1117,39 @@ move.to_value_id);
       });
 }
 
+void retarget_fpr_call_result_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named ||
+      (store->value.type != bir::TypeKind::F32 &&
+       store->value.type != bir::TypeKind::F64)) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      memory_record->value_type != store->value.type) {
+    return;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value()) {
+    return;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  if (!emitted.has_value() ||
+      emitted->role != RegisterOperandRole::CallAbi ||
+      emitted->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      emitted->reg.bank != abi::RegisterBank::FpSimd) {
+    return;
+  }
+  memory_record->value = make_register_operand(*emitted);
+}
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 materialize_missing_frame_slot_call_arguments(
     const module::BlockLoweringContext& context,

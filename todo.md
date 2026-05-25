@@ -8,32 +8,30 @@ Current Step Title: Remove Or Justify Call-Specific Dispatch Glue
 
 ## Just Finished
 
-Step 5 - Remove Or Justify Call-Specific Dispatch Glue continued by moving the
-before-call retarget/materialized-address conflict helper cluster out of
-`dispatch.cpp` into `calls_dispatch_bridge`.
+Step 5 - Remove Or Justify Call-Specific Dispatch Glue continued by moving
+`retarget_fpr_call_result_store_value_to_emitted_scalar` out of `dispatch.cpp`
+into `calls_dispatch_bridge.cpp`/`.hpp`.
 
-`retarget_call_boundary_source_to_emitted_scalar`,
-`source_value_is_materialized_address`, and
-`source_register_conflicts_with_materialized_address` now live in
-`calls_dispatch_bridge.cpp`/`.hpp`, with `dispatch.cpp` calling the bridge at
-the same before-call routing points. No AArch64-local call argument
-source-selection logic was added or changed.
+`dispatch.cpp` still calls the helper at the same memory-store routing point
+after ordinary memory lowering, so the FPR call-result store-value retargeting
+behavior is preserved. No call argument source-selection logic was added or
+changed.
 
 ## Suggested Next
 
 Continue Step 5 by either moving or explicitly justifying the remaining
-call-specific dispatch glue in `dispatch.cpp`. The next likely target is the
-small before-call/after-call sequencing code that still decides when bridge
-helpers are invoked around materialized callees, materialized addresses, and
-missing frame-slot arguments.
+call-specific dispatch glue in `dispatch.cpp`. The remaining justification
+target is the small sequencing code that decides when bridge helpers are invoked
+around materialized callees, materialized addresses, missing frame-slot
+arguments, and call-result recording.
 
 ## Watchouts
 
-The moved conflict helper intentionally preserves the old behavior: a
-materialized address source is not treated as a register conflict, while a
-different source register that aliases an address materialization result is
-emitted before the address materialization. Keep future extraction semantic and
-do not add or change call argument source-selection behavior.
+The moved FPR helper intentionally preserves the old behavior: it retargets
+only named `f32`/`f64` `StoreLocal` values whose emitted scalar is a call ABI
+FPR in the FP/SIMD bank and whose memory record already matches the store value
+type. Keep future extraction semantic and do not add or change call argument
+source-selection behavior.
 
 ## Proof
 
