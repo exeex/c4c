@@ -1,27 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/07_aarch64_call_boundary_move_emission_only.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Reduce Byval, Frame-Slot, And Materialization Reconstruction
+Current Step ID: 5
+Current Step Title: Validate Emission-Only Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 implementation reduced duplicate AArch64 local aggregate frame-address
-reconstruction in call-boundary move emission.
+Step 5 validation found a pre-existing AArch64 c_testsuite blocker for the
+current plan.
 
-Removed the target-local `calls_moves.cpp` and dispatch-bridge copies of the
-local aggregate frame-slot scan. Before-call moves and the dispatch bridge now
-route that case through `make_frame_slot_call_argument_address_source`, which
-consumes explicit `FrameSlotAddress`/prepared materialization facts when they
-exist and keeps the compatibility path centralized for absent selections.
+The Step 4 centralized fallback slice is still accepted on focused and backend
+proof. Broader Step 5 c_testsuite validation fails on
+`c_testsuite_aarch64_backend_src_00216_c` and
+`c_testsuite_aarch64_backend_src_00204_c`, but the same two tests also fail at
+`HEAD~1` (`b919e53a2`, Step 3) in a temporary worktree. Therefore the failing
+c_testsuite pair is not introduced by the Step 4 centralization commit
+`529c57977`.
 
 ## Suggested Next
 
-Review whether prepared call planning can publish complete source selections for
-the remaining absent-selection compatibility cases, then retire the centralized
-fallbacks one family at a time.
+Decide whether Step 5 should repair the earlier AArch64 c_testsuite regression
+as part of this active plan or split it into a separate source-idea/lifecycle
+route before closing the emission-only boundary.
 
 ## Watchouts
 
@@ -29,6 +31,13 @@ fallbacks one family at a time.
   `source_selection` is present.
 - Do not touch the transient `review/` artifacts unless explicitly delegated.
 - Treat expectation weakening or named-test shortcuts as route failures.
+- Step 5 is blocked by pre-existing AArch64 c_testsuite failures:
+  `c_testsuite_aarch64_backend_src_00216_c` segfaults and
+  `c_testsuite_aarch64_backend_src_00204_c` reports a runtime output mismatch.
+- A failed speculative local fix in
+  `calls_argument_sources.cpp` was discarded after proving the same failures
+  reproduce at `HEAD~1`; do not resurrect it without a fresh source-path
+  explanation.
 - Remaining temporary fallback: absent-selection local aggregate pointer
   frame-address publication still needs prepared
   `LocalFrameAddressMaterialization`/`FrameSlotAddress` source selection with
@@ -47,3 +56,12 @@ Supervisor follow-up validation:
 
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
   passed 162/162.
+
+Step 5 validation:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_'`
+  failed 2/220 at `HEAD` (`529c57977`): `c_testsuite_aarch64_backend_src_00216_c`
+  and `c_testsuite_aarch64_backend_src_00204_c`.
+- Temporary-worktree comparison at `HEAD~1` (`b919e53a2`) with
+  `ctest --test-dir /tmp/c4c-head1/build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$'`
+  failed the same two tests, showing the blocker predates Step 4.
