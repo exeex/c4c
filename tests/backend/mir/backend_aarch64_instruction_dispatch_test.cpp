@@ -19544,6 +19544,55 @@ int incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup() {
           aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily) {
     return fail("expected incomplete explicit local frame address selection not to rederive legacy lookup");
   }
+
+  auto non_local_argument = call_plan.arguments.front();
+  non_local_argument.value_bank = prepare::PreparedRegisterBank::Gpr;
+  non_local_argument.source_register_bank = prepare::PreparedRegisterBank::Gpr;
+  non_local_argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          .source_value_id = source_value_id,
+          .source_value_name = source_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      };
+  const prepare::PreparedCallPlan non_local_call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .arguments = {non_local_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics non_local_diagnostics;
+  const auto non_local_lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, non_local_call_plan, 0, non_local_diagnostics);
+  if (non_local_lowered.size() != 1 || !non_local_diagnostics.empty()) {
+    return fail(
+        "expected explicit non-local source selection to keep ordinary "
+        "register move lowering");
+  }
+  const auto* non_local_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &non_local_lowered.front().target.payload);
+  if (non_local_move == nullptr ||
+      non_local_move->source_memory.has_value() ||
+      !non_local_move->source_register.has_value() ||
+      non_local_move->source_register->reg !=
+          aarch64_module::abi::x_register(21) ||
+      !non_local_move->destination_register.has_value() ||
+      non_local_move->destination_register->reg !=
+          aarch64_module::abi::x_register(0)) {
+    return fail(
+        "expected explicit non-local source selection not to rederive legacy "
+        "local frame address lookup");
+  }
+  const auto non_local_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          non_local_lowered.front().target);
+  if (!non_local_printed.ok ||
+      non_local_printed.instruction_lines !=
+          std::vector<std::string>{"mov x0, x21"}) {
+    return fail(
+        "expected explicit non-local source selection to print a register "
+        "move, not a local frame address materialization");
+  }
   return 0;
 }
 
