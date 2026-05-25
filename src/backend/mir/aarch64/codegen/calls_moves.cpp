@@ -1447,11 +1447,17 @@ make_immediate_cast_call_argument_publication_instruction(
           preserved = find_prior_preserved_value_for_call_argument(
               context, call_plan, *argument, move);
           const bool can_use_prepared_prior_record =
-              argument->source_selection->kind ==
-                  prepare::PreparedCallArgumentSourceSelectionKind::
-                      PriorPreservation &&
-              argument->source_selection->preservation_route ==
-                  prepare::PreparedCallPreservationRoute::CalleeSavedRegister;
+              (argument->source_selection->kind ==
+                   prepare::PreparedCallArgumentSourceSelectionKind::
+                       PriorPreservation &&
+               argument->source_selection->preservation_route ==
+                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister) ||
+              (argument->source_selection->kind ==
+                   prepare::PreparedCallArgumentSourceSelectionKind::
+                       LocalFrameAddressMaterialization &&
+               preserved != nullptr &&
+               preserved->route ==
+                   prepare::PreparedCallPreservationRoute::CalleeSavedRegister);
           if (preserved != nullptr && !can_use_prepared_prior_record) {
             return std::nullopt;
           }

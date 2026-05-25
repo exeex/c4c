@@ -8,28 +8,33 @@ Current Step Title: Validate Regression Family
 
 ## Just Finished
 
-Step 1 reproduced `c_testsuite_aarch64_backend_src_00040_c` as a runtime
-failure while `backend_aarch64_instruction_dispatch` still passed. Step 2
-completed the narrow AArch64 repair: explicit callee-saved
-`PriorPreservation` selections can now consume the matched prepared preserved
-record, and after-call result moves are emitted before preservation
-republication so restored prior values do not clobber call results.
+Step 3 validated the remaining AArch64 c_testsuite family after `12d68c4d6`
+and repaired the next same-family call-boundary source-selection hole:
+explicit local-frame address selections may now consume the matched
+callee-saved prior preservation home when the selected frame facts are not
+available at lowering time. This moved `00173`, `00179`, `00186`, and `00187`
+to green in the delegated subset.
 
 ## Suggested Next
 
-Supervisor should decide whether to advance to Step 3 broader validation for
-the remaining AArch64 c_testsuite regression family.
+Supervisor should treat the remaining failures as a separate initiative or
+delegate a new packet for the next classified family, starting with either
+`00181`/`00216` runtime crashes or `00204` AArch64 aggregate/HFA/stdarg ABI
+mismatch.
 
 ## Watchouts
 
-The repair keeps incomplete explicit stack prior-preservation selections
-fail-closed and does not rederive prior homes for unrelated explicit selection
-kinds. The representative runtime also needed after-call explicit moves to be
-lowered independently of preservation-effect ordering; otherwise the result
-store was skipped and `x0` was republished from `x20` first.
+The remaining red cases are not clearly part of the same
+prior-preservation/call-boundary source-selection issue: `00181` is the Tower
+of Hanoi recursion/global-array case, `00216` is aggregate initializer and
+compound literal layout, and `00204` is AArch64 aggregate/HFA/stdarg ABI
+behavior. Do not weaken expectations or fold those into this source-selection
+repair without a new route.
 
 ## Proof
 
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00040_c)$') > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_(00173|00179|00181|00186|00187|00216|00204)_c)$') > test_after.log 2>&1
 
-Passed. Proof log: `test_after.log`.
+Failed for the three classified non-source-selection cases: `00181`, `00216`,
+and `00204`. `backend_aarch64_instruction_dispatch`, `00173`, `00179`,
+`00186`, and `00187` passed. Proof log: `test_after.log`.
