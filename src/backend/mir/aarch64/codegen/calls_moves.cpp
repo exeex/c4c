@@ -1432,6 +1432,7 @@ make_immediate_cast_call_argument_publication_instruction(
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
       std::optional<PreservedCallArgumentSource> preserved_selection_source;
+      const prepare::PreparedCallPreservedValue* preserved = nullptr;
       if (argument->source_selection.has_value()) {
         preserved_selection_source = make_prior_preserved_call_argument_source(
             context,
@@ -1439,20 +1440,17 @@ make_immediate_cast_call_argument_publication_instruction(
             source_home,
             instruction_index,
             diagnostics);
-        if (argument->source_selection->kind ==
-                prepare::PreparedCallArgumentSourceSelectionKind::
-                    PriorPreservation &&
-            argument->source_selection->preservation_route ==
-                prepare::PreparedCallPreservationRoute::StackSlot &&
-            !preserved_selection_source.has_value()) {
-          return std::nullopt;
+        if (!preserved_selection_source.has_value()) {
+          preserved = find_prior_preserved_value_for_call_argument(
+              context, call_plan, *argument, move);
+          if (preserved != nullptr) {
+            return std::nullopt;
+          }
         }
+      } else {
+        preserved = find_prior_preserved_value_for_call_argument(
+            context, call_plan, *argument, move);
       }
-      const auto* preserved =
-          preserved_selection_source.has_value()
-              ? nullptr
-              : find_prior_preserved_value_for_call_argument(
-                    context, call_plan, *argument, move);
       if (preserved_selection_source.has_value() || preserved != nullptr) {
         auto preserved_source =
             preserved_selection_source.has_value()

@@ -8,31 +8,27 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired the duplicate explicit-selection fallback boundary
-for non-byval frame-slot value sources. `make_frame_slot_call_argument_source`
-now treats any present `source_selection` as authoritative: a complete
-`FrameSlotValue` selection returns the prepared source, and any incomplete or
-different explicit selection fails closed instead of rederiving a legacy
-frame-slot value source. The GPR-only `FrameSlotAddress` guard in
-`lower_before_call_move` was removed because the shared frame-slot value helper
-now owns that boundary for GPR, FPR, binary128, and stack-slot publication
-callers.
+Step 2 of `plan.md` retired one prior-preservation selected-source caller
+fallback boundary. In `lower_before_call_move`, an explicit
+`source_selection` that does not produce a complete
+`PriorPreservation` selected source no longer falls through to the legacy
+prior-preserved-value lookup when such a prior home is available. Absent
+`source_selection` compatibility still uses the legacy prior-preservation
+lookup.
 
-The instruction-dispatch coverage now includes an incomplete explicit
-`FrameSlotAddress` selection for a stack-published frame-slot argument while
-matching legacy value-home facts remain available; `lower_before_call_moves`
-fails with `MissingValueAuthority` instead of storing the frame-slot value. The
-existing absent-selection stack publication case still proves the retained
-no-`source_selection` compatibility path uses the legacy frame-slot value
-source.
+The instruction-dispatch coverage now includes an explicit incomplete
+`LocalFrameAddressMaterialization` selection on a later call argument while a
+matching prior stack-preserved home remains available; `lower_before_call_moves`
+fails closed without reloading the prior stack home. Existing absent-selection
+coverage still proves stack-preserved call arguments can reload from the legacy
+prior-preservation path.
 
 ## Suggested Next
 
-Continue Step 2 by auditing whether any remaining prepared-source helper
-boundaries can be retired without changing absent-selection compatibility,
-especially local-frame address materialization and prior-preservation callers
-that still keep target-local fallback logic around explicit selected-source
-facts.
+Continue Step 2 by auditing the remaining local-frame address materialization
+legacy lookup paths themselves. Only retire another boundary if complete
+`PreparedCallArgumentSourceSelection` facts cover that source decision and the
+no-`source_selection` compatibility path remains tested.
 
 ## Watchouts
 
@@ -78,6 +74,10 @@ facts.
 - Stack-slot `PriorPreservation` explicit selections now require a complete
   stack payload; absent-selection prior-preservation lookup remains the
   compatibility path.
+- Explicit non-prior source selections no longer reuse an available prior
+  stack-preserved home through the prior-preservation caller. This slice keeps
+  unrelated incomplete frame-slot/local-frame diagnostics on their existing
+  paths when no prior home is available.
 - SRET `FrameSlotAddress` explicit selections now require a complete
   frame-slot address payload; absent-selection SRET compatibility still uses
   `call_plan.memory_return`.

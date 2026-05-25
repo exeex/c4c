@@ -15333,6 +15333,46 @@ int incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home()
   return 0;
 }
 
+int selected_local_frame_address_does_not_rederive_prior_home() {
+  auto prepared = prepared_with_stack_preserved_argument_call_reuse();
+  const auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  auto& call_plan = prepared.call_plans.functions.front().calls.back();
+  auto& argument = call_plan.arguments.front();
+  argument.allows_local_aggregate_address_publication = true;
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind =
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  LocalFrameAddressMaterialization,
+          .source_value_id = preserved.value_id,
+          .source_value_name = preserved.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .source_size_bytes = std::size_t{8},
+          .source_align_bytes = std::size_t{8},
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
+  if (!lowered.empty() || !diagnostics.empty()) {
+    return fail(
+        "expected explicit local-frame address selection not to rederive prior "
+        "stack home");
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -28665,6 +28705,11 @@ int main() {
   }
   if (const int status =
           incomplete_stack_prior_preservation_selection_does_not_rederive_prior_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          selected_local_frame_address_does_not_rederive_prior_home();
       status != 0) {
     return status;
   }
