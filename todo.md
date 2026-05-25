@@ -8,26 +8,26 @@ Current Step Title: Retire One Proven Duplicate Helper Boundary
 
 ## Just Finished
 
-Step 2 of `plan.md` retired the explicit stack-slot
-`PreparedCallArgumentSourceSelectionKind::PriorPreservation` rediscovery path
-for before-call AArch64 register arguments. When an argument carries an
-explicit stack-slot prior-preservation selection, the move now consumes the
-prepared stack-slot payload only if it is complete and no longer rederives that
-same selected source through `find_prior_preserved_value_for_call_argument`.
+Step 2 of `plan.md` retired the explicit SRET
+`PreparedCallArgumentSourceSelectionKind::FrameSlotAddress` rediscovery path
+for AArch64 memory-return address arguments. When the SRET call argument
+carries an explicit frame-slot address selection, the helper now consumes the
+prepared selected frame-slot payload only if it is complete and no longer
+rederives the same selected source through `call_plan.memory_return`.
 
-The instruction-dispatch coverage now includes an incomplete explicit
-stack-slot `PriorPreservation` selection with prior-preservation lookup facts
-still present; `lower_before_call_moves` emits no rederived move from the
-legacy lookup, proving the fallback boundary was retired for this selected
-source path. Absent `source_selection` compatibility is unchanged.
+The instruction-dispatch coverage now includes an incomplete explicit SRET
+frame-slot address selection with a complete `call_plan.memory_return` still
+present; `lower_before_call_moves` emits no rederived x8 address move from the
+legacy memory-return fallback. The existing no-selection SRET coverage still
+proves absent `source_selection` compatibility.
 
 ## Suggested Next
 
 Continue Step 2 by auditing the remaining selected-source helpers for another
 complete-payload-only duplicate boundary that can be retired without touching
-absent-selection compatibility. A good next packet is the remaining frame-slot
-value/address compatibility surface, if the supervisor wants another narrow
-source-boundary slice.
+absent-selection compatibility. A good next packet is any remaining
+frame-slot/local-address source surface that still mixes explicit incomplete
+selection handling with legacy compatibility.
 
 ## Watchouts
 
@@ -49,6 +49,9 @@ source-boundary slice.
 - Stack-slot `PriorPreservation` explicit selections now require a complete
   stack payload; absent-selection prior-preservation lookup remains the
   compatibility path.
+- SRET `FrameSlotAddress` explicit selections now require a complete
+  frame-slot address payload; absent-selection SRET compatibility still uses
+  `call_plan.memory_return`.
 - Do not invent a new call-plan API under this source idea.
 - Do not move AArch64 emission details into the shared planner.
 - Do not claim progress through file concatenation, expectation weakening, or

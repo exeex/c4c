@@ -19181,6 +19181,129 @@ int sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0() {
   return 0;
 }
 
+int incomplete_sret_frame_slot_address_selection_does_not_rederive_memory_return() {
+  constexpr auto function_name = c4c::FunctionNameId{1211};
+  constexpr auto block_label = c4c::BlockLabelId{1212};
+  constexpr auto sret_value_id = prepare::PreparedValueId{1213};
+  constexpr auto sret_value_name = c4c::ValueNameId{1214};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = sret_value_id,
+              .function_name = function_name,
+              .value_name = sret_value_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{1217},
+              .offset_bytes = std::size_t{80},
+              .size_bytes = std::size_t{24},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 2,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = sret_value_id,
+                      .to_value_id = sret_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x8"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x8"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x8"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x8"},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 2,
+      .memory_return =
+          prepare::PreparedMemoryReturnPlan{
+              .sret_arg_index = std::size_t{0},
+              .storage_slot_name = c4c::SlotNameId{12},
+              .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .slot_id = prepare::PreparedFrameSlotId{1217},
+              .stack_offset_bytes = std::size_t{80},
+              .size_bytes = 24,
+              .align_bytes = 8,
+          },
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 2,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = sret_value_id,
+              .source_slot_id = prepare::PreparedFrameSlotId{1217},
+              .source_stack_offset_bytes = std::size_t{80},
+              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .destination_register_name = std::string{"x8"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x8"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              FrameSlotAddress,
+                      .source_value_id = sret_value_id,
+                      .source_value_name = sret_value_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_stack_offset_bytes = std::size_t{80},
+                      .source_size_bytes = std::size_t{24},
+                      .source_align_bytes = std::size_t{8},
+                  },
+          }},
+  };
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 2, diagnostics);
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail("expected incomplete explicit sret frame-slot address selection not to rederive memory_return");
+  }
+  return 0;
+}
+
 int large_byval_aggregate_indirect_argument_materializes_frame_address() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -27522,6 +27645,11 @@ int main() {
   }
   if (const int status =
           sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          incomplete_sret_frame_slot_address_selection_does_not_rederive_memory_return();
       status != 0) {
     return status;
   }
