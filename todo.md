@@ -1,39 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/05_prepared_call_argument_source_selection_completeness.md
 Source Plan Path: plan.md
-Current Step ID: none
-Current Step Title: none
+Current Step ID: Step 3
+Current Step Title: Update Emission, Printing, And Diagnostics
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for `plan.md`: extended
-`PreparedCallArgumentSourceSelection` so `PriorPreservation` selections can
-carry callee-saved register source facts copied from
-`PreparedCallPreservedValue`.
+Completed Step 3 for `plan.md`: updated AArch64 call-argument emission so the
+selection overload of `make_prior_preserved_call_argument_source` consumes
+complete explicit callee-saved `PriorPreservation` selection facts directly.
 
-The new selection payload carries the preserved register name, register bank,
-contiguous width, occupied register names, and typed register placement.
-`select_prepared_call_argument_source` now populates those fields for prior
-preservation selections and refuses to publish a callee-saved-register
-selection when any required register fact is missing. The prior-call coordinate
-lookup also remains fail-closed if the selected preserved-value pointer cannot
-be matched back to its call record.
+The overload now constructs the preserved source register from the selected
+register name, bank, contiguous width, occupied register names, and register
+placement without consulting `PreparedCallPreservedValue`. Stack-slot selection
+behavior remains fail-closed on the existing complete stack fact set, and
+`lower_before_call_move` no longer falls back to preserved-record lookup when a
+complete explicit callee-saved prior-preservation selection fails emission.
 
 ## Suggested Next
 
-Execute the next packet by teaching the emission-side selection overload to use
-the callee-saved register facts now carried by explicit `PriorPreservation`
-source selections, while keeping legacy preserved-record fallback behavior only
-for paths that still lack an explicit complete selection.
+Execute the next Step 3/4 packet by adding natural printer or diagnostic
+coverage for explicit prior-preservation source-selection facts if the
+supervisor wants surfaced observability beyond the current emission behavior.
 
 ## Watchouts
 
-This packet intentionally did not edit AArch64 emission. The current callee-
-saved path can still fall back through
-`find_prior_preserved_value_for_call_argument`; the next slice should consume
-the new selection fields instead of adding target-local rederivation.
+Legacy preserved-record fallback still exists for paths without a complete
+explicit callee-saved `PriorPreservation` selection. This packet did not edit
+shared prepared-record files or tests.
 
 ## Proof
 

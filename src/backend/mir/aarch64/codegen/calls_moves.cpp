@@ -25,6 +25,20 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
+[[nodiscard]] bool has_complete_explicit_callee_saved_prior_selection(
+    const prepare::PreparedCallArgumentSourceSelection& selection) {
+  return selection.kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation &&
+         selection.preservation_route ==
+             prepare::PreparedCallPreservationRoute::CalleeSavedRegister &&
+         selection.preserved_register_name.has_value() &&
+         selection.preserved_register_bank.has_value() &&
+         selection.preserved_register_contiguous_width.has_value() &&
+         *selection.preserved_register_contiguous_width != 0 &&
+         !selection.preserved_occupied_register_names.empty() &&
+         selection.preserved_register_placement.has_value();
+}
+
 [[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMoveResolution& move,
@@ -1585,6 +1599,10 @@ make_immediate_cast_call_argument_publication_instruction(
             instruction_index,
             diagnostics);
         if (!preserved_selection_source.has_value()) {
+          if (has_complete_explicit_callee_saved_prior_selection(
+                  *argument->source_selection)) {
+            return std::nullopt;
+          }
           preserved = find_prior_preserved_value_for_call_argument(
               context, call_plan, *argument, move);
           const bool can_use_prepared_prior_record =

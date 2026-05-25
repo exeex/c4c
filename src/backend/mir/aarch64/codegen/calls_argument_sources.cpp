@@ -1095,10 +1095,48 @@ make_prior_preserved_call_argument_source(
     const prepare::PreparedValueHome* source_home,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  (void)diagnostics;
   if (selection.kind !=
-          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
-      selection.preservation_route !=
+      prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+    return std::nullopt;
+  }
+
+  if (selection.preservation_route ==
+      prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    if (!selection.preserved_register_name.has_value() ||
+        !selection.preserved_register_bank.has_value() ||
+        !selection.preserved_register_contiguous_width.has_value() ||
+        *selection.preserved_register_contiguous_width == 0 ||
+        selection.preserved_occupied_register_names.empty() ||
+        !selection.preserved_register_placement.has_value()) {
+      return std::nullopt;
+    }
+    const auto source_view =
+        source_home != nullptr && source_home->size_bytes.has_value()
+            ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+            : scalar_view_from_register_name(selection.preserved_register_name);
+    auto source = make_register_operand_from_prepared_authority(
+        selection.preserved_register_name,
+        selection.preserved_register_placement,
+        selection.preserved_register_bank,
+        RegisterOperandRole::CallAbi,
+        selection.source_value_id,
+        selection.source_value_name.value_or(c4c::kInvalidValueName),
+        *selection.preserved_register_contiguous_width,
+        selection.preserved_occupied_register_names,
+        source_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    source->value_name = c4c::kInvalidValueName;
+    PreservedCallArgumentSource result;
+    result.source_register = *source;
+    return result;
+  }
+
+  if (selection.preservation_route !=
           prepare::PreparedCallPreservationRoute::StackSlot ||
       !selection.source_value_id.has_value() ||
       !selection.source_value_name.has_value() ||
@@ -1109,7 +1147,6 @@ make_prior_preserved_call_argument_source(
       *selection.preserved_stack_size_bytes == 0) {
     return std::nullopt;
   }
-  (void)source_home;
   PreservedCallArgumentSource result;
   result.source_memory = MemoryOperand{
       .surface = RecordSurfaceKind::MachineInstructionNode,
