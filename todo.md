@@ -1,24 +1,22 @@
 Status: Active
 Source Idea Path: ideas/open/18_aarch64_cts_00181_runtime_regression_reopen.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add focused same-feature coverage
+Current Step ID: 5
+Current Step Title: Validate and prepare closure evidence
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added focused same-feature backend coverage in
-`backend_aarch64_instruction_dispatch_test.cpp` for predecessor edge
-publication of `base + sext(index) * 4`. The new test asserts that the
-published pointer address keeps the pointer base in the target register,
-materializes the scaled index through a distinct scratch register, and does
-not reintroduce the stale `mov x9, #4` / `mul x10, x10, x9` clobber shape.
+Step 5 ran the delegated broad AArch64 backend validation and captured closure
+evidence in `test_after.log`. The validation passed, including
+`c_testsuite_aarch64_backend_src_00181_c` and the focused
+`backend_aarch64_instruction_dispatch` coverage.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 4 coverage slice, then advance
-to broader validation and closure evidence.
+Supervisor should review the completed repair, coverage, and validation
+evidence, then decide whether to close the active lifecycle state.
 
 ## Watchouts
 
@@ -45,11 +43,10 @@ to broader validation and closure evidence.
   stale producer was `dispatch_edge_copies.cpp` edge/select-chain publication.
   The expansion is still within the same AArch64 value-publication failure
   family and did not touch expectations or unrelated lowering routes.
-- CTest registers the backend dispatch executable as
-  `backend_aarch64_instruction_dispatch`, not
-  `backend_aarch64_instruction_dispatch_test`; the delegated proof command did
-  not execute the newly added backend coverage until the supervisor reran the
-  corrected scope.
+- Route cause analysis: nested AArch64 value/edge publication clobbered the
+  pointer base during scaled-index materialization. The repair was semantic
+  register-hazard handling for nested publication, not a named testcase
+  shortcut for `00181`.
 
 ## Proof
 
@@ -57,10 +54,10 @@ Ran exactly:
 
 ```sh
 cmake --build --preset default
-ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00181_c)$'
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_|c_testsuite_aarch64_backend_)'
 ```
 
-Combined output is captured in `test_after.log`. The build completed after
-recompiling and relinking `backend_aarch64_instruction_dispatch_test`; the
-corrected CTest subset ran the focused backend dispatch test and
-`c_testsuite_aarch64_backend_src_00181_c`.
+Combined output is captured in `test_after.log`. The build completed and the
+CTest subset passed: 248 tests passed, 0 failed. The run confirms
+`c_testsuite_aarch64_backend_src_00181_c` passed and also includes
+`backend_aarch64_instruction_dispatch`.
