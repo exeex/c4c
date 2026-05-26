@@ -1,10 +1,10 @@
 #include "module_compile.hpp"
 
-#include "compatibility_projection.hpp"
 #include "traversal.hpp"
 
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -26,6 +26,31 @@ namespace {
       .compatibility = module::CompatibilityProjection{},
       .functions = {},
   };
+}
+
+// Compatibility-only flat views for legacy MIR tests and migration callers.
+// Terminal assembly printing must walk module::MachineModule through the shared
+// MIR printer and MachineInstructionPrinter instead.
+[[nodiscard]] std::vector<module::FunctionRecord> derive_compatibility_function_records(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const std::vector<module::MachineFunction>& functions) {
+  std::vector<module::FunctionRecord> records;
+  records.reserve(functions.size());
+  for (const auto& function : functions) {
+    records.push_back(module::FunctionRecord{
+        .function_name = function.function_name,
+        .label = module::prepare::prepared_function_name(prepared.names,
+                                                         function.function_name),
+        .mir = function,
+        .machine_nodes = module::selected_machine_nodes(function),
+    });
+  }
+  return records;
+}
+
+[[nodiscard]] module::CompatibilityProjection derive_compatibility_projection(
+    const std::vector<module::FunctionRecord>& functions) {
+  return module::CompatibilityProjection{.functions = functions};
 }
 
 void lower_module_body(

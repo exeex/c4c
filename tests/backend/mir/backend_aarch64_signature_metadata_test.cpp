@@ -31,8 +31,6 @@ std::string read_aarch64_compiled_sources() {
       "src/backend/mir/aarch64/codegen/calls.hpp",
       "src/backend/mir/aarch64/codegen/comparison.cpp",
       "src/backend/mir/aarch64/codegen/comparison.hpp",
-      "src/backend/mir/aarch64/codegen/compatibility_projection.cpp",
-      "src/backend/mir/aarch64/codegen/compatibility_projection.hpp",
       "src/backend/mir/aarch64/codegen/dispatch.cpp",
       "src/backend/mir/aarch64/codegen/dispatch.hpp",
       "src/backend/mir/aarch64/codegen/globals.cpp",
