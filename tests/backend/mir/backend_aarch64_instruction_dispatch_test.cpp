@@ -16790,6 +16790,20 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
           .destination_contiguous_width = 1,
           .destination_occupied_register_names = {"x0"},
           .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_selection =
+              prepare::PreparedCallArgumentSourceSelection{
+                  .kind =
+                      prepare::PreparedCallArgumentSourceSelectionKind::
+                          ByvalRegisterLane,
+                  .source_value_id = register_value_id,
+                  .source_value_name = register_value_name,
+                  .source_home_kind = prepare::PreparedValueHomeKind::Register,
+                  .source_slot_id = prepare::PreparedFrameSlotId{19},
+                  .source_stack_offset_bytes = std::size_t{40},
+                  .source_size_bytes = std::size_t{1},
+                  .source_align_bytes = std::size_t{1},
+                  .byval_lane_extent_bytes = std::size_t{1},
+              },
       },
       prepare::PreparedMoveResolution{
           .from_value_id = register_value_id,
@@ -16804,8 +16818,8 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
           .reason = "call_arg_byval_aggregate_register_lanes",
         });
   if (!size1_lines.has_value() || size1_lines->size() != 1 ||
-      size1_lines->front() != "ldrb w0, [x5]") {
-    return fail("expected size-1 byval aggregate to publish low byte from prepared address into w0");
+      size1_lines->front() != "ldrb w0, [sp, #40]") {
+    return fail("expected size-1 byval aggregate to publish low byte from prepared selected source into w0");
   }
 
   auto size2_lines = lower_case(
@@ -17072,25 +17086,11 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
           reconstructed_call_plan,
           2,
           reconstructed_diagnostics);
-  if (reconstructed_lowered.size() != 1 || !reconstructed_diagnostics.empty()) {
-    return fail("expected reconstructed prepared aggregate source to lower one byval register-lane move");
-  }
-  const auto* reconstructed_move =
-      std::get_if<aarch64_module::codegen::AssemblerInstructionRecord>(
-          &reconstructed_lowered.front().target.payload);
-  if (reconstructed_move == nullptr ||
-      !reconstructed_move->has_inline_asm_payload ||
-      reconstructed_move->operands.size() != 3) {
-    return fail("expected fragmented byval lane move to use selected inline assembly");
-  }
-  const auto reconstructed_printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(
-          reconstructed_lowered.front().target);
-  if (!reconstructed_printed.ok ||
-      reconstructed_printed.instruction_lines.size() != 2 ||
-      reconstructed_printed.instruction_lines[0] != "ldr x0, [sp, #96]" ||
-      reconstructed_printed.instruction_lines[1] != "ldr x1, [sp, #160]") {
-    return fail("expected fragmented reconstructed byval bytes to publish x0/x1 lanes in source order");
+  if (!reconstructed_lowered.empty() ||
+      reconstructed_diagnostics.entries.size() != 1 ||
+      reconstructed_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail("expected absent fragmented byval lane source selection to fail closed");
   }
 
   return 0;
@@ -17466,16 +17466,15 @@ int register_home_small_byval_aggregate_call_argument_loads_payload_slots() {
                   prepare::PreparedCallArgumentSourceSelection{
                       .kind =
                           prepare::PreparedCallArgumentSourceSelectionKind::
-                              PriorPreservation,
+                              ByvalRegisterLane,
                       .source_value_id = aggregate_value_id,
                       .source_value_name = aggregate_name,
                       .source_home_kind = prepare::PreparedValueHomeKind::Register,
-                      .preservation_route =
-                          prepare::PreparedCallPreservationRoute::StackSlot,
-                      .preserved_stack_slot_id = prepare::PreparedFrameSlotId{13214},
-                      .preserved_stack_offset_bytes = std::size_t{4096},
-                      .preserved_stack_size_bytes = std::size_t{8},
-                      .preserved_stack_align_bytes = std::size_t{8},
+                      .source_slot_id = prepare::PreparedFrameSlotId{13213},
+                      .source_stack_offset_bytes = std::size_t{128},
+                      .source_size_bytes = std::size_t{1},
+                      .source_align_bytes = std::size_t{1},
+                      .byval_lane_extent_bytes = std::size_t{1},
                   },
           }},
   };
@@ -17716,10 +17715,10 @@ int stack_home_two_byte_byval_aggregate_call_argument_loads_payload_slots() {
                       .source_value_id = aggregate_value_id,
                       .source_value_name = aggregate_name,
                       .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
-                      .source_slot_id = prepare::PreparedFrameSlotId{13221},
-                      .source_stack_offset_bytes = std::size_t{4096},
-                      .source_size_bytes = std::size_t{8},
-                      .source_align_bytes = std::size_t{8},
+                      .source_slot_id = prepare::PreparedFrameSlotId{13222},
+                      .source_stack_offset_bytes = std::size_t{128},
+                      .source_size_bytes = std::size_t{2},
+                      .source_align_bytes = std::size_t{1},
                       .byval_lane_extent_bytes = std::size_t{2},
                   },
           }},
@@ -17741,11 +17740,7 @@ int stack_home_two_byte_byval_aggregate_call_argument_loads_payload_slots() {
 
   const auto printed =
       aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
-  const std::vector<std::string> expected = {
-      "ldrb w0, [sp, #128]",
-      "ldrb w9, [sp, #129]",
-      "orr x0, x0, x9, lsl #8",
-  };
+  const std::vector<std::string> expected = {"ldrh w0, [sp, #128]"};
   if (!printed.ok || printed.instruction_lines != expected) {
     std::string actual;
     for (const auto& line : printed.instruction_lines) {
@@ -17897,13 +17892,13 @@ int incomplete_byval_register_lane_selection_does_not_rederive_register_home() {
   aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
   const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
       block_context, absent_call_plan, 4, absent_diagnostics);
-  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
-    return fail("expected absent byval lane selection to keep register-home compatibility");
-  }
-  const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(absent_lowered.front().target);
-  if (!printed.ok || printed.instruction_lines != std::vector<std::string>{"ldrb w0, [x5]"}) {
-    return fail("expected absent byval lane selection to load through legacy register home");
+  if (!absent_lowered.empty() || absent_diagnostics.entries.size() != 1 ||
+      absent_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected absent byval lane selection not to rederive register home: lowered=" +
+        std::to_string(absent_lowered.size()) +
+        " diagnostics=" + std::to_string(absent_diagnostics.entries.size()));
   }
   return 0;
 }
@@ -18421,6 +18416,20 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
               .source_stack_offset_bytes = std::size_t{7776},
               .destination_stack_offset_bytes = std::size_t{32},
               .destination_stack_size_bytes = std::size_t{16},
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              ByvalRegisterLane,
+                      .source_value_id = aggregate_value_id,
+                      .source_value_name = aggregate_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_slot_id = prepare::PreparedFrameSlotId{13003},
+                      .source_stack_offset_bytes = std::size_t{96},
+                      .source_size_bytes = std::size_t{16},
+                      .source_align_bytes = std::size_t{8},
+                      .byval_lane_extent_bytes = std::size_t{16},
+                  },
           }},
   };
   const auto& function_cf = prepared.control_flow.functions.front();

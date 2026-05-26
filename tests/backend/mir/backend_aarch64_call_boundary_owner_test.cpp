@@ -98,6 +98,20 @@ int byval_caller_publishes_composite_gpr_lanes_not_object_pointer() {
           .destination_contiguous_width = 2,
           .destination_occupied_register_names = {"x0", "x1"},
           .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_selection =
+              prepare::PreparedCallArgumentSourceSelection{
+                  .kind =
+                      prepare::PreparedCallArgumentSourceSelectionKind::
+                          ByvalRegisterLane,
+                  .source_value_id = aggregate_value_id,
+                  .source_value_name = aggregate_value_name,
+                  .source_home_kind = prepare::PreparedValueHomeKind::Register,
+                  .source_slot_id = prepare::PreparedFrameSlotId{4105},
+                  .source_stack_offset_bytes = std::size_t{128},
+                  .source_size_bytes = std::size_t{16},
+                  .source_align_bytes = std::size_t{8},
+                  .byval_lane_extent_bytes = std::size_t{16},
+              },
       }},
   };
   const aarch64_module::FunctionLoweringContext function_context{

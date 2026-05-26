@@ -8,48 +8,46 @@ Current Step Title: Retire Indirect Byval Lane Payload Fallbacks
 
 ## Just Finished
 
-Step 2: Retire Local Aggregate Address Fallbacks is complete after
-`999fc953e` and `ba284bd3a`. `calls_dispatch_bridge.cpp` now consumes prepared
-`LocalFrameAddressMaterialization` selected-source facts for the owned AArch64
-dispatch route and fails closed on absent or incomplete selected source facts.
-`call_plans.cpp` now publishes
-`LocalFrameAddressMaterialization` selected-source facts for same-block pointer
-add/sub derived local aggregate addresses, carrying the prepared byte delta into
-`source_stack_offset_bytes` instead of relying on target-local reconstruction.
-It also narrows the prepared `allows_local_aggregate_address_publication` flag
-to arguments that actually selected `LocalFrameAddressMaterialization`, so
-ordinary pointer call arguments keep using their scalar/global producer routes
-instead of being rejected by the local-frame fail-closed path.
-`backend_prepare_frame_stack_call_contract_test.cpp` now covers a derived local
-frame address selection with a nonzero byte delta. The direct absent-selection
-dispatch path remains fail-closed through the existing Step 2 diagnostics and
-manual dispatch coverage.
+Step 3: Retire Indirect Byval Lane Payload Fallbacks is complete.
+`calls_moves.cpp` now treats `ByvalRegisterLane` selected-source facts as the
+only byval lane extent authority and requires
+`make_byval_register_lane_prepared_source` to produce complete prepared source
+bytes for register-lane, register-home, indirect byval, and stack-lane
+publication. The old BIR-store reconstruction route was removed:
+`collect_byval_register_lane_stores`, `aggregate_lane_store_memory`, fragmented
+byval publication helpers, payload-store matching helpers, and the indirect
+byval absent-selection extent fallback are no longer declared or used.
+`backend_aarch64_instruction_dispatch_test.cpp` and
+`backend_aarch64_call_boundary_owner_test.cpp` now cover positive prepared
+`ByvalRegisterLane` register and stack publication, plus absent/incomplete
+selected-source fail-closed cases.
+Follow-up `00204` validation found that prepared byval selections were still
+using preservation homes for some small aggregate payloads. `call_plans.cpp`
+now publishes the selected source from complete prepared payload facts: first
+from contiguous prepared aggregate load-source accesses for assembled register
+lanes, then from contiguous local aggregate payload stores. This fixes the
+AArch64 byval/string corruption without restoring target-local BIR-store
+reconstruction as source authority.
 
 ## Suggested Next
 
-Delegate Step 3: retire the indirect byval lane absent-selection fallback
-family. Start from the Step 1 byval fallback map in the history of `todo.md`
-and keep register-lane and stack-lane publication on complete prepared
-`ByvalRegisterLane` selected-source facts rather than
-`collect_byval_register_lane_stores` reconstruction.
+Supervisor should review the Step 3 slice for route quality and decide whether
+the active plan needs a plan-owner close/deactivate/split decision or another
+bounded packet from the remaining runbook.
 
 ## Watchouts
 
 - Do not edit the source idea for routine audit findings.
 - Do not treat expectation downgrades or fallback renames as progress.
 - Keep `review/` artifacts transient.
-- The byval family still has both register and stack-lane consumers; retiring
-  only one branch would leave `collect_byval_register_lane_stores` available as
-  an alternate absent-selection path.
 - `clang-format` is not installed in this environment; formatting was kept
   manual.
-- The parent of `999fc953e` passes the four delegated c-testsuite cases. The
-  fixed regression was not only a bad derived local-frame offset; the broad
-  publication flag also routed ordinary pointer call arguments through the
-  local aggregate fail-closed gate.
+- `calls_byval_aggregates.cpp` is now intentionally small; remaining byval
+  authority is the selected-source adapter, not BIR payload-store analysis.
 
 ## Proof
 
 Ran the delegated proof:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00(164|180|195|216)_c)$"'`.
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|c_testsuite_aarch64_backend_src_00204_c)$"'`.
 Result: passed. Proof log: `test_after.log`.
+Also ran `git diff --check`; result: clean.

@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -1553,6 +1555,223 @@ void copy_access_source_selection_fields(PreparedCallArgumentSourceSelection& se
   selection.source_align_bytes = access.address.align_bytes;
 }
 
+[[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id) {
+  for (const auto& frame_slot : stack_layout.frame_slots) {
+    if (frame_slot.slot_id == slot_id) {
+      return &frame_slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<std::size_t> aggregate_slot_suffix_offset(
+    std::string_view slot_name,
+    std::string_view aggregate_name) {
+  if (aggregate_name.empty() ||
+      slot_name.size() <= aggregate_name.size() + 1 ||
+      slot_name.compare(0, aggregate_name.size(), aggregate_name) != 0 ||
+      slot_name[aggregate_name.size()] != '.') {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = aggregate_name.size() + 1; index < slot_name.size();
+       ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] std::optional<std::size_t> aggregate_result_suffix_offset(
+    std::string_view result_name,
+    std::string_view aggregate_name,
+    std::string_view marker) {
+  if (aggregate_name.empty() || marker.empty() ||
+      result_name.size() <= aggregate_name.size() + marker.size() ||
+      result_name.compare(0, aggregate_name.size(), aggregate_name) != 0 ||
+      result_name.compare(aggregate_name.size(), marker.size(), marker) != 0) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = aggregate_name.size() + marker.size();
+       index < result_name.size();
+       ++index) {
+    const char ch = result_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+struct ByvalPayloadLaneStore {
+  std::size_t source_offset = 0;
+  std::size_t stack_offset = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  PreparedFrameSlotId slot_id = 0;
+};
+
+[[nodiscard]] std::optional<ByvalPayloadLaneStore> byval_payload_lane_store(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess& access,
+    std::size_t source_offset) {
+  if (access.address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !access.address.frame_slot_id.has_value() ||
+      access.address.size_bytes == 0) {
+    return std::nullopt;
+  }
+  const auto* slot = find_frame_slot_by_id(stack_layout, *access.address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  const auto stack_offset = static_cast<std::int64_t>(slot->offset_bytes) +
+                            access.address.byte_offset;
+  if (stack_offset < 0) {
+    return std::nullopt;
+  }
+  return ByvalPayloadLaneStore{
+      .source_offset = source_offset,
+      .stack_offset = static_cast<std::size_t>(stack_offset),
+      .size_bytes = access.address.size_bytes,
+      .align_bytes = access.address.align_bytes,
+      .slot_id = *access.address.frame_slot_id,
+  };
+}
+
+[[nodiscard]] std::optional<ByvalPayloadLaneStore> select_contiguous_byval_payload_lane(
+    std::vector<ByvalPayloadLaneStore> stores,
+    std::size_t payload_size_bytes) {
+  if (stores.empty()) {
+    return std::nullopt;
+  }
+  std::sort(stores.begin(),
+            stores.end(),
+            [](const ByvalPayloadLaneStore& lhs, const ByvalPayloadLaneStore& rhs) {
+              if (lhs.source_offset != rhs.source_offset) {
+                return lhs.source_offset < rhs.source_offset;
+              }
+              return lhs.stack_offset < rhs.stack_offset;
+            });
+  const auto& first = stores.front();
+  if (first.source_offset != 0) {
+    return std::nullopt;
+  }
+  std::size_t covered = 0;
+  for (const auto& store : stores) {
+    if (store.source_offset < covered) {
+      continue;
+    }
+    if (store.source_offset != covered ||
+        store.stack_offset != first.stack_offset + store.source_offset) {
+      return std::nullopt;
+    }
+    covered = store.source_offset + store.size_bytes;
+    if (covered >= payload_size_bytes) {
+      return first;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ByvalPayloadLaneStore> select_byval_payload_lane_load_source(
+    const PreparedStackLayout& stack_layout,
+    const bir::Block& block,
+    const PreparedAddressingFunction& addressing,
+    BlockLabelId block_label,
+    std::size_t call_instruction_index,
+    std::string_view aggregate_name,
+    std::size_t payload_size_bytes) {
+  std::vector<ByvalPayloadLaneStore> stores;
+  const auto end_index = std::min(call_instruction_index, block.insts.size());
+  for (std::size_t index = 0; index < end_index; ++index) {
+    const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[index]);
+    if (load == nullptr || load->result.name.empty()) {
+      continue;
+    }
+    const auto source_offset = aggregate_result_suffix_offset(
+        load->result.name, aggregate_name, ".array.aggregate.load.");
+    if (!source_offset.has_value()) {
+      continue;
+    }
+    const auto* access = find_prepared_memory_access(addressing, block_label, index);
+    if (access == nullptr) {
+      continue;
+    }
+    auto payload_store =
+        byval_payload_lane_store(stack_layout, *access, *source_offset);
+    if (payload_store.has_value()) {
+      stores.push_back(*payload_store);
+    }
+  }
+  return select_contiguous_byval_payload_lane(std::move(stores), payload_size_bytes);
+}
+
+[[nodiscard]] std::optional<ByvalPayloadLaneStore> select_byval_payload_lane_source(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const bir::Function& function,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t call_instruction_index,
+    ValueNameId source_value_name,
+    std::size_t payload_size_bytes) {
+  if (addressing == nullptr || block_label == kInvalidBlockLabel ||
+      block_index >= function.blocks.size() || source_value_name == kInvalidValueName ||
+      payload_size_bytes == 0) {
+    return std::nullopt;
+  }
+  const auto aggregate_name = names.value_names.spelling(source_value_name);
+  if (aggregate_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks[block_index];
+  if (const auto load_source =
+          select_byval_payload_lane_load_source(stack_layout,
+                                                block,
+                                                *addressing,
+                                                block_label,
+                                                call_instruction_index,
+                                                aggregate_name,
+                                                payload_size_bytes);
+      load_source.has_value()) {
+    return load_source;
+  }
+
+  std::vector<ByvalPayloadLaneStore> stores;
+  const auto end_index = std::min(call_instruction_index, block.insts.size());
+  for (std::size_t index = 0; index < end_index; ++index) {
+    const auto* store = std::get_if<bir::StoreLocalInst>(&block.insts[index]);
+    if (store == nullptr) {
+      continue;
+    }
+    const auto source_offset =
+        aggregate_slot_suffix_offset(store->slot_name, aggregate_name);
+    if (!source_offset.has_value()) {
+      continue;
+    }
+    const auto* access = find_prepared_memory_access(*addressing, block_label, index);
+    if (access == nullptr) {
+      continue;
+    }
+    auto payload_store =
+        byval_payload_lane_store(stack_layout, *access, *source_offset);
+    if (!payload_store.has_value()) {
+      continue;
+    }
+    stores.push_back(*payload_store);
+  }
+  return select_contiguous_byval_payload_lane(std::move(stores), payload_size_bytes);
+}
+
 [[nodiscard]] const PreparedAddressMaterialization*
 find_latest_frame_slot_materialization(const PreparedAddressingFunction* addressing,
                                        const PreparedNameTables& names,
@@ -1710,8 +1929,7 @@ struct LocalFrameAddressSource {
     const PreparedValueHome* source_home,
     const bir::CallInst& call) {
   if (move.reason != "call_arg_byval_aggregate_register_lanes" ||
-      source_home == nullptr || !source_home->size_bytes.has_value() ||
-      *source_home->size_bytes == 0 || argument.arg_index >= call.arg_abi.size()) {
+      source_home == nullptr || argument.arg_index >= call.arg_abi.size()) {
     return std::nullopt;
   }
   const auto& abi = call.arg_abi[argument.arg_index];
@@ -1726,7 +1944,10 @@ struct LocalFrameAddressSource {
       move.destination_occupied_register_names.size(),
       argument.destination_occupied_register_names.size(),
   });
-  std::size_t extent = *source_home->size_bytes;
+  std::size_t extent = source_home->size_bytes.value_or(abi.size_bytes);
+  if (extent == 0) {
+    extent = abi.size_bytes;
+  }
   if (lane_count > 1 && extent <= 8) {
     extent *= lane_count;
   }
@@ -1822,6 +2043,26 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
     selection.kind = PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
     selection.byval_lane_extent_bytes = byval_extent;
     selection.byval_lane_source_instruction_index = call_plan.instruction_index;
+    const auto& abi = call.arg_abi[argument.arg_index];
+    if (selection.source_value_name.has_value()) {
+      const auto payload_source =
+          select_byval_payload_lane_source(names,
+                                           prepared.stack_layout,
+                                           function,
+                                           addressing,
+                                           block_label,
+                                           call_plan.block_index,
+                                           call_plan.instruction_index,
+                                           *selection.source_value_name,
+                                           abi.size_bytes);
+      if (payload_source.has_value()) {
+        selection.source_slot_id = payload_source->slot_id;
+        selection.source_stack_offset_bytes = payload_source->stack_offset;
+        selection.source_size_bytes = byval_extent;
+        selection.source_align_bytes = payload_source->align_bytes;
+        return selection;
+      }
+    }
     if (source_access != nullptr) {
       copy_access_source_selection_fields(selection, *source_access, prepared.stack_layout);
     }

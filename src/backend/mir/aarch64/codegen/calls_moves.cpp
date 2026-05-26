@@ -27,30 +27,6 @@ namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
 
-[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home) {
-  if (context.function.prepared == nullptr ||
-      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
-      is_aarch64_byval_register_lane_move(move) ||
-      move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-      source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
-      !source_home.size_bytes.has_value() ||
-      *source_home.size_bytes <= 16 ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      argument.source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
-      (argument.source_register_bank != prepare::PreparedRegisterBank::Gpr &&
-       argument.source_register_bank != prepare::PreparedRegisterBank::AggregateAddress) ||
-      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
-    return std::nullopt;
-  }
-  return source_home.size_bytes;
-}
-
 struct PreservedCallArgumentSource {
   std::optional<RegisterOperand> source_register;
   std::optional<MemoryOperand> source_memory;
@@ -662,203 +638,6 @@ find_prior_stack_preserved_value_before_instruction(
   return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
-[[nodiscard]] std::optional<std::vector<std::string>>
-fragmented_aggregate_register_lane_publication_lines(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    const RegisterOperand& destination,
-    std::size_t size_bytes,
-    std::size_t source_instruction_index,
-    std::size_t instruction_index,
-    std::vector<MemoryOperand>& source_operands) {
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
-  if (stores.empty() || stores.front().source_offset != 0) {
-    return std::nullopt;
-  }
-  const auto scratch = aggregate_register_lane_scratch(destination);
-  if (!scratch.has_value()) {
-    return std::nullopt;
-  }
-
-  std::vector<std::string> lines;
-  std::size_t covered_bytes = 0;
-  std::size_t lane_index = 0;
-  std::size_t lane_offset = 0;
-  const std::string scratch_x = abi::register_name(*scratch);
-  for (const auto& store : stores) {
-    if (store.source_offset > covered_bytes) {
-      return std::nullopt;
-    }
-    std::size_t store_offset = covered_bytes - store.source_offset;
-    while (covered_bytes < size_bytes && store_offset < store.size_bytes) {
-      const std::size_t lane_remaining = 8 - lane_offset;
-      const std::size_t store_remaining = store.size_bytes - store_offset;
-      const std::size_t total_remaining = size_bytes - covered_bytes;
-      const std::size_t max_chunk =
-          std::min({std::size_t{8}, lane_remaining, store_remaining, total_remaining});
-      const auto lane_register =
-          aggregate_register_lane_destination(destination, lane_index);
-      if (!lane_register.has_value()) {
-        return std::nullopt;
-      }
-      std::optional<MemoryOperand> source_memory;
-      bool source_memory_needs_materialized_address = false;
-      std::size_t chunk_width = 0;
-      for (const std::size_t candidate : {std::size_t{8},
-                                          std::size_t{4},
-                                          std::size_t{2},
-                                          std::size_t{1}}) {
-        if (candidate > max_chunk) {
-          continue;
-        }
-        auto candidate_memory =
-            aggregate_lane_store_memory(context,
-                                        argument,
-                                        source_home,
-                                        store,
-                                        store_offset,
-                                        candidate,
-                                        instruction_index);
-        if (candidate_memory.has_value() &&
-            !aggregate_register_lane_load_mnemonic(candidate).empty()) {
-          const bool printable =
-              aggregate_register_lane_memory_is_printable(*candidate_memory, candidate);
-          const bool materializable =
-              !printable &&
-              candidate_memory->base_kind == MemoryBaseKind::FrameSlot &&
-              !materialize_call_boundary_frame_slot_address_lines(
-                   *scratch, *candidate_memory).empty();
-          if (!printable && !materializable) {
-            continue;
-          }
-          source_memory = std::move(candidate_memory);
-          source_memory_needs_materialized_address = materializable;
-          chunk_width = candidate;
-          break;
-        }
-      }
-      if (!source_memory.has_value() || chunk_width == 0) {
-        return std::nullopt;
-      }
-      const auto mnemonic = aggregate_register_lane_load_mnemonic(chunk_width);
-      const bool first_chunk = lane_offset == 0;
-      const auto load_register =
-          first_chunk
-              ? aggregate_register_lane_load_register(*lane_register, chunk_width)
-              : aggregate_register_lane_load_register(*scratch, chunk_width);
-      if (source_memory_needs_materialized_address) {
-        auto address_lines =
-            materialize_call_boundary_frame_slot_address_lines(*scratch, *source_memory);
-        lines.insert(lines.end(), address_lines.begin(), address_lines.end());
-      }
-      lines.push_back(std::string{mnemonic} + " " +
-                      std::string{abi::register_name(load_register)} + ", " +
-                      (source_memory_needs_materialized_address
-                           ? ("[" + scratch_x + "]")
-                           : memory_address(*source_memory)));
-      source_operands.push_back(*source_memory);
-      if (!first_chunk) {
-        lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
-                        ", " + std::string{abi::register_name(*lane_register)} +
-                        ", " + scratch_x + ", lsl #" +
-                        std::to_string(lane_offset * 8));
-      }
-      covered_bytes += chunk_width;
-      store_offset += chunk_width;
-      lane_offset += chunk_width;
-      if (lane_offset == 8) {
-        lane_offset = 0;
-        ++lane_index;
-      }
-    }
-    if (covered_bytes >= size_bytes) {
-      break;
-    }
-  }
-  if (covered_bytes == 0) {
-    return std::nullopt;
-  }
-  return lines;
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_fragmented_aggregate_register_lane_publication_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveBundle& bundle,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    const RegisterOperand& destination,
-    std::size_t size_bytes,
-    std::size_t source_instruction_index,
-    std::size_t instruction_index) {
-  std::vector<MemoryOperand> source_operands;
-  const auto lines = fragmented_aggregate_register_lane_publication_lines(
-      context,
-      argument,
-      source_home,
-      destination,
-      size_bytes,
-      source_instruction_index,
-      instruction_index,
-      source_operands);
-  if (!lines.has_value() || lines->empty()) {
-    return std::nullopt;
-  }
-
-  std::string asm_text;
-  for (std::size_t index = 0; index < lines->size(); ++index) {
-    if (index != 0) {
-      asm_text += '\n';
-    }
-    asm_text += (*lines)[index];
-  }
-
-  std::vector<OperandRecord> operands;
-  std::vector<MachineEffectResource> uses;
-  const auto destination_operand = make_register_operand(destination);
-  operands.push_back(destination_operand);
-  for (const auto& source : source_operands) {
-    const auto source_operand = make_memory_operand(source);
-    operands.push_back(source_operand);
-    uses.push_back(local_effect_from_operand(source_operand));
-  }
-
-  InstructionRecord target{
-      .family = InstructionFamily::Assembler,
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .opcode = MachineOpcode::Unspecified,
-      .selection = MachineNodeStatusRecord{
-          .status = MachineNodeSelectionStatus::Selected,
-      },
-      .function_name = context.function.control_flow != nullptr
-                           ? context.function.control_flow->function_name
-                           : c4c::kInvalidFunctionName,
-      .block_label = context.control_flow_block != nullptr
-                         ? context.control_flow_block->block_label
-                         : c4c::kInvalidBlockLabel,
-      .block_index = bundle.block_index,
-      .instruction_index = bundle.instruction_index,
-      .operands = operands,
-      .defs = {local_effect_from_operand(destination_operand)},
-      .uses = uses,
-      .side_effects = {MachineSideEffectKind::MemoryRead,
-                       MachineSideEffectKind::InlineAssembly},
-      .payload =
-          AssemblerInstructionRecord{
-              .operands = std::move(operands),
-              .has_inline_asm_payload = true,
-              .side_effects = true,
-              .inline_asm_template = std::move(asm_text),
-          },
-  };
-  (void)move;
-  return make_call_boundary_machine_instruction(context, instruction_index,
-                                                std::move(target));
-}
-
 [[nodiscard]] std::optional<std::string_view> value_move_load_mnemonic(
     std::size_t width_bytes) {
   switch (width_bytes) {
@@ -1209,245 +988,14 @@ make_byval_register_lane_stack_publication_instruction(
                                                 std::move(target));
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_fragmented_byval_register_lane_stack_publication_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t size_bytes,
-    std::size_t source_instruction_index,
-    std::size_t instruction_index,
-    const MemoryOperand& destination) {
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
-  if (stores.empty() || stores.front().source_offset != 0) {
-    return std::nullopt;
-  }
-
-  std::string asm_text;
-  std::vector<OperandRecord> operands;
-  std::vector<MachineEffectResource> uses;
-  std::size_t covered_bytes = 0;
-  for (const auto& store : stores) {
-    if (store.source_offset > covered_bytes) {
-      return std::nullopt;
-    }
-    std::size_t store_offset = covered_bytes - store.source_offset;
-    while (covered_bytes < size_bytes && store_offset < store.size_bytes) {
-      const std::size_t store_remaining = store.size_bytes - store_offset;
-      const std::size_t total_remaining = size_bytes - covered_bytes;
-      const std::size_t max_chunk = std::min<std::size_t>(store_remaining, total_remaining);
-      std::optional<MemoryOperand> source_memory;
-      bool source_memory_needs_materialized_address = false;
-      std::size_t chunk_width = 0;
-      for (const std::size_t candidate : {std::size_t{8},
-                                          std::size_t{4},
-                                          std::size_t{2},
-                                          std::size_t{1}}) {
-        if (candidate > max_chunk) {
-          continue;
-        }
-        auto candidate_source = aggregate_lane_store_memory(context,
-                                                           argument,
-                                                           source_home,
-                                                           store,
-                                                           store_offset,
-                                                           candidate,
-                                                           instruction_index);
-        auto candidate_destination =
-            aggregate_register_lane_memory(destination, covered_bytes, candidate);
-        if (!candidate_source.has_value() ||
-            !aggregate_register_lane_memory_is_printable(candidate_destination, candidate)) {
-          continue;
-        }
-        const bool printable =
-            aggregate_register_lane_memory_is_printable(*candidate_source, candidate);
-        const auto scratch = aggregate_stack_copy_scratch(candidate);
-        const bool materializable =
-            !printable && scratch.has_value() &&
-            candidate_source->base_kind == MemoryBaseKind::FrameSlot &&
-            !materialize_call_boundary_frame_slot_address_lines(
-                 abi::x_register(scratch->index), *candidate_source).empty();
-        if ((!printable && !materializable) || !scratch.has_value() ||
-            aggregate_stack_copy_load_mnemonic(candidate).empty() ||
-            aggregate_stack_copy_store_mnemonic(candidate).empty()) {
-          continue;
-        }
-        source_memory = std::move(candidate_source);
-        source_memory_needs_materialized_address = materializable;
-        chunk_width = candidate;
-        break;
-      }
-      if (!source_memory.has_value() || chunk_width == 0) {
-        return std::nullopt;
-      }
-
-      const auto scratch = aggregate_stack_copy_scratch(chunk_width);
-      const auto load_mnemonic = aggregate_stack_copy_load_mnemonic(chunk_width);
-      const auto store_mnemonic = aggregate_stack_copy_store_mnemonic(chunk_width);
-      if (!scratch.has_value() || load_mnemonic.empty() || store_mnemonic.empty()) {
-        return std::nullopt;
-      }
-      const auto destination_chunk =
-          aggregate_register_lane_memory(destination, covered_bytes, chunk_width);
-      if (!asm_text.empty()) {
-        asm_text += '\n';
-      }
-      if (source_memory_needs_materialized_address) {
-        auto address_lines = materialize_call_boundary_frame_slot_address_lines(
-            abi::x_register(scratch->index), *source_memory);
-        for (const auto& line : address_lines) {
-          asm_text += line;
-          asm_text += '\n';
-        }
-      }
-      asm_text += std::string{load_mnemonic} + " " +
-                  std::string{abi::register_name(*scratch)} + ", " +
-                  (source_memory_needs_materialized_address
-                       ? ("[" + std::string{abi::register_name(abi::x_register(scratch->index))} +
-                          "]")
-                       : memory_address(*source_memory));
-      asm_text += '\n';
-      asm_text += std::string{store_mnemonic} + " " +
-                  std::string{abi::register_name(*scratch)} + ", " +
-                  memory_address(destination_chunk);
-      const auto source_operand = make_memory_operand(*source_memory);
-      operands.push_back(source_operand);
-      uses.push_back(local_effect_from_operand(source_operand));
-      covered_bytes += chunk_width;
-      store_offset += chunk_width;
-    }
-  }
-  if (covered_bytes == 0 || asm_text.empty()) {
-    return std::nullopt;
-  }
-
-  const auto destination_operand = make_memory_operand(destination);
-  operands.push_back(destination_operand);
-  InstructionRecord target{
-      .family = InstructionFamily::Assembler,
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .opcode = MachineOpcode::Unspecified,
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
-      .function_name = context.function.control_flow != nullptr
-                           ? context.function.control_flow->function_name
-                           : c4c::kInvalidFunctionName,
-      .block_label = context.control_flow_block != nullptr
-                         ? context.control_flow_block->block_label
-                         : c4c::kInvalidBlockLabel,
-      .block_index = context.block_index,
-      .instruction_index = instruction_index,
-      .operands = operands,
-      .defs = {local_effect_from_operand(destination_operand)},
-      .uses = uses,
-      .side_effects = {MachineSideEffectKind::MemoryRead,
-                       MachineSideEffectKind::MemoryWrite,
-                       MachineSideEffectKind::InlineAssembly},
-      .payload =
-          AssemblerInstructionRecord{
-              .operands = std::move(operands),
-              .has_inline_asm_payload = true,
-              .side_effects = true,
-              .inline_asm_template = std::move(asm_text),
-          },
-  };
-  return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
-}
-
-[[nodiscard]] bool has_byval_register_lane_payload_stores(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t source_instruction_index) {
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
-  return !stores.empty() && stores.front().source_offset == 0;
-}
-
-[[nodiscard]] bool byval_register_lane_source_matches_payload_store(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t source_instruction_index,
-    const MemoryOperand& source) {
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
-  for (const auto& store : stores) {
-    if (store.source_offset == 0 &&
-        store.frame_slot_id == source.frame_slot_id &&
-        store.stack_offset == source.byte_offset &&
-        store.size_bytes >= source.size_bytes) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t source_instruction_index) {
-  if (!is_aarch64_byval_register_lane_move(move) ||
-      (source_home.size_bytes.has_value() && *source_home.size_bytes == 0)) {
-    return std::nullopt;
-  }
-
-  const std::size_t prepared_lane_count = std::max({
-      std::size_t{1},
-      move.destination_contiguous_width,
-      argument.destination_contiguous_width,
-      move.destination_occupied_register_names.size(),
-      argument.destination_occupied_register_names.size(),
-  });
-  std::size_t extent_bytes = source_home.size_bytes.value_or(0);
-
-  const auto stores =
-      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
-  if (!stores.empty() && stores.front().source_offset == 0) {
-    std::size_t covered_bytes = 0;
-    for (const auto& store : stores) {
-      if (store.source_offset > covered_bytes) {
-        break;
-      }
-      covered_bytes =
-          std::max(covered_bytes, store.source_offset + store.size_bytes);
-      if (covered_bytes > 16) {
-        return std::nullopt;
-      }
-    }
-    extent_bytes = std::max(extent_bytes, covered_bytes);
-  } else if (extent_bytes == 0) {
-    return std::nullopt;
-  } else if (prepared_lane_count > 1 && extent_bytes <= 8) {
-    extent_bytes *= prepared_lane_count;
-  }
-
-  return extent_bytes <= 16 ? std::optional<std::size_t>{extent_bytes} : std::nullopt;
-}
-
 [[nodiscard]] std::optional<std::size_t> selected_byval_lane_extent_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t source_instruction_index) {
-  if (argument.source_selection.has_value()) {
-    if (argument.source_selection->kind ==
-        prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
-      if (argument.source_selection->byval_lane_extent_bytes.has_value()) {
-        return argument.source_selection->byval_lane_extent_bytes;
-      }
-      return std::nullopt;
-    }
-    if (has_byval_register_lane_payload_stores(
-            context, source_home, source_instruction_index)) {
-      return prepared_byval_lane_extent_bytes(
-          context, move, argument, source_home, source_instruction_index);
-    }
+    const prepare::PreparedCallArgumentPlan& argument) {
+  if (!argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
     return std::nullopt;
   }
-  return prepared_byval_lane_extent_bytes(
-      context, move, argument, source_home, source_instruction_index);
+  return argument.source_selection->byval_lane_extent_bytes;
 }
 
 [[nodiscard]] bool has_selected_byval_register_lane_source(
@@ -1813,17 +1361,12 @@ make_immediate_cast_call_argument_publication_instruction(
     const bool register_byval_argument =
         is_aarch64_byval_register_lane_move(move) ||
         (source_home != nullptr &&
-         selected_byval_lane_extent_bytes(
-             context, move, *argument, *source_home, call_plan.instruction_index)
-             .has_value());
+         selected_byval_lane_extent_bytes(*argument).has_value());
     const bool indirect_byval_argument =
         source_home != nullptr &&
-        ((source_selection != nullptr &&
-          source_selection->kind ==
-              prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) ||
-         (source_selection == nullptr &&
-          prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home)
-              .has_value()));
+        source_selection != nullptr &&
+        source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
     if (!frame_slot_address_argument && !local_frame_address_argument &&
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
@@ -2098,44 +1641,12 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto register_byval_size = selected_byval_lane_extent_bytes(
-        context, move, *argument, *source_home, call_plan.instruction_index);
+    const auto register_byval_size = selected_byval_lane_extent_bytes(*argument);
     std::optional<MemoryOperand> source;
     std::optional<MemoryOperand> address_source;
     if (register_byval_size.has_value()) {
       source = make_byval_register_lane_prepared_source(
           context, *argument, *source_home, *register_byval_size, call_plan.instruction_index);
-      if (!source.has_value() && source_home->register_name.has_value() &&
-          !has_byval_register_lane_payload_stores(
-              context, *source_home, call_plan.instruction_index) &&
-          !has_selected_byval_register_lane_source(*argument)) {
-        auto source_register = make_register_operand_from_prepared_authority(
-            source_home->register_name,
-            argument->source_register_placement,
-            argument->source_register_bank.has_value()
-                ? argument->source_register_bank
-                : std::optional<prepare::PreparedRegisterBank>{
-                      prepare::PreparedRegisterBank::Gpr},
-            RegisterOperandRole::CallAbi,
-            source_home->value_id,
-            source_home->value_name,
-            1,
-            {},
-            abi::RegisterView::X,
-            diagnostics,
-            context,
-            instruction_index);
-        if (source_register.has_value()) {
-          source = make_aggregate_call_argument_source(
-              context,
-              *argument,
-              *source_home,
-              *source_register,
-              *register_byval_size,
-              source_home->pointer_byte_delta.value_or(0),
-              instruction_index);
-        }
-      }
     } else {
       if (argument->source_selection.has_value()) {
         address_source = make_selected_call_argument_source(
@@ -2239,8 +1750,7 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size = selected_byval_lane_extent_bytes(
-        context, move, *argument, *source_home, call_plan.instruction_index);
+    const auto lane_size = selected_byval_lane_extent_bytes(*argument);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,
@@ -2262,37 +1772,6 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && source_home->size_bytes.has_value() &&
-        !has_byval_register_lane_payload_stores(
-            context, *source_home, call_plan.instruction_index) &&
-        !has_selected_byval_register_lane_source(*argument)) {
-      auto source_register = make_register_operand_from_prepared_authority(
-          source_home->register_name,
-          argument->source_register_placement,
-          argument->source_register_bank.has_value()
-              ? argument->source_register_bank
-              : std::optional<prepare::PreparedRegisterBank>{
-                    prepare::PreparedRegisterBank::Gpr},
-          RegisterOperandRole::CallAbi,
-          source_home->value_id,
-          source_home->value_name,
-          1,
-          {},
-          abi::RegisterView::X,
-          diagnostics,
-          context,
-          instruction_index);
-      if (source_register.has_value()) {
-        source = make_aggregate_call_argument_source(
-            context,
-            *argument,
-            *source_home,
-            *source_register,
-            *lane_size,
-            source_home->pointer_byte_delta.value_or(0),
-            instruction_index);
-      }
-    }
     const auto destination_register_placement =
         move.destination_register_placement.has_value()
             ? move.destination_register_placement
@@ -2318,22 +1797,6 @@ make_immediate_cast_call_argument_publication_instruction(
         diagnostics,
         context,
         instruction_index);
-    if (!source.has_value() && destination.has_value() &&
-        !has_selected_byval_register_lane_source(*argument)) {
-      if (auto fragmented =
-              make_fragmented_aggregate_register_lane_publication_instruction(
-                  context,
-                  bundle,
-                  move,
-                  *argument,
-                  *source_home,
-                  *destination,
-                  *lane_size,
-                  call_plan.instruction_index,
-                  instruction_index)) {
-        return fragmented;
-      }
-    }
     if (!source.has_value() || !destination.has_value()) {
       append_call_diagnostic(
           diagnostics,
@@ -2342,12 +1805,12 @@ make_immediate_cast_call_argument_publication_instruction(
           instruction_index,
           "AArch64 aggregate register-lane call-argument publication requires prepared source bytes and destination register");
       return std::nullopt;
-      }
-    move_record.source_register.reset();
-      move_record.source_memory = *source;
-      move_record.destination_register = *destination;
-    move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
     }
+    move_record.source_register.reset();
+    move_record.source_memory = *source;
+    move_record.destination_register = *destination;
+    move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+  }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
@@ -2364,8 +1827,7 @@ make_immediate_cast_call_argument_publication_instruction(
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    const auto lane_size = selected_byval_lane_extent_bytes(
-        context, move, *argument, *source_home, call_plan.instruction_index);
+    const auto lane_size = selected_byval_lane_extent_bytes(*argument);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,
@@ -2405,34 +1867,7 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    const bool source_matches_payload =
-        source.has_value() &&
-        byval_register_lane_source_matches_payload_store(
-            context, *source_home, call_plan.instruction_index, *source);
-    if (!source_matches_payload &&
-        has_byval_register_lane_payload_stores(
-            context, *source_home, call_plan.instruction_index)) {
-      if (auto fragmented =
-              make_fragmented_aggregate_register_lane_publication_instruction(
-                  context,
-                  bundle,
-                  move,
-                  *argument,
-                  *source_home,
-                  *destination,
-                  *lane_size,
-                  call_plan.instruction_index,
-                  instruction_index)) {
-        return fragmented;
-      }
-      if (has_selected_byval_register_lane_source(*argument)) {
-        source.reset();
-      }
-    }
-    if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument) &&
-        !has_byval_register_lane_payload_stores(
-            context, *source_home, call_plan.instruction_index)) {
+    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2440,34 +1875,6 @@ make_immediate_cast_call_argument_publication_instruction(
           instruction_index,
           "AArch64 aggregate register-lane call-argument publication requires complete prepared selected source bytes");
       return std::nullopt;
-    }
-    if (!source.has_value()) {
-      if (auto fragmented =
-              make_fragmented_aggregate_register_lane_publication_instruction(
-                  context,
-                  bundle,
-                  move,
-                  *argument,
-                  *source_home,
-                  *destination,
-                  *lane_size,
-                  call_plan.instruction_index,
-                  instruction_index)) {
-        return fragmented;
-      }
-    }
-    if (!source.has_value() && source_home->size_bytes.has_value() &&
-        argument->source_selection.has_value()) {
-      source = make_selected_call_argument_source(
-          context,
-          *argument,
-          source_home,
-          *argument->source_selection,
-          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
-          instruction_index);
-      if (source.has_value()) {
-        source->size_bytes = *lane_size;
-      }
     }
     if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
       append_call_diagnostic(
@@ -2479,10 +1886,10 @@ make_immediate_cast_call_argument_publication_instruction(
       return std::nullopt;
     }
     move_record.source_register.reset();
-      move_record.source_memory = *source;
-      move_record.destination_register = *destination;
+    move_record.source_memory = *source;
+    move_record.destination_register = *destination;
     move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
-    }
+  }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
@@ -2655,8 +2062,7 @@ make_immediate_cast_call_argument_publication_instruction(
               instruction_index);
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
-          if (const auto byval_size = selected_byval_lane_extent_bytes(
-                  context, move, *argument, *source_home, call_plan.instruction_index);
+          if (const auto byval_size = selected_byval_lane_extent_bytes(*argument);
               byval_size.has_value()) {
             address_source = make_byval_register_lane_prepared_source(
                 context, *argument, *source_home, *byval_size, call_plan.instruction_index);
@@ -2687,14 +2093,6 @@ make_immediate_cast_call_argument_publication_instruction(
     } else {
       address_source = make_sret_memory_return_address_source(
           context, call_plan, *argument, instruction_index);
-      if (!address_source.has_value()) {
-        if (const auto byval_size =
-                prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home);
-            byval_size.has_value()) {
-          address_source = make_byval_register_lane_prepared_source(
-              context, *argument, *source_home, *byval_size, call_plan.instruction_index);
-        }
-      }
     }
     if (!address_source.has_value() &&
         argument->source_selection.has_value() &&
@@ -2776,8 +2174,7 @@ make_immediate_cast_call_argument_publication_instruction(
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot ||
        move.destination_stack_offset_bytes.has_value())) {
-    const auto lane_size = selected_byval_lane_extent_bytes(
-        context, move, *argument, *source_home, call_plan.instruction_index);
+    const auto lane_size = selected_byval_lane_extent_bytes(*argument);
     if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
       append_call_diagnostic(
           diagnostics,
@@ -2787,16 +2184,9 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate stack-lane call-argument publication requires a small ABI byval size");
       return std::nullopt;
     }
-    const auto payload_stores =
-        collect_byval_register_lane_stores(context, *source_home, call_plan.instruction_index);
-    const bool has_payload_stores =
-        !payload_stores.empty() && payload_stores.front().source_offset == 0;
-    bool source_is_payload_extent = false;
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() &&
-        has_selected_byval_register_lane_source(*argument) &&
-        !has_payload_stores) {
+    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -2804,35 +2194,6 @@ make_immediate_cast_call_argument_publication_instruction(
           instruction_index,
           "AArch64 aggregate register-lane call-argument publication requires complete prepared selected source bytes");
       return std::nullopt;
-    }
-    if (!source.has_value() && source_home->size_bytes.has_value() &&
-        argument->source_selection.has_value()) {
-      source = make_selected_call_argument_source(
-          context,
-          *argument,
-          source_home,
-          *argument->source_selection,
-          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
-          instruction_index);
-      if (source.has_value()) {
-        source->size_bytes = *lane_size;
-      }
-    }
-    if (!source.has_value() && has_payload_stores) {
-      source = aggregate_lane_store_memory(context,
-                                           *argument,
-                                           *source_home,
-                                           payload_stores.front(),
-                                           0,
-                                           std::min(payload_stores.front().size_bytes,
-                                                    *lane_size),
-                                           instruction_index);
-      if (source.has_value()) {
-        source->size_bytes = *lane_size;
-        source->align_bytes =
-            std::min<std::size_t>(payload_stores.front().align_bytes, *lane_size);
-        source_is_payload_extent = true;
-      }
     }
     if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
       append_call_diagnostic(
@@ -2852,29 +2213,6 @@ make_immediate_cast_call_argument_publication_instruction(
           context,
           instruction_index,
           "AArch64 aggregate stack-lane call-argument publication requires a prepared destination stack offset");
-      return std::nullopt;
-    }
-    if (auto fragmented =
-            make_fragmented_byval_register_lane_stack_publication_instruction(
-                context,
-                *argument,
-                *source_home,
-                *lane_size,
-                call_plan.instruction_index,
-                instruction_index,
-                *destination)) {
-      return fragmented;
-    }
-    if (source_is_payload_extent ||
-        (has_payload_stores &&
-         !byval_register_lane_source_matches_payload_store(
-             context, *source_home, call_plan.instruction_index, *source))) {
-      append_call_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-          context,
-          instruction_index,
-          "AArch64 aggregate stack-lane call-argument publication requires contiguous populated payload bytes");
       return std::nullopt;
     }
     auto lowered = make_byval_register_lane_stack_publication_instruction(

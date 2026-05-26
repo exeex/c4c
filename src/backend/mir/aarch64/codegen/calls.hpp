@@ -88,33 +88,13 @@ make_f128_q_register_operand_from_carrier(
 
 // calls_byval_aggregates
 
-struct AggregateRegisterLaneStore {
-  std::size_t source_offset = 0;
-  std::int64_t stack_offset = 0;
-  std::size_t size_bytes = 0;
-  std::size_t align_bytes = 1;
-  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
-};
-
 [[nodiscard]] bool is_aarch64_byval_register_lane_move(
     const prepare::PreparedMoveResolution& move);
-[[nodiscard]] std::vector<AggregateRegisterLaneStore> collect_byval_register_lane_stores(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index);
 [[nodiscard]] std::optional<MemoryOperand> make_byval_register_lane_prepared_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t size_bytes,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> aggregate_lane_store_memory(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    const AggregateRegisterLaneStore& store,
-    std::size_t byte_delta,
-    std::size_t width_bytes,
     std::size_t instruction_index);
 
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
