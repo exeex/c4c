@@ -131,6 +131,36 @@ prepared_edge_publication_producer_context(
       .instruction_index = *publication.source_producer_instruction_index,
   };
 }
+
+struct EdgeSelectChainState {
+  std::size_t label_index = 0;
+  std::vector<std::string_view> active_values;
+  std::optional<module::BlockLoweringContext> root_context;
+  std::size_t root_instruction_index = 0;
+  c4c::ValueNameId root_value_name = c4c::kInvalidValueName;
+};
+
+[[nodiscard]] bool emit_edge_value_publication_to_register_impl(
+    const module::BlockLoweringContext& edge_context,
+    const module::BlockLoweringContext& successor_context,
+    const bir::Value& value,
+    std::size_t successor_before_instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication,
+    EdgeSelectChainState& select_chain_state);
+
+[[nodiscard]] bool emit_edge_load_local_to_register_impl(
+    const module::BlockLoweringContext& edge_context,
+    const EdgeProducerContext& producer,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication,
+    EdgeSelectChainState& select_chain_state);
+
 [[nodiscard]] std::optional<module::BlockLoweringContext> unique_branch_predecessor_context(
     const module::BlockLoweringContext& context) {
   if (context.function.control_flow == nullptr ||
@@ -341,6 +371,26 @@ prepared_edge_publication_producer_context(
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication) {
+  EdgeSelectChainState select_chain_state;
+  return emit_edge_load_local_to_register_impl(edge_context,
+                                               producer,
+                                               load,
+                                               target_index,
+                                               scratch_index,
+                                               lines,
+                                               prepared_publication,
+                                               select_chain_state);
+}
+
+[[nodiscard]] bool emit_edge_load_local_to_register_impl(
+    const module::BlockLoweringContext& edge_context,
+    const EdgeProducerContext& producer,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication,
+    EdgeSelectChainState& select_chain_state) {
   const auto mnemonic = scalar_load_mnemonic(load.result.type);
   const auto target_view = scalar_view_for_type(load.result.type);
   const auto target =
@@ -392,7 +442,7 @@ prepared_edge_publication_producer_context(
     return false;
   }
   const auto nested_scratch = scratch_index == 9 ? 10 : 9;
-  if (!emit_edge_value_publication_to_register(
+  if (!emit_edge_value_publication_to_register_impl(
           edge_context,
           producer.context,
           bir::Value::named(bir::TypeKind::Ptr, std::string{pointer_name}),
@@ -400,7 +450,8 @@ prepared_edge_publication_producer_context(
           scratch_index,
           nested_scratch,
           lines,
-          prepared_publication)) {
+          prepared_publication,
+          select_chain_state)) {
     return false;
   }
   lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
@@ -418,6 +469,28 @@ prepared_edge_publication_producer_context(
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication) {
+  EdgeSelectChainState select_chain_state;
+  return emit_edge_value_publication_to_register_impl(edge_context,
+                                                      successor_context,
+                                                      value,
+                                                      successor_before_instruction_index,
+                                                      target_index,
+                                                      scratch_index,
+                                                      lines,
+                                                      prepared_publication,
+                                                      select_chain_state);
+}
+
+[[nodiscard]] bool emit_edge_value_publication_to_register_impl(
+    const module::BlockLoweringContext& edge_context,
+    const module::BlockLoweringContext& successor_context,
+    const bir::Value& value,
+    std::size_t successor_before_instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication,
+    EdgeSelectChainState& select_chain_state) {
   const auto target_view = scalar_view_for_type(value.type);
   const auto target =
       target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
@@ -461,14 +534,15 @@ prepared_edge_publication_producer_context(
   if (const auto* load = std::get_if<bir::LoadLocalInst>(producer->producer);
       load != nullptr) {
     std::vector<std::string> load_lines;
-    if (emit_edge_load_local_to_register(edge_context,
-                                         *producer,
-                                         *load,
-                                         target_index,
-                                         scratch_index,
-                                         load_lines,
-                                         require_prepared_producer ? prepared_publication
-                                                                   : nullptr)) {
+    if (emit_edge_load_local_to_register_impl(
+            edge_context,
+            *producer,
+            *load,
+            target_index,
+            scratch_index,
+            load_lines,
+            require_prepared_producer ? prepared_publication : nullptr,
+            select_chain_state)) {
       lines.insert(lines.end(), load_lines.begin(), load_lines.end());
       return true;
     }
@@ -497,14 +571,15 @@ prepared_edge_publication_producer_context(
       cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 dependency_successor_context,
-                                                 operand,
-                                                 producer->instruction_index,
-                                                 target_index,
-                                                 scratch_index,
-                                                 lines,
-                                                 dependency_publication)) {
+    if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                      dependency_successor_context,
+                                                      operand,
+                                                      producer->instruction_index,
+                                                      target_index,
+                                                      scratch_index,
+                                                      lines,
+                                                      dependency_publication,
+                                                      select_chain_state)) {
       return false;
     }
     const auto source_bits = integer_bit_width(cast->operand.type);
@@ -557,27 +632,47 @@ prepared_edge_publication_producer_context(
       return false;
     }
 
-    std::size_t label_index = 0;
-    const auto root_value_name =
-        prepared_publication != nullptr
-            ? prepared_publication->source_value_name
-            : prepared_named_value_id(dependency_successor_context, value)
-                  .value_or(c4c::kInvalidValueName);
+    for (const auto active : select_chain_state.active_values) {
+      if (active == value.name) {
+        return false;
+      }
+    }
+    const bool seeded_root_context = !select_chain_state.root_context.has_value();
+    if (seeded_root_context) {
+      select_chain_state.root_context = dependency_successor_context;
+      select_chain_state.root_instruction_index = producer->instruction_index;
+      select_chain_state.root_value_name =
+          prepared_publication != nullptr
+              ? prepared_publication->source_value_name
+              : prepared_named_value_id(dependency_successor_context, value)
+                    .value_or(c4c::kInvalidValueName);
+    }
+
+    select_chain_state.active_values.push_back(value.name);
+    const auto current_label = select_chain_state.label_index++;
+    const auto fail_select = [&]() {
+      select_chain_state.active_values.pop_back();
+      if (seeded_root_context) {
+        select_chain_state.root_context.reset();
+        select_chain_state.root_instruction_index = 0;
+        select_chain_state.root_value_name = c4c::kInvalidValueName;
+      }
+      return false;
+    };
     const auto true_label =
-        select_chain_label(dependency_successor_context,
-                           producer->instruction_index,
-                           root_value_name,
+        select_chain_label(*select_chain_state.root_context,
+                           select_chain_state.root_instruction_index,
+                           select_chain_state.root_value_name,
                            target_index,
-                           label_index,
+                           current_label,
                            "true");
     const auto end_label =
-        select_chain_label(dependency_successor_context,
-                           producer->instruction_index,
-                           root_value_name,
+        select_chain_label(*select_chain_state.root_context,
+                           select_chain_state.root_instruction_index,
+                           select_chain_state.root_value_name,
                            target_index,
-                           label_index,
+                           current_label,
                            "end");
-    ++label_index;
 
     auto lhs = select->lhs;
     lhs.type = select->compare_type;
@@ -588,15 +683,16 @@ prepared_edge_publication_producer_context(
     if (rhs.kind == bir::Value::Kind::Immediate &&
         is_cmp_immediate_encodable(rhs.immediate)) {
       rhs_name = "#" + std::to_string(rhs.immediate);
-      if (!emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   lhs,
-                                                   producer->instruction_index,
-                                                   target_index,
-                                                   scratch_index,
-                                                   lines,
-                                                   dependency_publication)) {
-        return false;
+      if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        lhs,
+                                                        producer->instruction_index,
+                                                        target_index,
+                                                        scratch_index,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state)) {
+        return fail_select();
       }
     } else {
       rhs_name = gp_register_name(scratch_index, *compare_view);
@@ -615,44 +711,50 @@ prepared_edge_publication_producer_context(
           scratch_index,
           dependency_publication);
       if (!rhs_name.has_value()) {
-        return false;
+        return fail_select();
       }
       if (rhs_reads_target && !lhs_reads_scratch) {
-        if (!emit_edge_value_publication_to_register(edge_context,
-                                                     dependency_successor_context,
-                                                     rhs,
-                                                     producer->instruction_index,
-                                                     scratch_index,
-                                                     nested_scratch,
-                                                     lines,
-                                                     dependency_publication) ||
-            !emit_edge_value_publication_to_register(edge_context,
-                                                     dependency_successor_context,
-                                                     lhs,
-                                                     producer->instruction_index,
-                                                     target_index,
-                                                     scratch_index,
-                                                     lines,
-                                                     dependency_publication)) {
-          return false;
-        }
-      } else if (!emit_edge_value_publication_to_register(edge_context,
-                                                          dependency_successor_context,
-                                                          lhs,
-                                                          producer->instruction_index,
-                                                          target_index,
-                                                          scratch_index,
-                                                          lines,
-                                                          dependency_publication) ||
-                 !emit_edge_value_publication_to_register(edge_context,
+        if (!emit_edge_value_publication_to_register_impl(edge_context,
                                                           dependency_successor_context,
                                                           rhs,
                                                           producer->instruction_index,
                                                           scratch_index,
                                                           nested_scratch,
                                                           lines,
-                                                          dependency_publication)) {
-        return false;
+                                                          dependency_publication,
+                                                          select_chain_state) ||
+            !emit_edge_value_publication_to_register_impl(edge_context,
+                                                          dependency_successor_context,
+                                                          lhs,
+                                                          producer->instruction_index,
+                                                          target_index,
+                                                          scratch_index,
+                                                          lines,
+                                                          dependency_publication,
+                                                          select_chain_state)) {
+          return fail_select();
+        }
+      } else if (!emit_edge_value_publication_to_register_impl(
+                     edge_context,
+                     dependency_successor_context,
+                     lhs,
+                     producer->instruction_index,
+                     target_index,
+                     scratch_index,
+                     lines,
+                     dependency_publication,
+                     select_chain_state) ||
+                 !emit_edge_value_publication_to_register_impl(
+                     edge_context,
+                     dependency_successor_context,
+                     rhs,
+                     producer->instruction_index,
+                     scratch_index,
+                     nested_scratch,
+                     lines,
+                     dependency_publication,
+                     select_chain_state)) {
+        return fail_select();
       }
     }
     lines.push_back("cmp " + *lhs_name + ", " + *rhs_name);
@@ -660,32 +762,40 @@ prepared_edge_publication_producer_context(
 
     auto false_value = select->false_value;
     false_value.type = select->result.type;
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 dependency_successor_context,
-                                                 false_value,
-                                                 producer->instruction_index,
-                                                 target_index,
-                                                 scratch_index,
-                                                 lines,
-                                                 dependency_publication)) {
-      return false;
+    if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                      dependency_successor_context,
+                                                      false_value,
+                                                      producer->instruction_index,
+                                                      target_index,
+                                                      scratch_index,
+                                                      lines,
+                                                      dependency_publication,
+                                                      select_chain_state)) {
+      return fail_select();
     }
     lines.push_back("b " + end_label);
     lines.push_back(true_label + ":");
 
     auto true_value = select->true_value;
     true_value.type = select->result.type;
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 dependency_successor_context,
-                                                 true_value,
-                                                 producer->instruction_index,
-                                                 target_index,
-                                                 scratch_index,
-                                                 lines,
-                                                 dependency_publication)) {
-      return false;
+    if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                      dependency_successor_context,
+                                                      true_value,
+                                                      producer->instruction_index,
+                                                      target_index,
+                                                      scratch_index,
+                                                      lines,
+                                                      dependency_publication,
+                                                      select_chain_state)) {
+      return fail_select();
     }
     lines.push_back(end_label + ":");
+    select_chain_state.active_values.pop_back();
+    if (seeded_root_context) {
+      select_chain_state.root_context.reset();
+      select_chain_state.root_instruction_index = 0;
+      select_chain_state.root_value_name = c4c::kInvalidValueName;
+    }
     return true;
   }
   const auto* binary = std::get_if<bir::BinaryInst>(producer->producer);
@@ -715,14 +825,15 @@ prepared_edge_publication_producer_context(
         !result_name.has_value()) {
       return false;
     }
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 dependency_successor_context,
-                                                 lhs,
-                                                 producer->instruction_index,
-                                                 target_index,
-                                                 scratch_index,
-                                                 lines,
-                                                 dependency_publication)) {
+    if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                      dependency_successor_context,
+                                                      lhs,
+                                                      producer->instruction_index,
+                                                      target_index,
+                                                      scratch_index,
+                                                      lines,
+                                                      dependency_publication,
+                                                      select_chain_state)) {
       return false;
     }
     std::optional<std::string> rhs_name;
@@ -732,14 +843,15 @@ prepared_edge_publication_producer_context(
       rhs_name = gp_register_name(scratch_index, *operand_view);
       const auto nested_scratch = scratch_index == 9 ? 10 : 9;
       if (!rhs_name.has_value() ||
-          !emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   rhs,
-                                                   producer->instruction_index,
-                                                   scratch_index,
-                                                   nested_scratch,
-                                                   lines,
-                                                   dependency_publication)) {
+          !emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        rhs,
+                                                        producer->instruction_index,
+                                                        scratch_index,
+                                                        nested_scratch,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state)) {
         return false;
       }
     }
@@ -770,41 +882,45 @@ prepared_edge_publication_producer_context(
         scratch_index,
         dependency_publication);
     if (rhs_reads_target && !lhs_reads_scratch) {
-      if (!emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   rhs,
-                                                   producer->instruction_index,
-                                                   scratch_index,
-                                                   nested_scratch,
-                                                   lines,
-                                                   dependency_publication) ||
-          !emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   lhs,
-                                                   producer->instruction_index,
-                                                   target_index,
-                                                   scratch_index,
-                                                   lines,
-                                                   dependency_publication)) {
+      if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        rhs,
+                                                        producer->instruction_index,
+                                                        scratch_index,
+                                                        nested_scratch,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state) ||
+          !emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        lhs,
+                                                        producer->instruction_index,
+                                                        target_index,
+                                                        scratch_index,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state)) {
         return false;
       }
     } else {
-      if (!emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   lhs,
-                                                   producer->instruction_index,
-                                                   target_index,
-                                                   scratch_index,
-                                                   lines,
-                                                   dependency_publication) ||
-          !emit_edge_value_publication_to_register(edge_context,
-                                                   dependency_successor_context,
-                                                   rhs,
-                                                   producer->instruction_index,
-                                                   scratch_index,
-                                                   nested_scratch,
-                                                   lines,
-                                                   dependency_publication)) {
+      if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        lhs,
+                                                        producer->instruction_index,
+                                                        target_index,
+                                                        scratch_index,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state) ||
+          !emit_edge_value_publication_to_register_impl(edge_context,
+                                                        dependency_successor_context,
+                                                        rhs,
+                                                        producer->instruction_index,
+                                                        scratch_index,
+                                                        nested_scratch,
+                                                        lines,
+                                                        dependency_publication,
+                                                        select_chain_state)) {
         return false;
       }
     }

@@ -19136,6 +19136,220 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
   return 0;
 }
 
+int prepared_select_root_nested_select_uses_chain_labels() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.edge.prepared.nested.select");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.nested.select.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.nested.select.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.nested.select.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.nested.select.join");
+  const auto nested_name =
+      prepared.names.value_names.intern("%edge.prepared.select.nested");
+  const auto root_name =
+      prepared.names.value_names.intern("%edge.prepared.select.root");
+  const auto nested_lhs_name =
+      prepared.names.value_names.intern("%edge.prepared.select.nested.lhs");
+  const auto nested_true_name =
+      prepared.names.value_names.intern("%edge.prepared.select.nested.true");
+  const auto root_lhs_name =
+      prepared.names.value_names.intern("%edge.prepared.select.root.lhs");
+  const auto root_true_name =
+      prepared.names.value_names.intern("%edge.prepared.select.root.true");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.edge.prepared.nested.select",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.edge.prepared.nested.select.pred",
+               .insts =
+                   {bir::SelectInst{
+                        .predicate = bir::BinaryOpcode::Eq,
+                        .result = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.nested"),
+                        .compare_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.nested.lhs"),
+                        .rhs = bir::Value::immediate_i64(1),
+                        .true_value = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.nested.true"),
+                        .false_value = bir::Value::immediate_i64(7),
+                    },
+                    bir::SelectInst{
+                        .predicate = bir::BinaryOpcode::Eq,
+                        .result = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.root"),
+                        .compare_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.root.lhs"),
+                        .rhs = bir::Value::immediate_i64(0),
+                        .true_value = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.root.true"),
+                        .false_value = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.prepared.select.nested"),
+                    }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.edge.prepared.nested.select.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.edge.prepared.nested.select.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(
+                           bir::TypeKind::I64, "%edge.prepared.select.root"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::immediate_i64(1),
+                       .rhs = bir::Value::immediate_i64(2),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{560},
+               .function_name = function_name,
+               .value_name = nested_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x8"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{561},
+               .function_name = function_name,
+               .value_name = root_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{562},
+               .function_name = function_name,
+               .value_name = nested_lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x5"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{563},
+               .function_name = function_name,
+               .value_name = nested_true_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x6"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{564},
+               .function_name = function_name,
+               .value_name = root_lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x3"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{565},
+               .function_name = function_name,
+               .value_name = root_true_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x4"},
+           }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.back(),
+                                                   1);
+
+  const auto source =
+      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.select.root");
+  const auto& pred_select =
+      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = source,
+      .source_value = source,
+      .source_value_name = root_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+      .source_producer_block_label = pred_label,
+      .source_producer_instruction_index = std::size_t{1},
+      .source_select = &pred_select,
+  };
+  std::vector<std::string> lines;
+  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
+                                                                join_context,
+                                                                source,
+                                                                1,
+                                                                0,
+                                                                9,
+                                                                lines,
+                                                                &publication)) {
+    return fail("expected prepared select root emission to lower nested select");
+  }
+  const auto root_true_label =
+      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 0, "true");
+  const auto root_end_label =
+      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 0, "end");
+  const auto nested_true_label =
+      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 1, "true");
+  const auto nested_end_label =
+      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 1, "end");
+  if (lines != std::vector<std::string>{"mov x0, x3",
+                                        "cmp x0, #0",
+                                        "b.eq " + root_true_label,
+                                        "mov x0, x5",
+                                        "cmp x0, #1",
+                                        "b.eq " + nested_true_label,
+                                        "mov x0, #7",
+                                        "b " + nested_end_label,
+                                        nested_true_label + ":",
+                                        "mov x0, x6",
+                                        nested_end_label + ":",
+                                        "b " + root_end_label,
+                                        root_true_label + ":",
+                                        "mov x0, x4",
+                                        root_end_label + ":"}) {
+    return fail("expected nested prepared select to share root label sequence");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_unsigned_div_rem_scalar_consumer(
     bir::BinaryOpcode opcode) {
   prepare::PreparedBirModule prepared;
@@ -31276,6 +31490,11 @@ int main() {
   }
   if (const int status =
           prepared_select_root_emission_uses_prepared_producer_boundary();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_select_root_nested_select_uses_chain_labels();
       status != 0) {
     return status;
   }

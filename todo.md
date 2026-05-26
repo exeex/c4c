@@ -8,22 +8,22 @@ Current Step Title: Consume Prepared Edge Publications in AArch64
 
 ## Just Finished
 
-Continued Step 3 by adding explicit prepared-root lowering for
-`SelectMaterialization` in `emit_edge_value_publication_to_register`. Prepared
-select roots now materialize compare operands and selected values through the
-prepared producer context, and non-binary prepared roots that are not explicitly
-supported fail closed instead of falling through to generic AArch64 value
-publication rediscovery.
+Continued Step 3 by comparing prepared select-root lowering with the generic
+select-chain path and threading prepared edge-publication select lowering
+through shared chain state. Nested prepared selected values now share the root
+label identity and monotonic label counter, and prepared edge select recursion
+has the same active selected-value cycle guard shape as generic select-chain
+materialization.
 
-Added an instruction-dispatch fixture that proves prepared select-root emission
-uses the prepared producer boundary for generated select-chain labels and
-materializes operands from prepared homes.
+Added focused instruction-dispatch coverage for a prepared select root whose
+selected value is another select, proving nested labels use the root select
+instruction/value identity with label indices `0` then `1`.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing whether prepared select-root lowering needs the
-same nested-select cycle guard and deeper selected-value coverage as the generic
-select-chain path before treating this family as exhausted.
+Continue Step 3 by having the supervisor review this prepared select-root slice
+for acceptance/commit readiness, then choose the next prepared edge-publication
+family or decide whether Step 3 is exhausted.
 
 ## Watchouts
 
@@ -34,7 +34,10 @@ select-chain path before treating this family as exhausted.
   context and before-index; non-prepared calls still use the existing semantic
   producer/value-home lookup. Do not add named-case producer searches to extend
   this path.
-- The prepared select-root path intentionally handles the supported scalar
+- Prepared select-root labels are now rooted once per active select chain; the
+  label counter remains shared across recursive edge-publication materialization
+  so separate nested select regions do not reuse synthetic label indices.
+- The prepared select-root path still intentionally handles the supported scalar
   compare/select shape directly and leaves other prepared non-binary roots
   fail-closed while prepared-root mode is active.
 
