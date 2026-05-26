@@ -1,45 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/23_x86_prepared_edge_publication_remaining_home_coverage.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Validate the x86 Slice
+Current Step ID: 5
+Current Step Title: Handoff RISC-V Readiness Decision
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 validation for idea 23 after the Step 2/3 implementation was
-committed. The code slice added shared lookup-backed
-`RematerializableImmediate -> Register` edge-publication moves for x86 when the
-source home publishes `immediate_i32`, rendering direct `mov reg, imm` output
-through the existing shared `edge_publications` lookup path.
+Completed Step 5 handoff for idea 23. Based on the committed x86
+implementation and `review/idea23_x86_immediate_edge_publication_review.md`,
+the shared prepared edge-publication path is now ready for a separate RISC-V
+consumer idea scoped to register-destination edge moves.
 
-Focused proof before commit passed with the exact delegated command:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_prepared_decoded_home_storage|backend_x86_prepared_handoff_label_authority|backend_codegen_route_x86_64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
+Current x86 coverage through shared `edge_publications` includes:
 
-Result: passed with 79/79 selected tests. Supervisor ran the matching
-regression guard against the focused `test_before.log` and it passed before the
-slice was committed.
+- `StackSlot -> Register` edge-publication moves.
+- `Register -> Register` edge-publication moves.
+- `RematerializableImmediate -> Register` edge-publication moves when the
+  source home publishes `immediate_i32`.
 
-Broader backend validation after commit also passed with:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+Concrete decision: a RISC-V consumer idea is justified now for the
+register-destination subset because x86 has demonstrated multiple independent
+source-home families through the shared publication lookup instead of a
+testcase-shaped or x86-only edge scan. Another x86 coverage slice does not need
+to come first for that scoped RISC-V consumer work.
 
-Result: passed with 162/162 backend tests. This backend run is broader
-validation only, not a matching before/after regression comparison, because the
-accepted `test_before.log` at the time was the focused 79-test scope.
+This is not a full-home parity claim. `PointerBasePlusOffset -> Register` and
+source-to-`StackSlot` destination moves remain unsupported and fail-closed on
+x86.
 
 ## Suggested Next
 
-Step 5 should make the RISC-V readiness handoff decision. The current x86
-coverage now includes stack-source, register-source, and rematerializable
-immediate-source edge-publication moves to register destinations through shared
-lookup authority.
+Supervisor should route lifecycle closure for idea 23 and open or activate a
+separate RISC-V prepared edge-publication consumer idea scoped to register
+destinations.
 
 ## Watchouts
 
-- `PointerBasePlusOffset -> Register` and any source to `StackSlot`
-  destination are intentionally still fail-closed.
-- The implementation depends on shared `edge_publications`; it does not scan
-  BIR edges or rebuild predecessor/successor facts locally.
-- Do not claim RISC-V readiness unless Step 5 explicitly decides that the
-  remaining fail-closed x86 homes are no longer blockers.
+- Keep the RISC-V follow-up scoped to the proven register-destination handoff.
+- Do not claim readiness for pointer-base sources or stack-slot destinations.
+- If RISC-V needs stack-slot destination publication before useful consumer
+  work can land, create a separate x86 destination-home coverage slice first.
+
+## Proof
+
+Docs/lifecycle-only handoff note. No build or tests were required, and no
+`test_after.log` was created for this packet.
