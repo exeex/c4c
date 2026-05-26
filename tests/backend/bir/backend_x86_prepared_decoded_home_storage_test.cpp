@@ -13,11 +13,6 @@ namespace bir = c4c::backend::bir;
 namespace x86 = c4c::backend::x86;
 namespace x86_prepared = c4c::backend::x86::prepared;
 
-enum class X86EdgePublicationIntent {
-  Reject,
-  PublishPreparedEdgeValue,
-};
-
 int fail(std::string_view message) {
   std::cerr << message << "\n";
   return 1;
@@ -29,24 +24,6 @@ bool expect(bool condition, std::string_view message) {
     return false;
   }
   return true;
-}
-
-X86EdgePublicationIntent choose_x86_edge_publication_intent(
-    const prepare::PreparedEdgePublication& publication) {
-  if (publication.status != prepare::PreparedEdgePublicationLookupStatus::Available ||
-      publication.predecessor_label == c4c::kInvalidBlockLabel ||
-      publication.successor_label == c4c::kInvalidBlockLabel ||
-      publication.destination_home == nullptr ||
-      publication.destination_value_name == c4c::kInvalidValueName ||
-      publication.source_value_kind != bir::Value::Kind::Named ||
-      !publication.source_value_id.has_value() ||
-      publication.source_home == nullptr ||
-      publication.move == nullptr ||
-      publication.move_bundle == nullptr ||
-      !publication.parallel_copy_step_index.has_value()) {
-    return X86EdgePublicationIntent::Reject;
-  }
-  return X86EdgePublicationIntent::PublishPreparedEdgeValue;
 }
 
 prepare::PreparedBirModule make_fixture() {
@@ -615,9 +592,20 @@ int check_x86_consumed_plans_read_shared_edge_publications() {
     return 1;
   }
 
-  if (!expect(choose_x86_edge_publication_intent(*publication) ==
-                  X86EdgePublicationIntent::PublishPreparedEdgeValue,
-              "x86 edge-publication consumer should accept shared semantic facts") ||
+  const auto intent = x86_prepared::consume_edge_publication_move_intent(
+      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+  if (!expect(intent.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 edge-publication helper should accept shared semantic facts") ||
+      !expect(intent.publication == publication,
+              "x86 edge-publication helper should preserve shared publication authority") ||
+      !expect(intent.source_value_id == 2 && intent.destination_value_id == 5,
+              "x86 edge-publication helper did not preserve prepared value ids") ||
+      !expect(intent.source_operand == "DWORD PTR [rsp + 56]" &&
+                  intent.destination_operand == "ebx",
+              "x86 edge-publication helper did not produce x86 operand intent") ||
+      !expect(intent.instruction_text == "mov ebx, DWORD PTR [rsp + 56]",
+              "x86 edge-publication helper did not produce x86 move output") ||
       !expect(publication->source_value_id == std::optional<prepare::PreparedValueId>{2},
               "x86 edge-publication consumer did not preserve source value id") ||
       !expect(publication->destination_value_id == 5,
@@ -652,6 +640,77 @@ int check_x86_consumed_plans_read_shared_edge_publications() {
           *publication->move);
   if (!expect(by_move == publication,
               "x86 consumed plans could not re-read edge publication by prepared move")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int check_x86_edge_publication_move_intent_missing_authority() {
+  const auto prepared = make_fixture();
+  const auto predecessor_label = prepared.names.block_labels.find("entry");
+  const auto successor_label = prepared.names.block_labels.find("join");
+
+  const auto no_lookups = x86_prepared::consume_edge_publication_move_intent(
+      x86::ConsumedPlans{}, predecessor_label, successor_label, prepare::PreparedValueId{5});
+  if (!expect(no_lookups.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
+              "x86 edge-publication helper should require shared lookup authority") ||
+      !expect(no_lookups.publication == nullptr,
+              "x86 missing-lookup intent should not invent a publication")) {
+    return 1;
+  }
+
+  const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const auto missing_publication = x86_prepared::consume_edge_publication_move_intent(
+      consumed, predecessor_label, successor_label, prepare::PreparedValueId{99});
+  if (!expect(missing_publication.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingPublication,
+              "x86 edge-publication helper should report absent shared publication") ||
+      !expect(missing_publication.publication == nullptr,
+              "x86 absent-publication intent should not synthesize edge facts")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
+  auto source_unsupported = make_fixture();
+  source_unsupported.value_locations.functions.front().value_homes.front().kind =
+      prepare::PreparedValueHomeKind::RematerializableImmediate;
+  source_unsupported.value_locations.functions.front().value_homes.front().offset_bytes =
+      std::nullopt;
+  const auto predecessor_label = source_unsupported.names.block_labels.find("entry");
+  const auto successor_label = source_unsupported.names.block_labels.find("join");
+
+  const auto unsupported_source = x86_prepared::consume_edge_publication_move_intent(
+      x86::consume_plans(source_unsupported, "x86.decode"), predecessor_label,
+      successor_label, prepare::PreparedValueId{5});
+  if (!expect(unsupported_source.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "x86 edge-publication helper should reject unsupported source homes") ||
+      !expect(unsupported_source.publication != nullptr,
+              "x86 unsupported-source intent should preserve shared publication")) {
+    return 1;
+  }
+
+  auto destination_unsupported = make_fixture();
+  destination_unsupported.value_locations.functions.front().value_homes[3].kind =
+      prepare::PreparedValueHomeKind::StackSlot;
+  destination_unsupported.value_locations.functions.front().value_homes[3].register_name =
+      std::nullopt;
+  const auto unsupported_destination =
+      x86_prepared::consume_edge_publication_move_intent(
+          x86::consume_plans(destination_unsupported, "x86.decode"),
+          destination_unsupported.names.block_labels.find("entry"),
+          destination_unsupported.names.block_labels.find("join"),
+          prepare::PreparedValueId{5});
+  if (!expect(unsupported_destination.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
+              "x86 edge-publication helper should reject unsupported destination homes") ||
+      !expect(unsupported_destination.publication != nullptr,
+              "x86 unsupported-destination intent should preserve shared publication")) {
     return 1;
   }
 
@@ -762,6 +821,14 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_x86_consumed_plans_read_shared_edge_publications();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_x86_edge_publication_move_intent_missing_authority();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_x86_edge_publication_move_intent_rejects_unsupported_homes();
       status != 0) {
     return EXIT_FAILURE;
   }

@@ -9,6 +9,10 @@
 #include <string_view>
 #include <vector>
 
+namespace c4c::backend::x86 {
+struct ConsumedPlans;
+}
+
 namespace c4c::backend::x86::prepared {
 
 struct Query {
@@ -147,10 +151,35 @@ struct Operand {
   bool materialize = false;
 };
 
+enum class EdgePublicationMoveIntentStatus {
+  Available,
+  MissingSharedLookups,
+  MissingPublication,
+  UnsupportedPublication,
+  UnsupportedSourceHome,
+  UnsupportedDestinationHome,
+};
+
+struct EdgePublicationMoveIntent {
+  EdgePublicationMoveIntentStatus status =
+      EdgePublicationMoveIntentStatus::MissingPublication;
+  const c4c::backend::prepare::PreparedEdgePublication* publication = nullptr;
+  c4c::backend::prepare::PreparedValueId source_value_id = 0;
+  c4c::backend::prepare::PreparedValueId destination_value_id = 0;
+  std::string source_operand;
+  std::string destination_operand;
+  std::string instruction_text;
+};
+
 [[nodiscard]] FastPath classify_module_fast_path(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::optional<std::string_view> focus_function = std::nullopt);
 [[nodiscard]] std::optional<Operand> render_immediate_operand(
     const c4c::backend::bir::Value& value);
+[[nodiscard]] EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id);
 
 }  // namespace c4c::backend::x86::prepared
