@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/04_aarch64_prior_preservation_baseline_drift.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reconstruct Close-Proof Scope
+Current Step ID: Step 2
+Current Step Title: Prove the Focused Prior-Preservation Path
 
 # Current Packet
 
