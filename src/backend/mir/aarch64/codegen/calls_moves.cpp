@@ -51,6 +51,11 @@ namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
 
+struct PreservedCallArgumentSource {
+  std::optional<RegisterOperand> source_register;
+  std::optional<MemoryOperand> source_memory;
+};
+
 MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
   MachineEffectResource resource;
   resource.operand = operand;
@@ -197,6 +202,339 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
               .instruction_index = instruction_index,
       },
   };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_selected_frame_slot_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome* source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
+    bool materialized_address,
+    std::size_t instruction_index) {
+  if (selection.kind != expected_kind ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value()) {
+    return std::nullopt;
+  }
+  if (expected_kind ==
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue &&
+      (!selection.source_value_id.has_value() ||
+       !selection.source_value_name.has_value() ||
+       selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::StackSlot})) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = selection.address_materialization_block_label.has_value()
+                         ? *selection.address_materialization_block_label
+                         : (context.control_flow_block != nullptr
+                                ? context.control_flow_block->block_label
+                                : c4c::kInvalidBlockLabel),
+      .instruction_index =
+          selection.address_materialization_inst_index.value_or(instruction_index),
+      .result_value_id = selection.source_value_id.has_value()
+                             ? selection.source_value_id
+                             : argument.source_value_id,
+      .result_value_name = selection.source_value_name.has_value()
+                               ? selection.source_value_name
+                               : (source_home != nullptr
+                                      ? std::optional<c4c::ValueNameId>{
+                                            source_home->value_name}
+                                      : std::nullopt),
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = materialized_address &&
+                               selection.address_materialization_frame_slot_id
+                                   .has_value()
+                           ? selection.address_materialization_frame_slot_id
+                           : selection.source_slot_id,
+      .byte_offset =
+          materialized_address &&
+                  selection.address_materialization_byte_offset.has_value()
+              ? *selection.address_materialization_byte_offset
+              : static_cast<std::int64_t>(*selection.source_stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.source_size_bytes,
+      .align_bytes = *selection.source_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (argument.source_selection.has_value()) {
+    if (auto selected = make_selected_frame_slot_source(
+            context,
+            argument,
+            nullptr,
+            *argument.source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            true,
+            instruction_index)) {
+      return selected;
+    }
+    return std::nullopt;
+  }
+  if (!call_plan.memory_return.has_value() ||
+      !call_plan.memory_return->sret_arg_index.has_value() ||
+      *call_plan.memory_return->sret_arg_index != argument.arg_index ||
+      call_plan.memory_return->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !call_plan.memory_return->slot_id.has_value() ||
+      !call_plan.memory_return->stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id,
+      .result_value_name = std::nullopt,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = call_plan.memory_return->slot_id,
+      .byte_offset = static_cast<std::int64_t>(*call_plan.memory_return->stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = call_plan.memory_return->size_bytes,
+      .align_bytes = call_plan.memory_return->align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_selected_local_frame_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    std::size_t instruction_index) {
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto frame_slot_id =
+      selection.address_materialization_frame_slot_id.has_value()
+          ? selection.address_materialization_frame_slot_id
+          : selection.source_slot_id;
+  std::optional<std::int64_t> byte_offset;
+  if (selection.address_materialization_byte_offset.has_value()) {
+    byte_offset = selection.address_materialization_byte_offset;
+  } else if (selection.source_stack_offset_bytes.has_value()) {
+    byte_offset = static_cast<std::int64_t>(*selection.source_stack_offset_bytes);
+  }
+  if (!frame_slot_id.has_value() || !byte_offset.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = selection.address_materialization_block_label.has_value()
+                         ? *selection.address_materialization_block_label
+                         : (context.control_flow_block != nullptr
+                                ? context.control_flow_block->block_label
+                                : c4c::kInvalidBlockLabel),
+      .instruction_index =
+          selection.address_materialization_inst_index.value_or(instruction_index),
+      .result_value_id = selection.source_value_id.has_value()
+                             ? selection.source_value_id
+                             : argument.source_value_id,
+      .result_value_name = selection.source_value_name.has_value()
+                               ? selection.source_value_name
+                               : std::optional<c4c::ValueNameId>{source_home.value_name},
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = frame_slot_id,
+      .byte_offset = *byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.source_size_bytes,
+      .align_bytes = *selection.source_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedAbiBinding* binding,
+    const MemoryOperand& source,
+    std::size_t instruction_index) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      source.size_bytes == 0 ||
+      source_home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto destination_stack_offset =
+      binding != nullptr && binding->destination_stack_offset_bytes.has_value()
+          ? binding->destination_stack_offset_bytes
+          : (move.destination_stack_offset_bytes.has_value()
+                 ? move.destination_stack_offset_bytes
+                 : argument.destination_stack_offset_bytes);
+  if (!destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .stored_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{move.from_value_id},
+      .stored_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::Register,
+      .base_register = RegisterOperand{
+          .reg = outgoing_stack_argument_base_register(),
+          .role = RegisterOperandRole::Physical,
+          .expected_view = abi::RegisterView::X,
+      },
+      .byte_offset = static_cast<std::int64_t>(*destination_stack_offset),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = source.size_bytes,
+      .align_bytes = source.align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_aggregate_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& source_register,
+    std::size_t size_bytes,
+    std::int64_t byte_offset,
+    std::size_t instruction_index) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      source_home.value_name == c4c::kInvalidValueName || size_bytes == 0) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::PointerValue,
+      .base_register = source_register,
+      .pointer_value_name = source_home.value_name,
+      .pointer_value_id = source_home.value_id,
+      .byte_offset = byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = source_home.align_bytes.value_or(1),
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<PreservedCallArgumentSource>
+make_prior_preserved_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    const prepare::PreparedValueHome* source_home,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (selection.kind !=
+      prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+    return std::nullopt;
+  }
+
+  if (selection.preservation_route ==
+      prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    if (!selection.preserved_register_name.has_value() ||
+        !selection.preserved_register_bank.has_value() ||
+        !selection.preserved_register_contiguous_width.has_value() ||
+        *selection.preserved_register_contiguous_width == 0 ||
+        selection.preserved_occupied_register_names.empty() ||
+        !selection.preserved_register_placement.has_value()) {
+      return std::nullopt;
+    }
+    const auto source_view =
+        source_home != nullptr && source_home->size_bytes.has_value()
+            ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+            : scalar_view_from_register_name(selection.preserved_register_name);
+    auto source = make_register_operand_from_prepared_authority(
+        selection.preserved_register_name,
+        selection.preserved_register_placement,
+        selection.preserved_register_bank,
+        RegisterOperandRole::CallAbi,
+        selection.source_value_id,
+        selection.source_value_name.value_or(c4c::kInvalidValueName),
+        *selection.preserved_register_contiguous_width,
+        selection.preserved_occupied_register_names,
+        source_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    source->value_name = c4c::kInvalidValueName;
+    PreservedCallArgumentSource result;
+    result.source_register = *source;
+    return result;
+  }
+
+  if (selection.preservation_route !=
+          prepare::PreparedCallPreservationRoute::StackSlot ||
+      !selection.source_value_id.has_value() ||
+      !selection.source_value_name.has_value() ||
+      !selection.preserved_stack_slot_id.has_value() ||
+      !selection.preserved_stack_offset_bytes.has_value() ||
+      !selection.preserved_stack_size_bytes.has_value() ||
+      !selection.preserved_stack_align_bytes.has_value() ||
+      *selection.preserved_stack_size_bytes == 0) {
+    return std::nullopt;
+  }
+  PreservedCallArgumentSource result;
+  result.source_memory = MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = selection.source_value_id,
+      .result_value_name = selection.source_value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = selection.preserved_stack_slot_id,
+      .byte_offset =
+          static_cast<std::int64_t>(*selection.preserved_stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *selection.preserved_stack_size_bytes,
+      .align_bytes = *selection.preserved_stack_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+  return result;
 }
 
 [[nodiscard]] std::optional<prepare::PreparedValueId> effect_value_id(
@@ -3639,6 +3977,53 @@ make_callee_saved_preservation_home_population(
 }
 
 }  // namespace
+
+[[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome* source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
+    std::size_t instruction_index) {
+  if (selection.kind != expected_kind) {
+    return std::nullopt;
+  }
+  switch (expected_kind) {
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      if (source_home == nullptr) {
+        return std::nullopt;
+      }
+      return make_selected_frame_slot_source(
+          context,
+          argument,
+          source_home,
+          selection,
+          expected_kind,
+          false,
+          instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      return make_selected_frame_slot_source(
+          context,
+          argument,
+          source_home,
+          selection,
+          expected_kind,
+          true,
+          instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::
+        LocalFrameAddressMaterialization:
+      if (source_home == nullptr) {
+        return std::nullopt;
+      }
+      return make_selected_local_frame_address_source(
+          context, argument, *source_home, selection, instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::None:
+    case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+    case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
     const module::BlockLoweringContext& context,

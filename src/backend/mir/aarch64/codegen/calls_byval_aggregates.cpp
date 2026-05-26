@@ -24,6 +24,17 @@ namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
 
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] bool byval_same_gp_register_index(abi::RegisterReference lhs,
                                                 abi::RegisterReference rhs) {
   return lhs.index == rhs.index && abi::is_gp_register(lhs) && abi::is_gp_register(rhs);

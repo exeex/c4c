@@ -72,6 +72,84 @@ const prepare::PreparedCallPlan* require_prepared_call_plan(
 
 namespace {
 
+[[nodiscard]] std::optional<RegisterOperand> make_indirect_callee_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedIndirectCalleePlan& callee,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (callee.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      !callee.register_name.has_value() || callee.bank != prepare::PreparedRegisterBank::Gpr ||
+      callee.slot_id.has_value() || callee.stack_offset_bytes.has_value() ||
+      callee.immediate_i32.has_value() || callee.pointer_base_value_name.has_value() ||
+      callee.pointer_byte_delta.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 indirect call lowering requires an explicit prepared GPR callee register");
+    return std::nullopt;
+  }
+
+  const auto converted = abi::convert_prepared_register(
+      *callee.register_name,
+      callee.bank,
+      prepare::PreparedRegisterClass::General,
+      abi::RegisterView::X);
+  if (!converted.reg.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        converted.error.has_value()
+            ? converted.error->message
+            : "prepared indirect callee register could not be converted");
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = callee.value_id,
+      .value_name = callee.value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = callee.bank,
+      .expected_view = abi::RegisterView::X,
+      .contiguous_width = 1,
+      .occupied_registers = {*callee.register_name},
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_memory_return_storage(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryReturnPlan& memory_return,
+    std::size_t instruction_index) {
+  if (memory_return.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !memory_return.slot_id.has_value() ||
+      !memory_return.stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = memory_return.slot_id,
+      .byte_offset = static_cast<std::int64_t>(*memory_return.stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = memory_return.size_bytes,
+      .align_bytes = memory_return.align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 MachineNodeStatusRecord call_boundary_move_selection_status(
     const CallBoundaryMoveInstructionRecord& instruction) {
   if (instruction.source_bundle == nullptr ||

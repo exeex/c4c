@@ -101,51 +101,17 @@ make_f128_q_register_operand_from_carrier(
 [[nodiscard]] std::optional<bir::TypeKind> scalar_integer_type_from_size(
     std::size_t size_bytes);
 
-// calls_argument_sources
+// calls_moves / calls_dispatch_bridge
 
-// Shared frame-slot lookup and argument-source helpers. Frame-slot value and
-// address source choice is prepared by call plans; these helpers translate
-// complete prepared facts into AArch64 operands.
-
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedFrameSlotId slot_id);
-[[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
-    const prepare::PreparedCallArgumentPlan& argument,
-    std::size_t instruction_index);
+// Shared selection-driven call argument source conversion. Source choice is
+// prepared by call plans; this helper only translates complete prepared facts
+// into AArch64 operands.
 [[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome* source_home,
     const prepare::PreparedCallArgumentSourceSelection& selection,
     prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedAbiBinding* binding,
-    const MemoryOperand& source,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> make_aggregate_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    const RegisterOperand& source_register,
-    std::size_t size_bytes,
-    std::int64_t byte_offset,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<RegisterOperand> make_indirect_callee_register(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedIndirectCalleePlan& callee,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] std::optional<MemoryOperand> make_memory_return_storage(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMemoryReturnPlan& memory_return,
     std::size_t instruction_index);
 
 // calls_byval_aggregates
@@ -276,13 +242,6 @@ order_before_call_moves_for_source_preservation(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// calls_argument_sources
-
-struct PreservedCallArgumentSource {
-  std::optional<RegisterOperand> source_register;
-  std::optional<MemoryOperand> source_memory;
-};
-
 // calls_moves
 
 [[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
@@ -290,16 +249,6 @@ struct PreservedCallArgumentSource {
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
-
-// calls_argument_sources
-
-[[nodiscard]] std::optional<PreservedCallArgumentSource>
-make_prior_preserved_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentSourceSelection& selection,
-    const prepare::PreparedValueHome* source_home,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
 
 // calls_emission_nodes
 
