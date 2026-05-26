@@ -1158,6 +1158,92 @@ bir::Module make_prior_preservation_source_selection_contract_module() {
   return module;
 }
 
+bir::Module make_aarch64_formal_preservation_source_endpoint_contract_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "aarch64_formal_preservation_source_endpoint_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "live.formal",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Slt,
+      .result = bir::Value::named(bir::TypeKind::I1, "is.base"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "live.formal"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "is.base"),
+      .true_label = "base",
+      .false_label = "recurse",
+  };
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block base;
+  base.label = "base";
+  base.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "live.formal")};
+  function.blocks.push_back(std::move(base));
+
+  bir::Block recurse;
+  recurse.label = "recurse";
+  recurse.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "dec"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "live.formal"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  recurse.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "aarch64_formal_preservation_source_endpoint_contract",
+      .args = {bir::Value::named(bir::TypeKind::I32, "dec")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  recurse.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Mul,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "live.formal"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  recurse.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "after")};
+  function.blocks.push_back(std::move(recurse));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_local_frame_address_source_selection_contract_module() {
   bir::Module module;
   module.target_triple = "aarch64-linux-gnu";
@@ -3584,6 +3670,53 @@ int check_prior_preservation_source_selection_contract() {
       (source_selection.preserved_callee_saved_save_index.has_value() &&
        prepared_dump.find("selection_preserved_save_index=") == std::string::npos)) {
     return fail("prior-preservation source-selection contract: printer hides prepared selection authority");
+  }
+
+  return 0;
+}
+
+int check_aarch64_formal_preservation_source_endpoint_contract() {
+  const auto prepared = prepare_aarch64_module(
+      make_aarch64_formal_preservation_source_endpoint_contract_module());
+  const auto* call_plans = find_call_plans_function(
+      prepared, "aarch64_formal_preservation_source_endpoint_contract");
+  const auto* storage_plan = find_storage_plan_function(
+      prepared, "aarch64_formal_preservation_source_endpoint_contract");
+  const auto* formal =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "live.formal");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 || formal == nullptr) {
+    return fail(
+        "aarch64 formal preservation endpoint contract: missing call plan or formal storage");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [formal](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == formal->value_id;
+      });
+  if (preserved_it == call_plan.preserved_values.end()) {
+    return fail(
+        "aarch64 formal preservation endpoint contract: missing preserved formal");
+  }
+
+  const auto& preserved = *preserved_it;
+  if (preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved.preservation_source.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      preserved.preservation_source.register_name != std::optional<std::string>{"x0"} ||
+      preserved.preservation_source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+      preserved.preservation_source.value_id !=
+          std::optional<prepare::PreparedValueId>{formal->value_id} ||
+      preserved.preservation_destination.storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      !preserved.preservation_destination.register_name.has_value() ||
+      preserved.preservation_destination.register_name != preserved.register_name ||
+      preserved.preservation_destination.register_name == preserved.preservation_source.register_name) {
+    return fail(
+        "aarch64 formal preservation endpoint contract: source must name live pre-call x0 and destination must name distinct callee-saved storage");
   }
 
   return 0;
@@ -6161,6 +6294,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_prior_preservation_source_selection_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aarch64_formal_preservation_source_endpoint_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_local_frame_address_source_selection_contract(); rc != 0) {

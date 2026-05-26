@@ -68,10 +68,10 @@ prepare::PreparedCallPlan make_call_plan() {
                        .storage_kind = prepare::PreparedMoveStorageKind::Register,
                        .value_id = prepare::PreparedValueId{31},
                        .value_name = c4c::ValueNameId{41},
-                       .register_name = std::string{"x19"},
+                       .register_name = std::string{"x0"},
                        .register_bank = prepare::PreparedRegisterBank::Gpr,
-                       .contiguous_width = 2,
-                       .occupied_register_names = {std::string{"x19"}, std::string{"x20"}},
+                       .contiguous_width = 1,
+                       .occupied_register_names = {std::string{"x0"}},
                    },
                .preservation_destination =
                    prepare::PreparedCallBoundaryEffectEndpoint{
@@ -252,6 +252,12 @@ bool records_preservation_and_republication_intent() {
       !expect(callee_saved_population.destination.storage_kind ==
                   prepare::PreparedMoveStorageKind::Register,
               "expected register preservation destination") ||
+      !expect(callee_saved_population.source.storage_kind ==
+                  prepare::PreparedMoveStorageKind::Register,
+              "expected register preservation source") ||
+      !expect(callee_saved_population.source.register_name ==
+                  std::optional<std::string>{"x0"},
+              "expected live pre-call preservation source register") ||
       !expect(callee_saved_population.destination.callee_saved_save_index ==
                   std::optional<std::size_t>{3},
               "expected callee-saved index") ||

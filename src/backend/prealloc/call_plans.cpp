@@ -595,13 +595,41 @@ struct CallArgumentSourcePlan {
 }
 
 [[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preservation_value_source_endpoint(
+    const c4c::TargetProfile& target_profile,
     const PreparedRegallocValue& value,
-    const PreparedValueHome* value_home) {
+    const PreparedValueHome* value_home,
+    bool prefer_value_home) {
   PreparedCallBoundaryEffectEndpoint endpoint{
       .value_id = value.value_id,
       .value_name = value.value_name,
       .contiguous_width = std::max<std::size_t>(value.register_group_width, 1),
   };
+  if (prefer_value_home && value_home != nullptr) {
+    endpoint.encoding = storage_encoding_from_home(*value_home);
+    endpoint.storage_kind = move_storage_kind_from_home(*value_home);
+    if (value_home->kind == PreparedValueHomeKind::Register &&
+        value_home->register_name.has_value()) {
+      endpoint.register_name = value_home->register_name;
+      endpoint.register_bank = register_bank_from_class(value.register_class);
+      endpoint.contiguous_width = 1;
+      endpoint.occupied_register_names = {*value_home->register_name};
+      endpoint.register_placement = find_register_placement(
+          target_profile,
+          value.register_class,
+          endpoint.contiguous_width,
+          endpoint.occupied_register_names);
+      return endpoint;
+    }
+    if (value_home->kind == PreparedValueHomeKind::StackSlot) {
+      endpoint.slot_id = value_home->slot_id;
+      endpoint.stack_offset_bytes = value_home->offset_bytes;
+      endpoint.stack_size_bytes = value_home->size_bytes;
+      endpoint.stack_align_bytes = value_home->align_bytes;
+      endpoint.spill_slot_placement =
+          make_spill_slot_placement(value_home->slot_id, value_home->offset_bytes);
+      return endpoint;
+    }
+  }
   if (value.assigned_register.has_value()) {
     endpoint.encoding = PreparedStorageEncodingKind::Register;
     endpoint.storage_kind = PreparedMoveStorageKind::Register;
@@ -1368,7 +1396,11 @@ void append_call_clobbered_register_spans(
 
     if (preserved.route != PreparedCallPreservationRoute::Unknown) {
       preserved.preservation_source =
-          make_preservation_value_source_endpoint(value, value_home);
+          make_preservation_value_source_endpoint(
+              prepared.target_profile,
+              value,
+              value_home,
+              preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister);
       preserved.preservation_destination =
           make_preservation_destination_endpoint(preserved);
       preserved.preservation_reason = make_preservation_reason(preserved);
