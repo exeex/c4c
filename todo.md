@@ -1,15 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/17_aarch64_absent_selection_fallback_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Retire Local Aggregate Address Fallbacks
+Current Step ID: Step 3
+Current Step Title: Retire Indirect Byval Lane Payload Fallbacks
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Retire Local Aggregate Address Fallbacks regression follow-up
-completed. `call_plans.cpp` now publishes
+Step 2: Retire Local Aggregate Address Fallbacks is complete after
+`999fc953e` and `ba284bd3a`. `calls_dispatch_bridge.cpp` now consumes prepared
+`LocalFrameAddressMaterialization` selected-source facts for the owned AArch64
+dispatch route and fails closed on absent or incomplete selected source facts.
+`call_plans.cpp` now publishes
 `LocalFrameAddressMaterialization` selected-source facts for same-block pointer
 add/sub derived local aggregate addresses, carrying the prepared byte delta into
 `source_stack_offset_bytes` instead of relying on target-local reconstruction.
@@ -24,9 +27,11 @@ manual dispatch coverage.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 2 regression-fix slice, then decide
-whether Step 2 is complete or whether another targeted local aggregate address
-audit packet is needed before moving to Step 3.
+Delegate Step 3: retire the indirect byval lane absent-selection fallback
+family. Start from the Step 1 byval fallback map in the history of `todo.md`
+and keep register-lane and stack-lane publication on complete prepared
+`ByvalRegisterLane` selected-source facts rather than
+`collect_byval_register_lane_stores` reconstruction.
 
 ## Watchouts
 
