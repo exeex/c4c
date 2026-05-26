@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/12_dispatch_value_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Add or Tighten Focused Materialization Coverage
+Current Step ID: Step 6
+Current Step Title: Validate Dispatch Materialization Cleanup
 
 # Current Packet
 
@@ -61,9 +61,26 @@ needed.
 
 ## Suggested Next
 
-Step 6 validation packet: run the supervisor-selected broader backend
-validation for dispatch materialization cleanup and review the final diff for
-hidden ownership drift, expectation weakening, or testcase-shaped coverage.
+Step 6 validation packet: prove the final dispatch materialization cleanup with
+build proof, the preserved focused materialization subset, broader backend
+validation, and route-quality review.
+
+Concrete validation expectations:
+
+- Write the fresh proof to canonical `test_after.log`.
+- Run `cmake --build --preset default > test_after.log 2>&1`.
+- Rerun the focused 14-test materialization subset from the Step 5 proof,
+  appending to `test_after.log`.
+- Run broader backend validation selected by the supervisor, appending to
+  `test_after.log`; the expected broad closure subset is:
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  The supervisor may deliberately substitute a wider command such as full CTest
+  or `scripts/full_scan.sh`.
+- Review the final implementation diff for hidden edge-copy, publication,
+  calls, or broad AArch64 pipeline cleanup; expectation weakening; unsupported
+  downgrades; text-contract regressions; or testcase-shaped shortcuts.
+- Treat any out-of-scope cleanup or weakened test contract as a route-quality
+  blocker, even if the validation commands pass.
 
 ## Watchouts
 
