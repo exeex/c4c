@@ -65,3 +65,31 @@ fallback retirement scopes.
   complete prepared facts.
 - A patch claims closure while `00181` remains the only known red test in the
   proving subset.
+
+## Closure Note
+
+Closed after repairing the nested AArch64 value/edge publication hazard that
+clobbered the pointer base during scaled-index materialization. The stale
+shape in `Move` overwrote the selected pointer base with the element scale
+while forming `source[i]` or `dest[j]`; the repair keeps nested RHS
+materialization from reusing the live target/base register as scratch.
+
+The focused backend coverage in `backend_aarch64_instruction_dispatch` now
+asserts predecessor edge publication of `base + sext(index) * 4` without
+returning to the stale `mov x9, #4` / `mul x10, x10, x9` clobber pattern.
+This is a semantic register-hazard fix, not a shortcut for `00181`, Tower of
+Hanoi symbols, or one global-array shape.
+
+Closure proof used the matched AArch64 backend/c_testsuite subset:
+
+```sh
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_|c_testsuite_aarch64_backend_)'
+```
+
+The canonical close logs record 248/248 passing tests, including
+`c_testsuite_aarch64_backend_src_00181_c` and
+`backend_aarch64_instruction_dispatch`, with no new failures. Because the
+baseline had already been rolled forward after Step 5 validation, the close
+regression guard was checked in non-decreasing mode and passed with equal
+248/248 before/after counts.
