@@ -1,65 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/31_riscv_prepared_edge_publication_stack_source_policy_followup.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Remaining Stack-Source Candidates
+Current Step ID: Step 2
+Current Step Title: Define And Implement The Selected Target-Local Policy
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 - Inventory Remaining Stack-Source Candidates.
+Completed Step 2 - Define And Implement The Selected Target-Local Policy.
 
-Current concrete-offset support is enforced in
-`src/backend/mir/riscv/codegen/emit.cpp`:
+Implemented large-offset concrete RISC-V `StackSlot -> Register`
+edge-publication loads in `src/backend/mir/riscv/codegen/emit.cpp`:
 
-- Shared authority: `consume_edge_publication_move_intent` reaches emission only
-  after `find_unique_indexed_prepared_edge_publication` returns an available
-  publication whose prepared move is a `Move`.
-- Stack-source eligibility: `render_edge_publication_source_operand` accepts
-  only `PreparedValueHomeKind::StackSlot` with `offset_bytes`, `size_bytes` of
-  4 or 8, and for 8-byte sources an offset accepted by
-  `fits_signed_12_bit_load_offset`.
-- Emission: register destinations render stack sources as `lw <dst>,
-  <offset>(sp)` for size 4 and `ld <dst>, <offset>(sp)` for size 8.
-- Existing focused tests are in
-  `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`:
-  `check_stack_slot_to_register_move_uses_shared_lookup` covers 4-byte `lw`,
-  `check_stack_slot_i64_to_register_move_uses_shared_lookup` covers 8-byte
-  `ld`, and shared-authority removal checks verify RISC-V does not rediscover
-  edge moves without prepared lookup facts.
-- Current fail-closed coverage rejects missing offset, missing size,
-  unsupported subword width, aggregate width, 8-byte offset 2048, and non-move
-  publications. The large-offset rejection is currently specific to 8-byte
-  sources; 4-byte stack sources are accepted regardless of immediate range, so
-  the next implementation must preserve or correct that deliberately rather
-  than silently relying on malformed assembly.
+- Shared `edge_publications` lookup remains the only semantic authority:
+  emission still starts from `find_unique_indexed_prepared_edge_publication`
+  and an available prepared `Move`.
+- Stack-source acceptance now records concrete 4-byte and 8-byte stack sources
+  without rejecting large offsets in the source-home phase.
+- Register-destination emission keeps signed-12-bit offsets on direct
+  `lw <dst>, <offset>(sp)` and `ld <dst>, <offset>(sp)`.
+- Large concrete offsets now emit target-local address materialization through
+  `t6`: `li t6, <offset>`, `add t6, sp, t6`, then `lw` or `ld` from `0(t6)`.
+- Unsupported neighboring forms remain fail-closed: missing offset/size,
+  subword width, aggregate width, non-move publications, pointer-base
+  stack-destinations, and stack-destination large offsets are not broadened.
 
-Remaining candidate policy matrix:
-
-| Candidate | Current status | Missing target-local policy |
-| --- | --- | --- |
-| Sub-word integer stack source | Fail-closed for size 2; size 1/2 not accepted. | Decide signedness authority before choosing `lb`/`lh` versus `lbu`/`lhu`; define how the loaded value is extended into the destination GPR; add offset-range enforcement and focused positive/negative coverage. |
-| Unsigned 32-bit stack source | Not distinguishable from existing size-4 `lw`; prepared value homes carry size but no signedness/type. | Need semantic signedness or value type authority before choosing `lwu`; otherwise accepting this would be indistinguishable from current signed/ABI-extended `lw` behavior. |
-| Floating 32-bit stack source | Not distinguishable from existing size-4 stack source by home alone; current destination path treats all register destinations as text register names and emits `lw`. | Need register-bank/type authority for FPR destinations and an explicit `flw` policy; also need tests proving FP stack-source publication consumes shared edge facts and rejects GPR-only/source-type ambiguity. |
-| Large-offset stack loads | 8-byte size 2048 is fail-closed; 4-byte large offset currently slips through the size-4 branch. | Define scratch/address materialization contract, likely `li` plus `add` into a scratch such as `t5`/`t6`, then load from `0(scratch)`; fix offset-range handling consistently for 4-byte and 8-byte forms. |
-| Dynamic-address stack sources | No representation in `StackSlot` homes; pointer-like forms are `PointerBasePlusOffset` and are out of scope for this plan. | Concrete dynamic stack-source address representation and scratch contract are missing; this is blocked unless a prepared home or address materialization fact identifies the dynamic base. |
-| Aggregate-width stack sources | Fail-closed for size 16. | Need multi-register or memory-copy destination policy, register-pair layout, scratch ownership, and explicit size/alignment constraints; not safe as a first follow-up. |
-
-Safest next candidate: fix and implement large-offset concrete `StackSlot ->
-Register` loads, because it preserves the existing size-4/size-8 scalar load
-model and only adds target-local address materialization policy. The packet
-should first make the offset-range gate explicit for both 4-byte `lw` and
-8-byte `ld`, then add a scratch-backed large-offset path with tests for size-4
-and size-8 concrete stack sources plus a negative alias/scratch or unsupported
-neighbor case.
+Added focused coverage in
+`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` for
+large-offset size-4 and size-8 stack-source publications, including shared
+publication authority preservation and the no-publication fail-closed check.
 
 ## Suggested Next
 
-Proceed to Step 2 by implementing the large-offset concrete stack-source load
-policy for `StackSlot -> Register`, including an explicit 12-bit immediate
-gate for existing direct `lw`/`ld` forms and a target-local scratch-backed
-materialization path for offsets outside that range.
+Proceed to Step 3/4 review by checking whether the focused large-offset
+coverage is sufficient for close-readiness, or add any supervisor-requested
+negative coverage for scratch/register alias policy before lifecycle review.
 
 ## Watchouts
 
@@ -70,10 +46,17 @@ materialization path for offsets outside that range.
 - `PreparedValueHome` currently records stack offset/size but not signedness,
   scalar type, or register bank, so sub-word, unsigned 32-bit, and F32 policies
   need additional authority before implementation.
-- Direct 4-byte stack-source support currently lacks the 12-bit load-immediate
-  guard that 8-byte support has; Step 2 should make that behavior intentional.
+- The large-offset stack-source helper reserves `t6` as target-local address
+  scratch for one edge-publication sequence; no broader scratch allocator or
+  register-liveness model was introduced in this packet.
+- Source-to-stack destination large offsets intentionally remain unsupported;
+  this packet only covers concrete `StackSlot -> Register` loads.
 
 ## Proof
 
-No proof was run because this was an inventory-only packet. `test_after.log`
-was not modified.
+Proof command run:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_publication_plan_record|backend_)' > test_after.log 2>&1`
+
+Result: passed. `test_after.log` records 163 matching backend tests passed,
+0 failed.

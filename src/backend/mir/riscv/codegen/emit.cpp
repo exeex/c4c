@@ -83,9 +83,7 @@ std::optional<std::string> render_edge_publication_source_operand(
   if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       source_home.offset_bytes.has_value() &&
       (source_home.size_bytes == std::optional<std::size_t>{4} ||
-       source_home.size_bytes == std::optional<std::size_t>{8}) &&
-      (source_home.size_bytes == std::optional<std::size_t>{4} ||
-       fits_signed_12_bit_load_offset(*source_home.offset_bytes))) {
+       source_home.size_bytes == std::optional<std::size_t>{8})) {
     intent.source_stack_slot_id = source_home.slot_id;
     intent.source_stack_offset_bytes = *source_home.offset_bytes;
     intent.source_stack_size_bytes = *source_home.size_bytes;
@@ -195,8 +193,16 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       const auto opcode = intent.source_stack_size_bytes == std::optional<std::size_t>{8}
                               ? std::string{"ld "}
                               : std::string{"lw "};
-      intent.instruction_text =
-          opcode + intent.destination_register + ", " + *source_operand;
+      if (fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes)) {
+        intent.instruction_text =
+            opcode + intent.destination_register + ", " + *source_operand;
+      } else {
+        const auto offset_text = std::to_string(*intent.source_stack_offset_bytes);
+        intent.instruction_text =
+            "li t6, " + offset_text +
+            "\n    add t6, sp, t6" +
+            "\n    " + opcode + intent.destination_register + ", 0(t6)";
+      }
     } else if (intent.source_pointer_byte_delta.has_value()) {
       if (*intent.source_pointer_byte_delta == 0) {
         intent.instruction_text =
