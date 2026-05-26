@@ -65,3 +65,27 @@ or immediate source rendering used by the first consumer route.
 - The patch is only a helper rename, expectation rewrite, or classification
   change while leaving `StackSlot -> Register` unsupported.
 
+## Closure Notes
+
+Closed on 2026-05-26 after landing focused RISC-V
+`StackSlot -> Register` register-destination prepared edge-publication
+consumption through the shared `edge_publications` lookup path. Supported
+stack sources require a concrete offset and 4-byte size and emit
+`lw <dst>, <offset>(sp)` in the RISC-V backend after shared lookup authority
+succeeds.
+
+Accepted evidence:
+
+- Focused RISC-V prepared edge-publication subset passed 5/5 with a matching
+  focused regression guard.
+- Backend bucket evidence in `test_before.log` passed 163/163.
+- Full-suite baseline evidence in `test_baseline.log` passed 3411/3411.
+- `review/idea25_riscv_stack_source_edge_publication_review.md` reported no
+  blocking findings.
+- Close-time regression guard over the accepted backend evidence passed with
+  163/163 and no new failures.
+
+Remaining fail-closed surfaces are deliberately not claimed by this closure:
+`PointerBasePlusOffset -> Register`, source-to-`StackSlot` destinations, stack
+sources without offsets, non-I32 stack-source widths, dynamic stack addressing,
+and large-offset policy.
