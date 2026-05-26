@@ -3582,6 +3582,20 @@ prepare::PreparedBirModule prepared_with_non_hfa_va_arg_byte_copy_before_printf(
                    .destination_contiguous_width = 1,
                    .destination_occupied_register_names = {"x1"},
                    .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .source_selection =
+                       prepare::PreparedCallArgumentSourceSelection{
+                           .kind =
+                               prepare::PreparedCallArgumentSourceSelectionKind::
+                                   FrameSlotValue,
+                           .source_value_id = prepare::PreparedValueId{206},
+                           .source_value_name = dst_value_name,
+                           .source_home_kind =
+                               prepare::PreparedValueHomeKind::StackSlot,
+                           .source_slot_id = prepare::PreparedFrameSlotId{30},
+                           .source_stack_offset_bytes = std::size_t{64},
+                           .source_size_bytes = std::size_t{8},
+                           .source_align_bytes = std::size_t{8},
+                       },
                }},
       }},
   });
@@ -4312,6 +4326,20 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_argument() 
                       .destination_contiguous_width = 1,
                       .destination_occupied_register_names = {"q3"},
                       .destination_register_bank = prepare::PreparedRegisterBank::Vreg,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind =
+                                  prepare::PreparedCallArgumentSourceSelectionKind::
+                                      FrameSlotValue,
+                              .source_value_id = prepare::PreparedValueId{151},
+                              .source_value_name = arg_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::StackSlot,
+                              .source_slot_id = prepare::PreparedFrameSlotId{9},
+                              .source_stack_offset_bytes = std::size_t{80},
+                              .source_size_bytes = std::size_t{16},
+                              .source_align_bytes = std::size_t{16},
+                          },
                   },
               },
       }},
@@ -4453,6 +4481,20 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_stack_argum
                       .source_register_bank = prepare::PreparedRegisterBank::Fpr,
                       .destination_stack_offset_bytes = std::size_t{32},
                       .destination_stack_size_bytes = std::size_t{16},
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind =
+                                  prepare::PreparedCallArgumentSourceSelectionKind::
+                                      FrameSlotValue,
+                              .source_value_id = prepare::PreparedValueId{151},
+                              .source_value_name = arg_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::StackSlot,
+                              .source_slot_id = prepare::PreparedFrameSlotId{9},
+                              .source_stack_offset_bytes = std::size_t{80},
+                              .source_size_bytes = std::size_t{16},
+                              .source_align_bytes = std::size_t{16},
+                          },
                   },
               },
       }},
@@ -16613,6 +16655,20 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
           .destination_contiguous_width = 1,
           .destination_occupied_register_names = {"x0"},
           .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_selection =
+              prepare::PreparedCallArgumentSourceSelection{
+                  .kind =
+                      prepare::PreparedCallArgumentSourceSelectionKind::
+                          ByvalRegisterLane,
+                  .source_value_id = frame_value_id,
+                  .source_value_name = frame_value_name,
+                  .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .source_slot_id = prepare::PreparedFrameSlotId{17},
+                  .source_stack_offset_bytes = std::size_t{32},
+                  .source_size_bytes = std::size_t{2},
+                  .source_align_bytes = std::size_t{1},
+                  .byval_lane_extent_bytes = std::size_t{2},
+              },
       },
       prepare::PreparedMoveResolution{
           .from_value_id = frame_value_id,
@@ -17779,15 +17835,14 @@ int incomplete_byval_stack_lane_selection_does_not_rederive_frame_slot_home() {
   aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
   const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
       block_context, absent_call_plan, 5, absent_diagnostics);
-  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
-    return fail("expected absent byval stack-lane selection to keep frame-slot compatibility");
-  }
-  const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(absent_lowered.front().target);
-  if (!printed.ok || printed.instruction_lines.size() != 2 ||
-      printed.instruction_lines.front().find("[sp, #64]") == std::string::npos ||
-      printed.instruction_lines.back().find("#16]") == std::string::npos) {
-    return fail("expected absent byval stack-lane selection to copy from legacy frame slot");
+  if (!absent_lowered.empty() || absent_diagnostics.entries.size() != 1 ||
+      absent_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected absent byval stack-lane selection not to rederive frame-slot "
+        "home: lowered=" +
+        std::to_string(absent_lowered.size()) +
+        " diagnostics=" + std::to_string(absent_diagnostics.entries.size()));
   }
   return 0;
 }
@@ -17900,18 +17955,14 @@ int incomplete_byval_stack_register_lane_selection_does_not_rederive_frame_slot_
   aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
   const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
       block_context, absent_call_plan, 6, absent_diagnostics);
-  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
+  if (!absent_lowered.empty() || absent_diagnostics.entries.size() != 1 ||
+      absent_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
     return fail(
-        "expected absent byval stack register-lane selection to keep frame-slot "
-        "compatibility");
-  }
-  const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(absent_lowered.front().target);
-  if (!printed.ok ||
-      printed.instruction_lines != std::vector<std::string>{"ldrb w0, [sp, #72]"}) {
-    return fail(
-        "expected absent byval stack register-lane selection to load from "
-        "legacy frame slot");
+        "expected absent byval stack register-lane selection not to rederive "
+        "frame-slot home: lowered=" +
+        std::to_string(absent_lowered.size()) +
+        " diagnostics=" + std::to_string(absent_diagnostics.entries.size()));
   }
   return 0;
 }
@@ -19308,7 +19359,7 @@ int incomplete_frame_slot_value_selection_does_not_rederive_legacy_home() {
   return 0;
 }
 
-int absent_frame_slot_value_selection_still_uses_legacy_home() {
+int absent_frame_slot_value_selection_does_not_rederive_legacy_home() {
   constexpr auto function_name = c4c::FunctionNameId{195};
   constexpr auto block_label = c4c::BlockLabelId{196};
   constexpr auto value_id = prepare::PreparedValueId{197};
@@ -19395,29 +19446,18 @@ int absent_frame_slot_value_selection_still_uses_legacy_home() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 4, diagnostics);
-  if (lowered.size() != 1 || !diagnostics.empty()) {
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
     return fail(
-        "expected absent frame-slot value selection to keep legacy home "
-        "compatibility");
-  }
-  const auto* store =
-      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
-          &lowered.front().target.payload);
-  const auto* source =
-      store != nullptr && store->value.has_value()
-          ? std::get_if<aarch64_module::codegen::MemoryOperand>(
-                &store->value->payload)
-          : nullptr;
-  if (store == nullptr ||
-      lowered.front().target.opcode != aarch64_module::codegen::MachineOpcode::Store ||
-      source == nullptr ||
-      source->result_value_name !=
-          std::optional<c4c::ValueNameId>{value_name} ||
-      source->frame_slot_id !=
-          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{16}} ||
-      source->byte_offset != 48 ||
-      source->size_bytes != 8) {
-    return fail("expected absent frame-slot value selection to lower from legacy home");
+        "expected absent frame-slot value selection not to rederive legacy "
+        "home: lowered=" +
+        std::to_string(lowered.size()) +
+        " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+        (diagnostics.entries.empty()
+             ? std::string{}
+             : " kind=" +
+                   std::to_string(static_cast<int>(diagnostics.entries.front().kind))));
   }
   return 0;
 }
@@ -20389,7 +20429,7 @@ int explicit_non_address_selection_does_not_rederive_frame_slot_address() {
   return 0;
 }
 
-int absent_frame_slot_address_selection_still_uses_legacy_value_source() {
+int absent_frame_slot_address_selection_does_not_rederive_legacy_value_source() {
   constexpr auto function_name = c4c::FunctionNameId{861};
   constexpr auto block_label = c4c::BlockLabelId{862};
   constexpr auto value_id = prepare::PreparedValueId{863};
@@ -20483,21 +20523,14 @@ int absent_frame_slot_address_selection_still_uses_legacy_value_source() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 5, diagnostics);
-  const auto* move =
-      lowered.size() == 1
-          ? std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
-                &lowered.front().target.payload)
-          : nullptr;
-  if (move == nullptr || !diagnostics.empty() ||
-      !move->source_memory.has_value() ||
-      move->source_memory_materializes_address ||
-      !move->destination_register.has_value() ||
-      move->destination_register->reg != aarch64_module::abi::x_register(1) ||
-      move->source_memory->frame_slot_id !=
-          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{72}} ||
-      move->source_memory->byte_offset != 64 ||
-      move->source_memory->size_bytes != 8) {
-    return fail("expected absent frame-slot address selection to keep legacy value-source load");
+  if (!lowered.empty() || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected absent frame-slot address selection not to rederive legacy "
+        "value-source load: lowered=" +
+        std::to_string(lowered.size()) +
+        " diagnostics=" + std::to_string(diagnostics.entries.size()));
   }
   return 0;
 }
@@ -22103,10 +22136,14 @@ int large_byval_aggregate_indirect_argument_materializes_frame_address() {
   aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
   const auto absent_lowered = aarch64_codegen::lower_before_call_moves(
       block_context, absent_call_plan, 3, absent_diagnostics);
-  if (absent_lowered.size() != 1 || !absent_diagnostics.empty()) {
+  if (!absent_lowered.empty() || absent_diagnostics.entries.size() != 1 ||
+      absent_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
     return fail(
-        "expected absent indirect byval source selection to keep legacy "
-        "frame-slot compatibility");
+        "expected absent indirect byval source selection not to rederive "
+        "frame-slot home: lowered=" +
+        std::to_string(absent_lowered.size()) +
+        " diagnostics=" + std::to_string(absent_diagnostics.entries.size()));
   }
   return 0;
 }
@@ -25267,6 +25304,17 @@ int stack_preserved_loaded_global_pointer_publishes_before_call_argument_reload(
   argument.source_register_placement.reset();
   argument.source_slot_id = prepare::PreparedFrameSlotId{43};
   argument.source_stack_offset_bytes = std::size_t{40};
+  argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          .source_value_id = loaded_home.value_id,
+          .source_value_name = loaded_home.value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+          .source_slot_id = prepare::PreparedFrameSlotId{43},
+          .source_stack_offset_bytes = std::size_t{40},
+          .source_size_bytes = std::size_t{8},
+          .source_align_bytes = std::size_t{8},
+      };
   call_plan.preserved_values =
       {prepare::PreparedCallPreservedValue{
           .value_id = loaded_home.value_id,
@@ -30246,7 +30294,7 @@ int main() {
     return status;
   }
   if (const int status =
-          absent_frame_slot_value_selection_still_uses_legacy_home();
+          absent_frame_slot_value_selection_does_not_rederive_legacy_home();
       status != 0) {
     return status;
   }
@@ -30276,7 +30324,7 @@ int main() {
     return status;
   }
   if (const int status =
-          absent_frame_slot_address_selection_still_uses_legacy_value_source();
+          absent_frame_slot_address_selection_does_not_rederive_legacy_value_source();
       status != 0) {
     return status;
   }

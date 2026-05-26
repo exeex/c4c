@@ -103,9 +103,9 @@ make_f128_q_register_operand_from_carrier(
 
 // calls_argument_sources
 
-// Shared frame-slot lookup and argument-source helpers. The frame-slot and
-// local-frame-address helpers below still contain the remaining compatibility
-// source-choice paths when prepared source-selection facts are absent.
+// Shared frame-slot lookup and argument-source helpers. Frame-slot value
+// source choice is prepared by call plans; address helpers below still contain
+// the remaining compatibility source-choice path when prepared facts are absent.
 
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,

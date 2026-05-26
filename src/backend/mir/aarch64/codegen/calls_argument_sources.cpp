@@ -14,8 +14,8 @@ namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
 // Shared frame-slot lookup plus the remaining call-argument source helpers.
-// The public frame-slot/local-address helpers in this section still own only
-// the legacy absent-selection compatibility paths identified in Step 1.
+// Frame-slot value source choice is prepared by call plans; address helpers
+// below still own the remaining absent-selection compatibility path.
 
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
@@ -97,119 +97,20 @@ namespace abi = c4c::backend::aarch64::abi;
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
-  if (argument.source_selection.has_value()) {
-    if (auto selected = make_selected_frame_slot_source(
-            context,
-            argument,
-            &source_home,
-            *argument.source_selection,
-            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
-            false,
-            instruction_index)) {
-      return selected;
-    }
+  if (!argument.source_selection.has_value()) {
     return std::nullopt;
   }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      source_home.value_name == c4c::kInvalidValueName) {
-    return std::nullopt;
+  if (auto selected = make_selected_frame_slot_source(
+          context,
+          argument,
+          &source_home,
+          *argument.source_selection,
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          false,
+          instruction_index)) {
+    return selected;
   }
-
-  const auto* addressing = prepare::find_prepared_addressing(
-      *context.function.prepared, context.function.control_flow->function_name);
-  if (addressing == nullptr) {
-    return std::nullopt;
-  }
-
-  const prepare::PreparedMemoryAccess* source_access = nullptr;
-  for (const auto& access : addressing->accesses) {
-    if (access.result_value_name == std::optional<c4c::ValueNameId>{source_home.value_name}) {
-      if (source_access != nullptr) {
-        return std::nullopt;
-      }
-      source_access = &access;
-    }
-  }
-  if (source_access == nullptr) {
-    const auto source_offset = source_home.offset_bytes.has_value()
-                                   ? source_home.offset_bytes
-                                   : argument.source_stack_offset_bytes;
-    if (!source_offset.has_value()) {
-      return std::nullopt;
-    }
-    return MemoryOperand{
-        .surface = RecordSurfaceKind::MachineInstructionNode,
-        .support = MemoryOperandSupportKind::Prepared,
-        .function_name = context.function.control_flow->function_name,
-        .block_label = context.control_flow_block->block_label,
-        .instruction_index = instruction_index,
-        .result_value_id = argument.source_value_id,
-        .result_value_name = source_home.value_name,
-        .base_kind = MemoryBaseKind::FrameSlot,
-        .frame_slot_id = source_home.slot_id.has_value() ? source_home.slot_id
-                                                         : argument.source_slot_id,
-        .byte_offset = static_cast<std::int64_t>(*source_offset),
-        .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = source_home.size_bytes.value_or(4),
-        .align_bytes = source_home.align_bytes.value_or(4),
-        .can_use_base_plus_offset = true,
-    };
-  }
-  if (source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !source_access->address.frame_slot_id.has_value()) {
-    const auto source_offset = source_home.offset_bytes.has_value()
-                                   ? source_home.offset_bytes
-                                   : argument.source_stack_offset_bytes;
-    if (source_offset.has_value()) {
-      return MemoryOperand{
-          .surface = RecordSurfaceKind::MachineInstructionNode,
-          .support = MemoryOperandSupportKind::Prepared,
-          .function_name = context.function.control_flow->function_name,
-          .block_label = context.control_flow_block->block_label,
-          .instruction_index = instruction_index,
-          .result_value_id = argument.source_value_id,
-          .result_value_name = source_home.value_name,
-          .base_kind = MemoryBaseKind::FrameSlot,
-          .frame_slot_id = source_home.slot_id.has_value() ? source_home.slot_id
-                                                           : argument.source_slot_id,
-          .byte_offset = static_cast<std::int64_t>(*source_offset),
-          .byte_offset_is_prepared_snapshot = true,
-          .size_bytes = source_home.size_bytes.value_or(4),
-          .align_bytes = source_home.align_bytes.value_or(4),
-          .can_use_base_plus_offset = true,
-      };
-    }
-    return std::nullopt;
-  }
-
-  const auto* slot = find_frame_slot_by_id(context.function.prepared->stack_layout,
-                                           *source_access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = source_access->function_name,
-      .block_label = source_access->block_label,
-      .instruction_index = source_access->inst_index,
-      .result_value_id = argument.source_value_id,
-      .result_value_name = source_home.value_name,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = source_access->address.frame_slot_id,
-      .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
-                     source_access->address.byte_offset,
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = source_access->address.size_bytes,
-      .align_bytes = source_access->address.align_bytes,
-      .address_space = source_access->address_space,
-      .is_volatile = source_access->is_volatile,
-      .can_use_base_plus_offset = true,
-  };
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
