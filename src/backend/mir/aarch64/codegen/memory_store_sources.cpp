@@ -999,7 +999,6 @@ lower_stack_homed_pointer_store_writeback(
 [[nodiscard]] bool emit_pointer_base_plus_offset_to_register(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& value_home,
-    std::size_t instruction_index,
     std::uint8_t target_index,
     std::vector<std::string>& lines) {
   if (value_home.kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
@@ -1016,33 +1015,6 @@ lower_stack_homed_pointer_store_writeback(
           prepared_global_symbol_from_value_name(context, *value_home.pointer_base_value_name)) {
     return emit_global_symbol_address_to_register(
         *symbol, delta, target_index, lines);
-  }
-
-  const auto base_value_spelling =
-      context.function.prepared != nullptr
-          ? context.function.prepared->names.value_names.spelling(
-                *value_home.pointer_base_value_name)
-          : std::string_view{};
-  const auto* producer =
-      find_same_block_named_producer(context, base_value_spelling, instruction_index);
-  if (const auto* load_local =
-          producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
-      load_local != nullptr && load_local->result.type == bir::TypeKind::Ptr) {
-    const auto producer_index = producer_instruction_index(context, producer);
-    const auto offset = producer_index.has_value()
-                            ? prepared_local_load_offset(context, *producer_index)
-                            : std::nullopt;
-    if (offset.has_value()) {
-      lines.push_back("ldr " + *target + ", " + frame_slot_address(context.function, *offset));
-      if (delta > 0) {
-        lines.push_back("add " + *target + ", " + *target + ", #" +
-                        std::to_string(delta));
-      } else if (delta < 0) {
-        lines.push_back("sub " + *target + ", " + *target + ", #" +
-                        std::to_string(-delta));
-      }
-      return true;
-    }
   }
 
   if (context.function.value_locations == nullptr) {
@@ -1146,7 +1118,7 @@ lower_pointer_base_plus_offset_store_local_publication(
               store_source_plan.source_home_kind ==
                   prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
               emit_pointer_base_plus_offset_to_register(
-                  context, *value_home, instruction_index, scratches.front().index, lines);
+                  context, *value_home, scratches.front().index, lines);
   }
   if (!emitted) {
     return std::nullopt;

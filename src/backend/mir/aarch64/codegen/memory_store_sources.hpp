@@ -75,7 +75,6 @@ lower_stack_homed_pointer_store_writeback(
 [[nodiscard]] bool emit_pointer_base_plus_offset_to_register(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& value_home,
-    std::size_t instruction_index,
     std::uint8_t target_index,
     std::vector<std::string>& lines);
 
