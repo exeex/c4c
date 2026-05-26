@@ -1,6 +1,6 @@
 #include "asm_emitter.hpp"
 
-#include "calls.hpp"
+#include "effects.hpp"
 #include "machine_printer.hpp"
 #include "mir/printer.hpp"
 #include "traversal.hpp"

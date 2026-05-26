@@ -13,6 +13,8 @@ namespace c4c::backend::aarch64::codegen {
 namespace prepare = c4c::backend::prepare;
 namespace abi = c4c::backend::aarch64::abi;
 
+thread_local bool g_publish_prepared_call_preserve_effects = true;
+
 std::string_view machine_effect_resource_kind_name(MachineEffectResourceKind kind) {
   switch (kind) {
     case MachineEffectResourceKind::PreparedValue:
@@ -447,6 +449,20 @@ std::vector<MachineEffectResource> effects_from_prepared_call_preserved_values(
     }
   }
   return effects;
+}
+
+bool prepared_call_preserve_effect_publication_enabled() {
+  return g_publish_prepared_call_preserve_effects;
+}
+
+ScopedPreparedCallPreserveEffectPublication::ScopedPreparedCallPreserveEffectPublication(
+    bool enabled)
+    : previous_enabled_(g_publish_prepared_call_preserve_effects) {
+  g_publish_prepared_call_preserve_effects = enabled;
+}
+
+ScopedPreparedCallPreserveEffectPublication::~ScopedPreparedCallPreserveEffectPublication() {
+  g_publish_prepared_call_preserve_effects = previous_enabled_;
 }
 
 }  // namespace c4c::backend::aarch64::codegen

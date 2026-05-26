@@ -143,22 +143,6 @@ struct AggregateRegisterLaneStore {
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home);
 
-// calls
-
-class ScopedPreparedCallPreserveEffectPublication {
- public:
-  explicit ScopedPreparedCallPreserveEffectPublication(bool enabled);
-  ~ScopedPreparedCallPreserveEffectPublication();
-
-  ScopedPreparedCallPreserveEffectPublication(
-      const ScopedPreparedCallPreserveEffectPublication&) = delete;
-  ScopedPreparedCallPreserveEffectPublication& operator=(
-      const ScopedPreparedCallPreserveEffectPublication&) = delete;
-
- private:
-  bool previous_enabled_ = true;
-};
-
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
@@ -211,13 +195,5 @@ order_before_call_moves_for_source_preservation(
     prepare::PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
-
-// calls_emission_nodes
-
-[[nodiscard]] InstructionRecord make_call_boundary_move_instruction(
-    CallBoundaryMoveInstructionRecord instruction);
-[[nodiscard]] InstructionRecord make_call_boundary_abi_binding_instruction(
-    CallBoundaryAbiBindingInstructionRecord instruction);
-[[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
 
 }  // namespace c4c::backend::aarch64::codegen

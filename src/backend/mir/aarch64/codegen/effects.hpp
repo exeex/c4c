@@ -31,5 +31,20 @@ namespace c4c::backend::aarch64::codegen {
     const std::vector<prepare::PreparedClobberedRegister>& clobbers);
 [[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_preserved_values(
     const std::vector<prepare::PreparedCallPreservedValue>& preserved_values);
+[[nodiscard]] bool prepared_call_preserve_effect_publication_enabled();
+
+class ScopedPreparedCallPreserveEffectPublication {
+ public:
+  explicit ScopedPreparedCallPreserveEffectPublication(bool enabled);
+  ~ScopedPreparedCallPreserveEffectPublication();
+
+  ScopedPreparedCallPreserveEffectPublication(
+      const ScopedPreparedCallPreserveEffectPublication&) = delete;
+  ScopedPreparedCallPreserveEffectPublication& operator=(
+      const ScopedPreparedCallPreserveEffectPublication&) = delete;
+
+ private:
+  bool previous_enabled_ = true;
+};
 
 }  // namespace c4c::backend::aarch64::codegen

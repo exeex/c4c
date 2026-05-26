@@ -28,23 +28,6 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
-thread_local bool g_publish_prepared_call_preserve_effects = true;
-
-[[nodiscard]] bool publish_prepared_call_preserve_effects() {
-  return g_publish_prepared_call_preserve_effects;
-}
-
-ScopedPreparedCallPreserveEffectPublication::ScopedPreparedCallPreserveEffectPublication(
-    bool enabled)
-    : previous_enabled_(g_publish_prepared_call_preserve_effects) {
-  g_publish_prepared_call_preserve_effects = enabled;
-}
-
-ScopedPreparedCallPreserveEffectPublication::~ScopedPreparedCallPreserveEffectPublication() {
-  g_publish_prepared_call_preserve_effects = previous_enabled_;
-}
-
-
 const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
@@ -482,7 +465,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
       .defs = std::move(defs),
       .uses = std::move(uses),
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
-      .preserves = publish_prepared_call_preserve_effects()
+      .preserves = prepared_call_preserve_effect_publication_enabled()
                        ? effects_from_prepared_call_preserved_values(
                              instruction.preserved_values)
                        : std::vector<MachineEffectResource>{},
@@ -514,7 +497,7 @@ std::optional<module::MachineInstruction> lower_prepared_call_instruction(
       .prepared_indirect_callee = call_plan.indirect_callee,
       .prepared_arguments = call_plan.arguments,
       .prepared_result = call_plan.result,
-      .preserved_values = publish_prepared_call_preserve_effects()
+      .preserved_values = prepared_call_preserve_effect_publication_enabled()
                               ? call_plan.preserved_values
                               : std::vector<prepare::PreparedCallPreservedValue>{},
       .clobbered_registers = call_plan.clobbered_registers,
