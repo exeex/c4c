@@ -3,6 +3,7 @@
 #include "alu.hpp"
 #include "calls.hpp"
 #include "comparison.hpp"
+#include "effects.hpp"
 #include "memory.hpp"
 
 #include <cstddef>
@@ -16,97 +17,6 @@
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
-
-MachineEffectResource effect_from_operand(const OperandRecord& operand) {
-  MachineEffectResource resource;
-  resource.operand = operand;
-  switch (operand.kind) {
-    case OperandKind::Register: {
-      const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::Register;
-      if (reg != nullptr) {
-        resource.value_id = reg->value_id;
-        resource.value_name = reg->value_name;
-        resource.reg = reg->reg;
-      }
-      break;
-    }
-    case OperandKind::Immediate: {
-      const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::PreparedValue;
-      if (immediate != nullptr) {
-        resource.value_id = immediate->source_value_id;
-        resource.value_name = immediate->source_value_name;
-      }
-      break;
-    }
-    case OperandKind::PreparedValue: {
-      const auto* value = std::get_if<PreparedValueOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::PreparedValue;
-      if (value != nullptr) {
-        resource.value_id = value->value_id;
-        resource.value_name = value->value_name;
-      }
-      break;
-    }
-    case OperandKind::FrameSlot: {
-      const auto* slot = std::get_if<FrameSlotOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::FrameSlot;
-      if (slot != nullptr) {
-        resource.frame_slot_id = slot->slot_id;
-        if (slot->value_name.has_value()) {
-          resource.value_name = *slot->value_name;
-        }
-      }
-      break;
-    }
-    case OperandKind::Symbol: {
-      const auto* symbol = std::get_if<SymbolOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::Symbol;
-      if (symbol != nullptr) {
-        resource.symbol_name = symbol->link_name;
-      }
-      break;
-    }
-    case OperandKind::BranchTarget: {
-      const auto* target = std::get_if<BranchTargetOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::BranchTarget;
-      if (target != nullptr) {
-        resource.value_id = target->condition_value_id;
-        resource.block_label = target->block_label;
-      }
-      break;
-    }
-    case OperandKind::Memory: {
-      const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
-      resource.kind = MachineEffectResourceKind::Memory;
-      if (memory != nullptr) {
-        resource.value_id = memory->result_value_id.has_value() ? memory->result_value_id
-                                                                : memory->stored_value_id;
-        if (memory->result_value_name.has_value()) {
-          resource.value_name = *memory->result_value_name;
-        } else if (memory->stored_value_name.has_value()) {
-          resource.value_name = *memory->stored_value_name;
-        }
-        resource.frame_slot_id = memory->frame_slot_id;
-        resource.symbol_name = memory->symbol_name.has_value() ? memory->symbol_name
-                                                               : memory->string_symbol_name;
-      }
-      break;
-    }
-  }
-  return resource;
-}
-
-MachineEffectResource prepared_value_def(
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name) {
-  return MachineEffectResource{
-      .kind = MachineEffectResourceKind::PreparedValue,
-      .value_id = value_id,
-      .value_name = value_name,
-  };
-}
 
 void append_i128_pair_diagnostic(
     module::ModuleLoweringDiagnostics& diagnostics,
@@ -2003,34 +1913,34 @@ InstructionRecord make_i128_transport_instruction(I128TransportRecord instructio
       instruction.transport_kind == I128TransportKind::CarrierSnapshot ||
       instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
     if (instruction.low_lane.reg.has_value()) {
-      defs.push_back(effect_from_operand(make_register_operand(*instruction.low_lane.reg)));
+      defs.push_back(machine_effect_from_operand(make_register_operand(*instruction.low_lane.reg)));
     }
     if (instruction.high_lane.reg.has_value()) {
-      defs.push_back(effect_from_operand(make_register_operand(*instruction.high_lane.reg)));
+      defs.push_back(machine_effect_from_operand(make_register_operand(*instruction.high_lane.reg)));
     }
     if (instruction.carrier_kind == prepare::PreparedI128CarrierKind::MemoryBacked) {
-      defs.push_back(prepared_value_def(instruction.value_id, instruction.value_name));
+      defs.push_back(machine_prepared_value_def(instruction.value_id, instruction.value_name));
     }
   }
   if (instruction.transport_kind == I128TransportKind::StoreToMemory ||
       instruction.transport_kind == I128TransportKind::CarrierSnapshot) {
     if (instruction.low_lane.reg.has_value()) {
-      uses.push_back(effect_from_operand(make_register_operand(*instruction.low_lane.reg)));
+      uses.push_back(machine_effect_from_operand(make_register_operand(*instruction.low_lane.reg)));
     }
     if (instruction.high_lane.reg.has_value()) {
-      uses.push_back(effect_from_operand(make_register_operand(*instruction.high_lane.reg)));
+      uses.push_back(machine_effect_from_operand(make_register_operand(*instruction.high_lane.reg)));
     }
   }
   if (instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
     if (instruction.source_low_lane.reg.has_value()) {
-      uses.push_back(effect_from_operand(make_register_operand(*instruction.source_low_lane.reg)));
+      uses.push_back(machine_effect_from_operand(make_register_operand(*instruction.source_low_lane.reg)));
     }
     if (instruction.source_high_lane.reg.has_value()) {
-      uses.push_back(effect_from_operand(make_register_operand(*instruction.source_high_lane.reg)));
+      uses.push_back(machine_effect_from_operand(make_register_operand(*instruction.source_high_lane.reg)));
     }
   }
   if (instruction.memory.has_value()) {
-    auto memory_effect = effect_from_operand(make_memory_operand(*instruction.memory));
+    auto memory_effect = machine_effect_from_operand(make_memory_operand(*instruction.memory));
     if (instruction.transport_kind == I128TransportKind::LoadFromMemory) {
       uses.push_back(std::move(memory_effect));
     } else if (instruction.transport_kind == I128TransportKind::StoreToMemory) {
@@ -2099,14 +2009,14 @@ InstructionRecord make_i128_pair_operation_instruction(
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      defs.push_back(effect_from_operand(operand));
+      defs.push_back(machine_effect_from_operand(operand));
     }
   };
   const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      uses.push_back(effect_from_operand(operand));
+      uses.push_back(machine_effect_from_operand(operand));
     }
   };
   add_def(instruction.result.low_lane.reg);
@@ -2164,14 +2074,14 @@ InstructionRecord make_i128_shift_instruction(I128ShiftRecord instruction) {
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      defs.push_back(effect_from_operand(operand));
+      defs.push_back(machine_effect_from_operand(operand));
     }
   };
   const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      uses.push_back(effect_from_operand(operand));
+      uses.push_back(machine_effect_from_operand(operand));
     }
   };
   add_def(instruction.result.low_lane.reg);
@@ -2179,7 +2089,7 @@ InstructionRecord make_i128_shift_instruction(I128ShiftRecord instruction) {
   add_use(instruction.source.low_lane.reg);
   add_use(instruction.source.high_lane.reg);
   operands.push_back(instruction.shift_count);
-  uses.push_back(effect_from_operand(instruction.shift_count));
+  uses.push_back(machine_effect_from_operand(instruction.shift_count));
 
   return InstructionRecord{
       .family = InstructionFamily::I128Pair,
@@ -2232,13 +2142,13 @@ InstructionRecord make_i128_compare_instruction(I128CompareRecord instruction) {
   if (instruction.result_register.has_value()) {
     const auto result = make_register_operand(*instruction.result_register);
     operands.push_back(result);
-    defs.push_back(effect_from_operand(result));
+    defs.push_back(machine_effect_from_operand(result));
   }
   const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      uses.push_back(effect_from_operand(operand));
+      uses.push_back(machine_effect_from_operand(operand));
     }
   };
   add_use(instruction.lhs.low_lane.reg);
@@ -2357,14 +2267,14 @@ InstructionRecord make_i128_runtime_helper_boundary_instruction(
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      defs.push_back(effect_from_operand(operand));
+      defs.push_back(machine_effect_from_operand(operand));
     }
   };
   const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
     if (reg.has_value()) {
       const auto operand = make_register_operand(*reg);
       operands.push_back(operand);
-      uses.push_back(effect_from_operand(operand));
+      uses.push_back(machine_effect_from_operand(operand));
     }
   };
   add_def(instruction.result.low_lane.reg);

@@ -1714,9 +1714,6 @@ struct InstructionRecord {
     const InstructionRecord& instruction);
 [[nodiscard]] std::string_view machine_node_selection_status_name(
     MachineNodeSelectionStatus status);
-[[nodiscard]] std::string_view machine_effect_resource_kind_name(
-    MachineEffectResourceKind kind);
-[[nodiscard]] std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view frame_instruction_kind_name(FrameInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
@@ -1765,17 +1762,6 @@ struct InstructionRecord {
 [[nodiscard]] OperandRecord make_symbol_operand(SymbolOperand operand);
 [[nodiscard]] OperandRecord make_branch_target_operand(BranchTargetOperand operand);
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
-[[nodiscard]] MachineEffectResource machine_effect_from_operand(
-    const OperandRecord& operand);
-[[nodiscard]] MachineEffectResource machine_prepared_value_def(
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name);
-[[nodiscard]] std::vector<MachineEffectResource> machine_effects_from_operands(
-    const std::vector<OperandRecord>& operands);
-[[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
-    const std::vector<prepare::PreparedClobberedRegister>& clobbers);
-[[nodiscard]] std::vector<MachineEffectResource> effects_from_prepared_call_preserved_values(
-    const std::vector<prepare::PreparedCallPreservedValue>& preserved_values);
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(

@@ -1,3 +1,4 @@
+#include "src/backend/mir/aarch64/codegen/effects.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 #include "src/backend/mir/aarch64/codegen/returns.hpp"
 

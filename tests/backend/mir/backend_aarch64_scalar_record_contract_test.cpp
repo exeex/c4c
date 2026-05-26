@@ -1,4 +1,5 @@
 #include "src/backend/mir/aarch64/codegen/cast_ops.hpp"
+#include "src/backend/mir/aarch64/codegen/effects.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 
 #include <iostream>

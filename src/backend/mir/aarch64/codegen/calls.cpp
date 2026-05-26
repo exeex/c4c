@@ -1,6 +1,7 @@
 #include "calls.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "dispatch.hpp"
+#include "effects.hpp"
 #include "float_ops.hpp"
 #include "f128.hpp"
 #include "machine_printer.hpp"

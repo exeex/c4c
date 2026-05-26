@@ -34,13 +34,6 @@ namespace c4c::backend::aarch64::codegen {
     std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_helper);
 [[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank);
-[[nodiscard]] std::string_view register_display_name(abi::RegisterReference reg);
-[[nodiscard]] std::vector<std::string_view> occupied_register_views(
-    abi::RegisterReference reg);
-[[nodiscard]] std::vector<std::string_view> occupied_register_views(
-    const std::vector<abi::RegisterReference>& regs);
-[[nodiscard]] std::optional<abi::RegisterView> prepared_clobber_expected_view(
-    prepare::PreparedRegisterBank bank);
 void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             module::ModuleLoweringDiagnosticKind kind,
                             const module::BlockLoweringContext& context,

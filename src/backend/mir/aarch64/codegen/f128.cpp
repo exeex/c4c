@@ -2,6 +2,7 @@
 #include "calls.hpp"
 #include "comparison.hpp"
 #include "constant_materialization.hpp"
+#include "effects.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
 
