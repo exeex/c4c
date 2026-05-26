@@ -54,6 +54,29 @@ hard-coded register would be an unreviewed target-local policy decision.
 - Validation covers focused RISC-V prepared edge-publication tests, relevant
   shared prepared lookup tests, and an appropriate backend bucket.
 
+## Closure Note
+
+Closed as a validated scratch-policy slice. The RISC-V prepared
+edge-publication consumer now has a local scratch contract for immediate
+materialization, and `RematerializableImmediate -> StackSlot` I32 is supported
+through shared `edge_publications` authority by emitting `li t0, imm` followed
+by `sw t0, offset(sp)` for concrete 4-byte stack destinations with signed
+12-bit direct `sp` offsets.
+
+Existing `Register -> StackSlot` support remains supported. Missing shared
+publication facts, malformed destinations, unsupported widths, large
+destination offsets, `StackSlot -> StackSlot`, and
+`PointerBasePlusOffset -> StackSlot` remain explicit fail-closed cases.
+
+The remaining stack-destination source forms need additional target-local
+load, address, pointer materialization, aliasing, and large-offset policy
+beyond this immediate-materialization scratch slice. Follow-up scope is tracked
+in
+`ideas/open/33_riscv_prepared_edge_publication_remaining_stack_destination_sources.md`.
+
+Close-time regression guard passed with `--allow-non-decreasing-passed` on the
+backend bucket: 163/163 before and 163/163 after, with no new failures.
+
 ## Reviewer Reject Signals
 
 - The patch uses a hard-coded scratch register without an explicit RISC-V
