@@ -27,10 +27,12 @@ stack-source helper.
 
 ## Out Of Scope
 
-- `PointerBasePlusOffset -> Register` source homes; those belong to
-  `ideas/open/26_riscv_prepared_edge_publication_pointer_base_register_consumer.md`.
+- `PointerBasePlusOffset -> Register` source homes; focused support was closed
+  in `ideas/closed/26_riscv_prepared_edge_publication_pointer_base_register_consumer.md`,
+  with broadening tracked by
+  `ideas/open/29_riscv_prepared_edge_publication_pointer_base_policy_broadening.md`.
 - Source-to-`StackSlot` destination moves; those belong to
-  `ideas/open/27_riscv_prepared_edge_publication_stack_destination_support.md`.
+  `ideas/open/30_riscv_prepared_edge_publication_stack_destination_policy_broadening.md`.
 - RISC-V-local rediscovery of edge-copy facts from predecessor or successor
   block shape.
 - Moving RISC-V stack-source addressing or load policy into shared prepare,
@@ -64,3 +66,29 @@ stack-source helper.
   BIR, or target-neutral helpers.
 - The patch claims pointer-base source or stack destination support without
   routing that separate surface through its own idea.
+
+## Closure Note
+
+Closed after implementing focused RISC-V concrete-offset 8-byte
+`StackSlot -> Register` prepared edge-publication consumption through shared
+`edge_publications` authority. The supported 8-byte form requires a concrete
+stack offset and `size_bytes == 8`, emits target-locally as
+`ld <dst>, <offset>(sp)`, and is guarded to signed-12-bit RISC-V load offsets.
+Existing concrete-offset 4-byte stack-source `lw` behavior remains supported.
+
+Validation accepted at closure:
+
+- focused RISC-V prepared edge-publication subset passed, 5/5 selected tests
+- matching focused regression guard passed, 5/5 before and 5/5 after
+- backend bucket evidence in `test_before.log` passed, 163/163 tests
+- full-suite baseline evidence in `test_baseline.log` passed, 3411/3411 tests
+- close-time non-mutating backend guard over the accepted rolled-forward
+  backend log passed, 163/163 before and 163/163 after
+- `review/idea28_riscv_8byte_stack_source_edge_publication_review.md`
+  reported no blocking findings
+
+Remaining stack-source policy work is intentionally outside this closed slice.
+Sub-word loads, unsigned or floating 32-bit loads, dynamic-address stack
+sources, aggregate-width sources, and large-offset materialization remain
+fail-closed and are preserved in
+`ideas/open/31_riscv_prepared_edge_publication_stack_source_policy_followup.md`.
