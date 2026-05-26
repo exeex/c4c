@@ -31,10 +31,33 @@ source-home/source-id/name identity.
 
 ## Suggested Next
 
-Continue Step 4 with a bounded audit for any remaining duplicated prepared-fact
-predicates in `dispatch_edge_copies.cpp` that are exact lookup/source identity
-checks. Do not move AArch64 register, stack-source, scratch, or emission policy
-into shared helpers.
+Continue Step 4. The remaining lifecycle packet is a bounded
+edge-publication-lookup audit for block-entry out-of-SSA parallel-copy moves in
+`dispatch_edge_copies.cpp`.
+
+Two AArch64 sites still assemble the same target-neutral lookup shape around a
+prepared block-entry parallel-copy move:
+
+- `should_emit_block_entry_edge_copy_move` validates an out-of-SSA
+  block-entry move, looks up the prepared edge publication by predecessor label,
+  successor label, and destination value id, then asks the shared redundant-copy
+  predicate whether the move is suppressible.
+- `lower_predecessor_select_parallel_copy_sources` validates the same
+  block-entry predecessor/successor relation, looks up the prepared edge
+  publication by predecessor label, successor label, and destination value id,
+  then asks the shared move/source predicate whether the publication exactly
+  matches the move source.
+
+Next executor packet: decide whether that lookup should become a shared
+prepared helper, for example a helper that accepts prepared edge-publication
+lookups plus a block-entry out-of-SSA `PreparedMoveResolution` and returns the
+matching publication for the expected predecessor/successor/destination tuple.
+If added, use it at both AArch64 sites while leaving the already-shared
+redundant-copy and move/source predicates as the authority checks.
+
+Do not move AArch64 register aliasing, stack-source eligibility,
+memory-source suppression, current-join clobber checks, scratch selection,
+instruction emission, or diagnostics into shared helpers.
 
 ## Watchouts
 
