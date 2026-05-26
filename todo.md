@@ -1,51 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/37_aarch64_branch_and_entry_foldback_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fold Comparison Branch Fusion Into Comparison Owner
+Current Step ID: 3
+Current Step Title: Fold Entry-Formal Publication Into Prologue Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Fold Comparison Branch Fusion Into Comparison Owner completed the
-mechanical branch-fusion ownership packet:
+Step 3 - Fold Entry-Formal Publication Into Prologue Owner completed the
+mechanical prologue ownership packet:
 
-- Moved the public branch-fusion declarations formerly in
-  `comparison_branch_fusion.hpp` into `comparison.hpp`, including
-  `DispatchBranchFusionHooks`, `branch_condition_suffix`,
-  `is_cmp_immediate_encodable`, and the fused compare/conditional-branch
-  lowering helpers still used by dispatch/materialization/calls owners.
-- Moved the implementation formerly in `comparison_branch_fusion.cpp` into
-  `comparison.cpp`.
-- Replaced live `comparison_branch_fusion.hpp` include sites with
-  `comparison.hpp`.
-- Removed `comparison_branch_fusion.cpp` from `src/backend/CMakeLists.txt`.
-- Deleted obsolete `comparison_branch_fusion.cpp` and
-  `comparison_branch_fusion.hpp`.
-- Kept prepared branch-condition use, condition-code mapping, branch target
-  selection, diagnostics, and test expectations unchanged.
+- Moved `lower_entry_formal_publications` and the implementation-private
+  entry-formal helpers formerly in `prologue_entry_formals.cpp` into
+  `prologue.cpp`.
+- Preserved the existing `lower_entry_formal_publications` declaration in
+  `prologue.hpp` for `dispatch.cpp`.
+- Removed `prologue_entry_formals.cpp` from `src/backend/CMakeLists.txt`.
+- Deleted obsolete `prologue_entry_formals.cpp`.
+- Kept ABI entry formal layout, byval entry-copy semantics, F128 carrier
+  handling, shared formal preparation, diagnostics, and test expectations
+  unchanged.
 
 ## Suggested Next
 
-Next mechanical fold-back packet: fold `prologue_entry_formals.cpp` into the
-prologue owner. Preserve the existing `lower_entry_formal_publications`
-prologue API for `dispatch.cpp`, move implementation-private entry-formal
-helpers into `prologue.cpp`, delete the obsolete helper translation unit, and
-remove it from `src/backend/CMakeLists.txt`.
+Next mechanical packet: clean stale ownership references and validate the
+branch/prologue fold-back route. Search live source/build/test paths for
+`comparison_branch_fusion` and `prologue_entry_formals`, update only stale
+owner wording if any remains, and keep historical/source-intent references out
+of scope unless lifecycle explicitly owns them.
 
 ## Watchouts
 
 Keep this route mechanical. Do not change prepared branch-condition authority,
 condition-code policy, branch target selection, ABI entry formal layout, byval
 entry-copy semantics, F128 carrier handling, diagnostics, or tests. The next
-packet should stay on prologue entry-formal ownership only and should not
-rework dispatch routing or formal-publication planning.
+packet should be cleanup/validation only unless a stale live reference requires
+a narrow wording/include fix.
 
 ## Proof
 
 Passed:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_branch_compare_records|backend_aarch64_compare_branch_candidate_records|backend_aarch64_branch_compare_contract|backend_aarch64_prepared_branch_records|backend_aarch64_branch_control_lowering|backend_aarch64_instruction_dispatch)$' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_aarch64_function_traversal|backend_prealloc_formal_publications)$' | tee test_after.log`
 
 `test_after.log` is the proof log.
