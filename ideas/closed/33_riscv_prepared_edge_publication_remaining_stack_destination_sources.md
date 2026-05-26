@@ -70,3 +70,27 @@ sources need pointer materialization, aliasing, and large-offset policy.
   target-neutral helpers.
 - The patch is only a helper rename, expectation rewrite, or classification
   change while retaining the same fail-closed behavior for the selected form.
+
+## Closure Note
+
+Closed after accepting the narrow RISC-V I32 `StackSlot -> StackSlot` stack
+destination policy. The implemented path consumes shared prepared
+`edge_publications` as authority, emits the target-local `lw t0` plus `sw t0`
+sequence for non-aliasing signed-12-bit stack offsets, preserves existing
+`Register -> StackSlot` and `RematerializableImmediate -> StackSlot` I32
+support, and keeps neighboring unsupported widths, offsets, source homes,
+pointer-base sources, malformed homes, overlapping slots, missing publications,
+and non-move publications fail-closed.
+
+The source acceptance criterion required at least one remaining
+source-to-`StackSlot` form to be implemented or a concrete fail-closed policy
+reason to be recorded. The accepted `StackSlot -> StackSlot` policy satisfies
+that bar; `PointerBasePlusOffset -> StackSlot` remains deliberately outside
+this closed slice rather than silently broadening the idea.
+
+Close validation used the accepted backend guard and full-suite baseline at
+commit `cab18077d`: focused and backend proof passed, `test_after.log` records
+163/163 backend tests passed, and `test_baseline.log` records 3411/3411 full
+suite tests passed. The close-time regression guard comparison of
+`test_before.log` to `test_after.log` passed with no new failures under the
+non-decreasing pass-count policy.
