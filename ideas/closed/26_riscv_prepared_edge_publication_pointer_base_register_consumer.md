@@ -60,3 +60,28 @@ fixture-shaped shortcut.
 - The patch is only a helper rename, expectation rewrite, or classification
   change while retaining the same pointer-base fail-closed behavior.
 
+## Closure Note
+
+Closed with RISC-V support for `PointerBasePlusOffset -> Register`
+register-destination prepared edge-publication moves when the pointer base
+resolves through shared prepared value-home lookup authority to a register home
+and the byte delta is present and fits a signed 12-bit RISC-V `addi`
+immediate. The target-local consumer emits `addi <dst>, <base>, <delta>` for
+non-zero deltas and zero-delta `mv <dst>, <base>` through shared
+`edge_publications` authority.
+
+Validation accepted at closure:
+
+- focused RISC-V prepared edge-publication subset passed 5/5 with matching
+  regression guard
+- backend bucket evidence in `test_before.log` passed 163/163
+- full-suite baseline evidence in `test_baseline.log` passed 3411/3411
+- `review/idea26_riscv_pointer_base_edge_publication_review.md` reported no
+  blocking findings
+
+Remaining work is intentionally outside this idea. Existing open ideas cover
+source-to-`StackSlot` destinations and stack-source policy broadening. A new
+pointer-base broadening idea records non-register bases, wider materialization,
+and large-delta policy. Missing or unresolved base names and absent deltas
+remain fail-closed malformed/insufficient-authority cases unless a later source
+model explicitly changes that contract.
