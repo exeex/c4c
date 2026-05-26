@@ -370,6 +370,8 @@ int check_large_offset_stack_slot_to_register_loads_use_shared_lookup() {
     source_home.offset_bytes = offset;
     source_home.size_bytes = size;
     source_home.immediate_i32.reset();
+    source_home.pointer_base_value_name.reset();
+    source_home.pointer_byte_delta.reset();
   };
 
   set_stack_source(4096, 4, prepare::PreparedFrameSlotId{21});
@@ -463,6 +465,29 @@ int check_stack_source_fail_closed_forms() {
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
               "RISC-V stack-source helper should reject I64 stack sources without an offset")) {
+    return 1;
+  }
+  if (!expect(intent.instruction_text.empty() &&
+                  !intent.source_stack_offset_bytes.has_value(),
+              "RISC-V dynamic stack-source helper should not render a load "
+              "without concrete stack-offset authority")) {
+    return 1;
+  }
+
+  auto& dynamic_source_home =
+      prepared.value_locations.functions.front().value_homes.front();
+  dynamic_source_home.pointer_base_value_name = ids.base_name;
+  dynamic_source_home.pointer_byte_delta = 12;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic StackSlot source should stay fail-closed even "
+              "when pointer-base fields are present without a concrete offset") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_pointer_byte_delta.has_value(),
+              "RISC-V dynamic StackSlot source should not be reclassified as "
+              "pointer-base materialization")) {
     return 1;
   }
 
@@ -607,6 +632,13 @@ int check_pointer_base_to_register_move_uses_shared_lookup() {
               "RISC-V helper should render target-local addi syntax")) {
     return 1;
   }
+  if (!expect(!intent.source_stack_offset_bytes.has_value() &&
+                  intent.instruction_text.find("lw ") == std::string::npos &&
+                  intent.instruction_text.find("ld ") == std::string::npos,
+              "RISC-V pointer-base source should remain address-value "
+              "materialization, not a dynamic stack-source load")) {
+    return 1;
+  }
 
   lookups.edge_publications.publications_by_edge_destination.clear();
   intent = riscv::consume_edge_publication_move_intent(
@@ -645,6 +677,13 @@ int check_pointer_base_to_register_move_uses_shared_lookup() {
               "RISC-V helper should record large-delta pointer-base fields") ||
       !expect(intent.instruction_text == "li a1, 4096\n    add a1, s2, a1",
               "RISC-V helper should render target-local large-delta materialization")) {
+    return 1;
+  }
+  if (!expect(intent.instruction_text.find("0(t6)") == std::string::npos &&
+                  intent.instruction_text.find("lw ") == std::string::npos &&
+                  intent.instruction_text.find("ld ") == std::string::npos,
+              "RISC-V large pointer-base materialization should not reuse the "
+              "large-offset stack-source load sequence")) {
     return 1;
   }
   return 0;
