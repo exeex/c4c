@@ -71,6 +71,22 @@ prepared-fact consumption.
   testcase-shaped shortcuts.
 - Idea 39 can resume with a genuinely mechanical fold-back route.
 
+## Closure Evidence
+
+- Step 4 validation searched `memory_store_sources.*` for the original
+  blocked-family source-choice residue and found no remaining calls to
+  same-block producer recovery, local-load offset recovery, or direct-global
+  select-chain AArch64-local inspection in that surface.
+- Recovered narrow-store source, byval load-local classification, and
+  direct-global select-chain dependency now flow through shared prepared
+  store-source helpers; pointer-base store-local publication consumes existing
+  global symbol or prepared value-home authority and fails closed otherwise.
+- Backend validation passed 163/163 with:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+- Close-time regression guard passed in non-decreasing mode against the
+  unchanged backend proof log (`test_before.log`, 163/163).
+- The prerequisite is complete; idea 39 may resume as a mechanical fold-back.
+
 ## Reviewer Reject Signals
 
 - The patch claims prerequisite progress by renaming or moving the same

@@ -17,13 +17,13 @@ separate helper family.
 
 ## Lifecycle Note
 
-Step 1 inventory found that `memory_store_sources.cpp` still contains
-AArch64-local semantic source recovery, including same-block producer scans,
-slot/lane naming, recovered narrow-store source checks, select/scalar-FP
-producer checks, and pointer-base load-local recovery. This idea is parked
-until `ideas/open/39a_aarch64_store_source_semantic_residue_prerequisite.md`
-removes or target-neutralizes that prerequisite residue. Do not start the
-mechanical fold-back while that prerequisite remains active/open.
+Step 1 inventory originally parked this idea because
+`memory_store_sources.cpp` still contained AArch64-local semantic source
+recovery. The prerequisite has now been closed by
+`ideas/closed/39a_aarch64_store_source_semantic_residue_prerequisite.md`:
+the blocked source-choice residue was removed or target-neutralized, backend
+validation passed 163/163, and the memory fold-back can resume as a mechanical
+owner cleanup.
 
 ## In Scope
 
