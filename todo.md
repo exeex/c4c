@@ -1,31 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/39a_aarch64_store_source_semantic_residue_prerequisite.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move Global Store And Pointer-Base Recovery To Prepared Authority
+Current Step ID: 4
+Current Step Title: Validate Prerequisite Completion
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 packet completed for pointer-base load-local fallback removal.
+Step 4 validation packet completed for the idea 39a prerequisite.
 
-- Removed the same-block `LoadLocalInst` producer fallback from
-  `emit_pointer_base_plus_offset_to_register`.
-- `emit_pointer_base_plus_offset_to_register` now emits pointer-base
-  materialization only from prepared authority that already exists: global
-  symbol spelling or prepared value-home data for the pointer base.
-- The helper fails closed when the pointer base has no prepared value home
-  instead of recovering a stack load source from AArch64-local same-block
-  producer state.
-- Removed the now-unused `instruction_index` parameter from the helper and its
-  single caller.
+- Searched `memory_store_sources.*` for remaining original blocked-family
+  source-choice residue:
+  `find_same_block`, `producer_instruction_index`,
+  `select_chain_contains_direct_global_load`, `prepared_local_load_offset`,
+  `LoadLocalInst`, `StoreLocalInst`, `recovered`, `source_producer`,
+  `PointerBasePlusOffset`, `byval`, `direct_global`, and `select_chain`.
+- No remaining `memory_store_sources.*` calls to same-block producer recovery,
+  local-load offset recovery, or direct-global select-chain AArch64-local
+  inspection were found.
+- Remaining matches are prepared plan/source-producer consumption,
+  non-semantic load/store lowering, or shared prepared-helper result
+  consumption.
+- Step 4 is complete from the executor view: the 39a prerequisite no longer has
+  the originally blocked AArch64-local store-source semantic recovery in
+  `memory_store_sources.*`.
 
 ## Suggested Next
 
-Next packet: inventory whether Step 3 now has any remaining AArch64-local
-semantic source recovery before returning to the original idea 39 mechanical
-fold-back decision.
+Next packet: hand lifecycle back to the plan owner to decide whether idea 39a
+can close and whether idea 39 can resume its mechanical memory fold-back.
 
 ## Watchouts
 
@@ -40,6 +44,12 @@ global symbol or prepared value-home authority and fails closed otherwise.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_store_source_publication_plan|backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_memory_operand_contract)$' | tee test_after.log`
+Search:
 
-Result: passed, 5/5 focused tests green.
+`rg -n "find_same_block|producer_instruction_index|select_chain_contains_direct_global_load|prepared_local_load_offset|LoadLocalInst|StoreLocalInst|same-block|same block|recovered|source_producer|PointerBasePlusOffset|byval|direct_global|select_chain" src/backend/mir/aarch64/codegen/memory_store_sources.cpp src/backend/mir/aarch64/codegen/memory_store_sources.hpp`
+
+Proof:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
+
+Result: passed, 163/163 backend tests green. Proof log: `test_after.log`.
