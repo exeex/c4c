@@ -8,27 +8,36 @@ Current Step Title: Move Or Redirect Remaining Source Choice To Prepared Facts
 
 ## Just Finished
 
-Step 2 retired the absent-selection frame-slot value source recovery path from
-`make_frame_slot_call_argument_source`.
+Step 2 retired the absent-selection frame-slot address recovery path from
+`make_frame_slot_call_argument_address_source`.
 
-The AArch64 frame-slot value helper now fails closed when
+The AArch64 frame-slot address helper now fails closed when
 `PreparedCallArgumentPlan::source_selection` is absent and only consumes
-complete prepared `FrameSlotValue` selections. It no longer scans prepared
-addressing accesses, source homes, or frame slots to recover source bytes
+complete prepared `FrameSlotAddress` selections. It no longer scans prepared
+addressing materializations, source homes, local aggregate stack objects, or
+frame slots to recover stack-homed local aggregate address sources
 target-locally.
 
-Focused dispatch fixtures that still need frame-slot source bytes now carry the
-prepared source facts explicitly: `FrameSlotValue` for ordinary frame-slot,
-f128, va-arg-copy, and stack-preserved pointer arguments, and
-`ByvalRegisterLane` for the stack-backed byval lane case. The absent-selection
-value/byval/indirect-byval fixtures now assert `MissingValueAuthority` instead
-of accepting legacy frame-slot recovery.
+Prepared call planning now owns the moved source choice. For stack-homed pointer
+arguments it selects `FrameSlotAddress` from the latest prepared frame-slot
+materialization when present, or from the prepared local aggregate object/slot
+facts when the address has no materialization record. The missing local
+aggregate/publication path preserves the old source-home size/align behavior;
+ordinary local aggregate address publication uses the selected stack object
+size/align. AArch64 dispatch now consumes explicit `FrameSlotAddress` selections
+in the missing-frame-slot materialization bridge instead of relying on helper
+recovery.
+
+Focused tests cover the moved authority: prepared call-plan tests assert the
+stack-homed missing-local-aggregate address source fact, and AArch64 dispatch
+fixtures carry explicit `FrameSlotAddress` facts while asserting that absent
+selection no longer rederives the object address in AArch64.
 
 ## Suggested Next
 
-Continue Step 2 with the remaining absent-selection frame-slot address
-compatibility path in `make_frame_slot_call_argument_address_source`, especially
-the missing-local-aggregate object/slot search for stack-homed arguments.
+Continue Step 2/Step 3 by auditing the now-selection-only address helpers and
+shrinking the exported AArch64 calls helper surface where callers can consume
+prepared `source_selection` directly.
 
 ## Watchouts
 
@@ -40,9 +49,9 @@ the missing-local-aggregate object/slot search for stack-homed arguments.
   helper-only moves as route failures.
 - Do not fold `find_frame_slot_by_id` into call-specific code; it is a shared
   lookup used by byval aggregate and cast lowering.
-- `make_frame_slot_call_argument_address_source` still owns the separate
-  missing-local-aggregate frame-slot address compatibility path for stack-homed
-  arguments; this slice only retired the frame-slot value source fallback.
+- The stack-homed address rule has two prepared size/align cases: ordinary local
+  address publication uses the stack object, while the missing-publication path
+  uses the source home. Keep both covered when shrinking helpers.
 
 ## Proof
 

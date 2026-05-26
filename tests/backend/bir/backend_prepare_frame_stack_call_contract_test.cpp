@@ -5,6 +5,7 @@
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
+#include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
@@ -3633,6 +3634,164 @@ int check_local_frame_address_source_selection_contract() {
   return 0;
 }
 
+int check_missing_local_aggregate_frame_slot_address_source_selection_contract() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("missing_local_aggregate_selection_contract");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("local.aggregate");
+  const auto source_lane_name = prepared.names.value_names.intern("local.aggregate.0");
+  constexpr auto source_value_id = prepare::PreparedValueId{8001};
+  constexpr auto source_slot_id = prepare::PreparedFrameSlotId{8002};
+  constexpr auto local_slot_id = prepare::PreparedFrameSlotId{8003};
+
+  bir::Function function;
+  function.name = "missing_local_aggregate_selection_contract";
+  function.return_type = bir::TypeKind::Void;
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.consume_missing_local_address",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "local.aggregate")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = source_slot_id,
+              .offset_bytes = std::size_t{144},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_stack_to_register",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+          }},
+  });
+  prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedRegallocValue{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .type = bir::TypeKind::Ptr,
+              .register_class = prepare::PreparedRegisterClass::General,
+              .allocation_status = prepare::PreparedAllocationStatus::Spilled,
+          }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{8004},
+      .function_name = function_name,
+      .value_name = source_lane_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .address_exposed = false,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = local_slot_id,
+      .object_id = prepare::PreparedObjectId{8004},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+
+  prepare::populate_call_plans(prepared);
+  const auto* call_plans =
+      find_call_plans_function(prepared,
+                               "missing_local_aggregate_selection_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1) {
+    return fail(
+        "missing local aggregate frame-slot address contract: missing prepared call plan");
+  }
+  const auto& arg = call_plans->calls.front().arguments.front();
+  if (arg.allows_local_aggregate_address_publication ||
+      arg.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      arg.source_slot_id != std::optional<prepare::PreparedFrameSlotId>{source_slot_id} ||
+      !arg.source_selection.has_value()) {
+    return fail(
+        "missing local aggregate frame-slot address contract: lost stack-homed argument facts");
+  }
+  const auto& selection = *arg.source_selection;
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress ||
+      selection.source_value_id != std::optional<prepare::PreparedValueId>{source_value_id} ||
+      selection.source_value_name != std::optional<c4c::ValueNameId>{source_name} ||
+      selection.source_home_kind !=
+          std::optional<prepare::PreparedValueHomeKind>{
+              prepare::PreparedValueHomeKind::StackSlot} ||
+      selection.source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{local_slot_id} ||
+      selection.source_stack_offset_bytes != std::optional<std::size_t>{64} ||
+      selection.source_size_bytes != std::optional<std::size_t>{8} ||
+      selection.source_align_bytes != std::optional<std::size_t>{8}) {
+    return fail(
+        "missing local aggregate frame-slot address contract: prepared plan did not own the object address source");
+  }
+  return 0;
+}
+
 int check_aarch64_prior_preservation_consumes_prepared_source_selection() {
   auto module = make_prior_preservation_source_selection_contract_module();
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -5990,6 +6149,11 @@ int main() {
     return rc;
   }
   if (const int rc = check_local_frame_address_source_selection_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_missing_local_aggregate_frame_slot_address_source_selection_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_aarch64_prior_preservation_consumes_prepared_source_selection();

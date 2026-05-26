@@ -20089,6 +20089,19 @@ int missing_local_aggregate_frame_slot_call_argument_materializes_object_address
               .destination_contiguous_width = 1,
               .destination_occupied_register_names = {"x1"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection =
+                  prepare::PreparedCallArgumentSourceSelection{
+                      .kind =
+                          prepare::PreparedCallArgumentSourceSelectionKind::
+                              FrameSlotAddress,
+                      .source_value_id = source_value_id,
+                      .source_value_name = source_name,
+                      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .source_slot_id = prepare::PreparedFrameSlotId{920},
+                      .source_stack_offset_bytes = std::size_t{64},
+                      .source_size_bytes = std::size_t{8},
+                      .source_align_bytes = std::size_t{8},
+                  },
           }},
   };
   const prepare::PreparedCallPlansFunction call_plans{
@@ -20147,6 +20160,18 @@ int missing_local_aggregate_frame_slot_call_argument_materializes_object_address
   if (!printed.ok ||
       printed.instruction_lines != std::vector<std::string>{"add x1, sp, #64"}) {
     return fail("expected missing local aggregate address argument to print as add-from-sp");
+  }
+
+  auto absent_selection_call_plan = call_plan;
+  absent_selection_call_plan.arguments.front().source_selection.reset();
+  aarch64_codegen::BlockScalarLoweringState absent_scalar_state;
+  const auto absent_lowered =
+      aarch64_codegen::materialize_missing_frame_slot_call_arguments(
+          block_context, absent_selection_call_plan, 0, absent_scalar_state);
+  if (!absent_lowered.empty()) {
+    return fail(
+        "expected absent missing-local-aggregate frame-slot address selection "
+        "not to rederive object address in AArch64");
   }
 
   aarch64_module::MachineBlock block;

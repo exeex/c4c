@@ -13,9 +13,9 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
-// Shared frame-slot lookup plus the remaining call-argument source helpers.
-// Frame-slot value source choice is prepared by call plans; address helpers
-// below still own the remaining absent-selection compatibility path.
+// Shared frame-slot lookup plus call-argument source helpers. Frame-slot value
+// and address source choice is prepared by call plans; this file translates
+// complete prepared facts into AArch64 memory operands.
 
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
@@ -161,183 +161,22 @@ namespace abi = c4c::backend::aarch64::abi;
   };
 }
 
-[[nodiscard]] bool call_argument_is_pointer_operand(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index) {
-  if (context.bir_block == nullptr ||
-      instruction_index >= context.bir_block->insts.size()) {
-    return context.bir_block == nullptr;
-  }
-  const auto* call =
-      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
-  if (call == nullptr || argument.arg_index >= call->args.size()) {
-    return false;
-  }
-  const auto& value = call->args[argument.arg_index];
-  if (value.type != bir::TypeKind::Ptr) {
-    return false;
-  }
-  if (context.function.prepared == nullptr) {
-    return false;
-  }
-  const auto value_name = context.function.prepared->names.value_names.find(value.name);
-  return value_name == std::optional<c4c::ValueNameId>{source_home.value_name};
-}
-
-[[nodiscard]] bool source_selection_allows_legacy_local_aggregate_address(
-    const prepare::PreparedCallArgumentPlan& argument) {
-  if (!argument.source_selection.has_value()) {
-    return true;
-  }
-  return argument.source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
-         argument.source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue;
-}
-
-[[nodiscard]] bool call_argument_uses_missing_local_aggregate_frame_address(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index) {
-  return !argument.allows_local_aggregate_address_publication &&
-         call_argument_is_pointer_operand(context, argument, source_home, instruction_index) &&
-         argument.source_value_id ==
-             std::optional<prepare::PreparedValueId>{source_home.value_id} &&
-         argument.destination_register_bank == prepare::PreparedRegisterBank::Gpr;
-}
-
 [[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
-  if (argument.source_selection.has_value()) {
-    if (auto selected = make_selected_frame_slot_source(
-            context,
-            argument,
-            &source_home,
-            *argument.source_selection,
-            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
-            true,
-            instruction_index)) {
-      return selected;
-    }
-    if (!source_selection_allows_legacy_local_aggregate_address(argument)) {
-      return std::nullopt;
-    }
-  }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-      source_home.value_name == c4c::kInvalidValueName) {
+  if (!argument.source_selection.has_value()) {
     return std::nullopt;
   }
-  const auto* addressing = prepare::find_prepared_addressing(
-      *context.function.prepared, context.function.control_flow->function_name);
-  const prepare::PreparedAddressMaterialization* selected = nullptr;
-  const bool use_missing_local_aggregate_frame_address =
-      call_argument_uses_missing_local_aggregate_frame_address(
-          context, argument, source_home, instruction_index);
-  if (!use_missing_local_aggregate_frame_address && addressing != nullptr) {
-    for (const auto& materialization : addressing->address_materializations) {
-      if (materialization.block_label == context.control_flow_block->block_label &&
-          materialization.inst_index <= instruction_index &&
-          materialization.kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
-          materialization.result_value_name == source_home.value_name &&
-          materialization.frame_slot_id.has_value()) {
-        if (selected != nullptr && selected->inst_index == materialization.inst_index) {
-          return std::nullopt;
-        }
-        if (selected != nullptr && selected->inst_index > materialization.inst_index) {
-          continue;
-        }
-        selected = &materialization;
-      }
-    }
-  }
-  if (selected == nullptr) {
-    if (!argument.allows_local_aggregate_address_publication &&
-        !use_missing_local_aggregate_frame_address) {
-      return std::nullopt;
-    }
-    const auto source_name =
-        prepare::prepared_value_name(context.function.prepared->names,
-                                     source_home.value_name);
-    if (source_name.empty()) {
-      return std::nullopt;
-    }
-    const std::string first_lane_name = std::string{source_name} + ".0";
-    const prepare::PreparedStackObject* selected_object = nullptr;
-    const prepare::PreparedFrameSlot* selected_slot = nullptr;
-    for (const auto& object : context.function.prepared->stack_layout.objects) {
-      if (object.function_name != context.function.control_flow->function_name ||
-          object.source_kind != "local_slot") {
-        continue;
-      }
-      const auto object_name =
-          prepare::prepared_stack_object_name(context.function.prepared->names, object);
-      if (object_name != first_lane_name) {
-        continue;
-      }
-      for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
-        if (slot.object_id != object.object_id) {
-          continue;
-        }
-        if (selected_slot == nullptr || slot.offset_bytes < selected_slot->offset_bytes) {
-          selected_object = &object;
-          selected_slot = &slot;
-        }
-      }
-    }
-    if (selected_object == nullptr || selected_slot == nullptr) {
-      return std::nullopt;
-    }
-    return MemoryOperand{
-        .surface = RecordSurfaceKind::MachineInstructionNode,
-        .support = MemoryOperandSupportKind::Prepared,
-        .function_name = context.function.control_flow->function_name,
-        .block_label = context.control_flow_block->block_label,
-        .instruction_index = instruction_index,
-        .result_value_id = argument.source_value_id,
-        .result_value_name = source_home.value_name,
-        .base_kind = MemoryBaseKind::FrameSlot,
-        .frame_slot_id = selected_slot->slot_id,
-        .byte_offset = static_cast<std::int64_t>(selected_slot->offset_bytes),
-        .byte_offset_is_prepared_snapshot = true,
-        .size_bytes =
-            use_missing_local_aggregate_frame_address
-                ? source_home.size_bytes.value_or(8)
-                : (selected_object->size_bytes == 0 ? std::size_t{8}
-                                                     : selected_object->size_bytes),
-        .align_bytes =
-            use_missing_local_aggregate_frame_address
-                ? source_home.align_bytes.value_or(8)
-                : (selected_object->align_bytes == 0 ? std::size_t{8}
-                                                      : selected_object->align_bytes),
-        .can_use_base_plus_offset = true,
-    };
-  }
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = selected->function_name,
-      .block_label = selected->block_label,
-      .instruction_index = selected->inst_index,
-      .result_value_id = argument.source_value_id,
-      .result_value_name = source_home.value_name,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = selected->frame_slot_id,
-      .byte_offset = selected->byte_offset,
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = source_home.size_bytes.value_or(8),
-      .align_bytes = source_home.align_bytes.value_or(8),
-      .address_space = selected->address_space,
-      .can_use_base_plus_offset = true,
-  };
+  return make_selected_frame_slot_source(
+      context,
+      argument,
+      &source_home,
+      *argument.source_selection,
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+      true,
+      instruction_index);
 }
 
 [[nodiscard]] bool local_frame_address_name_matches(std::string_view source_name,
