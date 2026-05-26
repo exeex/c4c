@@ -52,6 +52,26 @@ into the closed scope.
 - Validation covers focused RISC-V pointer-base publication tests, relevant
   shared prepared lookup tests, and an appropriate backend bucket.
 
+## Closure Note
+
+Closed after adding RISC-V prepared edge-publication support for
+`PointerBasePlusOffset -> Register` when the pointer base resolves through the
+prepared value-home table to a register, the delta is outside the signed
+12-bit `addi` range, and the destination register differs from the base
+register. The target-local materialization policy emits `li dst, delta`
+followed by `add dst, base, dst`; zero-delta and signed-12-bit behavior remain
+preserved.
+
+Unsupported pointer-base forms remain explicit and fail closed: missing base
+names, unresolved bases, absent deltas, non-register base homes, non-move
+publications, missing shared publication or lookup authority, and large-delta
+destination/base aliasing until a separate scratch-register policy is defined.
+
+Route review found no blocking testcase-overfit issue. Focused
+prepared-edge-publication proof passed, and broader backend validation stayed
+at 163/163 before and after under the matching regression guard with
+non-decreasing pass count accepted.
+
 ## Reviewer Reject Signals
 
 - The patch matches named tests, edge labels, fixture offsets, value ids, or
