@@ -56,6 +56,24 @@ bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) 
   return ret != nullptr && ret->type_str == "i32" && ret->value_str == std::optional<std::string>{"%t0"};
 }
 
+std::optional<std::string> render_edge_publication_source_operand(
+    EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedValueHome& source_home) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (source_home.kind == prepare::PreparedValueHomeKind::Register &&
+      source_home.register_name.has_value()) {
+    intent.source_register = *source_home.register_name;
+    return intent.source_register;
+  }
+  if (source_home.kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      source_home.immediate_i32.has_value()) {
+    intent.source_immediate_i32 = *source_home.immediate_i32;
+    return std::to_string(*source_home.immediate_i32);
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
@@ -94,9 +112,13 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       publication->move->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
     return intent;
   }
-  if (publication->source_home == nullptr ||
-      publication->source_home->kind != prepare::PreparedValueHomeKind::Register ||
-      !publication->source_home->register_name.has_value()) {
+  if (publication->source_home == nullptr) {
+    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+    return intent;
+  }
+  const auto source_operand =
+      render_edge_publication_source_operand(intent, *publication->source_home);
+  if (!source_operand.has_value()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
@@ -108,9 +130,14 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   }
 
   intent.status = EdgePublicationMoveIntentStatus::Available;
-  intent.source_register = *publication->source_home->register_name;
   intent.destination_register = *publication->destination_home->register_name;
-  intent.instruction_text = "mv " + intent.destination_register + ", " + intent.source_register;
+  if (intent.source_immediate_i32.has_value()) {
+    intent.instruction_text =
+        "li " + intent.destination_register + ", " + *source_operand;
+  } else {
+    intent.instruction_text =
+        "mv " + intent.destination_register + ", " + *source_operand;
+  }
   return intent;
 }
 

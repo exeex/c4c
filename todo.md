@@ -8,37 +8,29 @@ Current Step Title: Broaden to Additional Ready Source Homes
 
 ## Just Finished
 
-Completed Step 4 by choosing the next RISC-V register-destination source-home
-family for this route.
+Completed Step 4 by implementing `RematerializableImmediate -> Register`
+prepared edge-publication consumption for the RISC-V register-destination
+helper.
 
-Decision: fold `RematerializableImmediate -> Register` into idea 24 next.
-It can reuse the current shared lookup authority:
-`prepare::find_unique_indexed_prepared_edge_publication(...)` still selects the
-edge-publication fact, while RISC-V owns only target-local source rendering and
-instruction emission. The likely target-local policy is to render the immediate
-from `source_home.immediate_i32` and emit the appropriate RISC-V register-load
-form for the destination register, without rescanning BIR edges or creating a
-RISC-V-local edge fact table.
+The helper still consumes authority only through
+`prepare::find_unique_indexed_prepared_edge_publication(...)`. When the shared
+publication is available, the move is a normal move publication, the destination
+home is a register, and `source_home.immediate_i32` is present, RISC-V now emits
+target-local immediate load syntax:
 
-Compared candidate homes:
+`li <destination-register>, <immediate>`
 
-- `RematerializableImmediate -> Register` is the best next fold-in because it
-  only needs a new source operand rendering branch inside the existing
-  register-destination helper. It preserves the same shared lookup model as the
-  implemented `Register -> Register` path and keeps instruction spelling inside
-  RISC-V.
-- `StackSlot -> Register` should be deferred. It also has shared prepared edge
-  facts, but safe emission requires RISC-V stack-slot address/base policy and
-  load instruction selection. That is more than the current helper's simple
-  source rendering rule and should be its own packet after the immediate source
-  case is proven.
+Existing `Register -> Register` behavior is preserved as `mv <dst>, <src>`.
+The focused test now proves the positive immediate-source path, removed shared
+lookup authority, malformed immediate homes, pointer-base sources, stack
+sources, stack destinations, missing publication facts, missing lookup
+authority, and non-move publications.
 
 ## Suggested Next
 
-Proceed with a code packet for `RematerializableImmediate -> Register` in the
-RISC-V prepared edge-publication helper and focused tests. Keep the proof
-focused on shared lookup consumption by including a positive immediate-source
-case plus a missing-lookup or removed-index negative case.
+Proceed to the next supervisor-selected validation/review packet for idea 24,
+or decide whether Step 4 has enough RISC-V register-destination source-home
+coverage to hand off toward closure.
 
 ## Watchouts
 
@@ -48,12 +40,27 @@ case plus a missing-lookup or removed-index negative case.
 - `StackSlot -> Register` remains ready in the shared prepared data model but
   deferred until RISC-V stack-slot load/address emission policy is handled as a
   separate packet.
-- Do not broaden Step 4 into pointer-base addressing, stack destinations, local
-  edge rediscovery, or expectation downgrades.
+- Do not claim pointer-base addressing, stack destinations, or stack-slot source
+  loads from this packet; they remain unsupported/fail-closed.
 
 ## Proof
 
-Proof type: `docs/decision-only`.
+Proof command:
 
-No build or tests were run for this decision-only packet, and no
-`test_after.log` was created.
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_codegen_route_riscv64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
+
+Result: PASS. The selected subset passed 5/5 tests.
+
+Supervisor ran the matching regression guard against the focused
+`test_before.log` and focused `test_after.log` with non-decreasing pass count
+allowed because this packet extended an existing CTest binary rather than
+adding a new CTest name. Result: PASS with 5/5 before and 5/5 after, no new
+failures.
+
+Supervisor then ran broader backend validation:
+
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+
+Result: PASS. Build succeeded and CTest reported 163/163 backend tests passing.
+This backend run is broader validation only, not the matching before/after
+regression comparison for the focused packet.
