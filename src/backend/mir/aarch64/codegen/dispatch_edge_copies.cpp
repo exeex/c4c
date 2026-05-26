@@ -573,7 +573,8 @@ prepared_edge_publication_producer_context(
     return true;
   }
   if (binary->opcode == bir::BinaryOpcode::Add ||
-      binary->opcode == bir::BinaryOpcode::Sub) {
+      binary->opcode == bir::BinaryOpcode::Sub ||
+      binary->opcode == bir::BinaryOpcode::Mul) {
     auto lhs = binary->lhs;
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
@@ -618,16 +619,28 @@ prepared_edge_publication_producer_context(
         return false;
       }
     }
-    const auto result = gp_register_name(target_index, abi::RegisterView::X);
-    const auto rhs_name = gp_register_name(scratch_index, abi::RegisterView::X);
-    if (!result.has_value() || !rhs_name.has_value()) {
+    const auto operand_view = scalar_view_for_type(binary->operand_type);
+    const auto result =
+        operand_view.has_value() ? gp_register_name(target_index, *operand_view)
+                                 : std::nullopt;
+    const auto rhs_name =
+        operand_view.has_value() ? gp_register_name(scratch_index, *operand_view)
+                                 : std::nullopt;
+    if (!operand_view.has_value() || !result.has_value() || !rhs_name.has_value()) {
       return false;
     }
-    lines.push_back(std::string(binary->opcode == bir::BinaryOpcode::Add
-                                    ? "add "
-                                    : "sub ") +
-                    *result + ", " + *result + ", " + *rhs_name);
+    std::string_view opcode = "add";
+    if (binary->opcode == bir::BinaryOpcode::Sub) {
+      opcode = "sub";
+    } else if (binary->opcode == bir::BinaryOpcode::Mul) {
+      opcode = "mul";
+    }
+    lines.push_back(std::string{opcode} + " " + *result + ", " + *result +
+                    ", " + *rhs_name);
     return true;
+  }
+  if (require_prepared_producer) {
+    return false;
   }
   return emit_value_publication_to_register(producer->context,
                                             value,
