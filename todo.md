@@ -8,38 +8,23 @@ Current Step Title: Prove the Focused Prior-Preservation Path
 
 ## Just Finished
 
-Step 1: Reconstruct Close-Proof Scope completed as a validation and
-close-readiness audit only. No implementation work is already required by the
-source idea beyond proving the repaired AArch64 prior-preservation and
-source-selection path and handing the result back for lifecycle close
-handling.
+Step 2: Prove the Focused Prior-Preservation Path completed as a focused
+validation packet. The supervisor-selected build plus focused AArch64 prior-
+preservation CTest subset was run into the canonical `test_after.log` path and
+exited 0.
 
-The representative focused tests are present in the current CTest inventory:
+`test_after.log` records 5/5 tests passed with 0 failures:
 `backend_aarch64_instruction_dispatch`,
 `c_testsuite_aarch64_backend_src_00173_c`,
 `c_testsuite_aarch64_backend_src_00179_c`,
 `c_testsuite_aarch64_backend_src_00186_c`, and
 `c_testsuite_aarch64_backend_src_00187_c`.
 
-The historical baseline scope is reconstructed as:
-
-- `log/baseline_08a7f725a3f5820506a517f58ae9b9012bc20b7e.log` is clean:
-  3410/3410 tests passed.
-- `log/baseline_11b33c8d0586b44d163de6b74bff9c33957aab0b.log` has 37
-  failures, including `00173`, `00179`, `00186`, and `00187`.
-- Current canonical logs must be regenerated for this active plan. The
-  existing `test_after.log` belongs to the prior dispatch-materialization
-  route and is not reusable close proof for this plan.
-
 ## Suggested Next
 
-Step 2 packet: run the supervisor-selected focused proof and write the build
-plus focused CTest output to the canonical `test_after.log` path:
-
-```sh
-cmake --build --preset default > test_after.log 2>&1
-ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00173_c|c_testsuite_aarch64_backend_src_00179_c|c_testsuite_aarch64_backend_src_00186_c|c_testsuite_aarch64_backend_src_00187_c)$' >> test_after.log 2>&1
-```
+Step 3 packet: run close-grade regression guard validation using matching
+canonical regression evidence (`test_before.log` and `test_after.log`) and the
+supervisor-selected close-grade command before lifecycle close handling.
 
 ## Watchouts
 
@@ -48,27 +33,23 @@ ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_
 - Do not weaken c_testsuite expectations or mark tests unsupported.
 - Keep `00181`, `00216`, and `00204` classified as separate families unless
   fresh proof shows they are actually prior-preservation/source-selection drift.
-- Existing `test_after.log` does belong to another active route, so Step 2 must
-  regenerate it before any close claim.
-- Step 3 should use close-grade validation after the focused proof is green:
-  prefer matching canonical regression evidence with `test_before.log` and
-  `test_after.log` plus a supervisor-selected broader guard such as
-  `c4c-regression-guard`, full CTest, or a broader AArch64/backend subset.
+- Focused Step 2 proof is green, but close readiness still needs Step 3
+  close-grade regression guard evidence before lifecycle closure.
 
 ## Proof
 
-Step 1 audit commands run:
+Supervisor-run Step 2 focused proof command recorded in `test_after.log`:
 
 ```sh
-ctest --test-dir build -N -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00173_c|c_testsuite_aarch64_backend_src_00179_c|c_testsuite_aarch64_backend_src_00186_c|c_testsuite_aarch64_backend_src_00187_c)$'
-rg -n "(100% tests passed|Failed|failed|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_0017[39]_c|c_testsuite_aarch64_backend_src_0018[67]_c|3410|37)" log/baseline_08a7f725a3f5820506a517f58ae9b9012bc20b7e.log log/baseline_11b33c8d0586b44d163de6b74bff9c33957aab0b.log
+cmake --build --preset default > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00173_c|c_testsuite_aarch64_backend_src_00179_c|c_testsuite_aarch64_backend_src_00186_c|c_testsuite_aarch64_backend_src_00187_c)$' >> test_after.log 2>&1
 ```
 
-Formatting proof for this packet passed:
+Result from `test_after.log`: build had no work to do, CTest reported
+`100% tests passed, 0 tests failed out of 5`.
+
+Formatting proof for this todo update passed:
 
 ```sh
 git diff --check -- todo.md
 ```
-
-No Step 1 `test_after.log` was generated; Step 2 owns regenerating it with the
-focused proof command above.
