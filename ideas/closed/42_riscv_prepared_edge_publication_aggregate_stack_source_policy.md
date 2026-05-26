@@ -50,6 +50,25 @@ sequence can be accepted.
 - Validation covers focused RISC-V prepared edge-publication tests, relevant
   shared prepared lookup tests, and an appropriate backend bucket.
 
+## Closure Evidence
+
+- Closed as the documented fail-closed policy route allowed by the acceptance
+  criteria: aggregate-width `StackSlot -> Register` edge-publication support
+  remains blocked until shared prepared authority describes aggregate copy
+  width, destination/lane mapping, alignment and partial-copy policy, ABI
+  layout, and scratch ownership.
+- Focused RISC-V prepared edge-publication tests explicitly prove
+  aggregate-width stack sources at signed-12 and large offsets remain
+  `UnsupportedSourceHome`, emit no scalar `lw`/`ld`, emit no scalar large-offset
+  `t6` load sequence, and record no scalar stack-load provenance.
+- Existing scalar 4-byte, 8-byte, and large-offset stack-source behavior
+  remains supported through shared `edge_publications`.
+- Route-quality searches found no aggregate stack-source scalar-load overfit
+  and no local edge-copy rediscovery in RISC-V edge-publication lowering.
+- Validation passed the backend bucket with 163/163 tests passing; close-time
+  regression guard over the canonical backend before/after logs passed with no
+  new failures.
+
 ## Reviewer Reject Signals
 
 - The patch treats aggregate stack sources as scalar loads based only on byte
