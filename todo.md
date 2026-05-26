@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/12_dispatch_value_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Thin `dispatch.cpp` Materialization Touchpoints
+Current Step ID: Step 5
+Current Step Title: Add or Tighten Focused Materialization Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 audit packet complete. AST-backed checks on `dispatch.cpp` confirmed the
+Step 4 audit packet complete and lifecycle state advanced to Step 5.
+AST-backed checks on `dispatch.cpp` confirmed the
 remaining materialization/publication-shaped dispatch calls are routing
 handoffs, not leaf materialization implementations, after the Step 4 helper
 moves. `rg` scans confirmed `dispatch.cpp` still includes
@@ -45,10 +46,26 @@ Remaining touchpoint classification:
 
 ## Suggested Next
 
-Step 4 can advance to Step 5 in the next lifecycle update. Next coherent
-packet: begin Step 5 coverage work by auditing the existing focused
-materialization tests against the moved helper families and adding or
-tightening only the smallest missing coverage.
+Current Step 5 packet: audit focused AArch64 materialization coverage against
+the helper families moved or deliberately left as routing bridges in Steps 2-4,
+then add or tighten only the smallest missing semantic coverage.
+
+Coverage audit targets:
+
+- prepared-value-home publication through the new narrow owner bridge
+- FP materialization subpaths that intentionally still consume the generic
+  `emit_value_publication_to_register` bridge for integer compare/select and
+  cast inputs
+- address/global materialization feeding memory, scalar, and branch-routing
+  paths after the remaining `dispatch.cpp` touchpoints were classified as
+  ordering bridges
+- call-boundary materialization handoffs through `calls_dispatch_bridge.*`
+- publication/fused-compare/condition routes now delegated through
+  `dispatch_publication.*`
+
+Expected executor output: a concise coverage map naming existing tests for
+each family, the smallest uncovered family if any, and either a focused test
+tightening or an explicit no-gap finding backed by the audited test paths.
 
 ## Watchouts
 
@@ -77,11 +94,20 @@ tightening only the smallest missing coverage.
   or ALU without a separate packet that owns cross-owner ordering and proof.
 - Step 5 should prefer semantic machine-instruction records and prepared facts
   over text-emission expectations.
+- Do not add one-off tests keyed to a single BIR function name or exact
+  assembly spelling when a structured machine-instruction or prepared-fact
+  assertion can cover the same materialization path.
+- Do not weaken, delete, or mark unsupported any existing expectation to claim
+  Step 5 progress.
+- Keep coverage changes tied to the Step 2-4 ownership boundary; defer broader
+  edge-copy, calls, publication, or AArch64 pipeline cleanup to separate
+  source ideas unless the test audit proves the existing materialization
+  boundary cannot be covered without that prerequisite.
 
 ## Proof
 
-Audit-only proof requested; no code tests were run and `test_after.log` was not
-updated by this packet.
+Lifecycle-only Step 5 handoff; no code tests were run and `test_after.log` was
+not updated by this packet.
 
 Command run exactly:
 `git diff --check -- todo.md`
