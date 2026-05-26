@@ -72,3 +72,41 @@ policy into shared prepare.
   prepared edge-publication facts.
 - A patch broadly rewrites unrelated x86/AArch64/RISC-V lowering instead of
   landing the smallest auditable x86 consumer slice.
+
+## Closure Notes
+
+Closed after the active runbook completed Steps 1 through 5.
+
+The implemented x86 consumer reads shared prepared edge-publication facts
+through `x86::ConsumedPlans::shared_function_lookups()->edge_publications`,
+builds an x86-owned edge-publication move intent, and wires the joined-branch
+lowering route to append the target-specific move instruction from x86 code.
+Missing shared lookup authority, missing publications, and unsupported source
+or destination homes remain explicit non-available statuses instead of local
+rediscovery or fallback edge-copy authority.
+
+This satisfies the source idea acceptance criteria for the first real x86
+consumer slice:
+
+- one x86 lowering path consumes the existing shared lookup authority
+- x86-owned code emits the target-specific move details
+- focused tests cover shared-consumer dependency and missing-authority behavior
+- validation covered the focused x86/shared paths plus the backend bucket
+- the final handoff classifies the next work as x86 coverage broadening, not
+  RISC-V readiness or shared contract repair
+
+Close-time regression guard accepted the rolled-forward backend proof. The
+delegated close did not regenerate root-level logs because the accepted
+executor/supervisor proof had already been rolled forward to
+`test_before.log` and the lifecycle task was instructed not to touch root logs.
+The guard was checked in non-decreasing mode against that canonical proof:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+```
+
+Result: passed 162/162 backend tests, no new failures, non-decreasing pass
+count.
+
+Follow-up source idea created:
+`ideas/open/22_x86_prepared_edge_publication_coverage_broadening.md`.
