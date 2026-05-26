@@ -59,3 +59,22 @@ not be claimed by the register-destination consumer route.
 - The patch is only a helper rename, expectation rewrite, or classification
   change while source-to-`StackSlot` destinations remain unsupported.
 
+## Closure Note
+
+Closed after implementing focused RISC-V `Register -> StackSlot`
+edge-publication consumption through shared `edge_publications` authority.
+The supported stack destination form requires a concrete destination
+`StackSlot` offset and `size_bytes == 4`, emitted target-locally as
+`sw <src>, <offset>(sp)`.
+
+Validation accepted for closure:
+
+- focused RISC-V prepared edge-publication subset passed, 5/5 selected tests
+- matching focused regression guard passed, 5/5 before and 5/5 after
+- backend bucket evidence in `test_before.log` passed, 163/163 tests
+- full-suite baseline evidence in `test_baseline.log` passed, 3411/3411 tests
+- `review/idea27_riscv_stack_destination_edge_publication_review.md` reported
+  no blocking findings
+
+Unsupported source-to-stack forms remain fail-closed and are preserved in
+`ideas/open/30_riscv_prepared_edge_publication_stack_destination_policy_broadening.md`.
