@@ -8,29 +8,29 @@ Current Step Title: Fold Private Calls Helpers Into `calls.cpp`
 
 ## Just Finished
 
-Step 2 - Fold Private Calls Helpers Into `calls.cpp` completed the remaining
-`calls_common.cpp` foldback packet:
+Step 2 - Fold Private Calls Helpers Into `calls.cpp` completed the
+`calls_moves.cpp` translation-unit foldback packet:
 
-- Moved `outgoing_stack_argument_bytes`,
-  `outgoing_stack_argument_base_register`, and
-  `scalar_integer_register_view_from_size` definitions into `calls.cpp`.
-- Removed `calls_common.cpp` from `src/backend/CMakeLists.txt` and deleted the
-  now-empty translation unit.
-- Preserved the existing declarations in `calls.hpp` for calls-family consumers
-  in `calls_moves.cpp` and `calls_dispatch_bridge.cpp`.
+- Mechanically moved the former `calls_moves.cpp` implementation into
+  `calls.cpp`.
+- Removed `calls_moves.cpp` from `src/backend/CMakeLists.txt` and deleted the
+  obsolete translation unit.
+- Preserved existing public declarations in `calls.hpp` for dispatch and bridge
+  callers.
 - Kept behavior, diagnostics, ABI semantics, and test expectations unchanged.
 
 ## Suggested Next
 
-Next packet: supervisor should review whether Step 2 is exhausted now that
-`calls_common.cpp` has been removed from the build and deleted.
+Next packet: supervisor should decide whether Step 2 is exhausted or whether
+remaining dispatch/bridge-owned calls declarations need a separate plan step or
+review before further foldback.
 
 ## Watchouts
 
-The remaining declarations in `calls.hpp` are still needed by external
-calls-family consumers. Do not fold dispatch-facing APIs such as
-`make_selected_call_argument_source` or `find_move_bundle` as part of this
-packet.
+This packet intentionally did not fold dispatch bridge implementation or alter
+ABI/prepare semantics. `calls.hpp` still exposes declarations consumed by
+dispatch and bridge code; avoid deleting those without a dedicated ownership
+check.
 
 ## Proof
 
