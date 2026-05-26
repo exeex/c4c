@@ -36,6 +36,76 @@ namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
+[[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    if (value.immediate < 0) {
+      return std::nullopt;
+    }
+    return power_of_two_shift(static_cast<std::uint64_t>(value.immediate));
+  }
+  const auto constant =
+      mir::evaluate_same_block_integer_constant(context.bir_block, value);
+  if (!constant.has_value() || constant->value < 0) {
+    return std::nullopt;
+  }
+  return power_of_two_shift(static_cast<std::uint64_t>(constant->value));
+}
+
+[[nodiscard]] bool value_publication_may_write_scratch_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  if (mir::evaluate_same_block_integer_constant(context.bir_block, value).has_value()) {
+    return false;
+  }
+  if (const auto value_view = scalar_view_for_type(value.type);
+      value_view.has_value()) {
+    if (current_block_entry_publication_register(context, value, *value_view)) {
+      return false;
+    }
+  }
+
+  const auto producer_record = mir::find_same_block_named_producer_record(
+      context.bir_block, value.name, before_instruction_index);
+  const auto* producer = producer_record.inst;
+  if (producer == nullptr) {
+    return false;
+  }
+  const auto producer_index = producer_record ? producer_record.instruction_index
+                                              : before_instruction_index;
+
+  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    auto operand = cast->operand;
+    operand.type = cast->operand.type;
+    return value_publication_may_write_scratch_register(
+        context, operand, producer_index, depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer); binary != nullptr) {
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    if (binary->opcode == bir::BinaryOpcode::Mul &&
+        value_power_of_two_shift(context, rhs).has_value()) {
+      return value_publication_may_write_scratch_register(
+          context, lhs, producer_index, depth + 1);
+    }
+    return true;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr ||
+      std::get_if<bir::LoadLocalInst>(producer) != nullptr ||
+      std::get_if<bir::SelectInst>(producer) != nullptr) {
+    return true;
+  }
+  return false;
+}
+
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -466,31 +536,36 @@ namespace prepare = c4c::backend::prepare;
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
-    if (rhs.kind == bir::Value::Kind::Immediate && rhs.immediate >= 0) {
-      if (const auto shift =
-              power_of_two_shift(static_cast<std::uint64_t>(rhs.immediate))) {
-        if (!emit_value_publication_to_register(context,
-                                                lhs,
-                                                before_instruction_index,
-                                                target_index,
-                                                scratch_index,
-                                                lines,
-                                                reload_current_memory_loads)) {
-          return false;
-        }
-        if (*shift != 0U) {
-          lines.push_back("lsl " + *result_name + ", " + *result_name +
-                          ", #" + std::to_string(*shift));
-        }
-        return true;
+    if (const auto shift = value_power_of_two_shift(context, rhs)) {
+      if (!emit_value_publication_to_register(context,
+                                              lhs,
+                                              before_instruction_index,
+                                              target_index,
+                                              scratch_index,
+                                              lines,
+                                              reload_current_memory_loads)) {
+        return false;
       }
+      if (*shift != 0U) {
+        lines.push_back("lsl " + *result_name + ", " + *result_name +
+                        ", #" + std::to_string(*shift));
+      }
+      return true;
     }
     const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
     const bool rhs_reads_target = value_publication_may_read_register_index(
         context, rhs, before_instruction_index, target_index);
     const bool lhs_reads_scratch = value_publication_may_read_register_index(
         context, lhs, before_instruction_index, scratch_index);
-    if (rhs_reads_target && !lhs_reads_scratch) {
+    const bool rhs_writes_target =
+        nested_scratch_index == target_index &&
+        value_publication_may_write_scratch_register(
+            context, rhs, before_instruction_index);
+    const bool lhs_writes_scratch =
+        value_publication_may_write_scratch_register(
+            context, lhs, before_instruction_index);
+    if ((rhs_reads_target || rhs_writes_target) &&
+        !lhs_reads_scratch && !lhs_writes_scratch) {
       if (!emit_value_publication_to_register(context,
                                               rhs,
                                               before_instruction_index,
@@ -544,7 +619,15 @@ namespace prepare = c4c::backend::prepare;
       context, rhs, before_instruction_index, target_index);
   const bool lhs_reads_scratch = value_publication_may_read_register_index(
       context, lhs, before_instruction_index, scratch_index);
-  if (rhs_reads_target && !lhs_reads_scratch) {
+  const bool rhs_writes_target =
+      nested_scratch_index == target_index &&
+      value_publication_may_write_scratch_register(
+          context, rhs, before_instruction_index);
+  const bool lhs_writes_scratch =
+      value_publication_may_write_scratch_register(
+          context, lhs, before_instruction_index);
+  if ((rhs_reads_target || rhs_writes_target) &&
+      !lhs_reads_scratch && !lhs_writes_scratch) {
     if (!emit_value_publication_to_register(context,
                                             rhs,
                                             before_instruction_index,

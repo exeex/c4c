@@ -873,6 +873,36 @@ struct EdgeSelectChainState {
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     const std::uint8_t nested_scratch = scratch_index == 9 ? 10 : 9;
+    if (binary->opcode == bir::BinaryOpcode::Mul &&
+        rhs.kind == bir::Value::Kind::Immediate &&
+        rhs.immediate >= 0) {
+      if (const auto shift =
+              power_of_two_shift(static_cast<std::uint64_t>(rhs.immediate))) {
+        if (!emit_edge_value_publication_to_register_impl(edge_context,
+                                                          dependency_successor_context,
+                                                          lhs,
+                                                          producer->instruction_index,
+                                                          target_index,
+                                                          scratch_index,
+                                                          lines,
+                                                          dependency_publication,
+                                                          select_chain_state)) {
+          return false;
+        }
+        const auto result =
+            gp_register_name(target_index,
+                             scalar_view_for_type(binary->operand_type)
+                                 .value_or(abi::RegisterView::X));
+        if (!result.has_value()) {
+          return false;
+        }
+        if (*shift != 0U) {
+          lines.push_back("lsl " + *result + ", " + *result +
+                          ", #" + std::to_string(*shift));
+        }
+        return true;
+      }
+    }
     const bool rhs_reads_target = edge_value_publication_may_read_register_index(
         edge_context,
         dependency_successor_context,
