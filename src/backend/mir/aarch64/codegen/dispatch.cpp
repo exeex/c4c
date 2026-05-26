@@ -3,7 +3,6 @@
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "atomics.hpp"
-#include "calls_dispatch_bridge.hpp"
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"

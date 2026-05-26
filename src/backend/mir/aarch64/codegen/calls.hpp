@@ -2,6 +2,7 @@
 
 #include "../module/module.hpp"
 #include "instruction.hpp"
+#include "alu.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,42 +12,9 @@
 
 namespace c4c::backend::aarch64::codegen {
 
-[[nodiscard]] std::size_t outgoing_stack_argument_bytes(
-    const prepare::PreparedCallPlan& call_plan);
-[[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register();
-
-[[nodiscard]] std::optional<abi::RegisterView> scalar_integer_register_view_from_size(
-    std::size_t size_bytes);
-
-// calls_moves / calls_dispatch_bridge
-
-// Shared selection-driven call argument source conversion. Source choice is
-// prepared by call plans; this helper only translates complete prepared facts
-// into AArch64 operands.
-[[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome* source_home,
-    const prepare::PreparedCallArgumentSourceSelection& selection,
-    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
-    std::size_t instruction_index);
-
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
-[[nodiscard]] const prepare::PreparedCallPlan* require_prepared_call_plan(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] std::optional<module::MachineInstruction> lower_prepared_call_instruction(
-    const module::BlockLoweringContext& context,
-    const bir::CallInst& call_inst,
-    const prepare::PreparedCallPlan& call_plan,
-    std::size_t instruction_index,
-    const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan,
-    const prepare::PreparedVariadicEntryHelperOperandHomes* variadic_helper_operand_homes,
-    std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_helper,
-    module::ModuleLoweringDiagnostics& diagnostics);
 
 // calls_moves
 
@@ -76,12 +44,79 @@ order_before_call_moves_for_source_preservation(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// calls_moves
+// calls dispatch bridge
 
-[[nodiscard]] const prepare::PreparedMoveBundle* find_move_bundle(
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_scalar_call_argument_producers(
     const module::BlockLoweringContext& context,
-    prepare::PreparedMovePhase phase,
-    std::size_t block_index,
-    std::size_t instruction_index);
+    const prepare::PreparedCallPlan& call_plan,
+    const std::vector<bir::Value>& arguments,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
+[[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call_inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_call_boundary_source_to_destination(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
+void retarget_call_boundary_source_to_emitted_scalar(
+    module::MachineInstruction& instruction,
+    const BlockScalarLoweringState& scalar_state);
+
+void record_call_boundary_destination(
+    const module::MachineInstruction& instruction,
+    BlockScalarLoweringState& scalar_state);
+
+void record_call_boundary_source_in_destination(
+    const module::MachineInstruction& instruction,
+    BlockScalarLoweringState& scalar_state);
+
+[[nodiscard]] bool call_boundary_move_reloads_prepared_stack_source(
+    const module::MachineInstruction& instruction);
+
+[[nodiscard]] bool source_register_conflicts_with_materialized_address(
+    const module::MachineInstruction& instruction,
+    const std::vector<module::MachineInstruction>& materialized_addresses);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_indirect_call_callee_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
+void record_call_result_source_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    BlockScalarLoweringState& scalar_state);
+
+void retarget_fpr_call_result_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction);
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+materialize_missing_frame_slot_call_arguments(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+publish_stack_preserved_call_values(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state);
 }  // namespace c4c::backend::aarch64::codegen

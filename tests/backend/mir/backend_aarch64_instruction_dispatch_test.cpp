@@ -1,7 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/aarch64/codegen/asm_emitter.hpp"
-#include "src/backend/mir/aarch64/codegen/calls_dispatch_bridge.hpp"
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
