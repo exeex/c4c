@@ -72,3 +72,45 @@ mix semantic authority migration with mechanical file cleanup.
   outside AArch64.
 - A patch proposes a layout that diverges from the reference owner model
   without recording why.
+
+## Close Note
+
+Closed after the Step 6 lifecycle review. The active runbook produced a durable
+classification table in `todo.md` before close and created numbered follow-up
+ideas for every non-`keep-local` cleanup slice:
+
+- `ideas/open/34_aarch64_store_source_publication_planning.md`
+- `ideas/open/35_aarch64_calls_foldback_cleanup.md`
+- `ideas/open/36_aarch64_dispatch_publication_foldback_cleanup.md`
+- `ideas/open/37_aarch64_branch_and_entry_foldback_cleanup.md`
+- `ideas/open/38_aarch64_module_compatibility_foldback_cleanup.md`
+- `ideas/open/39_aarch64_memory_foldback_after_store_source_planning.md`
+
+Expected move-forward outcome: `memory_store_sources.*` carries
+target-neutral producer/source-publication planning debt that should move to
+shared prepare, BIR, or MIR planning through idea 34 before any pure AArch64
+memory consolidation is accepted.
+
+Expected fold-back outcomes: `calls_byval_aggregates.cpp`,
+`calls_common.cpp`, `calls_dispatch_bridge.*`, and `calls_moves.cpp` should
+merge into the calls owner; `dispatch_diagnostics.*` and
+`dispatch_publication_common.hpp` should fold into dispatch/publication owners;
+`comparison_branch_fusion.*` should fold into comparison;
+`prologue_entry_formals.cpp` should fold into prologue;
+`compatibility_projection.*` should fold into the module compatibility build
+boundary; and the target-local residue of `memory_store_sources.*` should fold
+into memory only after the semantic store-source planning work lands.
+
+Expected keep-local outcomes: direct reference-owner counterparts and justified
+AArch64-only emission/ABI/representation owners remain local. This includes
+dispatch orchestration, edge-copy emission, prepared-home lookup/materialization,
+value materialization, FP materialization, dynamic-stack emission, instruction
+and operand representation, machine printing, traversal, effects, and the
+reference-aligned owners such as `calls`, `memory`, `comparison`, `prologue`,
+`returns`, `alu`, `asm_emitter`, `atomics`, `cast_ops`, `f128`, `float_ops`,
+`globals`, `i128_ops`, `inline_asm`, `intrinsics`, `peephole`, and `variadic`.
+
+Close verification found no implementation, build metadata, test, or root
+proof-log changes from this classification plan. The regression guard used the
+existing canonical backend logs and passed with 163 tests before and 163 tests
+after, no new failures.
