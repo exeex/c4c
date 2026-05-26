@@ -1116,6 +1116,39 @@ find_indexed_prepared_edge_publications(
   return publications->front();
 }
 
+[[nodiscard]] const PreparedEdgePublication*
+find_unique_indexed_block_entry_parallel_copy_edge_publication(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    const PreparedMoveResolution& move) {
+  if (predecessor_label == kInvalidBlockLabel ||
+      successor_label == kInvalidBlockLabel ||
+      move.destination_kind != PreparedMoveDestinationKind::Value ||
+      move.op_kind != PreparedMoveResolutionOpKind::Move ||
+      (move.source_parallel_copy_predecessor_label.has_value() &&
+       *move.source_parallel_copy_predecessor_label != predecessor_label) ||
+      (move.source_parallel_copy_successor_label.has_value() &&
+       *move.source_parallel_copy_successor_label != successor_label)) {
+    return nullptr;
+  }
+
+  const auto* publication =
+      find_unique_indexed_prepared_edge_publication(lookups,
+                                                    predecessor_label,
+                                                    successor_label,
+                                                    move.to_value_id);
+  if (publication == nullptr ||
+      publication->status != PreparedEdgePublicationLookupStatus::Available ||
+      publication->phase != PreparedMovePhase::BlockEntry ||
+      publication->predecessor_label != predecessor_label ||
+      publication->successor_label != successor_label ||
+      publication->destination_value_id != move.to_value_id) {
+    return nullptr;
+  }
+  return publication;
+}
+
 [[nodiscard]] const PreparedCallPreservedValue*
 find_latest_indexed_prior_preserved_value(
     const PreparedCallPlanLookups& lookups,

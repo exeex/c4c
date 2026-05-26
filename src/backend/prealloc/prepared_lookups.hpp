@@ -277,6 +277,13 @@ find_indexed_prepared_edge_publications(
     BlockLabelId successor_label,
     PreparedValueId destination_value_id);
 
+[[nodiscard]] const PreparedEdgePublication*
+find_unique_indexed_block_entry_parallel_copy_edge_publication(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    const PreparedMoveResolution& move);
+
 [[nodiscard]] const PreparedCallPreservedValue*
 find_latest_indexed_prior_preserved_value(
     const PreparedCallPlanLookups& lookups,

@@ -8,79 +8,47 @@ Current Step Title: Share Reusable Copy Planning Decisions
 
 ## Just Finished
 
-Step 4 bounded audit continued for the source-publication match in
-`lower_predecessor_select_parallel_copy_sources`.
+Step 4 bounded audit completed for the repeated block-entry edge-publication
+lookup shape in `dispatch_edge_copies.cpp`.
 
-Moved the target-neutral exact prepared publication/move/source-home identity
-behind `prepare::prepared_edge_publication_matches_parallel_copy_move_source`.
-The helper requires an available edge publication, exact linked
-`PreparedMoveResolution` identity, block-entry publication phase, matching
-destination value id, exact source-home pointer, matching source-home kind,
-matching source value id/name, a value-destination `Move`, and a non-immediate
-source. `dispatch_edge_copies.cpp` now uses that helper before asking AArch64 to
-materialize the predecessor join-source publication.
+The lookup is target-neutral and now lives behind
+`prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication`.
+The helper takes prepared edge-publication lookups, an expected
+predecessor/successor tuple, and a `PreparedMoveResolution`, then returns the
+unique available block-entry publication for that edge and destination value.
+It rejects invalid labels, non-value destinations, non-`Move` operations, and
+optional per-move predecessor/successor labels that conflict with the expected
+tuple.
 
-The audit kept target policy in AArch64: source eligibility as shared-register
-or stack source, register parsing/aliasing, scratch choice, publication
-emission, instruction materialization, and fail-closed fallback behavior remain
-local to `dispatch_edge_copies.cpp`. Optional parallel-copy step facts and
-per-move authority fields were not moved into the helper because this site has
-valid publication-linked prepared moves that do not populate those optional
-fields; the stable shared fact is the publication's exact move pointer plus
-source-home/source-id/name identity.
+Both AArch64 users now share the helper:
+`should_emit_block_entry_edge_copy_move` still asks
+`prepared_edge_publication_redundant_block_entry_parallel_copy_move` whether the
+move is suppressible, and
+`lower_predecessor_select_parallel_copy_sources` still asks
+`prepared_edge_publication_matches_parallel_copy_move_source` whether the
+publication exactly matches the source. The audit kept target policy in AArch64:
+bundle/record authority validation, register aliasing, stack-source eligibility,
+memory-source suppression, current-join clobber checks, scratch selection,
+instruction emission, and diagnostics were not moved.
 
 ## Suggested Next
 
-Continue Step 4. The remaining lifecycle packet is a bounded
-edge-publication-lookup audit for block-entry out-of-SSA parallel-copy moves in
-`dispatch_edge_copies.cpp`.
-
-Two AArch64 sites still assemble the same target-neutral lookup shape around a
-prepared block-entry parallel-copy move:
-
-- `should_emit_block_entry_edge_copy_move` validates an out-of-SSA
-  block-entry move, looks up the prepared edge publication by predecessor label,
-  successor label, and destination value id, then asks the shared redundant-copy
-  predicate whether the move is suppressible.
-- `lower_predecessor_select_parallel_copy_sources` validates the same
-  block-entry predecessor/successor relation, looks up the prepared edge
-  publication by predecessor label, successor label, and destination value id,
-  then asks the shared move/source predicate whether the publication exactly
-  matches the move source.
-
-Next executor packet: decide whether that lookup should become a shared
-prepared helper, for example a helper that accepts prepared edge-publication
-lookups plus a block-entry out-of-SSA `PreparedMoveResolution` and returns the
-matching publication for the expected predecessor/successor/destination tuple.
-If added, use it at both AArch64 sites while leaving the already-shared
-redundant-copy and move/source predicates as the authority checks.
-
-Do not move AArch64 register aliasing, stack-source eligibility,
-memory-source suppression, current-join clobber checks, scratch selection,
-instruction emission, or diagnostics into shared helpers.
+No further implementation packet is identified for this narrowed Step 4 lookup
+audit. Supervisor should review the completed Step 4 helper slice and decide
+whether to commit it, request independent review, or route the next lifecycle
+packet.
 
 ## Watchouts
 
-- `prepared_value_homes_share_register_name` is exact prepared register-name
-  equality only. It is not an AArch64 alias/hazard helper; `registers_alias`,
-  scratch selection, instruction spelling, and encoding limits remain in
-  AArch64.
-- The parallel-copy source helpers are intentionally narrower than the
-  AArch64 predicates: stack-source handling remains local target policy and is
-  not classified as a shared prepared-register match.
-- The redundant-copy helper remains intentionally exact: copied move records
-  without the original `source_move` pointer do not satisfy it.
-- `prepared_edge_publication_matches_parallel_copy_move_source` intentionally
-  does not require optional parallel-copy step fields or per-move authority
-  fields. The edge-publication lookup can link a valid move through
-  block-entry out-of-SSA bundle facts even when those optional fields are not
-  populated on the move itself.
-- Memory-source suppression remains target-specific in AArch64. The prepared
-  facts can prove assigned-storage redundancy for a move, but they do not encode
-  AArch64's current policy of suppressing all block-entry memory-source edge
-  moves.
-- Current-join clobber checks and physical register aliasing remain AArch64
-  decisions.
+- `find_unique_indexed_block_entry_parallel_copy_edge_publication` intentionally
+  does not require `move.authority_kind == OutOfSsaParallelCopy`: existing valid
+  prepared fixtures carry out-of-SSA authority on the block-entry bundle/record
+  while copied move facts may leave per-move authority unset.
+- The helper also does not decide source eligibility, redundancy, or exact
+  source-home identity. Those remain in the existing shared predicates and the
+  AArch64 call-site policy.
+- `clang-format` is not installed in this environment; formatting was checked
+  with `git diff --check`.
 
 ## Proof
 

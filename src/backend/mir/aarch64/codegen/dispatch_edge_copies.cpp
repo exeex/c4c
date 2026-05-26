@@ -1052,11 +1052,11 @@ lower_predecessor_join_source_publication(
   if (move->destination_register.has_value() &&
       context.function.prepared_lookups != nullptr) {
     const auto* publication =
-        prepare::find_unique_indexed_prepared_edge_publication(
+        prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
             &context.function.prepared_lookups->edge_publications,
             *move->source_parallel_copy_predecessor_label,
             *move->source_parallel_copy_successor_label,
-            move->move.to_value_id);
+            move->move);
     if (publication != nullptr &&
         prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
             *publication, move->source_move)) {
@@ -1134,11 +1134,11 @@ lower_predecessor_select_parallel_copy_sources(
       continue;
     }
     const auto* publication =
-        prepare::find_unique_indexed_prepared_edge_publication(
+        prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
             &context.function.prepared_lookups->edge_publications,
             context.control_flow_block->block_label,
             *bundle->source_parallel_copy_successor_label,
-            move.to_value_id);
+            move);
     if (publication == nullptr ||
         !prepare::prepared_edge_publication_matches_parallel_copy_move_source(
             *publication, move, *source_home)) {

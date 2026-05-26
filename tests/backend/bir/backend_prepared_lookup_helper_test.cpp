@@ -1152,6 +1152,29 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
     return fail("edge publication should preserve named source home facts");
   }
   const auto* named_move = &locations.move_bundles.front().moves[0];
+  if (prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &lookups, predecessor_label, successor_label, *named_move) != named) {
+    return fail(
+        "shared block-entry parallel-copy lookup should find the named edge publication");
+  }
+  if (prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &lookups, c4c::kInvalidBlockLabel, successor_label, *named_move) != nullptr) {
+    return fail(
+        "shared block-entry parallel-copy lookup should reject invalid predecessor labels");
+  }
+  auto non_value_destination_move = *named_move;
+  non_value_destination_move.destination_kind =
+      prepare::PreparedMoveDestinationKind::CallArgumentAbi;
+  if (prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &lookups, predecessor_label, successor_label, non_value_destination_move) != nullptr) {
+    return fail("shared block-entry parallel-copy lookup should reject non-value destinations");
+  }
+  auto mismatched_edge_move = *named_move;
+  mismatched_edge_move.source_parallel_copy_predecessor_label = successor_label;
+  if (prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &lookups, predecessor_label, successor_label, mismatched_edge_move) != nullptr) {
+    return fail("shared block-entry parallel-copy lookup should reject mismatched move labels");
+  }
   if (!prepare::prepared_edge_publication_matches_parallel_copy_move_source(
           *named, *named_move, locations.value_homes[0])) {
     return fail("edge publication should match its exact prepared move source");
