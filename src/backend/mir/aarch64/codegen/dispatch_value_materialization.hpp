@@ -46,13 +46,6 @@ lower_stack_homed_pointer_value_load_publication(
     BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
-make_load_global_got_materialization_instruction(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const bir::LoadGlobalInst& load_global,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_mul_with_distinct_rhs_scratch(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,

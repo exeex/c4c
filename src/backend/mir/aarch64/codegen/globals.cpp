@@ -1,7 +1,11 @@
 #include "globals.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "dispatch_edge_copies.hpp"
+#include "dispatch_lookup.hpp"
+#include "dispatch_producers.hpp"
 #include "dispatch_publication_common.hpp"
+#include "dispatch_publication.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -201,7 +205,7 @@ std::string prefixed_relocation_operand(std::string_view prefix, std::string_vie
   return operand;
 }
 
-[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_global_memory_access(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
   if (context.function.prepared == nullptr ||
@@ -723,7 +727,7 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
   if (context.function.prepared == nullptr) {
     return false;
   }
-  const auto* access = prepared_memory_access(context, instruction_index);
+  const auto* access = prepared_global_memory_access(context, instruction_index);
   if (access == nullptr ||
       access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
       !access->address.symbol_name.has_value() ||
@@ -750,6 +754,83 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
   lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
   lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
   return true;
+}
+
+std::optional<module::MachineInstruction> make_load_global_got_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global,
+    BlockScalarLoweringState& scalar_state) {
+  const bir::Global* target_global = find_load_global_target(context, load_global);
+  if (target_global == nullptr ||
+      target_global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, load_global.result);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+    return std::nullopt;
+  }
+  const auto result_view = scalar_view_for_type(load_global.result.type);
+  if (!result_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto prepared_result = make_named_prepared_result_register(context, load_global.result);
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  const auto result_register =
+      prepared_result.has_value()
+          ? std::optional<abi::RegisterReference>{prepared_result->reg}
+          : abi::gp_register(scratches.front().index, *result_view);
+  if (!result_register.has_value() ||
+      result_register->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto address_register =
+      abi::gp_register(result_register->index, abi::RegisterView::X);
+  const auto target_register =
+      abi::gp_register(result_register->index, *result_view);
+  if (!address_register.has_value() || !target_register.has_value()) {
+    return std::nullopt;
+  }
+  const std::string address = abi::register_name(*address_register);
+  const std::string target = abi::register_name(*target_register);
+  const auto symbol_label = load_global_symbol_label(context, load_global, target_global);
+  if (symbol_label.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  lines.push_back("adrp " + address + ", :got:" + symbol_label);
+  lines.push_back("ldr " + address + ", [" + address + ", :got_lo12:" +
+                  symbol_label + "]");
+  lines.push_back("ldr " + target + ", " +
+                  register_indirect_address(address, load_global.byte_offset));
+
+  if (const auto* home = prepared_value_home_for_value(context, load_global.result);
+      home != nullptr &&
+      home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    lines.push_back("str " + target + ", " +
+                    frame_slot_address(context.function, *home->offset_bytes));
+    return make_select_chain_materialization_instruction(
+        context, instruction_index, std::move(lines));
+  }
+
+  RegisterOperand emitted{
+      .reg = *target_register,
+      .role = prepared_result.has_value() ? prepared_result->role
+                                          : RegisterOperandRole::StoragePlan,
+      .value_name = *value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = result_view,
+  };
+  record_emitted_scalar_register(scalar_state, *value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
 }
 
 PreparedAddressMaterializationRecordResult make_prepared_address_materialization_record(

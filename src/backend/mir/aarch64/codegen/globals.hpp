@@ -1,5 +1,6 @@
 #pragma once
 
+#include "alu.hpp"
 #include "instruction.hpp"
 #include "../module/module.hpp"
 #include "mir/printer.hpp"
@@ -29,6 +30,12 @@ struct BlockAddressMaterializationIndex {
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_load_global_got_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global,
+    BlockScalarLoweringState& scalar_state);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,
