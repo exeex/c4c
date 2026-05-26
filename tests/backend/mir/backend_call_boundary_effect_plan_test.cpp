@@ -336,6 +336,12 @@ bool records_preservation_and_republication_intent() {
          expect(callee_saved_republication.destination.value_name ==
                     c4c::ValueNameId{41},
                 "expected callee-saved republication value name") &&
+         expect(callee_saved_republication.destination.storage_kind ==
+                    prepare::PreparedMoveStorageKind::Register,
+                "expected callee-saved republication destination storage") &&
+         expect(callee_saved_republication.destination.register_name ==
+                    std::optional<std::string>{"x0"},
+                "expected callee-saved republication destination register") &&
          expect(stack_republication.source.storage_kind ==
                     prepare::PreparedMoveStorageKind::StackSlot,
                 "expected stack republication source") &&
@@ -348,7 +354,13 @@ bool records_preservation_and_republication_intent() {
                 "expected stack republication spill slot placement") &&
          expect(stack_republication.destination.value_id ==
                     std::optional<prepare::PreparedValueId>{32},
-                "expected stack republication destination value");
+                "expected stack republication destination value") &&
+         expect(stack_republication.destination.storage_kind ==
+                    prepare::PreparedMoveStorageKind::Register,
+                "expected stack republication destination home") &&
+         expect(stack_republication.destination.register_name ==
+                    std::optional<std::string>{"x9"},
+                "expected stack republication destination register");
 }
 
 bool records_unavailable_explicit_move_without_target_operands() {

@@ -2302,6 +2302,14 @@ namespace {
   return make_preservation_destination_endpoint(preserved);
 }
 
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preserved_republication_endpoint(
+    const PreparedCallPreservedValue& preserved) {
+  if (preserved.preservation_source.storage_kind != PreparedMoveStorageKind::None) {
+    return preserved.preservation_source;
+  }
+  return make_value_effect_endpoint(preserved.value_id, preserved.value_name);
+}
+
 void append_explicit_call_boundary_effects(
     std::vector<PreparedCallBoundaryEffectPlan>& effects,
     const PreparedCallPlan& call_plan,
@@ -2352,13 +2360,13 @@ void append_preservation_call_boundary_effects(
     if (preserved.route == PreparedCallPreservationRoute::Unknown) {
       continue;
     }
-    const auto value_endpoint =
-        make_value_effect_endpoint(preserved.value_id, preserved.value_name);
     const auto preservation_source =
         preserved.preservation_source.storage_kind == PreparedMoveStorageKind::None
-            ? value_endpoint
+            ? make_value_effect_endpoint(preserved.value_id, preserved.value_name)
             : preserved.preservation_source;
     const auto storage_endpoint = make_preserved_storage_endpoint(preserved);
+    const auto republication_endpoint =
+        make_preserved_republication_endpoint(preserved);
     effects.push_back(PreparedCallBoundaryEffectPlan{
         .effect_kind = effect_kind,
         .phase = phase,
@@ -2376,7 +2384,7 @@ void append_preservation_call_boundary_effects(
         .destination = effect_kind ==
                            PreparedCallBoundaryEffectKind::PreservationHomePopulation
                            ? storage_endpoint
-                           : value_endpoint,
+                           : republication_endpoint,
         .preservation_route = preserved.route,
         .reason = reason,
     });

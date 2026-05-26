@@ -1,59 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/09_calls_preservation_republication_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Prepare Preservation Source And Destination Facts
+Current Step ID: Step 3
+Current Step Title: Prepare Post-Call Republication Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Prepare Preservation Source And Destination Facts completed the
-preparation-side preservation endpoint repair.
+Step 3 - Prepare Post-Call Republication Facts completed the prepared
+republication handoff for preserved values.
 
-Repair: `src/backend/prealloc/call_plans.cpp` now builds callee-saved
-preservation source endpoints from the live value home when one is published,
-while keeping the preservation destination endpoint on the callee-saved storage
-record. For the AArch64 recursive-formal shape that previously produced a
-self-alias source/destination pair, the prepared record now names the live
-pre-call source register (`x0`) separately from the callee-saved destination
-register (`x20` or whichever callee-saved register regalloc selected).
+Repair: `src/backend/prealloc/call_plans.cpp` now makes preservation
+republication effects carry the prepared post-call value home as the effect
+destination, using the preserved value's prepared source/home endpoint instead
+of a value-id-only placeholder. `src/backend/mir/aarch64/codegen/calls_moves.cpp`
+now lowers callee-saved republication from the prepared source endpoint into
+that prepared destination endpoint and no longer chooses the post-call
+destination register with `find_value_home`.
 
-Focused coverage now asserts both sides of the contract:
-`backend_prepare_frame_stack_call_contract_test` has an AArch64 recursive
-formal fixture that checks `preservation_source=register:x0` and a distinct
-callee-saved `preservation_destination`; `backend_call_boundary_effect_plan_test`
-checks that preservation home-population effects carry the distinct live source
-register through the call-boundary effect plan.
+Focused coverage now asserts the prepared destination fact and the AArch64
+consumer behavior: `backend_call_boundary_effect_plan_test` checks
+republication destination homes, `backend_aarch64_call_boundary_owner_test`
+makes value-home lookup data intentionally disagree with the prepared endpoint,
+and `backend_aarch64_instruction_dispatch_test` keeps same-block later
+call-argument reuse flowing through explicit prepared preservation endpoints.
 
 Changed files:
 
+- `src/backend/mir/aarch64/codegen/calls_moves.cpp`
 - `src/backend/prealloc/call_plans.cpp`
-- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`
+- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
 - `tests/backend/mir/backend_call_boundary_effect_plan_test.cpp`
 - `todo.md`
 
 ## Suggested Next
 
-Next packet can move to Step 3 prepared post-call republication facts, or first
-retire the now-redundant AArch64 self-alias fallback if the supervisor wants a
-cleanup slice after this preparation-side fix lands.
+Next packet can move to Step 4 and shrink AArch64 preservation helpers toward
+emission-only code by retiring compatibility paths that still reconstruct
+preservation facts outside prepared endpoints.
 
 ## Watchouts
 
-AArch64 still has compatibility fallback paths through `find_value_home` and
-legacy `PreparedCallPreservedValue` stack fields. The existing self-alias
-fallback remains as compatibility debt, but normal prepared call-plan output for
-the AArch64 formal-recursion regression no longer relies on it. Stack-slot
-preservation home population into memory still flows through existing explicit
-stack move lowering because
-`CallBoundaryMoveInstructionRecord` has no destination-memory field.
+AArch64 callee-saved republication now requires the prepared republication
+destination endpoint to be a register endpoint; manually constructed call-plan
+fixtures need to include the same prepared endpoints that real call planning
+publishes. Population still has a self-alias compatibility fallback, and
+stack-slot preservation home population into memory still flows through
+existing explicit stack move lowering because `CallBoundaryMoveInstructionRecord`
+has no destination-memory field.
 
 ## Proof
 
 Ran exactly:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_call_boundary_effect_plan|backend_prepared_lookup_helper|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00040_c|c_testsuite_aarch64_backend_src_00168_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_prepared_lookup_helper|backend_prepared_printer|backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00040_c|c_testsuite_aarch64_backend_src_00168_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$'`
 
-Result: passed, including all four AArch64 c_testsuite regressions. Proof log:
-`test_after.log`.
+Result: passed, 11/11 tests green including all four AArch64 c_testsuite
+regressions. Proof log: `test_after.log`.

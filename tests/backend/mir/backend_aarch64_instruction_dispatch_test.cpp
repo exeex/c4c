@@ -2378,6 +2378,43 @@ prepare::PreparedBirModule prepared_with_nested_call_preserved_argument_reuse() 
                        .register_name = std::string{"x20"},
                        .register_bank = prepare::PreparedRegisterBank::Gpr,
                        .occupied_register_names = {"x20"},
+                       .register_placement =
+                           prepare::PreparedRegisterPlacement{
+                               .bank = prepare::PreparedRegisterBank::Gpr,
+                               .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                               .slot_index = 1,
+                               .contiguous_width = 1,
+                           },
+                       .preservation_source =
+                           prepare::PreparedCallBoundaryEffectEndpoint{
+                               .encoding = prepare::PreparedStorageEncodingKind::Register,
+                               .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                               .value_id = prepare::PreparedValueId{141},
+                               .value_name = arg_name,
+                               .register_name = std::string{"x1"},
+                               .register_bank = prepare::PreparedRegisterBank::Gpr,
+                               .contiguous_width = 1,
+                               .occupied_register_names = {"x1"},
+                           },
+                       .preservation_destination =
+                           prepare::PreparedCallBoundaryEffectEndpoint{
+                               .encoding = prepare::PreparedStorageEncodingKind::Register,
+                               .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                               .value_id = prepare::PreparedValueId{141},
+                               .value_name = arg_name,
+                               .register_name = std::string{"x20"},
+                               .register_bank = prepare::PreparedRegisterBank::Gpr,
+                               .contiguous_width = 1,
+                               .occupied_register_names = {"x20"},
+                               .callee_saved_save_index = std::size_t{0},
+                               .register_placement =
+                                   prepare::PreparedRegisterPlacement{
+                                       .bank = prepare::PreparedRegisterBank::Gpr,
+                                       .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                                       .slot_index = 1,
+                                       .contiguous_width = 1,
+                                   },
+                           },
                    }},
                .clobbered_registers =
                    {prepare::PreparedClobberedRegister{

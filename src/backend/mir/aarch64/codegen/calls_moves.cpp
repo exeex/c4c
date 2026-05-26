@@ -3774,8 +3774,7 @@ make_callee_saved_preservation_home_republication_instruction(
   const auto& value = effect.destination;
   const auto value_id = effect_value_id(value, storage);
   const auto value_name = effect_value_name(value, storage);
-  if (context.function.value_locations == nullptr ||
-      context.function.control_flow == nullptr ||
+  if (context.function.control_flow == nullptr ||
       effect.effect_kind !=
           prepare::PreparedCallBoundaryEffectKind::PreservationRepublication ||
       effect.preservation_route !=
@@ -3784,14 +3783,20 @@ make_callee_saved_preservation_home_republication_instruction(
       value_name == c4c::kInvalidValueName ||
       storage.storage_kind != prepare::PreparedMoveStorageKind::Register ||
       !storage.register_name.has_value() ||
-      !storage.register_bank.has_value()) {
+      !storage.register_bank.has_value() ||
+      value.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !value.register_name.has_value() ||
+      !value.register_bank.has_value()) {
     return std::nullopt;
   }
 
-  const auto* source_home = find_value_home(context, *value_id);
   const auto expected_view =
-      source_home != nullptr && source_home->size_bytes.has_value()
-          ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+      value.stack_size_bytes.has_value()
+          ? scalar_integer_register_view_from_size(*value.stack_size_bytes)
+      : storage.stack_size_bytes.has_value()
+          ? scalar_integer_register_view_from_size(*storage.stack_size_bytes)
+      : scalar_view_from_register_name(value.register_name).has_value()
+          ? scalar_view_from_register_name(value.register_name)
           : scalar_view_from_register_name(storage.register_name);
   if (!expected_view.has_value()) {
     return std::nullopt;
@@ -3810,38 +3815,20 @@ make_callee_saved_preservation_home_republication_instruction(
       diagnostics,
       context,
       instruction_index);
-  auto destination_register_name = storage.register_name;
-  auto destination_register_placement = storage.register_placement;
-  auto destination_register_bank = storage.register_bank;
-  if (source_home != nullptr &&
-      source_home->kind == prepare::PreparedValueHomeKind::Register &&
-      source_home->register_name.has_value()) {
-    destination_register_name =
-        register_name_with_expected_view(source_home->register_name, expected_view);
-    destination_register_placement = std::nullopt;
-    if (destination_register_name.has_value()) {
-      const auto parsed = abi::parse_aarch64_register_name(*destination_register_name);
-      if (parsed.has_value()) {
-        if (parsed->bank == abi::RegisterBank::GeneralPurpose) {
-          destination_register_bank = prepare::PreparedRegisterBank::Gpr;
-        } else if (parsed->bank == abi::RegisterBank::FpSimd) {
-          destination_register_bank =
-              parsed->view == abi::RegisterView::Q
-                  ? prepare::PreparedRegisterBank::Vreg
-                  : prepare::PreparedRegisterBank::Fpr;
-        }
-      }
-    }
+  auto destination_register_name =
+      register_name_with_expected_view(value.register_name, expected_view);
+  if (!destination_register_name.has_value()) {
+    destination_register_name = value.register_name;
   }
   auto destination = make_register_operand_from_prepared_authority(
       destination_register_name,
-      destination_register_placement,
-      destination_register_bank,
+      value.register_placement,
+      value.register_bank,
       RegisterOperandRole::StoragePlan,
       *value_id,
       value_name,
-      storage.contiguous_width,
-      storage.occupied_register_names,
+      value.contiguous_width,
+      value.occupied_register_names,
       expected_view,
       diagnostics,
       context,
@@ -3858,13 +3845,13 @@ make_callee_saved_preservation_home_republication_instruction(
       .destination_kind = prepare::PreparedMoveDestinationKind::Value,
       .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
       .destination_register_name = destination_register_name,
-      .destination_contiguous_width = storage.contiguous_width,
-      .destination_occupied_register_names = storage.occupied_register_names,
+      .destination_contiguous_width = value.contiguous_width,
+      .destination_occupied_register_names = value.occupied_register_names,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
       .reason = std::move(reason),
-      .destination_register_placement = destination_register_placement,
+      .destination_register_placement = value.register_placement,
   };
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow->function_name,
