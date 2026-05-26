@@ -16,10 +16,24 @@ calls the helper at the same dispatch ordering point.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 4 by checking whether any remaining
-`dispatch.cpp` materialization touchpoint has a narrow semantic owner, while
-leaving the central `emit_value_publication_to_register` bridge in place unless
-the supervisor explicitly delegates that fan-out move.
+Step 4 remains active after
+`review/dispatch_value_materialization_step4_route_review.md`: the route is on
+track and not overfit, but the remaining route-audit decision should complete
+before advancing to Step 5 coverage.
+
+Next coherent packet: audit the remaining `dispatch.cpp` materialization and
+publication touchpoints after the helper moves. Classify each remaining direct
+call or include as one of:
+
+- already-thin explicit delegation to a narrow owner
+- still-hidden materialization decision that should move under an existing
+  narrow owner during Step 4
+- central fan-out bridge that should intentionally stay in
+  `dispatch_value_materialization.*` unless the supervisor delegates a separate
+  fan-out split
+
+If the audit finds no remaining Step 4 move, record that decision and advance
+the lifecycle pointer to Step 5 coverage in the next lifecycle update.
 
 ## Watchouts
 
