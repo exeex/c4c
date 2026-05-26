@@ -8,45 +8,41 @@ Current Step Title: Move Local Store Source Recovery To Prepared Authority
 
 ## Just Finished
 
-Step 2 packet completed for recovered narrow-store source authority.
+Step 2 packet completed for byval load-local source classification authority.
 
 - Added shared prepared helper
-  `find_prepared_recovered_narrow_store_source_for_wide_local_load`, returning
-  the existing recovered-source payload shape used by
-  `PreparedStoreSourcePublicationPlan`.
-- Moved the slot/name/lane matching logic for narrow-store recovery out of
-  AArch64 `memory_store_sources.*` and into shared prepared store-source
-  planning.
-- `plan_store_local_source_publication` now populates recovered source fields
-  through the shared prepared helper, using the prepared `LoadLocal` source
-  producer fact when it is complete for the current block.
-- `lower_store_local_value_publication` now gates recovered-source publication
-  by consuming `store_source_plan.recovered_source_value` instead of recomputing
-  the narrow-store relation locally.
-- The direct `dispatch_value_materialization.cpp` path now also uses the shared
-  prepared recovered-source helper before emitting the stored narrow value.
-- Removed the obsolete AArch64 public declarations and definitions for
-  `find_latest_narrow_store_for_wide_local_load`,
-  `store_local_value_is_wide_load_from_narrow_local_store`, and their private
-  slot/lane matching helpers.
+  `prepared_store_source_load_local_is_byval_formal_pointer_source`, which
+  classifies a prepared `LoadLocal` source producer through prepared memory
+  access facts and BIR byval formal metadata.
+- Extended `PreparedStoreSourcePublicationPlan` with
+  `byval_load_local_source` so local-store publication can consume the
+  classification as prepared plan data.
+- `plan_store_local_source_publication` now populates the byval flag from the
+  prepared source-producer/addressing records.
+- `lower_store_local_value_publication` now gates this route with
+  `store_source_plan.byval_load_local_source` instead of the AArch64-local
+  `store_local_value_is_byval_frame_slot_load` same-block producer lookup.
+- Removed the obsolete AArch64 declaration/definition for
+  `store_local_value_is_byval_frame_slot_load`.
+- Added focused store-source publication plan coverage for the prepared byval
+  classification path.
 
 ## Suggested Next
 
-Next semantic packet: address byval load-local source classification. That
-path still combines an AArch64 same-block producer lookup, prepared memory
-access, and BIR byval parameter inspection in
-`store_local_value_is_byval_frame_slot_load`.
+Next semantic packet: address direct-global select-chain source dependency.
+That route still uses AArch64-local same-block select-chain inspection at the
+local store publication consumption site.
 
 ## Watchouts
 
 Do not fold `memory_store_sources.*` into `memory.cpp` in this plan. Do not
 rename local source rediscovery as prepared authority. Preserve diagnostics,
 fail-closed behavior, ABI/memory semantics, and existing supported behavior.
-The remaining semantic residue is still live: byval load-local source
-classification, direct-global select-chain source dependency, and pointer-base
-load-local fallback. Recovered narrow-store source now uses shared prepared
-helper code, but the relation is still computed on demand rather than persisted
-as a precomputed prepared table.
+The remaining semantic residue is still live: direct-global select-chain
+source dependency and pointer-base load-local fallback. Recovered narrow-store
+source and byval load-local classification now use shared prepared helper code,
+but the relations are still computed on demand rather than persisted as
+precomputed prepared tables.
 
 ## Proof
 

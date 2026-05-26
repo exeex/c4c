@@ -40,11 +40,6 @@ lower_stack_homed_pointer_value_load_publication(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
-[[nodiscard]] bool store_local_value_is_byval_frame_slot_load(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index);
-
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,

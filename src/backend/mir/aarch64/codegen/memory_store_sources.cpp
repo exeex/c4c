@@ -246,29 +246,6 @@ lower_stack_homed_pointer_value_load_publication(
   return make_select_chain_materialization_instruction(
       context, instruction_index, std::move(lines));
 }
-[[nodiscard]] bool store_local_value_is_byval_frame_slot_load(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  if (store.value.kind != bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context, store.value.name, instruction_index);
-  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
-  if (load == nullptr) {
-    return false;
-  }
-  const auto producer_index = producer_instruction_index(context, producer);
-  const auto* access = producer_index.has_value()
-                           ? prepared_memory_access(context, *producer_index)
-                           : nullptr;
-  return access != nullptr &&
-         access->address.base_kind == prepare::PreparedAddressBaseKind::PointerValue &&
-         access->address.pointer_value_name.has_value() &&
-         access->address.can_use_base_plus_offset &&
-         is_byval_formal_value_name(context, *access->address.pointer_value_name);
-}
 [[nodiscard]] std::optional<prepare::PreparedRecoveredStoreSourcePublication>
 prepared_recovered_narrow_store_source(
     const module::BlockLoweringContext& context,
@@ -506,6 +483,19 @@ plan_store_local_source_publication(
       prepared_store_source_producer(context, store.value);
   const auto recovered_source =
       prepared_recovered_narrow_store_source(context, source_producer);
+  const auto* addressing =
+      context.function.prepared != nullptr && context.function.control_flow != nullptr
+          ? prepare::find_prepared_addressing(*context.function.prepared,
+                                              context.function.control_flow->function_name)
+          : nullptr;
+  const bool byval_load_local_source =
+      context.function.prepared != nullptr
+          ? prepare::prepared_store_source_load_local_is_byval_formal_pointer_source(
+                context.function.prepared->names,
+                context.function.bir_function,
+                addressing,
+                source_producer)
+          : false;
   const bir::Value* recovered_value =
       recovered_source.has_value() ? &recovered_source->stored_value : nullptr;
   return prepare::plan_prepared_store_source_publication({
@@ -519,6 +509,7 @@ plan_store_local_source_publication(
           recovered_source.has_value()
               ? std::optional<std::size_t>{recovered_source->instruction_index}
               : std::nullopt,
+      .byval_load_local_source = byval_load_local_source,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = source_producer,
   });
@@ -586,7 +577,7 @@ lower_store_local_value_publication(
           context, store_source_plan);
   const bool has_direct_global_select_chain =
       select_chain_contains_direct_global_load(context, store->value, instruction_index);
-  if ((!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
+  if ((!store_source_plan.byval_load_local_source &&
        !store_source_plan.recovered_source_value.has_value() &&
        !has_prepared_select_producer &&
        !has_prepared_scalar_fp_binary_producer &&

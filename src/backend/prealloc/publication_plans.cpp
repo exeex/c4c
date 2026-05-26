@@ -172,6 +172,25 @@ namespace {
          value_name_has_slot_prefix(store.value.name, slot_name);
 }
 
+[[nodiscard]] bool is_byval_formal_value_name(
+    const PreparedNameTables& names,
+    const bir::Function* bir_function,
+    ValueNameId value_name) {
+  if (bir_function == nullptr) {
+    return false;
+  }
+  const std::string_view name = prepared_value_name(names, value_name);
+  if (name.empty()) {
+    return false;
+  }
+  for (const auto& param : bir_function->params) {
+    if (param.is_byval && param.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 bool prepared_scalar_publication_available(
@@ -340,6 +359,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   }
   plan.recovered_source_instruction_index =
       inputs.recovered_source_instruction_index;
+  plan.byval_load_local_source = inputs.byval_load_local_source;
 
   if (inputs.source_producer != nullptr &&
       inputs.source_producer->kind != PreparedEdgePublicationSourceProducerKind::Unknown) {
@@ -413,6 +433,27 @@ find_prepared_recovered_narrow_store_source_for_wide_local_load(
     };
   }
   return std::nullopt;
+}
+
+bool prepared_store_source_load_local_is_byval_formal_pointer_source(
+    const PreparedNameTables& names,
+    const bir::Function* bir_function,
+    const PreparedAddressingFunction* addressing,
+    const PreparedEdgePublicationSourceProducer* source_producer) {
+  if (addressing == nullptr || source_producer == nullptr ||
+      source_producer->kind != PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      source_producer->load_local == nullptr ||
+      source_producer->block_label == kInvalidBlockLabel) {
+    return false;
+  }
+  const auto* access = find_prepared_memory_access(
+      *addressing, source_producer->block_label, source_producer->instruction_index);
+  return access != nullptr &&
+         access->address.base_kind == PreparedAddressBaseKind::PointerValue &&
+         access->address.pointer_value_name.has_value() &&
+         access->address.can_use_base_plus_offset &&
+         is_byval_formal_value_name(
+             names, bir_function, *access->address.pointer_value_name);
 }
 
 }  // namespace c4c::backend::prepare

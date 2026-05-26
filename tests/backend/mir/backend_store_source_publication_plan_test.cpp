@@ -130,6 +130,72 @@ int records_recovered_source_without_target_policy() {
   return 0;
 }
 
+int classifies_byval_load_local_source_from_prepared_authority() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("byval_source");
+  const auto block_label = names.block_labels.intern("entry");
+  const auto byval_name = names.value_names.intern("%byval");
+
+  bir::Function function;
+  function.name = "byval_source";
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%byval",
+      .is_byval = true,
+  });
+
+  const bir::LoadLocalInst load{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_name = "field",
+  };
+  const prepare::PreparedEdgePublicationSourceProducer producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+      .block_label = block_label,
+      .instruction_index = 3,
+      .load_local = &load,
+  };
+  const prepare::PreparedAddressingFunction addressing{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 3,
+          .result_value_name = names.value_names.intern("%loaded"),
+          .address =
+              prepare::PreparedAddress{
+                  .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                  .pointer_value_name = byval_name,
+                  .byte_offset = 8,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .can_use_base_plus_offset = true,
+              },
+      }},
+  };
+
+  const bool classified =
+      prepare::prepared_store_source_load_local_is_byval_formal_pointer_source(
+          names, &function, &addressing, &producer);
+  const auto source = bir::Value::named(bir::TypeKind::I32, "%loaded");
+  auto destination_access = frame_slot_store_access(102, 9, 0);
+  const auto plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &destination_access,
+      .byval_load_local_source = classified,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &producer,
+  });
+
+  if (!classified || !prepare::prepared_store_source_publication_available(plan) ||
+      !plan.byval_load_local_source ||
+      plan.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      plan.source_load_local != &load) {
+    return fail("expected byval load-local source from prepared authority");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule cast_store_source_fixture() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("store_cast_source");
@@ -333,6 +399,9 @@ int main() {
     return rc;
   }
   if (int rc = records_recovered_source_without_target_policy(); rc != 0) {
+    return rc;
+  }
+  if (int rc = classifies_byval_load_local_source_from_prepared_authority(); rc != 0) {
     return rc;
   }
   if (int rc = records_cast_source_producer_from_prepared_lookup(); rc != 0) {

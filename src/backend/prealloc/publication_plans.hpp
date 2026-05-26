@@ -205,6 +205,7 @@ struct PreparedStoreSourcePublicationPlan {
 
   std::optional<bir::Value> recovered_source_value;
   std::optional<std::size_t> recovered_source_instruction_index;
+  bool byval_load_local_source = false;
 
   bool pending_publication = false;
   bool stack_homes_only = false;
@@ -230,6 +231,7 @@ struct PreparedStoreSourcePublicationInputs {
   const PreparedStackObject* destination_stack_object = nullptr;
   const bir::Value* recovered_source_value = nullptr;
   std::optional<std::size_t> recovered_source_instruction_index;
+  bool byval_load_local_source = false;
   const PreparedValueHome* pointer_base_home = nullptr;
   PreparedStoreSourcePublicationIntent intent =
       PreparedStoreSourcePublicationIntent::None;
@@ -257,5 +259,12 @@ find_prepared_recovered_narrow_store_source_for_wide_local_load(
     const bir::Block* block,
     const bir::LoadLocalInst& load,
     std::size_t load_instruction_index);
+
+[[nodiscard]] bool
+prepared_store_source_load_local_is_byval_formal_pointer_source(
+    const PreparedNameTables& names,
+    const bir::Function* bir_function,
+    const PreparedAddressingFunction* addressing,
+    const PreparedEdgePublicationSourceProducer* source_producer);
 
 }  // namespace c4c::backend::prepare
