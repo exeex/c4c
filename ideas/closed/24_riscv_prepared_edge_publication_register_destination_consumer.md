@@ -82,3 +82,26 @@ and assembly formatting inside the RISC-V backend.
   change while retaining the old RISC-V lack of edge-publication consumption.
 - A patch broadens into unrelated RISC-V backend rewrites instead of landing an
   auditable prepared edge-publication consumer slice.
+
+## Closure Note
+
+Closed after the active runbook completed all six steps.
+
+Implemented and validated RISC-V register-destination edge-publication
+consumption for exactly these source/destination homes:
+
+- `Register -> Register`, emitted as `mv <destination-register>, <source-register>`
+- `RematerializableImmediate -> Register`, emitted as
+  `li <destination-register>, <immediate>`
+
+Both paths consume authority only through shared prepared
+`edge_publications` lookup data. Reviews for the register-source and
+immediate-source slices reported no blocking findings. Accepted validation
+evidence included the backend bucket at 163/163 in `test_before.log` and the
+full-suite baseline at 3411/3411 in `test_baseline.log`; close-time regression
+guard over the accepted backend evidence passed with no new failures.
+
+This closure does not claim full RISC-V edge-publication support.
+`StackSlot -> Register`, `PointerBasePlusOffset -> Register`, and
+source-to-`StackSlot` destinations remain unsupported/fail-closed and are
+recorded as separate open follow-up ideas.
