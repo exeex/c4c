@@ -467,6 +467,27 @@ int check_pointer_base_to_register_move_uses_shared_lookup() {
               "RISC-V helper should render zero pointer-base delta as a semantic move")) {
     return 1;
   }
+
+  source_home.pointer_byte_delta = 4096;
+  const auto large_delta_asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(large_delta_asm_text.find("li a1, 4096\n    add a1, s2, a1") !=
+                  std::string::npos,
+              "RISC-V prepared module should emit a large-delta pointer-base materialization")) {
+    return 1;
+  }
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should accept a large pointer-base delta with a distinct destination register") ||
+      !expect(intent.source_pointer_base_register == "s2" &&
+                  intent.source_pointer_byte_delta == 4096 &&
+                  intent.destination_register == "a1",
+              "RISC-V helper should record large-delta pointer-base fields") ||
+      !expect(intent.instruction_text == "li a1, 4096\n    add a1, s2, a1",
+              "RISC-V helper should render target-local large-delta materialization")) {
+    return 1;
+  }
   return 0;
 }
 
@@ -675,19 +696,24 @@ int check_pointer_base_fail_closed_forms() {
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V pointer-base helper should reject positive deltas outside signed 12-bit addi range")) {
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V pointer-base helper should accept positive large deltas with a distinct destination register")) {
     return 1;
   }
 
   set_pointer_source(ids.base_name, -2049);
+  auto& destination_home = prepared.value_locations.functions.front().value_homes.at(1);
+  destination_home.register_name = std::string{"s2"};
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V pointer-base helper should reject negative deltas outside signed 12-bit addi range")) {
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
+              "RISC-V pointer-base helper should reject large deltas when destination aliases the base register") ||
+      !expect(intent.instruction_text.empty(),
+              "RISC-V pointer-base helper should not render an aliasing large-delta materialization")) {
     return 1;
   }
+  destination_home.register_name = std::string{"a1"};
 
   set_pointer_source(ids.base_name, 4);
   auto& base_home = prepared.value_locations.functions.front().value_homes.back();

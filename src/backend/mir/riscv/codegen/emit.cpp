@@ -30,6 +30,10 @@ bool fits_signed_12_bit_load_offset(std::size_t offset_bytes) {
   return offset_bytes <= 2047;
 }
 
+bool fits_signed_12_bit_immediate(std::int64_t value) {
+  return value >= -2048 && value <= 2047;
+}
+
 bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) {
   using c4c::codegen::lir::LirBinOp;
   using c4c::codegen::lir::LirRet;
@@ -89,9 +93,7 @@ std::optional<std::string> render_edge_publication_source_operand(
   }
   if (source_home.kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
       source_home.pointer_base_value_name.has_value() &&
-      source_home.pointer_byte_delta.has_value() &&
-      *source_home.pointer_byte_delta >= -2048 &&
-      *source_home.pointer_byte_delta <= 2047) {
+      source_home.pointer_byte_delta.has_value()) {
     const auto base_id_it =
         lookups->value_homes.value_ids.find(*source_home.pointer_base_value_name);
     if (base_id_it == lookups->value_homes.value_ids.end()) {
@@ -183,10 +185,19 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       if (*intent.source_pointer_byte_delta == 0) {
         intent.instruction_text =
             "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
-      } else {
+      } else if (fits_signed_12_bit_immediate(*intent.source_pointer_byte_delta)) {
         intent.instruction_text =
             "addi " + intent.destination_register + ", " +
             intent.source_pointer_base_register + ", " + *source_operand;
+      } else if (intent.destination_register != intent.source_pointer_base_register) {
+        intent.instruction_text =
+            "li " + intent.destination_register + ", " + *source_operand +
+            "\n    add " + intent.destination_register + ", " +
+            intent.source_pointer_base_register + ", " + intent.destination_register;
+      } else {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        intent.destination_register.clear();
+        intent.instruction_text.clear();
       }
     } else {
       intent.instruction_text =
