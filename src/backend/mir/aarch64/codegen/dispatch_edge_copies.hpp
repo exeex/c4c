@@ -67,13 +67,13 @@ struct EdgeProducerContext {
     std::size_t successor_before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication = nullptr);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
     const module::BlockLoweringContext& context,
-    const bir::Block& successor,
-    std::size_t source_index,
+    const prepare::PreparedEdgePublication& publication,
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home,
     BlockScalarLoweringState& scalar_state);

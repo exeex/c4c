@@ -14,6 +14,7 @@
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
 #include "variadic.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -44,12 +45,91 @@ namespace prepare = c4c::backend::prepare;
          destination_home.register_name.has_value() &&
          *source_home.register_name == *destination_home.register_name;
 }
-[[nodiscard]] bool binary_result_matches_value(const bir::Inst& inst,
-                                               std::string_view value_name) {
-  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-  return binary != nullptr &&
-         binary->result.kind == bir::Value::Kind::Named &&
-         binary->result.name == value_name;
+[[nodiscard]] std::optional<module::BlockLoweringContext>
+prepared_edge_publication_producer_block_context(
+    const module::BlockLoweringContext& context,
+    c4c::BlockLabelId block_label) {
+  if (context.function.control_flow == nullptr ||
+      block_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  for (std::size_t index = 0; index < context.function.control_flow->blocks.size(); ++index) {
+    const auto& block = context.function.control_flow->blocks[index];
+    if (block.block_label != block_label) {
+      continue;
+    }
+    return module::BlockLoweringContext{
+        .function = context.function,
+        .control_flow_block = &block,
+        .bir_block = find_bir_block(context.function, block),
+        .block_index = index,
+    };
+  }
+  return std::nullopt;
+}
+[[nodiscard]] bool prepared_edge_publication_source_matches_value(
+    const prepare::PreparedEdgePublication& publication,
+    const bir::Value& value) {
+  if (publication.source_value_kind != value.kind ||
+      publication.source_value.type != value.type) {
+    return false;
+  }
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return publication.source_value.immediate == value.immediate;
+  }
+  if (value.kind == bir::Value::Kind::Named) {
+    return publication.source_value.name == value.name;
+  }
+  return false;
+}
+[[nodiscard]] std::optional<EdgeProducerContext>
+prepared_edge_publication_producer_context(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublication& publication) {
+  if (!publication.source_producer_block_label.has_value() ||
+      !publication.source_producer_instruction_index.has_value()) {
+    return std::nullopt;
+  }
+  auto producer_context =
+      prepared_edge_publication_producer_block_context(
+          context, *publication.source_producer_block_label);
+  if (!producer_context.has_value() || producer_context->bir_block == nullptr ||
+      *publication.source_producer_instruction_index >=
+          producer_context->bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto& inst =
+      producer_context->bir_block->insts[*publication.source_producer_instruction_index];
+  switch (publication.source_producer_kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      if (publication.source_load_local != std::get_if<bir::LoadLocalInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      if (publication.source_cast != std::get_if<bir::CastInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      if (publication.source_binary != std::get_if<bir::BinaryInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      if (publication.source_select != std::get_if<bir::SelectInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return std::nullopt;
+  }
+  return EdgeProducerContext{
+      .context = *producer_context,
+      .producer = &inst,
+      .instruction_index = *publication.source_producer_instruction_index,
+  };
 }
 [[nodiscard]] std::optional<module::BlockLoweringContext> unique_branch_predecessor_context(
     const module::BlockLoweringContext& context) {
@@ -319,7 +399,8 @@ namespace prepare = c4c::backend::prepare;
     std::size_t successor_before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines) {
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication) {
   const auto target_view = scalar_view_for_type(value.type);
   const auto target =
       target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
@@ -333,8 +414,20 @@ namespace prepare = c4c::backend::prepare;
   if (value.kind != bir::Value::Kind::Named) {
     return false;
   }
-  const auto producer = find_edge_named_producer(
-      edge_context, successor_context, value.name, successor_before_instruction_index);
+  const bool require_prepared_producer =
+      prepared_publication != nullptr &&
+      prepared_edge_publication_source_matches_value(*prepared_publication, value);
+  const auto producer =
+      require_prepared_producer
+          ? prepared_edge_publication_producer_context(edge_context, *prepared_publication)
+          : find_edge_named_producer(
+                edge_context,
+                successor_context,
+                value.name,
+                successor_before_instruction_index);
+  if (require_prepared_producer && !producer.has_value()) {
+    return false;
+  }
   if (!producer.has_value() || producer->producer == nullptr) {
     const auto* home = prepared_value_home_for_value(successor_context, value);
     return home != nullptr &&
@@ -476,7 +569,7 @@ namespace prepare = c4c::backend::prepare;
       }
     }
     lines.push_back("cmp " + *lhs_name + ", " + *rhs_name);
-    lines.push_back("cset " + *result_name + ", " + std::string{*condition});
+    lines.push_back("cset " + *result_name + ", " + std::string(*condition));
     return true;
   }
   if (binary->opcode == bir::BinaryOpcode::Add ||
@@ -530,9 +623,9 @@ namespace prepare = c4c::backend::prepare;
     if (!result.has_value() || !rhs_name.has_value()) {
       return false;
     }
-    lines.push_back(std::string{binary->opcode == bir::BinaryOpcode::Add
+    lines.push_back(std::string(binary->opcode == bir::BinaryOpcode::Add
                                     ? "add "
-                                    : "sub "} +
+                                    : "sub ") +
                     *result + ", " + *result + ", " + *rhs_name);
     return true;
   }
@@ -546,19 +639,19 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
     const module::BlockLoweringContext& context,
-    const bir::Block& successor,
-    std::size_t source_index,
+    const prepare::PreparedEdgePublication& publication,
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home,
     BlockScalarLoweringState& scalar_state) {
-  if (source_index >= successor.insts.size() ||
-      source_home.value_name == c4c::kInvalidValueName ||
+  if (source_home.value_name == c4c::kInvalidValueName ||
       destination_home.kind != prepare::PreparedValueHomeKind::Register ||
       !destination_home.register_name.has_value()) {
     return std::nullopt;
   }
-  const auto source_value = instruction_result_value(successor.insts[source_index]);
-  if (!source_value.has_value()) {
+  if (publication.source_producer_kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+      publication.source_producer_kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
     return std::nullopt;
   }
   const auto parsed = abi::parse_aarch64_register_name(*destination_home.register_name);
@@ -579,21 +672,25 @@ lower_predecessor_join_source_publication(
   if (scratch_index == parsed->index) {
     return std::nullopt;
   }
-  auto successor_context = context;
-  successor_context.bir_block = &successor;
+  auto producer = prepared_edge_publication_producer_context(context, publication);
+  if (!producer.has_value() || producer->context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  auto successor_context = producer->context;
   std::vector<std::string> lines;
   if (!emit_edge_value_publication_to_register(context,
                                                successor_context,
-                                               *source_value,
-                                               source_index + 1,
+                                               publication.source_value,
+                                               producer->instruction_index + 1,
                                                parsed->index,
                                                scratch_index,
-                                               lines) ||
+                                               lines,
+                                               &publication) ||
       lines.empty()) {
     return std::nullopt;
   }
   const auto expected_view =
-      scalar_view_for_type(source_value->type).value_or(parsed->view);
+      scalar_view_for_type(publication.source_value.type).value_or(parsed->view);
   auto source_reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
   RegisterOperand emitted{
       .reg = source_reg,
@@ -672,12 +769,6 @@ lower_predecessor_select_parallel_copy_sources(
       successor_label != context.bir_block->terminator.target_label) {
     return lowered;
   }
-  const auto* successor =
-      prepare::find_block_in_function(*context.function.bir_function, successor_label);
-  if (successor == nullptr) {
-    return lowered;
-  }
-
   for (const auto& move : bundle->moves) {
     if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
         move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
@@ -694,34 +785,33 @@ lower_predecessor_select_parallel_copy_sources(
         destination_home->kind != prepare::PreparedValueHomeKind::Register) {
       continue;
     }
-    const auto source_name =
-        prepare::prepared_value_name(context.function.prepared->names, source_home->value_name);
-    if (source_name.empty()) {
-      continue;
-    }
     if (!prepared_edge_select_source_is_destination_register(*source_home,
                                                             *destination_home) &&
         source_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
       continue;
     }
-    for (std::size_t source_index = 0; source_index < successor->insts.size(); ++source_index) {
-      if (!binary_result_matches_value(successor->insts[source_index], source_name)) {
-        continue;
-      }
-      auto source_lowered = lower_predecessor_join_source_publication(
-          context,
-          *successor,
-          source_index,
-          *source_home,
-          *destination_home,
-          scalar_state);
-      if (!source_lowered.has_value()) {
-        lowered.clear();
-        return lowered;
-      }
-      lowered.push_back(std::move(*source_lowered));
+    if (context.function.prepared_lookups == nullptr) {
+      continue;
+    }
+    const auto* publication =
+        prepare::find_unique_indexed_prepared_edge_publication(
+            &context.function.prepared_lookups->edge_publications,
+            context.control_flow_block->block_label,
+            *bundle->source_parallel_copy_successor_label,
+            move.to_value_id);
+    if (publication == nullptr ||
+        publication->source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
+        publication->source_value_name != source_home->value_name) {
+      continue;
+    }
+    auto source_lowered = lower_predecessor_join_source_publication(
+        context, *publication, *source_home, *destination_home, scalar_state);
+    if (!source_lowered.has_value()) {
+      lowered.clear();
       return lowered;
     }
+    lowered.push_back(std::move(*source_lowered));
+    return lowered;
   }
   return lowered;
 }

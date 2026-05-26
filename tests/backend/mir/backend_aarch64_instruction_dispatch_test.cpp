@@ -18514,6 +18514,21 @@ int predecessor_add_publication_preserves_rhs_register_before_target_clobber() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result = bir::Value::named(bir::TypeKind::Ptr, "%edge.published"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::Ptr, "%edge.sum"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::Ptr, "%edge.published"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -18585,8 +18600,11 @@ int predecessor_add_publication_preserves_rhs_register_before_target_clobber() {
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
   aarch64_module::MachineBlock block;
@@ -24245,6 +24263,21 @@ int predecessor_join_source_publication_materializes_edge_compare() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result = bir::Value::named(bir::TypeKind::I32, "%join.cond"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge.cmp"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%join.cond"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -24295,8 +24328,11 @@ int predecessor_join_source_publication_materializes_edge_compare() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
@@ -24392,6 +24428,21 @@ int predecessor_join_source_publication_materializes_loaded_edge_compare() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result = bir::Value::named(bir::TypeKind::I32, "%join.cond"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge.cmp"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%join.cond"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -24491,8 +24542,11 @@ int predecessor_join_source_publication_materializes_loaded_edge_compare() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto pred_context =
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
