@@ -8,33 +8,32 @@ Current Step Title: Consume Prepared Edge Publications in AArch64
 
 ## Just Finished
 
-Repaired Step 3's AArch64 prepared edge-publication producer regression for
-binary multiply roots. A predecessor edge publication whose prepared root is a
-`PreparedEdgePublicationSourceProducerKind::Binary` `Mul` now materializes the
-prepared producer through `emit_edge_value_publication_to_register` instead of
-falling through to successor value-home rediscovery.
+Continued Step 3 by teaching
+`edge_value_publication_may_read_register_index` to consume a supplied
+`PreparedEdgePublication` when the checked value is the prepared edge source.
+Prepared-root dependency checks now resolve the producer from the prepared
+publication and recurse from that producer block, bypassing the legacy
+successor/edge/predecessor scan for supported prepared roots.
 
-Unsupported prepared binary roots now fail closed once the prepared publication
-matches the requested root value, so the root producer path does not silently
-restore the broad successor scan. Added an instruction-dispatch fixture that
-publishes a same-register predecessor multiply from prepared edge facts before
-the branch.
+Added an instruction-dispatch fixture that proves a prepared edge dependency
+check ignores a same-name successor decoy producer once a prepared root
+producer fact is supplied.
 
 ## Suggested Next
 
-Continue Step 3 by applying the prepared-publication consumption boundary to
-the remaining edge-publication hazard/read paths, especially
-`edge_value_publication_may_read_register_index`, so recursive dependency checks
-stop rediscovering root edge producers through the legacy AArch64 scan.
+Continue Step 3 by reviewing the remaining AArch64 edge-publication emission
+recursions for unsupported producer kinds and non-root operands, then decide
+whether another focused prepared-fact handoff is needed or whether the current
+prepared edge-publication boundary is ready for supervisor review.
 
 ## Watchouts
 
 - The repaired `00183.c` path now emits predecessor-edge multiply
   materialization before entering the join, e.g. `mul w13, w13, w9` on both
   ternary incoming edges.
-- Recursive operand materialization still uses the existing value-publication
-  path for non-root operands. The next packet should consume prepared facts
-  where available without adding testcase-shaped producer searches.
+- Non-root operands still use the existing semantic producer/value-home lookup
+  because the current prepared edge-publication fact only identifies the edge
+  source root. Do not add named-case producer searches to extend this path.
 
 ## Proof
 

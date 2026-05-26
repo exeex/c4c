@@ -258,26 +258,39 @@ prepared_edge_publication_producer_context(
     const bir::Value& value,
     std::size_t successor_before_instruction_index,
     std::uint8_t register_index,
+    const prepare::PreparedEdgePublication* prepared_publication,
     unsigned depth) {
   if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return false;
   }
-  const auto producer = find_edge_named_producer(
-      edge_context, successor_context, value.name, successor_before_instruction_index);
+  const bool require_prepared_producer =
+      prepared_publication != nullptr &&
+      prepared_edge_publication_source_matches_value(*prepared_publication, value);
+  const auto producer =
+      require_prepared_producer
+          ? prepared_edge_publication_producer_context(edge_context, *prepared_publication)
+          : find_edge_named_producer(
+                edge_context, successor_context, value.name, successor_before_instruction_index);
   if (!producer.has_value() || producer->producer == nullptr) {
-    const auto* home = prepared_value_home_for_value(successor_context, value);
+    const auto* home =
+        require_prepared_producer && prepared_publication->source_home != nullptr
+            ? prepared_publication->source_home
+            : prepared_value_home_for_value(successor_context, value);
     return home != nullptr &&
            prepared_value_home_reads_register_index(*home, register_index);
   }
+  const auto& dependency_successor_context =
+      require_prepared_producer ? producer->context : successor_context;
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;
     return edge_value_publication_may_read_register_index(edge_context,
-                                                          successor_context,
+                                                          dependency_successor_context,
                                                           operand,
                                                           producer->instruction_index,
                                                           register_index,
+                                                          prepared_publication,
                                                           depth + 1);
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(producer->producer);
@@ -287,31 +300,35 @@ prepared_edge_publication_producer_context(
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     return edge_value_publication_may_read_register_index(edge_context,
-                                                          successor_context,
+                                                          dependency_successor_context,
                                                           lhs,
                                                           producer->instruction_index,
                                                           register_index,
+                                                          prepared_publication,
                                                           depth + 1) ||
            edge_value_publication_may_read_register_index(edge_context,
-                                                          successor_context,
+                                                          dependency_successor_context,
                                                           rhs,
                                                           producer->instruction_index,
                                                           register_index,
+                                                          prepared_publication,
                                                           depth + 1);
   }
   if (const auto* select = std::get_if<bir::SelectInst>(producer->producer);
       select != nullptr) {
     return edge_value_publication_may_read_register_index(edge_context,
-                                                          successor_context,
+                                                          dependency_successor_context,
                                                           select->true_value,
                                                           producer->instruction_index,
                                                           register_index,
+                                                          prepared_publication,
                                                           depth + 1) ||
            edge_value_publication_may_read_register_index(edge_context,
-                                                          successor_context,
+                                                          dependency_successor_context,
                                                           select->false_value,
                                                           producer->instruction_index,
                                                           register_index,
+                                                          prepared_publication,
                                                           depth + 1);
   }
   return false;
@@ -580,10 +597,24 @@ prepared_edge_publication_producer_context(
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     const std::uint8_t nested_scratch = scratch_index == 9 ? 10 : 9;
+    const auto* dependency_publication =
+        require_prepared_producer ? prepared_publication : nullptr;
+    const auto& dependency_successor_context =
+        require_prepared_producer ? producer->context : successor_context;
     const bool rhs_reads_target = edge_value_publication_may_read_register_index(
-        edge_context, successor_context, rhs, producer->instruction_index, target_index);
+        edge_context,
+        dependency_successor_context,
+        rhs,
+        producer->instruction_index,
+        target_index,
+        dependency_publication);
     const bool lhs_reads_scratch = edge_value_publication_may_read_register_index(
-        edge_context, successor_context, lhs, producer->instruction_index, scratch_index);
+        edge_context,
+        dependency_successor_context,
+        lhs,
+        producer->instruction_index,
+        scratch_index,
+        dependency_publication);
     if (rhs_reads_target && !lhs_reads_scratch) {
       if (!emit_edge_value_publication_to_register(edge_context,
                                                    successor_context,

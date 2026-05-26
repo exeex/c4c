@@ -48,6 +48,7 @@ struct EdgeProducerContext {
     const bir::Value& value,
     std::size_t successor_before_instruction_index,
     std::uint8_t register_index,
+    const prepare::PreparedEdgePublication* prepared_publication = nullptr,
     unsigned depth = 0);
 
 [[nodiscard]] bool emit_edge_load_local_to_register(

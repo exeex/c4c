@@ -5,6 +5,7 @@
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch_edge_copies.hpp"
 #include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
@@ -18629,6 +18630,162 @@ int predecessor_add_publication_preserves_rhs_register_before_target_clobber() {
   return 0;
 }
 
+int edge_publication_dependency_uses_prepared_root_producer() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.edge.prepared.dependency");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.dependency.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.dependency.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.dependency.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.dependency.join");
+  const auto edge_sum_name = prepared.names.value_names.intern("%edge.prepared.sum");
+  const auto prepared_lhs_name = prepared.names.value_names.intern("%edge.prepared.lhs");
+  const auto decoy_rhs_name = prepared.names.value_names.intern("%edge.decoy.rhs");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.edge.prepared.dependency",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.edge.prepared.dependency.pred",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs =
+                           bir::Value::named(bir::TypeKind::I64, "%edge.prepared.lhs"),
+                       .rhs = bir::Value::immediate_i64(1),
+                   }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.edge.prepared.dependency.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.edge.prepared.dependency.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::immediate_i64(7),
+                       .rhs =
+                           bir::Value::named(bir::TypeKind::I64, "%edge.decoy.rhs"),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{520},
+               .function_name = function_name,
+               .value_name = edge_sum_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{520},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{521},
+               .function_name = function_name,
+               .value_name = prepared_lhs_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{521},
+               .offset_bytes = std::size_t{72},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{522},
+               .function_name = function_name,
+               .value_name = decoy_rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.back(),
+                                                   1);
+
+  const auto source = bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum");
+  if (!aarch64_codegen::edge_value_publication_may_read_register_index(
+          pred_context,
+          join_context,
+          source,
+          1,
+          0)) {
+    return fail("expected legacy edge dependency scan to see the successor decoy x0 read");
+  }
+
+  const auto& pred_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts.front());
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = source,
+      .source_value = source,
+      .source_value_name = edge_sum_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = pred_label,
+      .source_producer_instruction_index = std::size_t{0},
+      .source_binary = &pred_binary,
+  };
+  if (aarch64_codegen::edge_value_publication_may_read_register_index(
+          pred_context,
+          join_context,
+          source,
+          1,
+          0,
+          &publication)) {
+    return fail("expected prepared edge dependency check to ignore successor decoy producer");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_unsigned_div_rem_scalar_consumer(
     bir::BinaryOpcode opcode) {
   prepare::PreparedBirModule prepared;
@@ -30754,6 +30911,11 @@ int main() {
   }
   if (const int status =
           predecessor_add_publication_preserves_rhs_register_before_target_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          edge_publication_dependency_uses_prepared_root_producer();
       status != 0) {
     return status;
   }
