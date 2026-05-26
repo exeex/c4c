@@ -60,3 +60,29 @@ must not be confused with semantic edge-publication migration.
   the same slice.
 - The patch keeps the same standalone ownership behind new
   `*_common`, `*_bridge`, or `*_helpers` files.
+
+## Closure Note
+
+Closed on 2026-05-26.
+
+The scoped fold-back is complete:
+
+- `dispatch_diagnostics.cpp` / `dispatch_diagnostics.hpp` were deleted and the
+  dispatch diagnostics ownership was folded into `dispatch.cpp` / `calls.cpp`
+  without changing diagnostic behavior.
+- `dispatch_publication_common.hpp` was deleted after its required declarations
+  moved to `dispatch_publication.hpp` and live include sites were updated.
+- Live source, test, and build paths no longer reference
+  `dispatch_diagnostics` or `dispatch_publication_common`.
+- The implementation stayed within the source idea scope and did not change
+  prepared publication, value-home lookup, edge-copy semantics, diagnostics, or
+  test expectations.
+
+Closure evidence:
+
+- Focused AArch64 dispatch/call proof passed after each code packet:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_aarch64_prepared_handoff_gate|backend_aarch64_prepared_register_conversion)$' | tee test_after.log`
+- Matching focused before/after regression guard passed with 4/4 tests before
+  and 4/4 tests after.
+- Accepted full-suite baseline at `fa5f34943` passed 3411/3411 tests.
+- `git diff --check` passed for the implementation slices.
