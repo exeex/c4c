@@ -79,3 +79,49 @@ and final assembly formatting.
   shared prepared edge-publication facts.
 - A patch broadens into unrelated x86/AArch64/RISC-V lowering rewrites instead
   of adding auditable x86 consumer coverage around edge-publication handling.
+
+## Closure Notes
+
+Closed on 2026-05-26 after the active runbook completed Steps 1 through 4.
+
+The completed slice broadened x86 shared edge-publication consumption from the
+idea 21 stack-source to register-destination shape to register-source to
+register-destination movement. The x86 path continues to consume shared
+prepared edge-publication facts through
+`x86::ConsumedPlans::shared_function_lookups()->edge_publications`; it does not
+scan BIR edges or reconstruct predecessor/successor publication facts locally.
+
+This satisfies the source idea acceptance criteria:
+
+- more than the original idea 21 x86 movement shape consumes the shared lookup
+  authority
+- the broadened coverage includes a new source/destination home combination
+- focused tests cover the shared-authority dependency and missing-authority
+  behavior
+- unsupported homes remain explicit instead of falling back to local semantic
+  rediscovery
+- focused validation passed for the broadened x86 behavior and relevant shared
+  prepared lookup surface
+- the final handoff states that more x86 edge/home combinations remain before
+  starting a separate RISC-V consumer idea
+
+The route review in
+`review/idea22_x86_edge_publication_broadening_review.md` found no overfit or
+drift. The focused proof was regenerated after review, accepted by the
+regression guard, and rolled forward to canonical `test_before.log`.
+
+Close-time regression guard accepted the rolled-forward focused proof. The
+delegated close did not regenerate root-level logs because the accepted proof
+had already been rolled forward and this lifecycle packet was instructed not
+to touch root-level logs. The guard was checked in non-decreasing mode against
+that canonical proof:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+```
+
+Result: passed 79/79 focused tests, no new failures, non-decreasing pass
+count.
+
+Follow-up source idea created:
+`ideas/open/23_x86_prepared_edge_publication_remaining_home_coverage.md`.
