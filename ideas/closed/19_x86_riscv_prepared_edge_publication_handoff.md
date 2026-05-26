@@ -73,3 +73,37 @@ This idea is a handoff/audit slice, not a full x86 or RISC-V backend rewrite.
   consuming shared prepared facts.
 - A patch expands into broad backend rewrite without a minimal handoff proof.
 - A patch ignores the register-clobber hazard lesson from idea 18.
+
+## Closure Notes
+
+Closed after the active runbook completed Steps 1 through 5.
+
+The shared prepared edge-publication contract was audited from the x86/RISC-V
+consumer perspective. No required shared prepared contract repair was found.
+AArch64-specific emission details remain target-local rather than embedded in
+shared prepared facts: scratch selection, clobber avoidance, physical register
+spelling, register-class constraints, stack operand syntax, move instruction
+spelling, branch/control-flow emission, and final assembly formatting.
+
+x86 has the recommended next consumer path through the existing shared prepared
+lookup authority:
+`x86::ConsumedPlans::shared_function_lookups()->edge_publications`.
+
+RISC-V should remain a later readiness follow-up until it has a prepared-module
+lowerer entry point and prepared function/block traversal surface.
+
+The focused proof for this handoff is the Step 4 x86 consumer test, where a
+non-AArch64 consumer reads indexed shared edge-publication facts and verifies
+semantic predecessor/successor edge identity, source/destination prepared value
+ids, home/storage kinds, block-entry phase, execution site, step ordering, and
+links back to the shared prepared source records.
+
+Close-time regression guard accepted the rolled-forward Step 4 proof:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+```
+
+Result: passed 9/9, no new failures, non-decreasing pass count.
+
+Follow-up source idea created: `ideas/open/21_x86_prepared_edge_publication_consumer.md`.
