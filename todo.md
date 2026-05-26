@@ -1,52 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/42_riscv_prepared_edge_publication_aggregate_stack_source_policy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement Or Preserve Fail-Closed Aggregate Form
+Current Step ID: 4
+Current Step Title: Validate Aggregate Stack-Source Policy
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 preserved and made explicit the fail-closed policy for RISC-V
-aggregate-width `StackSlot -> Register` prepared edge-publication sources.
+Step 4 validated the RISC-V aggregate stack-source policy route as
+closure-ready with a documented prepared-authority blocker.
 
-Changes made:
+Validation summary:
 
-- Tightened `backend_riscv_prepared_edge_publication` negative coverage for
-  aggregate-width stack sources at a signed-12 stack offset and at a large
-  offset.
-- The tests now prove aggregate-width forms remain `UnsupportedSourceHome`,
-  produce no scalar `lw`/`ld` stack load, produce no scalar large-offset `t6`
-  load sequence, and record no scalar stack-load provenance.
-- The existing scalar 4-byte, 8-byte, and large-offset paths remain covered by
-  the same focused test binary.
-- `src/backend/mir/riscv/codegen/emit.cpp` was not changed; current lowering
-  already rejects aggregate-width stack sources before scalar load opcode
-  selection.
+- Backend bucket proof passed 163/163.
+- Focused route-quality searches found no aggregate stack-source scalar-load
+  branch, no aggregate-specific load/copy support, and no local edge-copy
+  rediscovery in `src/backend/mir/riscv/codegen/emit.cpp`.
+- RISC-V edge-publication lowering still consumes
+  `find_unique_indexed_prepared_edge_publication` as the shared edge-copy
+  authority.
+- The only stack-source register load path in `emit.cpp` remains the existing
+  concrete-offset scalar path for source home sizes 4 and 8.
+- The fail-closed route is closure-ready: aggregate-width stack-source support
+  remains blocked on missing shared prepared authority for aggregate copy
+  width, destination/lane mapping, alignment and partial-copy policy, ABI
+  layout, and scratch ownership.
 
 ## Suggested Next
 
-Run Step 3 only if the supervisor wants another narrow hardening packet before
-validation: add adjacent negative coverage for aggregate destination/lane,
-alignment, partial-copy, or scratch-policy expectations that can be represented
-without inventing new prepared authority. Otherwise Step 4 validation can prove
-the documented fail-closed aggregate policy route.
+Plan owner can decide lifecycle closure for
+`ideas/open/42_riscv_prepared_edge_publication_aggregate_stack_source_policy.md`
+as a documented fail-closed prepared-authority blocker.
 
 ## Watchouts
 
-The remaining blocker is still prepared-authority shape, not an emitter
-mechanical gap: shared edge-publication data does not yet describe aggregate
-copy width, lanes, partial-copy/alignment/ABI layout, destination lane mapping,
-or scratch ownership. Do not treat aggregate stack sources as scalar loads from
-size, fixture names, value ids, stack slot ids, offsets, or register spelling.
-Do not broaden into typed, dynamic, pointer, or source-to-stack
-edge-publication routes.
+Do not close this as positive aggregate load/copy support. The completed route
+documents and proves the fail-closed policy because shared prepared authority
+does not yet describe aggregate copy sequencing, lanes, alignment/partial-copy
+policy, ABI layout, or scratch ownership.
 
 ## Proof
 
 Passed:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_prepared_lookup_helper)$' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
-Result: 2/2 tests passed. Proof log: `test_after.log`.
+Result: 163/163 tests passed. Proof log: `test_after.log`.
+
+Focused searches:
+
+- `rg -n "aggregate|Aggregate|StackSlot|source_stack|find_unique_indexed_prepared_edge_publication|publications_by_edge_destination|predecessor|successor|lw |ld |0\(t6\)|t6" src/backend/mir/riscv/codegen/emit.cpp`
+- `git diff -- src/backend/mir/riscv/codegen/emit.cpp tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
+
+Search result: `emit.cpp` has no diff in this route, no aggregate-specific
+stack-source scalar load path, and no local rediscovery of edge-copy facts.
+Closure-ready: yes, as a documented policy/prepared-authority blocker.
