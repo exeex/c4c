@@ -1,8 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/30_riscv_prepared_edge_publication_stack_destination_policy_broadening.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement or Preserve Fail-Closed Source-to-Stack Policy
+Current Step ID: 3
+Current Step Title: Review Route Quality
+你該做code review了
 
 # Current Packet
 
