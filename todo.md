@@ -8,44 +8,64 @@ Current Step Title: Normalize Legacy Fallback Tests
 
 ## Just Finished
 
-Step 3: Retire Indirect Byval Lane Payload Fallbacks is complete.
-`calls_moves.cpp` now treats `ByvalRegisterLane` selected-source facts as the
-only byval lane extent authority and requires
-`make_byval_register_lane_prepared_source` to produce complete prepared source
-bytes for register-lane, register-home, indirect byval, and stack-lane
-publication. The old BIR-store reconstruction route was removed:
-`collect_byval_register_lane_stores`, `aggregate_lane_store_memory`, fragmented
-byval publication helpers, payload-store matching helpers, and the indirect
-byval absent-selection extent fallback are no longer declared or used.
-`backend_aarch64_instruction_dispatch_test.cpp` and
-`backend_aarch64_call_boundary_owner_test.cpp` now cover positive prepared
-`ByvalRegisterLane` register and stack publication, plus absent/incomplete
-selected-source fail-closed cases.
-Follow-up `00204` validation found that prepared byval selections were still
-using preservation homes for some small aggregate payloads. `call_plans.cpp`
-now publishes the selected source from complete prepared payload facts: first
-from contiguous prepared aggregate load-source accesses for assembled register
-lanes, then from contiguous local aggregate payload stores. This fixes the
-AArch64 byval/string corruption without restoring target-local BIR-store
-reconstruction as source authority.
+Step 4: Normalize Legacy Fallback Tests completed as an audit/no-op
+normalization packet. The Step 1 fallback-related tests in the owned files now
+map as follows:
 
-Plan-owner decision: Step 3 is complete after `cfbeb67c2`. Step 4 is not
-skipped; the Step 3 tests already converted the owned byval fallback-shape
-expectations into prepared-authority and fail-closed expectations, but the
-runbook still needs one explicit audit/normalization packet to confirm no
-legacy local-aggregate or byval fallback contract tests remain and to record
-any no-op conclusion before validation/closure.
+- Positive prepared local-frame address behavior:
+  `backend_aarch64_instruction_dispatch_test.cpp`
+  `missing_local_aggregate_frame_slot_call_argument_materializes_object_address`,
+  `block_dispatch_publishes_direct_local_aggregate_address_call_argument`, and
+  `block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument`
+  consume explicit `FrameSlotAddress` or `LocalFrameAddressMaterialization`
+  source selections and assert `add xN, sp, #offset` publication from the
+  selected frame object instead of a spill or legacy lookup.
+- Missing/incomplete local-frame selected-source diagnostics:
+  `incomplete_frame_slot_address_selection_does_not_rederive_value_source`,
+  `absent_frame_slot_address_selection_does_not_rederive_legacy_value_source`,
+  and `incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup`
+  require `MissingValueAuthority` or the prepared
+  `LocalFrameAddressMaterialization` diagnostic rather than source
+  rederivation.
+- Local-address unrelated guards:
+  `block_dispatch_keeps_byval_aggregate_argument_out_of_local_address_fallback`
+  and `block_dispatch_keeps_va_start_intrinsic_out_of_local_address_fallback`
+  remain guard coverage for non-local-aggregate ABI arguments and intentionally
+  assert that those shapes do not enter the local-address publication route.
+- Positive prepared byval behavior:
+  `prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane`,
+  `register_home_small_byval_aggregate_call_argument_loads_payload_slots`,
+  `stack_home_two_byte_byval_aggregate_call_argument_loads_payload_slots`,
+  `overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes`,
+  `large_byval_aggregate_indirect_argument_materializes_frame_address`, and
+  `backend_aarch64_call_boundary_owner_test.cpp`
+  `byval_caller_publishes_composite_gpr_lanes_not_object_pointer` use complete
+  `ByvalRegisterLane` selected-source facts or the remaining intended indirect
+  frame-address path and assert payload/address semantics instead of broad
+  BIR-store rediscovery.
+- Missing/incomplete byval selected-source diagnostics:
+  `incomplete_byval_register_lane_selection_does_not_rederive_register_home`,
+  `incomplete_byval_stack_lane_selection_does_not_rederive_frame_slot_home`,
+  `incomplete_byval_stack_register_lane_selection_does_not_rederive_frame_slot_home`,
+  and the indirect byval absent/incomplete checks in
+  `large_byval_aggregate_indirect_argument_materializes_frame_address` fail
+  closed with `MissingValueAuthority` rather than deriving payload bytes from
+  the register home, frame-slot home, or old payload-store reconstruction.
+- Prepared-front-end contract coverage:
+  `backend_prepare_frame_stack_call_contract_test.cpp`
+  `check_local_frame_address_source_selection_contract` and
+  `check_missing_local_aggregate_frame_slot_address_source_selection_contract`
+  assert that the prepared call plan publishes
+  `LocalFrameAddressMaterialization` facts. These are positive prepared-fact
+  contracts, not legacy fallback expectations.
+
+No owned test still expects the retired local-aggregate address fallback or the
+retired indirect byval lane payload fallback. No test edit was needed.
 
 ## Suggested Next
 
-Delegate Step 4: audit the fallback tests identified by Step 1 and the tests
-touched by Steps 2 and 3. Confirm that local aggregate address and byval lane
-coverage now asserts prepared-fact authority, positive semantic behavior, and
-missing/incomplete selected-source diagnostics rather than broad source
-rederivation. If the audit finds only already-normalized tests, update this
-packet with the concrete no-op mapping and advance to Step 5; if it finds a
-remaining legacy fallback expectation, normalize that test without weakening
-supported-path coverage.
+Supervisor should advance to Step 5 validation/closure review for the active
+fallback-retirement route.
 
 ## Watchouts
 
@@ -56,10 +76,12 @@ supported-path coverage.
   manual.
 - `calls_byval_aggregates.cpp` is now intentionally small; remaining byval
   authority is the selected-source adapter, not BIR payload-store analysis.
+- This packet did not rename guard tests containing `fallback` in their names;
+  those names describe exclusion from the retired route, not a supported legacy
+  expectation.
 
 ## Proof
 
 Ran the delegated proof:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|c_testsuite_aarch64_backend_src_00204_c)$"'`.
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner)$"'`.
 Result: passed. Proof log: `test_after.log`.
-Also ran `git diff --check`; result: clean.
