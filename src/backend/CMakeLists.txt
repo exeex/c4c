@@ -18,7 +18,6 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_common.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_dispatch_bridge.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_moves.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls_operand_adapters.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/comparison.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/comparison_branch_fusion.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/compatibility_projection.cpp"

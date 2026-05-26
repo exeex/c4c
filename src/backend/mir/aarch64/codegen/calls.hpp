@@ -40,7 +40,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             std::size_t instruction_index,
                             std::string message);
 
-// calls_operand_adapters
+// Target operand adapters
 
 // Target-only operand adapters. These translate prepared register, view,
 // immediate, and F128 facts into AArch64 operands; they do not choose semantic
