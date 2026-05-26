@@ -1,14 +1,22 @@
 #include "src/backend/mir/x86/prepared/prepared.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 namespace {
 
 namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
+namespace x86 = c4c::backend::x86;
 namespace x86_prepared = c4c::backend::x86::prepared;
+
+enum class X86EdgePublicationIntent {
+  Reject,
+  PublishPreparedEdgeValue,
+};
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
@@ -21,6 +29,24 @@ bool expect(bool condition, std::string_view message) {
     return false;
   }
   return true;
+}
+
+X86EdgePublicationIntent choose_x86_edge_publication_intent(
+    const prepare::PreparedEdgePublication& publication) {
+  if (publication.status != prepare::PreparedEdgePublicationLookupStatus::Available ||
+      publication.predecessor_label == c4c::kInvalidBlockLabel ||
+      publication.successor_label == c4c::kInvalidBlockLabel ||
+      publication.destination_home == nullptr ||
+      publication.destination_value_name == c4c::kInvalidValueName ||
+      publication.source_value_kind != bir::Value::Kind::Named ||
+      !publication.source_value_id.has_value() ||
+      publication.source_home == nullptr ||
+      publication.move == nullptr ||
+      publication.move_bundle == nullptr ||
+      !publication.parallel_copy_step_index.has_value()) {
+    return X86EdgePublicationIntent::Reject;
+  }
+  return X86EdgePublicationIntent::PublishPreparedEdgeValue;
 }
 
 prepare::PreparedBirModule make_fixture() {
@@ -228,6 +254,7 @@ prepare::PreparedBirModule make_fixture() {
                       .destination_kind = prepare::PreparedMoveDestinationKind::Value,
                       .destination_storage_kind =
                           prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{0},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                       .authority_kind =
                           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -284,6 +311,33 @@ prepare::PreparedBirModule make_fixture() {
                   .slot_index = 0,
                   .contiguous_width = 1,
               },
+          }},
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .join_transfers = {prepare::PreparedJoinTransfer{
+          .function_name = function_name,
+          .join_block_label = successor_label,
+          .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+          .edge_transfers = {prepare::PreparedEdgeValueTransfer{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .incoming_value = bir::Value::named(bir::TypeKind::I32,
+                                                  "storage_immediate"),
+              .destination_value = bir::Value::named(bir::TypeKind::I32,
+                                                     "block_entry_value"),
+          }},
+      }},
+      .parallel_copy_bundles = {prepare::PreparedParallelCopyBundle{
+          .predecessor_label = predecessor_label,
+          .successor_label = successor_label,
+          .execution_site =
+              prepare::PreparedParallelCopyExecutionSite::SuccessorEntry,
+          .execution_block_label = successor_label,
+          .steps = {prepare::PreparedParallelCopyStep{
+              .kind = prepare::PreparedParallelCopyStepKind::Move,
+              .move_index = 0,
           }},
       }},
   });
@@ -536,6 +590,74 @@ int check_query_reuses_shared_block_entry_publications() {
   return 0;
 }
 
+int check_x86_consumed_plans_read_shared_edge_publications() {
+  const auto prepared = make_fixture();
+  const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const auto* lookups = consumed.shared_function_lookups();
+  if (!expect(lookups != nullptr,
+              "x86 consumed plans did not expose shared prepared lookups")) {
+    return 1;
+  }
+
+  const auto predecessor_label = prepared.names.block_labels.find("entry");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  if (!expect(predecessor_label != c4c::kInvalidBlockLabel &&
+                  successor_label != c4c::kInvalidBlockLabel,
+              "x86 consumed plans fixture did not expose edge labels")) {
+    return 1;
+  }
+
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups->edge_publications, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  if (!expect(publication != nullptr,
+              "x86 consumed plans did not read shared indexed edge publication")) {
+    return 1;
+  }
+
+  if (!expect(choose_x86_edge_publication_intent(*publication) ==
+                  X86EdgePublicationIntent::PublishPreparedEdgeValue,
+              "x86 edge-publication consumer should accept shared semantic facts") ||
+      !expect(publication->source_value_id == std::optional<prepare::PreparedValueId>{2},
+              "x86 edge-publication consumer did not preserve source value id") ||
+      !expect(publication->destination_value_id == 5,
+              "x86 edge-publication consumer did not preserve destination value id") ||
+      !expect(publication->source_home_kind ==
+                  prepare::PreparedValueHomeKind::StackSlot,
+              "x86 edge-publication consumer did not preserve source home kind") ||
+      !expect(publication->destination_home_kind ==
+                  prepare::PreparedValueHomeKind::Register,
+              "x86 edge-publication consumer did not preserve destination home kind") ||
+      !expect(publication->destination_storage_kind ==
+                  prepare::PreparedMoveStorageKind::Register,
+              "x86 edge-publication consumer did not preserve destination storage kind") ||
+      !expect(publication->phase == prepare::PreparedMovePhase::BlockEntry &&
+                  publication->parallel_copy_execution_site ==
+                      prepare::PreparedParallelCopyExecutionSite::SuccessorEntry,
+              "x86 edge-publication consumer did not preserve edge execution facts") ||
+      !expect(publication->parallel_copy_step_index == std::optional<std::size_t>{0},
+              "x86 edge-publication consumer did not preserve step ordering") ||
+      !expect(publication->move != nullptr &&
+                  publication->move_bundle != nullptr &&
+                  publication->parallel_copy_bundle != nullptr &&
+                  publication->edge_transfer != nullptr &&
+                  publication->join_transfer != nullptr,
+              "x86 edge-publication consumer did not retain shared source records")) {
+    return 1;
+  }
+
+  const auto* by_move =
+      prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &lookups->edge_publications, predecessor_label, successor_label,
+          *publication->move);
+  if (!expect(by_move == publication,
+              "x86 consumed plans could not re-read edge publication by prepared move")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_query_reuses_shared_home_storage_diagnostics() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "x86.decode");
@@ -636,6 +758,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_query_reuses_shared_block_entry_publications();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_x86_consumed_plans_read_shared_edge_publications();
       status != 0) {
     return EXIT_FAILURE;
   }
