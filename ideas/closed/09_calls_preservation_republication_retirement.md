@@ -33,6 +33,21 @@ from. These decisions must be prepared facts, not late AArch64 guesses.
 - Existing clobber and later-use tests remain green.
 - Representative c_testsuite call-preservation cases pass.
 
+## Closure Notes
+
+Closed on 2026-05-26 after Step 5 validation. The accepted implementation moves
+preservation source, preservation destination, and republication authority into
+prepared call facts, leaving AArch64 preservation helpers as endpoint consumers
+and target instruction emitters. Reviewer acceptance is recorded in
+`review/calls_preservation_republication_step5_acceptance_review.md`.
+
+Validation evidence:
+
+- Focused close guard: `test_before.log` versus `test_after.log`, 11/11 tests
+  passed in both logs, regression guard result PASS.
+- Broader acceptance baseline: `test_baseline.log` at commit
+  `c8ab36e4cbba4135e50ec84d797a265b09dff3a9`, 3410/3410 tests passed.
+
 ## Reviewer Reject Signals
 
 - A patch restores broad post-call overwrite or reload behavior to make a
