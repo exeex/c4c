@@ -74,3 +74,20 @@ fold-back idea.
 - The patch creates a second AArch64-local fact table or scans same-block
   producers at emission time while calling the result prepared authority.
 - The patch leaves the same missing shared fact behind a new abstraction name.
+
+## Closure Note
+
+Closed after the selected store-local cast producer source decision was moved
+from AArch64 same-block rediscovery into shared prepared store-source
+publication planning. AArch64 now consumes the prepared cast producer fact and
+fails closed when the prepared lookup is absent or incomplete. Focused positive
+and negative coverage plus the backend regression guard proved the accepted
+path.
+
+Remaining AArch64-only residue is intentionally limited to memory emission
+mechanics in `memory_store_sources.*`, including instruction spelling,
+addressing, scratch handling, and store/load emission around the prepared
+facts. The later mechanical fold-back of that residue is already represented by
+`ideas/open/39_aarch64_memory_foldback_after_store_source_planning.md`; non-cast
+producer-family consumption should remain separate unless a future idea selects
+that semantic migration explicitly.
