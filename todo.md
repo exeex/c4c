@@ -11,9 +11,9 @@ Current Step Title: Validate and Handoff
 Completed plan Step 4, "Validate and Handoff".
 
 Validation and review are complete for the register-source to
-register-destination broadening slice. The focused proof was regenerated into
-canonical `test_after.log` after review, and the regression guard passed
-against `test_before.log`.
+register-destination broadening slice. The focused proof was regenerated after
+review, accepted by the regression guard, and rolled forward to canonical
+`test_before.log`.
 
 The route review in
 `review/idea22_x86_edge_publication_broadening_review.md` found the
