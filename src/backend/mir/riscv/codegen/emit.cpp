@@ -153,34 +153,56 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
-  if (publication->destination_home == nullptr ||
-      publication->destination_home->kind != prepare::PreparedValueHomeKind::Register ||
-      !publication->destination_home->register_name.has_value()) {
+  if (publication->destination_home == nullptr) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
     return intent;
   }
 
-  intent.status = EdgePublicationMoveIntentStatus::Available;
-  intent.destination_register = *publication->destination_home->register_name;
-  if (intent.source_immediate_i32.has_value()) {
-    intent.instruction_text =
-        "li " + intent.destination_register + ", " + *source_operand;
-  } else if (intent.source_stack_offset_bytes.has_value()) {
-    intent.instruction_text =
-        "lw " + intent.destination_register + ", " + *source_operand;
-  } else if (intent.source_pointer_byte_delta.has_value()) {
-    if (*intent.source_pointer_byte_delta == 0) {
+  const auto& destination_home = *publication->destination_home;
+  if (destination_home.kind == prepare::PreparedValueHomeKind::Register &&
+      destination_home.register_name.has_value()) {
+    intent.status = EdgePublicationMoveIntentStatus::Available;
+    intent.destination_register = *destination_home.register_name;
+    if (intent.source_immediate_i32.has_value()) {
       intent.instruction_text =
-          "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
+          "li " + intent.destination_register + ", " + *source_operand;
+    } else if (intent.source_stack_offset_bytes.has_value()) {
+      intent.instruction_text =
+          "lw " + intent.destination_register + ", " + *source_operand;
+    } else if (intent.source_pointer_byte_delta.has_value()) {
+      if (*intent.source_pointer_byte_delta == 0) {
+        intent.instruction_text =
+            "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
+      } else {
+        intent.instruction_text =
+            "addi " + intent.destination_register + ", " +
+            intent.source_pointer_base_register + ", " + *source_operand;
+      }
     } else {
       intent.instruction_text =
-          "addi " + intent.destination_register + ", " +
-          intent.source_pointer_base_register + ", " + *source_operand;
+          "mv " + intent.destination_register + ", " + *source_operand;
     }
-  } else {
-    intent.instruction_text =
-        "mv " + intent.destination_register + ", " + *source_operand;
+    return intent;
   }
+
+  if (destination_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+      destination_home.offset_bytes.has_value() &&
+      destination_home.size_bytes == std::optional<std::size_t>{4} &&
+      !intent.source_register.empty() &&
+      !intent.source_immediate_i32.has_value() &&
+      !intent.source_stack_offset_bytes.has_value() &&
+      !intent.source_pointer_byte_delta.has_value()) {
+    intent.status = EdgePublicationMoveIntentStatus::Available;
+    intent.destination_stack_slot_id = destination_home.slot_id;
+    intent.destination_stack_offset_bytes = *destination_home.offset_bytes;
+    intent.destination_stack_size_bytes = *destination_home.size_bytes;
+    intent.instruction_text =
+        "sw " + intent.source_register + ", " +
+        std::to_string(*destination_home.offset_bytes) + "(sp)";
+    return intent;
+  }
+
+  intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
   return intent;
 }
 
