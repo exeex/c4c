@@ -75,3 +75,22 @@ owner cleanup.
   negative coverage for missing shared facts.
 - The patch mixes semantic publication migration with this mechanical cleanup
   instead of depending on the separate semantic idea.
+
+## Closure Evidence
+
+Closed after the 39a prerequisite removed the semantic source-choice blocker and
+this idea completed the remaining mechanical owner fold-back.
+
+- `memory_store_sources.cpp` and `memory_store_sources.hpp` were deleted.
+- Definitions formerly owned by `memory_store_sources.cpp` are now owned by
+  `memory.cpp`; required external declarations live in `memory.hpp`, and
+  private helper groups are namespace-local.
+- Live source, build, and focused test paths no longer reference
+  `memory_store_sources`.
+- `src/backend/CMakeLists.txt` no longer lists the obsolete translation unit.
+- Focused memory/store-source proof passed 5/5.
+- Backend bucket proof passed 163/163.
+- Close-time regression guard passed using the accepted backend proof log in
+  non-decreasing mode: 163/163 before and 163/163 after, no new failures.
+
+No follow-up work is parked in this idea.
