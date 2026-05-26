@@ -14,10 +14,6 @@ namespace c4c::backend::aarch64::codegen {
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
     const prepare::PreparedCallPlan& call_plan);
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register();
-[[nodiscard]] std::optional<std::size_t> va_start_overflow_area_stack_offset(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan,
-    std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_helper);
 
 // Target operand adapters
 
