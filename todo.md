@@ -8,18 +8,18 @@ Current Step Title: Move Misowned Helpers to Existing Narrow Owners
 
 ## Just Finished
 
-Step 3 moved the prepared scalar FP binary publication route helper into the
-existing FP value materialization owner. `lower_scalar_fp_binary_publication_to_prepared_register`
-now lives in `fp_value_materialization.cpp` and is declared by
-`fp_value_materialization.hpp`; it is no longer declared or defined by
-`dispatch_value_materialization.*`. `dispatch.cpp` reaches the helper through
-the FP owner header without behavior changes.
+Step 3 moved the two prepared scalar cast publication helpers into the existing
+cast owner. `lower_scalar_cast_publication_to_prepared_register` and
+`lower_scalar_cast_publication_to_prepared_stack` now live in `cast_ops.cpp`
+and are declared by `cast_ops.hpp`; they are no longer declared or defined by
+`dispatch_value_materialization.*`. `dispatch.cpp` still reaches both helpers
+through the cast owner header without behavior changes.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 3 by extracting another clearly owned leaf
 family still hanging off `dispatch_value_materialization.cpp`, or route to
-review if the supervisor wants an ownership check after this FP-materialization
+review if the supervisor wants an ownership check after the scalar cast helper
 move.
 
 ## Watchouts
@@ -62,6 +62,11 @@ move.
 - `fp_value_materialization.cpp` now owns the prepared scalar FP binary
   publication route helper and imports `dispatch_edge_copies.hpp` only for the
   existing select-chain materialization instruction wrapper.
+- `cast_ops.cpp` now owns the two prepared scalar cast publication helpers and
+  imports the generic publication/common lookup helpers needed by their existing
+  implementation. Keep the central `emit_value_publication_to_register` bridge
+  in generic dispatch value materialization unless a later packet explicitly
+  owns that fan-out move.
 
 ## Proof
 
@@ -69,13 +74,15 @@ Proof passed and is recorded in `test_after.log`.
 
 Command run exactly:
 `cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
 
-Result: build completed and 4/4 focused tests passed. AST-backed checks before
-the move confirmed `lower_scalar_fp_binary_publication_to_prepared_register`
-was declared by `dispatch_value_materialization.hpp`, defined in
-`dispatch_value_materialization.cpp`, and had no same-translation-unit caller
-inside that file. AST-backed checks after the move confirmed it is declared by
-`fp_value_materialization.hpp`, defined in `fp_value_materialization.cpp`, no
-longer found in `dispatch_value_materialization.cpp`, and still directly
-called by `dispatch_prepared_block` in `dispatch.cpp`.
+Result: build completed and 5/5 focused tests passed. AST-backed checks before
+the move confirmed `lower_scalar_cast_publication_to_prepared_register` and
+`lower_scalar_cast_publication_to_prepared_stack` were defined in
+`dispatch_value_materialization.cpp`, the register helper declaration resolved
+from `dispatch_value_materialization.hpp`, and both helpers were directly
+called by `dispatch_prepared_block` in `dispatch.cpp`. AST-backed checks after
+the move confirmed both definitions are in `cast_ops.cpp`, the register helper
+declaration resolves from `cast_ops.hpp`, and the stack helper is still
+directly called by `dispatch_prepared_block` in `dispatch.cpp`; `rg` confirmed
+no remaining declarations or definitions in `dispatch_value_materialization.*`.

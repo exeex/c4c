@@ -33,6 +33,18 @@ make_prepared_scalar_cast_instruction_record(
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_stack(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state);
 [[nodiscard]] mir::TargetInstructionPrintResult print_scalar_cast_instruction(
     const InstructionRecord& instruction,
     const ScalarInstructionRecord& scalar,

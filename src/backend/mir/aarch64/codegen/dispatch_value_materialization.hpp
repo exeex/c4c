@@ -44,18 +44,4 @@ lower_scalar_mul_with_distinct_rhs_scratch(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_cast_publication_to_prepared_register(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_cast_publication_to_prepared_stack(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    const BlockScalarLoweringState& scalar_state);
-
 }  // namespace c4c::backend::aarch64::codegen

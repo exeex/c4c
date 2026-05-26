@@ -1,5 +1,12 @@
 #include "cast_ops.hpp"
 
+#include "comparison_branch_fusion.hpp"
+#include "dispatch_edge_copies.hpp"
+#include "dispatch_lookup.hpp"
+#include "dispatch_publication.hpp"
+#include "dispatch_publication_common.hpp"
+#include "dispatch_value_materialization.hpp"
+
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -1227,6 +1234,166 @@ std::optional<module::MachineInstruction> lower_stack_scalar_float_width_cast(
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  const auto result = instruction_result_value(inst);
+  const bool supported_binary =
+      binary != nullptr &&
+      branch_condition_suffix(binary->opcode).has_value() &&
+      (binary->operand_type == bir::TypeKind::F32 ||
+       binary->operand_type == bir::TypeKind::F64);
+  if ((cast == nullptr && !supported_binary) || !result.has_value()) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, *result);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for_value(context, *result);
+  if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* storage = [&]() -> const prepare::PreparedStoragePlanValue* {
+    if (context.function.storage_plan == nullptr) {
+      return nullptr;
+    }
+    for (const auto& value : context.function.storage_plan->values) {
+      if (value.value_id == home->value_id) {
+        return &value;
+      }
+    }
+    return nullptr;
+  }();
+  if (storage == nullptr ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      storage->register_name != home->register_name) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_view_for_type(result->type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto target_register = abi::gp_register(parsed->index, *expected_view);
+  if (!target_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::optional<std::uint8_t> scratch_index;
+  for (const auto& scratch : scratches) {
+    if (scratch.index != parsed->index) {
+      scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!scratch_index.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          *result,
+                                          instruction_index + 1,
+                                          parsed->index,
+                                          *scratch_index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  RegisterOperand emitted{
+      .reg = *target_register,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = expected_view,
+  };
+  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_stack(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  const auto result = instruction_result_value(inst);
+  if (cast == nullptr || !result.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for_value(context, *result);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto mnemonic = scalar_store_mnemonic(result->type);
+  const auto value_view = scalar_view_for_type(result->type);
+  if (!mnemonic.has_value() || !value_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2U) {
+    return std::nullopt;
+  }
+  const auto target = gp_register_name(scratches.front().index, *value_view);
+  if (!target.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  const auto source_bits = integer_bit_width(cast->operand.type);
+  const auto result_bits = integer_bit_width(cast->result.type);
+  if (cast->opcode == bir::CastOpcode::ZExt && source_bits.has_value() &&
+      result_bits.has_value() && *source_bits == *result_bits &&
+      cast->operand.kind == bir::Value::Kind::Named) {
+    const auto source_name = prepared_named_value_id(context, cast->operand);
+    const auto source_view = scalar_view_for_type(cast->operand.type);
+    const auto emitted_source =
+        source_name.has_value()
+            ? find_emitted_scalar_register(scalar_state, *source_name)
+            : std::nullopt;
+    if (source_view.has_value() && emitted_source.has_value() &&
+        emitted_source->reg.bank == abi::RegisterBank::GeneralPurpose) {
+      const auto source_register =
+          abi::gp_register(emitted_source->reg.index, *source_view);
+      if (source_register.has_value()) {
+        lines.push_back(std::string{*mnemonic} + " " +
+                        std::string{abi::register_name(*source_register)} + ", " +
+                        frame_slot_address(context.function, *home->offset_bytes));
+        return make_select_chain_materialization_instruction(
+            context, instruction_index, std::move(lines));
+      }
+    }
+  }
+  if (!emit_value_publication_to_register(context,
+                                          *result,
+                                          instruction_index + 1,
+                                          scratches.front().index,
+                                          scratches[1].index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                  frame_slot_address(context.function, *home->offset_bytes));
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
 }
 
 std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
