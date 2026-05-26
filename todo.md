@@ -1,36 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/22_x86_prepared_edge_publication_coverage_broadening.md
 Source Plan Path: plan.md
-Current Step ID: 2/3
-Current Step Title: Broaden x86 Prepared Consumption + Add Focused Authority Tests
-你該做test baseline review了
+Current Step ID: 4
+Current Step Title: Validate and Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2, "Broaden x86 Prepared Consumption", and Step 3, "Add
-Focused Authority Tests".
+Completed plan Step 4, "Validate and Handoff".
 
-`x86::prepared::consume_edge_publication_move_intent` now accepts shared
-edge-publication moves from `PreparedValueHomeKind::Register` source homes to
-`PreparedValueHomeKind::Register` destination homes through the existing
-`ConsumedPlans::shared_function_lookups()->edge_publications` lookup path. The
-existing stack-slot source support remains intact, and missing shared lookups,
-missing publications, unsupported publications, unsupported source homes, and
-unsupported destination homes remain explicit statuses.
+Validation and review are complete for the register-source to
+register-destination broadening slice. The focused proof was regenerated into
+canonical `test_after.log` after review, and the regression guard passed
+against `test_before.log`.
 
-Focused tests now cover a direct register-source to register-destination move
-intent, missing shared authority for that shape, and the prepared x86 module
-route emitting register-source shared edge-publication moves while rejecting a
-drifted shared-publication destination.
+The route review in
+`review/idea22_x86_edge_publication_broadening_review.md` found the
+implementation aligned with idea 22 and not testcase-overfit. The review's
+only acceptance-relevant concern was the missing `test_after.log`; that has
+now been regenerated with the recorded command.
 
 ## Suggested Next
 
-Proceed to plan Step 4 validation: supervisor should run the selected broader
-regression guard or acceptance validation for this x86 prepared
-edge-publication broadening slice, then decide whether the active runbook can
-move toward lifecycle review or closure.
+Proceed to lifecycle review. The active source idea acceptance criteria are
+evaluable from the committed implementation, focused tests, route review, and
+canonical proof logs.
 
 ## Watchouts
 
@@ -39,11 +34,17 @@ move toward lifecycle review or closure.
 - The x86 consumer still does not scan BIR edges or reconstruct
   predecessor/successor facts locally; shared `edge_publications` remains the
   authority.
-- Do not implement RISC-V consumer work in this plan.
+- Follow-up classification: more x86 edge/home combinations remain before
+  starting a separate RISC-V consumer idea.
 
 ## Proof
 
-Passed:
+Focused proof regenerated after review:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_prepared_decoded_home_storage|backend_x86_prepared_handoff_label_authority|backend_codegen_route_x86_64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
 
-Proof log: `test_after.log`.
+Result: passed 79/79. Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed, no new failures. Full-suite baseline review was also handled:
+`test_baseline.new.log` reported 3410/3410 passing and was accepted into
+`test_baseline.log`.
