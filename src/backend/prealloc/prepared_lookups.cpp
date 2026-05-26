@@ -948,6 +948,24 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
          *lhs.register_name == *rhs.register_name;
 }
 
+[[nodiscard]] bool
+prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+    const PreparedEdgePublication& publication,
+    const PreparedMoveResolution* move) {
+  if (move == nullptr ||
+      publication.status != PreparedEdgePublicationLookupStatus::Available ||
+      publication.move != move ||
+      publication.phase != PreparedMovePhase::BlockEntry ||
+      !publication.parallel_copy_step_index.has_value() ||
+      publication.parallel_copy_step_index != move->source_parallel_copy_step_index) {
+    return false;
+  }
+  return move->authority_kind == PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+         move->destination_kind == PreparedMoveDestinationKind::Value &&
+         move->op_kind == PreparedMoveResolutionOpKind::Move &&
+         publication.matching_move_redundant_by_assigned_storage;
+}
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

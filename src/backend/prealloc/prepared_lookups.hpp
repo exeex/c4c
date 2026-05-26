@@ -219,6 +219,11 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
     const PreparedValueHome& lhs,
     const PreparedValueHome& rhs);
 
+[[nodiscard]] bool
+prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+    const PreparedEdgePublication& publication,
+    const PreparedMoveResolution* move);
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

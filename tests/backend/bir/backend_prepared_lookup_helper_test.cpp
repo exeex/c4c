@@ -1089,6 +1089,21 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       !same->matching_move_redundant_by_assigned_storage) {
     return fail("edge publication should expose same-value and coalesced move facts");
   }
+  const auto* same_move = &locations.move_bundles.front().moves[3];
+  if (!prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+          *same, same_move)) {
+    return fail("edge publication should classify its redundant parallel-copy move");
+  }
+  if (prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+          *named, &locations.move_bundles.front().moves[0])) {
+    return fail("edge publication should not classify non-redundant moves as redundant");
+  }
+  auto mismatched_step_publication = *same;
+  mismatched_step_publication.parallel_copy_step_index = std::size_t{4};
+  if (prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+          mismatched_step_publication, same_move)) {
+    return fail("edge publication should require the matching parallel-copy step index");
+  }
   if (cycle == nullptr || cycle->parallel_copy_step_index != std::size_t{4} ||
       cycle->parallel_copy_step_kind !=
           prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||

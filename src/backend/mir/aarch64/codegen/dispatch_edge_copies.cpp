@@ -1049,6 +1049,20 @@ lower_predecessor_join_source_publication(
       !move->source_parallel_copy_successor_label.has_value()) {
     return true;
   }
+  if (move->destination_register.has_value() &&
+      context.function.prepared_lookups != nullptr) {
+    const auto* publication =
+        prepare::find_unique_indexed_prepared_edge_publication(
+            &context.function.prepared_lookups->edge_publications,
+            *move->source_parallel_copy_predecessor_label,
+            *move->source_parallel_copy_successor_label,
+            move->move.to_value_id);
+    if (publication != nullptr &&
+        prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+            *publication, move->source_move)) {
+      return false;
+    }
+  }
   if (move->source_register.has_value() &&
       move->destination_register.has_value() &&
       registers_alias(*move->source_register, *move->destination_register)) {

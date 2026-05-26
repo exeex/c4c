@@ -8,23 +8,29 @@ Current Step Title: Share Reusable Copy Planning Decisions
 
 ## Just Finished
 
-Step 4 narrow audit completed for same-register prepared-home copy planning.
+Step 4 bounded audit completed for redundant block-entry parallel-copy
+suppression.
 
-Moved the target-neutral "source and destination prepared homes name the same
-assigned register" decision from the local AArch64 predicate body into shared
-`prepare::prepared_value_homes_share_register_name`. AArch64 still calls its
-existing wrapper, so current producer and edge-copy consumers keep their local
-shape, while the reusable decision now lives behind prepared lookup helpers.
+Moved the target-neutral "this exact prepared edge publication marks its
+block-entry parallel-copy move redundant by assigned storage" decision into
+`prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move`.
+The helper requires an available publication, the exact prepared move pointer,
+an out-of-SSA block-entry `Move`, a matching `parallel_copy_step_index`, and
+`matching_move_redundant_by_assigned_storage`.
 
-Focused helper coverage now proves same-register prepared homes are recognized
-and different-register, unnamed-register, and non-register homes are rejected.
+AArch64 now consults that shared helper when prepared edge-publication lookups
+are attached, then keeps its existing target-local fallbacks for register alias
+suppression, memory-source suppression, and current-join clobber checks.
+Focused helper coverage proves redundant, non-redundant, and mismatched-step
+classifications.
 
 ## Suggested Next
 
-Continue Step 4 with a second bounded audit around redundant block-entry
-parallel-copy suppression, especially facts already exposed on
-`PreparedEdgePublication` such as `matching_move_redundant_by_assigned_storage`
-and `parallel_copy_step_index`, before touching any target emission logic.
+Continue Step 4 with a bounded audit of remaining AArch64-local edge-copy
+suppression and source-publication predicates in `dispatch_producers.cpp` and
+`dispatch_edge_copies.cpp`, looking only for decisions already expressible from
+prepared homes/publications without moving aliasing, scratch, encoding, or
+memory-source policy.
 
 ## Watchouts
 
@@ -32,11 +38,14 @@ and `parallel_copy_step_index`, before touching any target emission logic.
   equality only. It is not an AArch64 alias/hazard helper; `registers_alias`,
   scratch selection, instruction spelling, and encoding limits remain in
   AArch64.
-- The current migration is intentionally behavior-preserving: it does not change
-  `dispatch_producers.cpp` call sites or move block-entry clobber checks.
-- Do not treat source/destination same-register equality as enough to suppress
-  memory-source moves; `should_emit_block_entry_edge_copy_move` still keeps
-  AArch64 memory and current-join clobber checks local.
+- The redundant-copy helper is intentionally exact: copied move records without
+  the original `source_move` pointer do not satisfy it.
+- Memory-source suppression remains target-specific in AArch64. The prepared
+  facts can prove assigned-storage redundancy for a move, but they do not encode
+  AArch64's current policy of suppressing all block-entry memory-source edge
+  moves.
+- Current-join clobber checks and physical register aliasing remain AArch64
+  decisions.
 
 ## Proof
 
