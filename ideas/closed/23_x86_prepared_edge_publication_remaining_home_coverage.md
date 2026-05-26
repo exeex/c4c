@@ -85,3 +85,32 @@ formatting.
   target-neutral helpers.
 - A patch broadens into unrelated backend rewrites instead of landing auditable
   x86 prepared edge-publication coverage.
+
+## Closure Notes
+
+Closed on 2026-05-26.
+
+Idea 23 is complete. The active runbook landed an additional remaining x86
+home family by extending shared `edge_publications` consumption to
+`RematerializableImmediate -> Register` moves when the source home publishes
+`immediate_i32`. Together with the earlier x86 slices, the shared publication
+consumer surface now covers `StackSlot -> Register`, `Register -> Register`,
+and `RematerializableImmediate -> Register`.
+
+The final handoff decided that a separate RISC-V consumer idea is justified
+now for register-destination edge-publication moves only. This is not a
+full-home readiness claim: `PointerBasePlusOffset -> Register` and
+source-to-`StackSlot` destinations remain explicitly unsupported and
+fail-closed on x86.
+
+Close evidence:
+
+- `review/idea23_x86_immediate_edge_publication_review.md` reported no
+  blocking findings and recommended proceeding to the Step 5 handoff.
+- `test_before.log` contains the accepted post-commit backend bucket evidence:
+  162/162 backend tests passed.
+- `test_baseline.log` contains accepted full-suite evidence: 3410/3410 tests
+  passed.
+- Close-time regression guard parsed the accepted backend evidence with
+  `test_before.log` as both before and after for this lifecycle-only closure:
+  162/162 passed, no new failures.
