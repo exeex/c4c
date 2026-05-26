@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/16_bir_edge_value_flow_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Share Reusable Copy Planning Decisions
+Current Step ID: Step 5
+Current Step Title: Validate Authority Boundary
 
 # Current Packet
 
@@ -33,10 +33,16 @@ instruction emission, and diagnostics were not moved.
 
 ## Suggested Next
 
-No further implementation packet is identified for this narrowed Step 4 lookup
-audit. Supervisor should review the completed Step 4 helper slice and decide
-whether to commit it, request independent review, or route the next lifecycle
-packet.
+Step 4 is exhausted for the narrowed lookup-helper audit after committed slice
+`751dbc5e7 Share block-entry edge publication lookup helper`.
+
+Route the next packet under Step 5: inspect the final edge-publication authority
+boundary against `ideas/open/16_bir_edge_value_flow_authority.md`, with emphasis
+on remaining broad AArch64 semantic producer rediscovery in
+`dispatch_edge_copies.cpp`, target-neutral prepared lookup coverage, and whether
+remaining AArch64 logic is limited to emission, scratch/hazard handling,
+diagnostics, or target-specific operand materialization. Supervisor should pick
+the broader validation subset for this boundary check.
 
 ## Watchouts
 
