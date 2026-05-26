@@ -26,6 +26,10 @@ struct PhysReg {
 
 namespace {
 
+bool fits_signed_12_bit_load_offset(std::size_t offset_bytes) {
+  return offset_bytes <= 2047;
+}
+
 bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) {
   using c4c::codegen::lir::LirBinOp;
   using c4c::codegen::lir::LirRet;
@@ -74,7 +78,10 @@ std::optional<std::string> render_edge_publication_source_operand(
   }
   if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       source_home.offset_bytes.has_value() &&
-      source_home.size_bytes == std::optional<std::size_t>{4}) {
+      (source_home.size_bytes == std::optional<std::size_t>{4} ||
+       source_home.size_bytes == std::optional<std::size_t>{8}) &&
+      (source_home.size_bytes == std::optional<std::size_t>{4} ||
+       fits_signed_12_bit_load_offset(*source_home.offset_bytes))) {
     intent.source_stack_slot_id = source_home.slot_id;
     intent.source_stack_offset_bytes = *source_home.offset_bytes;
     intent.source_stack_size_bytes = *source_home.size_bytes;
@@ -167,8 +174,11 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       intent.instruction_text =
           "li " + intent.destination_register + ", " + *source_operand;
     } else if (intent.source_stack_offset_bytes.has_value()) {
+      const auto opcode = intent.source_stack_size_bytes == std::optional<std::size_t>{8}
+                              ? std::string{"ld "}
+                              : std::string{"lw "};
       intent.instruction_text =
-          "lw " + intent.destination_register + ", " + *source_operand;
+          opcode + intent.destination_register + ", " + *source_operand;
     } else if (intent.source_pointer_byte_delta.has_value()) {
       if (*intent.source_pointer_byte_delta == 0) {
         intent.instruction_text =
