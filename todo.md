@@ -8,64 +8,62 @@ Current Step Title: Add or Tighten Focused Materialization Coverage
 
 ## Just Finished
 
-Step 4 audit packet complete and lifecycle state advanced to Step 5.
-AST-backed checks on `dispatch.cpp` confirmed the
-remaining materialization/publication-shaped dispatch calls are routing
-handoffs, not leaf materialization implementations, after the Step 4 helper
-moves. `rg` scans confirmed `dispatch.cpp` still includes
-`dispatch_value_materialization.hpp` only to install the central
-`emit_value_publication_to_register` fan-out bridge into branch-fusion hooks;
-there is no direct `emit_value_publication_to_register(...)` call in
-`dispatch.cpp`.
+Step 5 coverage audit packet complete. No focused backend coverage gap was
+found, so no tests were added or tightened.
 
-Remaining touchpoint classification:
+Coverage map for the Step 5 target families:
 
-- Thin explicit delegation to narrow owners:
-  `lower_address_materialization`, `lower_address_materializations`,
-  `make_block_address_materialization_index`, and
-  `make_load_global_got_materialization_instruction` delegate to the
-  globals/address-materialization owner; store/pointer publication routes
-  delegate to `memory_store_sources.*`; scalar, FP, and cast routes delegate to
-  `alu.*`, `fp_value_materialization.*`, and `cast_ops.*`; local-slot, fixed
-  formal, compare-condition, memory-result record/retarget, and fused-compare
-  publication routes delegate to `dispatch_publication.*`; call-boundary
-  materialization routes delegate to `calls_dispatch_bridge.*`.
-- Intentional central fan-out bridge: `#include
-  "dispatch_value_materialization.hpp"` plus the
-  `make_dispatch_branch_fusion_hooks` function-pointer assignment for
-  `emit_value_publication_to_register`. This bridge still recursively consumes
-  most leaf value materializers and should stay central unless a separate
-  fan-out split is delegated.
-- No small hidden materialization decision with a clear existing owner was
-  found. The two local helpers named
-  `lower_store_local_with_address_materialization` and
-  `lower_scalar_with_address_materialization` are dispatch-ordering bridges:
-  they sequence address materialization before memory/scalar lowering, but the
-  actual materialization and publication decisions are delegated to the narrow
-  owners above.
+- Prepared-value-home publication through the narrow bridge:
+  `backend_aarch64_instruction_dispatch` covers fixed-formal, local-slot,
+  call-result, HFA, branch-condition, stack-home, and prior-preservation
+  publication paths feeding later consumers; `backend_aarch64_call_boundary_owner`
+  covers structured call-result stack-home publication and preservation
+  republication records.
+- FP materialization subpaths that intentionally still consume the generic
+  publication bridge: `backend_aarch64_instruction_dispatch` covers F64 ALU
+  FPR facts, F64 select publication before global store and call argument
+  moves, FP compare result publication, and conversion-cast store-source
+  publication; `backend_aarch64_prepared_scalar_alu_records`,
+  `backend_aarch64_prepared_scalar_cast_records`, and
+  `backend_aarch64_machine_printer` cover the structured scalar/FPR/cast
+  records and selected printing surfaces.
+- Address/global materialization feeding memory, scalar, and branch routing:
+  `backend_aarch64_prepared_memory_operand_records`,
+  `backend_aarch64_instruction_dispatch`,
+  `backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value`,
+  `backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call`,
+  and
+  `backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address`
+  cover pointer-value stores, computed/global address publication, local
+  aggregate frame-address publication, global-load-to-branch materialization,
+  and selected indirect-call address use.
+- Call-boundary materialization handoffs through `calls_dispatch_bridge.*`:
+  `backend_aarch64_call_boundary_owner`,
+  `backend_codegen_route_aarch64_prepared_call_boundary_scalability`, and
+  `backend_aarch64_instruction_dispatch` cover before-call, after-call,
+  byval/aggregate, immediate, frame-slot, symbol-address, local-address, and
+  preservation handoffs without reopening generic dispatch ownership.
+- Publication, fused-compare, and condition routes delegated through
+  `dispatch_publication.*`: `backend_aarch64_prepared_branch_records`,
+  `backend_aarch64_instruction_dispatch`,
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+  and `backend_aarch64_machine_printer` cover materialized-bool facts,
+  fused-compare facts, branch-condition stack homes, compare/select
+  publication, join transfer/select materialization, and selected branch
+  printing.
+
+No-gap finding: the existing focused subset already combines semantic prepared
+facts, machine-instruction records, and route-level publication/order checks
+for every Step 2-4 ownership boundary family. The remaining text-snippet route
+tests are representative end-to-end guards paired with structured record tests;
+no unsupported downgrade, expectation weakening, or named-case shortcut was
+needed.
 
 ## Suggested Next
 
-Current Step 5 packet: audit focused AArch64 materialization coverage against
-the helper families moved or deliberately left as routing bridges in Steps 2-4,
-then add or tighten only the smallest missing semantic coverage.
-
-Coverage audit targets:
-
-- prepared-value-home publication through the new narrow owner bridge
-- FP materialization subpaths that intentionally still consume the generic
-  `emit_value_publication_to_register` bridge for integer compare/select and
-  cast inputs
-- address/global materialization feeding memory, scalar, and branch-routing
-  paths after the remaining `dispatch.cpp` touchpoints were classified as
-  ordering bridges
-- call-boundary materialization handoffs through `calls_dispatch_bridge.*`
-- publication/fused-compare/condition routes now delegated through
-  `dispatch_publication.*`
-
-Expected executor output: a concise coverage map naming existing tests for
-each family, the smallest uncovered family if any, and either a focused test
-tightening or an explicit no-gap finding backed by the audited test paths.
+Step 6 validation packet: run the supervisor-selected broader backend
+validation for dispatch materialization cleanup and review the final diff for
+hidden ownership drift, expectation weakening, or testcase-shaped coverage.
 
 ## Watchouts
 
@@ -99,17 +97,15 @@ tightening or an explicit no-gap finding backed by the audited test paths.
   assertion can cover the same materialization path.
 - Do not weaken, delete, or mark unsupported any existing expectation to claim
   Step 5 progress.
-- Keep coverage changes tied to the Step 2-4 ownership boundary; defer broader
-  edge-copy, calls, publication, or AArch64 pipeline cleanup to separate
-  source ideas unless the test audit proves the existing materialization
-  boundary cannot be covered without that prerequisite.
+- The Step 5 audit found sufficient existing coverage, but several route tests
+  remain text-snippet guards by nature; keep relying on the paired structured
+  record tests when evaluating ownership-boundary proof.
 
 ## Proof
 
-Lifecycle-only Step 5 handoff; no code tests were run and `test_after.log` was
-not updated by this packet.
-
 Command run exactly:
-`git diff --check -- todo.md`
+`cmake --build --preset default > test_after.log 2>&1` followed by
+`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_prepared_call_boundary_scalability|backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_target_instruction_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_prepared_branch_records|backend_aarch64_call_boundary_owner)$' >> test_after.log 2>&1`
 
-Result: passed.
+Result: passed. `test_after.log` contains the preserved proof log: build was
+up to date and 14/14 delegated tests passed.
