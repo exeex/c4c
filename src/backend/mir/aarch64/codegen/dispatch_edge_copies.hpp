@@ -53,13 +53,12 @@ struct EdgeProducerContext {
 
 [[nodiscard]] bool emit_edge_load_local_to_register(
     const module::BlockLoweringContext& edge_context,
-    const module::BlockLoweringContext& successor_context,
     const EdgeProducerContext& producer,
     const bir::LoadLocalInst& load,
-    std::size_t successor_before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication = nullptr);
 
 [[nodiscard]] bool emit_edge_value_publication_to_register(
     const module::BlockLoweringContext& edge_context,

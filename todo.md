@@ -8,32 +8,32 @@ Current Step Title: Consume Prepared Edge Publications in AArch64
 
 ## Just Finished
 
-Continued Step 3 by teaching
-`edge_value_publication_may_read_register_index` to consume a supplied
-`PreparedEdgePublication` when the checked value is the prepared edge source.
-Prepared-root dependency checks now resolve the producer from the prepared
-publication and recurse from that producer block, bypassing the legacy
-successor/edge/predecessor scan for supported prepared roots.
+Continued Step 3 by tightening
+`emit_edge_value_publication_to_register` recursive emission from prepared
+edge-publication roots. Supported prepared roots now carry the prepared
+producer context into cast, compare, arithmetic, and load-address dependency
+materialization instead of letting those recursive operands start from the
+original successor context.
 
-Added an instruction-dispatch fixture that proves a prepared edge dependency
-check ignores a same-name successor decoy producer once a prepared root
-producer fact is supplied.
+Added an instruction-dispatch fixture that proves prepared-root emission ignores
+a successor operand decoy producer and materializes the operand from the
+prepared producer boundary plus prepared value home.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing the remaining AArch64 edge-publication emission
-recursions for unsupported producer kinds and non-root operands, then decide
-whether another focused prepared-fact handoff is needed or whether the current
-prepared edge-publication boundary is ready for supervisor review.
+Continue Step 3 by reviewing unsupported prepared producer kinds that still
+fail closed in AArch64 edge publication emission, especially non-binary
+producer kinds that intentionally fall back only outside prepared-root mode.
 
 ## Watchouts
 
 - The repaired `00183.c` path now emits predecessor-edge multiply
   materialization before entering the join, e.g. `mul w13, w13, w9` on both
   ternary incoming edges.
-- Non-root operands still use the existing semantic producer/value-home lookup
-  because the current prepared edge-publication fact only identifies the edge
-  source root. Do not add named-case producer searches to extend this path.
+- Non-root operands under a prepared root now search from the prepared producer
+  context and before-index; non-prepared calls still use the existing semantic
+  producer/value-home lookup. Do not add named-case producer searches to extend
+  this path.
 
 ## Proof
 

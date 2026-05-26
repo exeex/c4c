@@ -335,13 +335,12 @@ prepared_edge_publication_producer_context(
 }
 [[nodiscard]] bool emit_edge_load_local_to_register(
     const module::BlockLoweringContext& edge_context,
-    const module::BlockLoweringContext& successor_context,
     const EdgeProducerContext& producer,
     const bir::LoadLocalInst& load,
-    std::size_t successor_before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines) {
+    std::vector<std::string>& lines,
+    const prepare::PreparedEdgePublication* prepared_publication) {
   const auto mnemonic = scalar_load_mnemonic(load.result.type);
   const auto target_view = scalar_view_for_type(load.result.type);
   const auto target =
@@ -395,12 +394,13 @@ prepared_edge_publication_producer_context(
   const auto nested_scratch = scratch_index == 9 ? 10 : 9;
   if (!emit_edge_value_publication_to_register(
           edge_context,
-          successor_context,
+          producer.context,
           bir::Value::named(bir::TypeKind::Ptr, std::string{pointer_name}),
-          successor_before_instruction_index,
+          producer.instruction_index,
           scratch_index,
           nested_scratch,
-          lines)) {
+          lines,
+          prepared_publication)) {
     return false;
   }
   lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
@@ -462,39 +462,49 @@ prepared_edge_publication_producer_context(
       load != nullptr) {
     std::vector<std::string> load_lines;
     if (emit_edge_load_local_to_register(edge_context,
-                                         successor_context,
                                          *producer,
                                          *load,
-                                         successor_before_instruction_index,
                                          target_index,
                                          scratch_index,
-                                         load_lines)) {
+                                         load_lines,
+                                         require_prepared_producer ? prepared_publication
+                                                                   : nullptr)) {
       lines.insert(lines.end(), load_lines.begin(), load_lines.end());
       return true;
     }
-    const auto* home = prepared_value_home_for_value(successor_context, value);
+    const auto* home =
+        require_prepared_producer && prepared_publication->source_home != nullptr
+            ? prepared_publication->source_home
+            : prepared_value_home_for_value(
+                  require_prepared_producer ? producer->context : successor_context,
+                  value);
     return home != nullptr &&
            emit_prepared_value_home_to_register(
-               successor_context.function.prepared != nullptr
-                   ? &successor_context.function.prepared->stack_layout
+               producer->context.function.prepared != nullptr
+                   ? &producer->context.function.prepared->stack_layout
                    : nullptr,
                *home,
                value.type,
                target_index,
                lines,
-               fixed_slots_use_frame_pointer(successor_context.function));
+               fixed_slots_use_frame_pointer(producer->context.function));
   }
+  const auto* dependency_publication =
+      require_prepared_producer ? prepared_publication : nullptr;
+  const auto& dependency_successor_context =
+      require_prepared_producer ? producer->context : successor_context;
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;
     if (!emit_edge_value_publication_to_register(edge_context,
-                                                 successor_context,
+                                                 dependency_successor_context,
                                                  operand,
                                                  producer->instruction_index,
                                                  target_index,
                                                  scratch_index,
-                                                 lines)) {
+                                                 lines,
+                                                 dependency_publication)) {
       return false;
     }
     const auto source_bits = integer_bit_width(cast->operand.type);
@@ -560,12 +570,13 @@ prepared_edge_publication_producer_context(
       return false;
     }
     if (!emit_edge_value_publication_to_register(edge_context,
-                                                 successor_context,
+                                                 dependency_successor_context,
                                                  lhs,
                                                  producer->instruction_index,
                                                  target_index,
                                                  scratch_index,
-                                                 lines)) {
+                                                 lines,
+                                                 dependency_publication)) {
       return false;
     }
     std::optional<std::string> rhs_name;
@@ -576,12 +587,13 @@ prepared_edge_publication_producer_context(
       const auto nested_scratch = scratch_index == 9 ? 10 : 9;
       if (!rhs_name.has_value() ||
           !emit_edge_value_publication_to_register(edge_context,
-                                                   successor_context,
+                                                   dependency_successor_context,
                                                    rhs,
                                                    producer->instruction_index,
                                                    scratch_index,
                                                    nested_scratch,
-                                                   lines)) {
+                                                   lines,
+                                                   dependency_publication)) {
         return false;
       }
     }
@@ -597,10 +609,6 @@ prepared_edge_publication_producer_context(
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     const std::uint8_t nested_scratch = scratch_index == 9 ? 10 : 9;
-    const auto* dependency_publication =
-        require_prepared_producer ? prepared_publication : nullptr;
-    const auto& dependency_successor_context =
-        require_prepared_producer ? producer->context : successor_context;
     const bool rhs_reads_target = edge_value_publication_may_read_register_index(
         edge_context,
         dependency_successor_context,
@@ -617,36 +625,40 @@ prepared_edge_publication_producer_context(
         dependency_publication);
     if (rhs_reads_target && !lhs_reads_scratch) {
       if (!emit_edge_value_publication_to_register(edge_context,
-                                                   successor_context,
+                                                   dependency_successor_context,
                                                    rhs,
                                                    producer->instruction_index,
                                                    scratch_index,
                                                    nested_scratch,
-                                                   lines) ||
+                                                   lines,
+                                                   dependency_publication) ||
           !emit_edge_value_publication_to_register(edge_context,
-                                                   successor_context,
+                                                   dependency_successor_context,
                                                    lhs,
                                                    producer->instruction_index,
                                                    target_index,
                                                    scratch_index,
-                                                   lines)) {
+                                                   lines,
+                                                   dependency_publication)) {
         return false;
       }
     } else {
       if (!emit_edge_value_publication_to_register(edge_context,
-                                                   successor_context,
+                                                   dependency_successor_context,
                                                    lhs,
                                                    producer->instruction_index,
                                                    target_index,
                                                    scratch_index,
-                                                   lines) ||
+                                                   lines,
+                                                   dependency_publication) ||
           !emit_edge_value_publication_to_register(edge_context,
-                                                   successor_context,
+                                                   dependency_successor_context,
                                                    rhs,
                                                    producer->instruction_index,
                                                    scratch_index,
                                                    nested_scratch,
-                                                   lines)) {
+                                                   lines,
+                                                   dependency_publication)) {
         return false;
       }
     }

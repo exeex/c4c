@@ -18786,6 +18786,163 @@ int edge_publication_dependency_uses_prepared_root_producer() {
   return 0;
 }
 
+int prepared_root_emission_uses_producer_context_for_operands() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.edge.prepared.emit");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.emit.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.emit.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.emit.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.emit.join");
+  const auto sum_name = prepared.names.value_names.intern("%edge.prepared.emit.sum");
+  const auto lhs_name = prepared.names.value_names.intern("%edge.prepared.emit.lhs");
+  const auto unrelated_name =
+      prepared.names.value_names.intern("%edge.prepared.emit.unrelated");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.edge.prepared.emit",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.edge.prepared.emit.pred",
+               .insts =
+                   {bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I64,
+                                                    "%edge.prepared.emit.unrelated"),
+                        .operand_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::immediate_i64(5),
+                        .rhs = bir::Value::immediate_i64(6),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I64,
+                                                    "%edge.prepared.emit.sum"),
+                        .operand_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                 "%edge.prepared.emit.lhs"),
+                        .rhs = bir::Value::immediate_i64(1),
+                    }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.edge.prepared.emit.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.edge.prepared.emit.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I64,
+                                                   "%edge.prepared.emit.lhs"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::immediate_i64(40),
+                       .rhs = bir::Value::immediate_i64(2),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{540},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x3"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{541},
+               .function_name = function_name,
+               .value_name = sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{542},
+               .function_name = function_name,
+               .value_name = unrelated_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x4"},
+           }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.back(),
+                                                   1);
+
+  const auto source =
+      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.emit.sum");
+  const auto& pred_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = source,
+      .source_value = source,
+      .source_value_name = sum_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = pred_label,
+      .source_producer_instruction_index = std::size_t{1},
+      .source_binary = &pred_binary,
+  };
+  std::vector<std::string> lines;
+  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
+                                                                join_context,
+                                                                source,
+                                                                1,
+                                                                0,
+                                                                9,
+                                                                lines,
+                                                                &publication)) {
+    return fail("expected prepared root emission to materialize from producer context");
+  }
+  if (lines != std::vector<std::string>{"mov x0, x3",
+                                        "mov x9, #1",
+                                        "add x0, x0, x9"}) {
+    return fail("expected prepared root emission to ignore successor operand decoy");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_unsigned_div_rem_scalar_consumer(
     bir::BinaryOpcode opcode) {
   prepare::PreparedBirModule prepared;
@@ -30916,6 +31073,11 @@ int main() {
   }
   if (const int status =
           edge_publication_dependency_uses_prepared_root_producer();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_root_emission_uses_producer_context_for_operands();
       status != 0) {
     return status;
   }
