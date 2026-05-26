@@ -86,17 +86,6 @@ make_f128_q_register_operand_from_carrier(
     prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
     std::size_t instruction_index);
 
-// calls_byval_aggregates
-
-[[nodiscard]] bool is_aarch64_byval_register_lane_move(
-    const prepare::PreparedMoveResolution& move);
-[[nodiscard]] std::optional<MemoryOperand> make_byval_register_lane_prepared_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t size_bytes,
-    std::size_t instruction_index);
-
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
