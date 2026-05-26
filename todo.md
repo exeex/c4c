@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/27_riscv_prepared_edge_publication_stack_destination_support.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Review Route Quality
+Current Step ID: 4
+Current Step Title: Validate the Stack Destination Slice
 
 # Current Packet
 
