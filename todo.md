@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/17_aarch64_absent_selection_fallback_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Audit the Two Fallback Families
+Current Step ID: Step 2
+Current Step Title: Retire Local Aggregate Address Fallbacks
 
 # Current Packet
 
