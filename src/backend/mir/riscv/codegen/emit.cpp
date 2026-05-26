@@ -5,17 +5,24 @@
 // a source-level mirror for the sibling slices.
 
 #include "emit.hpp"
-#include "riscv_codegen.hpp"
 
-#include "../../backend.hpp"
-#include "../../../codegen/lir/ir.hpp"
+#include "../../../backend.hpp"
+#include "../../../../codegen/lir/ir.hpp"
 
+#include <cstdint>
 #include <optional>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace c4c::backend::riscv::codegen {
+
+struct PhysReg {
+  std::uint32_t value = 0;
+
+  constexpr PhysReg() = default;
+  constexpr explicit PhysReg(std::uint32_t v) : value(v) {}
+};
 
 namespace {
 
@@ -50,6 +57,107 @@ bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) 
 }
 
 }  // namespace
+
+EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr) {
+    return EdgePublicationMoveIntent{
+        .status = EdgePublicationMoveIntentStatus::MissingSharedLookups,
+    };
+  }
+
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups->edge_publications, predecessor_label, successor_label,
+      destination_value_id);
+  if (publication == nullptr) {
+    return EdgePublicationMoveIntent{
+        .status = EdgePublicationMoveIntentStatus::MissingPublication,
+    };
+  }
+
+  EdgePublicationMoveIntent intent{
+      .status = EdgePublicationMoveIntentStatus::UnsupportedPublication,
+      .publication = publication,
+      .destination_value_id = publication->destination_value_id,
+  };
+  if (publication->source_value_id.has_value()) {
+    intent.source_value_id = *publication->source_value_id;
+  }
+
+  if (publication->status != prepare::PreparedEdgePublicationLookupStatus::Available ||
+      publication->move == nullptr ||
+      publication->move->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return intent;
+  }
+  if (publication->source_home == nullptr ||
+      publication->source_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !publication->source_home->register_name.has_value()) {
+    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+    return intent;
+  }
+  if (publication->destination_home == nullptr ||
+      publication->destination_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !publication->destination_home->register_name.has_value()) {
+    intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+    return intent;
+  }
+
+  intent.status = EdgePublicationMoveIntentStatus::Available;
+  intent.source_register = *publication->source_home->register_name;
+  intent.destination_register = *publication->destination_home->register_name;
+  intent.instruction_text = "mv " + intent.destination_register + ", " + intent.source_register;
+  return intent;
+}
+
+EdgePublicationMoveIntent append_edge_publication_move_instruction(
+    std::string& output,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id) {
+  auto intent = consume_edge_publication_move_intent(
+      lookups, predecessor_label, successor_label, destination_value_id);
+  if (intent.status == EdgePublicationMoveIntentStatus::Available) {
+    output += "    " + intent.instruction_text + "\n";
+  }
+  return intent;
+}
+
+std::string emit_prepared_module(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  namespace prepare = c4c::backend::prepare;
+
+  std::string out = "    .text\n";
+  for (const auto& function : module.control_flow.functions) {
+    const auto lookups = prepare::make_prepared_function_lookups(module, function);
+    const auto function_name = prepare::prepared_function_name(module.names,
+                                                              function.function_name);
+    if (!function_name.empty()) {
+      out += "    .globl ";
+      out += function_name;
+      out += "\n";
+      out += function_name;
+      out += ":\n";
+    }
+
+    for (const auto& publication : lookups.edge_publications.publications) {
+      if (publication.status != prepare::PreparedEdgePublicationLookupStatus::Available) {
+        continue;
+      }
+      (void)append_edge_publication_move_instruction(out,
+                                                     &lookups,
+                                                     publication.predecessor_label,
+                                                     publication.successor_label,
+                                                     publication.destination_value_id);
+    }
+  }
+  return out;
+}
 
 std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
   if (!is_tiny_add_prepared_lir_slice(module)) {
@@ -129,9 +237,9 @@ assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& mo
   const auto assembled =
       c4c::backend::assemble_target_lir_module(
           module,
-          c4c::target_profile_from_triple(
-              module.target_triple.empty() ? c4c::default_host_target_triple()
-                                           : module.target_triple),
+          module.target_profile.arch == c4c::TargetArch::Unknown
+              ? c4c::target_profile_from_triple(c4c::default_host_target_triple())
+              : module.target_profile,
           output_path);
   return assembler::AssembleResult{
       .staged_text = assembled.staged_text,

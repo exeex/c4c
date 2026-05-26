@@ -87,6 +87,11 @@ std::string emit_x86_bir_module_entry(const bir::Module& module,
 std::string emit_aarch64_bir_module_entry(const bir::Module& module,
                                           const c4c::TargetProfile& target_profile);
 
+// Explicit RISC-V-owned BIR module-entry handoff for register-destination
+// prepared edge-publication consumers.
+std::string emit_riscv_bir_module_entry(const bir::Module& module,
+                                        const c4c::TargetProfile& target_profile);
+
 // Compatibility wrapper: x86 and AArch64 targets route through target-local
 // entrypoints, while other targets keep the existing generic prepared-BIR text
 // contract.

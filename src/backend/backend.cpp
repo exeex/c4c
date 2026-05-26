@@ -2,6 +2,7 @@
 
 #include "bir/bir.hpp"
 #include "mir/aarch64/codegen/asm_emitter.hpp"
+#include "mir/riscv/codegen/emit.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
@@ -70,6 +71,10 @@ bool is_aarch64_target(const c4c::TargetProfile& target_profile) {
   return target_profile.arch == c4c::TargetArch::Aarch64;
 }
 
+bool is_riscv_target(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Riscv64;
+}
+
 void require_x86_module_entry_target(const c4c::TargetProfile& target_profile,
                                      std::string_view api_name) {
   if (is_x86_target(target_profile)) {
@@ -86,6 +91,15 @@ void require_aarch64_module_entry_target(const c4c::TargetProfile& target_profil
   }
   throw std::invalid_argument(std::string(api_name) +
                               " requires an AArch64 target profile");
+}
+
+void require_riscv_module_entry_target(const c4c::TargetProfile& target_profile,
+                                       std::string_view api_name) {
+  if (is_riscv_target(target_profile)) {
+    return;
+  }
+  throw std::invalid_argument(std::string(api_name) +
+                              " requires a RISC-V target profile");
 }
 
 std::string make_x86_lir_handoff_failure_message(
@@ -1331,6 +1345,13 @@ std::string emit_aarch64_bir_module_entry(const bir::Module& module,
   return c4c::backend::aarch64::codegen::print_prepared_machine_nodes(prepared);
 }
 
+std::string emit_riscv_bir_module_entry(const bir::Module& module,
+                                        const c4c::TargetProfile& target_profile) {
+  require_riscv_module_entry_target(target_profile, "emit_riscv_bir_module_entry");
+  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+  return c4c::backend::riscv::codegen::emit_prepared_module(prepared);
+}
+
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile) {
   if (is_x86_target(target_profile)) {
@@ -1338,6 +1359,9 @@ std::string emit_target_bir_module(const bir::Module& module,
   }
   if (is_aarch64_target(target_profile)) {
     return emit_aarch64_bir_module_entry(module, target_profile);
+  }
+  if (is_riscv_target(target_profile)) {
+    return emit_riscv_bir_module_entry(module, target_profile);
   }
 
   const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
@@ -1435,6 +1459,9 @@ std::string emit_module(const BackendModuleInput& input,
     }
     if (is_aarch64_target(target_profile)) {
       return emit_aarch64_bir_module_entry(input.bir_module(), target_profile);
+    }
+    if (is_riscv_target(target_profile)) {
+      return emit_riscv_bir_module_entry(input.bir_module(), target_profile);
     }
     return emit_target_bir_module(input.bir_module(), target_profile);
   }

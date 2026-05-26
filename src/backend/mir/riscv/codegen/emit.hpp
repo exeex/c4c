@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
+#include "../../../prealloc/prealloc.hpp"
 
 #include <optional>
 #include <string>
@@ -18,6 +19,41 @@ assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& mo
 
 namespace c4c::backend::riscv::codegen {
 
+enum class EdgePublicationMoveIntentStatus {
+  Available,
+  MissingSharedLookups,
+  MissingPublication,
+  UnsupportedPublication,
+  UnsupportedSourceHome,
+  UnsupportedDestinationHome,
+};
+
+struct EdgePublicationMoveIntent {
+  EdgePublicationMoveIntentStatus status =
+      EdgePublicationMoveIntentStatus::MissingPublication;
+  const c4c::backend::prepare::PreparedEdgePublication* publication = nullptr;
+  c4c::backend::prepare::PreparedValueId destination_value_id = 0;
+  std::optional<c4c::backend::prepare::PreparedValueId> source_value_id;
+  std::string source_register;
+  std::string destination_register;
+  std::string instruction_text;
+};
+
+[[nodiscard]] EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id);
+
+[[nodiscard]] EdgePublicationMoveIntent append_edge_publication_move_instruction(
+    std::string& output,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id);
+
+std::string emit_prepared_module(
+    const c4c::backend::prepare::PreparedBirModule& module);
 std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module);
 std::string peephole_optimize(std::string asm_text);
 

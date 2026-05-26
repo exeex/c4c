@@ -346,6 +346,28 @@ set_tests_properties(backend_prealloc_block_entry_publications PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_riscv_prepared_edge_publication_test
+    "${BACKEND_TEST_ROOT}/bir/backend_riscv_prepared_edge_publication_test.cpp"
+)
+target_include_directories(backend_riscv_prepared_edge_publication_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_riscv_prepared_edge_publication_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_riscv_prepared_edge_publication_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_riscv_prepared_edge_publication
+  COMMAND $<TARGET_FILE:backend_riscv_prepared_edge_publication_test>
+)
+set_tests_properties(backend_riscv_prepared_edge_publication PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_x86_prepared_handoff_label_authority_test
     "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_handoff_label_authority_test.cpp"
 )
