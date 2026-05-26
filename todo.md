@@ -8,32 +8,29 @@ Current Step Title: Fold Private Calls Helpers Into `calls.cpp`
 
 ## Just Finished
 
-Step 2 - Fold Private Calls Helpers Into `calls.cpp` completed the
-calls-moves-owned common-helper relocation packet:
+Step 2 - Fold Private Calls Helpers Into `calls.cpp` completed the remaining
+`calls_common.cpp` foldback packet:
 
-- Moved calls-moves-only operand/view/F128 helper definitions from
-  `calls_common.cpp` into the anonymous namespace in `calls_moves.cpp`.
-- Removed their declarations from `calls.hpp`, leaving them namespace-local to
-  `calls_moves.cpp`.
-- Kept `outgoing_stack_argument_bytes`,
+- Moved `outgoing_stack_argument_bytes`,
   `outgoing_stack_argument_base_register`, and
-  `scalar_integer_register_view_from_size` exported because they still have
-  non-`calls_moves.cpp` callers.
+  `scalar_integer_register_view_from_size` definitions into `calls.cpp`.
+- Removed `calls_common.cpp` from `src/backend/CMakeLists.txt` and deleted the
+  now-empty translation unit.
+- Preserved the existing declarations in `calls.hpp` for calls-family consumers
+  in `calls_moves.cpp` and `calls_dispatch_bridge.cpp`.
 - Kept behavior, diagnostics, ABI semantics, and test expectations unchanged.
 
 ## Suggested Next
 
-Next fold-back packet: inspect the remaining `calls_common.cpp` surface and
-either fold another clearly single-owner helper group or hand back for
-supervisor/plan-owner review if no mechanical single-owner group remains.
+Next packet: supervisor should review whether Step 2 is exhausted now that
+`calls_common.cpp` has been removed from the build and deleted.
 
 ## Watchouts
 
-`outgoing_stack_argument_bytes` is still used by `calls.cpp` and
-`calls_moves.cpp`; `outgoing_stack_argument_base_register` is still used by
-`calls_moves.cpp`; `scalar_integer_register_view_from_size` is still used by
-`calls_moves.cpp` and `calls_dispatch_bridge.cpp`. Keep dispatch-facing APIs
-such as `make_selected_call_argument_source` and `find_move_bundle` exported.
+The remaining declarations in `calls.hpp` are still needed by external
+calls-family consumers. Do not fold dispatch-facing APIs such as
+`make_selected_call_argument_source` or `find_move_bundle` as part of this
+packet.
 
 ## Proof
 
