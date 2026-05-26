@@ -9,6 +9,17 @@
 namespace c4c::backend::prepare {
 namespace {
 
+struct PreparedEdgePublicationSourceProducer {
+  PreparedEdgePublicationSourceProducerKind kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  const bir::LoadLocalInst* load_local = nullptr;
+  const bir::CastInst* cast = nullptr;
+  const bir::BinaryInst* binary = nullptr;
+  const bir::SelectInst* select = nullptr;
+};
+
 [[nodiscard]] std::optional<std::size_t> prepared_block_index_by_label(
     const PreparedControlFlowFunction& function,
     BlockLabelId label) {
@@ -246,6 +257,151 @@ namespace {
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] BlockLabelId prepared_bir_block_label_id(const PreparedBirModule& prepared,
+                                                       const bir::Block& block) {
+  if (block.label_id != kInvalidBlockLabel) {
+    const std::string_view label =
+        prepared.module.names.block_labels.spelling(block.label_id);
+    if (!label.empty()) {
+      const BlockLabelId prepared_label = prepared.names.block_labels.find(label);
+      if (prepared_label != kInvalidBlockLabel) {
+        return prepared_label;
+      }
+    }
+  }
+  return prepared.names.block_labels.find(block.label);
+}
+
+void publish_source_producer(
+    std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>& producers,
+    ValueNameId value_name,
+    PreparedEdgePublicationSourceProducer producer) {
+  if (value_name == kInvalidValueName) {
+    return;
+  }
+  const auto [it, inserted] = producers.emplace(value_name, producer);
+  if (!inserted) {
+    it->second = PreparedEdgePublicationSourceProducer{};
+  }
+}
+
+[[nodiscard]] std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>
+make_edge_publication_source_producers(const PreparedBirModule* prepared,
+                                       const PreparedControlFlowFunction& function) {
+  std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer> producers;
+  if (prepared == nullptr) {
+    return producers;
+  }
+  const auto* bir_function = prepared_bir_function(*prepared, function);
+  if (bir_function == nullptr) {
+    return producers;
+  }
+
+  for (const auto& block : bir_function->blocks) {
+    const BlockLabelId block_label = prepared_bir_block_label_id(*prepared, block);
+    for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+      const auto& inst = block.insts[inst_index];
+      if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst);
+          load_local != nullptr) {
+        if (const auto result_name =
+                existing_prepared_value_name_id(prepared->names, load_local->result);
+            result_name.has_value()) {
+          publish_source_producer(
+              producers,
+              *result_name,
+              PreparedEdgePublicationSourceProducer{
+                  .kind = PreparedEdgePublicationSourceProducerKind::LoadLocal,
+                  .block_label = block_label,
+                  .instruction_index = inst_index,
+                  .load_local = load_local,
+              });
+        }
+        continue;
+      }
+      if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
+        if (const auto result_name =
+                existing_prepared_value_name_id(prepared->names, cast->result);
+            result_name.has_value()) {
+          publish_source_producer(
+              producers,
+              *result_name,
+              PreparedEdgePublicationSourceProducer{
+                  .kind = PreparedEdgePublicationSourceProducerKind::Cast,
+                  .block_label = block_label,
+                  .instruction_index = inst_index,
+                  .cast = cast,
+              });
+        }
+        continue;
+      }
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr) {
+        if (const auto result_name =
+                existing_prepared_value_name_id(prepared->names, binary->result);
+            result_name.has_value()) {
+          publish_source_producer(
+              producers,
+              *result_name,
+              PreparedEdgePublicationSourceProducer{
+                  .kind = PreparedEdgePublicationSourceProducerKind::Binary,
+                  .block_label = block_label,
+                  .instruction_index = inst_index,
+                  .binary = binary,
+              });
+        }
+        continue;
+      }
+      if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
+        if (const auto result_name =
+                existing_prepared_value_name_id(prepared->names, select->result);
+            result_name.has_value()) {
+          publish_source_producer(
+              producers,
+              *result_name,
+              PreparedEdgePublicationSourceProducer{
+                  .kind =
+                      PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+                  .block_label = block_label,
+                  .instruction_index = inst_index,
+                  .select = select,
+              });
+        }
+      }
+    }
+  }
+  return producers;
+}
+
+void apply_source_producer_fact(
+    PreparedEdgePublication& publication,
+    const std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>&
+        source_producers) {
+  if (publication.source_value_kind == bir::Value::Kind::Immediate) {
+    publication.source_producer_kind =
+        PreparedEdgePublicationSourceProducerKind::Immediate;
+    return;
+  }
+  if (publication.source_value_name == kInvalidValueName) {
+    return;
+  }
+  const auto producer_it = source_producers.find(publication.source_value_name);
+  if (producer_it == source_producers.end()) {
+    return;
+  }
+  const auto& producer = producer_it->second;
+  if (producer.kind == PreparedEdgePublicationSourceProducerKind::Unknown) {
+    return;
+  }
+  publication.source_producer_kind = producer.kind;
+  if (producer.block_label != kInvalidBlockLabel) {
+    publication.source_producer_block_label = producer.block_label;
+  }
+  publication.source_producer_instruction_index = producer.instruction_index;
+  publication.source_load_local = producer.load_local;
+  publication.source_cast = producer.cast;
+  publication.source_binary = producer.binary;
+  publication.source_select = producer.select;
 }
 
 [[nodiscard]] bool prepared_value_spelling_matches(const bir::Value& value,
@@ -591,6 +747,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
 }
 
 [[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedBirModule* prepared,
     const PreparedNameTables& names,
     const PreparedControlFlowFunction& function,
     const PreparedValueLocationFunction* value_locations,
@@ -602,6 +759,8 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
           : PreparedValueHomeLookups{};
   const auto* value_homes =
       value_home_lookups == nullptr ? &local_value_home_lookups : value_home_lookups;
+  const auto source_producers =
+      make_edge_publication_source_producers(prepared, function);
 
   for (const auto& join_transfer : function.join_transfers) {
     const auto carrier_kind = effective_prepared_join_transfer_carrier_kind(join_transfer);
@@ -683,6 +842,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
           }
         }
       }
+      apply_source_producer_fact(publication, source_producers);
       if (publication.source_value_id.has_value()) {
         publication.source_and_destination_same_value_id =
             *publication.source_value_id == publication.destination_value_id;
@@ -741,6 +901,24 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
+[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  return make_prepared_edge_publication_lookups(
+      nullptr, names, function, value_locations, value_home_lookups);
+}
+
+[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  return make_prepared_edge_publication_lookups(
+      &prepared, prepared.names, function, value_locations, value_home_lookups);
+}
+
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
@@ -749,7 +927,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
       find_prepared_value_location_function(prepared, function.function_name);
   auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
   auto edge_publication_lookups = make_prepared_edge_publication_lookups(
-      prepared.names, function, value_locations, &value_home_lookups);
+      prepared, function, value_locations, &value_home_lookups);
   return PreparedFunctionLookups{
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =

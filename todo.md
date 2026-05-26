@@ -8,34 +8,37 @@ Current Step Title: Define Shared Edge Publication Facts
 
 ## Just Finished
 
-Completed the Step 2 shared edge-publication source/dependency facts slice.
+Completed the Step 2 computed-source prepared fact slice.
 
-Extended `PreparedEdgePublication` with target-neutral source classification,
-optional source home kind, same-source/destination value identity, matching
-move coalescing/redundancy, and parallel-copy step/bundle ordering metadata
-derived from existing prepared edge-transfer, value-home, move-resolution, and
-parallel-copy bundle records. Added focused shared coverage for named source
-homes, immediate sources, named sources without homes, same-value/coalesced
-copies, and cycle/temp-save step ordering metadata.
+Discovery found a bounded target-neutral path: `make_prepared_function_lookups`
+already has both the prepared module and control-flow edge publications, so the
+source-producer scan can stay in shared prealloc instead of target lowering.
+Extended `PreparedEdgePublication` with source producer kind, producer block
+label, producer instruction index, and typed BIR producer pointers for
+load-local, cast, binary, and select-style materialization sources. Existing
+direct edge-publication lookup callers keep the old no-module behavior; the
+module-backed prepared function lookup now publishes the computed-source facts.
+Added focused shared coverage in `backend_prepared_lookup_helper` for all four
+producer families.
 
 ## Suggested Next
 
-Continue Step 2 by deciding whether the remaining computed-expression source
-families need separate prepared producer facts before edge publications can
-classify load-local, cast, binary, and select materialization without scanning
-BIR producer instructions.
+Move to Step 3 with a narrow AArch64 consumption packet that reads
+`PreparedEdgePublication::source_producer_kind` for the covered load-local,
+cast, binary, and select-source cases and fails closed when a required prepared
+producer fact is missing.
 
 ## Watchouts
 
-- Immediate and named-source-without-home cases are now classified at the edge
-  publication level, but computed load-local/cast/binary/select producer
-  identity is still not available as prepared data here.
+- Computed producer facts are available only through module-backed lookup
+  construction (`make_prepared_function_lookups` or the new overload taking
+  `PreparedBirModule`). Direct `PreparedNameTables` calls preserve prior
+  behavior and leave named producer kind as `unknown`.
+- Duplicate BIR result names intentionally suppress the producer fact instead
+  of guessing; this keeps the record fail-closed for non-unique SSA spelling.
 - `matching_move_redundant_by_assigned_storage` is currently true for explicit
   coalesced moves or same source/destination value id; it does not infer
   physical register spelling equivalence.
-- Parallel-copy step metadata is copied only when the matching prepared move
-  carries a `source_parallel_copy_step_index`; no target instruction or
-  MachineInstruction details are consulted.
 
 ## Proof
 

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -65,6 +66,34 @@ enum class PreparedEdgePublicationLookupStatus {
   MissingDestinationHome,
 };
 
+enum class PreparedEdgePublicationSourceProducerKind {
+  Unknown,
+  Immediate,
+  LoadLocal,
+  Cast,
+  Binary,
+  SelectMaterialization,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_edge_publication_source_producer_kind_name(
+    PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return "unknown";
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+      return "immediate";
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return "load_local";
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return "cast";
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return "binary";
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return "select_materialization";
+  }
+  return "unknown";
+}
+
 struct PreparedEdgePublication {
   PreparedEdgePublicationLookupStatus status =
       PreparedEdgePublicationLookupStatus::MissingDestinationValue;
@@ -77,6 +106,14 @@ struct PreparedEdgePublication {
   std::optional<PreparedValueId> source_value_id;
   ValueNameId source_value_name = kInvalidValueName;
   bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::CastInst* source_cast = nullptr;
+  const bir::BinaryInst* source_binary = nullptr;
+  const bir::SelectInst* source_select = nullptr;
   const PreparedValueHome* source_home = nullptr;
   PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   const PreparedValueHome* destination_home = nullptr;
@@ -164,6 +201,12 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
 
 [[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
     const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups = nullptr);
+
+[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function,
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups = nullptr);

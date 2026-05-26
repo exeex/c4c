@@ -1058,6 +1058,198 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   return 0;
 }
 
+int verify_edge_publication_source_producer_facts() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("producer_facts");
+  const auto predecessor_label = prepared.names.block_labels.intern("producer.entry");
+  const auto successor_label = prepared.names.block_labels.intern("producer.join");
+
+  const bir::Value loaded = bir::Value::named(bir::TypeKind::I32, "%loaded");
+  const bir::Value casted = bir::Value::named(bir::TypeKind::I64, "%casted");
+  const bir::Value sum = bir::Value::named(bir::TypeKind::I32, "%sum");
+  const bir::Value selected = bir::Value::named(bir::TypeKind::I32, "%selected");
+  const bir::Value load_destination = bir::Value::named(bir::TypeKind::I32, "%join.load");
+  const bir::Value cast_destination = bir::Value::named(bir::TypeKind::I64, "%join.cast");
+  const bir::Value binary_destination = bir::Value::named(bir::TypeKind::I32, "%join.binary");
+  const bir::Value select_destination = bir::Value::named(bir::TypeKind::I32, "%join.select");
+
+  const auto loaded_name = prepared.names.value_names.intern(loaded.name);
+  const auto casted_name = prepared.names.value_names.intern(casted.name);
+  const auto sum_name = prepared.names.value_names.intern(sum.name);
+  const auto selected_name = prepared.names.value_names.intern(selected.name);
+  const auto load_destination_name = prepared.names.value_names.intern(load_destination.name);
+  const auto cast_destination_name = prepared.names.value_names.intern(cast_destination.name);
+  const auto binary_destination_name =
+      prepared.names.value_names.intern(binary_destination.name);
+  const auto select_destination_name =
+      prepared.names.value_names.intern(select_destination.name);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "producer_facts",
+      .blocks = {
+          bir::Block{
+              .label = "producer.entry",
+              .insts =
+                  {
+                      bir::LoadLocalInst{
+                          .result = loaded,
+                          .slot_name = "slot",
+                      },
+                      bir::CastInst{
+                          .opcode = bir::CastOpcode::SExt,
+                          .result = casted,
+                          .operand = loaded,
+                      },
+                      bir::BinaryInst{
+                          .opcode = bir::BinaryOpcode::Add,
+                          .result = sum,
+                          .operand_type = bir::TypeKind::I32,
+                          .lhs = loaded,
+                          .rhs = bir::Value::immediate_i32(4),
+                      },
+                      bir::SelectInst{
+                          .predicate = bir::BinaryOpcode::Eq,
+                          .result = selected,
+                          .compare_type = bir::TypeKind::I32,
+                          .lhs = loaded,
+                          .rhs = sum,
+                          .true_value = sum,
+                          .false_value = bir::Value::immediate_i32(0),
+                      },
+                  },
+              .terminator =
+                  bir::Terminator{bir::BranchTerminator{
+                      .target_label = "producer.join",
+                      .target_label_id = successor_label,
+                  }},
+              .label_id = predecessor_label,
+          },
+          bir::Block{
+              .label = "producer.join",
+              .label_id = successor_label,
+          },
+      },
+  });
+
+  const auto make_transfer =
+      [&](const bir::Value& source, const bir::Value& destination) {
+        return prepare::PreparedEdgeValueTransfer{
+            .predecessor_label = predecessor_label,
+            .successor_label = successor_label,
+            .incoming_value = source,
+            .destination_value = destination,
+        };
+      };
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {
+          branch_block(predecessor_label, successor_label),
+          return_block(successor_label),
+      },
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = load_destination,
+              .edge_transfers = {make_transfer(loaded, load_destination)},
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = cast_destination,
+              .edge_transfers = {make_transfer(casted, cast_destination)},
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = binary_destination,
+              .edge_transfers = {make_transfer(sum, binary_destination)},
+          },
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .result = select_destination,
+              .carrier_kind =
+                  prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+              .edge_transfers = {make_transfer(selected, select_destination)},
+          },
+      },
+  };
+
+  const auto make_home = [&](prepare::PreparedValueId id, c4c::ValueNameId name) {
+    return prepare::PreparedValueHome{
+        .value_id = id,
+        .function_name = function_name,
+        .value_name = name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"home"},
+    };
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_home(1, loaded_name),
+              make_home(2, casted_name),
+              make_home(3, sum_name),
+              make_home(4, selected_name),
+              make_home(11, load_destination_name),
+              make_home(12, cast_destination_name),
+              make_home(13, binary_destination_name),
+              make_home(14, select_destination_name),
+          },
+  });
+
+  const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto* load_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, predecessor_label, successor_label, 11);
+  const auto* cast_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, predecessor_label, successor_label, 12);
+  const auto* binary_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, predecessor_label, successor_label, 13);
+  const auto* select_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, predecessor_label, successor_label, 14);
+
+  if (load_publication == nullptr ||
+      load_publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      load_publication->source_load_local == nullptr ||
+      load_publication->source_producer_block_label != predecessor_label ||
+      load_publication->source_producer_instruction_index != std::size_t{0}) {
+    return fail("edge publication should expose load-local source producer facts");
+  }
+  if (cast_publication == nullptr ||
+      cast_publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
+      cast_publication->source_cast == nullptr ||
+      cast_publication->source_producer_instruction_index != std::size_t{1}) {
+    return fail("edge publication should expose cast source producer facts");
+  }
+  if (binary_publication == nullptr ||
+      binary_publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      binary_publication->source_binary == nullptr ||
+      binary_publication->source_producer_instruction_index != std::size_t{2}) {
+    return fail("edge publication should expose binary source producer facts");
+  }
+  if (select_publication == nullptr ||
+      select_publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
+      select_publication->source_select == nullptr ||
+      select_publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      select_publication->source_producer_instruction_index != std::size_t{3}) {
+    return fail("edge publication should expose select-style source producer facts");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1073,6 +1265,10 @@ int main() {
   }
   if (const int result =
           verify_edge_publication_shared_source_and_parallel_copy_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_edge_publication_source_producer_facts();
       result != 0) {
     return result;
   }
