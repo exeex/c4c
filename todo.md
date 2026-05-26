@@ -1,41 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/16_bir_edge_value_flow_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Consume Prepared Edge Publications in AArch64
+Current Step ID: Step 4
+Current Step Title: Share Reusable Copy Planning Decisions
 
 # Current Packet
 
 ## Just Finished
 
-Continued Step 3 with a focused exhaustion audit of the remaining
-`find_edge_named_producer` consumers and prepared-root fallback points in
-`dispatch_edge_copies.cpp`.
+Plan-owner lifecycle decision: Step 3 is exhausted after the prepared
+edge-publication consumption/audit slice through commit `471b0539a`.
 
-Closed the remaining root-level prepared publication mismatch path:
-`emit_edge_value_publication_to_register` and the public root call to
-`edge_value_publication_may_read_register_index` now fail closed when a
-prepared publication does not describe the requested root value, instead of
-falling through to legacy producer rediscovery. Internal prepared operand
-hazard checks still run as non-root checks so scratch preservation keeps using
-prepared producer context.
+The Step 3 completion check is satisfied: prepared-root emission now consumes
+`prepared_edge_publication_producer_context` or fails closed, focused AArch64
+coverage still covers the prepared join/select/branch/block-entry paths, and
+the only direct `find_edge_named_producer` consumers left in
+`dispatch_edge_copies.cpp` are non-prepared fallback branches rather than broad
+prepared-publication rediscovery.
 
-Added focused instruction-dispatch coverage proving mismatched prepared root
-emission and dependency checks fail closed.
+Advanced canonical execution state to Step 4 without rewriting `plan.md`,
+because the active runbook contract still matches the source idea.
 
 ## Suggested Next
 
-Have the supervisor review the Step 3 prepared edge-publication slice for
-acceptance/commit readiness, then decide whether Step 3 is exhausted or whether
-another prepared edge-publication family needs a similarly focused audit.
+Start Step 4 with a narrow copy-planning audit in
+`dispatch_edge_copies.cpp` and shared prepared lookup helpers. Identify one
+decision family that depends only on value homes, edge identity, or publication
+phase, such as redundant-copy suppression or ordering facts, and move only that
+target-neutral decision behind shared prepared helpers if the audit confirms it
+does not depend on AArch64 register hazards or instruction encoding.
 
 ## Watchouts
 
 - The repaired `00183.c` path now emits predecessor-edge multiply
   materialization before entering the join, e.g. `mul w13, w13, w9` on both
   ternary incoming edges.
-- Exhaustion audit finding: the only direct `find_edge_named_producer` consumers
-  left in `dispatch_edge_copies.cpp` are the non-prepared fallback branches of
+- Step 4 must keep physical register hazards, scratch choice, instruction
+  spelling, and target encoding limits in AArch64.
+- Exhaustion audit finding from Step 3: the only direct
+  `find_edge_named_producer` consumers left in `dispatch_edge_copies.cpp` are
+  the non-prepared fallback branches of
   `edge_value_publication_may_read_register_index` and
   `emit_edge_value_publication_to_register_impl`; prepared root calls now either
   consume `prepared_edge_publication_producer_context` or fail closed.
