@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/18_aarch64_cts_00181_runtime_regression_reopen.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair the semantic lowering rule
+Current Step ID: 4
+Current Step Title: Add focused same-feature coverage
 
 # Current Packet
 
