@@ -15383,6 +15383,67 @@ int sibling_block_call_argument_repopulates_incoming_formal_home() {
   return 0;
 }
 
+int preservation_home_population_consumes_prepared_endpoints() {
+  auto prepared = prepared_with_sibling_block_call_preserved_argument_reuse();
+  auto& call_plan = prepared.call_plans.functions.front().calls.back();
+  if (call_plan.preserved_values.empty()) {
+    return fail("expected preserved value fixture");
+  }
+  auto& preserved = call_plan.preserved_values.front();
+  const auto value_id = preserved.value_id;
+  const auto value_name = preserved.value_name;
+  preserved.register_name = std::string{"x21"};
+  preserved.occupied_register_names = {std::string{"x21"}};
+  preserved.preservation_source =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .value_id = value_id,
+          .value_name = value_name,
+          .register_name = std::string{"x9"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"x9"}},
+      };
+  preserved.preservation_destination =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .value_id = value_id,
+          .value_name = value_name,
+          .register_name = std::string{"x20"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"x20"}},
+          .register_placement = preserved.register_placement,
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, function_cf.blocks.back(), 2);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(
+          block_context, call_plan, call_plan.instruction_index, diagnostics);
+  if (lowered.empty() || !diagnostics.empty()) {
+    return fail("expected endpoint-driven preservation home population");
+  }
+  const auto* populate =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.front().target.payload);
+  if (populate == nullptr || !populate->source_register.has_value() ||
+      !populate->destination_register.has_value() ||
+      populate->source_register->reg != aarch64_module::abi::x_register(9) ||
+      populate->destination_register->reg != aarch64_module::abi::x_register(20)) {
+    return fail("expected preservation home population to consume prepared "
+                "source x9 and destination x20 endpoints");
+  }
+  return 0;
+}
+
 int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -15457,8 +15518,24 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
 
 int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_stack_preserved_argument_non_call_reuse();
-  const auto& preserved =
+  auto& preserved =
       prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  preserved.preservation_destination =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+          .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .value_id = preserved.value_id,
+          .value_name = preserved.value_name,
+          .slot_id = prepare::PreparedFrameSlotId{77},
+          .stack_offset_bytes = std::size_t{96},
+          .stack_size_bytes = preserved.stack_size_bytes,
+          .stack_align_bytes = preserved.stack_align_bytes,
+          .spill_slot_placement =
+              prepare::PreparedSpillSlotPlacement{
+                  .slot_id = prepare::PreparedFrameSlotId{77},
+                  .offset_bytes = 96,
+              },
+      };
   auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
   argument.source_selection =
       prepare::PreparedCallArgumentSourceSelection{
@@ -15509,10 +15586,10 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
           &block.instructions[1].target.payload);
   if (reload == nullptr || !reload->source_memory.has_value() ||
       !reload->destination_register.has_value() ||
-      reload->source_memory->byte_offset != 32 ||
+      reload->source_memory->byte_offset != 96 ||
       reload->destination_register->reg != aarch64_module::abi::x_register(22)) {
     const auto printed = print_route_block(function_cf.function_name, block);
-    return fail("expected before-instruction stack home reload to seed x22: " +
+    return fail("expected before-instruction endpoint stack home reload to seed x22: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
 
@@ -15536,7 +15613,7 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
     return fail("expected stack-preserved scalar route to print: " + printed.diagnostic);
   }
   const auto first_call = printed.assembly.find("bl clobber_arg");
-  const auto stack_reload = printed.assembly.find("ldr x22, [sp, #32]", first_call);
+  const auto stack_reload = printed.assembly.find("ldr x22, [sp, #96]", first_call);
   const auto preserved_scalar = printed.assembly.find("add x22, x22, #1", stack_reload);
   const auto stale_scalar = printed.assembly.find("add x22, x1, #1", first_call);
   if (first_call == std::string::npos ||
@@ -30166,6 +30243,11 @@ int main() {
   }
   if (const int status =
           sibling_block_call_argument_repopulates_incoming_formal_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          preservation_home_population_consumes_prepared_endpoints();
       status != 0) {
     return status;
   }

@@ -550,6 +550,46 @@ make_prior_preserved_call_argument_source(
                                                        : fallback.value_name;
 }
 
+[[nodiscard]] bool endpoint_has_stack_storage(
+    const prepare::PreparedCallBoundaryEffectEndpoint& endpoint) {
+  return endpoint.storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+         endpoint.slot_id.has_value() &&
+         endpoint.stack_offset_bytes.has_value() &&
+         endpoint.stack_size_bytes.has_value() &&
+         *endpoint.stack_size_bytes != 0;
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_memory_from_endpoint(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallBoundaryEffectEndpoint& endpoint,
+    prepare::PreparedValueId value_id,
+    ValueNameId value_name,
+    std::size_t instruction_index) {
+  if (!endpoint_has_stack_storage(endpoint)) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = value_id,
+      .result_value_name = value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = endpoint.slot_id,
+      .byte_offset = static_cast<std::int64_t>(*endpoint.stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = *endpoint.stack_size_bytes,
+      .align_bytes = endpoint.stack_align_bytes.value_or(*endpoint.stack_size_bytes),
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] const prepare::PreparedCallPreservedValue*
 find_prior_stack_preserved_value_before_instruction(
     const module::BlockLoweringContext& context,
@@ -565,20 +605,37 @@ find_prior_stack_preserved_value_before_instruction(
           context.block_index,
           instruction_index);
   if (preserved == nullptr ||
-      preserved->route != prepare::PreparedCallPreservationRoute::StackSlot ||
-      !preserved->slot_id.has_value() ||
-      !preserved->stack_offset_bytes.has_value() ||
-      !preserved->stack_size_bytes.has_value() ||
-      *preserved->stack_size_bytes == 0) {
+      preserved->route != prepare::PreparedCallPreservationRoute::StackSlot) {
+    return nullptr;
+  }
+  if (!endpoint_has_stack_storage(preserved->preservation_destination) &&
+      (!preserved->slot_id.has_value() ||
+       !preserved->stack_offset_bytes.has_value() ||
+       !preserved->stack_size_bytes.has_value() ||
+       *preserved->stack_size_bytes == 0)) {
     return nullptr;
   }
   return preserved;
 }
 
-[[nodiscard]] MemoryOperand make_prior_stack_preserved_value_source(
+[[nodiscard]] std::optional<MemoryOperand> make_prior_stack_preserved_value_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPreservedValue& preserved,
     std::size_t instruction_index) {
+  if (auto source = make_frame_slot_memory_from_endpoint(
+          context,
+          preserved.preservation_destination,
+          preserved.value_id,
+          preserved.value_name,
+          instruction_index)) {
+    return source;
+  }
+  if (!preserved.slot_id.has_value() ||
+      !preserved.stack_offset_bytes.has_value() ||
+      !preserved.stack_size_bytes.has_value() ||
+      *preserved.stack_size_bytes == 0) {
+    return std::nullopt;
+  }
   return MemoryOperand{
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .support = MemoryOperandSupportKind::Prepared,
@@ -3853,11 +3910,14 @@ make_callee_saved_preservation_home_population(
     return std::nullopt;
   }
   const auto* source_home = find_value_home(context, *value_id);
-  if (source_home == nullptr || source_home->value_name == c4c::kInvalidValueName) {
+  if (value.storage_kind == prepare::PreparedMoveStorageKind::None &&
+      (source_home == nullptr || source_home->value_name == c4c::kInvalidValueName)) {
     return std::nullopt;
   }
   const auto expected_view =
-      source_home->size_bytes.has_value()
+      value.stack_size_bytes.has_value()
+          ? scalar_integer_register_view_from_size(*value.stack_size_bytes)
+          : source_home != nullptr && source_home->size_bytes.has_value()
           ? scalar_integer_register_view_from_size(*source_home->size_bytes)
           : scalar_view_from_register_name(storage.register_name);
   if (!expected_view.has_value()) {
@@ -3907,8 +3967,34 @@ make_callee_saved_preservation_home_population(
       .source_move = &synthetic_move,
   };
 
-  if (source_home->kind == prepare::PreparedValueHomeKind::Register &&
-      source_home->register_name.has_value()) {
+  if (value.storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      value.register_name.has_value() &&
+      value.register_bank.has_value()) {
+    auto source = make_register_operand_from_prepared_authority(
+        value.register_name,
+        value.register_placement,
+        value.register_bank,
+        RegisterOperandRole::StoragePlan,
+        *value_id,
+        value_name,
+        value.contiguous_width,
+        value.occupied_register_names,
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() ||
+        (source->reg.bank == destination->reg.bank &&
+         source->reg.index == destination->reg.index)) {
+      return std::nullopt;
+    }
+    move_record.source_register = *source;
+  } else if (auto source = make_frame_slot_memory_from_endpoint(
+                 context, value, *value_id, value_name, instruction_index)) {
+    move_record.source_memory = *source;
+  } else if (source_home != nullptr &&
+             source_home->kind == prepare::PreparedValueHomeKind::Register &&
+             source_home->register_name.has_value()) {
     const auto source_register_name =
         register_name_with_expected_view(source_home->register_name, expected_view);
     const auto source_parsed =
@@ -3944,7 +4030,8 @@ make_callee_saved_preservation_home_population(
       return std::nullopt;
     }
     move_record.source_register = *source;
-  } else if (source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+  } else if (source_home != nullptr &&
+             source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
              source_home->offset_bytes.has_value()) {
     move_record.source_memory = MemoryOperand{
         .surface = RecordSurfaceKind::MachineInstructionNode,
@@ -4446,8 +4533,12 @@ std::vector<module::MachineInstruction> lower_value_moves(
                              context, move.from_value_id, instruction_index)
                        : nullptr;
                prior_stack_preserved != nullptr) {
-      move_record.source_memory = make_prior_stack_preserved_value_source(
+      auto source = make_prior_stack_preserved_value_source(
           context, *prior_stack_preserved, instruction_index);
+      if (!source.has_value()) {
+        continue;
+      }
+      move_record.source_memory = *source;
     } else if (source_home != nullptr &&
                source_home->kind == prepare::PreparedValueHomeKind::Register &&
                source_home->register_name.has_value()) {
