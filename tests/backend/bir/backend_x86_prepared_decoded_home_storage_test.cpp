@@ -647,6 +647,58 @@ int check_x86_consumed_plans_read_shared_edge_publications() {
   return 0;
 }
 
+int check_x86_edge_publication_move_intent_accepts_register_source_home() {
+  auto prepared = make_fixture();
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::Register;
+  source_home.slot_id = std::nullopt;
+  source_home.offset_bytes = std::nullopt;
+  source_home.register_name = std::string{"eax"};
+
+  const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const auto predecessor_label = prepared.names.block_labels.find("entry");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  const auto* lookups = consumed.shared_function_lookups();
+  if (!expect(lookups != nullptr,
+              "x86 register-source edge-publication fixture did not expose shared lookups")) {
+    return 1;
+  }
+
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups->edge_publications, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  const auto intent = x86_prepared::consume_edge_publication_move_intent(
+      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+  if (!expect(intent.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 edge-publication helper should accept register-source homes") ||
+      !expect(intent.publication == publication && publication != nullptr,
+              "x86 register-source helper should preserve shared publication authority") ||
+      !expect(publication->source_home_kind ==
+                  prepare::PreparedValueHomeKind::Register,
+              "x86 register-source helper did not preserve source home kind") ||
+      !expect(intent.source_operand == "eax" && intent.destination_operand == "ebx",
+              "x86 register-source helper did not produce register move operands") ||
+      !expect(intent.instruction_text == "mov ebx, eax",
+              "x86 register-source helper did not produce register move output")) {
+    return 1;
+  }
+
+  std::string missing_output = "unchanged";
+  const auto missing = x86_prepared::append_edge_publication_move_instruction(
+      missing_output, x86::ConsumedPlans{}, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  if (!expect(missing.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
+              "x86 register-source lowering should require shared edge-publication authority") ||
+      !expect(missing_output == "unchanged",
+              "x86 register-source lowering should not emit without shared authority")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_x86_edge_publication_move_intent_missing_authority() {
   const auto prepared = make_fixture();
   const auto predecessor_label = prepared.names.block_labels.find("entry");
@@ -861,6 +913,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_x86_consumed_plans_read_shared_edge_publications();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status =
+          check_x86_edge_publication_move_intent_accepts_register_source_home();
       status != 0) {
     return EXIT_FAILURE;
   }

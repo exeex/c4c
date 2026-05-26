@@ -5,6 +5,25 @@
 
 namespace c4c::backend::x86::prepared {
 
+namespace {
+
+std::string render_edge_publication_source_operand(
+    const c4c::backend::prepare::PreparedValueHome& source_home) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home.offset_bytes.has_value()) {
+    return "DWORD PTR [rsp + " + std::to_string(*source_home.offset_bytes) + "]";
+  }
+  if (source_home.kind == prepare::PreparedValueHomeKind::Register &&
+      source_home.register_name.has_value()) {
+    return *source_home.register_name;
+  }
+  return {};
+}
+
+}  // namespace
+
 FastPath classify_module_fast_path(const c4c::backend::prepare::PreparedBirModule& module,
                                    std::optional<std::string_view> focus_function) {
   FastPath decision{};
@@ -66,9 +85,7 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       publication->move->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
     return intent;
   }
-  if (publication->source_home == nullptr ||
-      publication->source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      !publication->source_home->offset_bytes.has_value()) {
+  if (publication->source_home == nullptr) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
@@ -79,9 +96,15 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     return intent;
   }
 
+  const auto source_operand =
+      render_edge_publication_source_operand(*publication->source_home);
+  if (source_operand.empty()) {
+    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+    return intent;
+  }
+
   intent.status = EdgePublicationMoveIntentStatus::Available;
-  intent.source_operand =
-      "DWORD PTR [rsp + " + std::to_string(*publication->source_home->offset_bytes) + "]";
+  intent.source_operand = source_operand;
   intent.destination_operand = *publication->destination_home->register_name;
   intent.instruction_text = "mov " + intent.destination_operand + ", " + intent.source_operand;
   return intent;

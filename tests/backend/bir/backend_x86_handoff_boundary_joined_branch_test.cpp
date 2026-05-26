@@ -7727,14 +7727,14 @@ void force_supported_shared_edge_publication_homes(
     throw std::runtime_error("missing prepared homes for edge-publication route test");
   }
 
-  zero_home->kind = prepare::PreparedValueHomeKind::StackSlot;
-  zero_home->slot_id = 70;
-  zero_home->offset_bytes = 56;
-  zero_home->register_name = std::nullopt;
-  nonzero_home->kind = prepare::PreparedValueHomeKind::StackSlot;
-  nonzero_home->slot_id = 71;
-  nonzero_home->offset_bytes = 64;
-  nonzero_home->register_name = std::nullopt;
+  zero_home->kind = prepare::PreparedValueHomeKind::Register;
+  zero_home->slot_id = std::nullopt;
+  zero_home->offset_bytes = std::nullopt;
+  zero_home->register_name = "r10d";
+  nonzero_home->kind = prepare::PreparedValueHomeKind::Register;
+  nonzero_home->slot_id = std::nullopt;
+  nonzero_home->offset_bytes = std::nullopt;
+  nonzero_home->register_name = "r11d";
   merge_home->kind = prepare::PreparedValueHomeKind::Register;
   merge_home->slot_id = std::nullopt;
   merge_home->offset_bytes = std::nullopt;
@@ -7767,9 +7767,9 @@ int check_join_route_emits_shared_edge_publication_move_from_module() {
   force_supported_shared_edge_publication_homes(prepared, "branch_join_adjust");
 
   const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
-  if (prepared_asm.find("    mov ebx, DWORD PTR [rsp + 56]\n") == std::string::npos ||
-      prepared_asm.find("    mov ebx, DWORD PTR [rsp + 64]\n") == std::string::npos) {
-    return fail("x86 module route did not emit shared-publication-derived edge moves");
+  if (prepared_asm.find("    mov ebx, r10d\n") == std::string::npos ||
+      prepared_asm.find("    mov ebx, r11d\n") == std::string::npos) {
+    return fail("x86 module route did not emit register-source shared-publication edge moves");
   }
 
   auto drifted = prepared;
