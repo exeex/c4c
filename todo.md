@@ -8,32 +8,47 @@ Current Step Title: Thin `dispatch.cpp` Materialization Touchpoints
 
 ## Just Finished
 
-Step 4 packet complete. `lower_local_slot_address_publication` now lives in
-`dispatch_publication.cpp` and is declared by `dispatch_publication.hpp`
-alongside `emit_local_slot_address_publication_to_register`; it is no longer
-declared or defined by `dispatch_value_materialization.*`. `dispatch.cpp` still
-calls the helper at the same dispatch ordering point.
+Step 4 audit packet complete. AST-backed checks on `dispatch.cpp` confirmed the
+remaining materialization/publication-shaped dispatch calls are routing
+handoffs, not leaf materialization implementations, after the Step 4 helper
+moves. `rg` scans confirmed `dispatch.cpp` still includes
+`dispatch_value_materialization.hpp` only to install the central
+`emit_value_publication_to_register` fan-out bridge into branch-fusion hooks;
+there is no direct `emit_value_publication_to_register(...)` call in
+`dispatch.cpp`.
+
+Remaining touchpoint classification:
+
+- Thin explicit delegation to narrow owners:
+  `lower_address_materialization`, `lower_address_materializations`,
+  `make_block_address_materialization_index`, and
+  `make_load_global_got_materialization_instruction` delegate to the
+  globals/address-materialization owner; store/pointer publication routes
+  delegate to `memory_store_sources.*`; scalar, FP, and cast routes delegate to
+  `alu.*`, `fp_value_materialization.*`, and `cast_ops.*`; local-slot, fixed
+  formal, compare-condition, memory-result record/retarget, and fused-compare
+  publication routes delegate to `dispatch_publication.*`; call-boundary
+  materialization routes delegate to `calls_dispatch_bridge.*`.
+- Intentional central fan-out bridge: `#include
+  "dispatch_value_materialization.hpp"` plus the
+  `make_dispatch_branch_fusion_hooks` function-pointer assignment for
+  `emit_value_publication_to_register`. This bridge still recursively consumes
+  most leaf value materializers and should stay central unless a separate
+  fan-out split is delegated.
+- No small hidden materialization decision with a clear existing owner was
+  found. The two local helpers named
+  `lower_store_local_with_address_materialization` and
+  `lower_scalar_with_address_materialization` are dispatch-ordering bridges:
+  they sequence address materialization before memory/scalar lowering, but the
+  actual materialization and publication decisions are delegated to the narrow
+  owners above.
 
 ## Suggested Next
 
-Step 4 remains active after
-`review/dispatch_value_materialization_step4_route_review.md`: the route is on
-track and not overfit, but the remaining route-audit decision should complete
-before advancing to Step 5 coverage.
-
-Next coherent packet: audit the remaining `dispatch.cpp` materialization and
-publication touchpoints after the helper moves. Classify each remaining direct
-call or include as one of:
-
-- already-thin explicit delegation to a narrow owner
-- still-hidden materialization decision that should move under an existing
-  narrow owner during Step 4
-- central fan-out bridge that should intentionally stay in
-  `dispatch_value_materialization.*` unless the supervisor delegates a separate
-  fan-out split
-
-If the audit finds no remaining Step 4 move, record that decision and advance
-the lifecycle pointer to Step 5 coverage in the next lifecycle update.
+Step 4 can advance to Step 5 in the next lifecycle update. Next coherent
+packet: begin Step 5 coverage work by auditing the existing focused
+materialization tests against the moved helper families and adding or
+tightening only the smallest missing coverage.
 
 ## Watchouts
 
@@ -57,55 +72,18 @@ the lifecycle pointer to Step 5 coverage in the next lifecycle update.
   `emit_value_publication_to_register` for integer compare/select and cast
   materialization subpaths; keep that bridge intentional unless a later packet
   splits those dependencies semantically.
-- `globals.cpp` now has a private prepared-memory-access lookup equivalent to
-  the existing edge-copy helper so the moved global-symbol load leaf does not
-  depend on edge-copy ownership.
-- `emit_prepared_va_list_field_load_to_register` depends on the existing
-  publication helpers for prepared `va_list` field addresses and scalar load
-  register spelling; keep those dependencies as imported helper calls unless a
-  later packet moves that shared va-list address surface too.
-- `globals.cpp` now includes the narrow helper owners needed by the moved GOT
-  materialization route; its private memory-access helper was renamed to
-  `prepared_global_memory_access` to avoid colliding with the existing
-  edge-copy helper declaration.
-- `emit_prepared_pointer_value_load_to_register` now imports the same
-  dispatch lookup/publication helpers from the memory/store-source owner; keep
-  it there unless a later route creates an even narrower prepared pointer-load
-  owner.
-- `fp_value_materialization.cpp` now owns the prepared scalar FP binary
-  publication route helper and imports `dispatch_edge_copies.hpp` only for the
-  existing select-chain materialization instruction wrapper.
-- `cast_ops.cpp` now owns the two prepared scalar cast publication helpers and
-  imports the generic publication/common lookup helpers needed by their existing
-  implementation. Keep the central `emit_value_publication_to_register` bridge
-  in generic dispatch value materialization unless a later packet explicitly
-  owns that fan-out move.
-- `memory_store_sources.cpp` now owns the stack-homed pointer-value load
-  publication route helper because that route depends on the prepared
-  pointer-value load/store-source machinery. Keep dispatch ordering unchanged
-  unless a later packet explicitly owns order changes.
-- `alu.cpp` now owns `lower_scalar_mul_with_distinct_rhs_scratch` but still
-  imports the generic publication bridge for existing operand materialization;
-  keep that bridge dependency intentional unless a later packet owns the
-  fan-out split.
-- `dispatch_publication.cpp` now owns `lower_local_slot_address_publication`
-  and imports the generic publication/value helpers it already needed; keep the
-  `dispatch.cpp` ordering unchanged.
+- The local dispatch ordering bridges around address materialization are
+  intentionally order-sensitive. Do not move them casually into globals, memory,
+  or ALU without a separate packet that owns cross-owner ordering and proof.
+- Step 5 should prefer semantic machine-instruction records and prepared facts
+  over text-emission expectations.
 
 ## Proof
 
-Proof passed and is recorded in `test_after.log`.
+Audit-only proof requested; no code tests were run and `test_after.log` was not
+updated by this packet.
 
 Command run exactly:
-`cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_prepared_memory_operand_records|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
+`git diff --check -- todo.md`
 
-Result: build completed and 5/5 focused tests passed. AST-backed checks before
-the move confirmed `lower_local_slot_address_publication` was defined in
-`dispatch_value_materialization.cpp`, declared from
-`dispatch_value_materialization.hpp`, and directly called by
-`dispatch_prepared_block` in `dispatch.cpp`. AST-backed checks after the move
-confirmed the definition is in `dispatch_publication.cpp`, the declaration
-resolves from `dispatch_publication.hpp`, and the helper is still directly
-called by `dispatch_prepared_block` in `dispatch.cpp`; `rg` confirmed no
-remaining declaration or definition in `dispatch_value_materialization.*`.
+Result: passed.
