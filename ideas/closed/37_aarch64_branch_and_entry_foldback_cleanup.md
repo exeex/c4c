@@ -57,3 +57,35 @@ entry setup.
   helper file outside `comparison` or `prologue`.
 - The patch mixes in unrelated calls, memory, dispatch, returns, or module
   compatibility cleanup.
+
+## Closure Note
+
+Closed on 2026-05-26.
+
+The scoped fold-back is complete:
+
+- `comparison_branch_fusion.cpp` / `comparison_branch_fusion.hpp` were deleted
+  after their declarations and implementation moved into
+  `comparison.hpp` / `comparison.cpp`.
+- `prologue_entry_formals.cpp` was deleted after
+  `lower_entry_formal_publications` and its private entry-formal helpers moved
+  into `prologue.cpp`; the existing `prologue.hpp` API remains available for
+  `dispatch.cpp`.
+- Build metadata no longer references the removed helper translation units.
+- Live source, test, and build paths no longer reference
+  `comparison_branch_fusion` or `prologue_entry_formals`.
+- The implementation stayed within the source idea scope and did not change
+  prepared branch-condition authority, condition-code mapping, branch target
+  selection, ABI entry formal layout, byval entry-copy semantics, F128 carrier
+  handling, diagnostics, or test expectations.
+
+Closure evidence:
+
+- Focused comparison/branch proof passed 6/6:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_branch_compare_records|backend_aarch64_compare_branch_candidate_records|backend_aarch64_branch_compare_contract|backend_aarch64_prepared_branch_records|backend_aarch64_branch_control_lowering|backend_aarch64_instruction_dispatch)$' | tee test_after.log`
+- Focused prologue/formal proof passed 4/4:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_aarch64_function_traversal|backend_prealloc_formal_publications)$' | tee test_after.log`
+- Matching backend before/after regression guard passed with 163/163 tests
+  before and 163/163 tests after.
+- Accepted full-suite baseline at `2fb6f338f` passed 3411/3411 tests.
+- `git diff --check` passed for the implementation slices.
