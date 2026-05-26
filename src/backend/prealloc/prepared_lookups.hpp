@@ -94,6 +94,17 @@ enum class PreparedEdgePublicationSourceProducerKind {
   return "unknown";
 }
 
+struct PreparedEdgePublicationSourceProducer {
+  PreparedEdgePublicationSourceProducerKind kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  const bir::LoadLocalInst* load_local = nullptr;
+  const bir::CastInst* cast = nullptr;
+  const bir::BinaryInst* binary = nullptr;
+  const bir::SelectInst* select = nullptr;
+};
+
 struct PreparedEdgePublication {
   PreparedEdgePublicationLookupStatus status =
       PreparedEdgePublicationLookupStatus::MissingDestinationValue;
@@ -160,12 +171,18 @@ struct PreparedEdgePublicationLookups {
       publications_by_edge_destination;
 };
 
+struct PreparedEdgePublicationSourceProducerLookups {
+  std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>
+      producers_by_value_name;
+};
+
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
   PreparedMoveBundleLookups move_bundles;
   PreparedValueHomeLookups value_homes;
   PreparedEdgePublicationLookups edge_publications;
+  PreparedEdgePublicationSourceProducerLookups edge_publication_source_producers;
 };
 
 [[nodiscard]] std::size_t prepared_call_position_key(std::size_t block_index,
@@ -210,6 +227,11 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function,
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups = nullptr);
+
+[[nodiscard]] PreparedEdgePublicationSourceProducerLookups
+make_prepared_edge_publication_source_producer_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function);
 
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
@@ -263,6 +285,11 @@ collect_prepared_address_materializations_for_block(
     PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
+
+[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+find_indexed_prepared_edge_publication_source_producer(
+    const PreparedEdgePublicationSourceProducerLookups* lookups,
+    ValueNameId value_name);
 
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*
 find_indexed_prepared_edge_publications(

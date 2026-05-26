@@ -4,6 +4,7 @@
 #include "calls.hpp"
 #include "frame.hpp"
 #include "names.hpp"
+#include "prepared_lookups.hpp"
 #include "value_locations.hpp"
 
 #include "../bir/bir.hpp"
@@ -193,6 +194,15 @@ struct PreparedStoreSourcePublicationPlan {
   std::optional<ValueNameId> source_pointer_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
 
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::CastInst* source_cast = nullptr;
+  const bir::BinaryInst* source_binary = nullptr;
+  const bir::SelectInst* source_select = nullptr;
+
   std::optional<bir::Value> recovered_source_value;
   std::optional<std::size_t> recovered_source_instruction_index;
 
@@ -222,6 +232,7 @@ struct PreparedStoreSourcePublicationInputs {
   bool stack_homes_only = false;
   bool pointer_store_writeback = false;
   bool duplicate_publication = false;
+  const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
 };
 
 [[nodiscard]] bool prepared_store_source_publication_available(

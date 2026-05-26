@@ -1,4 +1,4 @@
-#include "src/backend/prealloc/publication_plans.hpp"
+#include "src/backend/prealloc/module.hpp"
 
 #include <iostream>
 #include <optional>
@@ -130,6 +130,89 @@ int records_recovered_source_without_target_policy() {
   return 0;
 }
 
+prepare::PreparedBirModule cast_store_source_fixture() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("store_cast_source");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  prepared.names.value_names.intern("%input");
+  prepared.names.value_names.intern("%casted");
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label;
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%casted"),
+      .operand = bir::Value::named(bir::TypeKind::I32, "%input"),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "out",
+      .value = bir::Value::named(bir::TypeKind::I64, "%casted"),
+      .byte_offset = 0,
+      .align_bytes = 8,
+  });
+
+  bir::Function function;
+  function.name = "store_cast_source";
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+
+  return prepared;
+}
+
+int records_cast_source_producer_from_prepared_lookup() {
+  auto prepared = cast_store_source_fixture();
+  const auto casted_name = prepared.names.value_names.find("%casted");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto source = bir::Value::named(bir::TypeKind::I64, "%casted");
+  auto access = frame_slot_store_access(casted_name, 15, 0);
+  auto home = source_home(prepare::PreparedValueHomeKind::Register, 8, casted_name);
+  home.register_name = "prepared-cast-result-register";
+
+  const auto producer_lookups =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          prepared, prepared.control_flow.functions.front());
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          &producer_lookups, casted_name);
+  if (producer == nullptr ||
+      producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
+      producer->block_label != block_label ||
+      producer->instruction_index != 0 ||
+      producer->cast == nullptr ||
+      producer->cast->opcode != bir::CastOpcode::SExt) {
+    return fail("expected prepared cast source producer fact before target emission");
+  }
+
+  const auto plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &access,
+      .source_home = &home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = producer,
+  });
+
+  if (!prepare::prepared_store_source_publication_available(plan) ||
+      plan.source_value_name != casted_name ||
+      plan.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
+      plan.source_producer_block_label !=
+          std::optional<c4c::BlockLabelId>{block_label} ||
+      plan.source_producer_instruction_index != std::optional<std::size_t>{0} ||
+      plan.source_cast != producer->cast ||
+      plan.source_cast->opcode != bir::CastOpcode::SExt) {
+    return fail("expected store-source plan to publish prepared cast producer");
+  }
+  return 0;
+}
+
 int records_pointer_writeback_intent() {
   const auto source_value = bir::Value::named(bir::TypeKind::I32, "%store_value");
   prepare::PreparedMemoryAccess access{
@@ -250,6 +333,9 @@ int main() {
     return rc;
   }
   if (int rc = records_recovered_source_without_target_policy(); rc != 0) {
+    return rc;
+  }
+  if (int rc = records_cast_source_producer_from_prepared_lookup(); rc != 0) {
     return rc;
   }
   if (int rc = records_pointer_writeback_intent(); rc != 0) {

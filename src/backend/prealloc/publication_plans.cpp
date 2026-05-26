@@ -204,6 +204,20 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   plan.recovered_source_instruction_index =
       inputs.recovered_source_instruction_index;
 
+  if (inputs.source_producer != nullptr &&
+      inputs.source_producer->kind != PreparedEdgePublicationSourceProducerKind::Unknown) {
+    plan.source_producer_kind = inputs.source_producer->kind;
+    if (inputs.source_producer->block_label != kInvalidBlockLabel) {
+      plan.source_producer_block_label = inputs.source_producer->block_label;
+    }
+    plan.source_producer_instruction_index =
+        inputs.source_producer->instruction_index;
+    plan.source_load_local = inputs.source_producer->load_local;
+    plan.source_cast = inputs.source_producer->cast;
+    plan.source_binary = inputs.source_producer->binary;
+    plan.source_select = inputs.source_producer->select;
+  }
+
   plan.pointer_base_home = inputs.pointer_base_home;
   if (inputs.pointer_base_home != nullptr) {
     plan.pointer_base_home_kind = inputs.pointer_base_home->kind;
