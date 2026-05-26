@@ -62,6 +62,23 @@ edge-publication consumer can emit them without guessing. Idea 30 may close as
 a fail-closed policy slice after validation if that blocker remains explicit
 and the scratch-register policy is tracked separately.
 
+## Closure Note
+
+Closed as a validated fail-closed policy slice. The supported source-to-stack
+destination form remains `Register -> StackSlot` for concrete 4-byte stack
+slots through shared `edge_publications` authority. The candidate
+`RematerializableImmediate -> StackSlot`, `StackSlot -> StackSlot`, and
+`PointerBasePlusOffset -> StackSlot` forms remain intentionally fail-closed
+because they need an owned RISC-V scratch-register or scratch-reservation
+policy before emission can be supported without guessing.
+
+Follow-up scratch-policy implementation scope is tracked in
+`ideas/open/32_riscv_prepared_edge_publication_stack_destination_scratch_policy.md`.
+Route review accepted this close shape as not testcase-overfit in
+`review/riscv_stack_destination_fail_closed_route_review.md`. Focused proof was
+refreshed, and broader backend regression guard passed before/after at 163/163
+with `--allow-non-decreasing-passed`.
+
 ## Reviewer Reject Signals
 
 - The patch matches testcase names, fixture labels, edge names, or prepared
