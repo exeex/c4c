@@ -15,6 +15,16 @@ MIR planning, any remaining AArch64-only load/store emission helpers should be
 consolidated under the reference-style `memory` owner instead of staying in a
 separate helper family.
 
+## Lifecycle Note
+
+Step 1 inventory found that `memory_store_sources.cpp` still contains
+AArch64-local semantic source recovery, including same-block producer scans,
+slot/lane naming, recovered narrow-store source checks, select/scalar-FP
+producer checks, and pointer-base load-local recovery. This idea is parked
+until `ideas/open/39a_aarch64_store_source_semantic_residue_prerequisite.md`
+removes or target-neutralizes that prerequisite residue. Do not start the
+mechanical fold-back while that prerequisite remains active/open.
+
 ## In Scope
 
 - After `ideas/open/34_aarch64_store_source_publication_planning.md` has

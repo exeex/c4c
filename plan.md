@@ -1,187 +1,155 @@
-# AArch64 Memory Fold-Back After Store Source Planning Runbook
+# AArch64 Store-Source Semantic Residue Prerequisite Runbook
 
 Status: Active
-Source Idea: ideas/open/39_aarch64_memory_foldback_after_store_source_planning.md
+Source Idea: ideas/open/39a_aarch64_store_source_semantic_residue_prerequisite.md
 
 ## Purpose
 
-Fold remaining AArch64-only memory store-source emission residue back into the
-reference-style `memory` owner after the semantic store-source planning work has
-moved selected source facts forward.
+Remove the remaining AArch64-local source-choice authority from
+`memory_store_sources.*` so the later memory fold-back can be mechanical.
 
 ## Goal
 
-Make `memory.cpp` / `memory.hpp` own the remaining target-local store-source
-emission helpers, remove obsolete `memory_store_sources.*` helper files when
-possible, and prove AArch64 memory/store-source behavior still consumes shared
-prepared facts and fails closed when those facts are absent.
-
-## Prerequisite
-
-`ideas/closed/34_aarch64_store_source_publication_planning.md` is closed. That
-closure moved the selected store-local cast producer source decision into shared
-prepared store-source publication planning and left only AArch64 memory
-emission residue in `memory_store_sources.*`.
+Make AArch64 memory/store-source helpers consume shared prepared source facts
+or fail closed when facts are missing, without moving the existing semantic
+rediscovery into another AArch64 owner.
 
 ## Core Rule
 
-This is mechanical ownership cleanup only. Do not move target-neutral
-store-source facts, rediscover semantic source choices in AArch64, weaken
-fail-closed behavior for missing shared facts, or change broad memory semantics.
+Do not fold `memory_store_sources.*` into `memory.cpp` in this plan. This plan
+exists to eliminate or target-neutralize semantic residue first.
 
 ## Read First
 
+- `ideas/open/39a_aarch64_store_source_semantic_residue_prerequisite.md`
 - `ideas/open/39_aarch64_memory_foldback_after_store_source_planning.md`
-- `ideas/closed/34_aarch64_store_source_publication_planning.md`
-- `src/backend/mir/aarch64/codegen/memory.cpp`
-- `src/backend/mir/aarch64/codegen/memory.hpp`
+- `todo.md`
 - `src/backend/mir/aarch64/codegen/memory_store_sources.cpp`
 - `src/backend/mir/aarch64/codegen/memory_store_sources.hpp`
-- `src/backend/mir/aarch64/codegen/memory_dynamic_stack.cpp`
-- AArch64 codegen build metadata that lists memory store-source helper sources
-- Focused tests covering AArch64 memory/store-source publication and
-  fail-closed missing prepared facts
+- shared prepared store-source planning code
+- focused store-source planning and AArch64 memory/dispatch tests
 
 ## Current Scope
 
-- Fold remaining target-local residue from:
-  - `memory_store_sources.cpp`
-  - `memory_store_sources.hpp`
-- Use `memory.cpp` / `memory.hpp` as the AArch64 memory lowering owner.
-- Keep only AArch64 instruction spelling, addressing, scratch, and store/load
-  emission logic in this mechanical cleanup.
-- Preserve consumption of shared prepared store-source facts.
-- Update includes and build metadata only as required by the fold-back.
-- Preserve fail-closed behavior for missing shared store-source facts.
+- Resolve semantic source-choice residue in:
+  - `find_latest_narrow_store_for_wide_local_load`
+  - `store_local_recovered_narrow_store_source`
+  - `store_local_value_is_byval_frame_slot_load`
+  - `store_local_value_is_wide_load_from_narrow_local_store`
+  - `store_local_value_has_select_producer`
+  - `store_local_value_has_scalar_fp_binary_producer`
+  - `select_chain_contains_direct_global_load`
+  - the same-block producer fallback inside
+    `emit_pointer_base_plus_offset_to_register`
+- Preserve supported behavior by moving semantic authority into prepared
+  planning or by retaining fail-closed behavior when prepared facts are absent.
+- Keep AArch64 code responsible only for target instruction spelling,
+  addressing, scratch use, and emission around prepared facts.
 
 ## Non-Goals
 
-- Do not move target-neutral store-source facts; that belonged to the closed
-  semantic store-source publication planning idea.
-- Do not add new AArch64-local source selection, same-block producer scanning,
-  or semantic rediscovery.
-- Do not rework `memory_dynamic_stack.*` unless narrow include fallout requires
-  it.
-- Do not change frame layout, stack slot allocation, broad memory operation
-  semantics, or final assembly printing.
-- Do not fold calls, dispatch, comparison, prologue, module compatibility, or
-  return helpers.
-- Do not weaken unsupported diagnostics, downgrade tests, or remove negative
-  missing-fact coverage.
+- Do not remove `memory_store_sources.cpp` or `memory_store_sources.hpp`.
+- Do not perform idea 39's mechanical memory fold-back in this plan.
+- Do not change frame layout, stack allocation, broad memory lowering, or final
+  assembly printing.
+- Do not fold unrelated helper families.
+- Do not weaken diagnostics, downgrade tests, or remove negative coverage.
 
 ## Working Model
 
-- Treat `memory_store_sources.*` as a post-semantic-planning residue file:
-  remaining code should be AArch64 emission mechanics around prepared facts.
-- Treat shared prepared store-source publication facts as the source authority.
-- If a helper still performs semantic source choice locally, stop and report the
-  dependency rather than folding it as mechanical cleanup.
-- Prefer namespace-local helpers after fold-back when external visibility is
-  not required.
+- Treat source choice as target-neutral semantic planning.
+- Treat AArch64 memory/store-source code as a prepared-fact consumer.
+- If an AArch64 helper needs a source fact that prepare does not provide, add
+  the missing shared authority or fail closed explicitly.
+- Keep implementation packets small because this touches prepared planning and
+  AArch64 memory dispatch behavior.
 
 ## Execution Rules
 
-- Keep each code-changing step behavior-preserving.
-- Before moving code, inventory all declarations, definitions, includes, build
-  metadata entries, call sites, and any helper that still appears semantic.
-- Do not create a new memory helper family as a replacement owner.
-- Preserve existing diagnostics and fail-closed behavior for absent or
-  incomplete prepared store-source facts.
-- Update `todo.md` with packet progress and proof after each executor packet.
-- Use focused AArch64 memory/store-source proof first, then escalate to a
-  backend bucket before closure when multiple include/build changes land.
+- Start with a detailed ownership inventory before implementation.
+- Separate local store, global store/select-chain, and pointer-base fallback
+  work when they have different prepared facts.
+- Preserve behavior and diagnostics for all supported cases.
+- Use focused store-source planning tests and AArch64 memory/dispatch tests for
+  each code-changing packet.
+- Escalate to a backend bucket before lifecycle closure.
 
 ## Ordered Steps
 
-### Step 1: Inventory Memory Store-Source Residue Ownership
+### Step 1: Inventory Semantic Residue And Prepared Fact Gaps
 
-Goal: identify all declarations, definitions, includes, build entries, call
-sites, and any semantic blockers in `memory_store_sources.*`.
+Goal: identify exactly which local semantic decisions remain in AArch64 and
+which prepared facts would replace them.
 
-Primary target: `memory_store_sources.*`, `memory.*`, `memory_dynamic_stack.*`,
-AArch64 codegen build metadata, and focused memory/store-source tests.
+Primary target: `memory_store_sources.*`, shared prepared store-source
+planning, and focused tests.
 
 Actions:
-- Inspect `memory_store_sources.*` and classify each declaration/definition as
-  memory-owner private, externally consumed, or blocked because it still owns
-  semantic source choice.
-- Find all includes of `memory_store_sources.hpp`.
-- Locate direct callers of the store-source helper surface.
-- Locate build metadata entries for `memory_store_sources.cpp`.
-- Identify which declarations must remain public through `memory.hpp` and which
-  can become namespace-local in `memory.cpp`.
-- Record focused tests that prove prepared store-source consumption and
-  fail-closed missing-fact behavior.
+- Map each blocked helper to the source fact it currently recovers locally.
+- Identify existing prepared facts that already cover the case.
+- Identify missing prepared facts, missing fail-closed checks, and external
+  callers that will be affected.
+- Record test handles for each source-choice family.
 
 Completion check:
-- `todo.md` records helper groups, include sites, call sites, build metadata
-  entries, declarations that must remain public, semantic blockers if any, test
-  handles, and a recommended first mechanical fold-back packet with no
-  implementation edits.
+- `todo.md` records the helper-to-fact map, external callers, missing prepared
+  facts, fail-closed expectations, test handles, and the recommended first
+  semantic implementation packet.
 
-### Step 2: Fold Store-Source Emission Into Memory Owner
+### Step 2: Move Local Store Source Recovery To Prepared Authority
 
-Goal: move AArch64-only store-source emission helpers into
-`memory.cpp` / `memory.hpp` without changing memory behavior.
+Goal: remove AArch64-local source recovery for local store publication cases.
 
-Primary target: `src/backend/mir/aarch64/codegen/memory.cpp` and
-`src/backend/mir/aarch64/codegen/memory.hpp`.
+Primary target: shared prepared store-source planning and the local-store
+publication helpers in `memory_store_sources.cpp`.
 
 Actions:
-- Move needed declarations from `memory_store_sources.hpp` into the memory owner
-  API only when external callers still need them.
-- Move implementation from `memory_store_sources.cpp` into `memory.cpp`,
-  preferably namespace-local when only memory lowering uses it.
-- Update include sites and build metadata after callers compile through the
-  memory owner.
-- Delete obsolete `memory_store_sources.cpp` / `.hpp` only after declarations,
-  call sites, includes, and build metadata have been folded.
-- Do not change prepared store-source fact consumption or missing-fact
-  diagnostics.
+- Replace local narrow-store, byval frame-slot load, select producer,
+  scalar-FP producer, and cast/source checks with prepared source authority
+  where supported.
+- Preserve missing-fact fail-closed behavior.
+- Keep AArch64 emission code as a consumer of prepared facts.
 
 Completion check:
-- No live source file includes `memory_store_sources.hpp`, the obsolete
-  translation unit is removed from build metadata, obsolete helper files are
-  deleted when empty/obsolete, and focused memory/store-source tests still pass.
+- Local store publication no longer depends on AArch64 same-block semantic
+  source choice, and focused store-source/AArch64 tests pass.
 
-### Step 3: Clean Stale Memory Ownership References
+### Step 3: Move Global Store And Pointer-Base Recovery To Prepared Authority
 
-Goal: remove stale live-owner references after store-source emission ownership
-has moved.
+Goal: remove remaining select-chain and pointer-base source rediscovery from
+AArch64 store-source helpers.
 
-Primary target: AArch64 codegen includes, build metadata, and owner comments or
-header labels affected by the fold-back.
+Primary target: global store publication paths and pointer-base-plus-offset
+materialization helpers.
 
 Actions:
-- Search live source, test, and build paths for `memory_store_sources`.
-- Remove stale includes, comments, and forward declarations that name obsolete
-  owners.
-- Keep historical or source-intent references untouched unless lifecycle work
-  explicitly owns them.
+- Replace `select_chain_contains_direct_global_load`-style source recovery with
+  prepared authority or fail-closed checks.
+- Replace pointer-base load-local fallback in
+  `emit_pointer_base_plus_offset_to_register` with prepared value-home/source
+  facts or fail closed.
+- Keep target instruction emission behavior unchanged for supported prepared
+  cases.
 
 Completion check:
-- Live source/build/test paths no longer reference the removed helper files
-  except where a deliberate historical or lifecycle artifact owns the wording.
+- Global store and pointer-base paths no longer choose semantic sources
+  locally, and focused store-source/AArch64 tests pass.
 
-### Step 4: Validate Memory Fold-Back
+### Step 4: Validate Prerequisite Completion
 
-Goal: prove AArch64 memory/store-source behavior and linkage survived the
-fold-back.
+Goal: prove idea 39 can resume as a mechanical fold-back.
 
-Primary target: focused AArch64 memory/store-source tests plus an appropriate
-build or backend bucket.
+Primary target: focused store-source planning and AArch64 memory/dispatch
+coverage plus a backend bucket.
 
 Actions:
-- Run a fresh build proof after build metadata updates.
-- Run focused AArch64 memory/store-source tests that cover prepared
-  store-source consumption and missing-fact fail-closed behavior.
-- Include nearby memory operand/store-source tests when include or linkage blast
-  radius touches shared memory helpers.
-- Escalate to a backend bucket before closure when multiple narrow packets have
-  landed or when the supervisor requests acceptance-grade confidence.
-- Store canonical proof in `test_after.log` when delegated by the supervisor.
+- Run a fresh build after code-changing packets.
+- Run focused store-source planning and AArch64 memory/dispatch tests.
+- Run a backend bucket before closure.
+- Search `memory_store_sources.*` for remaining same-block source-choice
+  recovery before declaring the prerequisite complete.
 
 Completion check:
 - Validation is green, `todo.md` records exact commands and results, and the
-  diff is limited to memory store-source fold-back scope plus required
-  build/include fallout.
+  remaining `memory_store_sources.*` surface is pure emission around prepared
+  facts or explicit fail-closed behavior.
