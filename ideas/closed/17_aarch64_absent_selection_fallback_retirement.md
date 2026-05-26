@@ -66,3 +66,20 @@ authority migration.
 - A patch special-cases one failing testcase instead of retiring the fallback
   contract generally.
 - A patch expands the scope into unrelated dispatch or ABI cleanup.
+
+## Closure Note
+
+Closed after Step 5 recorded the final retired-path mapping in `todo.md` and
+review confirmed the route matched this source idea without testcase-overfit,
+expectation weakening, or AArch64 target-local source reconstruction.
+
+The local aggregate address fallback now maps to prepared
+`LocalFrameAddressMaterialization`, direct `FrameSlotAddress`, or explicit
+missing-fact diagnostics. The indirect byval lane payload fallback now maps to
+complete prepared `ByvalRegisterLane` selected-source facts, with missing or
+incomplete facts failing closed. Byval and `va_start` non-local local-address
+entries are guarded as unreachable for the retired local-address route.
+
+Closure validation used matched `backend_|c_testsuite_aarch64_backend_`
+before/after logs: both passed 381 of 382 tests and failed only known
+`c_testsuite_aarch64_backend_src_00181_c`, with no new failures.
