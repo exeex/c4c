@@ -62,6 +62,37 @@ prepare::PreparedCallPlan make_call_plan() {
                        .slot_index = 0,
                        .contiguous_width = 2,
                    },
+               .preservation_source =
+                   prepare::PreparedCallBoundaryEffectEndpoint{
+                       .encoding = prepare::PreparedStorageEncodingKind::Register,
+                       .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                       .value_id = prepare::PreparedValueId{31},
+                       .value_name = c4c::ValueNameId{41},
+                       .register_name = std::string{"x19"},
+                       .register_bank = prepare::PreparedRegisterBank::Gpr,
+                       .contiguous_width = 2,
+                       .occupied_register_names = {std::string{"x19"}, std::string{"x20"}},
+                   },
+               .preservation_destination =
+                   prepare::PreparedCallBoundaryEffectEndpoint{
+                       .encoding = prepare::PreparedStorageEncodingKind::Register,
+                       .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                       .value_id = prepare::PreparedValueId{31},
+                       .value_name = c4c::ValueNameId{41},
+                       .register_name = std::string{"x19"},
+                       .register_bank = prepare::PreparedRegisterBank::Gpr,
+                       .contiguous_width = 2,
+                       .occupied_register_names = {std::string{"x19"}, std::string{"x20"}},
+                       .callee_saved_save_index = std::size_t{3},
+                       .register_placement =
+                           prepare::PreparedRegisterPlacement{
+                               .bank = prepare::PreparedRegisterBank::Gpr,
+                               .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                               .slot_index = 0,
+                               .contiguous_width = 2,
+                           },
+                   },
+               .preservation_reason = "callee_saved_register_preservation",
            },
            prepare::PreparedCallPreservedValue{
                .value_id = prepare::PreparedValueId{32},
@@ -76,6 +107,34 @@ prepare::PreparedCallPlan make_call_plan() {
                        .slot_id = prepare::PreparedFrameSlotId{7},
                        .offset_bytes = 80,
                    },
+               .preservation_source =
+                   prepare::PreparedCallBoundaryEffectEndpoint{
+                       .encoding = prepare::PreparedStorageEncodingKind::Register,
+                       .storage_kind = prepare::PreparedMoveStorageKind::Register,
+                       .value_id = prepare::PreparedValueId{32},
+                       .value_name = c4c::ValueNameId{42},
+                       .register_name = std::string{"x9"},
+                       .register_bank = prepare::PreparedRegisterBank::Gpr,
+                       .contiguous_width = 1,
+                       .occupied_register_names = {std::string{"x9"}},
+                   },
+               .preservation_destination =
+                   prepare::PreparedCallBoundaryEffectEndpoint{
+                       .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                       .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+                       .value_id = prepare::PreparedValueId{32},
+                       .value_name = c4c::ValueNameId{42},
+                       .slot_id = prepare::PreparedFrameSlotId{7},
+                       .stack_offset_bytes = std::size_t{80},
+                       .stack_size_bytes = std::size_t{8},
+                       .stack_align_bytes = std::size_t{8},
+                       .spill_slot_placement =
+                           prepare::PreparedSpillSlotPlacement{
+                               .slot_id = prepare::PreparedFrameSlotId{7},
+                               .offset_bytes = 80,
+                           },
+                   },
+               .preservation_reason = "caller_saved_clobber_reuse_stack_preservation",
            }},
   };
 }
@@ -218,7 +277,13 @@ bool records_preservation_and_republication_intent() {
   }
 
   const auto& stack_population = effects[2];
-  if (!expect(stack_population.destination.storage_kind ==
+  if (!expect(stack_population.source.storage_kind ==
+                  prepare::PreparedMoveStorageKind::Register,
+              "expected stack preservation source register") ||
+      !expect(stack_population.source.register_name ==
+                  std::optional<std::string>{"x9"},
+              "expected stack preservation caller-saved source register") ||
+      !expect(stack_population.destination.storage_kind ==
                   prepare::PreparedMoveStorageKind::StackSlot,
               "expected stack preservation destination") ||
       !expect(stack_population.destination.slot_id ==

@@ -4069,6 +4069,21 @@ int check_stack_cross_call_preservation_contract() {
       preserved->callee_saved_save_index.has_value()) {
     return fail("stack cross-call preservation contract: call_plans lost direct frame-slot authority");
   }
+  if (preserved->preservation_source.value_id !=
+          std::optional<prepare::PreparedValueId>{preserved->value_id} ||
+      preserved->preservation_source.value_name != preserved->value_name ||
+      preserved->preservation_destination.storage_kind !=
+          prepare::PreparedMoveStorageKind::StackSlot ||
+      preserved->preservation_destination.slot_id != preserved->slot_id ||
+      preserved->preservation_destination.stack_offset_bytes !=
+          preserved->stack_offset_bytes ||
+      preserved->preservation_destination.stack_size_bytes !=
+          preserved->stack_size_bytes ||
+      preserved->preservation_destination.stack_align_bytes !=
+          preserved->stack_align_bytes ||
+      preserved->preservation_reason.empty()) {
+    return fail("stack cross-call preservation contract: missing explicit preservation source/destination facts");
+  }
   if (frame_plan == nullptr || !preserved->slot_id.has_value() ||
       !preserved->stack_offset_bytes.has_value() ||
       !preserved->stack_size_bytes.has_value() ||

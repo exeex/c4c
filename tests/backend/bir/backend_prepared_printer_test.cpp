@@ -5498,7 +5498,10 @@ int main() {
       !stack_preserved_it->stack_offset_bytes.has_value() ||
       !stack_preserved_it->stack_size_bytes.has_value() ||
       !stack_preserved_it->stack_align_bytes.has_value() ||
-      !stack_preserved_it->spill_slot_placement.has_value()) {
+      !stack_preserved_it->spill_slot_placement.has_value() ||
+      stack_preserved_it->preservation_destination.storage_kind !=
+          prepare::PreparedMoveStorageKind::StackSlot ||
+      stack_preserved_it->preservation_reason.empty()) {
     std::cerr << "[FAIL] missing stack-slot preservation authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -5529,8 +5532,18 @@ int main() {
                            " stack_size=" +
                            std::to_string(*stack_preserved_it->stack_size_bytes) +
                            " stack_align=" +
-                           std::to_string(*stack_preserved_it->stack_align_bytes),
+                           std::to_string(*stack_preserved_it->stack_align_bytes) +
+                           " preservation_source=",
                        "stack-preserved structured spill-slot extent detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_cross_call_dump,
+                       "preservation_destination=stack_slot:slot#" +
+                           std::to_string(*stack_preserved_it->slot_id) +
+                           ":value#" + std::to_string(stack_preserved_it->value_id) +
+                           " preservation_reason=" +
+                           stack_preserved_it->preservation_reason,
+                       "stack-preserved explicit destination and reason detail")) {
     return EXIT_FAILURE;
   }
 

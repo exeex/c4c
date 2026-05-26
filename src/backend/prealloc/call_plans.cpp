@@ -594,6 +594,80 @@ struct CallArgumentSourcePlan {
   return PreparedStorageEncodingKind::None;
 }
 
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preservation_value_source_endpoint(
+    const PreparedRegallocValue& value,
+    const PreparedValueHome* value_home) {
+  PreparedCallBoundaryEffectEndpoint endpoint{
+      .value_id = value.value_id,
+      .value_name = value.value_name,
+      .contiguous_width = std::max<std::size_t>(value.register_group_width, 1),
+  };
+  if (value.assigned_register.has_value()) {
+    endpoint.encoding = PreparedStorageEncodingKind::Register;
+    endpoint.storage_kind = PreparedMoveStorageKind::Register;
+    endpoint.register_name = value.assigned_register->register_name;
+    endpoint.register_bank = register_bank_from_class(value.register_class);
+    endpoint.contiguous_width = value.assigned_register->contiguous_width;
+    endpoint.occupied_register_names =
+        value.assigned_register->occupied_register_names;
+    endpoint.register_placement = value.assigned_register->placement;
+    return endpoint;
+  }
+  if (value_home == nullptr) {
+    return endpoint;
+  }
+
+  endpoint.encoding = storage_encoding_from_home(*value_home);
+  endpoint.storage_kind = move_storage_kind_from_home(*value_home);
+  endpoint.slot_id = value_home->slot_id;
+  endpoint.stack_offset_bytes = value_home->offset_bytes;
+  endpoint.stack_size_bytes = value_home->size_bytes;
+  endpoint.stack_align_bytes = value_home->align_bytes;
+  return endpoint;
+}
+
+[[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preservation_destination_endpoint(
+    const PreparedCallPreservedValue& preserved) {
+  const PreparedMoveStorageKind storage_kind =
+      preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister
+          ? PreparedMoveStorageKind::Register
+          : preserved.route == PreparedCallPreservationRoute::StackSlot
+                ? PreparedMoveStorageKind::StackSlot
+                : PreparedMoveStorageKind::None;
+  return PreparedCallBoundaryEffectEndpoint{
+      .encoding = storage_encoding_from_move_storage_kind(storage_kind),
+      .storage_kind = storage_kind,
+      .value_id = preserved.value_id,
+      .value_name = preserved.value_name,
+      .register_name = preserved.register_name,
+      .register_bank = preserved.register_bank,
+      .contiguous_width = preserved.contiguous_width,
+      .occupied_register_names = preserved.occupied_register_names,
+      .slot_id = preserved.slot_id,
+      .stack_offset_bytes = preserved.stack_offset_bytes,
+      .stack_size_bytes = preserved.stack_size_bytes,
+      .stack_align_bytes = preserved.stack_align_bytes,
+      .callee_saved_save_index = preserved.callee_saved_save_index,
+      .register_placement = preserved.register_placement,
+      .spill_slot_placement = preserved.spill_slot_placement,
+  };
+}
+
+[[nodiscard]] std::string make_preservation_reason(
+    const PreparedCallPreservedValue& preserved) {
+  if (preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister) {
+    return "callee_saved_register_preservation";
+  }
+  if (preserved.route == PreparedCallPreservationRoute::StackSlot &&
+      preserved.preservation_source.storage_kind == PreparedMoveStorageKind::Register) {
+    return "caller_saved_clobber_reuse_stack_preservation";
+  }
+  if (preserved.route == PreparedCallPreservationRoute::StackSlot) {
+    return "stack_slot_preservation";
+  }
+  return {};
+}
+
 [[nodiscard]] PreparedMoveStorageKind move_storage_kind_from_storage_encoding(
     PreparedStorageEncodingKind encoding) {
   switch (encoding) {
@@ -1293,6 +1367,11 @@ void append_call_clobbered_register_spans(
     }
 
     if (preserved.route != PreparedCallPreservationRoute::Unknown) {
+      preserved.preservation_source =
+          make_preservation_value_source_endpoint(value, value_home);
+      preserved.preservation_destination =
+          make_preservation_destination_endpoint(preserved);
+      preserved.preservation_reason = make_preservation_reason(preserved);
       preserved_values.push_back(std::move(preserved));
     }
   }
@@ -2185,29 +2264,10 @@ namespace {
 
 [[nodiscard]] PreparedCallBoundaryEffectEndpoint make_preserved_storage_endpoint(
     const PreparedCallPreservedValue& preserved) {
-  const PreparedMoveStorageKind storage_kind =
-      preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister
-          ? PreparedMoveStorageKind::Register
-          : preserved.route == PreparedCallPreservationRoute::StackSlot
-                ? PreparedMoveStorageKind::StackSlot
-                : PreparedMoveStorageKind::None;
-  return PreparedCallBoundaryEffectEndpoint{
-      .encoding = storage_encoding_from_move_storage_kind(storage_kind),
-      .storage_kind = storage_kind,
-      .value_id = preserved.value_id,
-      .value_name = preserved.value_name,
-      .register_name = preserved.register_name,
-      .register_bank = preserved.register_bank,
-      .contiguous_width = preserved.contiguous_width,
-      .occupied_register_names = preserved.occupied_register_names,
-      .slot_id = preserved.slot_id,
-      .stack_offset_bytes = preserved.stack_offset_bytes,
-      .stack_size_bytes = preserved.stack_size_bytes,
-      .stack_align_bytes = preserved.stack_align_bytes,
-      .callee_saved_save_index = preserved.callee_saved_save_index,
-      .register_placement = preserved.register_placement,
-      .spill_slot_placement = preserved.spill_slot_placement,
-  };
+  if (preserved.preservation_destination.storage_kind != PreparedMoveStorageKind::None) {
+    return preserved.preservation_destination;
+  }
+  return make_preservation_destination_endpoint(preserved);
 }
 
 void append_explicit_call_boundary_effects(
@@ -2262,6 +2322,10 @@ void append_preservation_call_boundary_effects(
     }
     const auto value_endpoint =
         make_value_effect_endpoint(preserved.value_id, preserved.value_name);
+    const auto preservation_source =
+        preserved.preservation_source.storage_kind == PreparedMoveStorageKind::None
+            ? value_endpoint
+            : preserved.preservation_source;
     const auto storage_endpoint = make_preserved_storage_endpoint(preserved);
     effects.push_back(PreparedCallBoundaryEffectPlan{
         .effect_kind = effect_kind,
@@ -2275,7 +2339,7 @@ void append_preservation_call_boundary_effects(
         .storage_kind = storage_endpoint.storage_kind,
         .source = effect_kind ==
                       PreparedCallBoundaryEffectKind::PreservationHomePopulation
-                      ? value_endpoint
+                      ? preservation_source
                       : storage_endpoint,
         .destination = effect_kind ==
                            PreparedCallBoundaryEffectKind::PreservationHomePopulation

@@ -215,6 +215,34 @@ std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   return std::string(prepared_register_bank_name(*bank));
 }
 
+std::string move_storage_kind_text(PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case PreparedMoveStorageKind::None:
+      return "none";
+    case PreparedMoveStorageKind::Register:
+      return "register";
+    case PreparedMoveStorageKind::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
+void append_preservation_endpoint(std::ostringstream& out,
+                                  std::string_view label,
+                                  const PreparedCallBoundaryEffectEndpoint& endpoint) {
+  out << " " << label << "=" << move_storage_kind_text(endpoint.storage_kind);
+  if (endpoint.register_name.has_value()) {
+    out << ":" << *endpoint.register_name;
+  } else if (endpoint.slot_id.has_value()) {
+    out << ":slot#" << *endpoint.slot_id;
+  } else if (endpoint.stack_offset_bytes.has_value()) {
+    out << ":stack+" << *endpoint.stack_offset_bytes;
+  }
+  if (endpoint.value_id.has_value()) {
+    out << ":value#" << *endpoint.value_id;
+  }
+}
+
 void append_register_placement(std::ostringstream& out,
                                std::string_view label,
                                const std::optional<PreparedRegisterPlacement>& placement) {
@@ -503,6 +531,12 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           }
           if (preserved.stack_align_bytes.has_value()) {
             out << " stack_align=" << *preserved.stack_align_bytes;
+          }
+          append_preservation_endpoint(out, "preservation_source", preserved.preservation_source);
+          append_preservation_endpoint(
+              out, "preservation_destination", preserved.preservation_destination);
+          if (!preserved.preservation_reason.empty()) {
+            out << " preservation_reason=" << preserved.preservation_reason;
           }
           out << "\n";
         }

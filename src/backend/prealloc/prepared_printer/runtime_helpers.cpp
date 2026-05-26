@@ -77,6 +77,18 @@ void append_register_placement(
       << "/w" << placement->contiguous_width;
 }
 
+std::string move_storage_kind_text(PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case PreparedMoveStorageKind::None:
+      return "none";
+    case PreparedMoveStorageKind::Register:
+      return "register";
+    case PreparedMoveStorageKind::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
 void append_preserved_value_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const PreparedCallPreservedValue& preserved) {
@@ -113,6 +125,14 @@ void append_preserved_value_summary(std::ostringstream& out,
   }
   if (preserved.callee_saved_save_index.has_value()) {
     out << ":save" << *preserved.callee_saved_save_index;
+  }
+  if (preserved.preservation_source.storage_kind != PreparedMoveStorageKind::None ||
+      preserved.preservation_destination.storage_kind != PreparedMoveStorageKind::None) {
+    out << ":source=" << move_storage_kind_text(preserved.preservation_source.storage_kind)
+        << ":dest=" << move_storage_kind_text(preserved.preservation_destination.storage_kind);
+  }
+  if (!preserved.preservation_reason.empty()) {
+    out << ":reason=" << preserved.preservation_reason;
   }
 }
 
