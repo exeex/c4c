@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/29_riscv_prepared_edge_publication_pointer_base_policy_broadening.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement or Preserve Fail-Closed Pointer-Base Policy
+Current Step ID: 3
+Current Step Title: Review Route Quality
 
 # Current Packet
 
