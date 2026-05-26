@@ -145,15 +145,18 @@ Completion check:
 
 ### Step 4: Validate the Stack-Destination Broadening Slice
 
-Goal: Prove the selected stack-destination policy does not regress the relevant
-backend surface.
+Goal: Prove the accepted fail-closed stack-destination policy does not regress
+the relevant backend surface.
 
 Actions:
 
-- Run the focused RISC-V prepared edge-publication proof selected in Step 1.
+- Run or refresh the focused RISC-V prepared edge-publication proof selected in
+  Step 1, making sure root `test_after.log` exists and matches `todo.md`.
 - Run matching regression guard when before/after logs have the same scope.
 - Run an appropriate backend bucket before closure.
 - Preserve canonical root logs as `test_before.log` and `test_after.log` only.
+- Do not introduce scratch-register policy in this validation step; that work
+  is follow-up scope.
 
 Completion check:
 
@@ -162,18 +165,23 @@ Completion check:
 
 ### Step 5: Handoff or Close
 
-Goal: Decide whether idea 30 is complete or whether additional
-stack-destination policy should move to separate durable follow-up ideas.
+Goal: Close idea 30 as a validated fail-closed policy slice, or hand off if
+validation exposes a blocker.
 
 Actions:
 
-- Record exactly which source-to-stack forms are now supported.
-- Preserve explicit caveats for unsupported source-to-stack forms.
-- If remaining work is adjacent but outside the completed slice, create or
-  recommend separate durable follow-up ideas instead of expanding this plan.
+- Record that the only supported source-to-stack form remains
+  `Register -> StackSlot`.
+- Preserve the explicit scratch-register blocker for
+  `RematerializableImmediate -> StackSlot`, `StackSlot -> StackSlot`, and
+  `PointerBasePlusOffset -> StackSlot`.
+- Point future scratch-register work at
+  `ideas/open/32_riscv_prepared_edge_publication_stack_destination_scratch_policy.md`.
+- Do not close if validation cannot refresh the missing canonical proof
+  evidence noted by the route review.
 
 Completion check:
 
-- The source idea can be closed with concrete support or concrete fail-closed
-  policy, or the active route is intentionally rewritten/deactivated with
-  durable follow-up scope.
+- The source idea can be closed with concrete fail-closed policy and durable
+  follow-up scope, or the active route is left blocked with the exact
+  validation failure.

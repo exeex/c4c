@@ -43,13 +43,24 @@ silently claimed by the focused register-source slice.
 ## Acceptance Criteria
 
 - At least one additional source-to-`StackSlot` RISC-V prepared
-  edge-publication form is implemented through shared lookup authority.
+  edge-publication form is implemented through shared lookup authority, or the
+  route records the concrete RISC-V policy reason candidate forms must remain
+  fail-closed and moves the required policy work into durable follow-up scope.
 - Tests fail if shared publication facts are absent or ignored.
 - Existing `Register -> StackSlot` behavior remains supported.
 - Unsupported source or destination homes remain explicit and fail closed.
 - Target-specific stack destination emission remains inside the RISC-V backend.
 - Validation covers focused RISC-V stack-destination publication tests,
   relevant shared prepared lookup tests, and an appropriate backend bucket.
+
+## Discovered Policy Blocker
+
+Step 1/2 execution found that `RematerializableImmediate -> StackSlot`,
+`StackSlot -> StackSlot`, and `PointerBasePlusOffset -> StackSlot` all require
+a RISC-V scratch-register or scratch-reservation contract before the prepared
+edge-publication consumer can emit them without guessing. Idea 30 may close as
+a fail-closed policy slice after validation if that blocker remains explicit
+and the scratch-register policy is tracked separately.
 
 ## Reviewer Reject Signals
 

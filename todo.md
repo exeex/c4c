@@ -1,39 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/30_riscv_prepared_edge_publication_stack_destination_policy_broadening.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Review Route Quality
-你該做code review了
+Current Step ID: 4
+Current Step Title: Validate the Stack-Destination Broadening Slice
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 preserved the fail-closed RISC-V source-to-stack policy without changing
-implementation behavior. Focused coverage in
-`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` now asserts
-that `RematerializableImmediate -> StackSlot`, `StackSlot -> StackSlot`, and
-`PointerBasePlusOffset -> StackSlot` return
-`UnsupportedDestinationHome` and render no instruction text unless an explicit
-scratch-register policy exists. Existing `Register -> StackSlot` coverage
-remains intact.
+Step 3 route review is resolved. The reviewer report at
+`review/riscv_stack_destination_fail_closed_route_review.md` accepted the
+Step 2 fail-closed packet as aligned with idea 30 and not testcase-overfit.
+Lifecycle decision: proceed to validation and closure as a fail-closed policy
+slice, while keeping actual scratch-register policy as durable follow-up scope.
+The source idea now permits closure with the concrete blocker, and
+`ideas/open/32_riscv_prepared_edge_publication_stack_destination_scratch_policy.md`
+tracks the future source-to-stack broadening work.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet only after deciding whether the
-active plan should introduce an explicit scratch-register policy or keep
-source-to-stack broadening deferred.
+Execute Step 4 validation. Refresh or restore the focused proof so root
+`test_after.log` exists and matches the claim in this scratchpad, then run the
+supervisor-selected broader backend proof before closing idea 30.
 
 ## Watchouts
 
-This packet intentionally did not add scratch semantics or broaden stack-source
-register-destination or pointer-base register-destination behavior. The helper
+Do not add scratch-register semantics in the validation packet. The helper
 still supports only `Register -> StackSlot` for concrete 4-byte stack
-destinations.
+destinations. `RematerializableImmediate -> StackSlot`,
+`StackSlot -> StackSlot`, and `PointerBasePlusOffset -> StackSlot` remain
+fail-closed until the follow-up idea defines an owned RISC-V scratch policy.
 
 ## Proof
 
-Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_prepared_edge_publication$' > test_after.log 2>&1`.
-Focused CTest passed 1/1 in `test_after.log`. The delegated proof is sufficient
-for this Step 2 fail-closed policy coverage packet.
+Route review accepted Step 2 fail-closed policy, with one validation caveat:
+the reviewer could not find root `test_after.log`. Step 4 must refresh
+canonical validation evidence before closure.
