@@ -33,6 +33,17 @@ and encourages semantic decisions to hide in display code.
 - Existing printer and backend tests pass.
 - No behavior is changed except through ownership cleanup.
 
+## Completion Note
+
+Closed after Step 5 validation. The cleanup moved generic effect spelling and
+call machine-node display responsibilities out of call-lowering surfaces,
+retired the stale misleading call printing/effect ownership path, preserved
+existing output behavior, and left call semantic lowering unchanged. Acceptance
+proof included the supervisor-accepted full-suite baseline at `b93d28067`
+with 3410/3410 tests passing, matching canonical backend-scope
+`test_before.log` and `test_after.log` at HEAD with 162/162 tests passing in
+both logs, and a passing non-decreasing regression guard.
+
 ## Reviewer Reject Signals
 
 - A patch changes call semantics while presented as printing cleanup.
