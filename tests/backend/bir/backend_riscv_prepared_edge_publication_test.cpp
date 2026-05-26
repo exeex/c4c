@@ -133,6 +133,17 @@ prepare::PreparedFunctionLookups make_lookups(
       prepared, prepared.control_flow.functions.front());
 }
 
+void set_edge_publication_value_types(prepare::PreparedBirModule& prepared,
+                                      bir::TypeKind source_type,
+                                      bir::TypeKind destination_type) {
+  auto& transfer =
+      prepared.control_flow.functions.front().join_transfers.front().edge_transfers.front();
+  transfer.incoming_value.type = source_type;
+  transfer.destination_value.type = destination_type;
+  prepared.control_flow.functions.front().join_transfers.front().result.type =
+      destination_type;
+}
+
 int check_register_to_register_move_uses_shared_lookup() {
   auto prepared = make_register_edge_publication_module();
   const auto ids = FixtureIds{
@@ -461,6 +472,57 @@ int check_stack_source_fail_closed_forms() {
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
               "RISC-V stack-source helper should reject unsupported subword widths")) {
+    return 1;
+  }
+  if (!expect(intent.instruction_text.empty(),
+              "RISC-V subword stack-source helper should not emit lb/lbu/lh/lhu "
+              "without prepared signedness authority")) {
+    return 1;
+  }
+
+  set_edge_publication_value_types(prepared, bir::TypeKind::I16, bir::TypeKind::I16);
+  set_stack_source(32, 2);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V typed subword stack-source helper should stay fail-closed "
+              "without signedness authority") ||
+      !expect(intent.instruction_text.find("lh") == std::string::npos &&
+                  intent.instruction_text.find("lhu") == std::string::npos,
+              "RISC-V typed subword stack-source helper should not choose signed "
+              "or unsigned halfword opcodes from width alone")) {
+    return 1;
+  }
+
+  set_edge_publication_value_types(prepared, bir::TypeKind::I32, bir::TypeKind::I64);
+  set_stack_source(32, 4);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V unsigned-I32-shaped stack-source helper should stay "
+              "fail-closed without zero-extension authority") ||
+      !expect(intent.instruction_text.find("lwu") == std::string::npos,
+              "RISC-V unsigned-I32-shaped stack-source helper should not emit "
+              "lwu from size/type shape alone")) {
+    return 1;
+  }
+
+  set_edge_publication_value_types(prepared, bir::TypeKind::F32, bir::TypeKind::F32);
+  prepared.value_locations.functions.front().value_homes.at(1).register_name =
+      std::string{"fa0"};
+  set_stack_source(32, 4);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V F32 stack-source helper should stay fail-closed without "
+              "prepared FPR destination authority") ||
+      !expect(intent.instruction_text.find("flw") == std::string::npos &&
+                  intent.instruction_text.find("lw fa0") == std::string::npos,
+              "RISC-V F32 stack-source helper should not choose floating or "
+              "integer load opcodes from raw register spelling")) {
     return 1;
   }
 

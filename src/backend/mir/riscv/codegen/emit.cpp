@@ -159,6 +159,31 @@ bool has_non_aliasing_i32_stack_source_for_stack_destination(
                                *destination_home.size_bytes);
 }
 
+bool has_untyped_integer_stack_source_register_policy(
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  namespace bir = c4c::backend::bir;
+
+  if (publication.source_value.type != publication.destination_value.type) {
+    return false;
+  }
+  switch (publication.source_value.type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return false;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+      return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
@@ -221,6 +246,12 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       intent.instruction_text =
           "li " + intent.destination_register + ", " + *source_operand;
     } else if (intent.source_stack_offset_bytes.has_value()) {
+      if (!has_untyped_integer_stack_source_register_policy(*publication)) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+        intent.destination_register.clear();
+        intent.instruction_text.clear();
+        return intent;
+      }
       const auto opcode = intent.source_stack_size_bytes == std::optional<std::size_t>{8}
                               ? std::string{"ld "}
                               : std::string{"lw "};
