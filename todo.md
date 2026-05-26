@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/32_riscv_prepared_edge_publication_stack_destination_scratch_policy.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Define The RISC-V Scratch Contract
+Current Step ID: Step 3
+Current Step Title: Implement One Non-Register Source-To-Stack Form
 
 ## Just Finished
 
