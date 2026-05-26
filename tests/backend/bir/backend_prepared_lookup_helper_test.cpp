@@ -374,6 +374,8 @@ int verify_diamond_function_lookup() {
   const auto right_label = prepared.names.block_labels.intern("diamond.right");
   const auto join_label = prepared.names.block_labels.intern("diamond.join");
   const auto value_name = prepared.names.value_names.intern("%diamond.value");
+  const auto left_source_name = prepared.names.value_names.intern("%diamond.left");
+  const auto right_source_name = prepared.names.value_names.intern("%diamond.right");
 
   const prepare::PreparedControlFlowFunction control_flow{
       .function_name = function_id,
@@ -382,6 +384,48 @@ int verify_diamond_function_lookup() {
           branch_block(left_label, join_label),
           branch_block(right_label, join_label),
           return_block(join_label),
+      },
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_id,
+              .join_block_label = join_label,
+              .result = bir::Value::named(bir::TypeKind::I32, "%diamond.value"),
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .carrier_kind =
+                  prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+              .edge_transfers = {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = left_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%diamond.left"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%diamond.value"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = right_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%diamond.right"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%diamond.value"),
+                  },
+              },
+          },
+      },
+      .parallel_copy_bundles = {
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = left_label,
+              .successor_label = join_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          },
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = right_label,
+              .successor_label = join_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          },
       },
   };
 
@@ -438,6 +482,20 @@ int verify_diamond_function_lookup() {
               .kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
               .pointer_byte_delta = 16,
           },
+          prepare::PreparedValueHome{
+              .value_id = 12,
+              .function_name = function_id,
+              .value_name = left_source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string("left_source"),
+          },
+          prepare::PreparedValueHome{
+              .value_id = 13,
+              .function_name = function_id,
+              .value_name = right_source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string("right_source"),
+          },
       },
       .move_bundles = {
           prepare::PreparedMoveBundle{
@@ -448,6 +506,19 @@ int verify_diamond_function_lookup() {
               .instruction_index = 0,
               .source_parallel_copy_predecessor_label = left_label,
               .source_parallel_copy_successor_label = join_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 12,
+                      .to_value_id = 11,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_stack_offset_bytes = std::size_t{16},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
           },
           prepare::PreparedMoveBundle{
               .function_name = function_id,
@@ -532,6 +603,170 @@ int verify_diamond_function_lookup() {
     return fail("indexed value-id lookup missed diamond value-name mapping");
   }
 
+  const auto* left_publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, left_label, join_label, prepare::PreparedValueId{11});
+  if (left_publication == nullptr ||
+      left_publication->status !=
+          prepare::PreparedEdgePublicationLookupStatus::Available ||
+      left_publication->predecessor_label != left_label ||
+      left_publication->successor_label != join_label ||
+      left_publication->destination_value_id != 11 ||
+      left_publication->destination_value_name != value_name ||
+      !left_publication->source_value_id.has_value() ||
+      *left_publication->source_value_id != 12 ||
+      left_publication->source_value_name != left_source_name ||
+      left_publication->destination_home != &function_locations->value_homes[0] ||
+      left_publication->destination_home_kind !=
+          prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      left_publication->destination_storage_kind !=
+          prepare::PreparedMoveStorageKind::StackSlot ||
+      left_publication->phase != prepare::PreparedMovePhase::BlockEntry ||
+      left_publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      left_publication->join_transfer != &control_flow.join_transfers[0] ||
+      left_publication->edge_transfer !=
+          &control_flow.join_transfers[0].edge_transfers[0] ||
+      left_publication->parallel_copy_bundle !=
+          &control_flow.parallel_copy_bundles[0] ||
+      left_publication->move_bundle != &function_locations->move_bundles[0] ||
+      left_publication->move != &function_locations->move_bundles[0].moves[0]) {
+    return fail("edge-publication lookup did not preserve prepared join, source, home, carrier, and move facts");
+  }
+
+  const auto* right_publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, right_label, join_label, prepare::PreparedValueId{11});
+  if (right_publication == nullptr ||
+      right_publication->source_value_id != prepare::PreparedValueId{13} ||
+      right_publication->parallel_copy_bundle !=
+          &control_flow.parallel_copy_bundles[1] ||
+      right_publication->move != nullptr ||
+      right_publication->destination_storage_kind != prepare::PreparedMoveStorageKind::None) {
+    return fail("edge-publication lookup should link the published bundle while leaving missing move data absent");
+  }
+
+  return 0;
+}
+
+int verify_edge_publication_lookup_key_preserves_full_tuple() {
+  const auto successor_destination_a = prepare::prepared_edge_publication_key(
+      c4c::BlockLabelId{10},
+      c4c::BlockLabelId{20},
+      prepare::PreparedValueId{(std::size_t{1} << 16U) ^ 100U});
+  const auto successor_destination_b = prepare::prepared_edge_publication_key(
+      c4c::BlockLabelId{10},
+      c4c::BlockLabelId{21},
+      prepare::PreparedValueId{100});
+  if (successor_destination_a == successor_destination_b) {
+    return fail("edge-publication key collapsed overlapping successor/value-id bits");
+  }
+
+  const auto predecessor_successor_a = prepare::prepared_edge_publication_key(
+      c4c::BlockLabelId{42}, c4c::BlockLabelId{5}, prepare::PreparedValueId{7});
+  const auto predecessor_successor_b = prepare::prepared_edge_publication_key(
+      c4c::BlockLabelId{43},
+      static_cast<c4c::BlockLabelId>((std::size_t{1} << 24U) + 5U),
+      prepare::PreparedValueId{7});
+  if (predecessor_successor_a == predecessor_successor_b) {
+    return fail("edge-publication key collapsed overlapping predecessor/successor bits");
+  }
+
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("edge_key_growth");
+  const auto source_name = names.value_names.intern("%edge_key.source");
+  const auto high_destination_name = names.value_names.intern("%edge_key.high_destination");
+  const auto low_destination_name = names.value_names.intern("%edge_key.low_destination");
+
+  const c4c::BlockLabelId predecessor_label{10};
+  const c4c::BlockLabelId first_successor_label{20};
+  const c4c::BlockLabelId second_successor_label{21};
+  const prepare::PreparedValueId source_value_id{50};
+  const prepare::PreparedValueId high_destination_value_id{(std::size_t{1} << 16U) ^
+                                                           100U};
+  const prepare::PreparedValueId low_destination_value_id{100};
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = first_successor_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = first_successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge_key.source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_key.high_destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = second_successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge_key.source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_key.low_destination"),
+                  },
+              },
+          },
+      },
+  };
+
+  const prepare::PreparedValueLocationFunction locations{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"source_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = high_destination_value_id,
+              .function_name = function_name,
+              .value_name = high_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"high_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = low_destination_value_id,
+              .function_name = function_name,
+              .value_name = low_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"low_home"},
+          },
+      },
+  };
+
+  const auto lookups = prepare::make_prepared_edge_publication_lookups(
+      names, control_flow, &locations);
+  const auto* high_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups,
+          predecessor_label,
+          first_successor_label,
+          high_destination_value_id);
+  const auto* low_publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, second_successor_label, low_destination_value_id);
+
+  if (high_publication == nullptr || low_publication == nullptr) {
+    return fail("edge-publication lookup should preserve distinct high-id tuples");
+  }
+  if (high_publication == low_publication ||
+      high_publication->successor_label != first_successor_label ||
+      high_publication->destination_value_id != high_destination_value_id ||
+      low_publication->successor_label != second_successor_label ||
+      low_publication->destination_value_id != low_destination_value_id) {
+    return fail("edge-publication lookup returned a colliding edge/destination record");
+  }
+  if (prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups, predecessor_label, first_successor_label, low_destination_value_id) !=
+      nullptr) {
+    return fail("edge-publication lookup should not cross-match successor/value-id tuples");
+  }
+
   return 0;
 }
 
@@ -542,6 +777,10 @@ int main() {
     return result;
   }
   if (const int result = verify_diamond_function_lookup(); result != 0) {
+    return result;
+  }
+  if (const int result = verify_edge_publication_lookup_key_preserves_full_tuple();
+      result != 0) {
     return result;
   }
   return EXIT_SUCCESS;

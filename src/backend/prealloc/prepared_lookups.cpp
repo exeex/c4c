@@ -119,6 +119,71 @@ namespace {
   return false;
 }
 
+[[nodiscard]] std::optional<ValueNameId> existing_prepared_value_name_id(
+    const PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name;
+}
+
+[[nodiscard]] PreparedMoveStorageKind prepared_storage_kind_for_home(
+    PreparedValueHomeKind kind) {
+  switch (kind) {
+    case PreparedValueHomeKind::Register:
+      return PreparedMoveStorageKind::Register;
+    case PreparedValueHomeKind::StackSlot:
+      return PreparedMoveStorageKind::StackSlot;
+    case PreparedValueHomeKind::None:
+    case PreparedValueHomeKind::RematerializableImmediate:
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return PreparedMoveStorageKind::None;
+  }
+  return PreparedMoveStorageKind::None;
+}
+
+[[nodiscard]] const PreparedMoveResolution* find_edge_publication_move(
+    const PreparedValueLocationFunction* value_locations,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id,
+    const PreparedMoveBundle** move_bundle) {
+  if (move_bundle != nullptr) {
+    *move_bundle = nullptr;
+  }
+  if (value_locations == nullptr ||
+      predecessor_label == kInvalidBlockLabel ||
+      successor_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+
+  const std::optional<BlockLabelId> expected_predecessor{predecessor_label};
+  const std::optional<BlockLabelId> expected_successor{successor_label};
+  for (const auto& bundle : value_locations->move_bundles) {
+    if (bundle.phase != PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_predecessor_label != expected_predecessor ||
+        bundle.source_parallel_copy_successor_label != expected_successor) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.destination_kind == PreparedMoveDestinationKind::Value &&
+          move.to_value_id == destination_value_id) {
+        if (move_bundle != nullptr) {
+          *move_bundle = &bundle;
+        }
+        return &move;
+      }
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const bir::Function* prepared_bir_function(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
@@ -324,6 +389,34 @@ void collect_block_entry_republication_effects(
          instruction_index;
 }
 
+[[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id) {
+  return PreparedEdgePublicationKey{
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = destination_value_id,
+  };
+}
+
+[[nodiscard]] bool operator==(const PreparedEdgePublicationKey& lhs,
+                              const PreparedEdgePublicationKey& rhs) {
+  return lhs.predecessor_label == rhs.predecessor_label &&
+         lhs.successor_label == rhs.successor_label &&
+         lhs.destination_value_id == rhs.destination_value_id;
+}
+
+[[nodiscard]] std::size_t PreparedEdgePublicationKeyHash::operator()(
+    const PreparedEdgePublicationKey& key) const {
+  std::size_t seed = std::hash<BlockLabelId>{}(key.predecessor_label);
+  seed ^= std::hash<BlockLabelId>{}(key.successor_label) + 0x9e3779b97f4a7c15ULL +
+          (seed << 6U) + (seed >> 2U);
+  seed ^= std::hash<PreparedValueId>{}(key.destination_value_id) +
+          0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+  return seed;
+}
+
 [[nodiscard]] bool prepared_prior_preserved_value_entry_position_less(
     const PreparedPriorPreservedValueEntry& lhs,
     const PreparedPriorPreservedValueEntry& rhs) {
@@ -476,18 +569,132 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
+[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  PreparedEdgePublicationLookups lookups;
+  const auto local_value_home_lookups =
+      value_home_lookups == nullptr
+          ? make_prepared_value_home_lookups(value_locations)
+          : PreparedValueHomeLookups{};
+  const auto* value_homes =
+      value_home_lookups == nullptr ? &local_value_home_lookups : value_home_lookups;
+
+  for (const auto& join_transfer : function.join_transfers) {
+    const auto carrier_kind = effective_prepared_join_transfer_carrier_kind(join_transfer);
+    for (const auto& edge_transfer : join_transfer.edge_transfers) {
+      PreparedEdgePublication publication{
+          .predecessor_label = edge_transfer.predecessor_label,
+          .successor_label = edge_transfer.successor_label,
+          .destination_value = edge_transfer.destination_value,
+          .source_value = edge_transfer.incoming_value,
+          .phase = PreparedMovePhase::BlockEntry,
+          .carrier_kind = carrier_kind,
+          .join_transfer = &join_transfer,
+          .edge_transfer = &edge_transfer,
+          .parallel_copy_bundle =
+              find_published_parallel_copy_bundle_for_edge_transfer(function, edge_transfer),
+      };
+
+      if (publication.predecessor_label == kInvalidBlockLabel) {
+        publication.status = PreparedEdgePublicationLookupStatus::MissingPredecessorLabel;
+        lookups.publications.push_back(std::move(publication));
+        continue;
+      }
+      if (publication.successor_label == kInvalidBlockLabel) {
+        publication.status = PreparedEdgePublicationLookupStatus::MissingSuccessorLabel;
+        lookups.publications.push_back(std::move(publication));
+        continue;
+      }
+
+      const auto destination_name =
+          existing_prepared_value_name_id(names, edge_transfer.destination_value);
+      if (!destination_name.has_value()) {
+        publication.status = PreparedEdgePublicationLookupStatus::MissingDestinationValue;
+        lookups.publications.push_back(std::move(publication));
+        continue;
+      }
+      publication.destination_value_name = *destination_name;
+
+      const auto destination_value_id =
+          find_indexed_prepared_value_id(value_homes,
+                                        nullptr,
+                                        value_locations,
+                                        publication.destination_value_name);
+      if (!destination_value_id.has_value()) {
+        publication.status = PreparedEdgePublicationLookupStatus::MissingDestinationHome;
+        lookups.publications.push_back(std::move(publication));
+        continue;
+      }
+      publication.destination_value_id = *destination_value_id;
+      publication.destination_home =
+          find_indexed_prepared_value_home(value_homes,
+                                           value_locations,
+                                           publication.destination_value_id);
+      if (publication.destination_home == nullptr) {
+        publication.status = PreparedEdgePublicationLookupStatus::MissingDestinationHome;
+        lookups.publications.push_back(std::move(publication));
+        continue;
+      }
+      publication.destination_home_kind = publication.destination_home->kind;
+      publication.destination_storage_kind =
+          prepared_storage_kind_for_home(publication.destination_home->kind);
+
+      if (const auto source_name =
+              existing_prepared_value_name_id(names, edge_transfer.incoming_value);
+          source_name.has_value()) {
+        publication.source_value_name = *source_name;
+        publication.source_value_id =
+            find_indexed_prepared_value_id(value_homes,
+                                          nullptr,
+                                          value_locations,
+                                          *source_name);
+      }
+
+      publication.move = find_edge_publication_move(value_locations,
+                                                    publication.predecessor_label,
+                                                    publication.successor_label,
+                                                    publication.destination_value_id,
+                                                    &publication.move_bundle);
+      if (publication.move != nullptr) {
+        publication.destination_storage_kind = publication.move->destination_storage_kind;
+      }
+      publication.status = PreparedEdgePublicationLookupStatus::Available;
+      lookups.publications.push_back(std::move(publication));
+    }
+  }
+
+  for (const auto& publication : lookups.publications) {
+    if (publication.status != PreparedEdgePublicationLookupStatus::Available) {
+      continue;
+    }
+    lookups.publications_by_edge_destination
+        [prepared_edge_publication_key(publication.predecessor_label,
+                                       publication.successor_label,
+                                       publication.destination_value_id)]
+            .push_back(&publication);
+  }
+  return lookups;
+}
+
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
   const auto* call_plans = find_prepared_call_plans(prepared, function.function_name);
   const auto* value_locations =
       find_prepared_value_location_function(prepared, function.function_name);
+  auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
+  auto edge_publication_lookups = make_prepared_edge_publication_lookups(
+      prepared.names, function, value_locations, &value_home_lookups);
   return PreparedFunctionLookups{
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =
           make_prepared_address_materialization_lookups(prepared, function.function_name),
       .move_bundles = make_prepared_move_bundle_lookups(value_locations),
-      .value_homes = make_prepared_value_home_lookups(value_locations),
+      .value_homes = std::move(value_home_lookups),
+      .edge_publications = std::move(edge_publication_lookups),
   };
 }
 
@@ -563,6 +770,36 @@ collect_prepared_address_materializations_for_block(
                                                                 phase,
                                                                 block_index,
                                                                 instruction_index);
+}
+
+[[nodiscard]] const std::vector<const PreparedEdgePublication*>*
+find_indexed_prepared_edge_publications(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->publications_by_edge_destination.find(
+      prepared_edge_publication_key(predecessor_label, successor_label, destination_value_id));
+  if (it == lookups->publications_by_edge_destination.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+[[nodiscard]] const PreparedEdgePublication* find_unique_indexed_prepared_edge_publication(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id) {
+  const auto* publications = find_indexed_prepared_edge_publications(
+      lookups, predecessor_label, successor_label, destination_value_id);
+  if (publications == nullptr || publications->size() != 1) {
+    return nullptr;
+  }
+  return publications->front();
 }
 
 [[nodiscard]] const PreparedCallPreservedValue*

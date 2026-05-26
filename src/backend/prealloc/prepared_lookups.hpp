@@ -6,6 +6,7 @@
 #include "value_locations.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -56,11 +57,64 @@ struct PreparedValueHomeLookups {
   std::unordered_map<ValueNameId, PreparedValueId> value_ids;
 };
 
+enum class PreparedEdgePublicationLookupStatus {
+  Available,
+  MissingPredecessorLabel,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingDestinationHome,
+};
+
+struct PreparedEdgePublication {
+  PreparedEdgePublicationLookupStatus status =
+      PreparedEdgePublicationLookupStatus::MissingDestinationValue;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  bir::Value destination_value;
+  bir::Value source_value;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  PreparedMovePhase phase = PreparedMovePhase::BlockEntry;
+  PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* edge_transfer = nullptr;
+  const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+};
+
+struct PreparedEdgePublicationKey {
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+};
+
+[[nodiscard]] bool operator==(const PreparedEdgePublicationKey& lhs,
+                              const PreparedEdgePublicationKey& rhs);
+
+struct PreparedEdgePublicationKeyHash {
+  [[nodiscard]] std::size_t operator()(const PreparedEdgePublicationKey& key) const;
+};
+
+struct PreparedEdgePublicationLookups {
+  std::vector<PreparedEdgePublication> publications;
+  std::unordered_map<PreparedEdgePublicationKey,
+                     std::vector<const PreparedEdgePublication*>,
+                     PreparedEdgePublicationKeyHash>
+      publications_by_edge_destination;
+};
+
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
   PreparedMoveBundleLookups move_bundles;
   PreparedValueHomeLookups value_homes;
+  PreparedEdgePublicationLookups edge_publications;
 };
 
 [[nodiscard]] std::size_t prepared_call_position_key(std::size_t block_index,
@@ -69,6 +123,11 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_move_bundle_position_key(PreparedMovePhase phase,
                                                             std::size_t block_index,
                                                             std::size_t instruction_index);
+
+[[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id);
 
 [[nodiscard]] bool prepared_prior_preserved_value_entry_position_less(
     const PreparedPriorPreservedValueEntry& lhs,
@@ -88,6 +147,12 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
 
 [[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
     const PreparedValueLocationFunction* value_locations);
+
+[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups = nullptr);
 
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
@@ -115,6 +180,19 @@ collect_prepared_address_materializations_for_block(
     PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
+
+[[nodiscard]] const std::vector<const PreparedEdgePublication*>*
+find_indexed_prepared_edge_publications(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id);
+
+[[nodiscard]] const PreparedEdgePublication* find_unique_indexed_prepared_edge_publication(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id);
 
 [[nodiscard]] const PreparedCallPreservedValue*
 find_latest_indexed_prior_preserved_value(
