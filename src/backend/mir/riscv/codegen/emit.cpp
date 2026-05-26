@@ -71,6 +71,14 @@ std::optional<std::string> render_edge_publication_source_operand(
     intent.source_immediate_i32 = *source_home.immediate_i32;
     return std::to_string(*source_home.immediate_i32);
   }
+  if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home.offset_bytes.has_value() &&
+      source_home.size_bytes == std::optional<std::size_t>{4}) {
+    intent.source_stack_slot_id = source_home.slot_id;
+    intent.source_stack_offset_bytes = *source_home.offset_bytes;
+    intent.source_stack_size_bytes = *source_home.size_bytes;
+    return std::to_string(*source_home.offset_bytes) + "(sp)";
+  }
   return std::nullopt;
 }
 
@@ -134,6 +142,9 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   if (intent.source_immediate_i32.has_value()) {
     intent.instruction_text =
         "li " + intent.destination_register + ", " + *source_operand;
+  } else if (intent.source_stack_offset_bytes.has_value()) {
+    intent.instruction_text =
+        "lw " + intent.destination_register + ", " + *source_operand;
   } else {
     intent.instruction_text =
         "mv " + intent.destination_register + ", " + *source_operand;

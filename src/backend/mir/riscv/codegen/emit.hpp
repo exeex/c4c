@@ -3,6 +3,7 @@
 #include "../assembler/mod.hpp"
 #include "../../../prealloc/prealloc.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -37,6 +38,9 @@ struct EdgePublicationMoveIntent {
   std::optional<c4c::backend::prepare::PreparedValueId> source_value_id;
   std::string source_register;
   std::optional<std::int64_t> source_immediate_i32;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> source_stack_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_stack_size_bytes;
   std::string destination_register;
   std::string instruction_text;
 };

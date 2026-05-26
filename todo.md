@@ -3,63 +3,58 @@
 Status: Active
 Source Idea Path: ideas/open/25_riscv_prepared_edge_publication_stack_source_register_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory RISC-V Stack Source Path
+Current Step ID: 3
+Current Step Title: Prove Fail-Closed Authority
 
 ## Just Finished
 
-Completed Step 1 inventory for idea 25. The current RISC-V prepared
-edge-publication consumer lives in `src/backend/mir/riscv/codegen/emit.cpp`
-and is exposed through `consume_edge_publication_move_intent`,
-`append_edge_publication_move_instruction`, and `emit_prepared_module`.
-It already uses shared `PreparedFunctionLookups::edge_publications` as the
-only authority via `find_unique_indexed_prepared_edge_publication`; it accepts
-`Register -> Register` as `mv <dst>, <src>` and
-`RematerializableImmediate -> Register` as `li <dst>, <imm>`.
+Completed Step 2 and Step 3 for idea 25. RISC-V now consumes shared
+`edge_publications` for the focused `StackSlot -> Register` prepared home case
+when the source home has a concrete `offset_bytes` and 4-byte `size_bytes`.
+The target-local emission is `lw <dst>, <offset>(sp)` after shared lookup
+authority succeeds.
 
-`StackSlot -> Register` currently reaches
-`render_edge_publication_source_operand` and returns
-`UnsupportedSourceHome`. The implementation target should stay RISC-V-local:
-extend the source-home rendering/emission path in
-`src/backend/mir/riscv/codegen/emit.cpp` and the intent shape in
-`src/backend/mir/riscv/codegen/emit.hpp` only as needed, then add focused
-coverage in
-`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`.
+The implementation preserves the existing `Register -> Register` `mv` path and
+`RematerializableImmediate -> Register` `li` path. Focused coverage now proves
+the positive stack-source load, preserves the shared publication pointer and
+prepared value ids on the intent path, and records stack-slot provenance
+(`slot_id`, offset, and size) without using it to rediscover edge facts.
 
-Proposed first stack-source emission policy: after the shared publication is
-accepted and the destination home is confirmed as a register, require a
-`PreparedValueHomeKind::StackSlot` source with `offset_bytes` and a register
-destination, then emit a RISC-V stack load directly into the destination
-register. The focused idea-25 case should use the prepared I32 fixture and
-emit `lw <dst>, <offset>(sp)`. If the source home lacks `offset_bytes`, if the
-load width is not the focused I32/4-byte case, or if the destination is not a
-register, the helper should continue to fail closed rather than guessing a
-frame/address policy. `slot_id` should be preserved on the intent/test path as
-structured provenance, but final assembly uses the prepared stack offset.
+Step 3 fail-closed coverage remains explicit: missing shared lookups and
+missing publication facts are rejected, stack sources without offset or I32
+size are rejected, pointer-base sources remain unsupported, source-to-`StackSlot`
+destinations remain unsupported, and non-move publications remain unsupported.
 
 ## Suggested Next
 
-Execute Step 2 by implementing `StackSlot -> Register` register-destination
-consumption through the existing shared lookup path. Add a positive test that
-mutates the current prepared edge fixture source home to a stack slot with a
-slot id, offset, and I32-sized payload, then expects `lw a1, <offset>(sp)`.
-Keep existing register and immediate cases green.
+Proceed to Step 4 validation review. The focused proof is green in
+`test_after.log`; the supervisor should decide whether to run a matching guard
+and/or a broader backend bucket before handoff.
 
 ## Watchouts
 
-Do not scan predecessor/successor blocks or reconstruct edge facts locally.
-The shared `edge_publications` lookup remains the semantic authority, and
-missing shared lookup authority or a missing publication must still return the
-existing fail-closed statuses. Keep `PointerBasePlusOffset -> Register` and
-all source-to-`StackSlot` destinations unsupported/fail-closed. Do not broaden
-this packet into full RISC-V frame lowering; large offsets, non-I32 load
-widths, dynamic stack, and stack destinations need separate ownership unless
-the next packet explicitly scopes them.
+The stack-source policy is intentionally focused to 4-byte loads from prepared
+stack offsets. Pointer-base sources, non-I32 stack-source widths, missing stack
+offsets, and all source-to-`StackSlot` destinations remain unsupported and
+fail closed. This packet did not implement broader RISC-V frame lowering,
+large-offset handling, dynamic stack addressing, or stack destinations.
 
 ## Proof
 
-Inventory-only packet; no build or tests run, and no `test_after.log` was
-created.
-
-Focused proof command for the implementation packet:
+Ran the delegated focused proof command:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_codegen_route_riscv64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
+
+Result: PASS, 5/5 selected tests passed.
+
+Supervisor ran the matching regression guard against the focused
+`test_before.log` and focused `test_after.log` with non-decreasing pass count
+allowed because this packet extended an existing CTest binary. Result: PASS
+with 5/5 before and 5/5 after, no new failures.
+
+Supervisor then ran broader backend validation:
+
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+
+Result: PASS. Build succeeded and CTest reported 163/163 backend tests passing.
+This backend run is broader validation only, not the matching before/after
+regression comparison for the focused packet.
