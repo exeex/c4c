@@ -33,6 +33,12 @@ be deleted or reduced to target operand construction.
 - Build metadata and includes are updated if files are retired.
 - Focused call argument tests and representative backend tests pass.
 
+## Completion Note
+
+Closed after `calls_argument_sources.cpp` retirement and full-suite close-gate
+validation. Matching canonical regression logs recorded 3410/3410 passing tests
+before and after, and the regression guard passed with no new failures.
+
 ## Reviewer Reject Signals
 
 - A patch only moves helpers between AArch64 files.
