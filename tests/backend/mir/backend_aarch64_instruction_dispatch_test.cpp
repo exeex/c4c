@@ -30523,8 +30523,11 @@ int block_dispatch_publishes_local_conversion_store_sources_before_store() {
         test_case.opcode, test_case.source_type, test_case.result_type);
     const auto& function_cf = prepared.control_flow.functions.front();
     const auto& block_cf = function_cf.blocks.front();
-    const auto function_context = aarch64_codegen::make_function_lowering_context(
+    const auto prepared_lookups =
+        prepare::make_prepared_function_lookups(prepared, function_cf);
+    auto function_context = aarch64_codegen::make_function_lowering_context(
         prepared, prepared.target_profile, function_cf);
+    attach_prepared_function_lookups(function_context, prepared_lookups);
     const auto block_context =
         aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 

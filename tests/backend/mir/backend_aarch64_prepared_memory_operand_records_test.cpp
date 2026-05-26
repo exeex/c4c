@@ -1,8 +1,11 @@
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
+#include "src/backend/mir/aarch64/codegen/memory_store_sources.hpp"
 
+#include <algorithm>
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -1552,6 +1555,184 @@ int address_materialization_policy_and_identity_fail_closed() {
   return 0;
 }
 
+prepare::PreparedBirModule make_store_cast_publication_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("store_cast_publication");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto input_name = prepared.names.value_names.intern("%input");
+  const auto casted_name = prepared.names.value_names.intern("%casted");
+  const auto slot_name = prepared.names.slot_names.intern("out");
+
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{40},
+      .function_name = function_name,
+      .slot_name = slot_name,
+      .type = bir::TypeKind::F64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{40},
+      .object_id = prepare::PreparedObjectId{40},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label;
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SIToFP,
+      .result = named_value(bir::TypeKind::F64, "%casted"),
+      .operand = named_value(bir::TypeKind::I32, "%input"),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "out",
+      .slot_id = slot_name,
+      .value = named_value(bir::TypeKind::F64, "%casted"),
+      .byte_offset = 0,
+      .align_bytes = 8,
+  });
+
+  bir::Function function;
+  function.name = "store_cast_publication";
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{30}, function_name, input_name, "w0"),
+              register_home(prepare::PreparedValueId{31}, function_name, casted_name, "d9"),
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              register_storage(prepare::PreparedValueId{30}, input_name, "w0"),
+              register_storage(prepare::PreparedValueId{31}, casted_name, "d9"),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .stored_value_name = casted_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{40},
+                          .byte_offset = 0,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+  return prepared;
+}
+
+std::optional<aarch64_module::MachineInstruction> lower_store_cast_publication(
+    prepare::PreparedBirModule& prepared,
+    const prepare::PreparedFunctionLookups* lookups) {
+  auto& control_flow = prepared.control_flow.functions.front();
+  auto& bir_function = prepared.module.functions.front();
+  auto& locations = prepared.value_locations.functions.front();
+  auto& storage = prepared.storage_plans.functions.front();
+  aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &control_flow,
+      .bir_function = &bir_function,
+      .value_locations = &locations,
+      .storage_plan = &storage,
+      .prepared_lookups = lookups,
+      .value_home_lookups = lookups != nullptr ? &lookups->value_homes : nullptr,
+  };
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, control_flow.blocks.front(), 0);
+  const auto target_register =
+      aarch64_abi::fp_simd_register(9, aarch64_abi::RegisterView::D);
+  if (!target_register.has_value()) {
+    return std::nullopt;
+  }
+  const aarch64_codegen::MemoryInstructionRecord memory_record{
+      .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+      .value = aarch64_codegen::make_register_operand(aarch64_codegen::RegisterOperand{
+          .reg = *target_register,
+          .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+          .value_id = prepare::PreparedValueId{31},
+          .value_name = prepared.names.value_names.find("%casted"),
+          .prepared_class = prepare::PreparedRegisterClass::Float,
+          .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+          .expected_view = aarch64_abi::RegisterView::D,
+          .contiguous_width = 1,
+      }),
+      .value_type = bir::TypeKind::F64,
+  };
+  aarch64_module::MachineInstruction lowered_memory{
+      .target = aarch64_codegen::make_memory_instruction(memory_record),
+  };
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::MachineBlock block;
+  return aarch64_codegen::lower_store_local_value_publication(
+      block_context,
+      block_context.bir_block->insts[1],
+      1,
+      lowered_memory,
+      scalar_state,
+      block);
+}
+
+int store_local_cast_publication_consumes_prepared_source_producer() {
+  auto prepared = make_store_cast_publication_module();
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared, prepared.control_flow.functions.front());
+  const auto lowered = lower_store_cast_publication(prepared, &lookups);
+  if (!lowered.has_value()) {
+    return fail("expected store-local cast publication to consume prepared source producer");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered->target);
+  const bool emitted_cast =
+      printed.ok &&
+      std::any_of(printed.instruction_lines.begin(),
+                  printed.instruction_lines.end(),
+                  [](const std::string& line) {
+                    return line.rfind("scvtf d9, ", 0) == 0;
+                  });
+  if (!emitted_cast) {
+    return fail("expected prepared cast source producer to drive AArch64 cast publication");
+  }
+
+  auto missing_fact_prepared = make_store_cast_publication_module();
+  const auto missing_fact =
+      lower_store_cast_publication(missing_fact_prepared, nullptr);
+  if (missing_fact.has_value()) {
+    return fail("expected missing prepared cast source-producer fact to fail closed");
+  }
+  return 0;
+}
+
 int dispatch_selects_address_materialization_from_prepared_carrier() {
   auto fixture = make_address_fixture();
   prepare::PreparedBirModule prepared;
@@ -1686,6 +1867,10 @@ int main() {
     return status;
   }
   if (const int status = address_materialization_policy_and_identity_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status = store_local_cast_publication_consumes_prepared_source_producer();
       status != 0) {
     return status;
   }

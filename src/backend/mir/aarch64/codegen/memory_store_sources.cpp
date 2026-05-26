@@ -20,6 +20,7 @@
 #include "memory.hpp"
 #include "operands.hpp"
 #include "variadic.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -427,16 +428,34 @@ store_local_recovered_narrow_store_source(
   return store_local_recovered_narrow_store_source(context, store, instruction_index)
       .has_value();
 }
-[[nodiscard]] const bir::CastInst* store_local_value_cast_producer(
+[[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
+prepared_store_source_cast_producer(
     const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  if (store.value.kind != bir::Value::Kind::Named) {
+    const bir::Value& value) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value() || context.function.prepared_lookups == nullptr) {
     return nullptr;
   }
   const auto* producer =
-      find_same_block_named_producer(context, store.value.name, instruction_index);
-  return producer != nullptr ? std::get_if<bir::CastInst>(producer) : nullptr;
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+      &context.function.prepared_lookups->edge_publication_source_producers,
+      *value_name);
+  return producer != nullptr &&
+                 producer->kind ==
+                     prepare::PreparedEdgePublicationSourceProducerKind::Cast
+             ? producer
+             : nullptr;
+}
+[[nodiscard]] bool prepared_store_source_cast_producer_is_complete(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  return plan.source_producer_kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
+         plan.source_cast != nullptr &&
+         plan.source_producer_instruction_index.has_value() &&
+         plan.source_producer_block_label.has_value() &&
+         context.control_flow_block != nullptr &&
+         *plan.source_producer_block_label == context.control_flow_block->block_label;
 }
 [[nodiscard]] bool store_local_value_has_select_producer(
     const module::BlockLoweringContext& context,
@@ -625,6 +644,7 @@ plan_store_local_source_publication(
               ? std::optional<std::size_t>{recovered_source->instruction_index}
               : std::nullopt,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = prepared_store_source_cast_producer(context, store.value),
   });
 }
 [[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
@@ -662,6 +682,7 @@ plan_pointer_base_plus_offset_store_local_publication(
       .destination_frame_slot = destination_slot,
       .destination_stack_object = destination_object,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = prepared_store_source_cast_producer(context, store.value),
   });
 }
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -673,20 +694,23 @@ lower_store_local_value_publication(
     const BlockScalarLoweringState& scalar_state,
     const module::MachineBlock& block) {
   const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
-  const auto* cast_producer =
-      store != nullptr ? store_local_value_cast_producer(context, *store, instruction_index)
-                       : nullptr;
+  if (store == nullptr) {
+    return std::nullopt;
+  }
   const auto recovered_source =
-      store != nullptr ? store_local_recovered_narrow_store_source(
-                             context, *store, instruction_index)
-                       : std::optional<NarrowLocalStorePublication>{};
-  if (store == nullptr ||
-      (!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
+      store_local_recovered_narrow_store_source(context, *store, instruction_index);
+  const auto store_source_plan =
+      plan_store_local_source_publication(context, *store, instruction_index, recovered_source);
+  const bool store_source_plan_available =
+      prepare::prepared_store_source_publication_available(store_source_plan);
+  const bool has_prepared_cast_producer =
+      prepared_store_source_cast_producer_is_complete(context, store_source_plan);
+  if ((!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
        !recovered_source.has_value() &&
        !store_local_value_has_select_producer(context, *store, instruction_index) &&
        !store_local_value_has_scalar_fp_binary_producer(
            context, *store, instruction_index) &&
-       cast_producer == nullptr &&
+       !has_prepared_cast_producer &&
        !select_chain_contains_direct_global_load(context, store->value, instruction_index))) {
     return std::nullopt;
   }
@@ -697,10 +721,6 @@ lower_store_local_value_publication(
       !memory_record->value.has_value()) {
     return std::nullopt;
   }
-  const auto store_source_plan =
-      plan_store_local_source_publication(context, *store, instruction_index, recovered_source);
-  const bool store_source_plan_available =
-      prepare::prepared_store_source_publication_available(store_source_plan);
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   std::vector<std::string> lines;
   auto value = store_source_plan.source_value;
@@ -779,13 +799,20 @@ lower_store_local_value_publication(
                         ", " + frame_slot_address(context.function, *value_home->offset_bytes));
         published_stack_home = true;
       }
-    } else if (cast_producer != nullptr) {
+    } else if (store_source_plan.source_producer_kind ==
+               prepare::PreparedEdgePublicationSourceProducerKind::Cast) {
+      if (!has_prepared_cast_producer) {
+        return std::nullopt;
+      }
       emitted = emit_scalar_conversion_cast_to_register(
           context,
-          *cast_producer,
-          producer_instruction_index(context, producer_inst).value_or(instruction_index),
+          *store_source_plan.source_cast,
+          *store_source_plan.source_producer_instruction_index,
           *target_register,
           lines);
+      if (!emitted) {
+        return std::nullopt;
+      }
     }
     if (!emitted && abi::is_fp_simd_register(target_register->reg) &&
         store_local_value_has_scalar_fp_binary_producer(
