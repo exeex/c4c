@@ -58,3 +58,35 @@ module compilation instead of living as a separate AArch64 owner family.
   of preserving or deleting projection behavior based on caller evidence.
 - The patch mixes module compatibility cleanup with calls, dispatch, memory,
   comparison, or prologue fold-back.
+
+## Closure Note
+
+Closed on 2026-05-26.
+
+The scoped fold-back is complete:
+
+- `compatibility_projection.cpp` / `compatibility_projection.hpp` were deleted
+  and removed from build metadata.
+- `derive_compatibility_function_records` and
+  `derive_compatibility_projection` moved into the anonymous namespace in
+  `module_compile.cpp`.
+- `module_compile.cpp` no longer includes `compatibility_projection.hpp`.
+- `backend_aarch64_signature_metadata_test.cpp` was updated only for
+  deleted-file metadata fallout.
+- `built_module.functions` and `built_module.compatibility` remain populated as
+  before, preserving legacy projection behavior for current readers.
+- Live source, test, and build paths no longer reference the deleted
+  `compatibility_projection.cpp` / `compatibility_projection.hpp` files.
+- Remaining compatibility wording is deliberate module compatibility semantics,
+  not standalone owner state.
+- Terminal assembly behavior remains driven by the MIR stream; the fold-back
+  did not make `FunctionRecord::machine_nodes` an assembly authority and did
+  not change final assembly printing or MIR stream ownership.
+
+Closure evidence:
+
+- Focused module/projection proof passed 6/6:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_signature_metadata|backend_aarch64_module_skeleton_contract|backend_aarch64_function_traversal|backend_aarch64_return_lowering|backend_aarch64_branch_control_lowering|backend_aarch64_prepared_scalar_alu_records)$' | tee test_after.log`
+- Broader backend bucket passed 163/163.
+- Matching backend before/after regression guard passed with 163/163 tests
+  before and 163/163 tests after.
