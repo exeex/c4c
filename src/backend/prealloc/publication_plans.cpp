@@ -35,6 +35,143 @@ namespace {
   return PreparedScalarPublicationHookKind::None;
 }
 
+[[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return 1U;
+    case bir::TypeKind::I8:
+      return 8U;
+    case bir::TypeKind::I16:
+      return 16U;
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return 64U;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::string_view local_slot_reference_name(
+    const bir::NameTables& bir_names,
+    std::string_view raw_name,
+    SlotNameId slot_id) {
+  if (!raw_name.empty()) {
+    return raw_name;
+  }
+  return slot_id != kInvalidSlotName ? bir_names.slot_names.spelling(slot_id)
+                                     : std::string_view{};
+}
+
+[[nodiscard]] bool local_slot_reference_matches(
+    const bir::NameTables& bir_names,
+    const bir::LoadLocalInst& load,
+    const bir::StoreLocalInst& store) {
+  if (load.slot_id != kInvalidSlotName && store.slot_id != kInvalidSlotName &&
+      load.slot_id == store.slot_id) {
+    return true;
+  }
+  const auto load_name =
+      local_slot_reference_name(bir_names, load.slot_name, load.slot_id);
+  const auto store_name =
+      local_slot_reference_name(bir_names, store.slot_name, store.slot_id);
+  return !load_name.empty() && load_name == store_name;
+}
+
+[[nodiscard]] const PreparedFrameSlot* find_frame_slot(
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const PreparedStackObject* find_stack_object(
+    const PreparedStackLayout& stack_layout,
+    PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string_view prepared_frame_slot_object_name(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id) {
+  const auto* slot = find_frame_slot(stack_layout, slot_id);
+  const auto* object =
+      slot != nullptr ? find_stack_object(stack_layout, slot->object_id) : nullptr;
+  return object != nullptr ? prepared_stack_object_name(names, *object)
+                           : std::string_view{};
+}
+
+[[nodiscard]] std::string_view prepared_load_local_frame_object_name(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    std::size_t load_instruction_index) {
+  const auto* access =
+      addressing != nullptr
+          ? find_prepared_memory_access(*addressing, block_label, load_instruction_index)
+          : nullptr;
+  if (access == nullptr ||
+      access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value()) {
+    return std::string_view{};
+  }
+  return prepared_frame_slot_object_name(
+      names, stack_layout, *access->address.frame_slot_id);
+}
+
+[[nodiscard]] bool value_name_has_slot_prefix(std::string_view value_name,
+                                              std::string_view slot_name) {
+  return !slot_name.empty() && value_name.size() > slot_name.size() &&
+         value_name.substr(0, slot_name.size()) == slot_name &&
+         value_name[slot_name.size()] == '.';
+}
+
+[[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
+    std::string_view name) {
+  const auto dot = name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= name.size()) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = dot + 1; index < name.size(); ++index) {
+    const char ch = name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10U + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] bool store_local_targets_logical_slot(
+    const bir::NameTables& bir_names,
+    const bir::StoreLocalInst& store,
+    std::string_view slot_name) {
+  const auto store_name =
+      local_slot_reference_name(bir_names, store.slot_name, store.slot_id);
+  if (!store_name.empty() && store_name == slot_name) {
+    return true;
+  }
+  return store.value.kind == bir::Value::Kind::Named &&
+         value_name_has_slot_prefix(store.value.name, slot_name);
+}
+
 }  // namespace
 
 bool prepared_scalar_publication_available(
@@ -226,6 +363,56 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   }
 
   return plan;
+}
+
+std::optional<PreparedRecoveredStoreSourcePublication>
+find_prepared_recovered_narrow_store_source_for_wide_local_load(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::LoadLocalInst& load,
+    std::size_t load_instruction_index) {
+  if (block == nullptr) {
+    return std::nullopt;
+  }
+  const auto load_bits = integer_bit_width(load.result.type);
+  if (!load_bits.has_value()) {
+    return std::nullopt;
+  }
+  const auto load_slot_name =
+      local_slot_reference_name(bir_names, load.slot_name, load.slot_id);
+  const auto load_frame_object_name =
+      prepared_load_local_frame_object_name(
+          names, stack_layout, addressing, block_label, load_instruction_index);
+  const auto load_lane_offset =
+      load.result.kind == bir::Value::Kind::Named
+          ? parse_trailing_dot_offset(load.result.name)
+          : std::nullopt;
+  for (std::size_t index = load_instruction_index; index > 0; --index) {
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&block->insts[index - 1]);
+    if (store == nullptr ||
+        (!local_slot_reference_matches(bir_names, load, *store) &&
+         !store_local_targets_logical_slot(bir_names, *store, load_slot_name) &&
+         !store_local_targets_logical_slot(bir_names, *store, load_frame_object_name) &&
+         !(load_lane_offset.has_value() &&
+           store->value.kind == bir::Value::Kind::Named &&
+           parse_trailing_dot_offset(store->value.name) == load_lane_offset))) {
+      continue;
+    }
+    const auto store_bits = integer_bit_width(store->value.type);
+    if (!store_bits.has_value() || *store_bits != 8U || *store_bits >= *load_bits) {
+      return std::nullopt;
+    }
+    return PreparedRecoveredStoreSourcePublication{
+        .stored_value = store->value,
+        .instruction_index = index - 1,
+    };
+  }
+  return std::nullopt;
 }
 
 }  // namespace c4c::backend::prepare

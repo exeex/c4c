@@ -217,6 +217,11 @@ struct PreparedStoreSourcePublicationPlan {
   std::optional<std::size_t> pointer_base_stack_offset_bytes;
 };
 
+struct PreparedRecoveredStoreSourcePublication {
+  bir::Value stored_value;
+  std::size_t instruction_index = 0;
+};
+
 struct PreparedStoreSourcePublicationInputs {
   const bir::Value* source_value = nullptr;
   const PreparedMemoryAccess* destination_access = nullptr;
@@ -241,5 +246,16 @@ struct PreparedStoreSourcePublicationInputs {
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);
+
+[[nodiscard]] std::optional<PreparedRecoveredStoreSourcePublication>
+find_prepared_recovered_narrow_store_source_for_wide_local_load(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::LoadLocalInst& load,
+    std::size_t load_instruction_index);
 
 }  // namespace c4c::backend::prepare

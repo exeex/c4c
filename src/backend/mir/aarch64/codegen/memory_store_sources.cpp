@@ -246,137 +246,6 @@ lower_stack_homed_pointer_value_load_publication(
   return make_select_chain_materialization_instruction(
       context, instruction_index, std::move(lines));
 }
-[[nodiscard]] std::string_view local_slot_reference_name(
-    const module::BlockLoweringContext& context,
-    std::string_view raw_name,
-    SlotNameId slot_id) {
-  if (!raw_name.empty()) {
-    return raw_name;
-  }
-  if (context.function.prepared != nullptr && slot_id != c4c::kInvalidSlotName) {
-    return context.function.prepared->module.names.slot_names.spelling(slot_id);
-  }
-  return {};
-}
-[[nodiscard]] bool local_slot_reference_matches(const module::BlockLoweringContext& context,
-                                                const bir::LoadLocalInst& load,
-                                                const bir::StoreLocalInst& store) {
-  if (load.slot_id != c4c::kInvalidSlotName &&
-      store.slot_id != c4c::kInvalidSlotName) {
-    if (load.slot_id == store.slot_id) {
-      return true;
-    }
-  }
-  const auto load_name =
-      local_slot_reference_name(context, load.slot_name, load.slot_id);
-  const auto store_name =
-      local_slot_reference_name(context, store.slot_name, store.slot_id);
-  return !load_name.empty() && load_name == store_name;
-}
-[[nodiscard]] std::string_view prepared_frame_slot_object_name(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedFrameSlotId slot_id) {
-  if (context.function.prepared == nullptr) {
-    return {};
-  }
-  const auto* slot = find_frame_slot(context.function.prepared->stack_layout, slot_id);
-  const auto* object =
-      slot != nullptr
-          ? find_stack_object(context.function.prepared->stack_layout, slot->object_id)
-          : nullptr;
-  return object != nullptr
-             ? prepare::prepared_stack_object_name(context.function.prepared->names,
-                                                   *object)
-             : std::string_view{};
-}
-[[nodiscard]] std::string_view prepared_load_local_frame_object_name(
-    const module::BlockLoweringContext& context,
-    std::size_t load_instruction_index) {
-  const auto* access = prepared_memory_access(context, load_instruction_index);
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value()) {
-    return {};
-  }
-  return prepared_frame_slot_object_name(context, *access->address.frame_slot_id);
-}
-[[nodiscard]] bool value_name_has_slot_prefix(std::string_view value_name,
-                                              std::string_view slot_name) {
-  return !slot_name.empty() && value_name.size() > slot_name.size() &&
-         value_name.substr(0, slot_name.size()) == slot_name &&
-         value_name[slot_name.size()] == '.';
-}
-[[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
-    std::string_view name) {
-  const auto dot = name.rfind('.');
-  if (dot == std::string_view::npos || dot + 1 >= name.size()) {
-    return std::nullopt;
-  }
-  std::size_t value = 0;
-  for (std::size_t index = dot + 1; index < name.size(); ++index) {
-    const char ch = name[index];
-    if (ch < '0' || ch > '9') {
-      return std::nullopt;
-    }
-    value = value * 10U + static_cast<std::size_t>(ch - '0');
-  }
-  return value;
-}
-[[nodiscard]] bool store_local_targets_logical_slot(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::string_view slot_name) {
-  const auto store_name =
-      local_slot_reference_name(context, store.slot_name, store.slot_id);
-  if (!store_name.empty() && store_name == slot_name) {
-    return true;
-  }
-  return store.value.kind == bir::Value::Kind::Named &&
-         value_name_has_slot_prefix(store.value.name, slot_name);
-}
-[[nodiscard]] std::optional<NarrowLocalStorePublication>
-find_latest_narrow_store_for_wide_local_load(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load,
-    std::size_t load_instruction_index) {
-  if (context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto load_bits = integer_bit_width(load.result.type);
-  if (!load_bits.has_value()) {
-    return std::nullopt;
-  }
-  const auto load_slot_name =
-      local_slot_reference_name(context, load.slot_name, load.slot_id);
-  const auto load_frame_object_name =
-      prepared_load_local_frame_object_name(context, load_instruction_index);
-  const auto load_lane_offset =
-      load.result.kind == bir::Value::Kind::Named
-          ? parse_trailing_dot_offset(load.result.name)
-          : std::nullopt;
-  for (std::size_t index = load_instruction_index; index > 0; --index) {
-    const auto* store =
-        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index - 1]);
-    if (store == nullptr ||
-        (!local_slot_reference_matches(context, load, *store) &&
-         !store_local_targets_logical_slot(context, *store, load_slot_name) &&
-         !store_local_targets_logical_slot(context, *store, load_frame_object_name) &&
-         !(load_lane_offset.has_value() &&
-           store->value.kind == bir::Value::Kind::Named &&
-           parse_trailing_dot_offset(store->value.name) == load_lane_offset))) {
-      continue;
-    }
-    const auto store_bits = integer_bit_width(store->value.type);
-    if (!store_bits.has_value() || *store_bits != 8U || *store_bits >= *load_bits) {
-      return std::nullopt;
-    }
-    return NarrowLocalStorePublication{
-        .stored_value = store->value,
-        .instruction_index = index - 1,
-    };
-  }
-  return std::nullopt;
-}
 [[nodiscard]] bool store_local_value_is_byval_frame_slot_load(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
@@ -400,32 +269,32 @@ find_latest_narrow_store_for_wide_local_load(
          access->address.can_use_base_plus_offset &&
          is_byval_formal_value_name(context, *access->address.pointer_value_name);
 }
-[[nodiscard]] std::optional<NarrowLocalStorePublication>
-store_local_recovered_narrow_store_source(
+[[nodiscard]] std::optional<prepare::PreparedRecoveredStoreSourcePublication>
+prepared_recovered_narrow_store_source(
     const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  if (store.value.kind != bir::Value::Kind::Named) {
+    const prepare::PreparedEdgePublicationSourceProducer* source_producer) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      source_producer == nullptr ||
+      source_producer->kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      source_producer->load_local == nullptr ||
+      source_producer->block_label != context.control_flow_block->block_label) {
     return std::nullopt;
   }
-  const auto* producer =
-      find_same_block_named_producer(context, store.value.name, instruction_index);
-  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
-  if (load == nullptr) {
-    return std::nullopt;
-  }
-  const auto producer_index = producer_instruction_index(context, producer);
-  return producer_index.has_value()
-             ? find_latest_narrow_store_for_wide_local_load(
-                   context, *load, *producer_index)
-             : std::nullopt;
-}
-[[nodiscard]] bool store_local_value_is_wide_load_from_narrow_local_store(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  return store_local_recovered_narrow_store_source(context, store, instruction_index)
-      .has_value();
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+      context.function.prepared->names,
+      context.function.prepared->module.names,
+      context.function.prepared->stack_layout,
+      addressing,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      *source_producer->load_local,
+      source_producer->instruction_index);
 }
 [[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
 prepared_store_source_producer(
@@ -626,14 +495,17 @@ prepared_store_source_producer(
 plan_store_local_source_publication(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
-    std::size_t instruction_index,
-    const std::optional<NarrowLocalStorePublication>& recovered_source) {
+    std::size_t instruction_index) {
   const auto* access = prepared_memory_access(context, instruction_index);
   const auto* destination_slot =
       store_local_destination_frame_slot(context, access);
   const auto* destination_object =
       store_local_destination_stack_object(context, destination_slot);
   const auto* source_home = prepared_value_home_for_value(context, store.value);
+  const auto* source_producer =
+      prepared_store_source_producer(context, store.value);
+  const auto recovered_source =
+      prepared_recovered_narrow_store_source(context, source_producer);
   const bir::Value* recovered_value =
       recovered_source.has_value() ? &recovered_source->stored_value : nullptr;
   return prepare::plan_prepared_store_source_publication({
@@ -648,7 +520,7 @@ plan_store_local_source_publication(
               ? std::optional<std::size_t>{recovered_source->instruction_index}
               : std::nullopt,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
-      .source_producer = prepared_store_source_producer(context, store.value),
+      .source_producer = source_producer,
   });
 }
 [[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
@@ -701,10 +573,8 @@ lower_store_local_value_publication(
   if (store == nullptr) {
     return std::nullopt;
   }
-  const auto recovered_source =
-      store_local_recovered_narrow_store_source(context, *store, instruction_index);
   const auto store_source_plan =
-      plan_store_local_source_publication(context, *store, instruction_index, recovered_source);
+      plan_store_local_source_publication(context, *store, instruction_index);
   const bool store_source_plan_available =
       prepare::prepared_store_source_publication_available(store_source_plan);
   const bool has_prepared_cast_producer =
@@ -717,7 +587,7 @@ lower_store_local_value_publication(
   const bool has_direct_global_select_chain =
       select_chain_contains_direct_global_load(context, store->value, instruction_index);
   if ((!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
-       !recovered_source.has_value() &&
+       !store_source_plan.recovered_source_value.has_value() &&
        !has_prepared_select_producer &&
        !has_prepared_scalar_fp_binary_producer &&
        !has_prepared_cast_producer &&

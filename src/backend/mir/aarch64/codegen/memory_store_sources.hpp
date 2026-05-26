@@ -17,11 +17,6 @@ namespace c4c::backend::aarch64::codegen {
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-struct NarrowLocalStorePublication {
-  bir::Value stored_value;
-  std::size_t instruction_index = 0;
-};
-
 [[nodiscard]] bool store_local_uses_pointer_value_address(
     const bir::StoreLocalInst& store);
 
@@ -45,46 +40,7 @@ lower_stack_homed_pointer_value_load_publication(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
-[[nodiscard]] std::string_view local_slot_reference_name(
-    const module::BlockLoweringContext& context,
-    std::string_view raw_name,
-    SlotNameId slot_id);
-
-[[nodiscard]] bool local_slot_reference_matches(const module::BlockLoweringContext& context,
-                                                const bir::LoadLocalInst& load,
-                                                const bir::StoreLocalInst& store);
-
-[[nodiscard]] std::string_view prepared_frame_slot_object_name(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedFrameSlotId slot_id);
-
-[[nodiscard]] std::string_view prepared_load_local_frame_object_name(
-    const module::BlockLoweringContext& context,
-    std::size_t load_instruction_index);
-
-[[nodiscard]] bool value_name_has_slot_prefix(std::string_view value_name,
-                                              std::string_view slot_name);
-
-[[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
-    std::string_view name);
-
-[[nodiscard]] bool store_local_targets_logical_slot(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::string_view slot_name);
-
-[[nodiscard]] std::optional<NarrowLocalStorePublication>
-find_latest_narrow_store_for_wide_local_load(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load,
-    std::size_t load_instruction_index);
-
 [[nodiscard]] bool store_local_value_is_byval_frame_slot_load(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index);
-
-[[nodiscard]] bool store_local_value_is_wide_load_from_narrow_local_store(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
     std::size_t instruction_index);

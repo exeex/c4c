@@ -207,8 +207,24 @@ namespace prepare = c4c::backend::prepare;
       return true;
     }
     if (index.has_value()) {
+      const auto* addressing =
+          context.function.prepared != nullptr && context.function.control_flow != nullptr
+              ? prepare::find_prepared_addressing(
+                    *context.function.prepared,
+                    context.function.control_flow->function_name)
+              : nullptr;
       const auto narrow_store =
-          find_latest_narrow_store_for_wide_local_load(context, *load_local, *index);
+          context.function.prepared != nullptr && context.control_flow_block != nullptr
+              ? prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+                    context.function.prepared->names,
+                    context.function.prepared->module.names,
+                    context.function.prepared->stack_layout,
+                    addressing,
+                    context.control_flow_block->block_label,
+                    context.bir_block,
+                    *load_local,
+                    *index)
+              : std::nullopt;
       if (narrow_store.has_value() &&
           emit_value_publication_to_register(context,
                                              narrow_store->stored_value,
