@@ -122,6 +122,14 @@ bool has_direct_register_source_for_stack_destination(
          !intent.source_pointer_byte_delta.has_value();
 }
 
+bool has_rematerializable_i32_source_for_stack_destination(
+    const EdgePublicationMoveIntent& intent) {
+  return intent.source_register.empty() &&
+         intent.source_immediate_i32.has_value() &&
+         !intent.source_stack_offset_bytes.has_value() &&
+         !intent.source_pointer_byte_delta.has_value();
+}
+
 }  // namespace
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
@@ -215,28 +223,37 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   }
 
   // Prepared edge-publication stack destinations have a target-local scratch
-  // contract, but only future materializing forms may use it. The direct
-  // Register -> StackSlot case below reserves no scratch and clobbers only the
-  // destination memory slot. When a source form needs materialization for an
-  // I32 stack destination, this consumer may own `t0` as a value scratch for
-  // the lifetime of that single publication sequence, clobbering it before the
-  // final `sw`. The scratch value must not survive across edge publications.
-  // `t1`/`t2` are not reserved by this path, and `t5`/`t6` remain available
-  // only to a later explicit address/large-offset helper contract. Until a
-  // source form is implemented under that contract, non-register sources to a
-  // StackSlot destination intentionally remain fail-closed.
+  // contract. The direct Register -> StackSlot case reserves no scratch and
+  // clobbers only the destination memory slot. The I32 immediate materializing
+  // form may own `t0` as a value scratch for one publication sequence,
+  // clobbering it before the final `sw`; the scratch value must not survive
+  // across edge publications. `t1`/`t2` are not reserved by this path, and
+  // `t5`/`t6` remain available only to a later explicit address/large-offset
+  // helper contract. Other non-register sources to StackSlot destinations
+  // intentionally remain fail-closed.
   if (destination_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       destination_home.offset_bytes.has_value() &&
       destination_home.size_bytes == std::optional<std::size_t>{4} &&
-      has_direct_register_source_for_stack_destination(intent)) {
+      fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
     intent.status = EdgePublicationMoveIntentStatus::Available;
     intent.destination_stack_slot_id = destination_home.slot_id;
     intent.destination_stack_offset_bytes = *destination_home.offset_bytes;
     intent.destination_stack_size_bytes = *destination_home.size_bytes;
-    intent.instruction_text =
-        "sw " + intent.source_register + ", " +
-        std::to_string(*destination_home.offset_bytes) + "(sp)";
-    return intent;
+    if (has_direct_register_source_for_stack_destination(intent)) {
+      intent.instruction_text =
+          "sw " + intent.source_register + ", " +
+          std::to_string(*destination_home.offset_bytes) + "(sp)";
+      return intent;
+    }
+    if (has_rematerializable_i32_source_for_stack_destination(intent)) {
+      intent.instruction_text =
+          "li t0, " + std::to_string(*intent.source_immediate_i32) +
+          "\n    sw t0, " + std::to_string(*destination_home.offset_bytes) + "(sp)";
+      return intent;
+    }
+    intent.destination_stack_slot_id.reset();
+    intent.destination_stack_offset_bytes.reset();
+    intent.destination_stack_size_bytes.reset();
   }
 
   intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;

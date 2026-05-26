@@ -8,42 +8,39 @@ Current Step Title: Implement One Non-Register Source-To-Stack Form
 
 ## Just Finished
 
-Step 2 defined a target-local RISC-V scratch-register contract beside the
-prepared edge-publication stack-destination consumer without broadening support.
+Step 3 implemented the narrow `RematerializableImmediate -> StackSlot` I32
+prepared edge-publication form through shared `edge_publications` lookup
+authority.
 
-Implemented contract:
-- Current direct `Register -> StackSlot` stores reserve no scratch registers and
-  clobber only the destination memory slot.
-- Future I32 stack-destination source materialization may own `t0` as a value
-  scratch only for one publication instruction sequence, clobbering it before
-  the final `sw`; the scratch value must not live across publications.
-- This consumer does not reserve `t1`/`t2`, and `t5`/`t6` remain available only
-  to a later explicit address or large-offset helper contract.
-- Non-register sources to `StackSlot` destinations remain fail-closed until a
-  source form is implemented under that contract.
-
-Focused tests still cover the unsupported `RematerializableImmediate`,
-`StackSlot`, and `PointerBasePlusOffset` source-to-`StackSlot` forms; their
-diagnostics now describe the remaining implementation gate instead of saying
-the scratch policy is missing.
+Implemented behavior:
+- `RematerializableImmediate -> StackSlot` emits `li t0, imm` followed by
+  `sw t0, offset(sp)` for concrete 4-byte stack destinations with direct
+  signed 12-bit `sp` offsets.
+- Existing `Register -> StackSlot` stores remain supported.
+- `StackSlot -> StackSlot` and `PointerBasePlusOffset -> StackSlot` remain
+  explicit fail-closed forms.
+- Malformed destinations, unsupported destination sizes, non-move publications,
+  missing shared publication facts, and large stack-destination offsets remain
+  fail closed.
+- Focused tests now cover the new immediate-to-stack support, preservation of
+  shared publication authority, existing register-source stack stores, and the
+  remaining unsupported neighboring forms.
 
 ## Suggested Next
 
-Next coherent packet: implement the narrow `RematerializableImmediate ->
-StackSlot` I32 case using the local `t0` value-scratch contract, while keeping
-`StackSlot -> StackSlot` and `PointerBasePlusOffset -> StackSlot` unsupported.
+Next coherent packet: Step 5 validation/decision pass to decide whether this
+runbook can close or whether remaining `StackSlot -> StackSlot` and
+`PointerBasePlusOffset -> StackSlot` policies need follow-up source ideas.
 
 ## Watchouts
 
 - Shared prepared `edge_publications` must remain the only semantic authority
   for supported edge moves.
-- The new scratch contract only covers value materialization through `t0` for
-  one publication sequence; it does not define address scratch or large-offset
-  stack-store expansion.
+- The implemented scratch contract only covers immediate value materialization
+  through `t0` for one publication sequence; it does not define address scratch
+  or large-offset stack-store expansion.
 - Do not match fixture labels, value ids, stack slot ids, offsets, or test
   names.
-- Existing `Register -> StackSlot` behavior must remain supported.
-- Unsupported source or destination homes must remain explicit and fail closed.
 - `StackSlot -> StackSlot` likely needs both load and store scratch/address
   policy, including the current source-size and load-offset restrictions.
 - `PointerBasePlusOffset -> StackSlot` also needs pointer materialization and

@@ -558,6 +558,72 @@ int check_register_to_stack_slot_move_uses_shared_lookup() {
   return 0;
 }
 
+int check_immediate_to_stack_slot_move_uses_shared_lookup() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
+  source_home.register_name.reset();
+  source_home.slot_id.reset();
+  source_home.offset_bytes.reset();
+  source_home.immediate_i32 = -17;
+
+  auto& destination_home = prepared.value_locations.functions.front().value_homes.at(1);
+  destination_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  destination_home.register_name.reset();
+  destination_home.slot_id = prepare::PreparedFrameSlotId{11};
+  destination_home.offset_bytes = 24;
+  destination_home.size_bytes = 4;
+
+  const auto asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(asm_text.find("li t0, -17\n    sw t0, 24(sp)") != std::string::npos,
+              "RISC-V prepared module should emit an I32 immediate stack-destination edge store")) {
+    return 1;
+  }
+
+  auto lookups = make_lookups(prepared);
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, ids.predecessor, ids.successor, 2);
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should accept the shared immediate stack-destination edge publication") ||
+      !expect(intent.publication == publication && publication != nullptr,
+              "RISC-V immediate stack-destination helper should preserve shared publication authority") ||
+      !expect(publication->source_home_kind ==
+                  prepare::PreparedValueHomeKind::RematerializableImmediate,
+              "RISC-V immediate stack-destination helper should preserve source home kind") ||
+      !expect(publication->destination_home_kind == prepare::PreparedValueHomeKind::StackSlot,
+              "RISC-V immediate stack-destination helper should preserve destination home kind") ||
+      !expect(intent.source_value_id == 1 && intent.destination_value_id == 2,
+              "RISC-V immediate stack-destination helper should preserve prepared value ids") ||
+      !expect(intent.source_immediate_i32 == -17 &&
+                  intent.destination_stack_slot_id == prepare::PreparedFrameSlotId{11} &&
+                  intent.destination_stack_offset_bytes == 24 &&
+                  intent.destination_stack_size_bytes == 4,
+              "RISC-V immediate stack-destination helper should record immediate and stack destination") ||
+      !expect(intent.instruction_text == "li t0, -17\n    sw t0, 24(sp)",
+              "RISC-V helper should render t0 materialization followed by target-local sw syntax")) {
+    return 1;
+  }
+
+  lookups.edge_publications.publications_by_edge_destination.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingPublication,
+              "RISC-V immediate stack-destination helper should not rediscover edge moves after shared lookup authority is removed")) {
+    return 1;
+  }
+  return 0;
+}
+
 int check_stack_destination_fail_closed_forms() {
   auto prepared = make_register_edge_publication_module();
   const auto ids = FixtureIds{
@@ -602,16 +668,18 @@ int check_stack_destination_fail_closed_forms() {
   source_home.kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
   source_home.register_name.reset();
   source_home.immediate_i32 = 42;
+  set_stack_destination(2048, 4);
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect_unsupported_stack_destination(
           intent,
-          "RISC-V stack-destination helper should keep immediate sources "
-          "unsupported until scratch-backed source materialization is implemented")) {
+          "RISC-V immediate stack-destination helper should reject large offsets "
+          "without address expansion support")) {
     return 1;
   }
 
+  set_stack_destination(24, 4);
   source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
   source_home.immediate_i32.reset();
   source_home.slot_id = prepare::PreparedFrameSlotId{7};
@@ -908,6 +976,10 @@ int main() {
     return result;
   }
   if (const int result = check_register_to_stack_slot_move_uses_shared_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = check_immediate_to_stack_slot_move_uses_shared_lookup();
       result != 0) {
     return result;
   }
