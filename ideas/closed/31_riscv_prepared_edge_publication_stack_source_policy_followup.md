@@ -69,3 +69,25 @@ than being silently folded into the closed 8-byte slice.
   target-neutral helpers.
 - The patch is only a helper rename, expectation rewrite, or classification
   change while retaining the same fail-closed behavior for the selected form.
+
+## Close Note
+
+Closed after the active runbook selected and implemented the concrete
+large-offset `StackSlot -> Register` stack-source policy. The accepted RISC-V
+lowering still consumes shared `edge_publications` through the prepared lookup,
+preserves direct 4-byte `lw` and 8-byte `ld` forms, and materializes larger
+concrete stack offsets with target-local address policy before issuing the
+load.
+
+The remaining source forms are not folded into this closed idea because they
+need distinct durable authority:
+
+- Typed scalar stack-source loads are split to
+  `ideas/open/40_riscv_prepared_edge_publication_typed_stack_source_policy.md`.
+- Dynamic-address stack sources are split to
+  `ideas/open/41_riscv_prepared_edge_publication_dynamic_stack_source_policy.md`.
+- Aggregate-width stack sources are split to
+  `ideas/open/42_riscv_prepared_edge_publication_aggregate_stack_source_policy.md`.
+
+Close validation used the backend regression guard over the same 163-test
+backend scope recorded in canonical logs.
