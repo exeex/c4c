@@ -19,6 +19,17 @@ bool expect(bool condition, std::string_view message) {
   return true;
 }
 
+bool expect_unsupported_stack_destination(
+    const riscv::EdgePublicationMoveIntent& intent,
+    std::string_view message) {
+  return expect(intent.status ==
+                    riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
+                message) &&
+         expect(intent.instruction_text.empty(),
+                "RISC-V stack-destination helper should not render an instruction "
+                "without an explicit scratch-register policy");
+}
+
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
@@ -594,8 +605,10 @@ int check_stack_destination_fail_closed_forms() {
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
-              "RISC-V stack-destination helper should keep immediate sources unsupported")) {
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should keep immediate sources "
+          "unsupported until scratch-register policy is explicit")) {
     return 1;
   }
 
@@ -607,8 +620,10 @@ int check_stack_destination_fail_closed_forms() {
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
-              "RISC-V stack-destination helper should keep stack sources unsupported")) {
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should keep stack sources unsupported "
+          "until scratch-register policy is explicit")) {
     return 1;
   }
 
@@ -621,8 +636,10 @@ int check_stack_destination_fail_closed_forms() {
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
-              "RISC-V stack-destination helper should keep pointer-base sources unsupported")) {
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should keep pointer-base sources "
+          "unsupported until scratch-register policy is explicit")) {
     return 1;
   }
 
