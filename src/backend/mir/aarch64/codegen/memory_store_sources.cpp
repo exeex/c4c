@@ -428,7 +428,7 @@ store_local_recovered_narrow_store_source(
       .has_value();
 }
 [[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
-prepared_store_source_cast_producer(
+prepared_store_source_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
   const auto value_name = prepared_named_value_id(context, value);
@@ -440,44 +440,49 @@ prepared_store_source_cast_producer(
       &context.function.prepared_lookups->edge_publication_source_producers,
       *value_name);
   return producer != nullptr &&
-                 producer->kind ==
-                     prepare::PreparedEdgePublicationSourceProducerKind::Cast
+                 producer->kind !=
+                     prepare::PreparedEdgePublicationSourceProducerKind::Unknown
              ? producer
              : nullptr;
 }
-[[nodiscard]] bool prepared_store_source_cast_producer_is_complete(
+[[nodiscard]] bool prepared_store_source_producer_is_complete(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+    const prepare::PreparedStoreSourcePublicationPlan& plan,
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
   return plan.source_producer_kind ==
-             prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
-         plan.source_cast != nullptr &&
+             kind &&
          plan.source_producer_instruction_index.has_value() &&
          plan.source_producer_block_label.has_value() &&
          context.control_flow_block != nullptr &&
          *plan.source_producer_block_label == context.control_flow_block->block_label;
 }
-[[nodiscard]] bool store_local_value_has_select_producer(
+[[nodiscard]] bool prepared_store_source_cast_producer_is_complete(
     const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  if (store.value.kind != bir::Value::Kind::Named) {
-    return false;
-  }
-  return static_cast<bool>(
-      mir::find_same_block_select_producer(context.bir_block, store.value, instruction_index));
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  return prepared_store_source_producer_is_complete(
+             context,
+             plan,
+             prepare::PreparedEdgePublicationSourceProducerKind::Cast) &&
+         plan.source_cast != nullptr;
 }
-[[nodiscard]] bool store_local_value_has_scalar_fp_binary_producer(
+[[nodiscard]] bool prepared_store_source_select_producer_is_complete(
     const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index) {
-  if (store.value.kind != bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context, store.value.name, instruction_index);
-  const auto* binary =
-      producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
-  return binary != nullptr && is_prepared_scalar_float_alu_operation(*binary);
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  return prepared_store_source_producer_is_complete(
+             context,
+             plan,
+             prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization) &&
+         plan.source_select != nullptr;
+}
+[[nodiscard]] bool prepared_store_source_scalar_fp_binary_producer_is_complete(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  return prepared_store_source_producer_is_complete(
+             context,
+             plan,
+             prepare::PreparedEdgePublicationSourceProducerKind::Binary) &&
+         plan.source_binary != nullptr &&
+         is_prepared_scalar_float_alu_operation(*plan.source_binary);
 }
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
@@ -643,7 +648,7 @@ plan_store_local_source_publication(
               ? std::optional<std::size_t>{recovered_source->instruction_index}
               : std::nullopt,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
-      .source_producer = prepared_store_source_cast_producer(context, store.value),
+      .source_producer = prepared_store_source_producer(context, store.value),
   });
 }
 [[nodiscard]] prepare::PreparedStoreSourcePublicationPlan
@@ -681,7 +686,7 @@ plan_pointer_base_plus_offset_store_local_publication(
       .destination_frame_slot = destination_slot,
       .destination_stack_object = destination_object,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
-      .source_producer = prepared_store_source_cast_producer(context, store.value),
+      .source_producer = prepared_store_source_producer(context, store.value),
   });
 }
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -704,13 +709,19 @@ lower_store_local_value_publication(
       prepare::prepared_store_source_publication_available(store_source_plan);
   const bool has_prepared_cast_producer =
       prepared_store_source_cast_producer_is_complete(context, store_source_plan);
+  const bool has_prepared_select_producer =
+      prepared_store_source_select_producer_is_complete(context, store_source_plan);
+  const bool has_prepared_scalar_fp_binary_producer =
+      prepared_store_source_scalar_fp_binary_producer_is_complete(
+          context, store_source_plan);
+  const bool has_direct_global_select_chain =
+      select_chain_contains_direct_global_load(context, store->value, instruction_index);
   if ((!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
        !recovered_source.has_value() &&
-       !store_local_value_has_select_producer(context, *store, instruction_index) &&
-       !store_local_value_has_scalar_fp_binary_producer(
-           context, *store, instruction_index) &&
+       !has_prepared_select_producer &&
+       !has_prepared_scalar_fp_binary_producer &&
        !has_prepared_cast_producer &&
-       !select_chain_contains_direct_global_load(context, store->value, instruction_index))) {
+       !has_direct_global_select_chain)) {
     return std::nullopt;
   }
   const auto* memory_record =
@@ -723,17 +734,26 @@ lower_store_local_value_publication(
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   std::vector<std::string> lines;
   auto value = store_source_plan.source_value;
-  const auto* producer_inst =
-      value.kind == bir::Value::Kind::Named
-          ? find_same_block_named_producer(context, value.name, instruction_index)
-          : nullptr;
-  const auto producer_index = producer_instruction_index(context, producer_inst);
-  if (producer_index.has_value() &&
-      std::get_if<bir::SelectInst>(producer_inst) != nullptr &&
+  if (has_prepared_select_producer &&
       !block.instructions.empty() &&
       block.instructions.back().origin.has_value() &&
-      block.instructions.back().origin->instruction_index == *producer_index) {
+      block.instructions.back().origin->instruction_index ==
+          *store_source_plan.source_producer_instruction_index) {
     return std::nullopt;
+  }
+  if (!has_prepared_select_producer && has_direct_global_select_chain) {
+    const auto* producer_inst =
+        value.kind == bir::Value::Kind::Named
+            ? find_same_block_named_producer(context, value.name, instruction_index)
+            : nullptr;
+    const auto producer_index = producer_instruction_index(context, producer_inst);
+    if (producer_index.has_value() &&
+        std::get_if<bir::SelectInst>(producer_inst) != nullptr &&
+        !block.instructions.empty() &&
+        block.instructions.back().origin.has_value() &&
+        block.instructions.back().origin->instruction_index == *producer_index) {
+      return std::nullopt;
+    }
   }
   bool emitted = false;
   bool published_stack_home = false;
@@ -742,8 +762,7 @@ lower_store_local_value_publication(
       target_register != nullptr) {
     if (const auto value_name = prepared_named_value_id(context, value);
         value_name.has_value() &&
-        store_local_value_has_scalar_fp_binary_producer(
-            context, *store, instruction_index)) {
+        has_prepared_scalar_fp_binary_producer) {
       const auto emitted_value =
           find_emitted_scalar_register(scalar_state, *value_name);
       if (emitted_value.has_value() &&
@@ -777,7 +796,7 @@ lower_store_local_value_publication(
           break;
         }
       }
-      if (!store_local_value_has_select_producer(context, *store, instruction_index) ||
+      if (!has_prepared_select_producer ||
           value_home == nullptr ||
           value_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
           !value_home->offset_bytes.has_value() ||
@@ -814,8 +833,7 @@ lower_store_local_value_publication(
       }
     }
     if (!emitted && abi::is_fp_simd_register(target_register->reg) &&
-        store_local_value_has_scalar_fp_binary_producer(
-            context, *store, instruction_index) &&
+        has_prepared_scalar_fp_binary_producer &&
         !scratches.empty()) {
       lines.clear();
       emitted = emit_fp_value_to_register(context,
@@ -837,8 +855,8 @@ lower_store_local_value_publication(
   } else if (const auto* target_memory =
                  std::get_if<MemoryOperand>(&memory_record->value->payload);
              target_memory != nullptr &&
-             (store_local_value_has_select_producer(context, *store, instruction_index) ||
-              select_chain_contains_direct_global_load(context, value, instruction_index))) {
+             (has_prepared_select_producer ||
+              has_direct_global_select_chain)) {
     if (store_source_plan_available &&
         (store_source_plan.destination_base_kind !=
              prepare::PreparedAddressBaseKind::FrameSlot ||

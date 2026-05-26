@@ -89,16 +89,6 @@ find_latest_narrow_store_for_wide_local_load(
     const bir::StoreLocalInst& store,
     std::size_t instruction_index);
 
-[[nodiscard]] bool store_local_value_has_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index);
-
-[[nodiscard]] bool store_local_value_has_scalar_fp_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::StoreLocalInst& store,
-    std::size_t instruction_index);
-
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,
