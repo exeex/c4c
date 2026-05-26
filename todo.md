@@ -8,18 +8,20 @@ Current Step Title: Move Misowned Helpers to Existing Narrow Owners
 
 ## Just Finished
 
-Step 3 moved the LoadGlobal GOT materialization route helper into the existing
-globals/address owner. `make_load_global_got_materialization_instruction` now
-lives in `globals.cpp` and is declared by `globals.hpp`; it is no longer
-declared or defined by `dispatch_value_materialization.*`. `dispatch.cpp`
-continues to reach the helper through the globals owner without behavior
-changes.
+Step 3 moved the prepared pointer-value load leaf helper into the existing
+memory/store-source owner. `emit_prepared_pointer_value_load_to_register` now
+lives in `memory_store_sources.cpp` and is declared by
+`memory_store_sources.hpp`; it is no longer declared or defined by
+`dispatch_value_materialization.*`. Generic value publication and
+stack-homed pointer load publication continue to call it through the narrower
+owner without behavior changes.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 3 by extracting another clearly owned leaf
 family still hanging off `dispatch_value_materialization.cpp`, or route to
-review if the supervisor wants an ownership check before more moves.
+review if the supervisor wants an ownership check after this memory/store-source
+move.
 
 ## Watchouts
 
@@ -54,6 +56,10 @@ review if the supervisor wants an ownership check before more moves.
   materialization route; its private memory-access helper was renamed to
   `prepared_global_memory_access` to avoid colliding with the existing
   edge-copy helper declaration.
+- `emit_prepared_pointer_value_load_to_register` now imports the same
+  dispatch lookup/publication helpers from the memory/store-source owner; keep
+  it there unless a later route creates an even narrower prepared pointer-load
+  owner.
 
 ## Proof
 
@@ -61,13 +67,15 @@ Proof passed and is recorded in `test_after.log`.
 
 Command run exactly:
 `cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_aarch64_machine_printer|backend_aarch64_target_instruction_records|backend_aarch64_instruction_dispatch)$' >> test_after.log 2>&1`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_prepared_memory_operand_records|backend_aarch64_call_boundary_owner)$' >> test_after.log 2>&1`
 
-Result: build completed and 4/4 focused tests passed. AST-backed checks before
-the move confirmed `make_load_global_got_materialization_instruction` was
-declared by `dispatch_value_materialization.hpp`, defined in
+Result: build completed and 5/5 focused tests passed. AST-backed checks before
+the move confirmed `emit_prepared_pointer_value_load_to_register` was declared
+by `dispatch_value_materialization.hpp`, defined in
 `dispatch_value_materialization.cpp`, and directly called by
-`dispatch_prepared_block`. AST-backed checks after the move confirmed it is
-declared by `globals.hpp`, defined in `globals.cpp`, no longer appears in
-`dispatch_value_materialization.*`, and is still directly reached by
-`dispatch_prepared_block`.
+`emit_value_publication_to_register` and
+`lower_stack_homed_pointer_value_load_publication`. AST-backed checks after the
+move confirmed it is declared by `memory_store_sources.hpp`, defined in
+`memory_store_sources.cpp`, no longer declared or defined by
+`dispatch_value_materialization.*`, and the two existing dispatch-value callers
+still reach the helper through the narrower owner.

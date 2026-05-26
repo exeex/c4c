@@ -64,6 +64,85 @@ namespace prepare = c4c::backend::prepare;
   }
   return prepared;
 }
+[[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load_local,
+    std::size_t instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return false;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  const auto* access =
+      addressing != nullptr
+          ? prepare::find_prepared_memory_access(
+                *addressing, context.control_flow_block->block_label, instruction_index)
+          : nullptr;
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return false;
+  }
+  const auto mnemonic = scalar_load_mnemonic(load_local.result.type);
+  const auto target_view = scalar_view_for_type(load_local.result.type);
+  const auto target =
+      target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (!mnemonic.has_value() || !target.has_value() || !address.has_value()) {
+    return false;
+  }
+  const auto* pointer_home =
+      find_value_home(context, *access->address.pointer_value_name);
+  if (pointer_home == nullptr) {
+    return false;
+  }
+  if (pointer_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      pointer_home->offset_bytes.has_value()) {
+    if (is_byval_formal_value_name(context, *access->address.pointer_value_name)) {
+      const auto offset =
+          static_cast<std::int64_t>(*pointer_home->offset_bytes) +
+          access->address.byte_offset;
+      if (offset < 0) {
+        return false;
+      }
+      lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                      frame_slot_address(context.function,
+                                         static_cast<std::size_t>(offset)));
+      return true;
+    }
+    lines.push_back("ldr " + *address + ", " +
+                    frame_slot_address(context.function, *pointer_home->offset_bytes));
+  } else if (pointer_home->kind == prepare::PreparedValueHomeKind::Register &&
+             pointer_home->register_name.has_value()) {
+    const auto parsed = abi::parse_aarch64_register_name(*pointer_home->register_name);
+    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      return false;
+    }
+    const auto viewed = abi::gp_register(parsed->index, abi::RegisterView::X);
+    if (!viewed.has_value()) {
+      return false;
+    }
+    const auto source = abi::register_name(*viewed);
+    if (source != *address) {
+      lines.push_back("mov " + *address + ", " + std::string{source});
+    }
+  } else {
+    return false;
+  }
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                  register_indirect_address(*address,
+                                            static_cast<std::size_t>(
+                                                access->address.byte_offset)));
+  return true;
+}
 [[nodiscard]] std::string_view local_slot_reference_name(
     const module::BlockLoweringContext& context,
     std::string_view raw_name,

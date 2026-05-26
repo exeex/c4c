@@ -30,6 +30,14 @@ struct NarrowLocalStorePublication {
     const bir::Value& value,
     const BlockScalarLoweringState& scalar_state);
 
+[[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load_local,
+    std::size_t instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines);
+
 [[nodiscard]] std::string_view local_slot_reference_name(
     const module::BlockLoweringContext& context,
     std::string_view raw_name,
