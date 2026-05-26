@@ -15,58 +15,7 @@ namespace c4c::backend::aarch64::codegen {
     const prepare::PreparedCallPlan& call_plan);
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register();
 
-// Target operand adapters
-
-// Target-only operand adapters. These translate prepared register, view,
-// immediate, and F128 facts into AArch64 operands; they do not choose semantic
-// call-argument sources.
-
-[[nodiscard]] bool complete_full_width_f128_carrier(
-    const prepare::PreparedF128Carrier* carrier);
-[[nodiscard]] bool complete_f128_constant_carrier(
-    const prepare::PreparedF128Carrier* carrier);
-[[nodiscard]] const prepare::PreparedF128Carrier*
-find_prepared_f128_carrier_in_module(const prepare::PreparedBirModule& prepared,
-                                     prepare::PreparedValueId value_id);
-[[nodiscard]] std::optional<abi::RegisterView> scalar_fp_view_from_register_name(
-    const std::optional<std::string>& register_name);
-[[nodiscard]] std::optional<abi::RegisterView> scalar_view_from_register_name(
-    const std::optional<std::string>& register_name);
-[[nodiscard]] std::size_t scalar_size_from_register_view(
-    std::optional<abi::RegisterView> view);
-[[nodiscard]] std::optional<std::string> register_name_with_expected_view(
-    const std::optional<std::string>& register_name,
-    std::optional<abi::RegisterView> expected_view);
-[[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
-    const std::optional<std::string>& register_name,
-    const std::optional<prepare::PreparedRegisterPlacement>& placement,
-    const std::optional<prepare::PreparedRegisterBank>& bank,
-    RegisterOperandRole role,
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name,
-    std::size_t contiguous_width,
-    const std::vector<std::string>& occupied_registers,
-    std::optional<abi::RegisterView> expected_view,
-    module::ModuleLoweringDiagnostics& diagnostics,
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<RegisterOperand>
-make_f128_q_register_operand_from_carrier(
-    const prepare::PreparedF128Carrier& carrier,
-    RegisterOperandRole role,
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name,
-    module::ModuleLoweringDiagnostics& diagnostics,
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<ImmediateOperand> make_scalar_call_argument_immediate(
-    const bir::Value& value,
-    std::optional<prepare::PreparedValueId> source_value_id);
-[[nodiscard]] std::optional<abi::RegisterView> scalar_integer_register_view(
-    bir::TypeKind type);
 [[nodiscard]] std::optional<abi::RegisterView> scalar_integer_register_view_from_size(
-    std::size_t size_bytes);
-[[nodiscard]] std::optional<bir::TypeKind> scalar_integer_type_from_size(
     std::size_t size_bytes);
 
 // calls_moves / calls_dispatch_bridge
