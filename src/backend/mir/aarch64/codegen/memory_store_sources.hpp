@@ -38,6 +38,13 @@ struct NarrowLocalStorePublication {
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_stack_homed_pointer_value_load_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
 [[nodiscard]] std::string_view local_slot_reference_name(
     const module::BlockLoweringContext& context,
     std::string_view raw_name,

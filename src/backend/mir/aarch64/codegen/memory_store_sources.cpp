@@ -143,6 +143,109 @@ namespace prepare = c4c::backend::prepare;
                                                 access->address.byte_offset)));
   return true;
 }
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_stack_homed_pointer_value_load_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+  if (load == nullptr || context.function.value_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* pointer_home =
+      find_value_home(context, *access->address.pointer_value_name);
+  if (pointer_home == nullptr ||
+      pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !pointer_home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto result_name = prepared_named_value_id(context, load->result);
+  if (!result_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* result_home = find_value_home(context, *result_name);
+  if (result_home == nullptr) {
+    return std::nullopt;
+  }
+  const auto target_view = scalar_view_for_type(load->result.type);
+  if (!target_view.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<std::uint8_t> target_index;
+  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_home->register_name.has_value()) {
+    const auto parsed = abi::parse_aarch64_register_name(*result_home->register_name);
+    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      return std::nullopt;
+    }
+    target_index = parsed->index;
+  } else if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+             result_home->offset_bytes.has_value()) {
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    if (scratches.empty()) {
+      return std::nullopt;
+    }
+    target_index = scratches.front().index;
+  } else {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::optional<std::uint8_t> scratch_index;
+  for (const auto& scratch : scratches) {
+    if (scratch.index != *target_index) {
+      scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!scratch_index.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_prepared_pointer_value_load_to_register(
+          context, *load, instruction_index, *target_index, *scratch_index, lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+
+  if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+    const auto mnemonic = scalar_store_mnemonic(load->result.type);
+    const auto target = gp_register_name(*target_index, *target_view);
+    if (!mnemonic.has_value() || !target.has_value() ||
+        !result_home->offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+    lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                    frame_slot_address(context.function, *result_home->offset_bytes));
+  } else if (result_home->kind == prepare::PreparedValueHomeKind::Register) {
+    const auto reg = abi::gp_register(*target_index, *target_view);
+    if (!reg.has_value()) {
+      return std::nullopt;
+    }
+    RegisterOperand emitted{
+        .reg = *reg,
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = result_home->value_id,
+        .value_name = result_home->value_name,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = target_view,
+    };
+    record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  }
+
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
 [[nodiscard]] std::string_view local_slot_reference_name(
     const module::BlockLoweringContext& context,
     std::string_view raw_name,
