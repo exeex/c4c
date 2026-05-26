@@ -1,6 +1,5 @@
 #include "calls.hpp"
 #include "constant_materialization.hpp"
-#include "dispatch_diagnostics.hpp"
 #include "dispatch.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_publication_common.hpp"
@@ -55,6 +54,25 @@ const prepare::PreparedCallPlan* find_prepared_call_plan(
                                                   context.function.call_plans,
                                                   context.block_index,
                                                   instruction_index);
+}
+
+void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
+                            module::ModuleLoweringDiagnosticKind kind,
+                            const module::BlockLoweringContext& context,
+                            std::size_t instruction_index,
+                            std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Call,
+      .message = std::move(message),
+  });
 }
 
 const prepare::PreparedCallPlan* require_prepared_call_plan(

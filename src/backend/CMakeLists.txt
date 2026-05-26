@@ -19,7 +19,6 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/compatibility_projection.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/constant_materialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_diagnostics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory_dynamic_stack.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_edge_copies.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch_lookup.cpp"
