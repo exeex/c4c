@@ -29,6 +29,7 @@ struct FixtureIds {
   c4c::BlockLabelId predecessor = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId successor = c4c::kInvalidBlockLabel;
   c4c::ValueNameId source_name = c4c::kInvalidValueName;
+  c4c::ValueNameId base_name = c4c::kInvalidValueName;
   c4c::ValueNameId destination_name = c4c::kInvalidValueName;
 };
 
@@ -38,6 +39,7 @@ FixtureIds intern_fixture_ids(prepare::PreparedBirModule& prepared) {
       .predecessor = prepared.names.block_labels.intern("left"),
       .successor = prepared.names.block_labels.intern("join"),
       .source_name = prepared.names.value_names.intern("%src"),
+      .base_name = prepared.names.value_names.intern("%base"),
       .destination_name = prepared.names.value_names.intern("%dst"),
   };
 }
@@ -84,6 +86,13 @@ prepare::PreparedBirModule make_register_edge_publication_module() {
           .kind = prepare::PreparedValueHomeKind::Register,
           .register_name = std::string{"a1"},
       },
+      prepare::PreparedValueHome{
+          .value_id = 3,
+          .function_name = ids.function,
+          .value_name = ids.base_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"s2"},
+      },
   };
   locations.move_bundles.push_back(prepare::PreparedMoveBundle{
       .function_name = ids.function,
@@ -120,6 +129,7 @@ int check_register_to_register_move_uses_shared_lookup() {
       .predecessor = prepared.names.block_labels.find("left"),
       .successor = prepared.names.block_labels.find("join"),
       .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
       .destination_name = prepared.names.value_names.find("%dst"),
   };
 
@@ -156,6 +166,7 @@ int check_immediate_to_register_move_uses_shared_lookup() {
       .predecessor = prepared.names.block_labels.find("left"),
       .successor = prepared.names.block_labels.find("join"),
       .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
       .destination_name = prepared.names.value_names.find("%dst"),
   };
   auto& source_home = prepared.value_locations.functions.front().value_homes.front();
@@ -209,6 +220,7 @@ int check_stack_slot_to_register_move_uses_shared_lookup() {
       .predecessor = prepared.names.block_labels.find("left"),
       .successor = prepared.names.block_labels.find("join"),
       .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
       .destination_name = prepared.names.value_names.find("%dst"),
   };
   auto& source_home = prepared.value_locations.functions.front().value_homes.front();
@@ -255,6 +267,180 @@ int check_stack_slot_to_register_move_uses_shared_lookup() {
               "RISC-V stack-source helper should not rediscover edge moves after shared lookup authority is removed")) {
     return 1;
   }
+  return 0;
+}
+
+int check_pointer_base_to_register_move_uses_shared_lookup() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset;
+  source_home.register_name.reset();
+  source_home.slot_id.reset();
+  source_home.offset_bytes.reset();
+  source_home.size_bytes.reset();
+  source_home.immediate_i32.reset();
+  source_home.pointer_base_value_name = ids.base_name;
+  source_home.pointer_byte_delta = 12;
+
+  const auto asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(asm_text.find("addi a1, s2, 12") != std::string::npos,
+              "RISC-V prepared module should emit a pointer-base edge materialization")) {
+    return 1;
+  }
+
+  auto lookups = make_lookups(prepared);
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, ids.predecessor, ids.successor, 2);
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should accept the shared pointer-base edge publication") ||
+      !expect(intent.publication == publication && publication != nullptr,
+              "RISC-V pointer-base helper should preserve shared publication authority") ||
+      !expect(publication->source_home_kind ==
+                  prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+              "RISC-V pointer-base helper should preserve source home kind") ||
+      !expect(intent.source_value_id == 1 && intent.destination_value_id == 2,
+              "RISC-V pointer-base helper should preserve prepared value ids") ||
+      !expect(intent.source_pointer_base_value_id == 3 &&
+                  intent.source_pointer_base_register == "s2" &&
+                  intent.source_pointer_byte_delta == 12 &&
+                  intent.destination_register == "a1",
+              "RISC-V pointer-base helper should record base register, delta, and destination register") ||
+      !expect(intent.instruction_text == "addi a1, s2, 12",
+              "RISC-V helper should render target-local addi syntax")) {
+    return 1;
+  }
+
+  lookups.edge_publications.publications_by_edge_destination.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingPublication,
+              "RISC-V pointer-base helper should not rediscover edge moves after shared lookup authority is removed")) {
+    return 1;
+  }
+
+  source_home.pointer_byte_delta = 0;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should accept a zero pointer-base delta") ||
+      !expect(intent.instruction_text == "mv a1, s2",
+              "RISC-V helper should render zero pointer-base delta as a semantic move")) {
+    return 1;
+  }
+  return 0;
+}
+
+int check_pointer_base_fail_closed_forms() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+
+  auto set_pointer_source = [&prepared](std::optional<c4c::ValueNameId> base_name,
+                                        std::optional<std::int64_t> delta) {
+    auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+    source_home.kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset;
+    source_home.register_name.reset();
+    source_home.slot_id.reset();
+    source_home.offset_bytes.reset();
+    source_home.size_bytes.reset();
+    source_home.immediate_i32.reset();
+    source_home.pointer_base_value_name = base_name;
+    source_home.pointer_byte_delta = delta;
+  };
+
+  set_pointer_source(std::nullopt, 4);
+  auto lookups = make_lookups(prepared);
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject homes without a base value name")) {
+    return 1;
+  }
+
+  set_pointer_source(ids.base_name, std::nullopt);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject homes without a byte delta")) {
+    return 1;
+  }
+
+  set_pointer_source(prepared.names.value_names.intern("%missing_base"), 4);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject unresolved base value names")) {
+    return 1;
+  }
+
+  set_pointer_source(ids.base_name, 2048);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject positive deltas outside signed 12-bit addi range")) {
+    return 1;
+  }
+
+  set_pointer_source(ids.base_name, -2049);
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject negative deltas outside signed 12-bit addi range")) {
+    return 1;
+  }
+
+  set_pointer_source(ids.base_name, 4);
+  auto& base_home = prepared.value_locations.functions.front().value_homes.back();
+  base_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  base_home.register_name.reset();
+  base_home.offset_bytes = 32;
+  base_home.size_bytes = 4;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject non-register base homes")) {
+    return 1;
+  }
+
+  prepared = make_register_edge_publication_module();
+  set_pointer_source(ids.base_name, 4);
+  prepared.value_locations.functions.front().value_homes.back().kind =
+      prepare::PreparedValueHomeKind::Register;
+  prepared.value_locations.functions.front().value_homes.back().register_name = std::string{"s2"};
+  prepared.value_locations.functions.front().value_homes.at(1).kind =
+      prepare::PreparedValueHomeKind::StackSlot;
+  prepared.value_locations.functions.front().value_homes.at(1).register_name.reset();
+  prepared.value_locations.functions.front().value_homes.at(1).offset_bytes = 24;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome,
+              "RISC-V pointer-base helper should keep stack destinations unsupported")) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -328,7 +514,7 @@ int check_missing_and_unsupported_homes_fail_closed() {
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, predecessor, successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V register-destination slice should keep pointer-base sources unsupported")) {
+              "RISC-V pointer-base helper should reject self-referential non-register bases")) {
     return 1;
   }
 
@@ -346,10 +532,10 @@ int check_missing_and_unsupported_homes_fail_closed() {
   }
 
   prepared = make_register_edge_publication_module();
-  prepared.value_locations.functions.front().value_homes.back().kind =
+  prepared.value_locations.functions.front().value_homes.at(1).kind =
       prepare::PreparedValueHomeKind::StackSlot;
-  prepared.value_locations.functions.front().value_homes.back().register_name.reset();
-  prepared.value_locations.functions.front().value_homes.back().offset_bytes = 24;
+  prepared.value_locations.functions.front().value_homes.at(1).register_name.reset();
+  prepared.value_locations.functions.front().value_homes.at(1).offset_bytes = 24;
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, predecessor, successor, 2);
@@ -384,6 +570,14 @@ int main() {
     return result;
   }
   if (const int result = check_stack_slot_to_register_move_uses_shared_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = check_pointer_base_to_register_move_uses_shared_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = check_pointer_base_fail_closed_forms();
       result != 0) {
     return result;
   }

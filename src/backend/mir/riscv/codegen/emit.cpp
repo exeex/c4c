@@ -58,6 +58,7 @@ bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) 
 
 std::optional<std::string> render_edge_publication_source_operand(
     EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedValueHome& source_home) {
   namespace prepare = c4c::backend::prepare;
 
@@ -78,6 +79,28 @@ std::optional<std::string> render_edge_publication_source_operand(
     intent.source_stack_offset_bytes = *source_home.offset_bytes;
     intent.source_stack_size_bytes = *source_home.size_bytes;
     return std::to_string(*source_home.offset_bytes) + "(sp)";
+  }
+  if (source_home.kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+      source_home.pointer_base_value_name.has_value() &&
+      source_home.pointer_byte_delta.has_value() &&
+      *source_home.pointer_byte_delta >= -2048 &&
+      *source_home.pointer_byte_delta <= 2047) {
+    const auto base_id_it =
+        lookups->value_homes.value_ids.find(*source_home.pointer_base_value_name);
+    if (base_id_it == lookups->value_homes.value_ids.end()) {
+      return std::nullopt;
+    }
+    const auto base_home_it = lookups->value_homes.homes_by_id.find(base_id_it->second);
+    if (base_home_it == lookups->value_homes.homes_by_id.end() ||
+        base_home_it->second == nullptr ||
+        base_home_it->second->kind != prepare::PreparedValueHomeKind::Register ||
+        !base_home_it->second->register_name.has_value()) {
+      return std::nullopt;
+    }
+    intent.source_pointer_base_value_id = base_id_it->second;
+    intent.source_pointer_base_register = *base_home_it->second->register_name;
+    intent.source_pointer_byte_delta = *source_home.pointer_byte_delta;
+    return std::to_string(*source_home.pointer_byte_delta);
   }
   return std::nullopt;
 }
@@ -125,7 +148,7 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     return intent;
   }
   const auto source_operand =
-      render_edge_publication_source_operand(intent, *publication->source_home);
+      render_edge_publication_source_operand(intent, lookups, *publication->source_home);
   if (!source_operand.has_value()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
@@ -145,6 +168,15 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   } else if (intent.source_stack_offset_bytes.has_value()) {
     intent.instruction_text =
         "lw " + intent.destination_register + ", " + *source_operand;
+  } else if (intent.source_pointer_byte_delta.has_value()) {
+    if (*intent.source_pointer_byte_delta == 0) {
+      intent.instruction_text =
+          "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
+    } else {
+      intent.instruction_text =
+          "addi " + intent.destination_register + ", " +
+          intent.source_pointer_base_register + ", " + *source_operand;
+    }
   } else {
     intent.instruction_text =
         "mv " + intent.destination_register + ", " + *source_operand;

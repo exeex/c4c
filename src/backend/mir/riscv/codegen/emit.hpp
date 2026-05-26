@@ -41,6 +41,9 @@ struct EdgePublicationMoveIntent {
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> source_stack_slot_id;
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<std::size_t> source_stack_size_bytes;
+  std::optional<c4c::backend::prepare::PreparedValueId> source_pointer_base_value_id;
+  std::string source_pointer_base_register;
+  std::optional<std::int64_t> source_pointer_byte_delta;
   std::string destination_register;
   std::string instruction_text;
 };
