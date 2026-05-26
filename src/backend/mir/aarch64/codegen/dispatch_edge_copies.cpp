@@ -11,6 +11,7 @@
 #include "dispatch_value_materialization.hpp"
 #include "instruction.hpp"
 #include "operands.hpp"
+#include "prepared_value_home_materialization.hpp"
 
 #include <cstddef>
 #include <cstdint>

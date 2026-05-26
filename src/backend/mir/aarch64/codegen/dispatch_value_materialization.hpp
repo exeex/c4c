@@ -48,14 +48,6 @@ namespace prepare = c4c::backend::prepare;
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
 
-[[nodiscard]] bool emit_prepared_value_home_to_register(
-    const prepare::PreparedStackLayout* stack_layout,
-    const prepare::PreparedValueHome& home,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines,
-    bool use_frame_pointer_base = false);
-
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,

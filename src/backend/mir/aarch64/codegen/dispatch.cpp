@@ -26,6 +26,7 @@
 #include "memory.hpp"
 #include "memory_dynamic_stack.hpp"
 #include "operands.hpp"
+#include "prepared_value_home_materialization.hpp"
 #include "prologue.hpp"
 #include "returns.hpp"
 #include "variadic.hpp"
