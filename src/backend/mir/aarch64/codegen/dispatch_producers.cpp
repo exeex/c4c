@@ -186,22 +186,23 @@ namespace prepare = c4c::backend::prepare;
     }
     for (const auto& move : bundle.moves) {
       if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
         continue;
       }
-      if (move.to_value_id == result_home->value_id) {
+      if (prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+              move, result_home->value_id)) {
         return true;
       }
-      if (move.source_immediate_i32.has_value() ||
+      if (move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+          move.source_immediate_i32.has_value() ||
           move.from_value_id != result_home->value_id ||
           move.from_value_id == move.to_value_id) {
         continue;
       }
       const auto* destination_home = find_value_home(context, move.to_value_id);
       if (destination_home != nullptr &&
-          (prepared_edge_select_source_is_destination_register(*result_home,
-                                                              *destination_home) ||
+          (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+               move, *result_home, *destination_home) ||
            result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
         return true;
       }
@@ -441,7 +442,8 @@ build_current_block_join_parallel_copy_cache(
               context.function.prepared->names, source_home->value_name));
         }
       }
-      if (move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+      if (!prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+              move, move.to_value_id)) {
         continue;
       }
       source_value_ids.insert(move.to_value_id);
@@ -452,8 +454,8 @@ build_current_block_join_parallel_copy_cache(
       const auto* result_home = find_value_home(context, move.from_value_id);
       const auto* destination_home = find_value_home(context, move.to_value_id);
       if (result_home != nullptr && destination_home != nullptr &&
-          (prepared_edge_select_source_is_destination_register(*result_home,
-                                                              *destination_home) ||
+          (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+               move, *result_home, *destination_home) ||
            result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
         source_value_ids.insert(move.from_value_id);
       }

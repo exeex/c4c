@@ -949,6 +949,30 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
 }
 
 [[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+    const PreparedMoveResolution& move,
+    PreparedValueId value_id) {
+  return move.authority_kind == PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+         move.destination_kind == PreparedMoveDestinationKind::Value &&
+         move.destination_storage_kind == PreparedMoveStorageKind::Register &&
+         move.op_kind == PreparedMoveResolutionOpKind::Move &&
+         move.to_value_id == value_id;
+}
+
+[[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+    const PreparedMoveResolution& move,
+    const PreparedValueHome& source_home,
+    const PreparedValueHome& destination_home) {
+  return prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+             move, destination_home.value_id) &&
+         !move.source_immediate_i32.has_value() &&
+         move.from_value_id == source_home.value_id &&
+         move.from_value_id != move.to_value_id &&
+         prepared_value_homes_share_register_name(source_home, destination_home);
+}
+
+[[nodiscard]] bool
 prepared_edge_publication_redundant_block_entry_parallel_copy_move(
     const PreparedEdgePublication& publication,
     const PreparedMoveResolution* move) {

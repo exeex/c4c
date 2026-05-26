@@ -220,6 +220,17 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
     const PreparedValueHome& rhs);
 
 [[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+    const PreparedMoveResolution& move,
+    PreparedValueId value_id);
+
+[[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+    const PreparedMoveResolution& move,
+    const PreparedValueHome& source_home,
+    const PreparedValueHome& destination_home);
+
+[[nodiscard]] bool
 prepared_edge_publication_redundant_block_entry_parallel_copy_move(
     const PreparedEdgePublication& publication,
     const PreparedMoveResolution* move);

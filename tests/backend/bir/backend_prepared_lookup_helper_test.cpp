@@ -1,6 +1,7 @@
 #include "src/backend/prealloc/module.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -90,6 +91,83 @@ int verify_prepared_home_same_register_helper() {
   }
   if (prepare::prepared_value_homes_share_register_name(source_register, stack_home)) {
     return fail("shared helper should reject non-register prepared homes");
+  }
+
+  return 0;
+}
+
+int verify_prepared_parallel_copy_register_move_helpers() {
+  const prepare::PreparedValueHome source_register{
+      .value_id = 1,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"shared_register"},
+  };
+  const prepare::PreparedValueHome destination_register{
+      .value_id = 2,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"shared_register"},
+  };
+  const prepare::PreparedValueHome different_destination_register{
+      .value_id = 3,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"other_register"},
+  };
+  const prepare::PreparedValueHome stack_source{
+      .value_id = 1,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{4},
+  };
+  const prepare::PreparedMoveResolution register_move{
+      .from_value_id = 1,
+      .to_value_id = 2,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+  };
+
+  if (!prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+          register_move, prepare::PreparedValueId{2})) {
+    return fail("parallel-copy helper should identify register destination values");
+  }
+  if (prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+          register_move, prepare::PreparedValueId{1})) {
+    return fail("parallel-copy helper should reject non-destination values");
+  }
+  if (!prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+          register_move, source_register, destination_register)) {
+    return fail("parallel-copy helper should identify exact shared-register sources");
+  }
+  if (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+          register_move, source_register, different_destination_register)) {
+    return fail("parallel-copy helper should reject different destination homes");
+  }
+  if (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+          register_move, stack_source, destination_register)) {
+    return fail("parallel-copy helper should leave stack-source policy to targets");
+  }
+
+  auto stack_destination_move = register_move;
+  stack_destination_move.destination_storage_kind =
+      prepare::PreparedMoveStorageKind::StackSlot;
+  if (prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+          stack_destination_move, prepare::PreparedValueId{2})) {
+    return fail("parallel-copy helper should reject non-register destinations");
+  }
+
+  auto temp_save_move = register_move;
+  temp_save_move.op_kind =
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
+  if (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+          temp_save_move, source_register, destination_register)) {
+    return fail("parallel-copy helper should reject temp-save steps");
+  }
+
+  auto immediate_move = register_move;
+  immediate_move.source_immediate_i32 = std::int64_t{7};
+  if (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+          immediate_move, source_register, destination_register)) {
+    return fail("parallel-copy helper should reject immediate sources");
   }
 
   return 0;
@@ -1314,6 +1392,10 @@ int verify_edge_publication_source_producer_facts() {
 
 int main() {
   if (const int result = verify_prepared_home_same_register_helper(); result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_parallel_copy_register_move_helpers();
+      result != 0) {
     return result;
   }
   if (const int result = verify_linear_function_lookup(); result != 0) {
