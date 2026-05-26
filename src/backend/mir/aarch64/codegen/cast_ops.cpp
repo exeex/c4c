@@ -1,6 +1,6 @@
 #include "cast_ops.hpp"
 
-#include "comparison_branch_fusion.hpp"
+#include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_publication.hpp"

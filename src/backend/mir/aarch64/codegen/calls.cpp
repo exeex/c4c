@@ -11,7 +11,7 @@
 
 #include "../abi/abi.hpp"
 #include "alu.hpp"
-#include "comparison_branch_fusion.hpp"
+#include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"

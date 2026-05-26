@@ -2,7 +2,7 @@
 
 #include "../abi/abi.hpp"
 #include "comparison.hpp"
-#include "comparison_branch_fusion.hpp"
+#include "comparison.hpp"
 #include "constant_materialization.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"

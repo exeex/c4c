@@ -6,7 +6,7 @@
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
-#include "comparison_branch_fusion.hpp"
+#include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
