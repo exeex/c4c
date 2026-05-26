@@ -1,49 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/21_x86_prepared_edge_publication_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Wire One Narrow Lowering Behavior
+Current Step ID: 4
+Current Step Title: Validate Shared and Target Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by wiring the x86 compare-join parallel-copy path through
-`x86::prepared::append_edge_publication_move_instruction`, which reuses
-`consume_edge_publication_move_intent` and appends target x86 move text only
-from shared `edge_publications`. Missing shared lookup or missing publication
-authority remains an explicit handoff error instead of falling back to local
-edge-copy reconstruction. Tightened the proof with a module-level joined-branch
-test that emits through `x86::api::emit_prepared_module(...)`, observes the
-shared-publication-derived `mov ebx, DWORD PTR [rsp + 56]` /
-`mov ebx, DWORD PTR [rsp + 64]` moves, and rejects a drifted publication
-destination.
+Completed Step 4 validation for the x86 prepared edge-publication consumer.
+The committed Step 3 slice was validated beyond the focused x86/shared lookup
+subset with the full backend CTest bucket.
 
 ## Suggested Next
 
-Run Step 4 validation as a supervisor packet: keep the current focused x86 and
-shared lookup subset as the baseline, and add broader validation only if the
-supervisor wants milestone confidence beyond the x86-owned module/prepared
-diff.
+Proceed to Step 5 handoff. Summarize the implemented x86 consumer behavior,
+note the next follow-up, and preserve the shared-prepare versus target-local
+emission boundary.
 
 ## Watchouts
 
-- The wired compare-join path emits only for the currently supported
-  stack-slot source to register destination form; unsupported publication/home
-  shapes keep the existing prepared-bundle validation but do not invent x86
-  moves.
-- The focused fixture now checks that the append step writes
-  `mov ebx, DWORD PTR [rsp + 56]` from shared lookup authority and emits
-  nothing when `ConsumedPlans` lacks shared lookups.
-- The joined-branch handoff test now exercises the actual `module.cpp` route
-  through `emit_prepared_module`, so supervisor acceptance no longer depends
-  only on the direct prepared-helper fixture.
-- Step 4 should treat `test_after.log` as the executor proof log and decide
-  whether this x86-only slice needs broader than the delegated focused subset.
+- Step 3 focused proof passed 77 x86/shared tests before commit.
+- Step 4 backend validation passed after commit.
+- No shared prepared lookup implementation changed, so no extra AArch64-only
+  proof was required beyond the backend bucket selected here.
 
 ## Proof
 
-Ran exactly:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_|backend_codegen_route_x86_64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
+Ran after the Step 3 commit:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
-Result: passed, 77 focused tests. Proof log: `test_after.log`.
+Result: passed, 162/162 backend tests. Proof log: `test_after.log`.
