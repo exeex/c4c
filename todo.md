@@ -8,21 +8,17 @@ Current Step Title: Thin `dispatch.cpp` Materialization Touchpoints
 
 ## Just Finished
 
-Step 4 packet complete. The stack-homed pointer-value load publication helper
-`lower_stack_homed_pointer_value_load_publication` now lives in
-`memory_store_sources.cpp` and is declared by `memory_store_sources.hpp`; it is
-no longer declared or defined by `dispatch_value_materialization.*`.
-`dispatch.cpp` still calls the helper at the same dispatch ordering point, now
-through the existing memory/store-source owner header.
+Step 4 packet complete. The scalar multiply helper
+`lower_scalar_mul_with_distinct_rhs_scratch` now lives in `alu.cpp` and is
+declared by `alu.hpp`; it is no longer declared or defined by
+`dispatch_value_materialization.*`. `dispatch.cpp` still calls the helper at
+the same dispatch ordering point through the scalar ALU owner header.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 4 by thinning one remaining narrow
-`dispatch.cpp` materialization touchpoint without moving the central
-`emit_value_publication_to_register` bridge. Candidate remaining direct hooks
-include `lower_local_slot_address_publication` or
-`lower_scalar_mul_with_distinct_rhs_scratch`, subject to supervisor routing and
-focused proof selection.
+Next coherent packet: continue Step 4 by thinning the remaining narrow
+`dispatch.cpp` materialization touchpoint `lower_local_slot_address_publication`
+without moving the central `emit_value_publication_to_register` bridge.
 
 ## Watchouts
 
@@ -73,6 +69,10 @@ focused proof selection.
   publication route helper because that route depends on the prepared
   pointer-value load/store-source machinery. Keep dispatch ordering unchanged
   unless a later packet explicitly owns order changes.
+- `alu.cpp` now owns `lower_scalar_mul_with_distinct_rhs_scratch` but still
+  imports the generic publication bridge for existing operand materialization;
+  keep that bridge dependency intentional unless a later packet owns the
+  fan-out split.
 
 ## Proof
 
@@ -80,14 +80,14 @@ Proof passed and is recorded in `test_after.log`.
 
 Command run exactly:
 `cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_prepared_memory_operand_records|backend_aarch64_call_boundary_owner)$' >> test_after.log 2>&1`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value)$' >> test_after.log 2>&1`
 
 Result: build completed and 5/5 focused tests passed. AST-backed checks before
-the move confirmed `lower_stack_homed_pointer_value_load_publication` was
-defined in `dispatch_value_materialization.cpp`, declared from
+the move confirmed `lower_scalar_mul_with_distinct_rhs_scratch` was defined in
+`dispatch_value_materialization.cpp`, declared from
 `dispatch_value_materialization.hpp`, and directly called by
 `dispatch_prepared_block` in `dispatch.cpp`. AST-backed checks after the move
-confirmed the definition is in `memory_store_sources.cpp`, the declaration
-resolves from `memory_store_sources.hpp`, and the helper is still directly
-called by `dispatch_prepared_block` in `dispatch.cpp`; `rg` confirmed no
-remaining declaration or definition in `dispatch_value_materialization.*`.
+confirmed the definition is in `alu.cpp`, the declaration resolves from
+`alu.hpp`, and the helper is still directly called by `dispatch_prepared_block`
+in `dispatch.cpp`; `rg` confirmed no remaining declaration or definition in
+`dispatch_value_materialization.*`.

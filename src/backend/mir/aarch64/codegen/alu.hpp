@@ -91,6 +91,12 @@ void clear_call_clobbered_emitted_scalar_registers(BlockScalarLoweringState& sta
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_mul_with_distinct_rhs_scratch(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+[[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_control_value_instruction(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,

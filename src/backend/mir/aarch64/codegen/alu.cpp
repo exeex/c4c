@@ -4,7 +4,11 @@
 
 #include "constant_materialization.hpp"
 #include "dispatch_edge_copies.hpp"
+#include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
+#include "dispatch_publication.hpp"
+#include "dispatch_publication_common.hpp"
+#include "dispatch_value_materialization.hpp"
 #include "float_ops.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
@@ -3731,6 +3735,275 @@ PreparedScalarInstructionRecordResult make_prepared_scalar_unary_instruction_rec
   return PreparedScalarInstructionRecordResult{
       .record = make_scalar_unary_instruction_record(*prepared.record),
       .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+std::optional<module::MachineInstruction> lower_scalar_mul_with_distinct_rhs_scratch(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      binary->opcode != bir::BinaryOpcode::Mul ||
+      binary->result.kind != bir::Value::Kind::Named ||
+      binary->result.name.empty()) {
+    return std::nullopt;
+  }
+  if (binary->lhs.kind != bir::Value::Kind::Immediate &&
+      binary->rhs.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  const auto result_view = scalar_view_for_type(binary->result.type);
+  const auto operand_view = scalar_view_for_type(binary->operand_type);
+  if (!result_view.has_value() || !operand_view.has_value() ||
+      result_view != operand_view) {
+    return std::nullopt;
+  }
+  auto result_register = make_named_prepared_result_register(context, binary->result);
+  std::optional<std::size_t> result_stack_offset_bytes;
+  if (!result_register.has_value()) {
+    const auto value_name = prepared_named_value_id(context, binary->result);
+    const auto* home =
+        value_name.has_value() && context.function.value_locations != nullptr
+            ? find_value_home(context, *value_name)
+            : nullptr;
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    if (home == nullptr ||
+        home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !home->offset_bytes.has_value() ||
+        scratches.empty()) {
+      return std::nullopt;
+    }
+    const auto scratch = abi::gp_register(scratches.front().index, *result_view);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    result_register = RegisterOperand{
+        .reg = *scratch,
+        .role = RegisterOperandRole::SpillAuthority,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = result_view,
+    };
+    result_stack_offset_bytes = *home->offset_bytes;
+  }
+  if (!abi::is_gp_register(result_register->reg)) {
+    return std::nullopt;
+  }
+  const auto result_name =
+      gp_register_name(result_register->reg.index, *result_view);
+  if (!result_name.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::optional<std::uint8_t> rhs_scratch_index;
+  std::optional<std::uint8_t> nested_scratch_index;
+  for (const auto& scratch : scratches) {
+    if (scratch.index != result_register->reg.index) {
+      rhs_scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!rhs_scratch_index.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto& scratch : scratches) {
+    if (scratch.index != result_register->reg.index &&
+        scratch.index != *rhs_scratch_index) {
+      nested_scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!nested_scratch_index.has_value()) {
+    nested_scratch_index = result_register->reg.index;
+  }
+  const auto rhs_name = gp_register_name(*rhs_scratch_index, *operand_view);
+  if (!rhs_name.has_value()) {
+    return std::nullopt;
+  }
+
+  auto lhs = binary->lhs;
+  lhs.type = binary->operand_type;
+  auto rhs = binary->rhs;
+  rhs.type = binary->operand_type;
+  std::vector<std::string> lines;
+  const auto emit_shifted_power_of_two_operand =
+      [&](const bir::Value& value, std::uint64_t scale) -> bool {
+    const auto shift = power_of_two_shift(scale);
+    if (!shift.has_value() ||
+        !emit_value_publication_to_register(context,
+                                            value,
+                                            instruction_index,
+                                            result_register->reg.index,
+                                            *rhs_scratch_index,
+                                            lines)) {
+      return false;
+    }
+    if (*shift != 0U) {
+      lines.push_back("lsl " + *result_name + ", " + *result_name +
+                      ", #" + std::to_string(*shift));
+    }
+    return true;
+  };
+  bool emitted_power_of_two_scale = false;
+  if (rhs.kind == bir::Value::Kind::Immediate && rhs.immediate >= 0) {
+    emitted_power_of_two_scale =
+        emit_shifted_power_of_two_operand(lhs,
+                                          static_cast<std::uint64_t>(rhs.immediate));
+  } else if (lhs.kind == bir::Value::Kind::Immediate && lhs.immediate >= 0) {
+    emitted_power_of_two_scale =
+        emit_shifted_power_of_two_operand(rhs,
+                                          static_cast<std::uint64_t>(lhs.immediate));
+  }
+  if (emitted_power_of_two_scale) {
+    if (result_stack_offset_bytes.has_value()) {
+      lines.push_back("str " + *result_name + ", " +
+                      frame_slot_address(context.function, *result_stack_offset_bytes));
+    }
+    std::string asm_text;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+      if (index != 0) {
+        asm_text += '\n';
+      }
+      asm_text += lines[index];
+    }
+    InstructionRecord target{
+        .family = InstructionFamily::Assembler,
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .opcode = MachineOpcode::Unspecified,
+        .selection =
+            MachineNodeStatusRecord{
+                .status = MachineNodeSelectionStatus::Selected,
+            },
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .block_index = context.block_index,
+        .instruction_index = instruction_index,
+        .payload =
+            AssemblerInstructionRecord{
+                .has_inline_asm_payload = true,
+                .side_effects = false,
+                .inline_asm_template = std::move(asm_text),
+            },
+    };
+    record_emitted_scalar_register(scalar_state,
+                                   result_register->value_name,
+                                   *result_register);
+    return module::MachineInstruction{
+        .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+        .operands = {},
+        .target = std::move(target),
+        .origin =
+            c4c::backend::mir::MachineOrigin{
+                .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+                .function_name = context.function.control_flow != nullptr
+                                     ? context.function.control_flow->function_name
+                                     : c4c::kInvalidFunctionName,
+                .block_label = context.control_flow_block != nullptr
+                                   ? context.control_flow_block->block_label
+                                   : c4c::kInvalidBlockLabel,
+                .instruction_index = instruction_index,
+            },
+    };
+  }
+  const bool rhs_reads_result = value_publication_may_read_register_index(
+      context, rhs, instruction_index, result_register->reg.index);
+  const bool lhs_reads_rhs_scratch = value_publication_may_read_register_index(
+      context, lhs, instruction_index, *rhs_scratch_index);
+
+  if (rhs_reads_result && !lhs_reads_rhs_scratch) {
+    if (!emit_value_publication_to_register(context,
+                                            rhs,
+                                            instruction_index,
+                                            *rhs_scratch_index,
+                                            *nested_scratch_index,
+                                            lines) ||
+        !emit_value_publication_to_register(context,
+                                            lhs,
+                                            instruction_index,
+                                            result_register->reg.index,
+                                            *rhs_scratch_index,
+                                            lines)) {
+      return std::nullopt;
+    }
+  } else {
+    if (!emit_value_publication_to_register(context,
+                                            lhs,
+                                            instruction_index,
+                                            result_register->reg.index,
+                                            *rhs_scratch_index,
+                                            lines) ||
+        !emit_value_publication_to_register(context,
+                                            rhs,
+                                            instruction_index,
+                                            *rhs_scratch_index,
+                                            *nested_scratch_index,
+                                            lines)) {
+      return std::nullopt;
+    }
+  }
+  lines.push_back("mul " + *result_name + ", " + *result_name + ", " + *rhs_name);
+  if (result_stack_offset_bytes.has_value()) {
+    lines.push_back("str " + *result_name + ", " +
+                    frame_slot_address(context.function, *result_stack_offset_bytes));
+  }
+
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += lines[index];
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{
+              .status = MachineNodeSelectionStatus::Selected,
+          },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .payload =
+          AssemblerInstructionRecord{
+              .has_inline_asm_payload = true,
+              .side_effects = false,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  record_emitted_scalar_register(scalar_state,
+                                 result_register->value_name,
+                                 *result_register);
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
   };
 }
 

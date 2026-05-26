@@ -30,11 +30,4 @@ lower_local_slot_address_publication(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_mul_with_distinct_rhs_scratch(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
 }  // namespace c4c::backend::aarch64::codegen
