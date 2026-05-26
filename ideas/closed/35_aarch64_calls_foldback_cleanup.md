@@ -62,3 +62,21 @@ AArch64-only translation units.
   new bridge layer outside the calls owner.
 - The patch folds unrelated memory, prologue, comparison, or dispatch cleanup
   into this calls slice.
+
+## Closure
+
+Closed after the listed AArch64 calls helper implementation was folded into
+the `calls.cpp` / `calls.hpp` owner surface and obsolete helper files were
+removed from build metadata.
+
+Evidence:
+- `calls_byval_aggregates.cpp`, `calls_common.cpp`, `calls_moves.cpp`, and
+  `calls_dispatch_bridge.*` are no longer referenced by source, build metadata,
+  or tests.
+- Reviewer scrutiny judged the route aligned with the source idea and found no
+  behavioral blocker; the stale ownership wording finding was resolved by
+  commit `831ef0f13`.
+- Focused AArch64 call proof passed during execution.
+- Backend regression guard passed with matching before/after backend logs:
+  163/163 before and 163/163 after, no new failures.
+- Full-suite baseline at commit `2d630797a` recorded 3411/3411 passing.
