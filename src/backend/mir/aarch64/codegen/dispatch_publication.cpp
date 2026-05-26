@@ -14,7 +14,6 @@
 #include "instruction.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
-#include "memory_store_sources.hpp"
 #include "operands.hpp"
 #include "variadic.hpp"
 
