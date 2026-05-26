@@ -22055,6 +22055,42 @@ int block_dispatch_publishes_direct_local_aggregate_address_call_argument() {
     return fail("expected direct local aggregate address to publish before call: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
+
+  auto absent_selection_call_plans = call_plans;
+  absent_selection_call_plans.calls.front().arguments.front().source_selection.reset();
+  const aarch64_module::FunctionLoweringContext absent_function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &value_locations,
+      .call_plans = &absent_selection_call_plans,
+  };
+  const aarch64_module::BlockLoweringContext absent_block_context{
+      .function = absent_function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &prepared.module.functions.front().blocks.front(),
+      .block_index = 0,
+  };
+  aarch64_module::MachineBlock absent_block;
+  aarch64_module::ModuleLoweringDiagnostics absent_diagnostics;
+  const auto absent_dispatched = aarch64_codegen::dispatch_prepared_block(
+      absent_block_context, absent_block, absent_diagnostics);
+  if (absent_diagnostics.entries.size() != 1 ||
+      absent_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      absent_diagnostics.entries.front().message.find(
+          "requires prepared LocalFrameAddressMaterialization source selection") ==
+          std::string::npos) {
+    return fail(
+        "expected direct local aggregate address dispatch to reject absent "
+        "prepared source selection: visited=" +
+        std::to_string(absent_dispatched.visited_operations) +
+        " emitted=" + std::to_string(absent_dispatched.emitted_instructions) +
+        " diagnostics=" + std::to_string(absent_diagnostics.entries.size()) +
+        (absent_diagnostics.empty()
+             ? std::string{}
+             : " first=" + absent_diagnostics.entries.front().message));
+  }
   return 0;
 }
 

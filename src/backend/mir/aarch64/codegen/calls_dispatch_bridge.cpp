@@ -7,6 +7,7 @@
 #include "calls_dispatch_bridge.hpp"
 #include "calls.hpp"
 #include "comparison_branch_fusion.hpp"
+#include "constant_materialization.hpp"
 #include "dispatch_diagnostics.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
@@ -32,15 +33,16 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-struct LocalAggregateAddressPublication {
-  module::MachineInstruction instruction;
-  RegisterOperand result_register;
-};
-
 struct PreparedFrameSlotCallArgumentMove {
   const prepare::PreparedMoveBundle* bundle = nullptr;
   const prepare::PreparedMoveResolution* move = nullptr;
   const prepare::PreparedAbiBinding* binding = nullptr;
+};
+
+enum class LocalAggregateAddressMaterializationResult {
+  NotRequired,
+  Materialized,
+  Failed,
 };
 
 [[nodiscard]] module::MachineInstruction make_dispatch_bridge_machine_instruction(
@@ -65,44 +67,108 @@ struct PreparedFrameSlotCallArgumentMove {
   };
 }
 
-[[nodiscard]] std::optional<LocalAggregateAddressPublication>
-materialize_local_aggregate_address_call_argument(
+[[nodiscard]] std::vector<std::string> materialize_local_aggregate_address_lines(
+    abi::RegisterReference address_register,
     const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (value.type != bir::TypeKind::Ptr) {
-    return std::nullopt;
+    std::int64_t byte_offset) {
+  if (byte_offset < 0) {
+    return {};
   }
-  auto result_register = make_named_prepared_result_register(context, value);
-  if (!result_register.has_value() ||
-      !abi::is_gp_register(result_register->reg)) {
-    return std::nullopt;
-  }
-  const auto offset =
-      local_aggregate_address_frame_offset(context, result_register->value_name);
-  if (!offset.has_value()) {
-    return std::nullopt;
-  }
-  const auto address_register = abi::x_register(result_register->reg.index);
-  result_register->reg = address_register;
-  result_register->expected_view = abi::RegisterView::X;
-  std::vector<std::string> lines;
+  const auto offset = static_cast<std::uint64_t>(byte_offset);
   const std::string_view base =
       context.function.frame_plan != nullptr &&
               context.function.frame_plan->uses_frame_pointer_for_fixed_slots
           ? "x29"
           : "sp";
-  std::string line = "add " + std::string{abi::register_name(address_register)} +
-                     ", " + std::string{base} + ", #" + std::to_string(*offset);
-  lines.push_back(std::move(line));
+  const std::string address_name = std::string{abi::register_name(address_register)};
+  if (offset <= 4095U) {
+    return {"add " + address_name + ", " + std::string{base} + ", #" +
+            std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(address_register, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + address_name + ", " + std::string{base} + ", " +
+                  address_name);
+  return lines;
+}
+
+[[nodiscard]] LocalAggregateAddressMaterializationResult
+materialize_local_aggregate_address_call_argument(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t before_instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    std::vector<module::MachineInstruction>& lowered,
+    BlockScalarLoweringState& scalar_state) {
+  if (!argument.allows_local_aggregate_address_publication) {
+    return LocalAggregateAddressMaterializationResult::NotRequired;
+  }
+  const auto diagnostic = [&](std::string message) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        before_instruction_index,
+        std::move(message));
+    return LocalAggregateAddressMaterializationResult::Failed;
+  };
+  if (value.type != bir::TypeKind::Ptr) {
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires a pointer argument");
+  }
+  auto result_register = make_named_prepared_result_register(context, value);
+  if (!result_register.has_value() ||
+      !abi::is_gp_register(result_register->reg)) {
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires a prepared GPR result register");
+  }
+  if (!argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization) {
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires prepared LocalFrameAddressMaterialization source selection");
+  }
+  const auto* source_home =
+      argument.source_value_id.has_value()
+          ? find_value_home(context, *argument.source_value_id)
+          : find_value_home(context, result_register->value_name);
+  const auto source = make_selected_call_argument_source(
+      context,
+      argument,
+      source_home,
+      *argument.source_selection,
+      prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      before_instruction_index);
+  if (!source.has_value()) {
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires complete prepared LocalFrameAddressMaterialization source selection");
+  }
+  const auto address_register = abi::x_register(result_register->reg.index);
+  result_register->reg = address_register;
+  result_register->expected_view = abi::RegisterView::X;
+  auto lines = materialize_local_aggregate_address_lines(
+      address_register, context, source->byte_offset);
+  if (lines.empty()) {
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires a printable prepared frame address");
+  }
   auto instruction =
       make_select_chain_materialization_instruction(
           context, before_instruction_index, std::move(lines));
   if (!instruction.has_value()) {
-    return std::nullopt;
+    return diagnostic(
+        "AArch64 local aggregate address call argument requires a materializable prepared frame address");
   }
-  return LocalAggregateAddressPublication{.instruction = std::move(*instruction),
-                                          .result_register = *result_register};
+  record_emitted_scalar_register(scalar_state,
+                                 result_register->value_name,
+                                 *result_register);
+  lowered.push_back(std::move(*instruction));
+  return LocalAggregateAddressMaterializationResult::Materialized;
 }
 
 [[nodiscard]] const prepare::PreparedCallArgumentPlan* find_prepared_call_argument_plan(
@@ -154,19 +220,11 @@ find_prepared_frame_slot_call_argument_move(
   return std::nullopt;
 }
 
-[[nodiscard]] bool call_argument_allows_local_aggregate_address_publication(
-    const prepare::PreparedCallPlan* call_plan,
-    std::size_t argument_index) {
-  const auto* argument = find_prepared_call_argument_plan(call_plan, argument_index);
-  return argument != nullptr &&
-         argument->allows_local_aggregate_address_publication;
-}
-
 [[nodiscard]] bool materialize_scalar_call_argument_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
-    bool allow_local_aggregate_address_publication,
+    const prepare::PreparedCallArgumentPlan* local_aggregate_address_argument,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics,
     std::vector<module::MachineInstruction>& lowered,
@@ -179,15 +237,23 @@ find_prepared_frame_slot_call_argument_move(
       return false;
     }
   }
-  if (allow_local_aggregate_address_publication) {
-    if (auto local_address =
-            materialize_local_aggregate_address_call_argument(
-                context, value, before_instruction_index)) {
-      record_emitted_scalar_register(scalar_state,
-                                     local_address->result_register.value_name,
-                                     local_address->result_register);
-      lowered.push_back(std::move(local_address->instruction));
-      return true;
+  if (local_aggregate_address_argument != nullptr) {
+    const auto local_address =
+        materialize_local_aggregate_address_call_argument(
+            context,
+            value,
+            *local_aggregate_address_argument,
+            before_instruction_index,
+            diagnostics,
+            lowered,
+            scalar_state);
+    switch (local_address) {
+      case LocalAggregateAddressMaterializationResult::Materialized:
+        return true;
+      case LocalAggregateAddressMaterializationResult::Failed:
+        return false;
+      case LocalAggregateAddressMaterializationResult::NotRequired:
+        break;
     }
   }
   if (emitted_scalar_value_available(context, value, scalar_state)) {
@@ -216,21 +282,21 @@ find_prepared_frame_slot_call_argument_move(
   active_values.push_back(value.name);
   const bool lhs_ready =
       materialize_scalar_call_argument_value(context,
-	                                             binary->lhs,
-	                                             *producer_index,
-	                                             allow_local_aggregate_address_publication,
-	                                             scalar_state,
-	                                             diagnostics,
-	                                             lowered,
+                                             binary->lhs,
+                                             *producer_index,
+                                             nullptr,
+                                             scalar_state,
+                                             diagnostics,
+                                             lowered,
                                              active_values);
   const bool rhs_ready =
       materialize_scalar_call_argument_value(context,
-	                                             binary->rhs,
-	                                             *producer_index,
-	                                             allow_local_aggregate_address_publication,
-	                                             scalar_state,
-	                                             diagnostics,
-	                                             lowered,
+                                             binary->rhs,
+                                             *producer_index,
+                                             nullptr,
+                                             scalar_state,
+                                             diagnostics,
+                                             lowered,
                                              active_values);
   active_values.pop_back();
   if (!lhs_ready || !rhs_ready) {
@@ -308,12 +374,17 @@ lower_scalar_call_argument_producers(
       continue;
     }
     std::vector<std::string_view> active_values;
-    const bool allow_local_aggregate_address_publication =
-        call_argument_allows_local_aggregate_address_publication(&call_plan, argument_index);
+    const auto* argument_plan =
+        find_prepared_call_argument_plan(&call_plan, argument_index);
+    const auto* local_aggregate_address_argument =
+        argument_plan != nullptr &&
+                argument_plan->allows_local_aggregate_address_publication
+            ? argument_plan
+            : nullptr;
     if (!materialize_scalar_call_argument_value(context,
                                                 argument,
                                                 instruction_index,
-                                                allow_local_aggregate_address_publication,
+                                                local_aggregate_address_argument,
                                                 scalar_state,
                                                 diagnostics,
                                                 lowered,
