@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/17_aarch64_absent_selection_fallback_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Retire Indirect Byval Lane Payload Fallbacks
+Current Step ID: Step 4
+Current Step Title: Normalize Legacy Fallback Tests
 
 # Current Packet
 
@@ -29,11 +29,23 @@ lanes, then from contiguous local aggregate payload stores. This fixes the
 AArch64 byval/string corruption without restoring target-local BIR-store
 reconstruction as source authority.
 
+Plan-owner decision: Step 3 is complete after `cfbeb67c2`. Step 4 is not
+skipped; the Step 3 tests already converted the owned byval fallback-shape
+expectations into prepared-authority and fail-closed expectations, but the
+runbook still needs one explicit audit/normalization packet to confirm no
+legacy local-aggregate or byval fallback contract tests remain and to record
+any no-op conclusion before validation/closure.
+
 ## Suggested Next
 
-Supervisor should review the Step 3 slice for route quality and decide whether
-the active plan needs a plan-owner close/deactivate/split decision or another
-bounded packet from the remaining runbook.
+Delegate Step 4: audit the fallback tests identified by Step 1 and the tests
+touched by Steps 2 and 3. Confirm that local aggregate address and byval lane
+coverage now asserts prepared-fact authority, positive semantic behavior, and
+missing/incomplete selected-source diagnostics rather than broad source
+rederivation. If the audit finds only already-normalized tests, update this
+packet with the concrete no-op mapping and advance to Step 5; if it finds a
+remaining legacy fallback expectation, normalize that test without weakening
+supported-path coverage.
 
 ## Watchouts
 
