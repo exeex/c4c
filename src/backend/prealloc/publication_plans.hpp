@@ -206,6 +206,9 @@ struct PreparedStoreSourcePublicationPlan {
   std::optional<bir::Value> recovered_source_value;
   std::optional<std::size_t> recovered_source_instruction_index;
   bool byval_load_local_source = false;
+  bool direct_global_select_chain_source = false;
+  bool direct_global_select_chain_root_is_select = false;
+  std::optional<std::size_t> direct_global_select_chain_root_instruction_index;
 
   bool pending_publication = false;
   bool stack_homes_only = false;
@@ -223,6 +226,12 @@ struct PreparedRecoveredStoreSourcePublication {
   std::size_t instruction_index = 0;
 };
 
+struct PreparedStoreSourceDirectGlobalSelectChainDependency {
+  bool contains_direct_global_load = false;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+};
+
 struct PreparedStoreSourcePublicationInputs {
   const bir::Value* source_value = nullptr;
   const PreparedMemoryAccess* destination_access = nullptr;
@@ -232,6 +241,9 @@ struct PreparedStoreSourcePublicationInputs {
   const bir::Value* recovered_source_value = nullptr;
   std::optional<std::size_t> recovered_source_instruction_index;
   bool byval_load_local_source = false;
+  bool direct_global_select_chain_source = false;
+  bool direct_global_select_chain_root_is_select = false;
+  std::optional<std::size_t> direct_global_select_chain_root_instruction_index;
   const PreparedValueHome* pointer_base_home = nullptr;
   PreparedStoreSourcePublicationIntent intent =
       PreparedStoreSourcePublicationIntent::None;
@@ -266,5 +278,11 @@ prepared_store_source_load_local_is_byval_formal_pointer_source(
     const bir::Function* bir_function,
     const PreparedAddressingFunction* addressing,
     const PreparedEdgePublicationSourceProducer* source_producer);
+
+[[nodiscard]] PreparedStoreSourceDirectGlobalSelectChainDependency
+find_prepared_store_source_direct_global_select_chain_dependency(
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
 
 }  // namespace c4c::backend::prepare

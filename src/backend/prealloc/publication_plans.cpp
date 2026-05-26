@@ -1,6 +1,11 @@
 #include "publication_plans.hpp"
 
+#include "../mir/query.hpp"
+
 namespace c4c::backend::prepare {
+
+namespace mir = c4c::backend::mir;
+
 namespace {
 
 [[nodiscard]] PreparedScalarPublicationPlan missing_destination_home(
@@ -191,6 +196,11 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool dependency_is_load_global(
+    const mir::DependencyTraversalRecord& record) {
+  return record.kind == mir::SameBlockProducerKind::LoadGlobal;
+}
+
 }  // namespace
 
 bool prepared_scalar_publication_available(
@@ -360,6 +370,12 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   plan.recovered_source_instruction_index =
       inputs.recovered_source_instruction_index;
   plan.byval_load_local_source = inputs.byval_load_local_source;
+  plan.direct_global_select_chain_source =
+      inputs.direct_global_select_chain_source;
+  plan.direct_global_select_chain_root_is_select =
+      inputs.direct_global_select_chain_root_is_select;
+  plan.direct_global_select_chain_root_instruction_index =
+      inputs.direct_global_select_chain_root_instruction_index;
 
   if (inputs.source_producer != nullptr &&
       inputs.source_producer->kind != PreparedEdgePublicationSourceProducerKind::Unknown) {
@@ -454,6 +470,32 @@ bool prepared_store_source_load_local_is_byval_formal_pointer_source(
          access->address.can_use_base_plus_offset &&
          is_byval_formal_value_name(
              names, bir_function, *access->address.pointer_value_name);
+}
+
+PreparedStoreSourceDirectGlobalSelectChainDependency
+find_prepared_store_source_direct_global_select_chain_dependency(
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  PreparedStoreSourceDirectGlobalSelectChainDependency dependency;
+  if (block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return dependency;
+  }
+  const auto root = mir::find_same_block_named_producer_record(
+      block, value.name, before_instruction_index);
+  if (!root) {
+    return dependency;
+  }
+  dependency.contains_direct_global_load = mir::select_chain_contains_dependency(
+      block, value, before_instruction_index, dependency_is_load_global);
+  if (!dependency.contains_direct_global_load) {
+    return dependency;
+  }
+  dependency.root_is_select = root.kind == mir::SameBlockProducerKind::Select;
+  dependency.root_instruction_index = root.instruction_index;
+  return dependency;
 }
 
 }  // namespace c4c::backend::prepare

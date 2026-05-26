@@ -496,6 +496,9 @@ plan_store_local_source_publication(
                 addressing,
                 source_producer)
           : false;
+  const auto direct_global_select_chain =
+      prepare::find_prepared_store_source_direct_global_select_chain_dependency(
+          context.bir_block, store.value, instruction_index);
   const bir::Value* recovered_value =
       recovered_source.has_value() ? &recovered_source->stored_value : nullptr;
   return prepare::plan_prepared_store_source_publication({
@@ -510,6 +513,12 @@ plan_store_local_source_publication(
               ? std::optional<std::size_t>{recovered_source->instruction_index}
               : std::nullopt,
       .byval_load_local_source = byval_load_local_source,
+      .direct_global_select_chain_source =
+          direct_global_select_chain.contains_direct_global_load,
+      .direct_global_select_chain_root_is_select =
+          direct_global_select_chain.root_is_select,
+      .direct_global_select_chain_root_instruction_index =
+          direct_global_select_chain.root_instruction_index,
       .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
       .source_producer = source_producer,
   });
@@ -576,7 +585,7 @@ lower_store_local_value_publication(
       prepared_store_source_scalar_fp_binary_producer_is_complete(
           context, store_source_plan);
   const bool has_direct_global_select_chain =
-      select_chain_contains_direct_global_load(context, store->value, instruction_index);
+      store_source_plan.direct_global_select_chain_source;
   if ((!store_source_plan.byval_load_local_source &&
        !store_source_plan.recovered_source_value.has_value() &&
        !has_prepared_select_producer &&
@@ -603,16 +612,12 @@ lower_store_local_value_publication(
     return std::nullopt;
   }
   if (!has_prepared_select_producer && has_direct_global_select_chain) {
-    const auto* producer_inst =
-        value.kind == bir::Value::Kind::Named
-            ? find_same_block_named_producer(context, value.name, instruction_index)
-            : nullptr;
-    const auto producer_index = producer_instruction_index(context, producer_inst);
-    if (producer_index.has_value() &&
-        std::get_if<bir::SelectInst>(producer_inst) != nullptr &&
+    if (store_source_plan.direct_global_select_chain_root_is_select &&
+        store_source_plan.direct_global_select_chain_root_instruction_index.has_value() &&
         !block.instructions.empty() &&
         block.instructions.back().origin.has_value() &&
-        block.instructions.back().origin->instruction_index == *producer_index) {
+        block.instructions.back().origin->instruction_index ==
+            *store_source_plan.direct_global_select_chain_root_instruction_index) {
       return std::nullopt;
     }
   }

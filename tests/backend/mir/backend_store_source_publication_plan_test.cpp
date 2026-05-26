@@ -196,6 +196,52 @@ int classifies_byval_load_local_source_from_prepared_authority() {
   return 0;
 }
 
+int records_direct_global_select_chain_dependency_from_prepared_authority() {
+  bir::Block block;
+  block.label = "entry";
+  block.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%global_ptr"),
+      .global_name = "g",
+  });
+  block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%selected"),
+      .compare_type = bir::TypeKind::I1,
+      .lhs = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .rhs = bir::Value::immediate_i1(false),
+      .true_value = bir::Value::named(bir::TypeKind::Ptr, "%global_ptr"),
+      .false_value = bir::Value::named(bir::TypeKind::Ptr, "%fallback"),
+  });
+
+  const auto dependency =
+      prepare::find_prepared_store_source_direct_global_select_chain_dependency(
+          &block, bir::Value::named(bir::TypeKind::Ptr, "%selected"), 2);
+  const auto source = bir::Value::named(bir::TypeKind::Ptr, "%selected");
+  auto destination_access = frame_slot_store_access(103, 10, 0);
+  const auto plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source,
+      .destination_access = &destination_access,
+      .direct_global_select_chain_source =
+          dependency.contains_direct_global_load,
+      .direct_global_select_chain_root_is_select = dependency.root_is_select,
+      .direct_global_select_chain_root_instruction_index =
+          dependency.root_instruction_index,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+  });
+
+  if (!dependency.contains_direct_global_load ||
+      !dependency.root_is_select ||
+      dependency.root_instruction_index != std::optional<std::size_t>{1} ||
+      !prepare::prepared_store_source_publication_available(plan) ||
+      !plan.direct_global_select_chain_source ||
+      !plan.direct_global_select_chain_root_is_select ||
+      plan.direct_global_select_chain_root_instruction_index !=
+          std::optional<std::size_t>{1}) {
+    return fail("expected direct-global select-chain dependency facts");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule cast_store_source_fixture() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("store_cast_source");
@@ -402,6 +448,10 @@ int main() {
     return rc;
   }
   if (int rc = classifies_byval_load_local_source_from_prepared_authority(); rc != 0) {
+    return rc;
+  }
+  if (int rc = records_direct_global_select_chain_dependency_from_prepared_authority();
+      rc != 0) {
     return rc;
   }
   if (int rc = records_cast_source_producer_from_prepared_lookup(); rc != 0) {
