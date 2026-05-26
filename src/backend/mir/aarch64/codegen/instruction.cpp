@@ -1,7 +1,6 @@
 #include "instruction.hpp"
 #include "alu.hpp"
 #include "cast_ops.hpp"
-#include "calls.hpp"
 #include "effects.hpp"
 #include "f128.hpp"
 #include "memory.hpp"
@@ -13,6 +12,30 @@ namespace c4c::backend::aarch64::codegen {
 namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
+
+namespace {
+
+[[nodiscard]] bool same_aggregate_gp_register_index(abi::RegisterReference lhs,
+                                                    abi::RegisterReference rhs) {
+  return lhs.index == rhs.index && abi::is_gp_register(lhs) && abi::is_gp_register(rhs);
+}
+
+[[nodiscard]] bool aggregate_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t load_width_bytes) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      load_width_bytes == 0) {
+    return false;
+  }
+  if (load_width_bytes != 1 && load_width_bytes != 2 && load_width_bytes != 4 &&
+      load_width_bytes != 8 && load_width_bytes != 16) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % load_width_bytes == 0 && offset / load_width_bytes <= 4095U;
+}
+
+}  // namespace
 
 std::string_view operand_kind_name(OperandKind kind) {
   switch (kind) {
@@ -433,6 +456,168 @@ std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus s
       return "missing_required_facts";
   }
   return "unknown";
+}
+
+std::string_view aggregate_stack_copy_load_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+std::string_view aggregate_stack_copy_store_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
+std::optional<abi::RegisterReference> aggregate_stack_copy_scratch(
+    std::size_t width_bytes) {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  if (width_bytes == 1 || width_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  if (width_bytes == 8) {
+    return abi::x_register(scratch.index);
+  }
+  return std::nullopt;
+}
+
+std::vector<std::size_t> aggregate_stack_copy_chunks(std::size_t size_bytes) {
+  std::vector<std::size_t> chunks;
+  std::size_t remaining = size_bytes;
+  while (remaining >= 8) {
+    chunks.push_back(8);
+    remaining -= 8;
+  }
+  if (remaining >= 4) {
+    chunks.push_back(4);
+    remaining -= 4;
+  }
+  while (remaining > 0) {
+    chunks.push_back(1);
+    --remaining;
+  }
+  return chunks;
+}
+
+std::string_view aggregate_register_lane_load_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 2:
+      return "ldrh";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+abi::RegisterReference aggregate_register_lane_load_register(
+    abi::RegisterReference reg,
+    std::size_t width_bytes) {
+  return width_bytes == 8 ? abi::x_register(reg.index) : abi::w_register(reg.index);
+}
+
+std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
+    const RegisterOperand& destination) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (same_aggregate_gp_register_index(scratch, destination.reg)) {
+      continue;
+    }
+    bool aliases_occupied = false;
+    for (const auto occupied : destination.occupied_register_references) {
+      if (same_aggregate_gp_register_index(scratch, occupied)) {
+        aliases_occupied = true;
+        break;
+      }
+    }
+    if (!aliases_occupied) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+MemoryOperand aggregate_register_lane_memory(MemoryOperand memory,
+                                             std::size_t byte_offset,
+                                             std::size_t width_bytes) {
+  memory.byte_offset += static_cast<std::int64_t>(byte_offset);
+  memory.size_bytes = width_bytes;
+  memory.align_bytes = std::min<std::size_t>(memory.align_bytes, width_bytes);
+  return memory;
+}
+
+bool aggregate_register_lane_memory_is_printable(const MemoryOperand& memory,
+                                                 std::size_t width_bytes) {
+  if (memory.base_kind == MemoryBaseKind::PointerValue && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
+  if (memory.base_kind == MemoryBaseKind::Register && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
+  return memory.base_kind == MemoryBaseKind::FrameSlot &&
+         aggregate_frame_slot_direct_offset_is_encodable(memory, width_bytes) &&
+         !memory_address(memory).empty();
+}
+
+std::optional<std::size_t> aggregate_register_lane_printable_chunk(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining) {
+  static constexpr std::size_t kCandidateChunks[] = {8, 4, 2, 1};
+  for (const std::size_t chunk_width : kCandidateChunks) {
+    if (chunk_width > remaining) {
+      continue;
+    }
+    const auto chunk_memory =
+        aggregate_register_lane_memory(memory, source_offset, chunk_width);
+    if (aggregate_register_lane_memory_is_printable(chunk_memory, chunk_width) &&
+        !aggregate_register_lane_load_mnemonic(chunk_width).empty()) {
+      return chunk_width;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<abi::RegisterReference> aggregate_register_lane_destination(
+    const RegisterOperand& destination,
+    std::size_t lane_index) {
+  if (lane_index < destination.occupied_register_references.size()) {
+    return abi::x_register(destination.occupied_register_references[lane_index].index);
+  }
+  if (destination.reg.index + lane_index > 30) {
+    return std::nullopt;
+  }
+  return abi::x_register(static_cast<std::uint8_t>(destination.reg.index + lane_index));
+}
+
+bool is_aggregate_register_lane_publication(
+    const CallBoundaryMoveInstructionRecord& move) {
+  return move.phase == prepare::PreparedMovePhase::BeforeCall &&
+         move.move.destination_kind ==
+             prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+         move.move.destination_storage_kind ==
+             prepare::PreparedMoveStorageKind::Register &&
+         move.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.move.reason == "call_arg_byval_aggregate_register_lanes" &&
+         move.source_memory.has_value() && !move.source_memory_materializes_address &&
+         move.source_memory->support == MemoryOperandSupportKind::Prepared &&
+         move.source_memory->size_bytes > 0 && move.source_memory->size_bytes <= 16 &&
+         move.destination_register.has_value() &&
+         move.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
+         move.destination_register->expected_view == abi::RegisterView::X &&
+         abi::is_gp_register(move.destination_register->reg);
 }
 
 std::string_view frame_instruction_kind_name(FrameInstructionKind kind) {

@@ -1,6 +1,5 @@
 #include "machine_printer.hpp"
 #include "alu.hpp"
-#include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
 #include "constant_materialization.hpp"

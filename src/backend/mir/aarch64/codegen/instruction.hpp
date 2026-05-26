@@ -1714,6 +1714,36 @@ struct InstructionRecord {
     const InstructionRecord& instruction);
 [[nodiscard]] std::string_view machine_node_selection_status_name(
     MachineNodeSelectionStatus status);
+[[nodiscard]] std::string_view aggregate_stack_copy_load_mnemonic(
+    std::size_t width_bytes);
+[[nodiscard]] std::string_view aggregate_stack_copy_store_mnemonic(
+    std::size_t width_bytes);
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_stack_copy_scratch(
+    std::size_t width_bytes);
+[[nodiscard]] std::vector<std::size_t> aggregate_stack_copy_chunks(
+    std::size_t size_bytes);
+[[nodiscard]] std::string_view aggregate_register_lane_load_mnemonic(
+    std::size_t width_bytes);
+[[nodiscard]] abi::RegisterReference aggregate_register_lane_load_register(
+    abi::RegisterReference reg,
+    std::size_t width_bytes);
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
+    const RegisterOperand& destination);
+[[nodiscard]] MemoryOperand aggregate_register_lane_memory(MemoryOperand memory,
+                                                          std::size_t byte_offset,
+                                                          std::size_t width_bytes);
+[[nodiscard]] bool aggregate_register_lane_memory_is_printable(
+    const MemoryOperand& memory,
+    std::size_t width_bytes);
+[[nodiscard]] std::optional<std::size_t> aggregate_register_lane_printable_chunk(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining);
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_destination(
+    const RegisterOperand& destination,
+    std::size_t lane_index);
+[[nodiscard]] bool is_aggregate_register_lane_publication(
+    const CallBoundaryMoveInstructionRecord& move);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view frame_instruction_kind_name(FrameInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
