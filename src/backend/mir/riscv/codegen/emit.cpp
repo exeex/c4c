@@ -114,6 +114,14 @@ std::optional<std::string> render_edge_publication_source_operand(
   return std::nullopt;
 }
 
+bool has_direct_register_source_for_stack_destination(
+    const EdgePublicationMoveIntent& intent) {
+  return !intent.source_register.empty() &&
+         !intent.source_immediate_i32.has_value() &&
+         !intent.source_stack_offset_bytes.has_value() &&
+         !intent.source_pointer_byte_delta.has_value();
+}
+
 }  // namespace
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
@@ -206,13 +214,21 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     return intent;
   }
 
+  // Prepared edge-publication stack destinations have a target-local scratch
+  // contract, but only future materializing forms may use it. The direct
+  // Register -> StackSlot case below reserves no scratch and clobbers only the
+  // destination memory slot. When a source form needs materialization for an
+  // I32 stack destination, this consumer may own `t0` as a value scratch for
+  // the lifetime of that single publication sequence, clobbering it before the
+  // final `sw`. The scratch value must not survive across edge publications.
+  // `t1`/`t2` are not reserved by this path, and `t5`/`t6` remain available
+  // only to a later explicit address/large-offset helper contract. Until a
+  // source form is implemented under that contract, non-register sources to a
+  // StackSlot destination intentionally remain fail-closed.
   if (destination_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       destination_home.offset_bytes.has_value() &&
       destination_home.size_bytes == std::optional<std::size_t>{4} &&
-      !intent.source_register.empty() &&
-      !intent.source_immediate_i32.has_value() &&
-      !intent.source_stack_offset_bytes.has_value() &&
-      !intent.source_pointer_byte_delta.has_value()) {
+      has_direct_register_source_for_stack_destination(intent)) {
     intent.status = EdgePublicationMoveIntentStatus::Available;
     intent.destination_stack_slot_id = destination_home.slot_id;
     intent.destination_stack_offset_bytes = *destination_home.offset_bytes;

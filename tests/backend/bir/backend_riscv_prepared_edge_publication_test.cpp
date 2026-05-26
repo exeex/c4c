@@ -27,7 +27,7 @@ bool expect_unsupported_stack_destination(
                 message) &&
          expect(intent.instruction_text.empty(),
                 "RISC-V stack-destination helper should not render an instruction "
-                "without an explicit scratch-register policy");
+                "without implemented stack-destination source materialization");
 }
 
 int fail(const char* message) {
@@ -608,7 +608,7 @@ int check_stack_destination_fail_closed_forms() {
   if (!expect_unsupported_stack_destination(
           intent,
           "RISC-V stack-destination helper should keep immediate sources "
-          "unsupported until scratch-register policy is explicit")) {
+          "unsupported until scratch-backed source materialization is implemented")) {
     return 1;
   }
 
@@ -623,7 +623,7 @@ int check_stack_destination_fail_closed_forms() {
   if (!expect_unsupported_stack_destination(
           intent,
           "RISC-V stack-destination helper should keep stack sources unsupported "
-          "until scratch-register policy is explicit")) {
+          "until scratch-backed source materialization is implemented")) {
     return 1;
   }
 
@@ -639,7 +639,7 @@ int check_stack_destination_fail_closed_forms() {
   if (!expect_unsupported_stack_destination(
           intent,
           "RISC-V stack-destination helper should keep pointer-base sources "
-          "unsupported until scratch-register policy is explicit")) {
+          "unsupported until scratch-backed source materialization is implemented")) {
     return 1;
   }
 
