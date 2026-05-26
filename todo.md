@@ -1,55 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/11_aarch64_calls_file_consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Simplify calls.hpp
+Current Step ID: Step 4
+Current Step Title: Retire Remaining Stale Calls Build Entries
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Simplify `calls.hpp` completed after the target operand adapter
-merge. Removed stale public declarations from `calls.hpp` for helpers proven to
-have no external users, removed the now-unused `<string_view>` include, and
-kept the active target-emission APIs that still cross translation-unit
-boundaries.
+Step 4 - Retire Remaining Stale Calls Build Entries completed as a
+metadata-only cleanup verification. No stale `calls*` source/build entries were
+found after the adapter/header consolidation, so no implementation, include, or
+CMake edit was needed.
 
-AST and search checks used:
+Checks used:
 
-- `c4c-clang-tool function-signatures` inventoried the `calls.hpp` declaration
-  surface.
-- `c4c-clang-tool-ccdb list-symbols` inspected the relevant calls translation
-  units before cleanup.
-- `rg` proved removed declarations had no external clients beyond their owning
-  implementation files or existing narrower `dispatch_diagnostics.hpp`.
-- `c4c-clang-tool-ccdb find-definition` confirmed `align_to` and
-  `prepared_indirect_byval_extent_bytes` now resolve with anonymous-namespace
-  linkage in their implementation files.
+- `git ls-files 'src/backend/mir/aarch64/codegen/calls*'` showed the tracked
+  calls files are exactly `calls.cpp`, `calls.hpp`, `calls_byval_aggregates.cpp`,
+  `calls_common.cpp`, `calls_dispatch_bridge.cpp`,
+  `calls_dispatch_bridge.hpp`, and `calls_moves.cpp`.
+- `rg` over source, backend CMake, and focused backend tests found only active
+  calls build entries/includes/usages; retired names such as
+  `calls_argument_sources.cpp` and `calls_printing.cpp` do not appear in active
+  source/build/test references.
+- `c4c-clang-tool function-signatures` inventoried `calls.hpp` and confirmed
+  the remaining declarations are active cross-TU APIs.
+- `c4c-clang-tool-ccdb list-symbols` inspected each remaining calls translation
+  unit and confirmed they still own active behavior:
+  `calls.cpp` owns prepared call lookup/lowering, `calls_common.cpp` owns common
+  call utilities and target operand adapters, `calls_byval_aggregates.cpp` owns
+  byval aggregate lane helpers, `calls_moves.cpp` owns call-boundary/value move
+  lowering, and `calls_dispatch_bridge.cpp` owns the dispatch bridge call
+  materialization/publication behavior.
 
 Changed files:
 
-- `src/backend/mir/aarch64/codegen/calls_common.cpp`
-- `src/backend/mir/aarch64/codegen/calls_moves.cpp`
-- `src/backend/mir/aarch64/codegen/calls.hpp`
 - `todo.md`
-- `test_after.log`
 
 ## Suggested Next
 
-Supervisor should review/commit this completed Step 3 header simplification
-slice. The next coherent packet is Step 4 stale calls build-entry/file cleanup,
-but only for files or build entries that are now provably retired.
+Supervisor should review/commit this completed Step 4 metadata-only
+verification. Suggested Step 5 validation is an acceptance-oriented run that
+keeps the same focused backend subset green after the stale-entry audit, then
+escalates to the supervisor-chosen broader guard if this closes the calls
+consolidation milestone.
 
 ## Watchouts
 
-- This packet changed declaration visibility only; no semantic lowering,
-  dispatch bridge behavior, ABI classification, or test expectations changed.
-- `calls.hpp` still intentionally exposes active cross-TU target emission APIs,
-  including call-plan lookup/lowering, move lowering, target operand adapters,
-  selected call argument source conversion, and byval lane helpers used by
-  `calls_moves.cpp`.
-- `append_call_diagnostic` remains available through the existing narrower
-  `dispatch_diagnostics.hpp` owner rather than `calls.hpp`.
+- This packet made no implementation, build, include, semantic lowering,
+  dispatch bridge, ABI classification, or test expectation changes.
+- `src/backend/CMakeLists.txt` still intentionally lists active calls
+  translation units: `calls.cpp`, `calls_byval_aggregates.cpp`,
+  `calls_common.cpp`, `calls_dispatch_bridge.cpp`, and `calls_moves.cpp`.
 - Leave unrelated transient `review/` artifacts untouched.
 - Do not fold `calls_dispatch_bridge.*`, `dispatch.cpp`, or broad
   `calls_moves.cpp` behavior into this consolidation route.
@@ -58,6 +60,6 @@ but only for files or build entries that are now provably retired.
 
 Ran the supervisor-selected proof and preserved output in `test_after.log`:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_prepare_frame_stack_call_contract)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records)$'`
 
-Result: build succeeded; 3/3 focused tests passed.
+Result: build succeeded; 4/4 focused tests passed.
