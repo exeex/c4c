@@ -1,12 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/20_aarch64_codegen_layout_classification.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Build The Durable Classification Table
+Current Step ID: Step 5
+Current Step Title: Create Numbered Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
+
+Completed `Step 5: Create Numbered Follow-Up Ideas` by creating separate open
+ideas for the semantic migration slice and the mechanical AArch64 fold-back
+cleanup slices identified by the Step 4 classification table.
+
+Created follow-up ideas:
+
+- `ideas/open/34_aarch64_store_source_publication_planning.md`: semantic
+  `memory_store_sources.*` store-source publication planning moved forward to
+  shared prepare, BIR, or MIR planning.
+- `ideas/open/35_aarch64_calls_foldback_cleanup.md`: mechanical calls
+  fold-back for `calls_byval_aggregates.cpp`, `calls_common.cpp`,
+  `calls_dispatch_bridge.*`, and `calls_moves.cpp`.
+- `ideas/open/36_aarch64_dispatch_publication_foldback_cleanup.md`:
+  mechanical dispatch/publication fold-back for `dispatch_diagnostics.*` and
+  `dispatch_publication_common.hpp`.
+- `ideas/open/37_aarch64_branch_and_entry_foldback_cleanup.md`: mechanical
+  comparison/prologue fold-back for `comparison_branch_fusion.*` and
+  `prologue_entry_formals.cpp`.
+- `ideas/open/38_aarch64_module_compatibility_foldback_cleanup.md`:
+  mechanical module-compatibility fold-back for
+  `compatibility_projection.*`.
+- `ideas/open/39_aarch64_memory_foldback_after_store_source_planning.md`:
+  later mechanical memory fold-back for residual
+  `memory_store_sources.*` AArch64 emission after the semantic planning idea
+  has moved shared source facts forward.
+
+Semantic migration is intentionally isolated in idea 34. Idea 39 depends on
+that semantic migration before any target-local memory file consolidation can
+be accepted. The other mechanical ideas are scoped to AArch64 target-local
+owner consolidation and include concrete reviewer reject signals that block
+semantic authority changes, testcase-shaped shortcuts, and classification-only
+claims of implementation progress.
 
 Completed `Step 4: Build The Durable Classification Table` by merging the
 Step 1 inventory, Step 2/3 family classifications, and the Step 4
@@ -83,22 +116,20 @@ Coverage check:
 
 ## Suggested Next
 
-Proceed to `Step 5: Create Numbered Follow-Up Ideas` by creating separate,
-coherent ideas for:
-
-- semantic store-source publication planning from `memory_store_sources.*`;
-- mechanical AArch64 calls fold-back into `calls.cpp`;
-- mechanical AArch64 dispatch/publication fold-back for diagnostics/common
-  declarations;
-- mechanical AArch64 comparison/prologue/module-compatibility fold-back where
-  the supervisor wants tracked cleanup.
+Proceed to `Step 6: Close-Readiness Review` by verifying that only
+classification/lifecycle artifacts changed, that the new follow-up ideas cover
+all non-`keep-local` cleanup targets from the table, and that the final close
+note can distinguish expected fold-back files from intentionally retained
+local owners.
 
 ## Watchouts
 
 Keep semantic migration separate from mechanical file consolidation. In
 particular, `memory_store_sources.*` should not be treated as pure mechanical
 memory cleanup until the target-neutral producer/source-publication facts are
-moved into shared prepare or BIR/MIR publication planning.
+moved into shared prepare or BIR/MIR publication planning. That separation is
+now encoded as idea 34 for semantic planning and idea 39 for the later
+mechanical memory residue fold-back.
 
 The `keep-local (reference-owner)` rows are not cleanup requests. They are
 included only so the durable table covers every current AArch64 codegen
@@ -106,7 +137,6 @@ included only so the durable table covers every current AArch64 codegen
 
 ## Proof
 
-Not run. This was a classification-table-only packet, and the delegated proof
-explicitly said not to run build/tests and not to modify `test_after.log`
-because this step normalizes classification artifacts and the plan forbids
-root proof-log changes.
+Not run. Step 5 created follow-up idea markdown and updated `todo.md` only;
+the delegated packet forbids implementation, tests, build metadata, and root
+proof-log changes.
