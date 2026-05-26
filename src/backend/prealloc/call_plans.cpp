@@ -429,6 +429,77 @@ struct CallArgumentSourcePlan {
           candidate_name.substr(source_name.size()) == ".0");
 }
 
+struct LocalFrameAddressDerivedSource {
+  ValueNameId base_value_name = kInvalidValueName;
+  std::int64_t byte_delta = 0;
+};
+
+[[nodiscard]] std::optional<std::int64_t> immediate_pointer_byte_delta(
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return value.immediate;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<LocalFrameAddressDerivedSource>
+find_same_block_local_frame_address_derived_source(const PreparedNameTables& names,
+                                                   const bir::Function& function,
+                                                   std::size_t block_index,
+                                                   std::size_t instruction_index,
+                                                   ValueNameId source_value_name) {
+  if (source_value_name == kInvalidValueName ||
+      block_index >= function.blocks.size()) {
+    return std::nullopt;
+  }
+  const auto& block = function.blocks[block_index];
+  const std::size_t end = std::min(instruction_index, block.insts.size());
+  for (std::size_t inst_index = 0; inst_index < end; ++inst_index) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&block.insts[inst_index]);
+    if (binary == nullptr || binary->result.type != bir::TypeKind::Ptr ||
+        maybe_named_value_id(names, binary->result) !=
+            std::optional<ValueNameId>{source_value_name}) {
+      continue;
+    }
+
+    if (binary->lhs.type == bir::TypeKind::Ptr &&
+        binary->lhs.kind == bir::Value::Kind::Named) {
+      const auto base = maybe_named_value_id(names, binary->lhs);
+      const auto delta = immediate_pointer_byte_delta(binary->rhs);
+      if (base.has_value() && delta.has_value()) {
+        if (binary->opcode == bir::BinaryOpcode::Add) {
+          return LocalFrameAddressDerivedSource{.base_value_name = *base,
+                                                .byte_delta = *delta};
+        }
+        if (binary->opcode == bir::BinaryOpcode::Sub) {
+          return LocalFrameAddressDerivedSource{.base_value_name = *base,
+                                                .byte_delta = -*delta};
+        }
+      }
+    }
+
+    if (binary->opcode == bir::BinaryOpcode::Add &&
+        binary->rhs.type == bir::TypeKind::Ptr &&
+        binary->rhs.kind == bir::Value::Kind::Named) {
+      const auto base = maybe_named_value_id(names, binary->rhs);
+      const auto delta = immediate_pointer_byte_delta(binary->lhs);
+      if (base.has_value() && delta.has_value()) {
+        return LocalFrameAddressDerivedSource{.base_value_name = *base,
+                                              .byte_delta = *delta};
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] DirectCalleeResolution resolve_direct_callee(const bir::Module& module,
                                                            const bir::CallInst& call) {
   if (call.is_indirect) {
@@ -1831,32 +1902,61 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
       source_home != nullptr &&
       source_home->kind == PreparedValueHomeKind::Register &&
       selection.source_value_name.has_value()) {
+    const auto derived_source =
+        find_same_block_local_frame_address_derived_source(names,
+                                                           function,
+                                                           call_plan.block_index,
+                                                           call_plan.instruction_index,
+                                                           *selection.source_value_name);
+    const auto selected_source_value_name =
+        derived_source.has_value() ? derived_source->base_value_name
+                                   : *selection.source_value_name;
+    const std::int64_t selected_source_delta =
+        derived_source.has_value() ? derived_source->byte_delta : 0;
     if (const auto* materialization =
             find_latest_frame_slot_materialization(addressing,
                                                    names,
                                                    block_label,
                                                    call_plan.instruction_index,
-                                                   *selection.source_value_name,
+                                                   selected_source_value_name,
                                                    true);
         materialization != nullptr) {
       selection.kind =
           PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
       copy_materialization_source_selection_fields(selection, *materialization);
+      selection.source_stack_offset_bytes = std::nullopt;
+      selection.address_materialization_byte_offset =
+          materialization->byte_offset + selected_source_delta;
+      if (*selection.address_materialization_byte_offset >= 0) {
+        selection.source_stack_offset_bytes = static_cast<std::size_t>(
+            *selection.address_materialization_byte_offset);
+      }
+      selection.source_pointer_byte_delta = selected_source_delta;
       selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
       selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
-      return selection;
+      return selection.source_stack_offset_bytes.has_value()
+                 ? std::optional<PreparedCallArgumentSourceSelection>{selection}
+                 : std::nullopt;
     }
 
     const auto local_source =
         find_local_frame_address_source(names,
                                         prepared.stack_layout,
                                         function_name,
-                                        *selection.source_value_name);
+                                        selected_source_value_name);
     if (local_source.object != nullptr && local_source.slot != nullptr) {
+      const auto selected_stack_offset =
+          static_cast<std::int64_t>(local_source.slot->offset_bytes) +
+          selected_source_delta;
+      if (selected_stack_offset < 0) {
+        return std::nullopt;
+      }
       selection.kind =
           PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
       selection.source_slot_id = local_source.slot->slot_id;
-      selection.source_stack_offset_bytes = local_source.slot->offset_bytes;
+      selection.source_stack_offset_bytes =
+          static_cast<std::size_t>(selected_stack_offset);
+      selection.source_pointer_byte_delta = selected_source_delta;
       selection.source_size_bytes =
           local_source.object->size_bytes == 0 ? std::size_t{8}
                                                : local_source.object->size_bytes;
@@ -2131,6 +2231,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                    before_call_bundle,
                                                    arg_plan,
                                                    source_home);
+          arg_plan.allows_local_aggregate_address_publication =
+              arg_plan.source_selection.has_value() &&
+              arg_plan.source_selection->kind ==
+                  PreparedCallArgumentSourceSelectionKind::
+                      LocalFrameAddressMaterialization;
 
           call_plan.arguments.push_back(std::move(arg_plan));
         }

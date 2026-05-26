@@ -1307,6 +1307,69 @@ bir::Module make_local_frame_address_source_selection_contract_module() {
   return module;
 }
 
+bir::Module make_derived_local_frame_address_source_selection_contract_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "consume_derived_local_address_selection";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "arg0",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "derived_local_frame_address_source_selection_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "local.aggregate.0",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "local.aggregate"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "local.aggregate.0"),
+      .rhs = bir::Value::immediate_i64(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "consume_derived_local_address_selection",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "local.aggregate")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_stack_cross_call_preservation_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3763,6 +3826,54 @@ int check_local_frame_address_source_selection_contract() {
     return fail(
         "local frame address selection contract: missing prepared local frame "
         "address source fact");
+  }
+  return 0;
+}
+
+int check_derived_local_frame_address_source_selection_contract() {
+  const auto prepared = prepare_aarch64_module(
+      make_derived_local_frame_address_source_selection_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared,
+                               "derived_local_frame_address_source_selection_contract");
+  const auto* stack_object = find_stack_object(prepared, "local.aggregate.0");
+  const auto* frame_slot =
+      stack_object == nullptr ? nullptr : find_frame_slot(prepared, stack_object->object_id);
+  const auto source_name = prepared.names.value_names.find("local.aggregate");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1 ||
+      stack_object == nullptr || frame_slot == nullptr ||
+      source_name == c4c::kInvalidValueName) {
+    return fail(
+        "derived local frame address selection contract: missing prepared call or frame slot");
+  }
+
+  const auto& arg = call_plans->calls.front().arguments.front();
+  if (!arg.allows_local_aggregate_address_publication ||
+      arg.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+      !arg.source_selection.has_value()) {
+    return fail(
+        "derived local frame address selection contract: call argument lost "
+        "prepared source selection");
+  }
+  const auto& selection = *arg.source_selection;
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      selection.source_value_name != std::optional<c4c::ValueNameId>{source_name} ||
+      selection.source_home_kind !=
+          std::optional<prepare::PreparedValueHomeKind>{
+              prepare::PreparedValueHomeKind::Register} ||
+      selection.source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      selection.source_stack_offset_bytes !=
+          std::optional<std::size_t>{frame_slot->offset_bytes + 4U} ||
+      selection.source_pointer_byte_delta != std::optional<std::int64_t>{4} ||
+      selection.source_size_bytes != std::optional<std::size_t>{8} ||
+      selection.source_align_bytes != std::optional<std::size_t>{8}) {
+    return fail(
+        "derived local frame address selection contract: missing prepared "
+        "derived local frame address source fact");
   }
   return 0;
 }
@@ -6301,6 +6412,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_local_frame_address_source_selection_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_derived_local_frame_address_source_selection_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc =

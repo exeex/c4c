@@ -8,21 +8,25 @@ Current Step Title: Retire Local Aggregate Address Fallbacks
 
 ## Just Finished
 
-Step 2: Retire Local Aggregate Address Fallbacks completed for the owned
-AArch64 dispatch path. `calls_dispatch_bridge.cpp` now materializes local
-aggregate address call arguments only through the argument's prepared
-`LocalFrameAddressMaterialization` selected-source facts via
-`make_selected_call_argument_source`; absent, wrong-kind, incomplete, or
-unprintable selections fail closed with `MissingValueAuthority` diagnostics
-instead of reconstructing from `local_aggregate_address_frame_offset`.
-`backend_aarch64_instruction_dispatch_test.cpp` keeps the positive direct local
-aggregate address publication coverage and adds an absent-selection rejection
-check for direct dispatch.
+Step 2: Retire Local Aggregate Address Fallbacks regression follow-up
+completed. `call_plans.cpp` now publishes
+`LocalFrameAddressMaterialization` selected-source facts for same-block pointer
+add/sub derived local aggregate addresses, carrying the prepared byte delta into
+`source_stack_offset_bytes` instead of relying on target-local reconstruction.
+It also narrows the prepared `allows_local_aggregate_address_publication` flag
+to arguments that actually selected `LocalFrameAddressMaterialization`, so
+ordinary pointer call arguments keep using their scalar/global producer routes
+instead of being rejected by the local-frame fail-closed path.
+`backend_prepare_frame_stack_call_contract_test.cpp` now covers a derived local
+frame address selection with a nonzero byte delta. The direct absent-selection
+dispatch path remains fail-closed through the existing Step 2 diagnostics and
+manual dispatch coverage.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 2 slice, then delegate Step 3 to
-retire the indirect byval lane absent-selection fallback family.
+Supervisor can review and commit this Step 2 regression-fix slice, then decide
+whether Step 2 is complete or whether another targeted local aggregate address
+audit packet is needed before moving to Step 3.
 
 ## Watchouts
 
@@ -34,9 +38,13 @@ retire the indirect byval lane absent-selection fallback family.
   an alternate absent-selection path.
 - `clang-format` is not installed in this environment; formatting was kept
   manual.
+- The parent of `999fc953e` passes the four delegated c-testsuite cases. The
+  fixed regression was not only a bad derived local-frame offset; the broad
+  publication flag also routed ordinary pointer call arguments through the
+  local aggregate fail-closed gate.
 
 ## Proof
 
 Ran the delegated proof:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch)$"'`.
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00(164|180|195|216)_c)$"'`.
 Result: passed. Proof log: `test_after.log`.
