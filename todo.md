@@ -8,19 +8,18 @@ Current Step Title: Move Misowned Helpers to Existing Narrow Owners
 
 ## Just Finished
 
-Step 3 moved the prepared pointer-value load leaf helper into the existing
-memory/store-source owner. `emit_prepared_pointer_value_load_to_register` now
-lives in `memory_store_sources.cpp` and is declared by
-`memory_store_sources.hpp`; it is no longer declared or defined by
-`dispatch_value_materialization.*`. Generic value publication and
-stack-homed pointer load publication continue to call it through the narrower
-owner without behavior changes.
+Step 3 moved the prepared scalar FP binary publication route helper into the
+existing FP value materialization owner. `lower_scalar_fp_binary_publication_to_prepared_register`
+now lives in `fp_value_materialization.cpp` and is declared by
+`fp_value_materialization.hpp`; it is no longer declared or defined by
+`dispatch_value_materialization.*`. `dispatch.cpp` reaches the helper through
+the FP owner header without behavior changes.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 3 by extracting another clearly owned leaf
 family still hanging off `dispatch_value_materialization.cpp`, or route to
-review if the supervisor wants an ownership check after this memory/store-source
+review if the supervisor wants an ownership check after this FP-materialization
 move.
 
 ## Watchouts
@@ -60,6 +59,9 @@ move.
   dispatch lookup/publication helpers from the memory/store-source owner; keep
   it there unless a later route creates an even narrower prepared pointer-load
   owner.
+- `fp_value_materialization.cpp` now owns the prepared scalar FP binary
+  publication route helper and imports `dispatch_edge_copies.hpp` only for the
+  existing select-chain materialization instruction wrapper.
 
 ## Proof
 
@@ -67,15 +69,13 @@ Proof passed and is recorded in `test_after.log`.
 
 Command run exactly:
 `cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_prepared_memory_operand_records|backend_aarch64_call_boundary_owner)$' >> test_after.log 2>&1`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
 
-Result: build completed and 5/5 focused tests passed. AST-backed checks before
-the move confirmed `emit_prepared_pointer_value_load_to_register` was declared
-by `dispatch_value_materialization.hpp`, defined in
-`dispatch_value_materialization.cpp`, and directly called by
-`emit_value_publication_to_register` and
-`lower_stack_homed_pointer_value_load_publication`. AST-backed checks after the
-move confirmed it is declared by `memory_store_sources.hpp`, defined in
-`memory_store_sources.cpp`, no longer declared or defined by
-`dispatch_value_materialization.*`, and the two existing dispatch-value callers
-still reach the helper through the narrower owner.
+Result: build completed and 4/4 focused tests passed. AST-backed checks before
+the move confirmed `lower_scalar_fp_binary_publication_to_prepared_register`
+was declared by `dispatch_value_materialization.hpp`, defined in
+`dispatch_value_materialization.cpp`, and had no same-translation-unit caller
+inside that file. AST-backed checks after the move confirmed it is declared by
+`fp_value_materialization.hpp`, defined in `fp_value_materialization.cpp`, no
+longer found in `dispatch_value_materialization.cpp`, and still directly
+called by `dispatch_prepared_block` in `dispatch.cpp`.

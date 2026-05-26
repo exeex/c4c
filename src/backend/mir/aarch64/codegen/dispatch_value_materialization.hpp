@@ -52,13 +52,6 @@ lower_scalar_cast_publication_to_prepared_register(
     BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
-lower_scalar_fp_binary_publication_to_prepared_register(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_cast_publication_to_prepared_stack(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,

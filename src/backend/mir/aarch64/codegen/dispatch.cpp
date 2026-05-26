@@ -17,6 +17,7 @@
 #include "dispatch_value_materialization.hpp"
 #include "memory_store_sources.hpp"
 #include "f128.hpp"
+#include "fp_value_materialization.hpp"
 #include "float_ops.hpp"
 #include "globals.hpp"
 #include "i128_ops.hpp"

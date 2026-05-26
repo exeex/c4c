@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,5 +24,12 @@ namespace bir = c4c::backend::bir;
                                              abi::RegisterReference destination,
                                              std::uint8_t gp_scratch_index,
                                              std::vector<std::string>& lines);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_fp_binary_publication_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
 
 }  // namespace c4c::backend::aarch64::codegen
