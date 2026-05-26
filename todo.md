@@ -1,41 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/31_riscv_prepared_edge_publication_stack_source_policy_followup.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Define And Implement The Selected Target-Local Policy
+Current Step ID: Step 3
+Current Step Title: Add Focused Positive And Negative Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 - Define And Implement The Selected Target-Local Policy.
+Completed Step 3 - Add Focused Positive And Negative Coverage.
 
-Implemented large-offset concrete RISC-V `StackSlot -> Register`
-edge-publication loads in `src/backend/mir/riscv/codegen/emit.cpp`:
+Reviewed the focused large-offset RISC-V `StackSlot -> Register`
+edge-publication coverage in
+`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`; no
+additional test edits were needed.
 
-- Shared `edge_publications` lookup remains the only semantic authority:
-  emission still starts from `find_unique_indexed_prepared_edge_publication`
-  and an available prepared `Move`.
-- Stack-source acceptance now records concrete 4-byte and 8-byte stack sources
-  without rejecting large offsets in the source-home phase.
-- Register-destination emission keeps signed-12-bit offsets on direct
-  `lw <dst>, <offset>(sp)` and `ld <dst>, <offset>(sp)`.
-- Large concrete offsets now emit target-local address materialization through
-  `t6`: `li t6, <offset>`, `add t6, sp, t6`, then `lw` or `ld` from `0(t6)`.
-- Unsupported neighboring forms remain fail-closed: missing offset/size,
-  subword width, aggregate width, non-move publications, pointer-base
-  stack-destinations, and stack-destination large offsets are not broadened.
-
-Added focused coverage in
-`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` for
-large-offset size-4 and size-8 stack-source publications, including shared
-publication authority preservation and the no-publication fail-closed check.
+- Positive large-offset I32 coverage exists in
+  `check_large_offset_stack_slot_to_register_loads_use_shared_lookup` with
+  `li t6, 4096`, `add t6, sp, t6`, and `lw a1, 0(t6)`, plus publication
+  provenance checks.
+- Positive large-offset I64 coverage exists in the same helper with
+  `li t6, 8192`, `add t6, sp, t6`, and `ld a1, 0(t6)`, plus stack provenance
+  checks.
+- Missing-publication negative coverage exists on the large-offset helper by
+  clearing `publications_by_edge_destination` and requiring
+  `MissingPublication`.
+- Unsupported neighboring-form coverage exists in
+  `check_stack_source_fail_closed_forms`, including large-offset subword stack
+  sources, missing offset/size, aggregate-width sources, and non-move
+  publications. Existing stack-destination fail-closed coverage also preserves
+  the non-goal for source-to-stack destination large offsets.
 
 ## Suggested Next
 
-Proceed to Step 3/4 review by checking whether the focused large-offset
-coverage is sufficient for close-readiness, or add any supervisor-requested
-negative coverage for scratch/register alias policy before lifecycle review.
+Proceed to Step 4 validation/review of the RISC-V backend behavior using the
+supervisor-selected backend proof and diff inspection.
 
 ## Watchouts
 
@@ -49,8 +48,12 @@ negative coverage for scratch/register alias policy before lifecycle review.
 - The large-offset stack-source helper reserves `t6` as target-local address
   scratch for one edge-publication sequence; no broader scratch allocator or
   register-liveness model was introduced in this packet.
+- No separate I64 missing-publication negative was added because the shared
+  publication lookup is width-independent and already covered on the
+  large-offset path; positive I64 coverage proves the width-specific load
+  rendering.
 - Source-to-stack destination large offsets intentionally remain unsupported;
-  this packet only covers concrete `StackSlot -> Register` loads.
+  this plan only covers concrete `StackSlot -> Register` loads.
 
 ## Proof
 
