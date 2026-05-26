@@ -1,50 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/18_aarch64_cts_00181_runtime_regression_reopen.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce and classify the current failure
+Current Step ID: 2
+Current Step Title: Trace the regression against prior repair assumptions
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced and classified the current
-`c_testsuite_aarch64_backend_src_00181_c` runtime failure without
-implementation or expectation edits. The delegated proof rebuilt the current
-tree and reran the exact targeted CTest subset, which still fails as
-`[RUNTIME_NONZERO]` with `exit=Segmentation fault` and no captured
-stdout/stderr in `test_after.log`.
+Step 2 traced the current `Move` failure against the prior `00181` repair
+assumptions without implementation or expectation edits. The stale assumption
+is that the current value-publication register hazard check only needs to know
+whether a nested operand may read the outer target/scratch registers. That was
+sufficient for the earlier idea 13 closure, where `00181` passed after the
+pointer/index arithmetic repair, but it is no longer sufficient for the current
+nested materialization path.
 
-Inspected evidence:
+Current failing fact: the selected/prepared pointer base is present and usable
+(`source` in `x0`, `dest` in `x1`), but the outer pointer-add publication does
+not preserve that selected base while materializing the RHS byte offset. In
+`dispatch_value_materialization.cpp`, the outer add materializes the LHS into
+target `x9`, then materializes RHS `i * 4` into scratch `x10` with nested
+scratch `x9`. The multiply path emits `mov x9, #4` for the RHS immediate and
+therefore overwrites the already-materialized pointer base before the outer
+`add x9, x9, x10`. Generated `Move` consequently loads from `4 + i * 4`
+instead of `source + i * 4`, and repeats the same pattern for `dest[j]`.
 
-- Source: `tests/c/external/c-testsuite/src/00181.c` uses global arrays
-  `A`, `B`, and `C`, then passes their addresses into recursive `Hanoi` and
-  `Move(int *source, int *dest)`.
-- Generated assembly artifact:
-  `build/c_testsuite_aarch64_backend/src/00181.c.s`.
-- Linked binary artifact:
-  `build/c_testsuite_aarch64_backend/src/00181.c.bin`.
-- The assembly emits global storage for `A`, `B`, and `C` in `.data`, and the
-  linked symbol table places local `A`, `B`, and `C` symbols in `.data`.
-- The strongest first-fault evidence is in generated `Move`: the
-  `source[i] == 0` loop materializes `source + i * 4` once, then the next
-  predicate path does `mov x9, x0`, immediately overwrites it with
-  `mov x9, #4`, and loads from `4 + i * 4` instead of `source + i * 4`.
-  The same pattern appears for `dest[j]`, overwriting `x1` with `#4`.
-
-Most likely failing capability surface: AArch64 pointer-index address
-materialization / selected-source publication for loads from function-parameter
-pointers inside the recursive global-array path. This is adjacent to the prior
-idea 13 `pointer/index arithmetic` family and does not currently point first
-at global storage emission, recursion call preservation, test expectations, or
-absent-selection fallback policy.
+Owning repair surface: `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+should own the fix in the nested binary add/mul materialization hazard logic.
+The related helper `value_publication_may_read_register_index` in
+`src/backend/mir/aarch64/codegen/dispatch_publication.cpp` is read-only
+hazard analysis today; the missing or incorrect fact is a clobber/write fact
+for nested materialization scratch use, not a missing global, call-boundary, or
+absent-selection fallback fact.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: trace why the function-parameter pointer
-element-load lowering in `Move` lost the base register after the prior idea 13
-repair, then identify the owning AArch64 materialization/publication surface
-before editing implementation code.
+Execute Step 3 from `plan.md`: repair the semantic AArch64 value-publication
+lowering so nested RHS materialization cannot clobber an already materialized
+pointer base in the outer add/sub result register. Add focused coverage for the
+same nested pointer-index addressing shape before relying on `00181` alone.
 
 ## Watchouts
 
@@ -61,6 +56,12 @@ before editing implementation code.
 - In `Move`, generated lines around the first failing pattern are
   `build/c_testsuite_aarch64_backend/src/00181.c.s` lines 429-435 for
   `source[i]` and 477-483 for `dest[j]`.
+- The evidence points at register clobbering during nested value
+  materialization. A repair that only restores broad target-local fallback
+  source reconstruction would be route drift.
+- Keep the fix semantic: the same hazard can occur whenever an outer add/sub
+  keeps a pointer base in the target register while a nested RHS expression
+  uses that same register as its scratch.
 
 ## Proof
 
@@ -74,5 +75,5 @@ ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_s
 Combined output is captured in `test_after.log`. Build was up to date
 (`ninja: no work to do`); the targeted CTest subset ran one test and failed
 `c_testsuite_aarch64_backend_src_00181_c` with `[RUNTIME_NONZERO]` /
-`exit=Segmentation fault`. This proof is sufficient for the reproduction and
-classification packet; it intentionally does not prove a fix.
+`exit=Segmentation fault`. This proof is sufficient for the trace-only Step 2
+packet; it intentionally does not prove a fix.
