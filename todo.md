@@ -1,43 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/08_calls_argument_sources_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Retire Or Reduce The Translation Unit
+Current Step ID: Step 5
+Current Step Title: Validate Argument-Source Retirement
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 retired `src/backend/mir/aarch64/codegen/calls_argument_sources.cpp`.
+Step 5 validated the calls argument-source retirement after
+`src/backend/mir/aarch64/codegen/calls_argument_sources.cpp` deletion.
 
-The CMake source list no longer includes the deleted translation unit.
-Emission-local helpers moved to their owning files: indirect callee and memory
-return storage helpers now live in `calls.cpp`; stack destination, aggregate
-source, sret fallback, prior-preservation, and selected source detail helpers
-now live in `calls_moves.cpp`; the byval frame-slot lookup is localized in
-`calls_byval_aggregates.cpp`.
-
-`calls.hpp` now exposes only the still-shared selection-driven converter,
-`make_selected_call_argument_source`, because both direct move lowering and the
-dispatch bridge consume prepared source selections.
+Full build plus full-suite CTest passed with no failures. The active runbook
+appears exhausted from the executor side: Step 5's validation packet is complete,
+and lifecycle closure/deactivation remains a supervisor or plan-owner decision.
 
 ## Suggested Next
 
-Supervisor can review and commit the Step 4 deletion slice, then decide whether
-the active plan is exhausted or needs plan-owner lifecycle handling.
+Supervisor can review the completed retirement slice and route to plan-owner
+lifecycle handling if the source idea should be closed, deactivated, or
+replaced by follow-up work.
 
 ## Watchouts
 
-- `make_selected_call_argument_source` remains exported only because
-  `calls_dispatch_bridge.cpp` and `calls_moves.cpp` both still call it.
-- `make_sret_memory_return_address_source` is now local to `calls_moves.cpp`;
-  it still owns the memory-return fallback path when no ordinary argument
-  source selection is present.
-- `find_frame_slot_by_id` is no longer exported from `calls.hpp`; `cast_ops.cpp`
-  already had its own local lookup, and `calls_byval_aggregates.cpp` now owns
-  its byval lookup locally.
-- `clang-format` is not installed in this workspace; formatting was kept
-  manually in the existing style.
+- This packet did not inspect or modify implementation files.
+- Full-suite validation found no test failures after the Step 4 translation-unit
+  deletion.
+- Executor is not deciding lifecycle closure; the runbook only appears exhausted
+  because the delegated final validation step is complete.
 
 ## Proof
 
@@ -46,7 +36,7 @@ Passed; proof log preserved at `test_after.log`.
 Delegated command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure
 ```
 
-Result: build succeeded and all 162 `^backend_` tests passed.
+Result: build succeeded and all 3410 tests passed.
