@@ -12,8 +12,9 @@
 #include "dispatch_publication.hpp"
 #include "dispatch_publication_common.hpp"
 #include "fp_value_materialization.hpp"
-#include "memory_store_sources.hpp"
 #include "float_ops.hpp"
+#include "globals.hpp"
+#include "memory_store_sources.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
 
@@ -34,44 +35,6 @@ namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines) {
-  if (context.function.prepared == nullptr) {
-    return false;
-  }
-  const auto* access = prepared_memory_access(context, instruction_index);
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      !access->address.symbol_name.has_value() ||
-      !access->address.can_use_base_plus_offset) {
-    return false;
-  }
-  const auto symbol_name =
-      prepare::prepared_link_name(context.function.prepared->names,
-                                  *access->address.symbol_name);
-  const auto mnemonic = scalar_load_mnemonic(type);
-  const auto target_view = scalar_view_for_type(type);
-  const auto target = target_view.has_value()
-                          ? gp_register_name(target_index, *target_view)
-                          : std::nullopt;
-  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
-  if (symbol_name.empty() || !mnemonic.has_value() || !target.has_value() ||
-      !address.has_value()) {
-    return false;
-  }
-  const auto symbol =
-      relocation_operand(symbol_name,
-                         static_cast<std::size_t>(access->address.byte_offset));
-  lines.push_back("adrp " + *address + ", " + symbol);
-  lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
-  lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
-  return true;
-}
 [[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,

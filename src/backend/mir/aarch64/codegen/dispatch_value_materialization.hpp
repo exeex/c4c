@@ -14,14 +14,6 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    bir::TypeKind type,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
-
 [[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,

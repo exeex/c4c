@@ -5,7 +5,9 @@
 #include "mir/printer.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +22,13 @@ struct BlockAddressMaterializationIndex {
 
 [[nodiscard]] BlockAddressMaterializationIndex make_block_address_materialization_index(
     const module::BlockLoweringContext& context);
+[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    bir::TypeKind type,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,

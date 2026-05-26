@@ -1,6 +1,7 @@
 #include "globals.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "dispatch_publication_common.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -198,6 +199,23 @@ std::string prefixed_relocation_operand(std::string_view prefix, std::string_vie
   std::string operand(prefix);
   operand += label;
   return operand;
+}
+
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return nullptr;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return addressing != nullptr
+             ? prepare::find_prepared_memory_access(
+                   *addressing, context.control_flow_block->block_label, instruction_index)
+             : nullptr;
 }
 
 std::string tls_relocation_prefix(prepare::PreparedTlsRelocationKind kind) {
@@ -694,6 +712,45 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
 }
 
 }  // namespace
+
+[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    bir::TypeKind type,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return false;
+  }
+  const auto symbol_name =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *access->address.symbol_name);
+  const auto mnemonic = scalar_load_mnemonic(type);
+  const auto target_view = scalar_view_for_type(type);
+  const auto target = target_view.has_value()
+                          ? gp_register_name(target_index, *target_view)
+                          : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (symbol_name.empty() || !mnemonic.has_value() || !target.has_value() ||
+      !address.has_value()) {
+    return false;
+  }
+  const auto symbol =
+      relocation_operand(symbol_name,
+                         static_cast<std::size_t>(access->address.byte_offset));
+  lines.push_back("adrp " + *address + ", " + symbol);
+  lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
+  return true;
+}
 
 PreparedAddressMaterializationRecordResult make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,
