@@ -770,6 +770,294 @@ int verify_edge_publication_lookup_key_preserves_full_tuple() {
   return 0;
 }
 
+int verify_edge_publication_shared_source_and_parallel_copy_facts() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("edge_shared_facts");
+  const auto predecessor_label = names.block_labels.intern("edge_shared_facts.pred");
+  const auto successor_label = names.block_labels.intern("edge_shared_facts.succ");
+  const auto execution_label = names.block_labels.intern("edge_shared_facts.edge");
+  const auto source_name = names.value_names.intern("%edge_shared.source");
+  const auto missing_source_name =
+      names.value_names.intern("%edge_shared.missing_source");
+  const auto named_destination_name =
+      names.value_names.intern("%edge_shared.named_destination");
+  const auto immediate_destination_name =
+      names.value_names.intern("%edge_shared.immediate_destination");
+  const auto missing_destination_name =
+      names.value_names.intern("%edge_shared.missing_destination");
+  const auto same_value_name = names.value_names.intern("%edge_shared.same");
+  const auto cycle_source_name = names.value_names.intern("%edge_shared.cycle_source");
+  const auto cycle_destination_name =
+      names.value_names.intern("%edge_shared.cycle_destination");
+
+  const prepare::PreparedValueId source_id{41};
+  const prepare::PreparedValueId named_destination_id{42};
+  const prepare::PreparedValueId immediate_destination_id{43};
+  const prepare::PreparedValueId missing_destination_id{44};
+  const prepare::PreparedValueId same_value_id{45};
+  const prepare::PreparedValueId cycle_source_id{46};
+  const prepare::PreparedValueId cycle_destination_id{47};
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge_shared.source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.named_destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::immediate_i32(7),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.immediate_destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.missing_source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.missing_destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge_shared.same"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge_shared.same"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.cycle_source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.cycle_destination"),
+                  },
+              },
+          },
+      },
+      .parallel_copy_bundles = {
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::CriticalEdge,
+              .execution_block_label = execution_label,
+              .steps = {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 1,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 2,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 3,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind =
+                          prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp,
+                      .move_index = 4,
+                      .uses_cycle_temp_source = true,
+                  },
+              },
+              .has_cycle = true,
+          },
+      },
+  };
+
+  const prepare::PreparedValueLocationFunction locations{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = source_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"source_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = named_destination_id,
+              .function_name = function_name,
+              .value_name = named_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"named_destination_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = immediate_destination_id,
+              .function_name = function_name,
+              .value_name = immediate_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"immediate_destination_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = missing_destination_id,
+              .function_name = function_name,
+              .value_name = missing_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"missing_destination_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = same_value_id,
+              .function_name = function_name,
+              .value_name = same_value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"same_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = cycle_source_id,
+              .function_name = function_name,
+              .value_name = cycle_source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{8},
+          },
+          prepare::PreparedValueHome{
+              .value_id = cycle_destination_id,
+              .function_name = function_name,
+              .value_name = cycle_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"cycle_destination_home"},
+          },
+      },
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 9,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = source_id,
+                      .to_value_id = named_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .to_value_id = immediate_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{1},
+                      .source_immediate_i32 = std::int64_t{7},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = 999,
+                      .to_value_id = missing_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{2},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = same_value_id,
+                      .to_value_id = same_value_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .coalesced_by_assigned_storage = true,
+                      .source_parallel_copy_step_index = std::size_t{3},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = cycle_source_id,
+                      .to_value_id = cycle_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .uses_cycle_temp_source = true,
+                      .source_parallel_copy_step_index = std::size_t{4},
+                      .op_kind =
+                          prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
+          },
+      },
+  };
+
+  const auto lookups = prepare::make_prepared_edge_publication_lookups(
+      names, control_flow, &locations);
+  const auto* named = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, named_destination_id);
+  const auto* immediate = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, immediate_destination_id);
+  const auto* missing = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, missing_destination_id);
+  const auto* same = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, same_value_id);
+  const auto* cycle = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, cycle_destination_id);
+
+  if (named == nullptr || named->source_value_kind != bir::Value::Kind::Named ||
+      named->source_value_id != source_id ||
+      named->source_home != &locations.value_homes[0] ||
+      named->source_home_kind != prepare::PreparedValueHomeKind::Register) {
+    return fail("edge publication should preserve named source home facts");
+  }
+  if (immediate == nullptr ||
+      immediate->source_value_kind != bir::Value::Kind::Immediate ||
+      immediate->source_value_id.has_value() || immediate->source_home != nullptr ||
+      immediate->source_home_kind != prepare::PreparedValueHomeKind::None) {
+    return fail("edge publication should classify immediate sources without fabricating homes");
+  }
+  if (missing == nullptr || missing->source_value_kind != bir::Value::Kind::Named ||
+      missing->source_value_name != missing_source_name ||
+      missing->source_value_id.has_value() || missing->source_home != nullptr) {
+    return fail("edge publication should classify named sources even when no home exists");
+  }
+  if (same == nullptr || !same->source_and_destination_same_value_id ||
+      !same->matching_move_coalesced_by_assigned_storage ||
+      !same->matching_move_redundant_by_assigned_storage) {
+    return fail("edge publication should expose same-value and coalesced move facts");
+  }
+  if (cycle == nullptr || cycle->parallel_copy_step_index != std::size_t{4} ||
+      cycle->parallel_copy_step_kind !=
+          prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||
+      !cycle->parallel_copy_step_uses_cycle_temp_source ||
+      !cycle->parallel_copy_bundle_has_cycle ||
+      cycle->parallel_copy_execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::CriticalEdge ||
+      cycle->parallel_copy_execution_block_label != execution_label) {
+    return fail("edge publication should expose cycle/temp-save parallel-copy ordering facts");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -780,6 +1068,11 @@ int main() {
     return result;
   }
   if (const int result = verify_edge_publication_lookup_key_preserves_full_tuple();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_edge_publication_shared_source_and_parallel_copy_facts();
       result != 0) {
     return result;
   }

@@ -8,35 +8,34 @@ Current Step Title: Define Shared Edge Publication Facts
 
 ## Just Finished
 
-Completed the Step 2 prepared edge-publication lookup-key hardening slice.
+Completed the Step 2 shared edge-publication source/dependency facts slice.
 
-Replaced the bit-packed XOR edge-publication index key with an explicit
-target-neutral `PreparedEdgePublicationKey` tuple over predecessor label,
-successor label, and destination value id, with equality/hash support for the
-lookup map. Added focused shared coverage proving distinct overlapping
-successor/value-id and predecessor/successor id ranges remain separate through
-the public prepared edge-publication lookup helpers.
+Extended `PreparedEdgePublication` with target-neutral source classification,
+optional source home kind, same-source/destination value identity, matching
+move coalescing/redundancy, and parallel-copy step/bundle ordering metadata
+derived from existing prepared edge-transfer, value-home, move-resolution, and
+parallel-copy bundle records. Added focused shared coverage for named source
+homes, immediate sources, named sources without homes, same-value/coalesced
+copies, and cycle/temp-save step ordering metadata.
 
 ## Suggested Next
 
-Continue Step 2 by extending the shared edge-publication facts with
-target-neutral source classification/dependency records for plain home reads,
-rematerializable immediates, load-local/cast/binary/select materialization, and
-parallel-copy cycle/temp-save ordering.
+Continue Step 2 by deciding whether the remaining computed-expression source
+families need separate prepared producer facts before edge publications can
+classify load-local, cast, binary, and select materialization without scanning
+BIR producer instructions.
 
 ## Watchouts
 
-- The edge-publication map may still have normal hash-bucket collisions, but
-  key equality now compares the full logical tuple instead of relying on packed
-  bit ranges.
-- `PreparedEdgePublication` currently records source value id/name only when
-  the source is a named prepared value with a known value home. Immediate and
-  computed-expression classification is still the next Step 2 slice.
-- `destination_storage_kind` comes from the matching block-entry move when
-  available, otherwise from the destination home kind. It deliberately does not
-  interpret target register spelling.
-- The current unique lookup returns `nullptr` on ambiguity; callers that need
-  to diagnose duplicate publications should use the vector lookup.
+- Immediate and named-source-without-home cases are now classified at the edge
+  publication level, but computed load-local/cast/binary/select producer
+  identity is still not available as prepared data here.
+- `matching_move_redundant_by_assigned_storage` is currently true for explicit
+  coalesced moves or same source/destination value id; it does not infer
+  physical register spelling equivalence.
+- Parallel-copy step metadata is copied only when the matching prepared move
+  carries a `source_parallel_copy_step_index`; no target instruction or
+  MachineInstruction details are consulted.
 
 ## Proof
 

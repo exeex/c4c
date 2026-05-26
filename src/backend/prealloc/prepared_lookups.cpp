@@ -184,6 +184,27 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] const PreparedParallelCopyStep* find_edge_publication_parallel_copy_step(
+    const PreparedParallelCopyBundle* bundle,
+    const PreparedMoveResolution* move,
+    std::size_t* step_index) {
+  if (step_index != nullptr) {
+    *step_index = 0;
+  }
+  if (bundle == nullptr || move == nullptr ||
+      !move->source_parallel_copy_step_index.has_value()) {
+    return nullptr;
+  }
+  const auto index = *move->source_parallel_copy_step_index;
+  if (index >= bundle->steps.size()) {
+    return nullptr;
+  }
+  if (step_index != nullptr) {
+    *step_index = index;
+  }
+  return &bundle->steps[index];
+}
+
 [[nodiscard]] const bir::Function* prepared_bir_function(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
@@ -590,6 +611,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
           .successor_label = edge_transfer.successor_label,
           .destination_value = edge_transfer.destination_value,
           .source_value = edge_transfer.incoming_value,
+          .source_value_kind = edge_transfer.incoming_value.kind,
           .phase = PreparedMovePhase::BlockEntry,
           .carrier_kind = carrier_kind,
           .join_transfer = &join_transfer,
@@ -651,6 +673,27 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
                                           nullptr,
                                           value_locations,
                                           *source_name);
+        if (publication.source_value_id.has_value()) {
+          publication.source_home =
+              find_indexed_prepared_value_home(value_homes,
+                                               value_locations,
+                                               *publication.source_value_id);
+          if (publication.source_home != nullptr) {
+            publication.source_home_kind = publication.source_home->kind;
+          }
+        }
+      }
+      if (publication.source_value_id.has_value()) {
+        publication.source_and_destination_same_value_id =
+            *publication.source_value_id == publication.destination_value_id;
+      }
+      if (publication.parallel_copy_bundle != nullptr) {
+        publication.parallel_copy_bundle_has_cycle =
+            publication.parallel_copy_bundle->has_cycle;
+        publication.parallel_copy_execution_site =
+            publication.parallel_copy_bundle->execution_site;
+        publication.parallel_copy_execution_block_label =
+            publication.parallel_copy_bundle->execution_block_label;
       }
 
       publication.move = find_edge_publication_move(value_locations,
@@ -660,6 +703,25 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
                                                     &publication.move_bundle);
       if (publication.move != nullptr) {
         publication.destination_storage_kind = publication.move->destination_storage_kind;
+        publication.matching_move_coalesced_by_assigned_storage =
+            publication.move->coalesced_by_assigned_storage;
+        publication.matching_move_redundant_by_assigned_storage =
+            publication.move->coalesced_by_assigned_storage ||
+            publication.source_and_destination_same_value_id;
+        std::size_t step_index = 0;
+        const auto* step = find_edge_publication_parallel_copy_step(
+            publication.parallel_copy_bundle, publication.move, &step_index);
+        if (step != nullptr) {
+          publication.parallel_copy_step_index = step_index;
+          publication.parallel_copy_step_kind = step->kind;
+          publication.parallel_copy_step_uses_cycle_temp_source =
+              step->uses_cycle_temp_source;
+        } else if (publication.move->source_parallel_copy_step_index.has_value()) {
+          publication.parallel_copy_step_index =
+              publication.move->source_parallel_copy_step_index;
+          publication.parallel_copy_step_uses_cycle_temp_source =
+              publication.move->uses_cycle_temp_source;
+        }
       }
       publication.status = PreparedEdgePublicationLookupStatus::Available;
       lookups.publications.push_back(std::move(publication));

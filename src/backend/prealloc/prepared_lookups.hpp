@@ -76,11 +76,25 @@ struct PreparedEdgePublication {
   ValueNameId destination_value_name = kInvalidValueName;
   std::optional<PreparedValueId> source_value_id;
   ValueNameId source_value_name = kInvalidValueName;
+  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
+  const PreparedValueHome* source_home = nullptr;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   const PreparedValueHome* destination_home = nullptr;
   PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  bool source_and_destination_same_value_id = false;
+  bool matching_move_coalesced_by_assigned_storage = false;
+  bool matching_move_redundant_by_assigned_storage = false;
   PreparedMovePhase phase = PreparedMovePhase::BlockEntry;
   PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
+  std::optional<std::size_t> parallel_copy_step_index;
+  PreparedParallelCopyStepKind parallel_copy_step_kind =
+      PreparedParallelCopyStepKind::Move;
+  bool parallel_copy_step_uses_cycle_temp_source = false;
+  bool parallel_copy_bundle_has_cycle = false;
+  PreparedParallelCopyExecutionSite parallel_copy_execution_site =
+      PreparedParallelCopyExecutionSite::PredecessorTerminator;
+  std::optional<BlockLabelId> parallel_copy_execution_block_label;
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* edge_transfer = nullptr;
   const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;

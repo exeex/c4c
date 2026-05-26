@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -337,6 +338,15 @@ int check_edge_publication_lookup_reuses_block_entry_publication_data() {
           prepare::PreparedParallelCopyBundle{
               .predecessor_label = predecessor_label,
               .successor_label = successor_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::SuccessorEntry,
+              .execution_block_label = successor_label,
+              .steps = {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+              },
           },
       },
   };
@@ -374,6 +384,7 @@ int check_edge_publication_lookup_reuses_block_entry_publication_data() {
                       .destination_storage_kind =
                           prepare::PreparedMoveStorageKind::Register,
                       .destination_register_name = std::string{"publication_home"},
+                      .source_parallel_copy_step_index = std::size_t{0},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                       .authority_kind =
                           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -399,7 +410,21 @@ int check_edge_publication_lookup_reuses_block_entry_publication_data() {
               "edge-publication lookup should link published parallel-copy ownership") ||
       !expect(publication->source_value_id == prepare::PreparedValueId{31} &&
                   publication->destination_value_id == prepare::PreparedValueId{32},
-              "edge-publication lookup should preserve source and destination value ids")) {
+              "edge-publication lookup should preserve source and destination value ids") ||
+      !expect(publication->source_value_kind == bir::Value::Kind::Named &&
+                  publication->source_home == &locations.value_homes[0] &&
+                  publication->source_home_kind ==
+                      prepare::PreparedValueHomeKind::Register,
+              "edge-publication lookup should preserve source classification and home") ||
+      !expect(publication->parallel_copy_step_index == std::size_t{0} &&
+                  publication->parallel_copy_step_kind ==
+                      prepare::PreparedParallelCopyStepKind::Move &&
+                  !publication->parallel_copy_step_uses_cycle_temp_source &&
+                  publication->parallel_copy_execution_site ==
+                      prepare::PreparedParallelCopyExecutionSite::SuccessorEntry &&
+                  publication->parallel_copy_execution_block_label ==
+                      std::optional<c4c::BlockLabelId>{successor_label},
+              "edge-publication lookup should preserve parallel-copy execution metadata")) {
     return 1;
   }
 
