@@ -8,25 +8,17 @@ Current Step Title: Add focused same-feature coverage
 
 ## Just Finished
 
-Step 3 repaired the nested pointer-index materialization hazard. The local
-value-publication path now has a scratch-write hazard fact and recognizes
-same-block power-of-two multiply scales as shiftable, so nested RHS
-materialization is not incorrectly classified as harmless when it can clobber
-the outer target.
-
-The final live producer for the failing `Move` sequence was the edge/select
-chain publication copier, not the ordinary same-block value materializer. Its
-binary edge publication path now lowers `mul` by a non-negative power-of-two
-immediate as `lsl` before the generic RHS scratch path can overwrite the
-already-materialized pointer base. Generated `Move` now keeps `source`/`dest`
-in `x9`, emits `lsl x10, x10, #2`, and then performs `add x9, x9, x10`; the
-stale `mov x9, #4` / `mul x10, x10, x9` clobber is gone.
+Step 4 added focused same-feature backend coverage in
+`backend_aarch64_instruction_dispatch_test.cpp` for predecessor edge
+publication of `base + sext(index) * 4`. The new test asserts that the
+published pointer address keeps the pointer base in the target register,
+materializes the scaled index through a distinct scratch register, and does
+not reintroduce the stale `mov x9, #4` / `mul x10, x10, x9` clobber shape.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 3 code slice, then choose whether
-the active plan needs broader AArch64 validation or can advance to the next
-planned packet.
+Supervisor should review and commit this Step 4 coverage slice, then advance
+to broader validation and closure evidence.
 
 ## Watchouts
 
@@ -53,6 +45,11 @@ planned packet.
   stale producer was `dispatch_edge_copies.cpp` edge/select-chain publication.
   The expansion is still within the same AArch64 value-publication failure
   family and did not touch expectations or unrelated lowering routes.
+- CTest registers the backend dispatch executable as
+  `backend_aarch64_instruction_dispatch`, not
+  `backend_aarch64_instruction_dispatch_test`; the delegated proof command did
+  not execute the newly added backend coverage until the supervisor reran the
+  corrected scope.
 
 ## Proof
 
@@ -60,9 +57,10 @@ Ran exactly:
 
 ```sh
 cmake --build --preset default
-ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00181_c$'
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00181_c)$'
 ```
 
 Combined output is captured in `test_after.log`. The build completed after
-recompiling and relinking the affected backend targets. The targeted CTest
-subset ran one test and passed `c_testsuite_aarch64_backend_src_00181_c`.
+recompiling and relinking `backend_aarch64_instruction_dispatch_test`; the
+corrected CTest subset ran the focused backend dispatch test and
+`c_testsuite_aarch64_backend_src_00181_c`.

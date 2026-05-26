@@ -18639,6 +18639,216 @@ int predecessor_add_publication_preserves_rhs_register_before_target_clobber() {
   return 0;
 }
 
+int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.edge.scaled.pointer");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.edge.scaled.pointer.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.edge.scaled.pointer.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.scaled.pointer.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.scaled.pointer.join");
+  const auto base_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.base");
+  const auto index_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.index");
+  const auto extended_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.index64");
+  const auto offset_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.offset");
+  const auto address_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.address");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.edge.scaled.pointer",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.edge.scaled.pointer.pred",
+               .insts =
+                   {bir::CastInst{
+                        .opcode = bir::CastOpcode::SExt,
+                        .result = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.scaled.pointer.index64"),
+                        .operand = bir::Value::named(
+                            bir::TypeKind::I32, "%edge.scaled.pointer.index"),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Mul,
+                        .result = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.scaled.pointer.offset"),
+                        .operand_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.scaled.pointer.index64"),
+                        .rhs = bir::Value::immediate_i64(4),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(
+                            bir::TypeKind::Ptr, "%edge.scaled.pointer.address"),
+                        .operand_type = bir::TypeKind::Ptr,
+                        .lhs = bir::Value::named(
+                            bir::TypeKind::Ptr, "%edge.scaled.pointer.base"),
+                        .rhs = bir::Value::named(
+                            bir::TypeKind::I64, "%edge.scaled.pointer.offset"),
+                    }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.edge.scaled.pointer.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.edge.scaled.pointer.join",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{601},
+      .function_name = function_name,
+      .offset_bytes = 36,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{600},
+               .function_name = function_name,
+               .value_name = base_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{601},
+               .function_name = function_name,
+               .value_name = index_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{601},
+               .offset_bytes = std::size_t{36},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{602},
+               .function_name = function_name,
+               .value_name = extended_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x10"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{603},
+               .function_name = function_name,
+               .value_name = offset_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x10"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{604},
+               .function_name = function_name,
+               .value_name = address_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x9"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{600}, base_name, "x0"),
+           frame_slot_storage(prepare::PreparedValueId{601},
+                              index_name,
+                              prepare::PreparedFrameSlotId{601},
+                              36),
+           register_storage(prepare::PreparedValueId{602}, extended_name, "x10"),
+           register_storage(prepare::PreparedValueId{603}, offset_name, "x10"),
+           register_storage(prepare::PreparedValueId{604}, address_name, "x9")},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.back(),
+                                                   1);
+
+  const auto source =
+      bir::Value::named(bir::TypeKind::Ptr, "%edge.scaled.pointer.address");
+  const auto& pred_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = source,
+      .source_value = source,
+      .source_value_name = address_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = pred_label,
+      .source_producer_instruction_index = std::size_t{2},
+      .source_binary = &pred_binary,
+  };
+  std::vector<std::string> lines;
+  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
+                                                                join_context,
+                                                                source,
+                                                                1,
+                                                                0,
+                                                                9,
+                                                                lines,
+                                                                &publication)) {
+    return fail("expected scaled pointer edge publication to materialize");
+  }
+  if (lines != std::vector<std::string>{"ldr w9, [sp, #36]",
+                                        "sxtw x9, w9",
+                                        "lsl x9, x9, #2",
+                                        "add x0, x0, x9"}) {
+    std::string actual;
+    for (const auto& line : lines) {
+      actual += line + "\n";
+    }
+    return fail("expected scaled pointer publication to keep base and index carriers distinct:\n" +
+                actual);
+  }
+  for (const auto& line : lines) {
+    if (line == "mov x9, #4" || line == "mul x10, x10, x9") {
+      return fail("expected scaled index publication not to clobber the base carrier");
+    }
+  }
+  return 0;
+}
+
 int edge_publication_dependency_uses_prepared_root_producer() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -31545,6 +31755,11 @@ int main() {
   }
   if (const int status =
           predecessor_add_publication_preserves_rhs_register_before_target_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          predecessor_scaled_pointer_publication_keeps_base_and_index_distinct();
       status != 0) {
     return status;
   }
