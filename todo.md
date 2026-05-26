@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/25_riscv_prepared_edge_publication_stack_source_register_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Fail-Closed Authority
+Current Step ID: 4
+Current Step Title: Validate the RISC-V Stack Source Slice
 
 ## Just Finished
 
