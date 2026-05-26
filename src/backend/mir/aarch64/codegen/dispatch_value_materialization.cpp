@@ -17,6 +17,7 @@
 #include "memory_store_sources.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
+#include "variadic.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -35,25 +36,6 @@ namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load_local,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines) {
-  const auto address = prepared_va_list_field_address(context, load_local.slot_name);
-  if (!address.has_value()) {
-    return false;
-  }
-  const auto mnemonic = scalar_load_mnemonic(load_local.result.type);
-  const auto target_view = scalar_view_for_type(load_local.result.type);
-  const auto target =
-      target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
-  if (!mnemonic.has_value() || !target.has_value()) {
-    return false;
-  }
-  lines.push_back(std::string{*mnemonic} + " " + *target + ", " + *address);
-  return true;
-}
 [[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,

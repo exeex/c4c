@@ -13,6 +13,7 @@
 #include "instruction.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
+#include "variadic.hpp"
 
 #include <cstddef>
 #include <cstdint>
