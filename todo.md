@@ -1,26 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/12_dispatch_value_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Move Misowned Helpers to Existing Narrow Owners
+Current Step ID: Step 4
+Current Step Title: Thin `dispatch.cpp` Materialization Touchpoints
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 moved the two prepared scalar cast publication helpers into the existing
-cast owner. `lower_scalar_cast_publication_to_prepared_register` and
+Step 3 is complete. The final scalar cast packet moved the two prepared scalar
+cast publication helpers into the existing cast owner:
+`lower_scalar_cast_publication_to_prepared_register` and
 `lower_scalar_cast_publication_to_prepared_stack` now live in `cast_ops.cpp`
 and are declared by `cast_ops.hpp`; they are no longer declared or defined by
-`dispatch_value_materialization.*`. `dispatch.cpp` still reaches both helpers
-through the cast owner header without behavior changes.
+`dispatch_value_materialization.*`. The remaining
+`dispatch_value_materialization.hpp` surface is limited to the central
+`emit_value_publication_to_register` bridge plus the route-facing helpers
+`lower_local_slot_address_publication`,
+`lower_stack_homed_pointer_value_load_publication`, and
+`lower_scalar_mul_with_distinct_rhs_scratch`, which fits the Step 4 dispatch
+touchpoint thinning boundary.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 3 by extracting another clearly owned leaf
-family still hanging off `dispatch_value_materialization.cpp`, or route to
-review if the supervisor wants an ownership check after the scalar cast helper
-move.
+Next coherent packet: begin Step 4 by thinning one narrow `dispatch.cpp`
+materialization touchpoint without moving the central
+`emit_value_publication_to_register` bridge. Start with one of the remaining
+direct route hooks, update stale includes/local declarations in the same packet,
+and prove behavior with build proof plus focused AArch64
+instruction-dispatch/materialization tests selected by the supervisor.
 
 ## Watchouts
 
