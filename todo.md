@@ -1,72 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/20_aarch64_codegen_layout_classification.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Classify Dispatch And Publication Families
+Current Step ID: Step 3
+Current Step Title: Classify Calls, Memory, Comparison, Prologue, And Return Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 2: Classify Dispatch And Publication Families` by auditing the
-extra dispatch, publication, bridge, compatibility-projection, and
-materialization families against closure evidence from ideas 16, 18, and 19.
+Completed `Step 3: Classify Calls, Memory, Comparison, Prologue, And Return
+Helpers` by auditing the named helper families against the reference ARM owner
+layout and idea 17's absent-selection fallback closure.
 
 Closure evidence used:
 
-- Idea 16 closed with shared prepared edge-publication facts owning covered
-  edge/block-entry value-flow authority. AArch64 keeps target-local emission,
-  diagnostics, scratch, and hazard handling. Its close note explicitly says the
-  remaining AArch64 producer lookup is not the authority path for prepared edge
-  publications.
-- Idea 18 closed as a target-local register-hazard repair for nested
-  value/edge publication. The lesson is clobber avoidance during AArch64
-  materialization, not a reopened shared-authority migration.
-- Idea 19 closed after x86/RISC-V handoff review found no required shared
-  prepared contract repair. It records that scratch selection, clobber
-  avoidance, physical register spelling, register-class constraints, stack
-  operand syntax, move instruction spelling, branch/control-flow emission, and
-  final assembly formatting stay target-local.
+- Idea 17 closed after local aggregate address and indirect byval lane payload
+  fallback paths were retired or guarded. The replacement source of truth is
+  prepared `LocalFrameAddressMaterialization`, direct `FrameSlotAddress`, and
+  prepared `ByvalRegisterLane` selected-source facts, with incomplete facts
+  failing closed through diagnostics.
+- Idea 17 explicitly kept calls-file consolidation and new ABI classification
+  out of scope. That prevents treating current calls helper boundaries as
+  semantic migration debt merely because they are numerous.
+- The Step 2 audit already classified `calls_dispatch_bridge.*` as calls-owner
+  fold-back debt. Step 3 confirms that call-boundary materialization and
+  publication are AArch64 calls/ABI responsibilities as long as source choice
+  comes from prepared call plans.
 
-| Family | Bucket | Proposed owner / follow-up direction | Owner rationale |
+| Family | Bucket | Concrete owner-file recommendation | Rationale and follow-up direction |
 | --- | --- | --- | --- |
-| `dispatch.cpp`, `dispatch.hpp` | keep-local | Keep as the AArch64 block-dispatch orchestrator; later mechanical slimming can move helpers out of the main dispatcher only when another owner is already classified. | This file coordinates prepared-block traversal, target instruction lowering, diagnostics, call bridging, publication hooks, and terminator emission. Closure notes do not identify the dispatcher itself as semantic authority debt after prepared edge-publication migration. |
-| `dispatch_diagnostics.cpp`, `dispatch_diagnostics.hpp` | fold-back | Fold mechanically into `dispatch` or a narrow diagnostics section when the dispatch family is consolidated. | The helpers build AArch64 lowering diagnostics and unsupported-operation messages. They are target-local reporting utilities, not shared semantic facts, and have no separate reference ARM owner. |
-| `dispatch_edge_copies.cpp`, `dispatch_edge_copies.hpp` | keep-local | Keep as the AArch64 edge-copy emission and hazard helper for now; future cleanup should split only if fresh evidence finds semantic producer rediscovery outside prepared facts. | Idea 16 moved edge/block-entry value-flow authority to shared prepared facts and says remaining AArch64 producer lookup is not the authority path. Idea 18 reinforces that clobber avoidance during edge/value publication remains target-local. |
-| `dispatch_lookup.cpp`, `dispatch_lookup.hpp` | keep-local | Keep as the target-local lookup adapter around prepared value homes and local scalar state; do not create a move-forward idea without evidence that it owns new semantic facts. | The surface reads prepared ids/homes and same-block availability for emission decisions. Ideas 16 and 19 already validate shared prepared lookup authority, so this local adapter is consumer-side plumbing. |
-| `dispatch_producers.cpp`, `dispatch_producers.hpp` | keep-local | Keep as AArch64 same-block producer analysis used by local materialization and hazard checks; only a later focused audit should move a helper forward if it proves to encode target-neutral semantics not already in shared prepare. | Closure evidence rejects testcase-shaped producer lookup as authority, but also states remaining AArch64 producer lookup is not the prepared edge-publication authority path. The observed helpers support emission choices such as constants, select chains, globals, and current-block join copy detection. |
-| `dispatch_publication.cpp`, `dispatch_publication.hpp` | keep-local | Keep as AArch64 publication emission, retargeting, and clobber/hazard handling around shared prepared records. | Ideas 16 and 19 put publication facts in shared prepare while keeping scratch policy, register spelling, stack operands, and clobber avoidance in each target. Idea 18 specifically validates local hazard handling as necessary. |
-| `dispatch_publication_common.hpp` | fold-back | Fold into `dispatch_publication` during mechanical cleanup. | The declarations are AArch64 publication helper utilities for register aliases, frame-slot addressing, scalar widths, and register views. They support publication emission but do not justify a standalone owner. |
-| `dispatch_value_materialization.cpp`, `dispatch_value_materialization.hpp` | keep-local | Keep as target-local value materialization feeding publication registers; future cleanup may merge it into publication if file-boundary simplification is desired. | It emits AArch64 register materialization sequences from values using target registers and scratch registers. Idea 18 classifies this clobber-sensitive behavior as local emission responsibility. |
-| `prepared_value_home_materialization.cpp`, `prepared_value_home_materialization.hpp` | keep-local | Keep as the AArch64 consumer of prepared value-home facts. | Shared prepare owns the home facts; this family owns AArch64 loads/moves from homes into physical registers and stack addresses. Idea 19 explicitly keeps physical registers, stack syntax, and move spelling target-local. |
-| `constant_materialization.cpp`, `constant_materialization.hpp` | keep-local | Keep as AArch64 instruction-spelling support for integer constants. | Constant facts may be target-neutral, but MOV/MOVK-style integer materialization and register-width spelling are AArch64 emission details. No closure note supports moving this authority forward. |
-| `fp_value_materialization.cpp`, `fp_value_materialization.hpp` | keep-local | Keep as AArch64 FP value/immediate materialization and publication to prepared FP registers. | The family chooses target FP/GP scratch behavior and AArch64 instruction lines, which idea 19 says remain target-local. |
-| `compatibility_projection.cpp`, `compatibility_projection.hpp` | needs-more-evidence | Run a focused caller/projection audit before proposing removal, retention, or fold-back into module compilation/printing. Missing evidence: exact current callers, whether legacy MIR tests still require flat `CompatibilityProjection`, and whether all terminal assembly printing already walks `module::MachineModule` through the shared MIR printer. | The header labels the family compatibility-only for legacy MIR tests and migration callers, with terminal assembly expected to use shared MIR printing. That comment is directionally useful but not enough closure evidence to decide keep-local vs retire/fold-back. |
-| `calls_dispatch_bridge.cpp`, `calls_dispatch_bridge.hpp` | fold-back | Classify as a Step 3 calls-owner fold-back candidate; keep any call-boundary publication and materialization semantics target-local unless a later calls audit finds shared prepare debt. | Although dispatch invokes this bridge, the file owns call-plan consumption, call-boundary materialization, preserved stack publication, and call-result recording. These are AArch64 calls/ABI responsibilities, and idea 19 keeps call-boundary scratch/clobber/emission details target-local. |
+| `calls_byval_aggregates.cpp` | fold-back | Fold into `calls.cpp` or a calls-internal byval section when the calls owner is mechanically consolidated. | The helpers recognize prepared byval lane moves and translate complete `ByvalRegisterLane` source selections into AArch64 memory operands. Idea 17 says byval lane source choice now belongs to prepared facts, so this file is target-local operand adaptation rather than separate authority. |
+| `calls_common.cpp` | fold-back | Fold shared calls helpers back into `calls.cpp`; if kept split during transition, treat it as calls-private support, not a standalone owner. | It owns stack argument sizing, fixed-frame/`va_start` offset helpers, prepared register conversion, F128 carrier checks, scalar views, and diagnostics. These are calls/ABI lowering utilities around prepared facts and have no reference-style owner outside `calls`. |
+| `calls_dispatch_bridge.cpp`, `calls_dispatch_bridge.hpp` | fold-back | Fold into `calls.cpp` with the call lowering entry points, leaving dispatch as caller only. | The bridge consumes `PreparedCallPlan`, lowers before/after-call moves, materializes local aggregate addresses from prepared `LocalFrameAddressMaterialization`, handles dynamic-stack helper calls, and records call results. Its semantics are calls/ABI lowering; idea 17 confirms the former local-address fallback is now a prepared-source-selection diagnostic path, not a separate dispatch authority. |
+| `calls_moves.cpp` | fold-back | Fold into `calls.cpp` or a calls-private move section during mechanical calls consolidation. | The file is large, but the observed ownership is call-boundary move emission: prepared move bundles, ABI register/stack placements, preservation republication, before/after-call moves, before-return moves, and target register spelling. It consumes prepared move authority and should not be moved forward unless a later audit finds a concrete missing prepared field. |
+| `memory_dynamic_stack.cpp`, `memory_dynamic_stack.hpp` | keep-local | Keep as a separate AArch64 dynamic-stack helper under the memory/call boundary, or fold into `memory.cpp` only as mechanical cleanup if the file stays small. | The family recognizes stack-save/alloca/restore helper calls, requires prepared dynamic-stack operation authority, and emits AArch64 `sp` manipulation with x16/x17 scratch policy and stable-frame-pointer diagnostics. The semantic operation plan is already prepared; the remaining behavior is target-local frame/stack emission. |
+| `memory_store_sources.cpp`, `memory_store_sources.hpp` | needs-more-evidence | Run a focused memory-store source audit before deciding between fold-back into `memory.cpp` and a split where semantic producer/source-selection facts move to shared prepare. | The family clearly contains AArch64 store/load publication emission, pointer-base materialization, global-symbol materialization, and target scratch/register spelling. It also contains same-block producer predicates for narrow-store/wide-load, casts, selects, scalar FP binary producers, byval frame-slot loads, and pending store-global stack publications. Those query names are not enough to prove shared-authority debt, but they are enough to require a targeted audit before calling this purely mechanical. |
+| `comparison_branch_fusion.cpp`, `comparison_branch_fusion.hpp` | fold-back | Fold into `comparison.cpp` as the AArch64 comparison/branch lowering owner, keeping dispatch integration through hooks only. | The helper consumes prepared branch-condition facts and emits AArch64 compare/branch spellings, scratch-register materialization, and same-block emission shortcuts. The semantic branch condition is prepared; the file is target-local compare/branch emission and does not justify a standalone reference-style owner. |
+| `prologue_entry_formals.cpp` | fold-back | Fold into `prologue.cpp` under entry formal publication/prologue setup. | The file lowers prepared formal publication plans into AArch64 stores, loads, register moves, byval aggregate entry copies, and F128 entry handling. It computes AArch64 register slots and stack offsets for entry publication, but the owner is still prologue/ABI setup. No idea 17 evidence makes this shared prepare debt. |
+| `returns.cpp`, `returns.hpp` | keep-local | Keep as the AArch64 `returns` owner matching the reference `returns` family; do not create a fold-back follow-up unless later cleanup is just internal slimming. | `returns.*` already matches a reference-style owner and owns return record construction, print-form classification, immediate/symbol materialization classification, return-use effects, and prepared return terminator lowering. It consumes prepared value homes and emitted scalar state; missing operand authority reports diagnostics rather than rederiving sources. |
 
-No Step 2 family is currently classified as `move-forward`. The relevant
-semantic edge-publication authority from idea 16 has already moved to shared
-prepared facts, and idea 19 found no required shared prepared contract repair.
-The only unresolved Step 2 item is `compatibility_projection.*`, where the
-missing evidence is caller/projection usage rather than closure-note evidence.
+Step 3 semantic authority findings:
+
+- No Step 3 family is currently classified as `move-forward`.
+- Idea 17's relevant source-selection authority is already in prepared call
+  plans for local aggregate addresses and byval register lanes; AArch64 calls
+  code should remain a consumer that diagnoses missing prepared facts.
+- `memory_store_sources.*` is the only Step 3 family requiring more evidence
+  before mechanical consolidation. The exact missing evidence is whether its
+  same-block producer/source-publication predicates encode target-neutral
+  memory source-selection facts that belong in shared prepare, or whether they
+  only choose AArch64 emission sequences from facts already prepared elsewhere.
 
 ## Suggested Next
 
-Start `Step 3: Classify Calls, Memory, Comparison, Prologue, And Return
-Helpers`, with particular attention to the `calls_dispatch_bridge.*` fold-back
-candidate recorded above so the calls owner classification remains coherent.
+Start `Step 4: Build The Durable Classification Table` by merging the Step 1
+inventory, Step 2 classifications, and Step 3 classifications into one narrow
+table. Carry `compatibility_projection.*` and `memory_store_sources.*` as
+`needs-more-evidence` unless the supervisor delegates the missing audits first.
 
 ## Watchouts
 
-Do not create a new move-forward idea for dispatch producer/lookup helpers
-based only on file names. Ideas 16 and 19 say the shared prepared
-edge-publication authority is already the boundary, and the remaining AArch64
-lookup/producer helpers need fresh proof before being treated as semantic
-authority debt.
+Do not turn idea 17's retired fallback debt into a new calls move-forward idea.
+The closure note says the affected source-selection authority is now prepared
+or fails closed, and calls-file consolidation was explicitly out of scope.
 
-Carry `compatibility_projection.*` as `needs-more-evidence` until a caller audit
-answers whether the compatibility projection is still required by legacy tests
-or migration callers.
+For Step 4, keep semantic migration and mechanical fold-back follow-ups
+separate. `calls_*`, `comparison_branch_fusion.*`, and
+`prologue_entry_formals.cpp` look like mechanical fold-back debt; only
+`memory_store_sources.*` needs a semantic audit before its final follow-up
+shape is safe.
 
 ## Proof
 
