@@ -41,3 +41,25 @@ publication and edge-copy behavior at once.
 - A patch moves materialization into another vague bucket.
 - A patch reintroduces text-emission as an internal contract.
 - A patch expands testcase-shaped matching instead of using semantic facts.
+
+## Closure Summary
+
+Closed after Step 6 validation and final route review.
+
+- Value materialization authority is separated from generic AArch64 dispatch
+  traversal into named owner surfaces.
+- `dispatch.cpp` remains focused on traversal/routing and delegates remaining
+  materialization work to named owners.
+- Final review artifact:
+  `review/dispatch_value_materialization_final_route_review.md`.
+- Final review found no route drift, testcase overfit, expectation weakening,
+  unsupported downgrade, hidden broad cleanup, or insufficient proof.
+- Canonical proof artifact: `test_after.log`.
+- Final proof included `cmake --build --preset default`, the focused 14-test
+  materialization subset at 14/14 passing, and broader backend validation via
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` at 162/162
+  passing.
+- Close-time regression guard was run with
+  `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py`
+  against `test_before.log` and `test_after.log`; it reported PASS with no new
+  failures.
