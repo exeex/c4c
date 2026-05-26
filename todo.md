@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/17_aarch64_absent_selection_fallback_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Normalize Legacy Fallback Tests
+Current Step ID: Step 5
+Current Step Title: Validation and Closure Notes
 
 # Current Packet
 
@@ -64,8 +64,8 @@ retired indirect byval lane payload fallback. No test edit was needed.
 
 ## Suggested Next
 
-Supervisor should advance to Step 5 validation/closure review for the active
-fallback-retirement route.
+Execute Step 5 validation/closure review for the active fallback-retirement
+route.
 
 ## Watchouts
 
