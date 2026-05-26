@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/24_riscv_prepared_edge_publication_register_destination_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused RISC-V Coverage and Negative Proof
+Current Step ID: 4
+Current Step Title: Broaden to Additional Ready Source Homes
 
 # Current Packet
 
