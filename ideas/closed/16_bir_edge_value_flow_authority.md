@@ -63,6 +63,20 @@ The desired boundary is:
 - Existing AArch64 join, select, branch, and block-entry publication behavior
   remains covered by focused tests and backend validation.
 
+## Closure Note
+
+Closed after Step 5 boundary validation. Shared prepared edge-publication facts
+and helpers now carry the authority needed for covered edge/block-entry
+publication paths, while AArch64 consumes those prepared facts and keeps
+target-local emission, diagnostics, scratch, and hazard handling. Reviewer
+report `review/edge_authority_step5_boundary_review.md` found no blocking
+drift, testcase overfit, or expectation weakening; the remaining AArch64
+producer lookup is not the authority path for prepared edge publications.
+
+Close proof used `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R "^backend_"` in `test_after.log`, passing 162/162, plus
+the regression guard against `test_before.log`.
+
 ## Reviewer Reject Signals
 
 - A patch only renames `dispatch_edge_copies.*` without moving authority.
