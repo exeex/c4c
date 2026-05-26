@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/28_riscv_prepared_edge_publication_stack_source_policy_broadening.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement or Preserve Fail-Closed Stack-Source Policy
+Current Step ID: 3
+Current Step Title: Review Route Quality
 
 # Current Packet
 
@@ -28,8 +28,10 @@ Added focused coverage for:
 
 ## Suggested Next
 
-Supervisor should request review for Step 2 or route the next lifecycle packet
-according to the active plan.
+Step 3 review completed with no blocking findings in
+`review/idea28_riscv_8byte_stack_source_edge_publication_review.md`.
+Supervisor should route the handoff/closure decision according to the active
+plan.
 
 ## Watchouts
 
