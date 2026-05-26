@@ -290,6 +290,10 @@ struct EdgeSelectChainState {
     std::uint8_t register_index,
     const prepare::PreparedEdgePublication* prepared_publication,
     unsigned depth) {
+  if (depth == 0U && prepared_publication != nullptr &&
+      !prepared_edge_publication_source_matches_value(*prepared_publication, value)) {
+    return false;
+  }
   if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return false;
   }
@@ -469,6 +473,10 @@ struct EdgeSelectChainState {
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication) {
+  if (prepared_publication != nullptr &&
+      !prepared_edge_publication_source_matches_value(*prepared_publication, value)) {
+    return false;
+  }
   EdgeSelectChainState select_chain_state;
   return emit_edge_value_publication_to_register_impl(edge_context,
                                                       successor_context,
@@ -702,14 +710,16 @@ struct EdgeSelectChainState {
           rhs,
           producer->instruction_index,
           target_index,
-          dependency_publication);
+          dependency_publication,
+          dependency_publication != nullptr ? 1U : 0U);
       const bool lhs_reads_scratch = edge_value_publication_may_read_register_index(
           edge_context,
           dependency_successor_context,
           lhs,
           producer->instruction_index,
           scratch_index,
-          dependency_publication);
+          dependency_publication,
+          dependency_publication != nullptr ? 1U : 0U);
       if (!rhs_name.has_value()) {
         return fail_select();
       }
@@ -873,14 +883,16 @@ struct EdgeSelectChainState {
         rhs,
         producer->instruction_index,
         target_index,
-        dependency_publication);
+        dependency_publication,
+        dependency_publication != nullptr ? 1U : 0U);
     const bool lhs_reads_scratch = edge_value_publication_may_read_register_index(
         edge_context,
         dependency_successor_context,
         lhs,
         producer->instruction_index,
         scratch_index,
-        dependency_publication);
+        dependency_publication,
+        dependency_publication != nullptr ? 1U : 0U);
     if (rhs_reads_target && !lhs_reads_scratch) {
       if (!emit_edge_value_publication_to_register_impl(edge_context,
                                                         dependency_successor_context,

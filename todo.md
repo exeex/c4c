@@ -8,28 +8,37 @@ Current Step Title: Consume Prepared Edge Publications in AArch64
 
 ## Just Finished
 
-Continued Step 3 by comparing prepared select-root lowering with the generic
-select-chain path and threading prepared edge-publication select lowering
-through shared chain state. Nested prepared selected values now share the root
-label identity and monotonic label counter, and prepared edge select recursion
-has the same active selected-value cycle guard shape as generic select-chain
-materialization.
+Continued Step 3 with a focused exhaustion audit of the remaining
+`find_edge_named_producer` consumers and prepared-root fallback points in
+`dispatch_edge_copies.cpp`.
 
-Added focused instruction-dispatch coverage for a prepared select root whose
-selected value is another select, proving nested labels use the root select
-instruction/value identity with label indices `0` then `1`.
+Closed the remaining root-level prepared publication mismatch path:
+`emit_edge_value_publication_to_register` and the public root call to
+`edge_value_publication_may_read_register_index` now fail closed when a
+prepared publication does not describe the requested root value, instead of
+falling through to legacy producer rediscovery. Internal prepared operand
+hazard checks still run as non-root checks so scratch preservation keeps using
+prepared producer context.
+
+Added focused instruction-dispatch coverage proving mismatched prepared root
+emission and dependency checks fail closed.
 
 ## Suggested Next
 
-Continue Step 3 by having the supervisor review this prepared select-root slice
-for acceptance/commit readiness, then choose the next prepared edge-publication
-family or decide whether Step 3 is exhausted.
+Have the supervisor review the Step 3 prepared edge-publication slice for
+acceptance/commit readiness, then decide whether Step 3 is exhausted or whether
+another prepared edge-publication family needs a similarly focused audit.
 
 ## Watchouts
 
 - The repaired `00183.c` path now emits predecessor-edge multiply
   materialization before entering the join, e.g. `mul w13, w13, w9` on both
   ternary incoming edges.
+- Exhaustion audit finding: the only direct `find_edge_named_producer` consumers
+  left in `dispatch_edge_copies.cpp` are the non-prepared fallback branches of
+  `edge_value_publication_may_read_register_index` and
+  `emit_edge_value_publication_to_register_impl`; prepared root calls now either
+  consume `prepared_edge_publication_producer_context` or fail closed.
 - Non-root operands under a prepared root now search from the prepared producer
   context and before-index; non-prepared calls still use the existing semantic
   producer/value-home lookup. Do not add named-case producer searches to extend

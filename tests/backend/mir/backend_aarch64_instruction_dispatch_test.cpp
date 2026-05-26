@@ -18940,6 +18940,31 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                                         "add x0, x0, x9"}) {
     return fail("expected prepared root emission to ignore successor operand decoy");
   }
+  auto mismatched_publication = publication;
+  mismatched_publication.source_value =
+      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.emit.unrelated");
+  mismatched_publication.source_value_name = unrelated_name;
+  std::vector<std::string> mismatched_lines;
+  if (aarch64_codegen::emit_edge_value_publication_to_register(
+          pred_context,
+          join_context,
+          source,
+          1,
+          0,
+          9,
+          mismatched_lines,
+          &mismatched_publication)) {
+    return fail("expected mismatched prepared root emission to fail closed");
+  }
+  if (aarch64_codegen::edge_value_publication_may_read_register_index(
+          pred_context,
+          join_context,
+          source,
+          1,
+          3,
+          &mismatched_publication)) {
+    return fail("expected mismatched prepared root dependency check to fail closed");
+  }
   return 0;
 }
 
