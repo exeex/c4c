@@ -20,8 +20,8 @@ prior-preservation selected fallback in AArch64 call-boundary move lowering.
 
 - Compare the clean baseline `08a7f725a3f5` with the drifting baseline
   `11b33c8d0586`.
-- Inspect `src/backend/mir/aarch64/codegen/calls_moves.cpp` prior-preservation
-  call argument source selection.
+- Inspect `src/backend/mir/aarch64/codegen/calls_moves.cpp`
+  prior-preservation call argument source selection.
 - Reproduce or narrow at least one failing `c_testsuite_aarch64_backend_*`
   case.
 - Restore semantic call argument preservation without reviving broad
@@ -73,3 +73,30 @@ ideas:
 This idea was not moved to `ideas/closed/` because close-grade regression guard
 could not be accepted from the available canonical logs: `test_after.log` was
 absent, and the delegated ownership explicitly excluded test log mutation.
+
+## Closure Note
+
+Closed after validation-only proof. Step 3 close-readiness validation recorded
+matching focused canonical regression evidence for the repaired
+prior-preservation/source-selection representative set:
+`backend_aarch64_instruction_dispatch`,
+`c_testsuite_aarch64_backend_src_00173_c`,
+`c_testsuite_aarch64_backend_src_00179_c`,
+`c_testsuite_aarch64_backend_src_00186_c`, and
+`c_testsuite_aarch64_backend_src_00187_c`.
+
+The close gate was rerun with matching canonical logs:
+
+```sh
+cmake --build --preset default > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00173_c|c_testsuite_aarch64_backend_src_00179_c|c_testsuite_aarch64_backend_src_00186_c|c_testsuite_aarch64_backend_src_00187_c)$' >> test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, before 5/5 and after 5/5 with no new failures.
+
+The supervisor-recorded broader backend closure validation also passed before
+close handoff: `cmake --build --preset default` followed by
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` reported 162/162
+backend tests passed. No implementation files, tests, expectations, or review
+artifacts were changed by the validation-only close route.
