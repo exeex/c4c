@@ -8,80 +8,80 @@ Current Step Title: Validation and Closure Notes
 
 ## Just Finished
 
-Step 4: Normalize Legacy Fallback Tests completed as an audit/no-op
-normalization packet. The Step 1 fallback-related tests in the owned files now
-map as follows:
+Step 5: Validation and Closure Notes completed the closure-note packet by
+recording the final retired-path mapping for the active fallback-retirement
+route:
 
-- Positive prepared local-frame address behavior:
-  `backend_aarch64_instruction_dispatch_test.cpp`
-  `missing_local_aggregate_frame_slot_call_argument_materializes_object_address`,
-  `block_dispatch_publishes_direct_local_aggregate_address_call_argument`, and
-  `block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument`
-  consume explicit `FrameSlotAddress` or `LocalFrameAddressMaterialization`
-  source selections and assert `add xN, sp, #offset` publication from the
-  selected frame object instead of a spill or legacy lookup.
-- Missing/incomplete local-frame selected-source diagnostics:
-  `incomplete_frame_slot_address_selection_does_not_rederive_value_source`,
-  `absent_frame_slot_address_selection_does_not_rederive_legacy_value_source`,
-  and `incomplete_local_frame_address_selection_does_not_rederive_legacy_lookup`
-  require `MissingValueAuthority` or the prepared
-  `LocalFrameAddressMaterialization` diagnostic rather than source
-  rederivation.
-- Local-address unrelated guards:
-  `block_dispatch_keeps_byval_aggregate_argument_out_of_local_address_fallback`
-  and `block_dispatch_keeps_va_start_intrinsic_out_of_local_address_fallback`
-  remain guard coverage for non-local-aggregate ABI arguments and intentionally
-  assert that those shapes do not enter the local-address publication route.
-- Positive prepared byval behavior:
-  `prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane`,
-  `register_home_small_byval_aggregate_call_argument_loads_payload_slots`,
-  `stack_home_two_byte_byval_aggregate_call_argument_loads_payload_slots`,
-  `overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes`,
-  `large_byval_aggregate_indirect_argument_materializes_frame_address`, and
-  `backend_aarch64_call_boundary_owner_test.cpp`
-  `byval_caller_publishes_composite_gpr_lanes_not_object_pointer` use complete
-  `ByvalRegisterLane` selected-source facts or the remaining intended indirect
-  frame-address path and assert payload/address semantics instead of broad
-  BIR-store rediscovery.
-- Missing/incomplete byval selected-source diagnostics:
-  `incomplete_byval_register_lane_selection_does_not_rederive_register_home`,
-  `incomplete_byval_stack_lane_selection_does_not_rederive_frame_slot_home`,
-  `incomplete_byval_stack_register_lane_selection_does_not_rederive_frame_slot_home`,
-  and the indirect byval absent/incomplete checks in
-  `large_byval_aggregate_indirect_argument_materializes_frame_address` fail
-  closed with `MissingValueAuthority` rather than deriving payload bytes from
-  the register home, frame-slot home, or old payload-store reconstruction.
-- Prepared-front-end contract coverage:
-  `backend_prepare_frame_stack_call_contract_test.cpp`
-  `check_local_frame_address_source_selection_contract` and
-  `check_missing_local_aggregate_frame_slot_address_source_selection_contract`
-  assert that the prepared call plan publishes
-  `LocalFrameAddressMaterialization` facts. These are positive prepared-fact
-  contracts, not legacy fallback expectations.
+- Retired local aggregate address publication fallback:
+  `calls_dispatch_bridge` no longer rederives an address from legacy local
+  stack/value-source state when the call argument source selection is absent.
+  Replacement authority is
+  `PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization`,
+  populated before AArch64 lowering with the selected stack offset and pointer
+  delta. AArch64 consumes that prepared materialization to publish the local
+  aggregate object address.
+- Retired direct/zero-offset local frame address reconstruction:
+  direct `FrameSlotAddress` and derived
+  `LocalFrameAddressMaterialization` facts are now the only supported prepared
+  authorities for the owned local-address path. Missing, absent, or internally
+  incomplete selected-source records fail closed with `MissingValueAuthority`
+  or the prepared local-frame-address diagnostic; they do not fall back to
+  source rederivation.
+- Unreachable non-local local-address fallback entries:
+  byval aggregate arguments and `va_start` intrinsic arguments are intentionally
+  outside the local aggregate address publication route. Their guard coverage
+  proves they do not enter the retired local-address fallback rather than
+  mapping to a replacement local-address authority.
+- Retired indirect byval register-lane payload-store scan:
+  `calls_byval_aggregates` no longer reconstructs register-lane payload bytes
+  from target-local BIR store scans, register homes, or frame-slot homes.
+  Replacement authority is a complete
+  `PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane` record consumed
+  through the prepared-source adapter.
+- Retired indirect byval register payload publication fallback:
+  register-home lanes now publish payload from the prepared
+  `ByvalRegisterLane` source fields: payload slot, payload offset, payload
+  size, alignment, lane extent, and source instruction facts. Missing or wrong
+  selected-source records fail closed with `MissingValueAuthority`.
+- Retired indirect byval stack lane payload publication fallback:
+  stack-home and overflow lanes use the same prepared `ByvalRegisterLane`
+  payload authority, with prealloc filling the selected lane payload
+  slot/offset/size/alignment from prepared addressing facts before lowering.
+  Missing, incomplete, or mixed stack/register lane source records fail closed
+  instead of deriving bytes from old frame-slot homes or payload-store
+  reconstruction.
+- Remaining intended indirect byval address publication:
+  large indirect byval aggregate address materialization remains a prepared
+  frame-address path, not the retired lane-payload fallback. Its absent or
+  incomplete prepared facts diagnose rather than recovering payload bytes from
+  target-local state.
 
-No owned test still expects the retired local-aggregate address fallback or the
-retired indirect byval lane payload fallback. No test edit was needed.
+No owned route remains broad or target-local for the retired local aggregate
+address publication path or the retired indirect byval register/stack lane
+payload publication path.
 
 ## Suggested Next
 
-Execute Step 5 validation/closure review for the active fallback-retirement
-route.
+Hand this Step 5 closure state to the plan owner for lifecycle closure decision
+for `ideas/open/17_aarch64_absent_selection_fallback_retirement.md`.
 
 ## Watchouts
 
-- Do not edit the source idea for routine audit findings.
-- Do not treat expectation downgrades or fallback renames as progress.
-- Keep `review/` artifacts transient.
-- `clang-format` is not installed in this environment; formatting was kept
-  manual.
-- `calls_byval_aggregates.cpp` is now intentionally small; remaining byval
-  authority is the selected-source adapter, not BIR payload-store analysis.
-- This packet did not rename guard tests containing `fallback` in their names;
-  those names describe exclusion from the retired route, not a supported legacy
-  expectation.
+- This packet is lifecycle/audit note work only; no implementation, test,
+  `plan.md`, source idea, review artifact, or proof-log edit was made.
+- `review/absent_selection_fallback_step5_review.md` found no testcase-overfit
+  or expectation weakening, but required this final mapping note before
+  closure.
+- Broad validation is acceptable as matched-regression evidence only with the
+  known `c_testsuite_aarch64_backend_src_00181_c` failure called out; do not
+  recast that known failure as new fallback-retirement work.
 
 ## Proof
 
-Ran the delegated proof:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner)$"'`.
-Result: passed. Proof log: `test_after.log`.
+No new build/test proof was delegated for this closure-note packet.
+
+Supervisor Step 5 validation already captured: broader
+`backend_|c_testsuite_aarch64_backend_` before/after logs both pass 381/382 and
+fail only the known `c_testsuite_aarch64_backend_src_00181_c`; focused backend
+subsets for the fallback-retirement route were green. Canonical proof logs:
+`test_before.log` and `test_after.log`.
