@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <variant>
 
 namespace c4c::backend::aarch64::codegen {
@@ -92,27 +91,6 @@ namespace abi = c4c::backend::aarch64::abi;
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index) {
-  if (!argument.source_selection.has_value()) {
-    return std::nullopt;
-  }
-  if (auto selected = make_selected_frame_slot_source(
-          context,
-          argument,
-          &source_home,
-          *argument.source_selection,
-          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
-          false,
-          instruction_index)) {
-    return selected;
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -159,32 +137,6 @@ namespace abi = c4c::backend::aarch64::abi;
       .align_bytes = call_plan.memory_return->align_bytes,
       .can_use_base_plus_offset = true,
   };
-}
-
-[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index) {
-  if (!argument.source_selection.has_value()) {
-    return std::nullopt;
-  }
-  return make_selected_frame_slot_source(
-      context,
-      argument,
-      &source_home,
-      *argument.source_selection,
-      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
-      true,
-      instruction_index);
-}
-
-[[nodiscard]] bool local_frame_address_name_matches(std::string_view source_name,
-                                                    std::string_view candidate_name) {
-  return candidate_name == source_name ||
-         (candidate_name.size() == source_name.size() + 2 &&
-          candidate_name.compare(0, source_name.size(), source_name) == 0 &&
-          candidate_name.substr(source_name.size()) == ".0");
 }
 
 [[nodiscard]] std::optional<MemoryOperand> make_selected_local_frame_address_source(
@@ -242,81 +194,50 @@ namespace abi = c4c::backend::aarch64::abi;
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_local_frame_address_call_argument_source(
+[[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedValueHome* source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
     std::size_t instruction_index) {
-  if (argument.source_selection.has_value()) {
-    if (auto selected = make_selected_local_frame_address_source(
-            context, argument, source_home, *argument.source_selection,
-            instruction_index)) {
-      return selected;
-    }
+  if (selection.kind != expected_kind) {
     return std::nullopt;
   }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      source_home.value_name == c4c::kInvalidValueName ||
-      argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
-      !argument.allows_local_aggregate_address_publication) {
-    return std::nullopt;
-  }
-
-  const auto source_name =
-      prepare::prepared_value_name(context.function.prepared->names,
-                                   source_home.value_name);
-  if (source_name.empty()) {
-    return std::nullopt;
-  }
-
-  const prepare::PreparedAddressMaterialization* selected = nullptr;
-  if (const auto* addressing = prepare::find_prepared_addressing(
-          *context.function.prepared, context.function.control_flow->function_name);
-      addressing != nullptr) {
-    for (const auto& materialization : addressing->address_materializations) {
-      if (materialization.block_label != context.control_flow_block->block_label ||
-          materialization.inst_index > instruction_index ||
-          materialization.kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
-          !materialization.frame_slot_id.has_value() ||
-          !materialization.result_value_name.has_value()) {
-        continue;
-      }
-      const auto materialized_name =
-          prepare::prepared_value_name(context.function.prepared->names,
-                                       *materialization.result_value_name);
-      if (!local_frame_address_name_matches(source_name, materialized_name)) {
-        continue;
-      }
-      if (selected != nullptr && selected->inst_index == materialization.inst_index) {
+  switch (expected_kind) {
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      if (source_home == nullptr) {
         return std::nullopt;
       }
-      if (selected == nullptr || selected->inst_index < materialization.inst_index) {
-        selected = &materialization;
+      return make_selected_frame_slot_source(
+          context,
+          argument,
+          source_home,
+          selection,
+          expected_kind,
+          false,
+          instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      return make_selected_frame_slot_source(
+          context,
+          argument,
+          source_home,
+          selection,
+          expected_kind,
+          true,
+          instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::
+        LocalFrameAddressMaterialization:
+      if (source_home == nullptr) {
+        return std::nullopt;
       }
-    }
+      return make_selected_local_frame_address_source(
+          context, argument, *source_home, selection, instruction_index);
+    case prepare::PreparedCallArgumentSourceSelectionKind::None:
+    case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+    case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+      return std::nullopt;
   }
-  if (selected != nullptr) {
-    return MemoryOperand{
-        .surface = RecordSurfaceKind::MachineInstructionNode,
-        .support = MemoryOperandSupportKind::Prepared,
-        .function_name = selected->function_name,
-        .block_label = selected->block_label,
-        .instruction_index = selected->inst_index,
-        .result_value_id = argument.source_value_id,
-        .result_value_name = source_home.value_name,
-        .base_kind = MemoryBaseKind::FrameSlot,
-        .frame_slot_id = selected->frame_slot_id,
-        .byte_offset = selected->byte_offset,
-        .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = source_home.size_bytes.value_or(8),
-        .align_bytes = source_home.align_bytes.value_or(8),
-        .address_space = selected->address_space,
-        .can_use_base_plus_offset = true,
-    };
-  }
-
   return std::nullopt;
 }
 

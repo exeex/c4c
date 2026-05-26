@@ -1438,22 +1438,15 @@ make_immediate_cast_call_argument_publication_instruction(
           source_selection->kind ==
               prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) ||
          (source_selection == nullptr &&
-          (make_sret_memory_return_address_source(
-               context, call_plan, *argument, instruction_index)
-               .has_value() ||
-           make_frame_slot_call_argument_address_source(
-               context, *argument, *source_home, instruction_index)
-               .has_value())));
+          make_sret_memory_return_address_source(
+              context, call_plan, *argument, instruction_index)
+              .has_value()));
     const bool local_frame_address_argument =
         source_home != nullptr &&
-        ((source_selection != nullptr &&
-          source_selection->kind ==
-              prepare::PreparedCallArgumentSourceSelectionKind::
-                  LocalFrameAddressMaterialization) ||
-         (source_selection == nullptr &&
-          make_local_frame_address_call_argument_source(
-              context, *argument, *source_home, instruction_index)
-              .has_value()));
+        source_selection != nullptr &&
+        source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization;
     const bool register_byval_argument =
         is_aarch64_byval_register_lane_move(move) ||
         (source_home != nullptr &&
@@ -1781,9 +1774,16 @@ make_immediate_cast_call_argument_publication_instruction(
         }
       }
     } else {
-      address_source =
-          make_local_frame_address_call_argument_source(
-              context, *argument, *source_home, instruction_index);
+      if (argument->source_selection.has_value()) {
+        address_source = make_selected_call_argument_source(
+            context,
+            *argument,
+            source_home,
+            *argument->source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization,
+            instruction_index);
+      }
       source = address_source;
       if (!source.has_value() && argument->source_selection.has_value() &&
           argument->source_selection->kind ==
@@ -2093,9 +2093,15 @@ make_immediate_cast_call_argument_publication_instruction(
         return fragmented;
       }
     }
-    if (!source.has_value() && source_home->size_bytes.has_value()) {
-      source =
-          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+    if (!source.has_value() && source_home->size_bytes.has_value() &&
+        argument->source_selection.has_value()) {
+      source = make_selected_call_argument_source(
+          context,
+          *argument,
+          source_home,
+          *argument->source_selection,
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          instruction_index);
       if (source.has_value()) {
         source->size_bytes = *lane_size;
       }
@@ -2130,8 +2136,16 @@ make_immediate_cast_call_argument_publication_instruction(
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       scalar_fp_view_from_register_name(binding->destination_register_name).has_value()) {
-    auto source =
-        make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+    auto source = argument->source_selection.has_value()
+                      ? make_selected_call_argument_source(
+                            context,
+                            *argument,
+                            source_home,
+                            *argument->source_selection,
+                            prepare::PreparedCallArgumentSourceSelectionKind::
+                                FrameSlotValue,
+                            instruction_index)
+                      : std::optional<MemoryOperand>{};
     const auto destination_register_placement =
         binding->destination_register_placement.has_value()
             ? binding->destination_register_placement
@@ -2185,8 +2199,16 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
-    auto source =
-        make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+    auto source = argument->source_selection.has_value()
+                      ? make_selected_call_argument_source(
+                            context,
+                            *argument,
+                            source_home,
+                            *argument->source_selection,
+                            prepare::PreparedCallArgumentSourceSelectionKind::
+                                FrameSlotValue,
+                            instruction_index)
+                      : std::optional<MemoryOperand>{};
     const auto destination_register_placement =
         binding->destination_register_placement.has_value()
             ? binding->destination_register_placement
@@ -2249,14 +2271,25 @@ make_immediate_cast_call_argument_publication_instruction(
           address_source = make_sret_memory_return_address_source(
               context, call_plan, *argument, instruction_index);
           if (!address_source.has_value()) {
-            address_source = make_frame_slot_call_argument_address_source(
-                context, *argument, *source_home, instruction_index);
+            address_source = make_selected_call_argument_source(
+                context,
+                *argument,
+                source_home,
+                *argument->source_selection,
+                prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+                instruction_index);
           }
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::
             LocalFrameAddressMaterialization:
-          address_source = make_local_frame_address_call_argument_source(
-              context, *argument, *source_home, instruction_index);
+          address_source = make_selected_call_argument_source(
+              context,
+              *argument,
+              source_home,
+              *argument->source_selection,
+              prepare::PreparedCallArgumentSourceSelectionKind::
+                  LocalFrameAddressMaterialization,
+              instruction_index);
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
           if (const auto byval_size = selected_byval_lane_extent_bytes(
@@ -2277,8 +2310,13 @@ make_immediate_cast_call_argument_publication_instruction(
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
         case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
-          address_source = make_frame_slot_call_argument_address_source(
-              context, *argument, *source_home, instruction_index);
+          address_source = make_selected_call_argument_source(
+              context,
+              *argument,
+              source_home,
+              *argument->source_selection,
+              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+              instruction_index);
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::None:
           break;
@@ -2286,10 +2324,6 @@ make_immediate_cast_call_argument_publication_instruction(
     } else {
       address_source = make_sret_memory_return_address_source(
           context, call_plan, *argument, instruction_index);
-      if (!address_source.has_value()) {
-        address_source = make_frame_slot_call_argument_address_source(
-            context, *argument, *source_home, instruction_index);
-      }
       if (!address_source.has_value()) {
         if (const auto byval_size =
                 prepared_indirect_byval_extent_bytes(context, move, *argument, *source_home);
@@ -2300,13 +2334,18 @@ make_immediate_cast_call_argument_publication_instruction(
       }
     }
     if (!address_source.has_value() &&
-        (!argument->source_selection.has_value() ||
-         argument->source_selection->kind ==
+        argument->source_selection.has_value() &&
+        (argument->source_selection->kind ==
              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
          argument->source_selection->kind ==
              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation)) {
-      source = make_frame_slot_call_argument_source(
-          context, *argument, *source_home, instruction_index);
+      source = make_selected_call_argument_source(
+          context,
+          *argument,
+          source_home,
+          *argument->source_selection,
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          instruction_index);
     } else {
       source = address_source;
     }
@@ -2403,9 +2442,15 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate register-lane call-argument publication requires complete prepared selected source bytes");
       return std::nullopt;
     }
-    if (!source.has_value() && source_home->size_bytes.has_value()) {
-      source =
-          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+    if (!source.has_value() && source_home->size_bytes.has_value() &&
+        argument->source_selection.has_value()) {
+      source = make_selected_call_argument_source(
+          context,
+          *argument,
+          source_home,
+          *argument->source_selection,
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+          instruction_index);
       if (source.has_value()) {
         source->size_bytes = *lane_size;
       }
@@ -2603,8 +2648,16 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->value_bank == prepare::PreparedRegisterBank::Vreg &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
-    const auto source = make_frame_slot_call_argument_source(
-        context, *argument, *source_home, instruction_index);
+    const auto source =
+        argument->source_selection.has_value()
+            ? make_selected_call_argument_source(
+                  context,
+                  *argument,
+                  source_home,
+                  *argument->source_selection,
+                  prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+                  instruction_index)
+            : std::optional<MemoryOperand>{};
     if (!source.has_value()) {
       append_call_diagnostic(
           diagnostics,
@@ -2664,8 +2717,16 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
-    const auto source = make_frame_slot_call_argument_source(
-        context, *argument, *source_home, instruction_index);
+    const auto source =
+        argument->source_selection.has_value()
+            ? make_selected_call_argument_source(
+                  context,
+                  *argument,
+                  source_home,
+                  *argument->source_selection,
+                  prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+                  instruction_index)
+            : std::optional<MemoryOperand>{};
     if (!source.has_value()) {
       append_call_diagnostic(
           diagnostics,

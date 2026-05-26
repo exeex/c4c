@@ -1,57 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/08_calls_argument_sources_retirement.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Move Or Redirect Remaining Source Choice To Prepared Facts
+Current Step ID: Step 3
+Current Step Title: Shrink The AArch64 Calls Surface
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 retired the absent-selection frame-slot address recovery path from
-`make_frame_slot_call_argument_address_source`.
+Step 3 shrank the exported AArch64 call-argument source helper surface.
 
-The AArch64 frame-slot address helper now fails closed when
-`PreparedCallArgumentPlan::source_selection` is absent and only consumes
-complete prepared `FrameSlotAddress` selections. It no longer scans prepared
-addressing materializations, source homes, local aggregate stack objects, or
-frame slots to recover stack-homed local aggregate address sources
-target-locally.
+`calls.hpp` now exposes one explicit selection-driven converter,
+`make_selected_call_argument_source`, for prepared frame-slot value,
+frame-slot address, and local-frame-address source facts. The old public
+wrappers that reread `PreparedCallArgumentPlan::source_selection` internally
+were removed.
 
-Prepared call planning now owns the moved source choice. For stack-homed pointer
-arguments it selects `FrameSlotAddress` from the latest prepared frame-slot
-materialization when present, or from the prepared local aggregate object/slot
-facts when the address has no materialization record. The missing local
-aggregate/publication path preserves the old source-home size/align behavior;
-ordinary local aggregate address publication uses the selected stack object
-size/align. AArch64 dispatch now consumes explicit `FrameSlotAddress` selections
-in the missing-frame-slot materialization bridge instead of relying on helper
-recovery.
-
-Focused tests cover the moved authority: prepared call-plan tests assert the
-stack-homed missing-local-aggregate address source fact, and AArch64 dispatch
-fixtures carry explicit `FrameSlotAddress` facts while asserting that absent
-selection no longer rederives the object address in AArch64.
+The direct AArch64 move and dispatch-bridge callers now branch on their prepared
+`source_selection` and pass that selection plus the expected kind into the
+converter. The removed local-frame-address wrapper also drops the remaining
+absent-selection materialization scan/name-match recovery path; source choice
+stays in prepared call facts.
 
 ## Suggested Next
 
-Continue Step 2/Step 3 by auditing the now-selection-only address helpers and
-shrinking the exported AArch64 calls helper surface where callers can consume
-prepared `source_selection` directly.
+Supervisor can review and commit the Step 3 helper-surface shrink. A next
+execution packet should focus on any remaining byval/payload absent-selection
+route debt only if the active plan still calls for it.
 
 ## Watchouts
 
-- Keep semantic source-choice authority in prepared call facts, not AArch64
-  helper reshuffles.
-- Do not edit `ideas/closed/`, `review/`, or non-canonical test logs as part of
-  this execution route.
-- Treat expectation weakening, duplicate prepared/AArch64 source selection, and
-  helper-only moves as route failures.
-- Do not fold `find_frame_slot_by_id` into call-specific code; it is a shared
-  lookup used by byval aggregate and cast lowering.
-- The stack-homed address rule has two prepared size/align cases: ordinary local
-  address publication uses the stack object, while the missing-publication path
-  uses the source home. Keep both covered when shrinking helpers.
+- `make_sret_memory_return_address_source` still owns the memory-return fallback
+  path when no ordinary argument source selection is present.
+- `find_frame_slot_by_id` remains shared outside call-argument source selection
+  and was intentionally left exported.
+- `clang-format` is not installed in this workspace; formatting was kept
+  manually in the existing style.
 
 ## Proof
 
@@ -60,11 +44,7 @@ Passed; proof log preserved at `test_after.log`.
 Delegated command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Result: build succeeded and all four delegated tests passed:
-`backend_prepare_frame_stack_call_contract`,
-`backend_aarch64_instruction_dispatch`,
-`c_testsuite_aarch64_backend_src_00204_c`, and
-`c_testsuite_aarch64_backend_src_00216_c`.
+Result: build succeeded and all 162 `^backend_` tests passed.

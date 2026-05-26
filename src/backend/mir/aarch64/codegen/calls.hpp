@@ -115,20 +115,12 @@ make_f128_q_register_operand_from_carrier(
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_source(
+[[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
-    std::size_t instruction_index);
-[[nodiscard]] std::optional<MemoryOperand> make_local_frame_address_call_argument_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedValueHome* source_home,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
     std::size_t instruction_index);
 [[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
     const module::BlockLoweringContext& context,

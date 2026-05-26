@@ -1181,33 +1181,42 @@ materialize_missing_frame_slot_call_arguments(
     }
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
-    if (argument.source_selection.has_value()) {
-      if (argument.source_selection->kind ==
+    const auto* source_selection = argument.source_selection.has_value()
+                                       ? &*argument.source_selection
+                                       : nullptr;
+    if (source_selection != nullptr) {
+      if (source_selection->kind ==
           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
-        address_source = make_frame_slot_call_argument_address_source(
-            context, argument, *home, instruction_index);
+        address_source = make_selected_call_argument_source(
+            context,
+            argument,
+            home,
+            *source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            instruction_index);
         source = address_source;
-      } else if (argument.source_selection->kind ==
+      } else if (source_selection->kind ==
                      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
-                 argument.source_selection->kind ==
+                 source_selection->kind ==
                      prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
-        address_source = make_frame_slot_call_argument_address_source(
-            context, argument, *home, instruction_index);
+        address_source = make_selected_call_argument_source(
+            context,
+            argument,
+            home,
+            *source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            instruction_index);
         source =
             address_source.has_value()
                 ? address_source
-                : make_frame_slot_call_argument_source(
-                      context, argument, *home, instruction_index);
+                : make_selected_call_argument_source(
+                      context,
+                      argument,
+                      home,
+                      *source_selection,
+                      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+                      instruction_index);
       }
-    } else {
-      address_source =
-          make_frame_slot_call_argument_address_source(
-              context, argument, *home, instruction_index);
-      source =
-          address_source.has_value()
-              ? address_source
-              : make_frame_slot_call_argument_source(
-                    context, argument, *home, instruction_index);
     }
     if (!source.has_value()) {
       continue;
