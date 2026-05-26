@@ -545,8 +545,154 @@ prepared_edge_publication_producer_context(
     }
     return false;
   }
+  if (const auto* select = std::get_if<bir::SelectInst>(producer->producer);
+      select != nullptr) {
+    const auto condition = branch_condition_suffix(select->predicate);
+    const auto compare_view = scalar_view_for_type(select->compare_type);
+    const auto lhs_name =
+        compare_view.has_value() ? gp_register_name(target_index, *compare_view)
+                                 : std::nullopt;
+    if (!condition.has_value() || !compare_view.has_value() ||
+        !lhs_name.has_value()) {
+      return false;
+    }
+
+    std::size_t label_index = 0;
+    const auto root_value_name =
+        prepared_publication != nullptr
+            ? prepared_publication->source_value_name
+            : prepared_named_value_id(dependency_successor_context, value)
+                  .value_or(c4c::kInvalidValueName);
+    const auto true_label =
+        select_chain_label(dependency_successor_context,
+                           producer->instruction_index,
+                           root_value_name,
+                           target_index,
+                           label_index,
+                           "true");
+    const auto end_label =
+        select_chain_label(dependency_successor_context,
+                           producer->instruction_index,
+                           root_value_name,
+                           target_index,
+                           label_index,
+                           "end");
+    ++label_index;
+
+    auto lhs = select->lhs;
+    lhs.type = select->compare_type;
+    auto rhs = select->rhs;
+    rhs.type = select->compare_type;
+    std::optional<std::string> rhs_name;
+    const auto nested_scratch = scratch_index == 9 ? 10 : 9;
+    if (rhs.kind == bir::Value::Kind::Immediate &&
+        is_cmp_immediate_encodable(rhs.immediate)) {
+      rhs_name = "#" + std::to_string(rhs.immediate);
+      if (!emit_edge_value_publication_to_register(edge_context,
+                                                   dependency_successor_context,
+                                                   lhs,
+                                                   producer->instruction_index,
+                                                   target_index,
+                                                   scratch_index,
+                                                   lines,
+                                                   dependency_publication)) {
+        return false;
+      }
+    } else {
+      rhs_name = gp_register_name(scratch_index, *compare_view);
+      const bool rhs_reads_target = edge_value_publication_may_read_register_index(
+          edge_context,
+          dependency_successor_context,
+          rhs,
+          producer->instruction_index,
+          target_index,
+          dependency_publication);
+      const bool lhs_reads_scratch = edge_value_publication_may_read_register_index(
+          edge_context,
+          dependency_successor_context,
+          lhs,
+          producer->instruction_index,
+          scratch_index,
+          dependency_publication);
+      if (!rhs_name.has_value()) {
+        return false;
+      }
+      if (rhs_reads_target && !lhs_reads_scratch) {
+        if (!emit_edge_value_publication_to_register(edge_context,
+                                                     dependency_successor_context,
+                                                     rhs,
+                                                     producer->instruction_index,
+                                                     scratch_index,
+                                                     nested_scratch,
+                                                     lines,
+                                                     dependency_publication) ||
+            !emit_edge_value_publication_to_register(edge_context,
+                                                     dependency_successor_context,
+                                                     lhs,
+                                                     producer->instruction_index,
+                                                     target_index,
+                                                     scratch_index,
+                                                     lines,
+                                                     dependency_publication)) {
+          return false;
+        }
+      } else if (!emit_edge_value_publication_to_register(edge_context,
+                                                          dependency_successor_context,
+                                                          lhs,
+                                                          producer->instruction_index,
+                                                          target_index,
+                                                          scratch_index,
+                                                          lines,
+                                                          dependency_publication) ||
+                 !emit_edge_value_publication_to_register(edge_context,
+                                                          dependency_successor_context,
+                                                          rhs,
+                                                          producer->instruction_index,
+                                                          scratch_index,
+                                                          nested_scratch,
+                                                          lines,
+                                                          dependency_publication)) {
+        return false;
+      }
+    }
+    lines.push_back("cmp " + *lhs_name + ", " + *rhs_name);
+    lines.push_back("b." + std::string{*condition} + " " + true_label);
+
+    auto false_value = select->false_value;
+    false_value.type = select->result.type;
+    if (!emit_edge_value_publication_to_register(edge_context,
+                                                 dependency_successor_context,
+                                                 false_value,
+                                                 producer->instruction_index,
+                                                 target_index,
+                                                 scratch_index,
+                                                 lines,
+                                                 dependency_publication)) {
+      return false;
+    }
+    lines.push_back("b " + end_label);
+    lines.push_back(true_label + ":");
+
+    auto true_value = select->true_value;
+    true_value.type = select->result.type;
+    if (!emit_edge_value_publication_to_register(edge_context,
+                                                 dependency_successor_context,
+                                                 true_value,
+                                                 producer->instruction_index,
+                                                 target_index,
+                                                 scratch_index,
+                                                 lines,
+                                                 dependency_publication)) {
+      return false;
+    }
+    lines.push_back(end_label + ":");
+    return true;
+  }
   const auto* binary = std::get_if<bir::BinaryInst>(producer->producer);
   if (binary == nullptr) {
+    if (require_prepared_producer) {
+      return false;
+    }
     return emit_value_publication_to_register(producer->context,
                                               value,
                                               producer->instruction_index + 1,

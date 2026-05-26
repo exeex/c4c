@@ -18943,6 +18943,199 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   return 0;
 }
 
+int prepared_select_root_emission_uses_prepared_producer_boundary() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.edge.prepared.select");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.select.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.edge.prepared.select.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.select.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.edge.prepared.select.join");
+  const auto select_name =
+      prepared.names.value_names.intern("%edge.prepared.select.root");
+  const auto lhs_name =
+      prepared.names.value_names.intern("%edge.prepared.select.lhs");
+  const auto true_name =
+      prepared.names.value_names.intern("%edge.prepared.select.true");
+  const auto false_name =
+      prepared.names.value_names.intern("%edge.prepared.select.false");
+  const auto decoy_name =
+      prepared.names.value_names.intern("%edge.prepared.select.decoy");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.edge.prepared.select",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.edge.prepared.select.pred",
+               .insts =
+                   {bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I64,
+                                                   "%edge.prepared.select.root"),
+                       .compare_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                "%edge.prepared.select.lhs"),
+                       .rhs = bir::Value::immediate_i64(0),
+                       .true_value = bir::Value::named(bir::TypeKind::I64,
+                                                       "%edge.prepared.select.true"),
+                       .false_value = bir::Value::named(bir::TypeKind::I64,
+                                                        "%edge.prepared.select.false"),
+                   }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.edge.prepared.select.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.edge.prepared.select.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I64,
+                                                   "%edge.prepared.select.root"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                "%edge.prepared.select.decoy"),
+                       .rhs = bir::Value::immediate_i64(99),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{550},
+               .function_name = function_name,
+               .value_name = select_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{551},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x3"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{552},
+               .function_name = function_name,
+               .value_name = true_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x4"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{553},
+               .function_name = function_name,
+               .value_name = false_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{553},
+               .offset_bytes = std::size_t{88},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{554},
+               .function_name = function_name,
+               .value_name = decoy_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x7"},
+           }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{553},
+      .function_name = function_name,
+      .offset_bytes = 88,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.back(),
+                                                   1);
+
+  const auto source =
+      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.select.root");
+  const auto& pred_select =
+      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts.front());
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = source,
+      .source_value = source,
+      .source_value_name = select_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+      .source_producer_block_label = pred_label,
+      .source_producer_instruction_index = std::size_t{0},
+      .source_select = &pred_select,
+  };
+  std::vector<std::string> lines;
+  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
+                                                                join_context,
+                                                                source,
+                                                                1,
+                                                                0,
+                                                                9,
+                                                                lines,
+                                                                &publication)) {
+    return fail("expected prepared select root emission to use producer context");
+  }
+  const auto true_label =
+      aarch64_codegen::select_chain_label(pred_context, 0, select_name, 0, 0, "true");
+  const auto end_label =
+      aarch64_codegen::select_chain_label(pred_context, 0, select_name, 0, 0, "end");
+  if (lines != std::vector<std::string>{"mov x0, x3",
+                                        "cmp x0, #0",
+                                        "b.eq " + true_label,
+                                        "ldr x0, [sp, #88]",
+                                        "b " + end_label,
+                                        true_label + ":",
+                                        "mov x0, x4",
+                                        end_label + ":"}) {
+    return fail("expected prepared select root emission to avoid generic fallback rediscovery");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_unsigned_div_rem_scalar_consumer(
     bir::BinaryOpcode opcode) {
   prepare::PreparedBirModule prepared;
@@ -31078,6 +31271,11 @@ int main() {
   }
   if (const int status =
           prepared_root_emission_uses_producer_context_for_operands();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_select_root_emission_uses_prepared_producer_boundary();
       status != 0) {
     return status;
   }

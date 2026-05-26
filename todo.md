@@ -8,22 +8,22 @@ Current Step Title: Consume Prepared Edge Publications in AArch64
 
 ## Just Finished
 
-Continued Step 3 by tightening
-`emit_edge_value_publication_to_register` recursive emission from prepared
-edge-publication roots. Supported prepared roots now carry the prepared
-producer context into cast, compare, arithmetic, and load-address dependency
-materialization instead of letting those recursive operands start from the
-original successor context.
+Continued Step 3 by adding explicit prepared-root lowering for
+`SelectMaterialization` in `emit_edge_value_publication_to_register`. Prepared
+select roots now materialize compare operands and selected values through the
+prepared producer context, and non-binary prepared roots that are not explicitly
+supported fail closed instead of falling through to generic AArch64 value
+publication rediscovery.
 
-Added an instruction-dispatch fixture that proves prepared-root emission ignores
-a successor operand decoy producer and materializes the operand from the
-prepared producer boundary plus prepared value home.
+Added an instruction-dispatch fixture that proves prepared select-root emission
+uses the prepared producer boundary for generated select-chain labels and
+materializes operands from prepared homes.
 
 ## Suggested Next
 
-Continue Step 3 by reviewing unsupported prepared producer kinds that still
-fail closed in AArch64 edge publication emission, especially non-binary
-producer kinds that intentionally fall back only outside prepared-root mode.
+Continue Step 3 by reviewing whether prepared select-root lowering needs the
+same nested-select cycle guard and deeper selected-value coverage as the generic
+select-chain path before treating this family as exhausted.
 
 ## Watchouts
 
@@ -34,6 +34,9 @@ producer kinds that intentionally fall back only outside prepared-root mode.
   context and before-index; non-prepared calls still use the existing semantic
   producer/value-home lookup. Do not add named-case producer searches to extend
   this path.
+- The prepared select-root path intentionally handles the supported scalar
+  compare/select shape directly and leaves other prepared non-binary roots
+  fail-closed while prepared-root mode is active.
 
 ## Proof
 
