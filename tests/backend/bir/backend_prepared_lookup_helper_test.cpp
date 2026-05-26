@@ -1151,6 +1151,36 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       named->source_home_kind != prepare::PreparedValueHomeKind::Register) {
     return fail("edge publication should preserve named source home facts");
   }
+  const auto* named_move = &locations.move_bundles.front().moves[0];
+  if (!prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          *named, *named_move, locations.value_homes[0])) {
+    return fail("edge publication should match its exact prepared move source");
+  }
+  auto copied_move = *named_move;
+  if (prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          *named, copied_move, locations.value_homes[0])) {
+    return fail("edge publication source helper should require exact move identity");
+  }
+  if (prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          *named, *named_move, locations.value_homes[1])) {
+    return fail("edge publication source helper should require exact source home identity");
+  }
+  auto mismatched_source_publication = *named;
+  mismatched_source_publication.source_value_id = prepare::PreparedValueId{999};
+  if (prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          mismatched_source_publication, *named_move, locations.value_homes[0])) {
+    return fail("edge publication source helper should require matching source id facts");
+  }
+  auto publication_without_step = *named;
+  auto move_without_step = *named_move;
+  move_without_step.authority_kind = prepare::PreparedMoveAuthorityKind::None;
+  move_without_step.source_parallel_copy_step_index.reset();
+  publication_without_step.move = &move_without_step;
+  publication_without_step.parallel_copy_step_index.reset();
+  if (!prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          publication_without_step, move_without_step, locations.value_homes[0])) {
+    return fail("edge publication source helper should not require optional step facts");
+  }
   if (immediate == nullptr ||
       immediate->source_value_kind != bir::Value::Kind::Immediate ||
       immediate->source_value_id.has_value() || immediate->source_home != nullptr ||

@@ -235,6 +235,12 @@ prepared_edge_publication_redundant_block_entry_parallel_copy_move(
     const PreparedEdgePublication& publication,
     const PreparedMoveResolution* move);
 
+[[nodiscard]] bool
+prepared_edge_publication_matches_parallel_copy_move_source(
+    const PreparedEdgePublication& publication,
+    const PreparedMoveResolution& move,
+    const PreparedValueHome& source_home);
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

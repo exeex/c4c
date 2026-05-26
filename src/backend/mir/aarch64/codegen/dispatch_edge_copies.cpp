@@ -1140,8 +1140,8 @@ lower_predecessor_select_parallel_copy_sources(
             *bundle->source_parallel_copy_successor_label,
             move.to_value_id);
     if (publication == nullptr ||
-        publication->source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
-        publication->source_value_name != source_home->value_name) {
+        !prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+            *publication, move, *source_home)) {
       continue;
     }
     auto source_lowered = lower_predecessor_join_source_publication(

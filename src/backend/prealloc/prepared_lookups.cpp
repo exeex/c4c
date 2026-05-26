@@ -990,6 +990,28 @@ prepared_edge_publication_redundant_block_entry_parallel_copy_move(
          publication.matching_move_redundant_by_assigned_storage;
 }
 
+[[nodiscard]] bool
+prepared_edge_publication_matches_parallel_copy_move_source(
+    const PreparedEdgePublication& publication,
+    const PreparedMoveResolution& move,
+    const PreparedValueHome& source_home) {
+  if (publication.status != PreparedEdgePublicationLookupStatus::Available ||
+      publication.move != &move ||
+      publication.phase != PreparedMovePhase::BlockEntry ||
+      publication.destination_value_id != move.to_value_id ||
+      publication.source_home != &source_home ||
+      publication.source_home_kind != source_home.kind ||
+      source_home.value_id != move.from_value_id ||
+      publication.source_value_id !=
+          std::optional<PreparedValueId>{move.from_value_id} ||
+      publication.source_value_name != source_home.value_name) {
+    return false;
+  }
+  return move.destination_kind == PreparedMoveDestinationKind::Value &&
+         move.op_kind == PreparedMoveResolutionOpKind::Move &&
+         !move.source_immediate_i32.has_value();
+}
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,
