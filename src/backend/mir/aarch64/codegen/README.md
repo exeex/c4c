@@ -43,8 +43,8 @@ AArch64 target spelling hooks.
 Within block lowering, `dispatch.cpp` owns prepared block traversal plus the
 instruction and terminator routing order. Value materialization,
 publication/value-home updates, producer lookup, edge-copy handling, and
-call-boundary mechanics live behind the named `dispatch_*` and
-`calls_dispatch_bridge` owner surfaces that dispatch invokes at routing points.
+call-boundary mechanics live behind the named `dispatch_*` and `calls` owner
+surfaces that dispatch invokes at routing points.
 
 Historical references in this directory to `emit` or `codegen/emit.*` are
 legacy artifact names for the former internal coordinator/text-emission route.

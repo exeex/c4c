@@ -9,33 +9,27 @@ Current Step Title: Fold Dispatch Bridge Surface Into Calls Owner API
 ## Just Finished
 
 Step 3 - Fold Dispatch Bridge Surface Into Calls Owner API completed the
-dispatch-bridge foldback packet:
+post-review stale wording cleanup packet:
 
-- Moved the former `calls_dispatch_bridge.cpp` implementation into
-  `calls.cpp`.
-- Moved the bridge declarations still needed by `dispatch.cpp` and the
-  instruction dispatch test into `calls.hpp`.
-- Removed `calls_dispatch_bridge.cpp` from `src/backend/CMakeLists.txt` and
-  deleted the obsolete bridge source/header files.
-- Replaced direct bridge-header includes in `dispatch.cpp` and
-  `backend_aarch64_instruction_dispatch_test.cpp` with the calls owner API.
-- Kept behavior, diagnostics, ABI semantics, and test expectations unchanged.
+- Updated stale `calls_dispatch_bridge` ownership wording in `dispatch.cpp`
+  and `README.md` to refer to the current calls owner API.
+- Replaced stale `calls_moves` / bridge section labels in `calls.hpp` with
+  current calls owner API labels.
+- Kept implementation semantics, tests, ABI/prepare behavior, and expectations
+  unchanged.
 
 ## Suggested Next
 
-Next packet: supervisor should review whether Step 3 is exhausted and whether
-the remaining calls owner API surface should be narrowed in a separate packet.
+Next packet: supervisor should hand back to plan-owner for closure or final
+validation handling.
 
 ## Watchouts
 
-`calls.hpp` still exposes calls owner APIs used by `dispatch.cpp` and
-instruction dispatch tests. This packet intentionally did not rewrite dispatch
-publication, prepared edge-copy semantics, ABI behavior, or test expectations.
+This was comment/docs/header-label cleanup only. The reviewer report at
+`review/aarch64_calls_foldback_review.md` remains a transient review artifact.
 
 ## Proof
 
 Passed:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_instruction_dispatch|backend_aarch64_prepared_handoff_gate|backend_aarch64_prepared_register_conversion)$' | tee test_after.log`
-
-`test_after.log` is the proof log.
+`cmake --build --preset default`

@@ -16,7 +16,7 @@ namespace c4c::backend::aarch64::codegen {
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
 
-// calls_moves
+// Call-boundary move API
 
 [[nodiscard]] std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
@@ -44,7 +44,7 @@ order_before_call_moves_for_source_preservation(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-// calls dispatch bridge
+// Dispatch-to-calls API
 
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_scalar_call_argument_producers(
