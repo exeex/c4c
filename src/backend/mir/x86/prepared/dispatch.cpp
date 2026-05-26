@@ -19,6 +19,10 @@ std::string render_edge_publication_source_operand(
       source_home.register_name.has_value()) {
     return *source_home.register_name;
   }
+  if (source_home.kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      source_home.immediate_i32.has_value()) {
+    return std::to_string(*source_home.immediate_i32);
+  }
   return {};
 }
 

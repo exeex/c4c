@@ -699,6 +699,72 @@ int check_x86_edge_publication_move_intent_accepts_register_source_home() {
   return 0;
 }
 
+int check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_source_home() {
+  auto prepared = make_fixture();
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
+  source_home.slot_id = std::nullopt;
+  source_home.offset_bytes = std::nullopt;
+  source_home.register_name = std::nullopt;
+  source_home.immediate_i32 = 42;
+
+  const auto consumed = x86::consume_plans(prepared, "x86.decode");
+  const auto predecessor_label = prepared.names.block_labels.find("entry");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  const auto* lookups = consumed.shared_function_lookups();
+  if (!expect(lookups != nullptr,
+              "x86 immediate-source edge-publication fixture did not expose shared lookups")) {
+    return 1;
+  }
+
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups->edge_publications, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  const auto intent = x86_prepared::consume_edge_publication_move_intent(
+      consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+  if (!expect(intent.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 edge-publication helper should accept immediate-source homes") ||
+      !expect(intent.publication == publication && publication != nullptr,
+              "x86 immediate-source helper should preserve shared publication authority") ||
+      !expect(publication->source_home_kind ==
+                  prepare::PreparedValueHomeKind::RematerializableImmediate,
+              "x86 immediate-source helper did not preserve source home kind") ||
+      !expect(intent.source_value_id == 2 && intent.destination_value_id == 5,
+              "x86 immediate-source helper did not preserve prepared value ids") ||
+      !expect(intent.source_operand == "42" && intent.destination_operand == "ebx",
+              "x86 immediate-source helper did not produce immediate move operands") ||
+      !expect(intent.instruction_text == "mov ebx, 42",
+              "x86 immediate-source helper did not produce immediate move output")) {
+    return 1;
+  }
+
+  std::string output;
+  const auto appended = x86_prepared::append_edge_publication_move_instruction(
+      output, consumed, predecessor_label, successor_label, prepare::PreparedValueId{5});
+  if (!expect(appended.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 immediate-source lowering should consume the shared publication") ||
+      !expect(output == "    mov ebx, 42\n",
+              "x86 immediate-source lowering did not append target move text")) {
+    return 1;
+  }
+
+  std::string missing_output = "unchanged";
+  const auto missing = x86_prepared::append_edge_publication_move_instruction(
+      missing_output, x86::ConsumedPlans{}, predecessor_label, successor_label,
+      prepare::PreparedValueId{5});
+  if (!expect(missing.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
+              "x86 immediate-source lowering should require shared edge-publication authority") ||
+      !expect(missing_output == "unchanged",
+              "x86 immediate-source lowering should not emit without shared authority")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_x86_edge_publication_move_intent_missing_authority() {
   const auto prepared = make_fixture();
   const auto predecessor_label = prepared.names.block_labels.find("entry");
@@ -731,9 +797,12 @@ int check_x86_edge_publication_move_intent_missing_authority() {
 int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
   auto source_unsupported = make_fixture();
   source_unsupported.value_locations.functions.front().value_homes.front().kind =
-      prepare::PreparedValueHomeKind::RematerializableImmediate;
+      prepare::PreparedValueHomeKind::PointerBasePlusOffset;
   source_unsupported.value_locations.functions.front().value_homes.front().offset_bytes =
       std::nullopt;
+  source_unsupported.value_locations.functions.front().value_homes.front().pointer_base_value_name =
+      source_unsupported.names.value_names.find("storage_immediate");
+  source_unsupported.value_locations.functions.front().value_homes.front().pointer_byte_delta = 4;
   const auto predecessor_label = source_unsupported.names.block_labels.find("entry");
   const auto successor_label = source_unsupported.names.block_labels.find("join");
 
@@ -745,6 +814,27 @@ int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
               "x86 edge-publication helper should reject unsupported source homes") ||
       !expect(unsupported_source.publication != nullptr,
               "x86 unsupported-source intent should preserve shared publication")) {
+    return 1;
+  }
+
+  auto malformed_immediate = make_fixture();
+  auto& malformed_source =
+      malformed_immediate.value_locations.functions.front().value_homes.front();
+  malformed_source.kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
+  malformed_source.slot_id = std::nullopt;
+  malformed_source.offset_bytes = std::nullopt;
+  malformed_source.immediate_i32 = std::nullopt;
+  const auto unsupported_immediate =
+      x86_prepared::consume_edge_publication_move_intent(
+          x86::consume_plans(malformed_immediate, "x86.decode"),
+          malformed_immediate.names.block_labels.find("entry"),
+          malformed_immediate.names.block_labels.find("join"),
+          prepare::PreparedValueId{5});
+  if (!expect(unsupported_immediate.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "x86 edge-publication helper should reject immediate homes without a value") ||
+      !expect(unsupported_immediate.publication != nullptr,
+              "x86 malformed-immediate intent should preserve shared publication")) {
     return 1;
   }
 
@@ -918,6 +1008,11 @@ int main() {
   }
   if (const auto status =
           check_x86_edge_publication_move_intent_accepts_register_source_home();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status =
+          check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_source_home();
       status != 0) {
     return EXIT_FAILURE;
   }
