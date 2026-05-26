@@ -33,6 +33,24 @@ to consolidate safely.
 - Build metadata has no stale calls entries.
 - Validation proves no regression from the file move/deletion itself.
 
+## Closure Note
+
+Closed after Step 5 acceptance validation. The consolidation reduced the
+remaining AArch64 calls file family by retiring the stale operand-adapter
+translation unit into the active common calls owner, simplifying public calls
+header surface, and verifying no retired calls entries or includes remained.
+
+Acceptance evidence:
+
+- Reviewer report `review/aarch64_calls_consolidation_step5_acceptance_review.md`
+  found no blocking route, behavior-preservation, metadata, or header-surface
+  issues.
+- Close-time backend regression guard compared canonical `test_before.log` and
+  `test_after.log`; both had 162/162 tests passed, no new failures, and
+  non-decreasing pass count.
+- Accepted full-suite baseline `test_baseline.log` at `f33116d71` recorded
+  3410/3410 tests passed.
+
 ## Reviewer Reject Signals
 
 - A patch combines files while preserving the same hidden semantic debt.
