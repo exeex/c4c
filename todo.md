@@ -8,53 +8,37 @@ Current Step Title: Share Reusable Copy Planning Decisions
 
 ## Just Finished
 
-Plan-owner lifecycle decision: Step 3 is exhausted after the prepared
-edge-publication consumption/audit slice through commit `471b0539a`.
+Step 4 narrow audit completed for same-register prepared-home copy planning.
 
-The Step 3 completion check is satisfied: prepared-root emission now consumes
-`prepared_edge_publication_producer_context` or fails closed, focused AArch64
-coverage still covers the prepared join/select/branch/block-entry paths, and
-the only direct `find_edge_named_producer` consumers left in
-`dispatch_edge_copies.cpp` are non-prepared fallback branches rather than broad
-prepared-publication rediscovery.
+Moved the target-neutral "source and destination prepared homes name the same
+assigned register" decision from the local AArch64 predicate body into shared
+`prepare::prepared_value_homes_share_register_name`. AArch64 still calls its
+existing wrapper, so current producer and edge-copy consumers keep their local
+shape, while the reusable decision now lives behind prepared lookup helpers.
 
-Advanced canonical execution state to Step 4 without rewriting `plan.md`,
-because the active runbook contract still matches the source idea.
+Focused helper coverage now proves same-register prepared homes are recognized
+and different-register, unnamed-register, and non-register homes are rejected.
 
 ## Suggested Next
 
-Start Step 4 with a narrow copy-planning audit in
-`dispatch_edge_copies.cpp` and shared prepared lookup helpers. Identify one
-decision family that depends only on value homes, edge identity, or publication
-phase, such as redundant-copy suppression or ordering facts, and move only that
-target-neutral decision behind shared prepared helpers if the audit confirms it
-does not depend on AArch64 register hazards or instruction encoding.
+Continue Step 4 with a second bounded audit around redundant block-entry
+parallel-copy suppression, especially facts already exposed on
+`PreparedEdgePublication` such as `matching_move_redundant_by_assigned_storage`
+and `parallel_copy_step_index`, before touching any target emission logic.
 
 ## Watchouts
 
-- The repaired `00183.c` path now emits predecessor-edge multiply
-  materialization before entering the join, e.g. `mul w13, w13, w9` on both
-  ternary incoming edges.
-- Step 4 must keep physical register hazards, scratch choice, instruction
-  spelling, and target encoding limits in AArch64.
-- Exhaustion audit finding from Step 3: the only direct
-  `find_edge_named_producer` consumers left in `dispatch_edge_copies.cpp` are
-  the non-prepared fallback branches of
-  `edge_value_publication_may_read_register_index` and
-  `emit_edge_value_publication_to_register_impl`; prepared root calls now either
-  consume `prepared_edge_publication_producer_context` or fail closed.
-- Non-root operands under a prepared root now search from the prepared producer
-  context and before-index; non-prepared calls still use the existing semantic
-  producer/value-home lookup. Do not add named-case producer searches to extend
-  this path.
-- Prepared select-root labels are now rooted once per active select chain; the
-  label counter remains shared across recursive edge-publication materialization
-  so separate nested select regions do not reuse synthetic label indices.
-- The prepared select-root path still intentionally handles the supported scalar
-  compare/select shape directly and leaves other prepared non-binary roots
-  fail-closed while prepared-root mode is active.
+- `prepared_value_homes_share_register_name` is exact prepared register-name
+  equality only. It is not an AArch64 alias/hazard helper; `registers_alias`,
+  scratch selection, instruction spelling, and encoding limits remain in
+  AArch64.
+- The current migration is intentionally behavior-preserving: it does not change
+  `dispatch_producers.cpp` call sites or move block-entry clobber checks.
+- Do not treat source/destination same-register equality as enough to suppress
+  memory-source moves; `should_emit_block_entry_edge_copy_move` still keeps
+  AArch64 memory and current-join clobber checks local.
 
 ## Proof
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepared_lookup_helper|backend_aarch64_prepared_branch_records|backend_aarch64_prepared_handoff_gate|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00183_c)$"'`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$"'`
 passed. Proof log: `test_after.log`.

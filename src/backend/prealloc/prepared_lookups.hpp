@@ -215,6 +215,10 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
 
+[[nodiscard]] bool prepared_value_homes_share_register_name(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs);
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

@@ -39,11 +39,7 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] bool prepared_edge_select_source_is_destination_register(
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home) {
-  return source_home.kind == prepare::PreparedValueHomeKind::Register &&
-         destination_home.kind == prepare::PreparedValueHomeKind::Register &&
-         source_home.register_name.has_value() &&
-         destination_home.register_name.has_value() &&
-         *source_home.register_name == *destination_home.register_name;
+  return prepare::prepared_value_homes_share_register_name(source_home, destination_home);
 }
 [[nodiscard]] std::optional<module::BlockLoweringContext>
 prepared_edge_publication_producer_block_context(

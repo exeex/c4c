@@ -938,6 +938,16 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   };
 }
 
+[[nodiscard]] bool prepared_value_homes_share_register_name(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs) {
+  return lhs.kind == PreparedValueHomeKind::Register &&
+         rhs.kind == PreparedValueHomeKind::Register &&
+         lhs.register_name.has_value() &&
+         rhs.register_name.has_value() &&
+         *lhs.register_name == *rhs.register_name;
+}
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

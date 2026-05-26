@@ -50,6 +50,51 @@ bool expect_same(const void* actual, const void* expected, std::string_view mess
   return true;
 }
 
+int verify_prepared_home_same_register_helper() {
+  const prepare::PreparedValueHome source_register{
+      .value_id = 1,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"shared_register"},
+  };
+  const prepare::PreparedValueHome destination_register{
+      .value_id = 2,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"shared_register"},
+  };
+  const prepare::PreparedValueHome different_register{
+      .value_id = 3,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"other_register"},
+  };
+  const prepare::PreparedValueHome unnamed_register{
+      .value_id = 4,
+      .kind = prepare::PreparedValueHomeKind::Register,
+  };
+  const prepare::PreparedValueHome stack_home{
+      .value_id = 5,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{1},
+  };
+
+  if (!prepare::prepared_value_homes_share_register_name(source_register,
+                                                         destination_register)) {
+    return fail("same-register prepared homes should be recognized by shared helper");
+  }
+  if (prepare::prepared_value_homes_share_register_name(source_register,
+                                                        different_register)) {
+    return fail("shared helper should reject different prepared register homes");
+  }
+  if (prepare::prepared_value_homes_share_register_name(source_register,
+                                                        unnamed_register)) {
+    return fail("shared helper should reject unnamed prepared register homes");
+  }
+  if (prepare::prepared_value_homes_share_register_name(source_register, stack_home)) {
+    return fail("shared helper should reject non-register prepared homes");
+  }
+
+  return 0;
+}
+
 int verify_linear_function_lookup() {
   prepare::PreparedBirModule prepared;
   const auto function_id = prepared.names.function_names.intern("linear");
@@ -1253,6 +1298,9 @@ int verify_edge_publication_source_producer_facts() {
 }  // namespace
 
 int main() {
+  if (const int result = verify_prepared_home_same_register_helper(); result != 0) {
+    return result;
+  }
   if (const int result = verify_linear_function_lookup(); result != 0) {
     return result;
   }
