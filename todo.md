@@ -8,17 +8,18 @@ Current Step Title: Thin `dispatch.cpp` Materialization Touchpoints
 
 ## Just Finished
 
-Step 4 packet complete. The scalar multiply helper
-`lower_scalar_mul_with_distinct_rhs_scratch` now lives in `alu.cpp` and is
-declared by `alu.hpp`; it is no longer declared or defined by
-`dispatch_value_materialization.*`. `dispatch.cpp` still calls the helper at
-the same dispatch ordering point through the scalar ALU owner header.
+Step 4 packet complete. `lower_local_slot_address_publication` now lives in
+`dispatch_publication.cpp` and is declared by `dispatch_publication.hpp`
+alongside `emit_local_slot_address_publication_to_register`; it is no longer
+declared or defined by `dispatch_value_materialization.*`. `dispatch.cpp` still
+calls the helper at the same dispatch ordering point.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 4 by thinning the remaining narrow
-`dispatch.cpp` materialization touchpoint `lower_local_slot_address_publication`
-without moving the central `emit_value_publication_to_register` bridge.
+Next coherent packet: continue Step 4 by checking whether any remaining
+`dispatch.cpp` materialization touchpoint has a narrow semantic owner, while
+leaving the central `emit_value_publication_to_register` bridge in place unless
+the supervisor explicitly delegates that fan-out move.
 
 ## Watchouts
 
@@ -73,6 +74,9 @@ without moving the central `emit_value_publication_to_register` bridge.
   imports the generic publication bridge for existing operand materialization;
   keep that bridge dependency intentional unless a later packet owns the
   fan-out split.
+- `dispatch_publication.cpp` now owns `lower_local_slot_address_publication`
+  and imports the generic publication/value helpers it already needed; keep the
+  `dispatch.cpp` ordering unchanged.
 
 ## Proof
 
@@ -80,14 +84,14 @@ Proof passed and is recorded in `test_after.log`.
 
 Command run exactly:
 `cmake --build --preset default > test_after.log 2>&1` followed by
-`ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value)$' >> test_after.log 2>&1`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_prepared_memory_operand_records|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
 
 Result: build completed and 5/5 focused tests passed. AST-backed checks before
-the move confirmed `lower_scalar_mul_with_distinct_rhs_scratch` was defined in
+the move confirmed `lower_local_slot_address_publication` was defined in
 `dispatch_value_materialization.cpp`, declared from
 `dispatch_value_materialization.hpp`, and directly called by
 `dispatch_prepared_block` in `dispatch.cpp`. AST-backed checks after the move
-confirmed the definition is in `alu.cpp`, the declaration resolves from
-`alu.hpp`, and the helper is still directly called by `dispatch_prepared_block`
-in `dispatch.cpp`; `rg` confirmed no remaining declaration or definition in
-`dispatch_value_materialization.*`.
+confirmed the definition is in `dispatch_publication.cpp`, the declaration
+resolves from `dispatch_publication.hpp`, and the helper is still directly
+called by `dispatch_prepared_block` in `dispatch.cpp`; `rg` confirmed no
+remaining declaration or definition in `dispatch_value_materialization.*`.

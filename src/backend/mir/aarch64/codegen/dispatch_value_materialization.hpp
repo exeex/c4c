@@ -23,11 +23,4 @@ namespace prepare = c4c::backend::prepare;
     std::vector<std::string>& lines,
     bool reload_current_memory_loads = false);
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_local_slot_address_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
 }  // namespace c4c::backend::aarch64::codegen

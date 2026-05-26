@@ -48,6 +48,13 @@ namespace prepare = c4c::backend::prepare;
     std::uint8_t target_index,
     std::vector<std::string>& lines);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_local_slot_address_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
 [[nodiscard]] bool register_operands_share_physical_register(
     const RegisterOperand& lhs,
     const RegisterOperand& rhs);
