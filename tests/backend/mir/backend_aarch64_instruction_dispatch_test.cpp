@@ -15444,6 +15444,68 @@ int preservation_home_population_consumes_prepared_endpoints() {
   return 0;
 }
 
+int preservation_home_population_falls_back_from_self_alias_endpoint() {
+  auto prepared = prepared_with_sibling_block_call_preserved_argument_reuse();
+  auto& call_plan = prepared.call_plans.functions.front().calls.back();
+  if (call_plan.preserved_values.empty()) {
+    return fail("expected preserved value fixture");
+  }
+  auto& preserved = call_plan.preserved_values.front();
+  const auto value_id = preserved.value_id;
+  const auto value_name = preserved.value_name;
+  preserved.register_name = std::string{"x20"};
+  preserved.register_bank = prepare::PreparedRegisterBank::Gpr;
+  preserved.occupied_register_names = {std::string{"x20"}};
+  preserved.preservation_source =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .value_id = value_id,
+          .value_name = value_name,
+          .register_name = std::string{"x20"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"x20"}},
+          .register_placement = preserved.register_placement,
+      };
+  preserved.preservation_destination =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .value_id = value_id,
+          .value_name = value_name,
+          .register_name = std::string{"x20"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .occupied_register_names = {std::string{"x20"}},
+          .register_placement = preserved.register_placement,
+      };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, function_cf.blocks.back(), 2);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(
+          block_context, call_plan, call_plan.instruction_index, diagnostics);
+  if (lowered.empty() || !diagnostics.empty()) {
+    return fail("expected self-alias endpoint to fall back to value home");
+  }
+  const auto* populate =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.front().target.payload);
+  if (populate == nullptr || !populate->source_register.has_value() ||
+      !populate->destination_register.has_value() ||
+      populate->source_register->reg != aarch64_module::abi::x_register(1) ||
+      populate->destination_register->reg != aarch64_module::abi::x_register(20)) {
+    return fail("expected self-alias endpoint to preserve value home source x1");
+  }
+  return 0;
+}
+
 int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -30248,6 +30310,11 @@ int main() {
   }
   if (const int status =
           preservation_home_population_consumes_prepared_endpoints();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          preservation_home_population_falls_back_from_self_alias_endpoint();
       status != 0) {
     return status;
   }

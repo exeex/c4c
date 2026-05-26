@@ -3967,6 +3967,7 @@ make_callee_saved_preservation_home_population(
       .source_move = &synthetic_move,
   };
 
+  bool selected_source = false;
   if (value.storage_kind == prepare::PreparedMoveStorageKind::Register &&
       value.register_name.has_value() &&
       value.register_bank.has_value()) {
@@ -3983,18 +3984,25 @@ make_callee_saved_preservation_home_population(
         diagnostics,
         context,
         instruction_index);
-    if (!source.has_value() ||
-        (source->reg.bank == destination->reg.bank &&
-         source->reg.index == destination->reg.index)) {
+    if (!source.has_value()) {
       return std::nullopt;
     }
-    move_record.source_register = *source;
-  } else if (auto source = make_frame_slot_memory_from_endpoint(
-                 context, value, *value_id, value_name, instruction_index)) {
-    move_record.source_memory = *source;
-  } else if (source_home != nullptr &&
-             source_home->kind == prepare::PreparedValueHomeKind::Register &&
-             source_home->register_name.has_value()) {
+    if (source->reg.bank != destination->reg.bank ||
+        source->reg.index != destination->reg.index) {
+      move_record.source_register = *source;
+      selected_source = true;
+    }
+  }
+  if (!selected_source) {
+    if (auto source = make_frame_slot_memory_from_endpoint(
+            context, value, *value_id, value_name, instruction_index)) {
+      move_record.source_memory = *source;
+      selected_source = true;
+    }
+  }
+  if (!selected_source && source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      source_home->register_name.has_value()) {
     const auto source_register_name =
         register_name_with_expected_view(source_home->register_name, expected_view);
     const auto source_parsed =
@@ -4030,9 +4038,11 @@ make_callee_saved_preservation_home_population(
       return std::nullopt;
     }
     move_record.source_register = *source;
-  } else if (source_home != nullptr &&
-             source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
-             source_home->offset_bytes.has_value()) {
+    selected_source = true;
+  }
+  if (!selected_source && source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home->offset_bytes.has_value()) {
     move_record.source_memory = MemoryOperand{
         .surface = RecordSurfaceKind::MachineInstructionNode,
         .support = MemoryOperandSupportKind::Prepared,
@@ -4053,7 +4063,9 @@ make_callee_saved_preservation_home_population(
             scalar_size_from_register_view(expected_view)),
         .can_use_base_plus_offset = true,
     };
-  } else {
+    selected_source = true;
+  }
+  if (!selected_source) {
     return std::nullopt;
   }
 
