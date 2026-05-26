@@ -912,6 +912,9 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   const auto cycle_source_name = names.value_names.intern("%edge_shared.cycle_source");
   const auto cycle_destination_name =
       names.value_names.intern("%edge_shared.cycle_destination");
+  const auto stack_source_name = names.value_names.intern("%edge_shared.stack_source");
+  const auto stack_destination_name =
+      names.value_names.intern("%edge_shared.stack_destination");
 
   const prepare::PreparedValueId source_id{41};
   const prepare::PreparedValueId named_destination_id{42};
@@ -920,6 +923,8 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   const prepare::PreparedValueId same_value_id{45};
   const prepare::PreparedValueId cycle_source_id{46};
   const prepare::PreparedValueId cycle_destination_id{47};
+  const prepare::PreparedValueId stack_source_id{48};
+  const prepare::PreparedValueId stack_destination_id{49};
 
   const prepare::PreparedControlFlowFunction control_flow{
       .function_name = function_name,
@@ -968,6 +973,14 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
                       .destination_value = bir::Value::named(
                           bir::TypeKind::I32, "%edge_shared.cycle_destination"),
                   },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.stack_source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%edge_shared.stack_destination"),
+                  },
               },
           },
       },
@@ -1000,6 +1013,10 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
                           prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp,
                       .move_index = 4,
                       .uses_cycle_temp_source = true,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 5,
                   },
               },
               .has_cycle = true,
@@ -1058,6 +1075,24 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
               .value_name = cycle_destination_name,
               .kind = prepare::PreparedValueHomeKind::Register,
               .register_name = std::string{"cycle_destination_home"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = stack_source_id,
+              .function_name = function_name,
+              .value_name = stack_source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{12},
+              .offset_bytes = std::size_t{16},
+              .size_bytes = std::size_t{4},
+          },
+          prepare::PreparedValueHome{
+              .value_id = stack_destination_id,
+              .function_name = function_name,
+              .value_name = stack_destination_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{13},
+              .offset_bytes = std::size_t{24},
+              .size_bytes = std::size_t{4},
           },
       },
       .move_bundles = {
@@ -1127,6 +1162,18 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
                       .authority_kind =
                           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
                   },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = stack_source_id,
+                      .to_value_id = stack_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_stack_offset_bytes = std::size_t{24},
+                      .source_parallel_copy_step_index = std::size_t{5},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
               },
           },
       },
@@ -1144,6 +1191,8 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
       &lookups, predecessor_label, successor_label, same_value_id);
   const auto* cycle = prepare::find_unique_indexed_prepared_edge_publication(
       &lookups, predecessor_label, successor_label, cycle_destination_id);
+  const auto* stack = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups, predecessor_label, successor_label, stack_destination_id);
 
   if (named == nullptr || named->source_value_kind != bir::Value::Kind::Named ||
       named->source_value_id != source_id ||
@@ -1244,6 +1293,23 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
           prepare::PreparedParallelCopyExecutionSite::CriticalEdge ||
       cycle->parallel_copy_execution_block_label != execution_label) {
     return fail("edge publication should expose cycle/temp-save parallel-copy ordering facts");
+  }
+  const auto* stack_move = &locations.move_bundles.front().moves[5];
+  if (stack == nullptr || stack->source_value_kind != bir::Value::Kind::Named ||
+      stack->source_value_id != stack_source_id ||
+      stack->source_home != &locations.value_homes[7] ||
+      stack->source_home_kind != prepare::PreparedValueHomeKind::StackSlot ||
+      stack->destination_value_id != stack_destination_id ||
+      stack->destination_home != &locations.value_homes[8] ||
+      stack->destination_home_kind != prepare::PreparedValueHomeKind::StackSlot ||
+      stack->destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      stack->move != stack_move ||
+      stack->parallel_copy_step_index != std::size_t{5}) {
+    return fail("edge publication should preserve stack source and stack destination facts");
+  }
+  if (!prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          *stack, *stack_move, locations.value_homes[7])) {
+    return fail("edge publication should match its stack-source prepared move");
   }
 
   return 0;

@@ -27,7 +27,7 @@ bool expect_unsupported_stack_destination(
                 message) &&
          expect(intent.instruction_text.empty(),
                 "RISC-V stack-destination helper should not render an instruction "
-                "without implemented stack-destination source materialization");
+                "for unsupported stack-destination source materialization");
 }
 
 int fail(const char* message) {
@@ -710,6 +710,77 @@ int check_immediate_to_stack_slot_move_uses_shared_lookup() {
   return 0;
 }
 
+int check_stack_slot_to_stack_slot_i32_move_uses_shared_lookup() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  source_home.register_name.reset();
+  source_home.slot_id = prepare::PreparedFrameSlotId{7};
+  source_home.offset_bytes = 16;
+  source_home.size_bytes = 4;
+  source_home.immediate_i32.reset();
+
+  auto& destination_home = prepared.value_locations.functions.front().value_homes.at(1);
+  destination_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  destination_home.register_name.reset();
+  destination_home.slot_id = prepare::PreparedFrameSlotId{11};
+  destination_home.offset_bytes = 24;
+  destination_home.size_bytes = 4;
+
+  const auto asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(asm_text.find("lw t0, 16(sp)\n    sw t0, 24(sp)") !=
+                  std::string::npos,
+              "RISC-V prepared module should emit an I32 stack-source load "
+              "through t0 before the stack-destination store")) {
+    return 1;
+  }
+
+  auto lookups = make_lookups(prepared);
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, ids.predecessor, ids.successor, 2);
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should accept the shared I32 stack-to-stack edge publication") ||
+      !expect(intent.publication == publication && publication != nullptr,
+              "RISC-V stack-to-stack helper should preserve shared publication authority") ||
+      !expect(publication->source_home_kind == prepare::PreparedValueHomeKind::StackSlot,
+              "RISC-V stack-to-stack helper should preserve source home kind") ||
+      !expect(publication->destination_home_kind == prepare::PreparedValueHomeKind::StackSlot,
+              "RISC-V stack-to-stack helper should preserve destination home kind") ||
+      !expect(intent.source_value_id == 1 && intent.destination_value_id == 2,
+              "RISC-V stack-to-stack helper should preserve prepared value ids") ||
+      !expect(intent.source_stack_slot_id == prepare::PreparedFrameSlotId{7} &&
+                  intent.source_stack_offset_bytes == 16 &&
+                  intent.source_stack_size_bytes == 4 &&
+                  intent.destination_stack_slot_id == prepare::PreparedFrameSlotId{11} &&
+                  intent.destination_stack_offset_bytes == 24 &&
+                  intent.destination_stack_size_bytes == 4,
+              "RISC-V stack-to-stack helper should record source and destination stack provenance") ||
+      !expect(intent.instruction_text == "lw t0, 16(sp)\n    sw t0, 24(sp)",
+              "RISC-V helper should render t0 load followed by target-local sw syntax")) {
+    return 1;
+  }
+
+  lookups.edge_publications.publications_by_edge_destination.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingPublication,
+              "RISC-V stack-to-stack helper should not rediscover edge moves "
+              "after shared lookup authority is removed")) {
+    return 1;
+  }
+  return 0;
+}
+
 int check_stack_destination_fail_closed_forms() {
   auto prepared = make_register_edge_publication_module();
   const auto ids = FixtureIds{
@@ -769,15 +840,84 @@ int check_stack_destination_fail_closed_forms() {
   source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
   source_home.immediate_i32.reset();
   source_home.slot_id = prepare::PreparedFrameSlotId{7};
-  source_home.offset_bytes = 16;
-  source_home.size_bytes = 4;
+  source_home.offset_bytes = 32;
+  source_home.size_bytes = 8;
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect_unsupported_stack_destination(
           intent,
-          "RISC-V stack-destination helper should keep stack sources unsupported "
-          "until scratch-backed source materialization is implemented")) {
+          "RISC-V stack-destination helper should reject non-I32 stack sources")) {
+    return 1;
+  }
+
+  source_home.size_bytes = 4;
+  source_home.offset_bytes = std::nullopt;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V stack-destination helper should reject stack sources without offsets")) {
+    return 1;
+  }
+
+  source_home.offset_bytes = 32;
+  source_home.size_bytes = std::nullopt;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V stack-destination helper should reject stack sources without sizes")) {
+    return 1;
+  }
+
+  source_home.size_bytes = 2;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V stack-destination helper should reject subword stack sources")) {
+    return 1;
+  }
+
+  source_home.size_bytes = 16;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V stack-destination helper should reject aggregate stack sources")) {
+    return 1;
+  }
+
+  source_home.size_bytes = 4;
+  source_home.offset_bytes = 2048;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should reject large stack-source offsets")) {
+    return 1;
+  }
+
+  source_home.offset_bytes = 24;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should reject overlapping stack slots")) {
+    return 1;
+  }
+
+  source_home.offset_bytes = 32;
+  source_home.slot_id = prepare::PreparedFrameSlotId{11};
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect_unsupported_stack_destination(
+          intent,
+          "RISC-V stack-destination helper should reject same-slot stack moves")) {
     return 1;
   }
 
@@ -1070,6 +1210,10 @@ int main() {
     return result;
   }
   if (const int result = check_immediate_to_stack_slot_move_uses_shared_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = check_stack_slot_to_stack_slot_i32_move_uses_shared_lookup();
       result != 0) {
     return result;
   }

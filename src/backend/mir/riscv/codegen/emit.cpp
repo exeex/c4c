@@ -128,6 +128,37 @@ bool has_rematerializable_i32_source_for_stack_destination(
          !intent.source_pointer_byte_delta.has_value();
 }
 
+bool stack_ranges_overlap(std::size_t lhs_offset,
+                          std::size_t lhs_size,
+                          std::size_t rhs_offset,
+                          std::size_t rhs_size) {
+  return lhs_offset < rhs_offset + rhs_size && rhs_offset < lhs_offset + lhs_size;
+}
+
+bool has_non_aliasing_i32_stack_source_for_stack_destination(
+    const EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedValueHome& destination_home) {
+  if (!intent.source_register.empty() ||
+      intent.source_immediate_i32.has_value() ||
+      !intent.source_stack_offset_bytes.has_value() ||
+      intent.source_stack_size_bytes != std::optional<std::size_t>{4} ||
+      intent.source_pointer_byte_delta.has_value() ||
+      !fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes) ||
+      !destination_home.offset_bytes.has_value() ||
+      destination_home.size_bytes != std::optional<std::size_t>{4}) {
+    return false;
+  }
+  if (intent.source_stack_slot_id.has_value() &&
+      destination_home.slot_id.has_value() &&
+      intent.source_stack_slot_id == destination_home.slot_id) {
+    return false;
+  }
+  return !stack_ranges_overlap(*intent.source_stack_offset_bytes,
+                               *intent.source_stack_size_bytes,
+                               *destination_home.offset_bytes,
+                               *destination_home.size_bytes);
+}
+
 }  // namespace
 
 EdgePublicationMoveIntent consume_edge_publication_move_intent(
@@ -232,10 +263,12 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   // contract. The direct Register -> StackSlot case reserves no scratch and
   // clobbers only the destination memory slot. The I32 immediate materializing
   // form may own `t0` as a value scratch for one publication sequence,
-  // clobbering it before the final `sw`; the scratch value must not survive
-  // across edge publications. `t1`/`t2` are not reserved by this path, and
-  // `t5`/`t6` remain available only to a later explicit address/large-offset
-  // helper contract. Other non-register sources to StackSlot destinations
+  // clobbering it before the final `sw`; the I32 StackSlot -> StackSlot form
+  // uses the same `t0` scratch for a signed-12-bit source load before the final
+  // store. The scratch value must not survive across edge publications.
+  // `t1`/`t2` are not reserved by this path, and `t5`/`t6` remain available
+  // only to a later explicit address/large-offset helper contract. Pointer
+  // sources and large stack-source offsets to StackSlot destinations
   // intentionally remain fail-closed.
   if (destination_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       destination_home.offset_bytes.has_value() &&
@@ -255,6 +288,14 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
       intent.instruction_text =
           "li t0, " + std::to_string(*intent.source_immediate_i32) +
           "\n    sw t0, " + std::to_string(*destination_home.offset_bytes) + "(sp)";
+      return intent;
+    }
+    if (has_non_aliasing_i32_stack_source_for_stack_destination(intent,
+                                                               destination_home)) {
+      intent.instruction_text =
+          "lw t0, " + std::to_string(*intent.source_stack_offset_bytes) +
+          "(sp)\n    sw t0, " +
+          std::to_string(*destination_home.offset_bytes) + "(sp)";
       return intent;
     }
     intent.destination_stack_slot_id.reset();
