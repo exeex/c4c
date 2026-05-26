@@ -15481,7 +15481,7 @@ int preservation_home_population_consumes_prepared_endpoints() {
   return 0;
 }
 
-int preservation_home_population_falls_back_from_self_alias_endpoint() {
+int preservation_home_population_does_not_rederive_self_alias_endpoint() {
   auto prepared = prepared_with_sibling_block_call_preserved_argument_reuse();
   auto& call_plan = prepared.call_plans.functions.front().calls.back();
   if (call_plan.preserved_values.empty()) {
@@ -15528,17 +15528,17 @@ int preservation_home_population_falls_back_from_self_alias_endpoint() {
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(
           block_context, call_plan, call_plan.instruction_index, diagnostics);
-  if (lowered.empty() || !diagnostics.empty()) {
-    return fail("expected self-alias endpoint to fall back to value home");
+  if (!diagnostics.empty()) {
+    return fail("expected self-alias endpoint to fail closed without diagnostics");
   }
-  const auto* populate =
-      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
-          &lowered.front().target.payload);
-  if (populate == nullptr || !populate->source_register.has_value() ||
-      !populate->destination_register.has_value() ||
-      populate->source_register->reg != aarch64_module::abi::x_register(1) ||
-      populate->destination_register->reg != aarch64_module::abi::x_register(20)) {
-    return fail("expected self-alias endpoint to preserve value home source x1");
+  for (const auto& instruction : lowered) {
+    const auto* move =
+        std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+            &instruction.target.payload);
+    if (move != nullptr &&
+        move->move.reason == "callee_saved_preservation_home_population") {
+      return fail("expected self-alias endpoint not to rederive population from value home");
+    }
   }
   return 0;
 }
@@ -30351,7 +30351,7 @@ int main() {
     return status;
   }
   if (const int status =
-          preservation_home_population_falls_back_from_self_alias_endpoint();
+          preservation_home_population_does_not_rederive_self_alias_endpoint();
       status != 0) {
     return status;
   }
