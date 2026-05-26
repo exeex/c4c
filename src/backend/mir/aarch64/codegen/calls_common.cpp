@@ -19,8 +19,6 @@ namespace {
 
 constexpr std::size_t kStackPointerAlignmentBytes = 16;
 
-}  // namespace
-
 [[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
   if (alignment == 0) {
     return value;
@@ -40,6 +38,8 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }
 
+}  // namespace
+
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
     const prepare::PreparedCallPlan& call_plan) {
   std::size_t bytes = 0;
@@ -58,6 +58,8 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register() {
   return abi::x_register(16);
 }
+
+namespace {
 
 [[nodiscard]] bool entry_param_uses_incoming_stack(const bir::Param& param) {
   return param.abi.has_value() && param.abi->passed_on_stack;
@@ -123,6 +125,8 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
                          : std::optional<std::size_t>{frame_size};
 }
 
+}  // namespace
+
 [[nodiscard]] std::optional<std::size_t> va_start_overflow_area_stack_offset(
     const module::BlockLoweringContext& context,
     const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan,
@@ -141,6 +145,8 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
                                                  variadic_entry_plan->named_parameter_count);
 }
 
+namespace {
+
 [[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
@@ -157,6 +163,8 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   }
   return prepare::PreparedRegisterClass::None;
 }
+
+}  // namespace
 
 [[nodiscard]] bool complete_full_width_f128_carrier(
     const prepare::PreparedF128Carrier* carrier) {

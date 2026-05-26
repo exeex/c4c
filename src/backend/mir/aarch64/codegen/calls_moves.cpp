@@ -25,6 +25,8 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
+namespace {
+
 [[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMoveResolution& move,
@@ -48,8 +50,6 @@ namespace abi = c4c::backend::aarch64::abi;
   }
   return source_home.size_bytes;
 }
-
-namespace {
 
 struct PreservedCallArgumentSource {
   std::optional<RegisterOperand> source_register;

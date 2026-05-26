@@ -7,38 +7,17 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
-// calls_common
-
-[[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment);
-[[nodiscard]] std::size_t incoming_stack_argument_size_bytes(
-    const bir::CallArgAbiInfo& abi);
-[[nodiscard]] std::size_t incoming_stack_argument_alignment_bytes(
-    const bir::CallArgAbiInfo& abi);
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
     const prepare::PreparedCallPlan& call_plan);
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register();
-[[nodiscard]] bool entry_param_uses_incoming_stack(const bir::Param& param);
-[[nodiscard]] std::size_t named_incoming_stack_bytes(const bir::Function& function,
-                                                     std::size_t named_parameter_count);
-[[nodiscard]] bool function_has_call(const bir::Function& function);
-[[nodiscard]] std::optional<std::size_t> fixed_frame_adjustment_bytes(
-    const module::FunctionLoweringContext& context);
 [[nodiscard]] std::optional<std::size_t> va_start_overflow_area_stack_offset(
     const module::BlockLoweringContext& context,
     const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan,
     std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_helper);
-[[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
-    prepare::PreparedRegisterBank bank);
-void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
-                            module::ModuleLoweringDiagnosticKind kind,
-                            const module::BlockLoweringContext& context,
-                            std::size_t instruction_index,
-                            std::string message);
 
 // Target operand adapters
 
@@ -137,11 +116,6 @@ struct AggregateRegisterLaneStore {
     std::size_t byte_delta,
     std::size_t width_bytes,
     std::size_t instruction_index);
-[[nodiscard]] std::optional<std::size_t> prepared_indirect_byval_extent_bytes(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMoveResolution& move,
-    const prepare::PreparedCallArgumentPlan& argument,
-    const prepare::PreparedValueHome& source_home);
 
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
