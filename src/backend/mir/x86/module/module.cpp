@@ -3,6 +3,7 @@
 #include "../x86.hpp"
 #include "../abi/abi.hpp"
 #include "../core/core.hpp"
+#include "../prepared/prepared.hpp"
 
 #include "../../../prealloc/prepared_printer.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
@@ -2460,7 +2461,9 @@ void append_prepared_i32_leaf_return(
   function_out.append_line("    ret");
 }
 
-void require_prepared_compare_join_parallel_copy(
+void append_prepared_compare_join_parallel_copy(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -2493,6 +2496,32 @@ void require_prepared_compare_join_parallel_copy(
     if (parallel_copy_move == nullptr || value_location_move == nullptr) {
       throw_prepared_value_location_handoff_error(
           "compare-join edge parallel-copy step drifted from prepared move authority");
+    }
+    std::string edge_copy_output;
+    const auto intent =
+        c4c::backend::x86::prepared::append_edge_publication_move_instruction(
+            edge_copy_output,
+            consumed,
+            predecessor_label,
+            successor_label,
+            value_location_move->to_value_id);
+    switch (intent.status) {
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::Available:
+        function_out.append_raw(edge_copy_output);
+        break;
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups:
+        throw_prepared_control_flow_handoff_error(
+            "compare-join edge has no shared prepared edge-publication lookup authority");
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::MissingPublication:
+        throw_prepared_value_location_handoff_error(
+            "compare-join edge parallel-copy step has no shared prepared edge-publication fact");
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::
+          UnsupportedPublication:
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::
+          UnsupportedSourceHome:
+      case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::
+          UnsupportedDestinationHome:
+        break;
     }
     if (parallel_copy_move->source_value.kind ==
             c4c::backend::bir::Value::Kind::Immediate &&
@@ -2715,6 +2744,7 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
   if (control_flow == nullptr) {
     return false;
   }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
 
   const auto* function_locations = require_prepared_value_location_function(module, function);
   const auto param_name =
@@ -2815,19 +2845,6 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
       throw_prepared_control_flow_handoff_error(
           "compare-join join block is not owned by the prepared function body");
     }
-    require_prepared_compare_join_parallel_copy(module.names,
-                                                function,
-                                                *control_flow,
-                                                *function_locations,
-                                                join_context.true_transfer->predecessor_label,
-                                                join_context.true_transfer->successor_label);
-    require_prepared_compare_join_parallel_copy(module.names,
-                                                function,
-                                                *control_flow,
-                                                *function_locations,
-                                                join_context.false_transfer->predecessor_label,
-                                                join_context.false_transfer->successor_label);
-
     const auto symbol_name = data.render_asm_symbol_name(function.name);
     c4c::backend::x86::core::Text function_out;
     function_out.append_line(".globl " + symbol_name);
@@ -2845,6 +2862,14 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                        c4c::backend::prepare::prepared_block_label(
                                            module.names,
                                            render_contract->branch_plan.target_labels.false_label)));
+    append_prepared_compare_join_parallel_copy(function_out,
+                                               consumed,
+                                               module.names,
+                                               function,
+                                               *control_flow,
+                                               *function_locations,
+                                               join_context.true_transfer->predecessor_label,
+                                               join_context.true_transfer->successor_label);
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
@@ -2860,6 +2885,14 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                      module.names,
                                      render_contract->branch_plan.target_labels.false_label)) +
                              ":");
+    append_prepared_compare_join_parallel_copy(function_out,
+                                               consumed,
+                                               module.names,
+                                               function,
+                                               *control_flow,
+                                               *function_locations,
+                                               join_context.false_transfer->predecessor_label,
+                                               join_context.false_transfer->successor_label);
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,

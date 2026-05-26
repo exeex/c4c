@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -717,6 +718,45 @@ int check_x86_edge_publication_move_intent_rejects_unsupported_homes() {
   return 0;
 }
 
+int check_x86_edge_publication_lowering_appends_shared_move_instruction() {
+  const auto prepared = make_fixture();
+  const auto predecessor_label = prepared.names.block_labels.find("entry");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  std::string output;
+  const auto intent = x86_prepared::append_edge_publication_move_instruction(
+      output,
+      x86::consume_plans(prepared, "x86.decode"),
+      predecessor_label,
+      successor_label,
+      prepare::PreparedValueId{5});
+  if (!expect(intent.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::Available,
+              "x86 edge-publication lowering should consume the shared publication") ||
+      !expect(output == "    mov ebx, DWORD PTR [rsp + 56]\n",
+              "x86 edge-publication lowering did not append target move text") ||
+      !expect(intent.publication != nullptr && intent.publication->destination_value_id == 5,
+              "x86 edge-publication lowering did not preserve shared publication authority")) {
+    return 1;
+  }
+
+  std::string missing_output = "unchanged";
+  const auto missing = x86_prepared::append_edge_publication_move_instruction(
+      missing_output,
+      x86::ConsumedPlans{},
+      predecessor_label,
+      successor_label,
+      prepare::PreparedValueId{5});
+  if (!expect(missing.status ==
+                  x86_prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups,
+              "x86 edge-publication lowering should keep missing shared authority explicit") ||
+      !expect(missing_output == "unchanged",
+              "x86 edge-publication lowering should not emit without shared authority")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_query_reuses_shared_home_storage_diagnostics() {
   const auto prepared = make_fixture();
   const auto query = x86_prepared::make_query(prepared, "x86.decode");
@@ -829,6 +869,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_x86_edge_publication_move_intent_rejects_unsupported_homes();
+      status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_x86_edge_publication_lowering_appends_shared_move_instruction();
       status != 0) {
     return EXIT_FAILURE;
   }

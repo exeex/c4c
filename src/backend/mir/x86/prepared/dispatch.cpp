@@ -87,4 +87,18 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   return intent;
 }
 
+EdgePublicationMoveIntent append_edge_publication_move_instruction(
+    std::string& output,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id) {
+  auto intent = consume_edge_publication_move_intent(
+      consumed, predecessor_label, successor_label, destination_value_id);
+  if (intent.status == EdgePublicationMoveIntentStatus::Available) {
+    output += "    " + intent.instruction_text + "\n";
+  }
+  return intent;
+}
+
 }  // namespace c4c::backend::x86::prepared

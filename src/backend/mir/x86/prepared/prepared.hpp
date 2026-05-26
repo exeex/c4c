@@ -181,5 +181,11 @@ struct EdgePublicationMoveIntent {
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id);
+[[nodiscard]] EdgePublicationMoveIntent append_edge_publication_move_instruction(
+    std::string& output,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id);
 
 }  // namespace c4c::backend::x86::prepared

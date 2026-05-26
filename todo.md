@@ -1,38 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/21_x86_prepared_edge_publication_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the x86 Shared-Publication Consumer Helper
+Current Step ID: 3
+Current Step Title: Wire One Narrow Lowering Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by adding `x86::prepared::consume_edge_publication_move_intent`.
-The helper consumes `ConsumedPlans::shared_function_lookups()` and reads
-`PreparedFunctionLookups::edge_publications` through
-`prepare::find_unique_indexed_prepared_edge_publication`, returning an x86 move
-intent for the prepared `entry -> join` / `PreparedValueId{5}` edge without
-rediscovering edge semantics locally.
+Completed Step 3 by wiring the x86 compare-join parallel-copy path through
+`x86::prepared::append_edge_publication_move_instruction`, which reuses
+`consume_edge_publication_move_intent` and appends target x86 move text only
+from shared `edge_publications`. Missing shared lookup or missing publication
+authority remains an explicit handoff error instead of falling back to local
+edge-copy reconstruction. Tightened the proof with a module-level joined-branch
+test that emits through `x86::api::emit_prepared_module(...)`, observes the
+shared-publication-derived `mov ebx, DWORD PTR [rsp + 56]` /
+`mov ebx, DWORD PTR [rsp + 64]` moves, and rejects a drifted publication
+destination.
 
 ## Suggested Next
 
-Wire Step 3 by making the x86 lowering edge-copy path call the new
-`consume_edge_publication_move_intent` helper for block-entry publications,
-while keeping the shared prepared lookup as the only edge-publication authority.
+Run Step 4 validation as a supervisor packet: keep the current focused x86 and
+shared lookup subset as the baseline, and add broader validation only if the
+supervisor wants milestone confidence beyond the x86-owned module/prepared
+diff.
 
 ## Watchouts
 
-- The helper currently supports the proven stack-slot source to register
-  destination form and reports missing shared lookup, missing publication,
-  unsupported source home, or unsupported destination home explicitly.
-- Step 3 should reuse the helper output rather than reconstructing predecessor,
-  successor, destination value, source home, or destination home locally.
-- Do not move target-local x86 operand spelling into shared prepare.
+- The wired compare-join path emits only for the currently supported
+  stack-slot source to register destination form; unsupported publication/home
+  shapes keep the existing prepared-bundle validation but do not invent x86
+  moves.
+- The focused fixture now checks that the append step writes
+  `mov ebx, DWORD PTR [rsp + 56]` from shared lookup authority and emits
+  nothing when `ConsumedPlans` lacks shared lookups.
+- The joined-branch handoff test now exercises the actual `module.cpp` route
+  through `emit_prepared_module`, so supervisor acceptance no longer depends
+  only on the direct prepared-helper fixture.
+- Step 4 should treat `test_after.log` as the executor proof log and decide
+  whether this x86-only slice needs broader than the delegated focused subset.
 
 ## Proof
 
-Ran:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_prepared_decoded_home_storage|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
+Ran exactly:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_|backend_codegen_route_x86_64_.*|backend_prepared_lookup_helper|backend_prealloc_block_entry_publications)$' >> test_after.log 2>&1`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed, 77 focused tests. Proof log: `test_after.log`.

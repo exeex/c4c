@@ -7708,6 +7708,85 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_of
       module, function_name, failure_context, true, true, true, true, false, true);
 }
 
+void force_supported_shared_edge_publication_homes(
+    prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
+    throw std::runtime_error("missing prepared value locations for edge-publication route test");
+  }
+
+  auto* zero_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "zero.adjusted");
+  auto* nonzero_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "nonzero.adjusted");
+  auto* merge_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "merge");
+  if (zero_home == nullptr || nonzero_home == nullptr || merge_home == nullptr) {
+    throw std::runtime_error("missing prepared homes for edge-publication route test");
+  }
+
+  zero_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  zero_home->slot_id = 70;
+  zero_home->offset_bytes = 56;
+  zero_home->register_name = std::nullopt;
+  nonzero_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  nonzero_home->slot_id = 71;
+  nonzero_home->offset_bytes = 64;
+  nonzero_home->register_name = std::nullopt;
+  merge_home->kind = prepare::PreparedValueHomeKind::Register;
+  merge_home->slot_id = std::nullopt;
+  merge_home->offset_bytes = std::nullopt;
+  merge_home->register_name = "ebx";
+}
+
+void drift_first_join_publication_destination(prepare::PreparedBirModule& prepared,
+                                              std::string_view function_name) {
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
+    throw std::runtime_error("missing prepared value locations for edge-publication drift test");
+  }
+  for (auto& bundle : function_locations->move_bundles) {
+    if (bundle.source_parallel_copy_successor_label.has_value()) {
+      for (auto& move : bundle.moves) {
+        move.to_value_id = 9999;
+        return;
+      }
+    }
+  }
+  throw std::runtime_error("missing prepared parallel-copy move for edge-publication drift test");
+}
+
+int check_join_route_emits_shared_edge_publication_move_from_module() {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      make_x86_param_eq_zero_branch_joined_add_or_sub_module(),
+      target_profile_from_module_triple("x86_64-unknown-linux-gnu", target_profile));
+  force_supported_shared_edge_publication_homes(prepared, "branch_join_adjust");
+
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+  if (prepared_asm.find("    mov ebx, DWORD PTR [rsp + 56]\n") == std::string::npos ||
+      prepared_asm.find("    mov ebx, DWORD PTR [rsp + 64]\n") == std::string::npos) {
+    return fail("x86 module route did not emit shared-publication-derived edge moves");
+  }
+
+  auto drifted = prepared;
+  drift_first_join_publication_destination(drifted, "branch_join_adjust");
+  try {
+    static_cast<void>(c4c::backend::x86::api::emit_prepared_module(drifted));
+  } catch (const std::invalid_argument& error) {
+    const std::string message = error.what();
+    if (message.find("no shared prepared edge-publication fact") != std::string::npos) {
+      return 0;
+    }
+    return fail("x86 module route rejected drifted edge-publication authority with the wrong error");
+  }
+
+  return fail("x86 module route emitted after shared edge-publication authority drifted");
+}
+
 
 }  // namespace
 
@@ -7739,6 +7818,10 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "branch_join_adjust",
               "scalar-control-flow compare-against-zero joined branch lane EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_join_route_emits_shared_edge_publication_move_from_module();
       status != 0) {
     return status;
   }
