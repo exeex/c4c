@@ -1,41 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/36_aarch64_dispatch_publication_foldback_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fold Dispatch Diagnostics Into Dispatch Owner
+Current Step ID: 3
+Current Step Title: Fold Publication-Common Declarations Into Publication Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Fold Dispatch Diagnostics Into Dispatch Owner completed the
-mechanical diagnostics fold-back packet:
+Step 3 - Fold Publication-Common Declarations Into Publication Owner completed
+the mechanical header ownership packet:
 
-- Moved dispatch-only helpers `classify_instruction`,
-  `append_block_diagnostic`, `unsupported_terminator_message`, and
-  `append_unsupported_instruction_diagnostic` into the anonymous namespace in
-  `dispatch.cpp`.
-- Moved the calls-used `append_call_diagnostic` helper into `calls.cpp`.
-- Removed `dispatch_diagnostics.cpp` from `src/backend/CMakeLists.txt`.
-- Deleted obsolete `dispatch_diagnostics.cpp` and
-  `dispatch_diagnostics.hpp`.
-- Kept diagnostic strings, diagnostic kinds, fail-closed behavior,
-  ABI/prepare behavior, and test expectations unchanged.
+- Moved all declarations formerly exposed by
+  `dispatch_publication_common.hpp` into `dispatch_publication.hpp`.
+- Removed redundant `dispatch_publication_common.hpp` includes from AArch64
+  codegen files that already included `dispatch_publication.hpp`.
+- Replaced the remaining live include in
+  `prepared_value_home_materialization.cpp` with `dispatch_publication.hpp`.
+- Deleted obsolete `dispatch_publication_common.hpp`.
+- Kept prepared publication, value-home lookup, edge-copy semantics,
+  diagnostics, and test expectations unchanged.
 
 ## Suggested Next
 
-Next mechanical fold-back packet: handle `dispatch_publication_common.hpp`
-through the publication owner API. Start by deciding which declarations can be
-namespace-local to `dispatch_publication.cpp` and which broad AArch64 consumers
-still require declarations in `dispatch_publication.hpp`.
+Next mechanical packet: continue with the publication fold-back route by
+inventorying or folding the remaining dispatch publication implementation
+surface according to the active runbook, without changing publication
+semantics.
 
 ## Watchouts
 
 This idea is mechanical fold-back only. Do not change prepared
 edge-publication authority, value-home lookup semantics, diagnostic meaning, or
-unsupported-path contracts. `dispatch_publication_common.hpp` is not currently
-publication-private as a header; most of its declarations still need an owner
-API visible to several AArch64 files.
+unsupported-path contracts. The former common declarations remain broadly
+consumed across AArch64 codegen and now live on the publication owner header.
 
 ## Proof
 

@@ -4,7 +4,6 @@
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_publication.hpp"
-#include "dispatch_publication_common.hpp"
 #include "dispatch_value_materialization.hpp"
 
 #include <cstdint>

@@ -1,7 +1,7 @@
 #include "prepared_value_home_materialization.hpp"
 
 #include "../abi/abi.hpp"
-#include "dispatch_publication_common.hpp"
+#include "dispatch_publication.hpp"
 
 #include <algorithm>
 #include <cstddef>
