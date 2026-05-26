@@ -66,3 +66,26 @@ floating load opcodes safely.
   or classification-only changes while retaining the same fail-closed behavior.
 - The patch broadens dynamic-address, aggregate, pointer-base, or
   source-to-stack behavior outside this idea.
+
+## Closure Evidence
+
+Closed as a documented fail-closed prepared-authority blocker.
+
+Inventory found that RISC-V prepared edge publication has enough concrete
+authority for existing 4-byte `lw`, 8-byte `ld`, and large-offset stack-source
+forms, but does not yet have shared prepared signedness/extension or
+destination register-bank/view authority for sub-word, unsigned-I32-shaped, or
+F32 stack-source typed loads.
+
+The route preserved existing concrete behavior and made the unsupported typed
+forms explicit fail-closed cases instead of inferring from size, ids, offsets,
+fixture names, or raw register spelling. Focused tests cover sub-word,
+unsigned-I32-shaped, and F32-shaped unsupported forms, and the RISC-V emitter
+does not add `lb`, `lbu`, `lh`, `lhu`, `lwu`, or `flw` for those forms.
+
+Validation evidence:
+- Focused RISC-V prepared edge-publication and shared prepared lookup proof
+  passed 2/2 after the fail-closed policy packet.
+- Backend bucket proof passed 163/163 during Step 4 validation.
+- Regression guard read-only close check passed against the accepted backend
+  log with 163 passed, 0 failed, and no new failing tests.
