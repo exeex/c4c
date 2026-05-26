@@ -457,6 +457,8 @@ int check_stack_source_fail_closed_forms() {
     source_home.offset_bytes = offset;
     source_home.size_bytes = size;
     source_home.immediate_i32.reset();
+    source_home.pointer_base_value_name.reset();
+    source_home.pointer_byte_delta.reset();
   };
 
   set_stack_source(std::nullopt, 8);
@@ -551,12 +553,52 @@ int check_stack_source_fail_closed_forms() {
     return 1;
   }
 
+  set_edge_publication_value_types(prepared, bir::TypeKind::I32, bir::TypeKind::I32);
+  prepared.value_locations.functions.front().value_homes.at(1).register_name =
+      std::string{"a1"};
+
   set_stack_source(32, 16);
+  const auto aggregate_asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(aggregate_asm_text.find("lw a1, 32(sp)") == std::string::npos &&
+                  aggregate_asm_text.find("ld a1, 32(sp)") == std::string::npos,
+              "RISC-V aggregate-width stack-source publication should not emit "
+              "a scalar signed-12 stack load")) {
+    return 1;
+  }
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V stack-source helper should reject aggregate-width stack sources")) {
+              "RISC-V stack-source helper should reject aggregate-width stack sources") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_stack_slot_id.has_value() &&
+                  !intent.source_stack_offset_bytes.has_value() &&
+                  !intent.source_stack_size_bytes.has_value(),
+              "RISC-V aggregate-width stack-source helper should not record "
+              "scalar stack-load provenance")) {
+    return 1;
+  }
+
+  set_stack_source(4096, 16);
+  const auto large_aggregate_asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(large_aggregate_asm_text.find("0(t6)") == std::string::npos &&
+                  large_aggregate_asm_text.find("li t6, 4096") == std::string::npos,
+              "RISC-V aggregate-width stack-source publication should not emit "
+              "the scalar large-offset stack-load sequence")) {
+    return 1;
+  }
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V large-offset aggregate-width stack source should stay "
+              "fail-closed without prepared aggregate copy authority") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_stack_slot_id.has_value() &&
+                  !intent.source_stack_offset_bytes.has_value() &&
+                  !intent.source_stack_size_bytes.has_value(),
+              "RISC-V large-offset aggregate-width stack-source helper should "
+              "not record scalar stack-load provenance")) {
     return 1;
   }
 
