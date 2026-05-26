@@ -3,14 +3,15 @@
 Status: Active
 Source Idea Path: ideas/open/32_riscv_prepared_edge_publication_stack_destination_scratch_policy.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Implement One Non-Register Source-To-Stack Form
+Current Step ID: Step 5
+Current Step Title: Validate And Decide Remaining Policy
 
 ## Just Finished
 
-Step 3 implemented the narrow `RematerializableImmediate -> StackSlot` I32
-prepared edge-publication form through shared `edge_publications` lookup
-authority.
+Steps 3 and 4 are covered by commit f5138c138. Step 3 implemented the narrow
+`RematerializableImmediate -> StackSlot` I32 prepared edge-publication form
+through shared `edge_publications` lookup authority, and the same slice added
+the focused positive and negative coverage required by Step 4.
 
 Implemented behavior:
 - `RematerializableImmediate -> StackSlot` emits `li t0, imm` followed by
