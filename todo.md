@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/16_bir_edge_value_flow_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Shared Edge Publication Facts
+Current Step ID: Step 3
+Current Step Title: Run Close-Grade Regression Guard
 
 # Current Packet
 
