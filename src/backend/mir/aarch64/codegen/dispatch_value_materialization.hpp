@@ -14,18 +14,6 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] bool emit_fp_immediate_to_register(std::vector<std::string>& lines,
-                                                 const bir::Value& value,
-                                                 abi::RegisterReference fp_destination,
-                                                 std::uint8_t gp_scratch_index);
-
-[[nodiscard]] bool emit_fp_value_to_register(const module::BlockLoweringContext& context,
-                                             const bir::Value& value,
-                                             std::size_t before_instruction_index,
-                                             abi::RegisterReference destination,
-                                             std::uint8_t gp_scratch_index,
-                                             std::vector<std::string>& lines);
-
 [[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
