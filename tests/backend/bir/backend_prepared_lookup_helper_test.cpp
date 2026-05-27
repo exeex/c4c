@@ -1695,6 +1695,27 @@ int verify_edge_publication_source_producer_facts() {
               make_home(14, select_destination_name),
           },
   });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 80,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = predecessor_label,
+              .inst_index = 0,
+              .result_value_name = loaded_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{31},
+                      .byte_offset = 4,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
 
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
   const auto* load_publication =
@@ -1717,6 +1738,20 @@ int verify_edge_publication_source_producer_facts() {
       load_publication->source_producer_block_label != predecessor_label ||
       load_publication->source_producer_instruction_index != std::size_t{0}) {
     return fail("edge publication should expose load-local source producer facts");
+  }
+  if (load_publication->source_memory_access_status !=
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available ||
+      load_publication->source_memory_access == nullptr ||
+      load_publication->source_memory_base_kind !=
+          prepare::PreparedAddressBaseKind::FrameSlot ||
+      load_publication->source_memory_frame_slot_id !=
+          prepare::PreparedFrameSlotId{31} ||
+      load_publication->source_memory_byte_offset != 4 ||
+      load_publication->source_memory_size_bytes != 4 ||
+      load_publication->source_memory_align_bytes != 4 ||
+      !load_publication->source_memory_can_use_base_plus_offset ||
+      load_publication->source_memory_access->result_value_name != loaded_name) {
+    return fail("edge publication should expose prepared source-memory facts");
   }
   if (cast_publication == nullptr ||
       cast_publication->source_producer_kind !=

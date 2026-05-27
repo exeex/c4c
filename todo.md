@@ -3,35 +3,37 @@
 Status: Active
 Source Idea Path: ideas/open/47_aarch64_dispatch_edge_copies_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Replace source-producer fallback recovery
+Current Step ID: Step 3
+Current Step Title: Route load-local source materialization through prepared memory facts
 
 ## Just Finished
 
-Step 2 replaced the `emit_edge_value_publication_to_register_impl` and
-`edge_value_publication_may_read_register_index` fallback producer route with
-`PreparedFunctionLookups::edge_publication_source_producers` via
-`find_indexed_prepared_edge_publication_source_producer`. Child operands keep
-the prepared publication context for recursive materialization/hazard checks,
-and the two repaired call sites no longer call `find_edge_named_producer`.
+Step 3 routed direct load-local edge source materialization through prepared
+source-memory authority. `emit_edge_load_local_to_register_impl` now validates
+direct prepared edge publications with
+`PreparedEdgePublication::source_memory_*`,
+`PreparedEdgePublicationSourceMemoryAccessStatus`, `PreparedMemoryAccess`, and
+the source `PreparedValueHome`, emits frame-slot/pointer loads from the
+prepared source-memory facts, and fails closed when direct publication memory
+authority is missing instead of using value-home materialization or generic
+publication recovery as a substitute for that missing authority.
 
-The AArch64 dispatch test now covers a nested child operand with an explicit
-prepared source-producer fact and a successor decoy that would be selected by a
-local scan. Both emission and register-read hazard checks ignore the decoy and
-consume the prepared source-producer fact.
+The focused tests now cover direct load-publication emission from prepared
+source memory, fail-closed behavior when the publication source-memory status is
+missing, and prepared lookup exposure of the copied source-memory facts.
 
 ## Suggested Next
 
-Implement Step 3 by routing `emit_edge_load_local_to_register_impl` through
-prepared source-memory facts and value-home authority, without extending raw
-BIR memory/address rediscovery.
+Implement Step 4 by routing block-entry edge-copy redundancy and parallel-copy
+source matching through prepared move-bundle and edge-publication authority.
 
 ## Watchouts
 
 `find_edge_named_producer` and `unique_branch_predecessor_context` remain
 defined/exported, but the repaired source-producer materialization and hazard
-paths no longer call them. Source-memory repair is still separate; pointer
-source loads can still reach older memory-access recovery until Step 3.
+paths no longer call them. Load-local materialization still allows the
+non-direct/null-publication prepared-memory-access route; the direct prepared
+publication route now requires available source-memory authority.
 
 ## Proof
 

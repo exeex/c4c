@@ -338,6 +338,51 @@ struct EdgeSelectChainState {
       },
       inst);
 }
+[[nodiscard]] bool prepared_publication_source_home_matches_source(
+    const prepare::PreparedEdgePublication& publication) {
+  return publication.source_home != nullptr &&
+         publication.source_home->value_name == publication.source_value_name &&
+         publication.source_home->kind == publication.source_home_kind;
+}
+[[nodiscard]] bool prepared_publication_source_memory_matches_access(
+    const prepare::PreparedEdgePublication& publication,
+    const prepare::PreparedMemoryAccess& access) {
+  return access.result_value_name.has_value() &&
+         *access.result_value_name == publication.source_value_name &&
+         publication.source_memory_base_kind == access.address.base_kind &&
+         publication.source_memory_frame_slot_id == access.address.frame_slot_id &&
+         publication.source_memory_symbol_name == access.address.symbol_name &&
+         publication.source_memory_pointer_value_name ==
+             access.address.pointer_value_name &&
+         publication.source_memory_byte_offset == access.address.byte_offset &&
+         publication.source_memory_size_bytes == access.address.size_bytes &&
+         publication.source_memory_align_bytes == access.address.align_bytes &&
+         publication.source_memory_address_space == access.address_space &&
+         publication.source_memory_is_volatile == access.is_volatile &&
+         publication.source_memory_can_use_base_plus_offset ==
+             access.address.can_use_base_plus_offset;
+}
+[[nodiscard]] const prepare::PreparedMemoryAccess*
+prepared_publication_source_memory_access(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublication& publication,
+    const bir::LoadLocalInst& load) {
+  if (!prepared_edge_publication_source_matches_value(publication, load.result) ||
+      publication.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      publication.source_load_local != &load ||
+      publication.source_memory_access_status !=
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available ||
+      publication.source_memory_access == nullptr ||
+      !prepared_publication_source_home_matches_source(publication) ||
+      !prepared_memory_access_matches_instruction(
+          context, publication.source_memory_access, load) ||
+      !prepared_publication_source_memory_matches_access(
+          publication, *publication.source_memory_access)) {
+    return nullptr;
+  }
+  return publication.source_memory_access;
+}
 [[nodiscard]] bool edge_value_publication_may_read_register_index(
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
@@ -461,21 +506,57 @@ struct EdgeSelectChainState {
           producer.context, load, target_index, lines)) {
     return true;
   }
-  const auto* access = prepared_memory_access(producer.context, producer.instruction_index);
+  const bool require_prepared_source_memory =
+      prepared_publication != nullptr &&
+      prepared_edge_publication_source_matches_value(*prepared_publication,
+                                                     load.result);
+  const auto* access =
+      require_prepared_source_memory
+          ? prepared_publication_source_memory_access(
+                producer.context, *prepared_publication, load)
+          : prepared_memory_access(producer.context, producer.instruction_index);
   if (access == nullptr) {
-    return emit_value_publication_to_register(producer.context,
-                                              load.result,
-                                              producer.instruction_index + 1,
-                                              target_index,
-                                              scratch_index,
-                                              lines);
+    if (require_prepared_source_memory) {
+      return false;
+    }
+    const auto* home = prepared_value_home_for_value(producer.context, load.result);
+    return home != nullptr &&
+           emit_prepared_value_home_to_register(
+               producer.context.function.prepared != nullptr
+                   ? &producer.context.function.prepared->stack_layout
+                   : nullptr,
+               *home,
+               load.result.type,
+               target_index,
+               lines,
+               fixed_slots_use_frame_pointer(producer.context.function));
   }
-  if (access->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
-      access->address.can_use_base_plus_offset &&
-      access->address.frame_slot_id.has_value()) {
+  const auto base_kind =
+      require_prepared_source_memory ? prepared_publication->source_memory_base_kind
+                                     : access->address.base_kind;
+  const auto frame_slot_id =
+      require_prepared_source_memory ? prepared_publication->source_memory_frame_slot_id
+                                     : access->address.frame_slot_id;
+  const auto pointer_value_name =
+      require_prepared_source_memory
+          ? prepared_publication->source_memory_pointer_value_name
+          : access->address.pointer_value_name;
+  const auto byte_offset =
+      require_prepared_source_memory ? prepared_publication->source_memory_byte_offset
+                                     : access->address.byte_offset;
+  const auto can_use_base_plus_offset =
+      require_prepared_source_memory
+          ? prepared_publication->source_memory_can_use_base_plus_offset
+          : access->address.can_use_base_plus_offset;
+  if (base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+      can_use_base_plus_offset &&
+      frame_slot_id.has_value()) {
+    if (producer.context.function.prepared == nullptr) {
+      return false;
+    }
     const auto* slot =
         find_frame_slot(producer.context.function.prepared->stack_layout,
-                        *access->address.frame_slot_id);
+                        *frame_slot_id);
     if (slot == nullptr) {
       return false;
     }
@@ -483,16 +564,17 @@ struct EdgeSelectChainState {
                     frame_slot_address(producer.context.function,
                                        slot->offset_bytes +
                                            static_cast<std::size_t>(
-                                               access->address.byte_offset)));
+                                               byte_offset)));
     return true;
   }
-  if (access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
-      !access->address.pointer_value_name.has_value() ||
-      !access->address.can_use_base_plus_offset) {
+  if (base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !pointer_value_name.has_value() ||
+      !can_use_base_plus_offset ||
+      producer.context.function.prepared == nullptr) {
     return false;
   }
   const auto pointer_name = prepare::prepared_value_name(
-      producer.context.function.prepared->names, *access->address.pointer_value_name);
+      producer.context.function.prepared->names, *pointer_value_name);
   if (pointer_name.empty()) {
     return false;
   }
@@ -516,7 +598,7 @@ struct EdgeSelectChainState {
   lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
                   register_indirect_address(*address,
                                             static_cast<std::size_t>(
-                                                access->address.byte_offset)));
+                                                byte_offset)));
   return true;
 }
 [[nodiscard]] bool emit_edge_value_publication_to_register(
@@ -604,6 +686,11 @@ struct EdgeSelectChainState {
             select_chain_state)) {
       lines.insert(lines.end(), load_lines.begin(), load_lines.end());
       return true;
+    }
+    if (require_prepared_producer &&
+        prepared_publication->source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+      return false;
     }
     const auto* home =
         require_prepared_producer && prepared_publication->source_home != nullptr

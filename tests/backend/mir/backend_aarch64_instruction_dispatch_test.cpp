@@ -25630,6 +25630,233 @@ int predecessor_join_source_publication_materializes_loaded_edge_compare() {
   return 0;
 }
 
+int predecessor_join_load_source_publication_uses_prepared_source_memory() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.join.edge.loaded.direct");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.loaded.direct.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.loaded.direct.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.loaded.direct.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.loaded.direct.join");
+  const auto loaded_name = prepared.names.value_names.intern("%edge.loaded.direct");
+  const auto destination_name = prepared.names.value_names.intern("%join.loaded.direct");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.join.edge.loaded.direct",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.join.edge.loaded.direct.pred",
+               .insts =
+                   {bir::LoadLocalInst{
+                       .result =
+                           bir::Value::named(bir::TypeKind::I32,
+                                             "%edge.loaded.direct"),
+                       .slot_name = "%slot",
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                   }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.join.edge.loaded.direct.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.loaded.direct.join",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I32, "%join.loaded.direct"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32,
+                                            "%edge.loaded.direct"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32,
+                                            "%join.loaded.direct"),
+                  }},
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{601},
+               .function_name = function_name,
+               .value_name = loaded_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w12"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{602},
+               .function_name = function_name,
+               .value_name = destination_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w13"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{601},
+                      .to_value_id = prepare::PreparedValueId{602},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w13"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w13"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_direct_load_source_memory_publication",
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{601}, loaded_name, "w12"),
+           register_storage(prepare::PreparedValueId{602}, destination_name, "w13")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{601},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 80;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 80,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = pred_label,
+              .inst_index = 0,
+              .result_value_name = loaded_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{601},
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  const auto* publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &prepared_lookups.edge_publications,
+          pred_label,
+          join_label,
+          prepare::PreparedValueId{602});
+  const auto* load = pred_context.bir_block != nullptr
+                         ? std::get_if<bir::LoadLocalInst>(
+                               &pred_context.bir_block->insts.front())
+                         : nullptr;
+  if (publication == nullptr || load == nullptr) {
+    return fail("expected prepared direct load publication fixture");
+  }
+  aarch64_codegen::EdgeProducerContext producer{
+      .context = pred_context,
+      .producer = &pred_context.bir_block->insts.front(),
+      .instruction_index = 0,
+  };
+  std::vector<std::string> lines;
+  if (!aarch64_codegen::emit_edge_load_local_to_register(pred_context,
+                                                         producer,
+                                                         *load,
+                                                         13,
+                                                         9,
+                                                         lines,
+                                                         publication) ||
+      lines != std::vector<std::string>{"ldr w13, [sp, #64]"}) {
+    return fail("expected direct load publication to consume prepared source memory");
+  }
+
+  auto* mutable_publication =
+      &prepared_lookups.edge_publications.publications.front();
+  for (auto& candidate : prepared_lookups.edge_publications.publications) {
+    if (candidate.destination_value_id == prepare::PreparedValueId{602}) {
+      mutable_publication = &candidate;
+      break;
+    }
+  }
+  mutable_publication->source_memory_access_status =
+      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
+          MissingPreparedMemoryAccess;
+  mutable_publication->source_memory_access = nullptr;
+  lines.clear();
+  if (aarch64_codegen::emit_edge_load_local_to_register(pred_context,
+                                                        producer,
+                                                        *load,
+                                                        13,
+                                                        9,
+                                                        lines,
+                                                        mutable_publication) ||
+      !lines.empty()) {
+    return fail("expected direct load publication to fail closed without source memory");
+  }
+  return 0;
+}
+
 int predecessor_join_source_publication_materializes_edge_multiply() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -32006,6 +32233,11 @@ int main() {
   }
   if (const int status =
           predecessor_join_source_publication_materializes_loaded_edge_compare();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          predecessor_join_load_source_publication_uses_prepared_source_memory();
       status != 0) {
     return status;
   }
