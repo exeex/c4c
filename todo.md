@@ -3,46 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/52_aarch64_calls_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair immediate ABI binding and frame-slot argument move authority
+Current Step ID: Step 3
+Current Step Title: Repair scalar call-argument producer materialization authority
 
 ## Just Finished
 
-Step 2 replaced the duplicate authority scans for
-`lower_before_call_immediate_binding` and
-`find_prepared_frame_slot_call_argument_move`. Prepared call-plan lookups now
-index immediate call arguments by call position plus ABI index, and prepared
-move-bundle lookups now index before-call argument moves by call position plus
-ABI index. `calls.cpp` consumes those queries while preserving the current
-AArch64 immediate and frame-slot argument staging and emitted instruction
-records.
+Step 3 replaced the scalar call-argument materialization path in `calls.cpp`
+so `materialize_scalar_call_argument_value` and
+`lower_scalar_call_argument_producers` consume prepared edge-publication source
+producer facts for scalar binary and load-local argument producers instead of
+recovering producer/source authority with recursive same-block producer scans.
+Direct-global select-chain call arguments still route through the shared
+prepared direct-global select-chain query and prepared call-argument plan.
 
 ## Suggested Next
 
-Next bounded implementation packet: continue into Step 3 for the scalar
-call-argument producer cluster, starting with
-`materialize_scalar_call_argument_value` and
-`lower_scalar_call_argument_producers`, and replace same-block producer/raw
-argument recovery with prepared producer or source authority.
+Next bounded implementation packet: continue to the next Step 3-adjacent or
+Step 4 call authority cluster selected by the supervisor, with special attention
+to any remaining scalar call argument paths that still depend on non-prepared
+source recovery outside this packet's two target functions.
 
 ## Watchouts
 
-The Step 2 lookup maps deliberately return `nullptr` for duplicate prepared
-facts so lowering does not pick an arbitrary ABI argument or move. The remaining
-scalar producer, boundary source, indirect callee, and result publication
-clusters are separate packets; do not fold them into the next scalar-producer
-slice.
+The scalar call-argument producer lookup uses prepared value-name producer facts
+and validates the prepared block label plus instruction position before
+materializing a binary producer. The delegated broader `^backend_` run still
+shows the same two pre-existing failures previously recorded here:
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
 
 ## Proof
 
-Passed:
-`cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_return_lowering|backend_prealloc_call_boundary_classification|backend_prepare_frame_stack_call_contract)$' --output-on-failure`.
+Ran:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
 
-Proof log: `test_after.log`. Regression guard with
-`--allow-non-decreasing-passed` compared the matching focused `test_before.log`
-and `test_after.log` as `3/3 -> 3/3` with no new failures.
-
-Supervisor also ran broader `^backend_` after the slice; it still has the two
-pre-existing failures already visible without this patch:
+Build passed. CTest reported `165/167` passing with the two known broader
+backend failures:
 `backend_aarch64_instruction_dispatch` and
 `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
+
+Proof log: `test_after.log`.

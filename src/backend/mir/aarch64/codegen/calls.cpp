@@ -5122,11 +5122,38 @@ find_prepared_frame_slot_call_argument_move(
   };
 }
 
+[[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
+find_prepared_scalar_call_argument_source_producer(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.control_flow_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return nullptr;
+  }
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          source_producers, *value_name);
+  if (producer == nullptr ||
+      producer->block_label != context.control_flow_block->block_label ||
+      producer->instruction_index >= before_instruction_index) {
+    return nullptr;
+  }
+  return producer;
+}
+
 [[nodiscard]] bool materialize_scalar_call_argument_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
     const prepare::PreparedCallArgumentPlan* local_aggregate_address_argument,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics,
     std::vector<module::MachineInstruction>& lowered,
@@ -5161,12 +5188,9 @@ find_prepared_frame_slot_call_argument_move(
   if (emitted_scalar_value_available(context, value, scalar_state)) {
     return true;
   }
-  const auto producer_index =
-      find_same_block_scalar_producer(context, value.name, before_instruction_index);
-  if (!producer_index.has_value() || context.bir_block == nullptr) {
-    if (has_same_block_load_local_producer(context, value, before_instruction_index)) {
-      return true;
-    }
+  const auto* producer = find_prepared_scalar_call_argument_source_producer(
+      context, source_producers, value, before_instruction_index);
+  if (producer == nullptr || context.bir_block == nullptr) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -5175,9 +5199,42 @@ find_prepared_frame_slot_call_argument_move(
     }
     return true;
   }
-  const auto* binary = std::get_if<bir::BinaryInst>(&context.bir_block->insts[*producer_index]);
-  if (binary == nullptr ||
-      !is_scalar_call_argument_producer_opcode(binary->opcode)) {
+  if (producer->kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+    return true;
+  }
+  if (producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      producer->binary == nullptr ||
+      !is_scalar_call_argument_producer_opcode(producer->binary->opcode)) {
+    if (auto prepared_register = make_named_prepared_result_register(context, value);
+        prepared_register.has_value()) {
+      record_emitted_scalar_register(scalar_state,
+                                     prepared_register->value_name,
+                                     *prepared_register);
+    }
+    return true;
+  }
+  const auto producer_index = producer->instruction_index;
+  if (producer_index >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto* binary =
+      std::get_if<bir::BinaryInst>(&context.bir_block->insts[producer_index]);
+  if (binary != producer->binary) {
+    if (auto prepared_register = make_named_prepared_result_register(context, value);
+        prepared_register.has_value()) {
+      record_emitted_scalar_register(scalar_state,
+                                     prepared_register->value_name,
+                                     *prepared_register);
+    }
+    return true;
+  }
+  const auto binary_value_name = prepared_named_value_id(context, binary->result);
+  if (!binary_value_name.has_value()) {
+    return true;
+  }
+  if (const auto requested_value_name = prepared_named_value_id(context, value);
+      !requested_value_name.has_value() ||
+      *requested_value_name != *binary_value_name) {
     return true;
   }
 
@@ -5185,8 +5242,9 @@ find_prepared_frame_slot_call_argument_move(
   const bool lhs_ready =
       materialize_scalar_call_argument_value(context,
                                              binary->lhs,
-                                             *producer_index,
+                                             producer_index,
                                              nullptr,
+                                             source_producers,
                                              scalar_state,
                                              diagnostics,
                                              lowered,
@@ -5194,8 +5252,9 @@ find_prepared_frame_slot_call_argument_move(
   const bool rhs_ready =
       materialize_scalar_call_argument_value(context,
                                              binary->rhs,
-                                             *producer_index,
+                                             producer_index,
                                              nullptr,
+                                             source_producers,
                                              scalar_state,
                                              diagnostics,
                                              lowered,
@@ -5208,8 +5267,8 @@ find_prepared_frame_slot_call_argument_move(
     return true;
   }
   if (auto instruction = lower_scalar_instruction(context,
-                                                  context.bir_block->insts[*producer_index],
-                                                  *producer_index,
+                                                  context.bir_block->insts[producer_index],
+                                                  producer_index,
                                                   scalar_state,
                                                   diagnostics)) {
     const auto expected_result =
@@ -5265,6 +5324,21 @@ lower_scalar_call_argument_producers(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
+  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
+      fallback_source_producers;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
+  if (source_producers == nullptr &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr) {
+    fallback_source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared,
+            *context.function.control_flow);
+    source_producers = &*fallback_source_producers;
+  }
   for (std::size_t argument_index = 0; argument_index < arguments.size(); ++argument_index) {
     const auto& argument = arguments[argument_index];
     std::vector<std::string_view> active_values;
@@ -5288,6 +5362,7 @@ lower_scalar_call_argument_producers(
                                                 argument,
                                                 instruction_index,
                                                 local_aggregate_address_argument,
+                                                source_producers,
                                                 scalar_state,
                                                 diagnostics,
                                                 lowered,
