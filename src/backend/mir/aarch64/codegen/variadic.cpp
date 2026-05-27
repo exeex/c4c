@@ -863,6 +863,7 @@ bool append_aggregate_copy_from_va_list_field(
     std::size_t source_slot_size_bytes,
     std::size_t lane_size_bytes,
     std::size_t lane_count,
+    std::optional<abi::RegisterReference> register_save_progression_offset,
     abi::RegisterReference source_scratch,
     abi::RegisterReference address_scratch) {
   if (va_arg.source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
@@ -891,12 +892,18 @@ bool append_aggregate_copy_from_va_list_field(
                           source_field_offset_bytes));
       if (register_save_area) {
         const std::string address_name = abi::register_name(address_scratch);
-        lines.push_back("ldrsw " + address_name + ", " +
-                        register_indirect_address(
-                            *va_arg.source_va_list.register_name,
-                            va_arg.progression_field_offset_bytes));
-        lines.push_back("add " + source_name + ", " + source_name + ", " +
-                        address_name);
+        if (register_save_progression_offset.has_value()) {
+          lines.push_back("add " + source_name + ", " + source_name + ", " +
+                          std::string{abi::register_name(
+                              *register_save_progression_offset)});
+        } else {
+          lines.push_back("ldrsw " + address_name + ", " +
+                          register_indirect_address(
+                              *va_arg.source_va_list.register_name,
+                              va_arg.progression_field_offset_bytes));
+          lines.push_back("add " + source_name + ", " + source_name + ", " +
+                          address_name);
+        }
       }
       if (!append_add_unsigned_immediate(
               lines,
@@ -961,18 +968,19 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
     const auto w_address = abi::w_register(address_scratch.index);
     const std::string source_w_name = abi::register_name(w_source);
     const std::string address_w_name = abi::register_name(w_address);
+    const std::string address_x_name = abi::register_name(address_scratch);
     const auto overflow_label = aggregate_va_arg_label(va_arg, "overflow");
     const auto done_label = aggregate_va_arg_label(va_arg, "done");
-    lines.push_back("ldr " + source_w_name + ", " +
+    lines.push_back("ldrsw " + address_x_name + ", " +
                     register_indirect_address(
                         *va_arg.source_va_list.register_name,
                         va_arg.progression_field_offset_bytes));
-    lines.push_back("mov " + address_w_name + ", " + source_w_name);
+    lines.push_back("mov " + source_w_name + ", " + address_w_name);
     if (!append_add_unsigned_immediate(
-            lines, w_address, w_source, va_arg.progression_stride_bytes)) {
+            lines, w_source, w_address, va_arg.progression_stride_bytes)) {
       return std::nullopt;
     }
-    lines.push_back("cmp " + address_w_name + ", #0");
+    lines.push_back("cmp " + source_w_name + ", #0");
     lines.push_back("b.gt " + overflow_label);
     if (!append_aggregate_copy_from_va_list_field(
             lines,
@@ -982,6 +990,7 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
             va_arg.source_slot_size_bytes,
             va_arg.register_save_lane_size_bytes,
             va_arg.register_save_lane_count,
+            address_scratch,
             source_scratch,
             address_scratch)) {
       return std::nullopt;
@@ -1014,6 +1023,7 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
             use_hfa_lane_homes ? va_arg.register_save_lane_size_bytes
                                : va_arg.copy_size_bytes,
             use_hfa_lane_homes ? va_arg.register_save_lane_count : 1,
+            std::nullopt,
             source_scratch,
             address_scratch)) {
       return std::nullopt;

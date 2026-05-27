@@ -3,51 +3,41 @@
 Status: Active
 Source Idea Path: ideas/open/57_aarch64_variadic_va_arg_register_save_progression_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Confirm aggregate register-save progression ordering
+Current Step ID: Step 2
+Current Step Title: Repair register-save source address ordering
 
 ## Just Finished
 
-Completed Step 1 classification for aggregate `va_arg` register-save
-progression ordering in `src/backend/mir/aarch64/codegen/variadic.cpp`.
+Completed Step 2 implementation for aggregate `va_arg` register-save source
+address ordering in `src/backend/mir/aarch64/codegen/variadic.cpp`.
 
-The mismatched owner is `print_aggregate_va_arg_lowering_lines()`, specifically
-its `RegisterSaveArea` branch at the call into
-`append_aggregate_copy_from_va_list_field()`. That helper handles both
-`PreparedVariadicVaListFieldKind::GpRegisterSaveArea` and
-`PreparedVariadicVaListFieldKind::FpRegisterSaveArea` through the shared
-`register_save_area` branch, and it forms register-save source addresses by
-reloading `va_arg.progression_field_offset_bytes` from the live va_list field.
-
-The ordering problem is that `print_aggregate_va_arg_lowering_lines()` computes
-the advanced progression value before the register-save copy, then
-`append_aggregate_copy_from_va_list_field()` reloads the live progression field
-when forming the current aggregate source address. The GPR and FPR aggregate
-register-save paths share this helper, so Step 2 should repair the shared
-register-save addressing contract rather than adding a GPR-only or testcase
-shortcut.
+The shared aggregate register-save copy helper now accepts an already-loaded
+pre-increment progression offset register. The `RegisterSaveArea` branch loads
+the current `gp_offset`/`fp_offset` with `ldrsw`, computes the advanced value in
+the other scratch register for the overflow decision, uses the sign-extended
+old offset for the current aggregate source address, and stores the advanced
+offset only after the register-save copy. This covers both
+`GpRegisterSaveArea` and `FpRegisterSaveArea` aggregate paths through the shared
+helper. The overflow-area fallback still passes no preloaded offset and keeps
+its pointer-field copy/update behavior.
 
 ## Suggested Next
 
-Delegate Step 2 implementation in
-`src/backend/mir/aarch64/codegen/variadic.cpp`: change the aggregate
-register-save branch of `print_aggregate_va_arg_lowering_lines()` and/or
-`append_aggregate_copy_from_va_list_field()` so the current register-save source
-address uses the pre-increment `gp_offset`/`fp_offset` value already loaded for
-the overflow decision, and only stores the advanced progression field after the
-current aggregate copy has selected its source. Keep the change semantic across
-both `GpRegisterSaveArea` and `FpRegisterSaveArea`; do not match testcase names,
-temporary spelling, stack offsets, string literals, or `%` format contents.
+Classify the remaining `00204` stdarg string corruption after the aggregate
+register-save ordering fix. The generated aggregate HFA register-save paths now
+use the old sign-extended offset before storing the advanced offset, while the
+focused proof still fails in the string-pointer stdarg output, so the next
+packet should inspect the non-aggregate variadic string/pointer route rather
+than reworking aggregate HFA copy ordering.
 
 ## Watchouts
 
-The semantic contract is the AAPCS64 va_list register-save rule: the current
-aggregate source address uses the old negative offset, while the va_list
-progression field receives old offset plus the prepared stride.
-
-`append_aggregate_copy_from_va_list_field()` is also used for the overflow-area
-fallback, where `register_save_area` is false and the source field is a pointer;
-Step 2 should preserve that behavior.
+The register-save offset must remain sign-extended in the X register; preserving
+only the W register would turn negative AAPCS64 offsets into zero-extended
+addresses. The helper still shares `address_scratch` for source-address
+formation and destination-address fallback materialization, so broad acceptance
+should keep an eye on unusually large destination offsets, even though the
+current aggregate register-save lane offsets are small.
 
 Treat existing dirty `memory.cpp`, `dispatch_edge_copies.cpp`, and transient
 `review/*` files as external context.
@@ -62,4 +52,7 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Result: build passed, focused subset `7/8` passed, and only
 `c_testsuite_aarch64_backend_src_00204_c` failed with `[RUNTIME_MISMATCH]`.
+Generated `00204.c.s` confirms the aggregate register-save path now emits
+`ldrsw x10, [x21, #28]`, uses `x10` in the source address before the copy, and
+stores the advanced offset after the copy.
 Proof log path: `test_after.log`.
