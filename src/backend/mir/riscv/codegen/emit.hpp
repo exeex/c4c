@@ -36,15 +36,25 @@ struct EdgePublicationMoveIntent {
   const c4c::backend::prepare::PreparedEdgePublication* publication = nullptr;
   c4c::backend::prepare::PreparedValueId destination_value_id = 0;
   std::optional<c4c::backend::prepare::PreparedValueId> source_value_id;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::TypeKind destination_type = c4c::backend::bir::TypeKind::Void;
   std::string source_register;
   std::optional<std::int64_t> source_immediate_i32;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> source_stack_slot_id;
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<std::size_t> source_stack_size_bytes;
+  std::optional<std::size_t> source_stack_align_bytes;
+  c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy
+      source_stack_extension_policy =
+          c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy::None;
   std::optional<c4c::backend::prepare::PreparedValueId> source_pointer_base_value_id;
   std::string source_pointer_base_register;
   std::optional<std::int64_t> source_pointer_byte_delta;
   std::string destination_register;
+  c4c::backend::prepare::PreparedRegisterBank destination_register_bank =
+      c4c::backend::prepare::PreparedRegisterBank::None;
+  std::optional<c4c::backend::prepare::PreparedRegisterPlacement>
+      destination_register_placement;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_stack_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   std::optional<std::size_t> destination_stack_size_bytes;

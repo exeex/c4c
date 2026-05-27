@@ -34,6 +34,68 @@ bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
 }
 
+void clear_stack_source_intent(EdgePublicationMoveIntent& intent) {
+  intent.source_stack_slot_id.reset();
+  intent.source_stack_offset_bytes.reset();
+  intent.source_stack_size_bytes.reset();
+  intent.source_stack_align_bytes.reset();
+  intent.source_stack_extension_policy =
+      c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy::None;
+}
+
+void copy_same_width_i32_stack_source_publication(
+    EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedTypedStackSourcePublication& typed) {
+  intent.source_value_id = typed.source_value_id;
+  intent.destination_value_id = typed.destination_value_id;
+  intent.source_type = typed.source_type;
+  intent.destination_type = typed.destination_type;
+  intent.source_stack_slot_id = typed.source_slot_id;
+  intent.source_stack_offset_bytes = typed.source_stack_offset_bytes;
+  intent.source_stack_size_bytes = typed.source_stack_size_bytes;
+  intent.source_stack_align_bytes = typed.source_stack_align_bytes;
+  intent.source_stack_extension_policy = typed.extension_policy;
+  intent.destination_register_bank = typed.destination_register_bank;
+  intent.destination_register_placement = typed.destination_register_placement;
+}
+
+std::optional<std::string> riscv_gpr_register_name_from_placement(
+    const c4c::backend::prepare::PreparedRegisterPlacement& placement) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (placement.bank != prepare::PreparedRegisterBank::Gpr ||
+      placement.contiguous_width != 1) {
+    return std::nullopt;
+  }
+
+  switch (placement.pool) {
+    case prepare::PreparedRegisterSlotPool::CallerSaved:
+      if (placement.slot_index == 0) {
+        return std::string{"t0"};
+      }
+      return std::nullopt;
+    case prepare::PreparedRegisterSlotPool::CalleeSaved:
+      if (placement.slot_index < 2) {
+        return std::string{"s"} + std::to_string(placement.slot_index + 1);
+      }
+      return std::nullopt;
+    case prepare::PreparedRegisterSlotPool::CallArgument:
+      if (placement.slot_index < 8) {
+        return std::string{"a"} + std::to_string(placement.slot_index);
+      }
+      return std::nullopt;
+    case prepare::PreparedRegisterSlotPool::CallResult:
+      if (placement.slot_index == 0) {
+        return std::string{"a0"};
+      }
+      return std::nullopt;
+    case prepare::PreparedRegisterSlotPool::ReservedScratch:
+    case prepare::PreparedRegisterSlotPool::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) {
   using c4c::codegen::lir::LirBinOp;
   using c4c::codegen::lir::LirRet;
@@ -159,29 +221,15 @@ bool has_non_aliasing_i32_stack_source_for_stack_destination(
                                *destination_home.size_bytes);
 }
 
-bool has_untyped_integer_stack_source_register_policy(
+bool has_existing_concrete_i64_stack_source_register_policy(
+    const EdgePublicationMoveIntent& intent,
     const c4c::backend::prepare::PreparedEdgePublication& publication) {
   namespace bir = c4c::backend::bir;
 
-  if (publication.source_value.type != publication.destination_value.type) {
-    return false;
-  }
-  switch (publication.source_value.type) {
-    case bir::TypeKind::F32:
-    case bir::TypeKind::F64:
-    case bir::TypeKind::F128:
-      return false;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-    case bir::TypeKind::I64:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::Ptr:
-      return true;
-  }
-  return false;
+  return publication.source_value.type == bir::TypeKind::I64 &&
+         publication.destination_value.type == bir::TypeKind::I64 &&
+         intent.source_stack_offset_bytes.has_value() &&
+         intent.source_stack_size_bytes == std::optional<std::size_t>{8};
 }
 
 }  // namespace
@@ -238,34 +286,71 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
   }
 
   const auto& destination_home = *publication->destination_home;
-  if (destination_home.kind == prepare::PreparedValueHomeKind::Register &&
-      destination_home.register_name.has_value()) {
+  if (destination_home.kind == prepare::PreparedValueHomeKind::Register) {
     intent.status = EdgePublicationMoveIntentStatus::Available;
-    intent.destination_register = *destination_home.register_name;
     if (intent.source_immediate_i32.has_value()) {
+      if (!destination_home.register_name.has_value()) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        return intent;
+      }
+      intent.destination_register = *destination_home.register_name;
       intent.instruction_text =
           "li " + intent.destination_register + ", " + *source_operand;
     } else if (intent.source_stack_offset_bytes.has_value()) {
-      if (!has_untyped_integer_stack_source_register_policy(*publication)) {
+      const auto typed =
+          prepare::prepare_same_width_i32_stack_source_publication(publication);
+      if (typed.status !=
+          prepare::PreparedTypedStackSourcePublicationStatus::Available) {
+        if (has_existing_concrete_i64_stack_source_register_policy(intent,
+                                                                   *publication) &&
+            destination_home.register_name.has_value()) {
+          intent.destination_register = *destination_home.register_name;
+          if (fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes)) {
+            intent.instruction_text =
+                "ld " + intent.destination_register + ", " + *source_operand;
+          } else {
+            const auto offset_text = std::to_string(*intent.source_stack_offset_bytes);
+            intent.instruction_text =
+                "li t6, " + offset_text +
+                "\n    add t6, sp, t6" +
+                "\n    ld " + intent.destination_register + ", 0(t6)";
+          }
+          return intent;
+        }
         intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
         intent.destination_register.clear();
         intent.instruction_text.clear();
+        clear_stack_source_intent(intent);
         return intent;
       }
-      const auto opcode = intent.source_stack_size_bytes == std::optional<std::size_t>{8}
-                              ? std::string{"ld "}
-                              : std::string{"lw "};
-      if (fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes)) {
+      copy_same_width_i32_stack_source_publication(intent, typed);
+      const auto register_name =
+          riscv_gpr_register_name_from_placement(*typed.destination_register_placement);
+      if (!register_name.has_value()) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        intent.destination_register.clear();
+        intent.instruction_text.clear();
+        clear_stack_source_intent(intent);
+        return intent;
+      }
+      intent.destination_register = *register_name;
+      if (fits_signed_12_bit_load_offset(*typed.source_stack_offset_bytes)) {
         intent.instruction_text =
-            opcode + intent.destination_register + ", " + *source_operand;
+            "lw " + intent.destination_register + ", " +
+            std::to_string(*typed.source_stack_offset_bytes) + "(sp)";
       } else {
-        const auto offset_text = std::to_string(*intent.source_stack_offset_bytes);
+        const auto offset_text = std::to_string(*typed.source_stack_offset_bytes);
         intent.instruction_text =
             "li t6, " + offset_text +
             "\n    add t6, sp, t6" +
-            "\n    " + opcode + intent.destination_register + ", 0(t6)";
+            "\n    lw " + intent.destination_register + ", 0(t6)";
       }
     } else if (intent.source_pointer_byte_delta.has_value()) {
+      if (!destination_home.register_name.has_value()) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        return intent;
+      }
+      intent.destination_register = *destination_home.register_name;
       if (*intent.source_pointer_byte_delta == 0) {
         intent.instruction_text =
             "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
@@ -284,6 +369,11 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
         intent.instruction_text.clear();
       }
     } else {
+      if (!destination_home.register_name.has_value()) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        return intent;
+      }
+      intent.destination_register = *destination_home.register_name;
       intent.instruction_text =
           "mv " + intent.destination_register + ", " + *source_operand;
     }

@@ -121,6 +121,12 @@ prepare::PreparedBirModule make_register_edge_publication_module() {
           .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
           .source_parallel_copy_predecessor_label = ids.predecessor,
           .source_parallel_copy_successor_label = ids.successor,
+          .destination_register_placement = prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+              .slot_index = 1,
+              .contiguous_width = 1,
+          },
       }},
   });
   prepared.value_locations.functions.push_back(locations);
@@ -252,10 +258,17 @@ int check_stack_slot_to_register_move_uses_shared_lookup() {
   source_home.offset_bytes = 16;
   source_home.size_bytes = 4;
   source_home.immediate_i32.reset();
+  auto& destination_home = prepared.value_locations.functions.front().value_homes.at(1);
+  destination_home.register_name = std::string{"fa0"};
+  prepared.value_locations.functions.front().move_bundles.front()
+      .moves.front()
+      .destination_register_name = std::string{"fa0"};
 
   const auto asm_text = riscv::emit_prepared_module(prepared);
-  if (!expect(asm_text.find("lw a1, 16(sp)") != std::string::npos,
-              "RISC-V prepared module should emit an I32 stack-source edge load")) {
+  if (!expect(asm_text.find("lw a1, 16(sp)") != std::string::npos &&
+                  asm_text.find("lw fa0, 16(sp)") == std::string::npos,
+              "RISC-V prepared module should emit an I32 stack-source edge load "
+              "from shared GPR placement, not raw register spelling")) {
     return 1;
   }
 
@@ -276,7 +289,8 @@ int check_stack_slot_to_register_move_uses_shared_lookup() {
                   intent.source_stack_offset_bytes == 16 &&
                   intent.source_stack_size_bytes == 4 &&
                   intent.destination_register == "a1",
-              "RISC-V stack-source helper should record stack provenance and destination register") ||
+              "RISC-V stack-source helper should record shared stack provenance and "
+              "destination placement register") ||
       !expect(intent.instruction_text == "lw a1, 16(sp)",
               "RISC-V helper should render target-local lw syntax")) {
     return 1;
@@ -292,7 +306,7 @@ int check_stack_slot_to_register_move_uses_shared_lookup() {
   return 0;
 }
 
-int check_stack_slot_i64_to_register_move_uses_shared_lookup() {
+int check_stack_slot_i64_to_register_move_uses_existing_concrete_path() {
   auto prepared = make_register_edge_publication_module();
   const auto ids = FixtureIds{
       .function = prepared.names.function_names.find("join_regs"),
@@ -302,6 +316,7 @@ int check_stack_slot_i64_to_register_move_uses_shared_lookup() {
       .base_name = prepared.names.value_names.find("%base"),
       .destination_name = prepared.names.value_names.find("%dst"),
   };
+  set_edge_publication_value_types(prepared, bir::TypeKind::I64, bir::TypeKind::I64);
   auto& source_home = prepared.value_locations.functions.front().value_homes.front();
   source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
   source_home.register_name.reset();
@@ -312,7 +327,8 @@ int check_stack_slot_i64_to_register_move_uses_shared_lookup() {
 
   const auto asm_text = riscv::emit_prepared_module(prepared);
   if (!expect(asm_text.find("ld a1, 32(sp)") != std::string::npos,
-              "RISC-V prepared module should emit an I64 stack-source edge load")) {
+              "RISC-V prepared module should preserve the existing concrete I64 "
+              "stack-source edge load")) {
     return 1;
   }
 
@@ -322,7 +338,8 @@ int check_stack_slot_i64_to_register_move_uses_shared_lookup() {
   auto intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
-              "RISC-V helper should accept the shared I64 stack-source edge publication") ||
+              "RISC-V helper should preserve concrete same-width I64 stack-source "
+              "edge publication support") ||
       !expect(intent.publication == publication && publication != nullptr,
               "RISC-V I64 stack-source helper should preserve shared publication authority") ||
       !expect(publication->source_home_kind == prepare::PreparedValueHomeKind::StackSlot,
@@ -333,7 +350,8 @@ int check_stack_slot_i64_to_register_move_uses_shared_lookup() {
                   intent.source_stack_offset_bytes == 32 &&
                   intent.source_stack_size_bytes == 8 &&
                   intent.destination_register == "a1",
-              "RISC-V I64 stack-source helper should record stack provenance and destination register") ||
+              "RISC-V I64 stack-source helper should record stack provenance and "
+              "destination register") ||
       !expect(intent.instruction_text == "ld a1, 32(sp)",
               "RISC-V helper should render target-local ld syntax")) {
     return 1;
@@ -411,10 +429,12 @@ int check_large_offset_stack_slot_to_register_loads_use_shared_lookup() {
   }
 
   set_stack_source(8192, 8, prepare::PreparedFrameSlotId{22});
+  set_edge_publication_value_types(prepared, bir::TypeKind::I64, bir::TypeKind::I64);
   const auto i64_asm_text = riscv::emit_prepared_module(prepared);
   if (!expect(i64_asm_text.find("li t6, 8192\n    add t6, sp, t6\n    ld a1, 0(t6)") !=
                   std::string::npos,
-              "RISC-V prepared module should materialize a large I64 stack-source address")) {
+              "RISC-V prepared module should preserve the existing large-offset I64 "
+              "stack-source address materialization")) {
     return 1;
   }
 
@@ -422,7 +442,8 @@ int check_large_offset_stack_slot_to_register_loads_use_shared_lookup() {
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
-              "RISC-V helper should accept a large-offset I64 stack-source publication") ||
+              "RISC-V helper should preserve large-offset I64 stack-source "
+              "publication support") ||
       !expect(intent.source_stack_slot_id == prepare::PreparedFrameSlotId{22} &&
                   intent.source_stack_offset_bytes == 8192 &&
                   intent.source_stack_size_bytes == 8 &&
@@ -1332,7 +1353,7 @@ int main() {
       result != 0) {
     return result;
   }
-  if (const int result = check_stack_slot_i64_to_register_move_uses_shared_lookup();
+  if (const int result = check_stack_slot_i64_to_register_move_uses_existing_concrete_path();
       result != 0) {
     return result;
   }

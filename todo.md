@@ -1,50 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/43_shared_prepared_typed_stack_source_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Shared Prepared Typed Stack-Source Facts
+Current Step ID: Step 3
+Current Step Title: Consume Shared Typed Authority In RISC-V
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by adding `PreparedTypedStackSourcePublication` and
-`prepare_same_width_i32_stack_source_publication()` in the shared prepared
-lookup layer.
+Completed Step 3 by consuming
+`prepare_same_width_i32_stack_source_publication()` in the RISC-V
+StackSlot-to-Register edge-publication load path.
 
-Changed facts:
-
-- The shared query exposes the selected same-width `I32` concrete-offset
-  `StackSlot(size_bytes=4) -> Register` authority from `PreparedEdgePublication`
-  plus its matched `PreparedMoveResolution`.
-- Available records carry source/destination value ids and names, BIR source
-  and destination types, `SameWidthNoExtension`, source slot id/offset/size/alignment,
-  destination register bank, and full destination register placement.
-- Missing or unsupported states are distinct: unavailable publication,
-  unsupported source home, missing concrete stack facts, missing same-width
-  `I32` types, unsupported destination storage, missing destination register
-  placement, unsupported move authority, missing destination `Gpr` bank, and
-  missing destination register view.
-- Focused prepared lookup-helper coverage now proves the available carrier and
-  fail-closed states for missing type, missing concrete stack facts, missing
-  placement, unsupported move authority, wrong bank, and incomplete register
-  view.
+The RISC-V intent now copies the shared same-width `I32` source/destination
+types, stack slot/offset/size/alignment, `SameWidthNoExtension`, destination
+register bank, and destination register placement before rendering `lw`.
+The selected same-width `I32` path proves raw destination register spelling is
+not authoritative, while existing concrete same-width `I64` and large-offset
+`I64` StackSlot-to-Register paths continue to emit `ld`.
 
 ## Suggested Next
 
-Implement Step 3 by consuming
-`prepare_same_width_i32_stack_source_publication()` in the RISC-V edge
-publication path for the selected same-width `I32` stack-source form.
+Supervisor-side validation/acceptance for the Step 3 slice. A coherent next
+check would be the matching regression guard around the same delegated command,
+or a broader backend prepared-publication subset if the supervisor wants more
+confidence before commit.
 
 ## Watchouts
 
-RISC-V still has not been changed in this packet. Step 3 should copy only the
-new shared typed facts into the target-local intent; do not re-infer type,
-extension policy, or destination bank from byte size, ids, offsets, fixture
-names, raw register spelling, or local helper shape. The new query currently
-supports only same-width `I32`; existing `I64`, subword, widening, F32, dynamic,
-and aggregate routes must stay fail-closed unless a matching shared authority
-record is added for them.
+This slice intentionally requires shared typed authority for
+StackSlot(size=4)->Register same-width `I32` loads, but it preserves the
+pre-existing concrete same-width `I64` StackSlot-to-Register load path.
+Subword, widening, F32, dynamic, and aggregate stack-source forms remain
+fail-closed. Existing stack-destination source materialization is still guarded
+by the older destination-specific path.
 
 ## Proof
 
@@ -53,5 +42,3 @@ Ran:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_prepared_edge_publication$'`
 
 Result: passed. The accepted proof log was rolled forward to `test_before.log`.
-
-Additional local sanity: `ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'` passed.
