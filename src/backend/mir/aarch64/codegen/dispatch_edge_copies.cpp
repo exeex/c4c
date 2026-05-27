@@ -103,6 +103,11 @@ prepared_edge_publication_producer_context(
         return std::nullopt;
       }
       break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      if (publication.source_load_global != std::get_if<bir::LoadGlobalInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
     case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
       if (publication.source_cast != std::get_if<bir::CastInst>(&inst)) {
         return std::nullopt;
@@ -145,6 +150,11 @@ prepared_edge_source_producer_context(
   switch (producer.kind) {
     case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
       if (producer.load_local != std::get_if<bir::LoadLocalInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      if (producer.load_global != std::get_if<bir::LoadGlobalInst>(&inst)) {
         return std::nullopt;
       }
       break;

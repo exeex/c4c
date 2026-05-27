@@ -80,6 +80,7 @@ enum class PreparedEdgePublicationSourceProducerKind {
   Unknown,
   Immediate,
   LoadLocal,
+  LoadGlobal,
   Cast,
   Binary,
   SelectMaterialization,
@@ -94,6 +95,8 @@ enum class PreparedEdgePublicationSourceProducerKind {
       return "immediate";
     case PreparedEdgePublicationSourceProducerKind::LoadLocal:
       return "load_local";
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return "load_global";
     case PreparedEdgePublicationSourceProducerKind::Cast:
       return "cast";
     case PreparedEdgePublicationSourceProducerKind::Binary:
@@ -191,6 +194,7 @@ struct PreparedEdgePublicationSourceProducer {
   BlockLabelId block_label = kInvalidBlockLabel;
   std::size_t instruction_index = 0;
   const bir::LoadLocalInst* load_local = nullptr;
+  const bir::LoadGlobalInst* load_global = nullptr;
   const bir::CastInst* cast = nullptr;
   const bir::BinaryInst* binary = nullptr;
   const bir::SelectInst* select = nullptr;
@@ -213,6 +217,7 @@ struct PreparedEdgePublication {
   std::optional<BlockLabelId> source_producer_block_label;
   std::optional<std::size_t> source_producer_instruction_index;
   const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::LoadGlobalInst* source_load_global = nullptr;
   const bir::CastInst* source_cast = nullptr;
   const bir::BinaryInst* source_binary = nullptr;
   const bir::SelectInst* source_select = nullptr;

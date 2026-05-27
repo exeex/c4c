@@ -200,6 +200,7 @@ struct PreparedStoreSourcePublicationPlan {
   std::optional<BlockLabelId> source_producer_block_label;
   std::optional<std::size_t> source_producer_instruction_index;
   const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::LoadGlobalInst* source_load_global = nullptr;
   const bir::CastInst* source_cast = nullptr;
   const bir::BinaryInst* source_binary = nullptr;
   const bir::SelectInst* source_select = nullptr;

@@ -349,6 +349,23 @@ make_edge_publication_source_producers(const PreparedBirModule* prepared,
         }
         continue;
       }
+      if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
+          load_global != nullptr) {
+        if (const auto result_name =
+                existing_prepared_value_name_id(prepared->names, load_global->result);
+            result_name.has_value()) {
+          publish_source_producer(
+              lookups.producers_by_value_name,
+              *result_name,
+              PreparedEdgePublicationSourceProducer{
+                  .kind = PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+                  .block_label = block_label,
+                  .instruction_index = inst_index,
+                  .load_global = load_global,
+              });
+        }
+        continue;
+      }
       if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
         if (const auto result_name =
                 existing_prepared_value_name_id(prepared->names, cast->result);
@@ -428,6 +445,7 @@ void apply_source_producer_fact(
   }
   publication.source_producer_instruction_index = producer->instruction_index;
   publication.source_load_local = producer->load_local;
+  publication.source_load_global = producer->load_global;
   publication.source_cast = producer->cast;
   publication.source_binary = producer->binary;
   publication.source_select = producer->select;

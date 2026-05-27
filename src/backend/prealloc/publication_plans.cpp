@@ -386,6 +386,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     plan.source_producer_instruction_index =
         inputs.source_producer->instruction_index;
     plan.source_load_local = inputs.source_producer->load_local;
+    plan.source_load_global = inputs.source_producer->load_global;
     plan.source_cast = inputs.source_producer->cast;
     plan.source_binary = inputs.source_producer->binary;
     plan.source_select = inputs.source_producer->select;
