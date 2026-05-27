@@ -1924,17 +1924,19 @@ struct LocalFrameAddressSource {
 }
 
 [[nodiscard]] std::optional<std::size_t> prepared_byval_lane_extent_bytes(
+    const PreparedCallPlan& call_plan,
     const PreparedCallArgumentPlan& argument,
     const PreparedMoveResolution& move,
     const PreparedValueHome* source_home,
     const bir::CallInst& call) {
-  if (move.reason != "call_arg_byval_aggregate_register_lanes" ||
-      source_home == nullptr || argument.arg_index >= call.arg_abi.size()) {
+  if (source_home == nullptr || argument.arg_index >= call.arg_abi.size()) {
     return std::nullopt;
   }
   const auto& abi = call.arg_abi[argument.arg_index];
   if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
-      !abi.passed_in_register || abi.size_bytes == 0 || abi.size_bytes > 16) {
+      !abi.passed_in_register || abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes == 0 || abi.size_bytes > 16) {
     return std::nullopt;
   }
   const std::size_t lane_count = std::max({
@@ -1944,6 +1946,23 @@ struct LocalFrameAddressSource {
       move.destination_occupied_register_names.size(),
       argument.destination_occupied_register_names.size(),
   });
+  const bool explicit_byval_lane_move =
+      move.reason == "call_arg_byval_aggregate_register_lanes";
+  const bool direct_variadic_single_gpr_lane =
+      !explicit_byval_lane_move &&
+      call_plan.wrapper_kind == PreparedCallWrapperKind::DirectExternVariadic &&
+      move.reason == "call_arg_register_to_register" &&
+      move.destination_kind == PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == PreparedMoveStorageKind::Register &&
+      move.destination_abi_index == std::optional<std::size_t>{argument.arg_index} &&
+      argument.destination_register_bank ==
+          std::optional<PreparedRegisterBank>{PreparedRegisterBank::Gpr} &&
+      move.destination_register_name.has_value() &&
+      argument.destination_register_name.has_value() &&
+      lane_count == 1 && abi.size_bytes <= 8;
+  if (!explicit_byval_lane_move && !direct_variadic_single_gpr_lane) {
+    return std::nullopt;
+  }
   std::size_t extent = source_home->size_bytes.value_or(abi.size_bytes);
   if (extent == 0) {
     extent = abi.size_bytes;
@@ -2038,7 +2057,7 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
           : nullptr;
 
   if (const auto byval_extent =
-          prepared_byval_lane_extent_bytes(argument, *move, source_home, call);
+          prepared_byval_lane_extent_bytes(call_plan, argument, *move, source_home, call);
       byval_extent.has_value()) {
     selection.kind = PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
     selection.byval_lane_extent_bytes = byval_extent;
