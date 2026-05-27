@@ -54,6 +54,14 @@ before the join, but focused proof remains `7/8` with `00204`
 must not claim them as complete progress unless a later lifecycle route
 explicitly owns and proves them.
 
+## Parked Split Note
+
+Step 3 classified the remaining stale-source failure as edge/terminator
+consumer preservation placement rather than scalar cast or ALU ownership. The
+scalar cast route remains open for later cast/ALU consumer cleanup, but active
+work moved to `ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md`
+so the prepared predecessor-side preservation contract can be repaired first.
+
 ## Duplicated Helpers And Fallback Paths
 
 - Cast lowering for scalar extension/truncation must not infer source width or
