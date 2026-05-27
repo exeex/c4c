@@ -1326,13 +1326,18 @@ find_prepared_materialized_condition_producer(
 [[nodiscard]] bool fused_compare_operand_has_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
-    const DispatchBranchFusionHooks& hooks) {
+    const DispatchBranchFusionHooks&) {
   if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named) {
     return false;
   }
-  const auto* producer = hooks.find_same_block_named_producer(
-      context, value.name, context.bir_block->insts.size());
-  return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
+  const auto producer =
+      find_prepared_fused_compare_operand_producer(context,
+                                                   value,
+                                                   context.bir_block->insts.size());
+  return producer.has_value() &&
+         producer->kind ==
+             prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
+         producer->select != nullptr;
 }
 
 }  // namespace
@@ -1972,11 +1977,19 @@ lower_stack_home_fused_compare_branch(
   auto lhs = *branch_condition->lhs;
   lhs.type = *branch_condition->compare_type;
   if (lhs.kind == bir::Value::Kind::Named && context.bir_block != nullptr) {
-    const auto* producer =
-        hooks.find_same_block_named_producer(context, lhs.name, context.bir_block->insts.size());
-    if (producer != nullptr &&
-        std::get_if<bir::LoadLocalInst>(producer) == nullptr &&
-        std::get_if<bir::LoadGlobalInst>(producer) == nullptr) {
+    const auto producer =
+        find_prepared_fused_compare_operand_producer(context,
+                                                     lhs,
+                                                     context.bir_block->insts.size());
+    const auto has_allowed_load_producer =
+        producer.has_value() &&
+        ((producer->kind ==
+              prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+          producer->load_local != nullptr) ||
+         (producer->kind ==
+              prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal &&
+          producer->load_global != nullptr));
+    if (producer.has_value() && !has_allowed_load_producer) {
       return std::nullopt;
     }
   }
