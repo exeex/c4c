@@ -1,255 +1,236 @@
-# AArch64 Dispatch Value Materialization Prepared Authority Repair Runbook
+# AArch64 Scalar Cast ALU Publication Prepared Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
-Supersedes active route: ideas/open/52_aarch64_calls_prepared_authority_repair.md is parked open after review/calls-step3-route-review.md judged the remaining `%t49` pointer-select aggregate-copy issue as dispatch/value-materialization ownership.
+Source Idea: ideas/open/55_aarch64_scalar_cast_alu_publication_prepared_authority_repair.md
+Supersedes active route: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md is parked open after review/dispatch-step3-route-review.md judged the remaining `00204` mismatch outside the dispatch value-materialization owned surface.
 
 ## Purpose
 
-Make AArch64 dispatch value materialization consume prepared source, producer,
-publication, memory, global, select-chain, and local-slot address facts instead
-of reconstructing semantic value authority locally.
+Make AArch64 scalar cast and ALU publication paths consume prepared source/home
+authority when publishing pointer-derived scalar values, so a live pointer
+register is not reinterpreted as a stale 32-bit offset source.
 
 ## Goal
 
-Repair the current `00204` post-join `%t49` pointer/select aggregate-copy
-materialization path without widening the calls/variadic route: `addr %t49+N`
-byte-copy loads must use the authoritative pointer value selected at the
-`vaarg.join.39` boundary, not a scratch value rebuilt through truncated integer
-moves.
+Repair the remaining `00204` post-join mismatch around
+`%t45.byte_offset.i64` / `%t45`: the aggregate byte-copy address path must keep
+the selected pointer value and integer offset source distinct, and must not
+materialize a pointer-shaped scratch through `mov w9, w13; sxtw x9, w9`.
 
 ## Core Rule
 
-Prefer existing prepared publication, value-home, source-producer, memory, and
-select-chain facts. Add the smallest shared query only when non-edge value
-materialization cannot consume an existing prepared authority. Do not deepen
-same-block producer recursion, raw value-name scans, or testcase-shaped
-shortcuts.
+Prefer prepared value-home, scalar-publication, source-producer, block-entry,
+and edge-publication facts for scalar cast/ALU source selection. Add one small
+shared query only if existing prepared facts cannot serve both `cast_ops.cpp`
+and `alu.cpp`. Do not recover truth from raw BIR spelling, same-block scans, or
+the current scratch register contents.
 
 ## Read First
 
-- `ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md`
-- `review/calls-step3-route-review.md`
+- `ideas/open/55_aarch64_scalar_cast_alu_publication_prepared_authority_repair.md`
+- `review/dispatch-step3-route-review.md`
 - `todo.md`
+- `src/backend/mir/aarch64/codegen/cast_ops.cpp`
+- `src/backend/mir/aarch64/codegen/alu.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
-- `src/backend/mir/aarch64/codegen/memory.cpp`
 - `src/backend/prealloc/prepared_lookups.cpp`
 - prepared facts for:
-  - `PreparedEdgePublicationSourceProducerLookups`
-  - `PreparedEdgePublicationSourceProducer`
-  - `PreparedScalarPublicationPlan`
   - `PreparedValueHome`
+  - `PreparedStoragePlanValue`
+  - `PreparedScalarPublicationPlan`
+  - `PreparedEdgePublicationSourceProducerLookups`
   - `PreparedBlockEntryPublication`
-  - `PreparedMemoryAccess`
-  - `PreparedAddressingFunction`
-  - recovered store-source and local-slot address helpers
+  - `PreparedMoveBundle`
 
 ## Current Targets
 
-- `emit_value_publication_to_register`
-- select-chain value materialization for non-edge/non-store consumers
-- pointer-valued select results consumed by aggregate-copy address loads
-- `addr %t49+N` byte-copy loads in `vaarg.join.39`
-- local-slot and prepared value-home fallbacks used by value publication
-- current incomplete cursor/edge-copy worktree state from the calls route:
+- scalar cast publication for pointer-derived values
+- ALU stack publication for derived scalar values
+- source selection for `%t45.byte_offset.i64` / `%t45`
+- register-home freshness where join-block publication has already placed the
+  selected pointer in `x13`
+- current incomplete predecessor context:
   - `src/backend/mir/aarch64/codegen/memory.cpp`
   - `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
 
 ## Non-Goals
 
-- Do not change AAPCS64 call staging, variadic layout constants, `bl`/`blr`
-  spelling, stack cleanup, or ABI result store spelling under this route.
-- Do not continue calls/variadic cursor work except to preserve and validate the
-  existing incomplete worktree improvements while repairing the dispatch-owned
-  materialization blocker.
-- Do not push the repair back into `calls.cpp` or `variadic.cpp` unless tracing
-  proves the prepared dispatch/value-materialization facts are already correct
-  and the remaining bug is wholly inside calls ownership.
+- Do not continue implementation under the dispatch value-materialization route
+  unless tracing proves a shared query must be exposed for cast/ALU consumers.
+- Do not alter calls/variadic layout, ABI staging, memory cursor constants, or
+  edge-copy mechanics under this route.
+- Do not accept the dirty `memory.cpp` or `dispatch_edge_copies.cpp` changes as
+  finished work in this lifecycle rewrite.
+- Do not close the parked dispatch, calls, ALU, memory, or comparison ideas as
+  part of this reset.
 - Do not downgrade expectations, mark supported tests unsupported, or claim
-  helper renames as capability progress.
-- Do not close the parked calls or ALU ideas as part of this switch.
+  helper renames as semantic progress.
 
 ## Working Model
 
-- The calls route removed the original `%9s` overflow cursor crash but did not
-  become acceptance-ready: the focused proof remains 5/6 with `00204` failing
-  by runtime mismatch.
-- The current uncommitted `memory.cpp` change updates a va_list field from the
-  loaded cursor for the generic `load field -> add stride -> store same field`
-  pattern.
-- The current uncommitted `dispatch_edge_copies.cpp` change prevents the
-  predecessor edge copy from reloading the join pointer from the just-advanced
-  `overflow_arg_area` field.
-- The remaining failure occurs after that join: emitted code materializes
-  pointer-derived scratch state for `%t49` through 32-bit moves such as
-  `mov w9, w13; sxtw x9, w9`, then later aggregate-copy byte loads use the bad
-  pointer-derived value.
-- That post-join value materialization matches the dispatch value-materialization
-  source idea, especially the select-chain and local-slot address authority
-  gaps.
+- The previous calls route removed the original `00204` segfault by improving
+  the va_list overflow cursor path, but the implementation remains unaccepted.
+- The previous edge-copy repair prevented the join pointer from being reloaded
+  from the just-advanced `overflow_arg_area`, but that change is still dirty
+  context.
+- The dispatch value-materialization audit found that `%t49` is already
+  republished into `x13`; a direct `dispatch_value_materialization.cpp` helper
+  edit did not affect the bad sequence and was reverted.
+- The remaining bad sequence appears later in ordinary scalar cast/ALU
+  publication for `%t45.byte_offset.i64` / `%t45`, where `x13` is treated as an
+  integer offset source and narrowed through `w13`.
+- That ownership surface spans `cast_ops.cpp` and `alu.cpp`, so it needs a
+  separate source idea instead of widening idea 49.
 
 ## Execution Rules
 
-- Treat the existing `memory.cpp` and `dispatch_edge_copies.cpp` edits as
-  incomplete worktree context, not an accepted calls slice.
-- Preserve the fixed overflow-block shape while repairing `%t49`; do not revert
-  the current cursor or edge-copy improvements unless the supervisor explicitly
-  asks for a different route.
-- Add or use semantic probes for pointer-valued select results feeding aggregate
-  byte-copy/address loads before accepting any code slice. A green `00204` alone
-  is not enough.
-- Keep the proof ladder at minimum: build, focused semantic probes, the current
-  focused guardrail subset including `00204`; the supervisor decides any broader
-  regression checkpoint.
-- If the repair requires a broad contract shared by calls, dispatch edge copies,
-  and value materialization, stop for lifecycle split instead of hiding that
-  contract inside one helper.
+- Treat existing `memory.cpp` and `dispatch_edge_copies.cpp` edits as
+  incomplete worktree context. Preserve them while diagnosing unless the
+  supervisor explicitly asks for revert or reroute.
+- Begin with classification/proof of the exact emitter for the bad scalar
+  publication before changing code.
+- Keep the proof ladder at minimum:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
+- A green `00204` alone is not enough; the same-feature probes must stay in the
+  subset and no expectation may be weakened.
+- If tracing proves the true owner is outside cast/ALU publication, stop for a
+  lifecycle split instead of broadening this runbook silently.
 
 ## Steps
 
-### Step 1: Establish pointer-select aggregate-copy baseline and probes
+### Step 1: Establish scalar cast ALU publication baseline
 
-Goal: make the current `%t49` failure and same-feature proof surface explicit
-before more code changes.
+Goal: prove the exact cast or ALU publication emitter for the remaining
+pointer-corrupting sequence before any more implementation.
 
-Primary target: `todo.md` proof state, focused dumps for `00204`, and semantic
-backend probes under `tests/backend/case/` if no existing probes cover this
-shape
+Primary target: `todo.md` proof state and focused dumps for `00204`
 
 Actions:
 
-- Reuse or rerun the supervisor-selected focused subset that currently passes
-  5/6 and fails only `c_testsuite_aarch64_backend_src_00204_c`.
-- Dump the post-join BIR, prepared BIR, and assembly around `vaarg.join.39`,
-  `%t49`, and the subsequent `addr %t49+N` byte-copy loads.
-- Add or identify a minimal backend probe for a pointer-valued select result
-  feeding byte-copy or address-offset loads.
-- Add or identify a nearby variadic aggregate-copy probe that distinguishes the
-  fixed cursor path from the remaining post-join pointer materialization path.
-- Record whether prepared value-home, block-entry publication, edge-publication
-  source, or select-chain facts already name the authoritative pointer source.
+- Rerun or reuse the supervisor-selected eight-test focused subset.
+- Dump the prepared BIR and assembly around `vaarg.join.39`,
+  `%t45.byte_offset.i64`, `%t45`, `%t49`, and the aggregate byte-copy loads.
+- Trace which `cast_ops.cpp` or `alu.cpp` lowering function emits the
+  `mov w9, w13; sxtw x9, w9` sequence.
+- Record the prepared value-home, scalar-publication, block-entry, or
+  source-producer fact that should identify the source register or home.
+- Confirm whether `dispatch_value_materialization.cpp` is only an upstream
+  producer or must expose a shared query for this cast/ALU consumer.
 
 Completion check:
 
-- `todo.md` records the first bad materialization fact, the expected prepared
-  authority, and at least one same-feature probe that can fail or pass for the
-  same semantic reason as `00204`.
+- `todo.md` names the first bad scalar publication emitter, the stale source it
+  used, the prepared authority it should consume, and whether the next packet
+  is cast-only, ALU-only, or a small shared-query repair.
 
-### Step 2: Audit non-edge select-chain value materialization authority
+### Step 2: Repair scalar cast source selection
 
-Goal: decide whether `%t49` can consume existing prepared facts or needs one
-small shared query.
+Goal: make cast lowering consume the authoritative full-width source for
+pointer-derived scalar publications.
 
-Primary target: `dispatch_value_materialization.cpp`
+Primary target: `cast_ops.cpp`, plus shared prepared lookup code only if Step 1
+proves no existing query is sufficient
 
 Actions:
 
-- Trace `emit_value_publication_to_register` for pointer-valued selects and
-  address-offset consumers after a join block.
-- Inspect whether `PreparedEdgePublicationSourceProducer`,
-  `PreparedScalarPublicationPlan`, `PreparedValueHome`, or
-  `PreparedBlockEntryPublication` already carries the selected pointer source.
-- Identify any same-block producer recursion, raw result-name scan, or fallback
-  stack-home reload that reconstructs the pointer source locally.
-- If existing facts are insufficient, specify the smallest prepared
-  scalar-materialization or select-chain query needed by non-edge consumers.
+- Replace stale live-register or raw producer recovery with the prepared source
+  selected in Step 1.
+- Preserve correct sign/zero-extension semantics for true integer casts.
+- Keep pointer-derived publications from narrowing through `w` registers unless
+  the source type and prepared facts prove a real 32-bit integer value.
+- Add a focused probe only if existing probes cannot distinguish pointer-source
+  preservation from integer cast spelling.
 
 Completion check:
 
-- The next code packet has one bounded authority target and no need to infer
-  source truth from raw BIR spelling or narrow testcase shape.
+- Cast lowering no longer corrupts pointer-derived scalar sources, and focused
+  proof shows no expectation downgrade or named-case branch.
 
-### Step 3: Repair pointer-valued select result materialization
+### Step 3: Repair ALU stack-publication source selection
 
-Goal: publish pointer-valued select results and address-offset consumers from
-prepared authority without truncating pointer state.
+Goal: make ALU publication choose prepared homes/sources for derived scalar
+values instead of republishing stale register contents.
 
-Primary target: `dispatch_value_materialization.cpp`, plus shared prepared query
-implementation only if Step 2 proves it is missing
+Primary target: `alu.cpp`, plus shared prepared lookup code only if Step 1 or
+Step 2 proves the query belongs outside one file
 
 Actions:
 
-- Route pointer-valued select materialization through the chosen prepared
-  source/home/producer fact.
-- Ensure `addr %t49+N` byte-copy loads consume the full pointer value and never
-  rebuild it through 32-bit scratch moves.
-- Preserve existing scratch-order and read/write hazard checks while replacing
-  semantic source selection.
-- Keep global-load, load-local, and scalar non-pointer materialization behavior
-  unchanged unless the same prepared query deliberately covers them.
+- Audit the ALU stack-publication path for `%t45.byte_offset.i64` / `%t45`.
+- Prefer prepared value-home, storage-plan, scalar-publication, or
+  source-producer facts before reusing register homes.
+- Keep integer ALU opcode spelling and scratch-order behavior unchanged except
+  for source authority selection.
+- Ensure pointer and offset sources remain distinct across join-block
+  publication.
 
 Completion check:
 
-- Semantic probes and `00204` no longer fail from pointer truncation or stale
-  post-join materialization; no expectation downgrades or named-case branches
-  were introduced.
+- The bad `mov w9, w13; sxtw x9, w9` sequence is removed for the correct
+  semantic reason, and the focused subset no longer fails from this stale
+  scalar-publication path.
 
-### Step 4: Validate the combined unfinished code slice
+### Step 4: Validate combined dirty context and scalar publication repair
 
-Goal: determine whether the current worktree changes can become one coherent
-accepted slice or need another lifecycle split.
+Goal: decide whether the current worktree can become one coherent accepted
+slice or whether predecessor repairs need their own lifecycle route.
 
 Primary target: supervisor-selected proof logs and `todo.md`
 
 Actions:
 
-- Run the exact focused subset chosen by the supervisor, including the two ALU
-  prepared-authority probes, `00164`, `00176`, `00181`, `00204`, and the new or
-  selected semantic probes.
-- Confirm the prior overflow-block cursor shape remains repaired.
-- Confirm the edge-copy path still keeps the original cursor live into the join.
-- Ask for reviewer scrutiny before acceptance if the final diff depends on
-  inline assembly, touches multiple ownership surfaces, or claims progress only
-  through `00204`.
+- Run the exact eight-test focused subset from the execution rules.
+- Confirm the original `00204` overflow cursor segfault remains gone.
+- Confirm the edge-copy path still keeps the selected pointer live into
+  `vaarg.join.39`.
+- Confirm the scalar cast/ALU repair does not depend on a testcase-shaped
+  branch or expectation rewrite.
+- Ask for reviewer scrutiny before acceptance if the final diff spans memory,
+  edge copies, cast, and ALU.
 
 Completion check:
 
-- The code slice has fresh build/test proof and a recorded decision: commit as
-  one coherent dispatch/value-materialization slice, split again, or revert only
-  by explicit supervisor direction.
+- `todo.md` records one of: commit as a coherent proven slice, split dirty
+  predecessor repairs into their own owner route, or stop for supervisor
+  direction.
 
-### Step 5: Continue dispatch value-materialization cleanup
+### Step 5: Continue cast ALU prepared-authority cleanup
 
-Goal: reduce the duplicate authority listed in the source idea after the `%t49`
-blocker is resolved.
+Goal: reduce remaining duplicate scalar cast/ALU publication authority in the
+new source idea after the `00204` blocker is resolved.
 
-Primary target: `dispatch_value_materialization.cpp`
+Primary target: `cast_ops.cpp` and `alu.cpp`
 
 Actions:
 
-- Route same-block named producer materialization through prepared producer or
-  value-home facts.
-- Route load-local source materialization through prepared memory and recovered
-  store-source facts.
-- Route global-load materialization through prepared address/materialization
-  policy if available, or add a narrow shared query.
-- Route local-slot address publication through the shared frame-offset authority
-  chosen by prior publication repairs.
+- Remove or route any remaining raw source-selection scans found during Step 1.
+- Share the chosen prepared scalar-publication query between cast and ALU paths
+  where both need the same source answer.
+- Keep target-local opcode selection, scratch hazards, and extension semantics
+  local to their emitters.
 
 Completion check:
 
-- Non-edge value materialization paths no longer use recursive local recovery as
-  durable semantic authority for the source-idea acceptance criteria.
+- Cast and ALU publication paths use prepared source/home facts for semantic
+  source selection, with any remaining target-local logic clearly separated.
 
-### Step 6: Close or park the dispatch route
+### Step 6: Close or park the scalar cast ALU route
 
-Goal: decide whether the source idea is complete or whether a separate
-initiative remains.
+Goal: decide whether the source idea is complete or whether a bounded follow-up
+remains.
 
 Primary target: `plan.md`, `todo.md`, and supervisor-selected validation logs
 
 Actions:
 
-- Run the supervisor-selected broader validation for the dispatch
-  value-materialization route.
-- Request reviewer scrutiny if any slice claims progress through a narrow named
-  case, expectation rewrite, or retained raw producer scan.
+- Run the supervisor-selected broader validation for this route.
+- Request reviewer scrutiny if the final slice spans multiple ownership
+  surfaces or claims progress mainly through `00204`.
 - Close only if the source idea acceptance criteria are satisfied; otherwise
-  leave a bounded follow-up packet or ask the plan owner to split a distinct
+  leave a precise next packet or ask the plan owner to split a distinct
   initiative.
 
 Completion check:
 
 - The source idea is either closed with regression proof or remains open with a
-  precise next packet that does not hide route drift.
+  next packet that does not hide route drift.
