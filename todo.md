@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Route global-load materialization through shared address authority
+Current Step ID: Step 6
+Current Step Title: Route non-edge select-chain materialization through shared scalar authority
 
 ## Just Finished
 
@@ -20,12 +20,20 @@ policy. Prepared addressing now carries global address materialization policy
 on symbol-backed accesses; the shared prepared-address helper treats an
 unspecified policy as direct only for static targets and otherwise fails closed.
 
+Route review in `review/step5-global-consumer-route-review.md` rejected the
+previous Suggested Next as active Step 5 work because the remaining global-load
+consumers in `globals.cpp` and `fp_value_materialization.cpp` are outside this
+source idea's owned-file boundary. That follow-up is recorded separately in
+`ideas/open/54_aarch64_global_value_materialization_consumer_authority_repair.md`.
+
 ## Suggested Next
 
-Review the remaining global-load consumers outside this packet, especially
-`make_load_global_got_materialization_instruction` and FP value materialization,
-and decide whether they should be routed through the same prepared-address
-policy helper in a follow-up Step 5 packet.
+Execute Step 6 in the active runbook: audit the non-edge select branch in
+`dispatch_value_materialization.cpp` that calls
+`emit_select_chain_value_to_register` with `prepared_named_value_id`, then
+route any duplicate select-chain materialization through existing prepared
+producer/scalar-publication facts or a narrowly justified shared scalar
+select-chain query.
 
 ## Watchouts
 
@@ -36,6 +44,11 @@ materializations. The narrow prepared authority added here is
 `prepared_global_symbol_address_policy`; non-static unspecified policy remains
 fail-closed. `clang-format` is not installed in this workspace, so formatting
 was checked manually, with `git diff --check`, and by the build.
+
+Do not implement `make_load_global_got_materialization_instruction` or FP
+`LoadGlobal` consumer rewrites as active Step 5 work for this plan. Those are
+follow-up consumer repairs under the new separate source idea unless the
+supervisor explicitly switches lifecycle state.
 
 ## Proof
 
