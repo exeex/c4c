@@ -51,6 +51,24 @@ recreate target-local semantic authority.
 - Unsupported dynamic forms remain explicit and fail closed.
 - Focused proof and backend validation pass.
 
+## Closure Note
+
+Closed after validating one narrow supported family: same-width i32 dynamic
+`StackSlot -> Register` loads whose source is a `LoadLocal`-produced dynamic
+stack slot and whose memory authority is carried by shared prepared
+source-memory facts. RISC-V consumes only that shared authority, while missing,
+incomplete, unavailable, non-i32, aggregate, pointer-base-only, and otherwise
+unsupported neighboring forms remain fail-closed. Existing concrete-offset and
+large-offset stack-source behavior remains supported.
+
+Validation evidence at close:
+
+- Backend CTest passed 163/163 after the shared-authority and RISC-V consumer
+  slices.
+- Full CTest passed 3411/3411 for the final validation packet.
+- Close-time regression guard compared the accepted full-suite baseline against
+  `test_after.log` with no new failures and no lost passes.
+
 ## Reviewer Reject Signals
 
 - A patch assumes `sp` plus an offset when shared prepared facts do not provide
