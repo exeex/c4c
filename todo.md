@@ -8,41 +8,64 @@ Current Step Title: Classify remaining stale-home ownership
 
 ## Just Finished
 
-Step 7 implemented the ALU source-selection repair for same-block
-`load_local` operands in ordinary scalar ALU records.
+Step 7 classified the next exposed `00164` stale-home site after the repaired
+post-`%t106` `and/xor/or` chain.
 
-The shared `find_prepared_same_block_load_local_source_producer` path can now
-recover the prepared memory access by result value when the source-producer
-instruction index is in the flattened producer index space rather than the
-prepared-addressing block-local index space. The ALU caller now keeps the
-producer identity so it uses the real `LoadLocalInst` while materializing the
-operand from the prepared addressing source.
+The next mismatch is the first `1916` output line from `a + b * c / f`. In
+semantic/prepared BIR this is `logic.end.146`:
+`%t156 = load_local %lv.a`, `%t157 = load_local %lv.b`,
+`%t158 = load_local %lv.c`, `%t159 = mul %t157, %t158`,
+`%t160 = load_local %lv.f`, `%t161 = sdiv %t159, %t160`, and
+`%t162 = add %t156, %t161`, followed by `printf(%t162)`.
 
-For the classified `00164` chain after `%t106`, emitted AArch64 now reloads
-the real locals from `[sp]`, `[sp, #4]`, `[sp, #8]`, and `[sp, #12]` before
-`%t113`/`%t114`/`%t115` instead of reading `%t109`-`%t112` stale homes from
-`x13` and `stack+148`/`stack+152`/`stack+156`. This fixes the first bad
-`00164` output line (`46`) and preserves the focused probe tests.
+Prepared facts show `%t156` and `%t157` have register homes
+`x13`/`x21`, but the same block also has prepared memory accesses for their
+real local sources: `logic.end.146` instruction indexes 2 and 3 load frame
+slots `#0` and `#1` (`[sp]` and `[sp, #4]`). The preceding call
+`%t154 = printf(%t153)` explicitly clobbers `x13` and returns into `x21`.
+
+Emitted AArch64 in `build/tmp/00164.current.s` lines 342-353 confirms the stale
+read: after `bl printf`, it uses `w21` as `%t157` for `mul w9, w21, w10`, then
+uses `w13` as `%t156` for `add w21, w13, w21`. It should reload `%lv.b` from
+`[sp, #4]` and `%lv.a` from `[sp]` before those ALU consumers, just as the
+earlier fixed chain now reloads `%lv.a`-`%lv.d`.
+
+Ownership classification: stay in ALU source/materialization, specifically the
+ordinary scalar binary source path when a `load_local` producer's prepared
+home is a register invalidated or overwritten across an intervening call. This
+does not look calls-owned: the prepared callsite records the `x13` clobber and
+`x21` call result correctly. The missing piece is applying the shared
+same-block `load_local` source-producer/addressing query to all ordinary scalar
+ALU operands, including register-homed `load_local` producers, before falling
+back to prepared result homes.
 
 ## Suggested Next
 
-Stay in Step 7 and classify the next `00164` stale-home site now exposed after
-the fixed `and/xor/or` chain. The remaining bad `00164` lines are later
-runtime values (`1916`/`1916` expected, large unstable values actual), while
-`00204` remains the secondary stdarg signal.
+Implement the bounded ALU packet for the first `1916` site: in ordinary scalar
+binary operand selection, prefer the shared prepared same-block `load_local`
+source-producer plus prepared addressing for register-homed same-block
+`load_local` operands before their ALU consumer. The focused target is
+`%t157` feeding `%t159 = mul` and `%t156` feeding `%t162 = add` in
+`logic.end.146`; the expected emitted shape is reloads from `[sp, #4]` and
+`[sp]` before using those operands.
 
 ## Watchouts
 
 The current proof remains a 4/6 split, not fully green:
 `c_testsuite_aarch64_backend_src_00164_c` and
 `c_testsuite_aarch64_backend_src_00204_c` still fail, while the two focused
-probes plus `00176`/`00181` pass. This is monotonic against the previous
-baseline because the targeted `00164` post-call ALU chain now emits the
-prepared local-source loads and the first mismatched `46` line is corrected.
+probes plus `00176`/`00181` pass. The refreshed `00164` actual values for the
+two `1916` lines are unstable large negatives, consistent with post-call
+caller-saved/stale-register reads rather than deterministic arithmetic.
 
 The `00204` failure still starts in the stdarg output after otherwise-correct
 argument and return-value sections; keep it as a secondary signal until the
 smaller remaining `00164` failure is reduced.
+
+The next implementation should avoid treating only the `%t156`/`%t157` names
+specially. The same rule should cover same-block ordinary scalar ALU operands
+whose BIR producer is `load_local` and whose prepared memory-access fact exists
+before the ALU consumer, even when the prepared result home is a register.
 
 Do not add testcase-shaped fixes for `00164`; prove the same-feature focused
 ALU probes with the c-testsuite subset.
@@ -54,7 +77,7 @@ the ALU-owned stale-home baseline is reduced or reclassified.
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Result: build succeeded; CTest returned a monotonic 4/6 split, 4/6
+Result: build succeeded; CTest returned the expected 4/6 split, 4/6
 passed. Passing tests:
 `backend_codegen_route_aarch64_alu_unpublished_load_local_after_call`,
 `backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary`,
@@ -64,3 +87,6 @@ passed. Passing tests:
 `c_testsuite_aarch64_backend_src_00204_c`.
 
 Proof log: `test_after.log`.
+
+Classification artifacts generated under `build/tmp/`: `00164.semantic-bir.txt`,
+`00164.prepared-bir.txt`, and `00164.current.s`.
