@@ -8238,7 +8238,8 @@ prepare::PreparedBirModule prepared_with_pointer_local_computed_address_reassign
   const auto pointer_slot = prepared.names.slot_names.intern("%ptr.local");
   const auto first_addr = prepared.names.value_names.intern("%first.addr");
   const auto member_addr = prepared.names.value_names.intern("%member.addr");
-  const auto global_base = prepared.names.value_names.intern("@global_pair");
+  const auto global_symbol = prepared.names.link_names.intern("global_pair");
+  const auto global_base = prepared.names.value_names.intern("%drifted.global.base");
   const auto loaded_pointer = prepared.names.value_names.intern("%loaded.ptr");
   const auto observed = prepared.names.value_names.intern("%observed");
 
@@ -8349,6 +8350,7 @@ prepare::PreparedBirModule prepared_with_pointer_local_computed_address_reassign
                .size_bytes = std::size_t{8},
                .align_bytes = std::size_t{8},
                .pointer_base_value_name = global_base,
+               .pointer_base_symbol_name = global_symbol,
                .pointer_byte_delta = std::int64_t{4},
            },
            prepare::PreparedValueHome{

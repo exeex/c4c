@@ -96,6 +96,7 @@ struct PreparedScalarPublicationPlan {
   std::optional<std::int64_t> immediate_i32;
   std::optional<bir::Value::F128Payload> immediate_f128;
   std::optional<ValueNameId> pointer_base_value_name;
+  std::optional<LinkNameId> pointer_base_symbol_name;
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
@@ -193,6 +194,7 @@ struct PreparedStoreSourcePublicationPlan {
   std::optional<std::size_t> source_size_bytes;
   std::optional<std::size_t> source_align_bytes;
   std::optional<ValueNameId> source_pointer_base_value_name;
+  std::optional<LinkNameId> source_pointer_base_symbol_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
 
   PreparedEdgePublicationSourceProducerKind source_producer_kind =

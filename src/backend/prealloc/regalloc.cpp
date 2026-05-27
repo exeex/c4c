@@ -421,6 +421,7 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
 [[nodiscard]] PreparedValueLocationFunction build_prepared_value_location_function(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function* function,
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
@@ -432,6 +433,7 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   };
   function_locations.value_homes = build_prepared_value_homes(names,
                                                              target_profile,
+                                                             module,
                                                              function,
                                                              stack_layout,
                                                              function_addressing,
@@ -821,6 +823,7 @@ void BirPreAlloc::run_regalloc() {
     prepared_.value_locations.functions.push_back(build_prepared_value_location_function(
         prepared_.names,
         prepared_.target_profile,
+        prepared_.module,
         function,
         &prepared_.stack_layout,
         find_prepared_addressing_function(prepared_.addressing, regalloc_function.function_name),

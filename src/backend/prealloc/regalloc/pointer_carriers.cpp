@@ -33,6 +33,45 @@ namespace c4c::backend::prepare::regalloc_detail {
       inst);
 }
 
+[[nodiscard]] const bir::Value* pointer_result_value(const bir::Inst& inst) {
+  return std::visit(
+      [&](const auto& typed_inst) -> const bir::Value* {
+        using InstT = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<InstT, bir::BinaryInst> ||
+                      std::is_same_v<InstT, bir::SelectInst> ||
+                      std::is_same_v<InstT, bir::CastInst> ||
+                      std::is_same_v<InstT, bir::PhiInst> ||
+                      std::is_same_v<InstT, bir::LoadLocalInst> ||
+                      std::is_same_v<InstT, bir::LoadGlobalInst>) {
+          return typed_inst.result.type == bir::TypeKind::Ptr ? &typed_inst.result
+                                                              : nullptr;
+        } else if constexpr (std::is_same_v<InstT, bir::CallInst>) {
+          return typed_inst.result.has_value() &&
+                         typed_inst.result->type == bir::TypeKind::Ptr
+                     ? &*typed_inst.result
+                     : nullptr;
+        } else {
+          return static_cast<const bir::Value*>(nullptr);
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] std::optional<LinkNameId> prepared_pointer_symbol_name(
+    PreparedNameTables& names,
+    const bir::Module& module,
+    const bir::Value& value) {
+  if (value.pointer_symbol_link_name_id == kInvalidLinkName) {
+    return std::nullopt;
+  }
+  const std::string_view symbol =
+      module.names.link_names.spelling(value.pointer_symbol_link_name_id);
+  if (symbol.empty()) {
+    return std::nullopt;
+  }
+  return names.link_names.intern(symbol);
+}
+
 void update_prepared_pointer_step(std::unordered_map<ValueNameId, std::size_t>& steps,
                                   ValueNameId value_name,
                                   std::size_t step_bytes,
@@ -98,7 +137,9 @@ void maybe_update_prepared_pointer_carrier(
     return;
   }
   if (it->second.base_value_name == candidate.base_value_name &&
-      it->second.byte_delta == candidate.byte_delta && it->second.step_bytes == candidate.step_bytes) {
+      it->second.base_symbol_name == candidate.base_symbol_name &&
+      it->second.byte_delta == candidate.byte_delta &&
+      it->second.step_bytes == candidate.step_bytes) {
     return;
   }
   if (candidate.base_value_name == value_name && candidate.byte_delta == 0) {
@@ -136,7 +177,9 @@ void maybe_update_slot_pointer_carrier(
     return;
   }
   if (it->second.base_value_name == candidate.base_value_name &&
-      it->second.byte_delta == candidate.byte_delta && it->second.step_bytes == candidate.step_bytes) {
+      it->second.base_symbol_name == candidate.base_symbol_name &&
+      it->second.byte_delta == candidate.byte_delta &&
+      it->second.step_bytes == candidate.step_bytes) {
     return;
   }
   it->second = candidate;
@@ -147,6 +190,7 @@ void maybe_update_slot_pointer_carrier(
 
 PreparedPointerCarrierMap build_pointer_carrier_map(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::Function& function,
     const PreparedAddressingFunction* function_addressing) {
   std::unordered_set<ValueNameId> explicit_pointer_defs;
@@ -209,6 +253,29 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
             .step_bytes = step_bytes,
         },
         nullptr);
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* result = pointer_result_value(inst);
+      if (result == nullptr || result->kind != bir::Value::Kind::Named) {
+        continue;
+      }
+      const auto value_name = names.value_names.find(result->name);
+      const auto symbol_name = prepared_pointer_symbol_name(names, module, *result);
+      if (value_name == kInvalidValueName || !symbol_name.has_value()) {
+        continue;
+      }
+      maybe_update_prepared_pointer_carrier(
+          pointer_carriers,
+          value_name,
+          PreparedPointerCarrierState{
+              .base_value_name = value_name,
+              .base_symbol_name = *symbol_name,
+              .byte_delta = 0,
+              .step_bytes = 1,
+          },
+          nullptr);
+    }
   }
   std::unordered_map<std::string, PreparedPointerCarrierState> slot_pointer_carriers;
   bool changed = true;

@@ -581,7 +581,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/aarch64_pointer_value_named_scalar_writeback.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aarch64_pointer_value_named_scalar_writeback.s"
-  REQUIRED_SNIPPETS "writeback_data:|str w20, [x21]"
+  REQUIRED_SNIPPETS "writeback_data:|add x20, x13, #4|str w20, [x21]"
   FORBIDDEN_SNIPPETS "sub x9, x9, x10|add x20, x20, x9"
   LABELS aarch64 pointer_value_store writeback
 )

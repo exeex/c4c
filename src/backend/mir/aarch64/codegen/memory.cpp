@@ -3731,21 +3731,18 @@ lower_stack_homed_pointer_store_writeback(
 
 namespace {
 
-[[nodiscard]] std::optional<std::string> prepared_global_symbol_from_value_name(
+[[nodiscard]] std::optional<std::string> prepared_global_symbol_from_link_name(
     const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  if (context.function.prepared == nullptr || value_name == c4c::kInvalidValueName) {
+    std::optional<c4c::LinkNameId> symbol_name) {
+  if (context.function.prepared == nullptr || !symbol_name.has_value()) {
     return std::nullopt;
   }
-  const std::string_view spelling =
-      context.function.prepared->names.value_names.spelling(value_name);
-  if (spelling.size() <= 1 || spelling.front() != '@') {
-    if (context.function.prepared->names.link_names.find(spelling) != c4c::kInvalidLinkName) {
-      return std::string{spelling};
-    }
+  const std::string_view symbol =
+      prepare::prepared_link_name(context.function.prepared->names, *symbol_name);
+  if (symbol.empty()) {
     return std::nullopt;
   }
-  return std::string{spelling.substr(1)};
+  return std::string{symbol};
 }
 [[nodiscard]] bool emit_global_symbol_address_to_register(
     std::string_view symbol,
@@ -3783,8 +3780,8 @@ namespace {
   }
 
   const auto delta = value_home.pointer_byte_delta.value_or(0);
-  if (auto symbol =
-          prepared_global_symbol_from_value_name(context, *value_home.pointer_base_value_name)) {
+  if (auto symbol = prepared_global_symbol_from_link_name(
+          context, value_home.pointer_base_symbol_name)) {
     return emit_global_symbol_address_to_register(
         *symbol, delta, target_index, lines);
   }
@@ -3879,13 +3876,13 @@ lower_pointer_base_plus_offset_store_local_publication(
   }
 
   bool emitted = false;
-  const auto source_value_name =
-      store_source_plan.source_value_name != c4c::kInvalidValueName
-          ? store_source_plan.source_value_name
-          : *value_name;
-  if (auto symbol = prepared_global_symbol_from_value_name(context, source_value_name)) {
-    emitted =
-        emit_global_symbol_address_to_register(*symbol, 0, scratches.front().index, lines);
+  if (auto symbol = prepared_global_symbol_from_link_name(
+          context, store_source_plan.source_pointer_base_symbol_name)) {
+    emitted = emit_global_symbol_address_to_register(
+        *symbol,
+        store_source_plan.source_pointer_byte_delta.value_or(0),
+        scratches.front().index,
+        lines);
   } else {
     const auto* value_home = store_source_plan.source_home;
     emitted = context.function.value_locations != nullptr &&

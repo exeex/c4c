@@ -299,6 +299,7 @@ PreparedValueHome classify_prepared_value_home(
          carrier_it->second.byte_delta != 0)) {
       home.kind = PreparedValueHomeKind::PointerBasePlusOffset;
       home.pointer_base_value_name = carrier_it->second.base_value_name;
+      home.pointer_base_symbol_name = carrier_it->second.base_symbol_name;
       home.pointer_byte_delta = carrier_it->second.byte_delta;
       if (value.assigned_register.has_value()) {
         home.register_name = value.assigned_register->register_name;
@@ -331,13 +332,14 @@ PreparedValueHome classify_prepared_value_home(
 std::vector<PreparedValueHome> build_prepared_value_homes(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function* function,
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
     const PreparedRegallocFunction& regalloc_function) {
   const auto pointer_carriers =
       function == nullptr ? PreparedPointerCarrierMap{}
-                          : build_pointer_carrier_map(names, *function, function_addressing);
+                          : build_pointer_carrier_map(names, module, *function, function_addressing);
   const auto computed_values = make_prepared_computed_value_lookup(names, function);
   std::vector<PreparedValueHome> value_homes;
   value_homes.reserve(regalloc_function.values.size());

@@ -430,6 +430,7 @@ PreparedScalarPublicationPlan plan_prepared_scalar_publication(
       .immediate_i32 = home.immediate_i32,
       .immediate_f128 = home.immediate_f128,
       .pointer_base_value_name = home.pointer_base_value_name,
+      .pointer_base_symbol_name = home.pointer_base_symbol_name,
       .pointer_byte_delta = home.pointer_byte_delta,
   };
 
@@ -532,6 +533,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     plan.source_size_bytes = home.size_bytes;
     plan.source_align_bytes = home.align_bytes;
     plan.source_pointer_base_value_name = home.pointer_base_value_name;
+    plan.source_pointer_base_symbol_name = home.pointer_base_symbol_name;
     plan.source_pointer_byte_delta = home.pointer_byte_delta;
   } else if (access.stored_value_name.has_value()) {
     plan.source_value_name = *access.stored_value_name;

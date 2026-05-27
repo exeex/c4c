@@ -13,6 +13,7 @@ namespace regalloc_detail {
 
 struct PreparedPointerCarrierState {
   ValueNameId base_value_name = kInvalidValueName;
+  std::optional<LinkNameId> base_symbol_name;
   std::int64_t byte_delta = 0;
   std::size_t step_bytes = 0;
 };
@@ -21,6 +22,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
 
 [[nodiscard]] PreparedPointerCarrierMap build_pointer_carrier_map(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::Function& function,
     const PreparedAddressingFunction* function_addressing);
 

@@ -77,6 +77,7 @@ struct PreparedValueHome {
   std::optional<std::int64_t> immediate_i32;
   std::optional<c4c::backend::bir::Value::F128Payload> immediate_f128;
   std::optional<ValueNameId> pointer_base_value_name;
+  std::optional<LinkNameId> pointer_base_symbol_name;
   std::optional<std::int64_t> pointer_byte_delta;
 };
 

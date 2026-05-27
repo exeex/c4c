@@ -32,6 +32,7 @@ struct PreparedComputedValueLookup {
 [[nodiscard]] std::vector<PreparedValueHome> build_prepared_value_homes(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function* function,
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
