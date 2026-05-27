@@ -37,6 +37,8 @@ struct PreparedPriorPreservedValueLookupResult {
 
 struct PreparedCallPlanLookups {
   std::unordered_map<std::size_t, const PreparedCallPlan*> calls_by_position;
+  std::unordered_map<std::size_t, const PreparedCallArgumentPlan*>
+      immediate_arguments_by_position_and_abi;
   std::vector<std::vector<PreparedPriorPreservedValueEntry>> prior_preserved_by_value;
   std::vector<std::vector<const PreparedCallPreservedValue*>>
       first_stack_preserved_by_call_index;
@@ -59,6 +61,8 @@ struct PreparedFrameAddressOffset {
 
 struct PreparedMoveBundleLookups {
   std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
+  std::unordered_map<std::size_t, const PreparedMoveResolution*>
+      before_call_argument_moves_by_position_and_abi;
   std::unordered_map<std::size_t, const PreparedMoveResolution*>
       before_return_abi_moves_by_source_and_bank;
 };
@@ -390,6 +394,10 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_move_bundle_position_key(PreparedMovePhase phase,
                                                             std::size_t block_index,
                                                             std::size_t instruction_index);
+[[nodiscard]] std::size_t prepared_call_argument_position_key(
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index);
 [[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
     std::size_t block_index,
     PreparedValueId source_value_id,
@@ -487,6 +495,13 @@ prepare_same_width_i32_stack_source_publication(
     std::size_t block_index,
     std::size_t instruction_index);
 
+[[nodiscard]] const PreparedCallArgumentPlan*
+find_indexed_prepared_immediate_call_argument(
+    const PreparedCallPlanLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index);
+
 [[nodiscard]] const std::vector<const PreparedAddressMaterialization*>*
 find_indexed_prepared_address_materializations(
     const PreparedAddressMaterializationLookups* lookups,
@@ -511,6 +526,13 @@ find_indexed_prepared_frame_address_offset_for_value(
     PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
+
+[[nodiscard]] const PreparedMoveResolution*
+find_indexed_prepared_before_call_argument_move(
+    const PreparedMoveBundleLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index);
 
 [[nodiscard]] const PreparedMoveResolution*
 find_prepared_before_return_abi_move_by_source_and_destination_bank(

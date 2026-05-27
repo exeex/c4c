@@ -3636,21 +3636,16 @@ make_immediate_cast_call_argument_publication_instruction(
     return std::nullopt;
   }
 
-  const auto* argument = [&]() -> const prepare::PreparedCallArgumentPlan* {
-    for (const auto& candidate : call_plan.arguments) {
-      if (candidate.arg_index == *binding.destination_abi_index &&
-          candidate.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
-          candidate.source_literal.has_value() &&
-          (binding.destination_storage_kind ==
-               prepare::PreparedMoveStorageKind::StackSlot ||
-           candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr ||
-           candidate.destination_register_bank == prepare::PreparedRegisterBank::Fpr)) {
-        return &candidate;
-      }
-    }
-    return nullptr;
-  }();
-  if (argument == nullptr) {
+  const auto* argument =
+      prepare::find_indexed_prepared_immediate_call_argument(
+          context.function.call_plan_lookups,
+          call_plan.block_index,
+          call_plan.instruction_index,
+          *binding.destination_abi_index);
+  if (argument == nullptr ||
+      (binding.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot &&
+       argument->destination_register_bank != prepare::PreparedRegisterBank::Gpr &&
+       argument->destination_register_bank != prepare::PreparedRegisterBank::Fpr)) {
     return std::nullopt;
   }
 
@@ -5099,26 +5094,32 @@ find_prepared_frame_slot_call_argument_move(
   if (bundle == nullptr) {
     return std::nullopt;
   }
-  for (const auto& move : bundle->moves) {
-    const auto classification =
-        prepare::classify_prepared_call_boundary_move(call_plan, *bundle, move);
-    if (!prepare::prepared_call_boundary_move_classification_available(classification) ||
-        classification.argument_plan != &argument ||
-        classification.destination_kind !=
-            prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        classification.storage_kind != prepare::PreparedMoveStorageKind::Register ||
-        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-        argument.source_value_id !=
-            std::optional<prepare::PreparedValueId>{move.from_value_id}) {
-      continue;
-    }
-    return PreparedFrameSlotCallArgumentMove{
-        .bundle = bundle,
-        .move = &move,
-        .binding = classification.abi_binding,
-    };
+  const auto* move =
+      prepare::find_indexed_prepared_before_call_argument_move(
+          context.function.move_bundle_lookups,
+          call_plan.block_index,
+          call_plan.instruction_index,
+          argument.arg_index);
+  if (move == nullptr) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  const auto classification =
+      prepare::classify_prepared_call_boundary_move(call_plan, *bundle, *move);
+  if (!prepare::prepared_call_boundary_move_classification_available(classification) ||
+      classification.argument_plan != &argument ||
+      classification.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      classification.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move->op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      argument.source_value_id !=
+          std::optional<prepare::PreparedValueId>{move->from_value_id}) {
+    return std::nullopt;
+  }
+  return PreparedFrameSlotCallArgumentMove{
+      .bundle = bundle,
+      .move = move,
+      .binding = classification.abi_binding,
+  };
 }
 
 [[nodiscard]] bool materialize_scalar_call_argument_value(

@@ -700,6 +700,16 @@ void collect_block_entry_republication_effects(
          instruction_index;
 }
 
+[[nodiscard]] std::size_t prepared_call_argument_position_key(
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index) {
+  std::size_t seed = block_index;
+  seed ^= instruction_index + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+  seed ^= abi_index + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+  return seed;
+}
+
 [[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
     std::size_t block_index,
     PreparedValueId source_value_id,
@@ -812,6 +822,19 @@ void collect_block_entry_republication_effects(
     const auto& call = call_plans->calls[call_index];
     lookups.calls_by_position.emplace(
         prepared_call_position_key(call.block_index, call.instruction_index), &call);
+    for (const auto& argument : call.arguments) {
+      if (argument.source_encoding != PreparedStorageEncodingKind::Immediate ||
+          !argument.source_literal.has_value()) {
+        continue;
+      }
+      const auto key = prepared_call_argument_position_key(
+          call.block_index, call.instruction_index, argument.arg_index);
+      const auto [it, inserted] =
+          lookups.immediate_arguments_by_position_and_abi.emplace(key, &argument);
+      if (!inserted) {
+        it->second = nullptr;
+      }
+    }
     for (const auto& preserved : call.preserved_values) {
       const bool stack_preserved =
           preserved.route == PreparedCallPreservationRoute::StackSlot &&
@@ -879,6 +902,22 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
         prepared_move_bundle_position_key(bundle.phase, bundle.block_index,
                                           bundle.instruction_index),
         &bundle);
+    if (bundle.phase == PreparedMovePhase::BeforeCall) {
+      for (const auto& move : bundle.moves) {
+        if (move.op_kind != PreparedMoveResolutionOpKind::Move ||
+            move.destination_kind != PreparedMoveDestinationKind::CallArgumentAbi ||
+            !move.destination_abi_index.has_value()) {
+          continue;
+        }
+        const auto key = prepared_call_argument_position_key(
+            bundle.block_index, bundle.instruction_index, *move.destination_abi_index);
+        const auto [it, inserted] =
+            lookups.before_call_argument_moves_by_position_and_abi.emplace(key, &move);
+        if (!inserted) {
+          it->second = nullptr;
+        }
+      }
+    }
     if (bundle.phase != PreparedMovePhase::BeforeReturn) {
       continue;
     }
@@ -1545,6 +1584,22 @@ prepare_same_width_i32_stack_source_publication(
   return nullptr;
 }
 
+[[nodiscard]] const PreparedCallArgumentPlan*
+find_indexed_prepared_immediate_call_argument(
+    const PreparedCallPlanLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->immediate_arguments_by_position_and_abi.find(
+      prepared_call_argument_position_key(block_index, instruction_index, abi_index));
+  return it != lookups->immediate_arguments_by_position_and_abi.end()
+             ? it->second
+             : nullptr;
+}
+
 [[nodiscard]] const std::vector<const PreparedAddressMaterialization*>*
 find_indexed_prepared_address_materializations(
     const PreparedAddressMaterializationLookups* lookups,
@@ -1657,6 +1712,22 @@ find_indexed_prepared_frame_address_offset_for_value(
                                                                 phase,
                                                                 block_index,
                                                                 instruction_index);
+}
+
+[[nodiscard]] const PreparedMoveResolution*
+find_indexed_prepared_before_call_argument_move(
+    const PreparedMoveBundleLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->before_call_argument_moves_by_position_and_abi.find(
+      prepared_call_argument_position_key(block_index, instruction_index, abi_index));
+  return it != lookups->before_call_argument_moves_by_position_and_abi.end()
+             ? it->second
+             : nullptr;
 }
 
 [[nodiscard]] bool prepared_move_targets_destination_bank(
