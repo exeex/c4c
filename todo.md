@@ -1,43 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/51_aarch64_alu_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair Select-Chain Scalar Publication Authority
+Current Step ID: 6
+Current Step Title: Final Validation And Closure Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Repair Select-Chain Scalar Publication Authority completed.
+Step 6: Final Validation And Closure Check completed.
 
-Added a narrow shared prepared scalar select-chain materialization query that
-packages the direct-global select-chain dependency with the authoritative root
-value name for non-edge/non-store scalar consumers.
+Ran the delegated final validation command and recorded it in `test_after.log`.
+The build succeeded. The backend sweep reported only the expected known
+failures:
 
-Routed `lower_scalar_select_publication` through that shared authority instead
-of making the direct-global materialization decision locally in ALU. Existing
-select-chain spelling and publication register behavior are preserved.
+- `backend_aarch64_instruction_dispatch`
+- `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
 
-Added focused `backend_prepared_lookup_helper` coverage for the scalar
-select-chain materialization query, including fail-closed missing-root
-behavior.
+The targeted c_testsuite subset kept `c_testsuite_aarch64_backend_src_00164_c`
+green and reported the expected known failures:
+
+- `c_testsuite_aarch64_backend_src_00196_c`
+- `c_testsuite_aarch64_backend_src_00207_c` timeout
+
+Audited the active implementation for the Step 6 authority concerns. No
+expectation downgrades or unsupported rewrites were found in this slice, and
+the repaired ALU paths do not reintroduce prepared-access value-spelling scans,
+same-block load/store alias scans, raw move-bundle scans, return-chain forward
+BIR name-chain walks, or direct-global select-chain named-case expansion.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet from the active plan.
+Return to the supervisor for closure review of active idea 51.
 
 ## Watchouts
 
-Direct-global select-chain scalar publication now consumes shared
-`PreparedScalarSelectChainMaterialization` authority. Store-source and
-call-argument select-chain users still consume their existing shared prepared
-dependency paths.
+Validation is not fully green because the delegated command includes known
+pre-existing failures. No unexpected Step 6 validation failure was observed.
 
 ## Proof
 
 Ran the delegated proof command exactly:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default 2>&1 | tee test_after.log; ctest --test-dir build -j --output-on-failure -R "^(backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_prepared_lookup_helper|backend_publication_plan_record|backend_store_source_publication_plan|c_testsuite_aarch64_backend_src_00164_c)$" 2>&1 | tee -a test_after.log'`
+`bash -lc 'set -o pipefail; cmake --build --preset default 2>&1 | tee test_after.log; ctest --test-dir build -j --output-on-failure -R "^backend_" 2>&1 | tee -a test_after.log; ctest --test-dir build -j --output-on-failure -R "^(c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00207_c)$" 2>&1 | tee -a test_after.log'`
 
-Result: build succeeded; all 8 delegated tests passed. Proof log:
+Result: build succeeded. Backend subset: 165/167 passed, with only
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
+failing. Targeted c_testsuite subset: 1/3 passed; `00164` passed, `00196`
+failed with the known runtime mismatch, and `00207` timed out. Proof log:
 `test_after.log`.
