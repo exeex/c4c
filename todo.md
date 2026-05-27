@@ -1,92 +1,80 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/52_aarch64_calls_prepared_authority_repair.md
+Source Idea Path: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
 Source Plan Path: plan.md
 Current Step ID: Step 1
-Current Step Title: Establish variadic aggregate va_arg cursor baseline
+Current Step Title: Establish pointer-select aggregate-copy baseline and probes
 
 ## Just Finished
 
-Step 1 established the calls-route baseline for
-`c_testsuite_aarch64_backend_src_00204_c`: the delegated focused proof is
-still 5/6, with only `00204` failing by `[RUNTIME_NONZERO]` segmentation
-fault.
+Lifecycle reset from calls prepared-authority repair to dispatch value
+materialization repair, based on `review/calls-step3-route-review.md`.
 
-The first `stdarg` call is
-`myprintf("%9s %9s %9s %9s %9s %9s", s9, s9, s9, s9, s9, s9)`. Caller-side
-argument placement still looks coherent: format in `x0`, the first three
-`struct s9` byval arguments in GPR register-save lanes `x1/x2`, `x3/x4`,
-`x5/x6`, and the remaining three in outgoing stack slots.
+The reviewer judged the existing cursor and edge-copy fixes as semantic, not
+testcase-overfit, but found the proposed next `%t49` pointer-select /
+aggregate-copy materialization packet to be route drift under
+`ideas/open/52_aarch64_calls_prepared_authority_repair.md`.
 
-For the expanded `%9s` `va_arg` path in `myprintf`, BIR/prepared BIR show the
-intended small-aggregate access model:
+Current uncommitted implementation context:
 
-- Source va_list home: `%lv.ap` is held in `x21`; va_list object home is the
-  stack slot at `sp+1264`.
-- Register-save fields: `gp_register_save_area@8`, `fp_register_save_area@16`,
-  `gp_offset@24`, `fp_offset@28`; `va_start` initializes
-  `overflow_arg_area@0 = sp+1344`, `gp_register_save_area@8 = sp+1128`,
-  `gp_offset@24 = -56`.
-- `%9s` source class: GPR register-save area while `gp_offset + 16 <= 0`,
-  overflow area otherwise.
-- Progression field: `gp_offset@24`, stride `16` for register-save
-  consumption.
-- Overflow source/progression field: `overflow_arg_area@0`, stride `16`.
-- Register-save lane homes: two 8-byte GPR lanes per `struct s9`; first
-  `%9s` reads `sp+1072` and `sp+1080` via `gp_register_save_area + -56`.
+- `src/backend/mir/aarch64/codegen/memory.cpp` updates the va_list field from
+  the loaded cursor for the generic `load field -> add stride -> store same
+  field` pattern.
+- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` publishes a
+  prepared `LoadLocal` edge source from an authoritative register home before
+  considering source memory reloads.
+- These changes improved `c_testsuite_aarch64_backend_src_00204_c` from a
+  segmentation fault to `[RUNTIME_MISMATCH]`, but the focused proof is still
+  5/6, so the code slice is not acceptance-ready.
 
-The bad cursor is introduced by lowering/emission for the expanded
-small-aggregate overflow path, not by caller placement and not by the prepared
-HFA `llvm.va_arg.aggregate` access-plan construction. BIR for the `%9s`
-overflow block is correct:
-
-- `%t47 = bir.load_local ptr %lv.ap.0`
-- `%t48 = bir.add ptr %t47, 16`
-- `bir.store_local %lv.ap.0, ptr %t48`
-- join phi `%t49` uses the original `%t47` as the copy source.
-
-Prepared BIR preserves that ownership: `%t47` is a register-homed value in
-`x13`, `%t48` is the update value, and prepared memory access maps both
-`vaarg.stack.36` load/store operations to the `overflow_arg_area` field slot.
-The emitted AArch64 for `.LBB154_25`, however, computes the update from
-`ldr x9, [sp, #24]` instead of from the loaded `%t47`/`x13`, stores that value
-back to `[x21]`, reloads it into `x13`, and then the join copy dereferences
-`x13`. At the crash this produces `x13 = 0x10` before `ldrb w9, [x13]`.
-
-Relevant dumps were inspected in `/tmp/00204.bir.txt`,
-`/tmp/00204.prepared-bir.txt`, and `/tmp/00204.s`. `--dump-mir` currently
-reports only the contract-first debug surface, so the useful machine evidence
-is the emitted assembly.
+The remaining known failure is after `vaarg.join.39`: `%t49` pointer/select
+aggregate-copy materialization still rebuilds pointer-derived scratch state via
+32-bit moves such as `mov w9, w13; sxtw x9, w9`, and later `addr %t49+N`
+byte-copy loads consume the bad pointer-derived value.
 
 ## Suggested Next
 
-Repair the expanded small-aggregate `va_arg` overflow path so the
-`overflow_arg_area` update is computed from the authoritative loaded cursor
-value (`%t47`/`x13`) and the join copy keeps using that original cursor as its
-source. The bounded code packet should inspect the prepared-memory/dispatch
-lowering for `vaarg.stack.36` `%t47 -> %t48 -> store %lv.ap.0` rather than the
-HFA-only `make_variadic_aggregate_va_arg_record` path, then add/use focused
-same-feature probes for register-save and overflow small aggregate `va_arg`.
+Delegate Step 1 under the dispatch value-materialization route:
+
+- Re-run or reuse the focused subset that currently passes 5/6 and fails only
+  `c_testsuite_aarch64_backend_src_00204_c`.
+- Dump BIR, prepared BIR, and assembly around `vaarg.join.39`, `%t49`, and the
+  `addr %t49+N` aggregate byte-copy loads.
+- Add or identify semantic probes for pointer-valued select results feeding
+  byte-copy/address-offset loads and for the variadic aggregate-copy path after
+  the cursor fix.
+- Record which prepared value-home, block-entry publication, edge-publication
+  source, or select-chain fact should own the authoritative pointer source.
+
+The next code-changing packet should not be accepted unless it has same-feature
+semantic probe proof in addition to `00204`.
 
 ## Watchouts
 
-The HFA `llvm.va_arg.aggregate` helper operands have prepared access-plan
-fields and print through `print_aggregate_va_arg_lowering_lines`; those are
-nearby guardrails but they are not the direct source of the `%9s` crash. The
-direct source is the already-expanded BIR small-aggregate `vaarg.stack.36`
-path.
+Do not treat the current `memory.cpp` and `dispatch_edge_copies.cpp` changes as
+committable merely because they removed the original cursor crash. Preserve the
+fixed overflow-block shape while investigating `%t49`, but keep the slice
+classified as incomplete until the pointer materialization mismatch is repaired
+and proven.
 
-Keep the ALU 5/6 focused subset as a guardrail. The ALU idea remains open.
+Keep `ideas/open/52_aarch64_calls_prepared_authority_repair.md` open and parked.
+This reset does not close the calls route or the earlier ALU route.
+
+If Step 1 proves the remaining repair requires a broader shared contract across
+calls, dispatch edge copies, and value materialization, stop for lifecycle split
+instead of expanding the dispatch plan silently.
 
 ## Proof
 
-Ran exactly:
+No validation run in this lifecycle reset.
+
+Most recent executor proof before reset:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
 
 Result: 5/6 passed. Passing tests were the two ALU prepared-authority probes,
 `00164`, `00176`, and `00181`; failing test was
-`c_testsuite_aarch64_backend_src_00204_c` with segmentation fault.
+`c_testsuite_aarch64_backend_src_00204_c` with `[RUNTIME_MISMATCH]`.
 
 Proof log: `test_after.log`.

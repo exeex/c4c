@@ -1,222 +1,238 @@
-# AArch64 Calls Prepared Authority Repair Runbook
+# AArch64 Dispatch Value Materialization Prepared Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/52_aarch64_calls_prepared_authority_repair.md
-Supersedes active route: ideas/open/51_aarch64_alu_prepared_authority_repair.md is parked open after Step 7 classified the remaining focused failure as calls/variadic ownership, not ordinary ALU stale-home ownership.
+Source Idea: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
+Supersedes active route: ideas/open/52_aarch64_calls_prepared_authority_repair.md is parked open after review/calls-step3-route-review.md judged the remaining `%t49` pointer-select aggregate-copy issue as dispatch/value-materialization ownership.
 
 ## Purpose
 
-Turn AArch64 call, call-boundary, and variadic helper lowering into consumers
-of prepared call plans, argument/result plans, source selections, boundary
-effects, move bundles, value homes, and variadic access plans instead of
-rediscovering ABI source and cursor authority locally.
+Make AArch64 dispatch value materialization consume prepared source, producer,
+publication, memory, global, select-chain, and local-slot address facts instead
+of reconstructing semantic value authority locally.
 
 ## Goal
 
-Repair the remaining `c_testsuite_aarch64_backend_src_00204_c` failure first by
-making small variadic aggregate `va_arg` lowering use the prepared AAPCS64
-register-save and overflow cursor authority for byval aggregates such as
-`struct s9`.
+Repair the current `00204` post-join `%t49` pointer/select aggregate-copy
+materialization path without widening the calls/variadic route: `addr %t49+N`
+byte-copy loads must use the authoritative pointer value selected at the
+`vaarg.join.39` boundary, not a scratch value rebuilt through truncated integer
+moves.
 
 ## Core Rule
 
-Prefer shared prepared call, variadic access-plan, source-selection, and
-boundary-effect facts over raw call operands, callee-name analysis, BIR value
-spelling, frame-slot naming, recursive same-block producer walks, or
-named-case workarounds.
+Prefer existing prepared publication, value-home, source-producer, memory, and
+select-chain facts. Add the smallest shared query only when non-edge value
+materialization cannot consume an existing prepared authority. Do not deepen
+same-block producer recursion, raw value-name scans, or testcase-shaped
+shortcuts.
 
 ## Read First
 
-- `ideas/open/52_aarch64_calls_prepared_authority_repair.md`
+- `ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md`
+- `review/calls-step3-route-review.md`
 - `todo.md`
-- `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/mir/aarch64/codegen/variadic.cpp`
-- `src/backend/mir/aarch64/codegen/variadic.hpp`
-- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
 - `src/backend/prealloc/prepared_lookups.cpp`
-- prepared call and variadic facts for:
-  - `PreparedCallPlan`
-  - `PreparedCallArgumentPlan`
-  - `PreparedCallArgumentSourceSelection`
-  - `PreparedCallBoundaryEffectPlan`
-  - `PreparedCallPreservedValue`
-  - `PreparedVariadicEntryPlanFunction`
-  - `PreparedVariadicAggregateVaArgAccessPlan`
+- prepared facts for:
+  - `PreparedEdgePublicationSourceProducerLookups`
+  - `PreparedEdgePublicationSourceProducer`
+  - `PreparedScalarPublicationPlan`
+  - `PreparedValueHome`
+  - `PreparedBlockEntryPublication`
+  - `PreparedMemoryAccess`
+  - `PreparedAddressingFunction`
+  - recovered store-source and local-slot address helpers
 
 ## Current Targets
 
-- `complete_variadic_call_record`
-- `make_variadic_aggregate_va_arg_record`
-- `print_aggregate_va_arg_lowering_lines`
-- `append_aggregate_copy_from_va_list_field`
-- aggregate va_arg overflow cursor advancement
-- aggregate va_arg register-save versus overflow source selection
-- byval aggregate call argument register/stack placement for the `00204`
-  `struct s9` case
-- remaining `calls.cpp` duplicated authority listed in the source idea after
-  the variadic failure is reduced
+- `emit_value_publication_to_register`
+- select-chain value materialization for non-edge/non-store consumers
+- pointer-valued select results consumed by aggregate-copy address loads
+- `addr %t49+N` byte-copy loads in `vaarg.join.39`
+- local-slot and prepared value-home fallbacks used by value publication
+- current incomplete cursor/edge-copy worktree state from the calls route:
+  - `src/backend/mir/aarch64/codegen/memory.cpp`
+  - `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
 
 ## Non-Goals
 
-- Do not change AAPCS64 register/stack staging, `bl`/`blr` spelling, stack
-  cleanup, source reload sequencing, ABI result store spelling, or variadic
-  layout constants except to consume or correct prepared facts.
-- Do not implement a broad call lowering rewrite.
-- Do not push call-argument producer logic into ALU or dispatch value
-  materialization follow-ups without an explicit shared-query contract.
+- Do not change AAPCS64 call staging, variadic layout constants, `bl`/`blr`
+  spelling, stack cleanup, or ABI result store spelling under this route.
+- Do not continue calls/variadic cursor work except to preserve and validate the
+  existing incomplete worktree improvements while repairing the dispatch-owned
+  materialization blocker.
+- Do not push the repair back into `calls.cpp` or `variadic.cpp` unless tracing
+  proves the prepared dispatch/value-materialization facts are already correct
+  and the remaining bug is wholly inside calls ownership.
 - Do not downgrade expectations, mark supported tests unsupported, or claim
   helper renames as capability progress.
-- Do not close the parked ALU idea as part of this route switch.
+- Do not close the parked calls or ALU ideas as part of this switch.
 
 ## Working Model
 
-- The caller-side prepared plan for the first `stdarg` call in `00204` appears
-  coherent: the format pointer is in `x0`, the first three `struct s9`
-  variadic byval arguments are passed in register pairs `x1/x2`, `x3/x4`, and
-  `x5/x6`, and the remaining three are passed in outgoing stack slots.
-- The callee-side `myprintf` prologue saves general-purpose argument registers
-  into the register-save area and initializes a negative `gp_offset`.
-- The observed crash is in `%9s` aggregate `va_arg` handling when the overflow
-  path dereferences `x13 = 0x10`; the suspected authority gap is cursor
-  advancement from a spill slot instead of the loaded overflow pointer.
-- Variadic helper machine nodes are selected through `calls.cpp`, completed
-  from prepared variadic facts, and printed/lowered through `variadic.cpp`.
-  Keep edits aligned with that ownership instead of adding testcase-specific
-  branches.
+- The calls route removed the original `%9s` overflow cursor crash but did not
+  become acceptance-ready: the focused proof remains 5/6 with `00204` failing
+  by runtime mismatch.
+- The current uncommitted `memory.cpp` change updates a va_list field from the
+  loaded cursor for the generic `load field -> add stride -> store same field`
+  pattern.
+- The current uncommitted `dispatch_edge_copies.cpp` change prevents the
+  predecessor edge copy from reloading the join pointer from the just-advanced
+  `overflow_arg_area` field.
+- The remaining failure occurs after that join: emitted code materializes
+  pointer-derived scratch state for `%t49` through 32-bit moves such as
+  `mov w9, w13; sxtw x9, w9`, then later aggregate-copy byte loads use the bad
+  pointer-derived value.
+- That post-join value materialization matches the dispatch value-materialization
+  source idea, especially the select-chain and local-slot address authority
+  gaps.
 
 ## Execution Rules
 
-- Start from the focused proof that currently passes 5/6 and fails only
-  `c_testsuite_aarch64_backend_src_00204_c`.
-- Preserve `00164`, `00176`, `00181`, and the two ALU probes as guardrails
-  while repairing `00204`.
-- Add or use nearby semantic backend probes for variadic aggregate `va_arg`
-  register-save and overflow paths before relying on one c-testsuite case.
-- If tracing proves the concrete repair belongs wholly outside calls,
-  call-boundary, or variadic prepared call authority, stop and request a source
-  idea split instead of widening this plan silently.
-- Each code-changing step needs fresh build or compile proof. The supervisor
-  chooses the exact proving subset and any broader validation checkpoint.
+- Treat the existing `memory.cpp` and `dispatch_edge_copies.cpp` edits as
+  incomplete worktree context, not an accepted calls slice.
+- Preserve the fixed overflow-block shape while repairing `%t49`; do not revert
+  the current cursor or edge-copy improvements unless the supervisor explicitly
+  asks for a different route.
+- Add or use semantic probes for pointer-valued select results feeding aggregate
+  byte-copy/address loads before accepting any code slice. A green `00204` alone
+  is not enough.
+- Keep the proof ladder at minimum: build, focused semantic probes, the current
+  focused guardrail subset including `00204`; the supervisor decides any broader
+  regression checkpoint.
+- If the repair requires a broad contract shared by calls, dispatch edge copies,
+  and value materialization, stop for lifecycle split instead of hiding that
+  contract inside one helper.
 
 ## Steps
 
-### Step 1: Establish variadic aggregate va_arg cursor baseline
+### Step 1: Establish pointer-select aggregate-copy baseline and probes
 
-Goal: make the remaining failure and the prepared variadic facts explicit
-before changing lowering.
+Goal: make the current `%t49` failure and same-feature proof surface explicit
+before more code changes.
 
-Primary target: `todo.md` proof state and focused dumps for `00204`
+Primary target: `todo.md` proof state, focused dumps for `00204`, and semantic
+backend probes under `tests/backend/case/` if no existing probes cover this
+shape
 
 Actions:
 
-- Re-run or reuse the supervisor-selected focused subset that currently passes
+- Reuse or rerun the supervisor-selected focused subset that currently passes
   5/6 and fails only `c_testsuite_aarch64_backend_src_00204_c`.
-- Dump BIR, prepared BIR, and relevant machine/assembly for `myprintf` and the
-  first `stdarg` call.
-- Record the aggregate access plan fields for the first `%9s` `va_arg`:
-  source class, progression field, overflow source field, register-save lane
-  homes, strides, source va_list home, and cursor update sequence.
-- Confirm whether the bad `x13 = 0x10` value comes from prepared fact
-  selection, record construction, or printer/lowering emission.
+- Dump the post-join BIR, prepared BIR, and assembly around `vaarg.join.39`,
+  `%t49`, and the subsequent `addr %t49+N` byte-copy loads.
+- Add or identify a minimal backend probe for a pointer-valued select result
+  feeding byte-copy or address-offset loads.
+- Add or identify a nearby variadic aggregate-copy probe that distinguishes the
+  fixed cursor path from the remaining post-join pointer materialization path.
+- Record whether prepared value-home, block-entry publication, edge-publication
+  source, or select-chain facts already name the authoritative pointer source.
 
 Completion check:
 
-- `todo.md` records the exact cursor source, the prepared fact that should own
-  it, and the first bounded code packet.
+- `todo.md` records the first bad materialization fact, the expected prepared
+  authority, and at least one same-feature probe that can fail or pass for the
+  same semantic reason as `00204`.
 
-### Step 2: Add focused variadic aggregate probes
+### Step 2: Audit non-edge select-chain value materialization authority
 
-Goal: prove the repair against same-feature variadic aggregate paths, not only
-against c-testsuite `00204`.
+Goal: decide whether `%t49` can consume existing prepared facts or needs one
+small shared query.
 
-Primary target: `tests/backend/case/`
+Primary target: `dispatch_value_materialization.cpp`
 
 Actions:
 
-- Add a minimal probe where a small aggregate variadic argument is consumed
-  from the register-save area.
-- Add a nearby probe where the same aggregate shape is consumed from the
-  overflow area after register-passed variadic slots are exhausted.
-- Keep expected behavior semantic; do not encode c-testsuite symbol names,
-  instruction labels, temporary registers, or exact spill-slot numbering.
+- Trace `emit_value_publication_to_register` for pointer-valued selects and
+  address-offset consumers after a join block.
+- Inspect whether `PreparedEdgePublicationSourceProducer`,
+  `PreparedScalarPublicationPlan`, `PreparedValueHome`, or
+  `PreparedBlockEntryPublication` already carries the selected pointer source.
+- Identify any same-block producer recursion, raw result-name scan, or fallback
+  stack-home reload that reconstructs the pointer source locally.
+- If existing facts are insufficient, specify the smallest prepared
+  scalar-materialization or select-chain query needed by non-edge consumers.
 
 Completion check:
 
-- The probes distinguish register-save and overflow cursor behavior and fail
-  or pass for the same reason as the traced prepared authority.
+- The next code packet has one bounded authority target and no need to infer
+  source truth from raw BIR spelling or narrow testcase shape.
 
-### Step 3: Repair aggregate va_arg cursor authority
+### Step 3: Repair pointer-valued select result materialization
 
-Goal: make aggregate `va_arg` lowering advance from the authoritative loaded
-cursor for both register-save and overflow paths.
+Goal: publish pointer-valued select results and address-offset consumers from
+prepared authority without truncating pointer state.
 
-Primary target: `make_variadic_aggregate_va_arg_record`,
-`print_aggregate_va_arg_lowering_lines`, and the prepared aggregate access
-plan consumed by those helpers
+Primary target: `dispatch_value_materialization.cpp`, plus shared prepared query
+implementation only if Step 2 proves it is missing
 
 Actions:
 
-- Inspect whether `overflow_source_field`,
-  `overflow_source_field_offset_bytes`, `overflow_stride_bytes`,
-  `progression_field`, and `progression_stride_bytes` encode the needed
-  cursor source and update destination.
-- If prepared facts are correct, change lowering to update the va_list field
-  from the loaded cursor plus stride instead of from an unrelated spill slot.
-- If prepared facts are incomplete, add or consume the smallest shared
-  prepared variadic access-plan fact instead of adding a local fallback.
-- Preserve HFA and scalar `va_arg` behavior while repairing the small byval
-  aggregate path.
+- Route pointer-valued select materialization through the chosen prepared
+  source/home/producer fact.
+- Ensure `addr %t49+N` byte-copy loads consume the full pointer value and never
+  rebuild it through 32-bit scratch moves.
+- Preserve existing scratch-order and read/write hazard checks while replacing
+  semantic source selection.
+- Keep global-load, load-local, and scalar non-pointer materialization behavior
+  unchanged unless the same prepared query deliberately covers them.
 
 Completion check:
 
-- Focused variadic probes and `c_testsuite_aarch64_backend_src_00204_c` no
-  longer fault from a bad overflow cursor, with no expectation downgrades.
+- Semantic probes and `00204` no longer fail from pointer truncation or stale
+  post-join materialization; no expectation downgrades or named-case branches
+  were introduced.
 
-### Step 4: Verify byval aggregate call-boundary source selection
+### Step 4: Validate the combined unfinished code slice
 
-Goal: keep caller-side aggregate argument placement aligned with prepared
-call argument/source-selection authority.
+Goal: determine whether the current worktree changes can become one coherent
+accepted slice or need another lifecycle split.
 
-Primary target: `calls.cpp` byval aggregate argument materialization paths
+Primary target: supervisor-selected proof logs and `todo.md`
 
 Actions:
 
-- Use the `00204` first `stdarg` call as a guardrail: first three `struct s9`
-  values should remain register-passed in pairs and later values stack-passed.
-- Inspect `PreparedCallArgumentSourceSelection` use for byval register lanes,
-  frame-slot values, prior preservation, and outgoing stack slots.
-- Replace any local source recovery that conflicts with the prepared call plan
-  before claiming the variadic consumer repair complete.
+- Run the exact focused subset chosen by the supervisor, including the two ALU
+  prepared-authority probes, `00164`, `00176`, `00181`, `00204`, and the new or
+  selected semantic probes.
+- Confirm the prior overflow-block cursor shape remains repaired.
+- Confirm the edge-copy path still keeps the original cursor live into the join.
+- Ask for reviewer scrutiny before acceptance if the final diff depends on
+  inline assembly, touches multiple ownership surfaces, or claims progress only
+  through `00204`.
 
 Completion check:
 
-- Caller-side byval aggregate placement remains prepared-plan driven and
-  agrees with the callee-side variadic access model.
+- The code slice has fresh build/test proof and a recorded decision: commit as
+  one coherent dispatch/value-materialization slice, split again, or revert only
+  by explicit supervisor direction.
 
-### Step 5: Continue calls prepared-authority cleanup
+### Step 5: Continue dispatch value-materialization cleanup
 
-Goal: reduce the duplicate call authority listed in the source idea after the
-variadic aggregate blocker is fixed.
+Goal: reduce the duplicate authority listed in the source idea after the `%t49`
+blocker is resolved.
 
-Primary target: `src/backend/mir/aarch64/codegen/calls.cpp`
+Primary target: `dispatch_value_materialization.cpp`
 
 Actions:
 
-- Route immediate ABI binding lookup through shared argument binding facts.
-- Route frame-slot argument move lookup through shared move or argument-plan
-  facts.
-- Route scalar call-argument and indirect-callee materialization through
-  shared producer/source-selection facts.
-- Route call-boundary source materialization and after-call result publication
-  through prepared boundary/result authority.
+- Route same-block named producer materialization through prepared producer or
+  value-home facts.
+- Route load-local source materialization through prepared memory and recovered
+  store-source facts.
+- Route global-load materialization through prepared address/materialization
+  policy if available, or add a narrow shared query.
+- Route local-slot address publication through the shared frame-offset authority
+  chosen by prior publication repairs.
 
 Completion check:
 
-- Remaining call lowering paths fail closed on missing prepared facts and no
-  longer use raw operand, BIR-name, frame-slot-name, or move-bundle scans as
-  durable authority.
+- Non-edge value materialization paths no longer use recursive local recovery as
+  durable semantic authority for the source-idea acceptance criteria.
 
-### Step 6: Close or split the calls route
+### Step 6: Close or park the dispatch route
 
 Goal: decide whether the source idea is complete or whether a separate
 initiative remains.
@@ -225,9 +241,10 @@ Primary target: `plan.md`, `todo.md`, and supervisor-selected validation logs
 
 Actions:
 
-- Run the supervisor-selected broader validation for the calls route.
-- Request reviewer scrutiny if any slice claims progress through a narrow
-  named case, expectation rewrite, or retained local scan.
+- Run the supervisor-selected broader validation for the dispatch
+  value-materialization route.
+- Request reviewer scrutiny if any slice claims progress through a narrow named
+  case, expectation rewrite, or retained raw producer scan.
 - Close only if the source idea acceptance criteria are satisfied; otherwise
   leave a bounded follow-up packet or ask the plan owner to split a distinct
   initiative.
