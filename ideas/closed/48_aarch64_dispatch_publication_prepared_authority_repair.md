@@ -102,3 +102,19 @@ shared prepared layer already owns or should own those decisions.
   address authority.
 - Reject expectation downgrades, unsupported-test rewrites, broad rewrites
   outside this file, or helper renames claimed as capability progress.
+
+## Closure Note
+
+Closed after Steps 2-7 routed the owned AArch64 dispatch-publication fallback
+families through prepared/shared authority and recorded close-scope proof.
+`todo.md` recorded coverage for value-home/block-entry publication,
+branch-condition/fused-compare publication, before-return FPR ABI retargeting,
+local-slot/aggregate-address publication, and fixed-formal store-source
+publication.
+
+Close-scope guard used canonical `test_before.log` and `test_after.log` from:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_store_source_publication_plan|backend_prepared_lookup_helper|backend_aarch64|backend_codegen_route_aarch64|backend_cli_aarch64)' | tee test_after.log`
+
+Regression guard result with non-decreasing passed-count policy: before 40/40,
+after 40/40, PASS.
