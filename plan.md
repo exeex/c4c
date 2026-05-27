@@ -1,215 +1,224 @@
-# AArch64 Edge Terminator Consumer Preservation Repair Runbook
+# AArch64 Calls Prepared Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md
-Supersedes active route: ideas/open/55_aarch64_scalar_cast_alu_publication_prepared_authority_repair.md is parked open after Step 3 classified the remaining stale-source failure as edge/terminator preservation placement, not scalar cast ownership.
+Source Idea: ideas/open/52_aarch64_calls_prepared_authority_repair.md
+Supersedes active route: ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md is parked open after Step 5 classified the remaining `00204` failure as variadic by-value aggregate call argument publication, not edge/terminator consumer preservation.
 
 ## Purpose
 
-Make prepared edge and terminator publication preserve successor consumer
-sources before out-of-SSA edge copies reuse the same physical register for a
-different value.
+Repair duplicate AArch64 call-lowering authority so call arguments, boundary
+effects, source selections, preservation facts, and results consume prepared
+call plans instead of re-deriving ABI facts locally.
 
 ## Goal
 
-Repair the remaining `00204` mismatch where `%t35` is still needed for
-`%t45.byte_offset.i64`, but predecessor edge publication has already made `x13`
-authoritative for `%t49` before the join-block consumer move runs.
+Make `src/backend/mir/aarch64/codegen/calls.cpp` consume prepared call
+argument publication facts for the remaining `00204` stdarg string corruption,
+starting with variadic by-value aggregate payload lanes.
 
 ## Core Rule
 
-Prepared planning must place or expose preservation before the clobbering edge
-publication. AArch64 lowering must not recover the source from raw BIR spelling,
-same-block scans, mutable local reloads, or stale emitted-register maps.
+Call lowering must not rebuild call-argument sources from raw operands,
+prepared-name spelling, ABI-index scans, or recursive same-block producer
+walks when prepared call/source facts should be authoritative.
 
 ## Read First
 
-- `ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md`
+- `ideas/open/52_aarch64_calls_prepared_authority_repair.md`
 - `todo.md`
-- `src/backend/prealloc/regalloc/consumer_moves.cpp`
-- `src/backend/prealloc/regalloc/consumer_moves.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/prepared_lookups.cpp`
-- `src/backend/prealloc/prepared_lookups.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
-- current incomplete context:
-  - `src/backend/mir/aarch64/codegen/memory.cpp`
-  - `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- prepared call planning/query surfaces that define:
+  - `PreparedCallPlan`
+  - `PreparedCallArgumentPlan`
+  - `PreparedCallArgumentSourceSelection`
+  - `PreparedCallBoundaryEffectPlan`
+  - `PreparedMoveBundle`
+- parked context:
+  - `ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md`
+  - `review/edge-preservation-step4-route-review.md`
 
 ## Current Targets
 
-- `%t35 -> %t45.byte_offset.i64` consumer preservation
-- `%t45` / `%t47 -> %t49` predecessor edge publication
-- predecessor-side placement before `x13` is repurposed for `%t49`
-- prepared lookup exposure only if lowering needs to consume the preserved
-  source explicitly
+- Direct variadic call by-value aggregate payload publication.
+- 7-byte and 9-byte aggregate argument lanes that feed `myprintf` register-save
+  consumption in `00204`.
+- Prepared call argument/source facts for GPR and overflow stack argument
+  destinations.
+- Existing focused same-feature probes:
+  - `backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy`
+  - `backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy`
+  - `backend_codegen_route_aarch64_alu_unpublished_load_local_after_call`
+  - `backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary`
 
 ## Non-Goals
 
-- Do not reload `%lv.ap.24` in `vaarg.join.39`; the va_list field has already
-  been updated.
-- Do not continue with a cast-only or ALU-only patch that has no valid current
-  `%t35` source.
-- Do not change AAPCS64 call staging, variadic layout constants, or cursor
-  writeback rules under this route.
-- Do not accept or commit the dirty `memory.cpp` or `dispatch_edge_copies.cpp`
-  changes as part of this lifecycle reset.
-- Do not downgrade expectations, mark supported tests unsupported, or claim
-  helper renames as semantic progress.
+- Do not change AAPCS64 register/stack staging constants, direct `bl` or
+  indirect `blr` spelling, stack cleanup rules, or result-store instruction
+  spelling except where needed to consume prepared facts.
+- Do not repair this by reloading va_list fields in `memory.cpp`.
+- Do not reopen edge source selection or scalar cast source selection from
+  idea 56.
+- Do not special-case `00204`, `myprintf`, `%7s`, `%9s`, specific temporary
+  names, or string literal contents.
+- Do not accept or commit existing dirty `memory.cpp` or
+  `dispatch_edge_copies.cpp` changes as part of this lifecycle switch.
+- Do not weaken expectations or mark supported tests unsupported.
 
 ## Working Model
 
-- Earlier dirty calls/memory work removed the original `00204` segfault, but is
-  still unaccepted context.
-- Earlier dirty edge-copy work removed the bad reload of the selected pointer
-  before `vaarg.join.39`, but is still unaccepted context.
-- Scalar cast classification proved the bad `mov w9, w13; sxtw x9, w9` is a
-  symptom: cast lowering sees stale `%t35` in `x13`, while `x13` now belongs to
-  `%t49`.
-- Prepared BIR already knows the consumer move `%t35 -> %t45.byte_offset.i64`,
-  but the move is scheduled at the join instruction, after predecessor edge
-  publication has clobbered the source register.
-- The next semantic owner is prepared edge/terminator preservation placement.
+- Idea 56 removed the stale edge-consumer/cast-source symptom, but the focused
+  subset still fails only `c_testsuite_aarch64_backend_src_00204_c`.
+- Step 5 classified the remaining string corruption upstream of callee
+  `va_arg` consumption: generated `myprintf` consumes `%9s` via
+  `gr_top + gp_offset` with the expected 16-byte progression.
+- The next semantic owner is direct-call argument publication for variadic
+  by-value aggregate lanes, especially how aggregate payload bytes are placed
+  into GPR lanes and overflow stack slots before the call.
+- The source idea's broader target is to remove duplicate call authority in
+  `calls.cpp` by consuming prepared call plans and shared query facts.
 
 ## Execution Rules
 
-- Treat existing `memory.cpp` and `dispatch_edge_copies.cpp` edits as
-  incomplete worktree context unless the supervisor separately accepts or
-  reroutes them.
-- Start from prepared planning and edge publication order. Do not start by
-  patching `cast_ops.cpp`.
-- Prefer a general rule for successor consumer preservation before predecessor
-  edge-copy clobbers.
-- Keep the proof ladder at minimum:
+- Start in `calls.cpp` and prepared call facts. Only widen into planning/query
+  files if the missing fact cannot be expressed from existing prepared data.
+- Prefer prepared call argument plans, source selections, boundary effects, and
+  move bundles over raw BIR scans.
+- Keep repairs semantic across by-value aggregate call arguments; a green
+  `00204` alone is not enough.
+- Preserve the focused proof ladder:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
-- A green `00204` alone is not enough; the same-feature probes must stay in the
-  subset and no expectation may be weakened.
+- Escalate to reviewer scrutiny before accepting a route that proves only the
+  named tests or expands outside call argument publication.
 
 ## Steps
 
-### Step 1: Establish edge preservation baseline
+### Step 1: Classify by-value aggregate call lane publication
 
-Goal: prove the exact prepared move and edge-publication facts that conflict.
+Goal: identify the prepared and emitted facts for the failing variadic
+by-value aggregate argument lanes.
 
-Primary target: `todo.md` classification and focused dumps
-
-Actions:
-
-- Run the eight-test focused subset.
-- Dump prepared BIR around `%t35`, `%t45.byte_offset.i64`, `%t49`, and
-  `vaarg.join.39`.
-- Trace where the `%t35 -> %t45.byte_offset.i64` consumer move is planned and
-  where `%t45` / `%t47 -> %t49` edge publication is planned.
-- Record the current ordering and the physical-register clobber that makes the
-  join-time move stale.
-
-Completion check:
-
-- `todo.md` names the prepared data structures and functions that own both the
-  late consumer move and the predecessor edge clobber.
-
-### Step 2: Define the preservation contract
-
-Goal: choose the smallest prepared contract that can express successor consumer
-preservation before predecessor edge publication clobbers the source register.
-
-Primary target: `src/backend/prealloc/regalloc/consumer_moves.cpp` and
-`src/backend/prealloc/publication_plans.cpp`
+Primary target: `src/backend/mir/aarch64/codegen/calls.cpp`
 
 Actions:
 
-- Inspect whether consumer moves can be scheduled on predecessor terminators or
-  edge bundles when the successor placement is too late.
-- Decide whether the contract belongs in consumer-move planning, edge
-  publication planning, or a shared prepared lookup exposed to both.
-- Reject value-name-only and testcase-shaped placement rules.
-- Keep the contract independent of `00204` temporary names.
+- Run the focused eight-test subset as the baseline for this route.
+- Inspect the direct-call argument plan for the first two `myprintf` string
+  calls in `00204`, especially 7-byte and 9-byte aggregate payload placement.
+- Trace the emitted GPR and overflow stack argument bytes before the call.
+- Compare the failing route against the passing variadic aggregate overflow
+  byte-copy probe.
+- Record whether the missing authority is an existing prepared call argument
+  fact that `calls.cpp` ignores or a genuinely missing shared query.
 
 Completion check:
 
-- The chosen contract is recorded in `todo.md` with exact owned files and the
-  next implementation packet.
+- `todo.md` records the exact function(s), prepared fields, and emitted lane
+  mismatch that own the remaining `00204` corruption, without changing
+  implementation files.
 
-### Step 3: Implement predecessor-side preservation placement
+### Step 2: Define the prepared call argument publication contract
 
-Goal: preserve or materialize the needed successor consumer source before the
-edge publication that would overwrite its register.
+Goal: choose the smallest prepared-authority contract for by-value aggregate
+call argument lane publication.
 
-Primary target: prepared planning plus `dispatch_edge_copies.cpp` only if codegen
-must emit the prepared edge preservation.
+Primary target: `calls.cpp`, plus prepared query headers only if required.
 
 Actions:
 
-- Add or extend prepared data so the predecessor edge can carry the preservation
-  move before the clobbering publication.
-- Ensure the ordering preserves `%t35` before `x13` becomes authoritative for
-  `%t49`.
-- Expose a prepared lookup only if AArch64 scalar consumers must read the
-  preserved source explicitly.
-- Do not reload mutable locals and do not infer from raw BIR spelling.
+- Decide whether `PreparedCallArgumentPlan`,
+  `PreparedCallArgumentSourceSelection`, boundary effects, or move bundles
+  already provide the needed source/destination mapping.
+- If a helper is needed, define it by argument identity and ABI binding, not by
+  testcase names or temporary value spelling.
+- Reject local scans that reconstruct by-value aggregate lanes from raw call
+  operands when prepared facts exist.
 
 Completion check:
 
-- The focused subset shows `00204` has moved past the `%t35` stale-source
-  failure while the two route probes still pass.
+- `todo.md` names the selected contract and the next implementation packet,
+  including owned files and proof command.
 
-### Step 4: Audit consumers of the preserved source
+### Step 3: Repair by-value aggregate argument lane lowering
 
-Goal: make sure AArch64 cast/ALU consumers use the prepared preservation result
-instead of stale emitted-register state.
+Goal: make direct variadic by-value aggregate call arguments publish the
+correct payload bytes to GPR and overflow stack lanes from prepared authority.
 
-Primary target: `cast_ops.cpp` and `alu.cpp` only if Step 3 exposes a consumer
-query that these files must use.
+Primary target: `src/backend/mir/aarch64/codegen/calls.cpp`
 
 Actions:
 
-- Confirm whether the predecessor-side preservation makes existing scalar cast
-  lowering correct without further changes.
-- If not, consume the prepared source query in the smallest scalar publication
-  path.
-- Do not add a second source-selection authority in codegen.
+- Consume the selected prepared call argument/source facts in the lowering path
+  that materializes by-value aggregate payload lanes.
+- Preserve existing ABI staging and stack cleanup behavior.
+- Keep scalar, indirect-callee, and after-call result repairs out of this
+  packet unless the selected helper must be shared.
+- Avoid recursive same-block producer walks and raw prepared-name BIR scans as
+  durable authority.
 
 Completion check:
 
-- The pointer-corrupting `mov w9, w13; sxtw x9, w9` sequence is absent for a
-  semantic reason, and the focused subset remains green or records the next
-  owner precisely.
+- The focused eight-test subset passes or `todo.md` records the next precise
+  call-authority owner with the failing emitted facts.
 
-### Step 5: Validate and decide dirty-context acceptance
+### Step 4: Audit neighboring call authority fallbacks
 
-Goal: decide whether the active worktree is one coherent accepted slice or
-whether dirty predecessor repairs need separate lifecycle ownership.
+Goal: remove or contain the neighboring duplicate call authority exposed by the
+by-value aggregate repair.
+
+Primary target: `calls.cpp`
+
+Actions:
+
+- Inspect immediate ABI binding, frame-slot argument moves, scalar
+  call-argument producers, prepared-name sources, indirect callee sources, and
+  after-call result publication.
+- Convert only directly related fallback paths that block the current prepared
+  call argument contract.
+- Record unrelated duplicate call authority as future work rather than folding
+  it into the current packet.
+
+Completion check:
+
+- No active call argument path needed for the focused subset still depends on a
+  raw scan where a prepared call fact is available.
+
+### Step 5: Validate call-route acceptance
+
+Goal: decide whether the call/byval publication slice is coherent and whether
+parked dirty context can be accepted separately.
 
 Primary target: `todo.md`, `test_before.log`, and `test_after.log`
 
 Actions:
 
-- Run the exact eight-test focused subset.
-- Confirm the original `00204` segfault stays gone.
-- Confirm edge publication keeps `%t49` live and also preserves `%t35` before
-  clobber.
-- Ask for reviewer scrutiny if the final diff spans memory, edge copies,
-  prepared planning, cast, and ALU.
+- Run the focused eight-test subset.
+- If the subset is green, ask supervisor/reviewer whether broader validation is
+  required before accepting the calls slice.
+- Keep `memory.cpp` and `dispatch_edge_copies.cpp` dirty context separate
+  unless the supervisor routes a proven coherent slice for them.
+- Reject expectation downgrades or any proof that depends only on `00204`.
 
 Completion check:
 
-- `todo.md` records either a coherent commit-ready slice, a precise split for
-  dirty predecessor repairs, or a blocker that should return to plan-owner.
+- `todo.md` records a commit-ready calls slice, a precise remaining call owner,
+  or a blocker that should return to plan-owner.
 
-### Step 6: Close or park the edge preservation route
+### Step 6: Decide source-idea completion or next call-authority packet
 
-Goal: decide whether the source idea is complete or a bounded follow-up remains.
+Goal: decide whether idea 52 is complete enough to close or should continue
+with the next duplicate call-authority fallback.
 
 Primary target: lifecycle files and supervisor-selected validation logs
 
 Actions:
 
-- Run the supervisor-selected broader validation for this route.
-- Request reviewer scrutiny if progress depends mainly on `00204`.
-- Close only if the source idea acceptance criteria are satisfied.
+- Compare the accepted implementation against all idea 52 acceptance criteria.
+- Close only if call lowering no longer uses the targeted duplicate authority
+  paths and regression proof passes.
+- Otherwise keep idea 52 active with a precise next packet or park it with a
+  durable leftover note.
 
 Completion check:
 
-- The source idea is closed with regression proof, or remains open with a
-  precise next packet that does not hide route drift.
+- The source idea is either closed with regression proof or remains open with a
+  bounded next call-authority packet.

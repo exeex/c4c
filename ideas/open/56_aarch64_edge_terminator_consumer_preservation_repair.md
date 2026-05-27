@@ -71,6 +71,19 @@ Likely owned implementation surfaces:
 - Any remaining failure is classified to a precise next owner before more
   implementation.
 
+## Parked Route Note
+
+Step 5 classified the remaining `00204` runtime mismatch after the edge
+preservation and cast-source fixes as outside this idea's owned scope. The
+remaining failure is in AArch64 variadic by-value aggregate call argument lane
+publication feeding the callee register-save area, not in edge/terminator
+consumer preservation, va_list cursor writeback, or edge source selection.
+
+This idea remains open because final focused-subset acceptance is still red,
+but it is parked until the call/byval publication owner is repaired or a later
+review confirms the edge-preservation acceptance criteria can be judged
+independently.
+
 ## Reviewer Reject Signals
 
 - Reject named-case logic for `00204`, `myprintf`, `%t35`, `%t45`, `%t49`,
