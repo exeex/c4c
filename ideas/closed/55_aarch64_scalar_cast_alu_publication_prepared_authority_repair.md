@@ -125,6 +125,19 @@ so the prepared predecessor-side preservation contract can be repaired first.
   route records a precise split before more implementation.
 - Same-feature probes remain active and no expectation is downgraded.
 
+## Closure Note
+
+Closed after re-running the close-time focused regression guard with matching
+canonical logs. `test_before.log` and `test_after.log` cover the same focused
+eight-test AArch64 scalar cast/ALU/publication boundary and both report 8/8
+passing. The regression guard with `--allow-non-decreasing-passed` reports no
+new failures and no pass-count decrease.
+
+No stale cast, ALU, or prepared-preservation first bad fact remains in this
+idea's delegated boundary. Any future failure in this area should be opened as
+a fresh source idea with new first-bad evidence rather than reopening this
+closed route.
+
 ## Reviewer Reject Signals
 
 - Reject named-case fixes for `00204`, `myprintf`, `%t45`, `%t49`, or
