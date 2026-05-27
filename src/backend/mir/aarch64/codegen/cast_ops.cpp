@@ -1324,6 +1324,137 @@ lower_scalar_cast_publication_to_prepared_register(
       context, instruction_index, std::move(lines));
 }
 
+[[nodiscard]] bool has_block_entry_stack_edge_consumer_preservation(
+    const module::BlockLoweringContext& context,
+    const bir::CastInst& cast,
+    const prepare::PreparedValueHome& destination_home) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr ||
+      cast.operand.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto source_name = prepared_named_value_id(context, cast.operand);
+  if (!source_name.has_value()) {
+    return false;
+  }
+  const auto* source_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *source_name);
+  if (source_home == nullptr) {
+    return false;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+          move.authority_kind == prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+          move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+          move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+          move.from_value_id == source_home->value_id &&
+          move.to_value_id == destination_home.value_id) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool append_simple_integer_cast_from_preserved_stack_source(
+    const module::BlockLoweringContext& context,
+    const bir::CastInst& cast,
+    const prepare::PreparedValueHome& destination_home,
+    std::vector<std::string>& lines) {
+  if (!has_block_entry_stack_edge_consumer_preservation(
+          context, cast, destination_home)) {
+    return false;
+  }
+  const auto source_bits = integer_bit_width(cast.operand.type);
+  const auto result_bits = integer_bit_width(cast.result.type);
+  const auto source_view = scalar_view_for_type(cast.operand.type);
+  const auto result_view = scalar_view_for_type(cast.result.type);
+  const auto load_mnemonic = scalar_load_mnemonic(cast.operand.type);
+  const auto store_mnemonic = scalar_store_mnemonic(cast.result.type);
+  if (!source_bits.has_value() || !result_bits.has_value() ||
+      !source_view.has_value() || !result_view.has_value() ||
+      !load_mnemonic.has_value() || !store_mnemonic.has_value() ||
+      !destination_home.offset_bytes.has_value()) {
+    return false;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return false;
+  }
+  const auto source_register =
+      gp_register_name(scratches.front().index, *source_view);
+  const auto result_register =
+      gp_register_name(scratches.front().index, *result_view);
+  if (!source_register.has_value() || !result_register.has_value()) {
+    return false;
+  }
+
+  lines.push_back(std::string{*load_mnemonic} + " " + *source_register + ", " +
+                  frame_slot_address(context.function,
+                                     *destination_home.offset_bytes));
+
+  std::ostringstream cast_line;
+  switch (cast.opcode) {
+    case bir::CastOpcode::SExt:
+      if (*source_bits == 1U) {
+        cast_line << "sbfx " << *result_register << ", " << *source_register
+                  << ", #0, #1";
+      } else if (*source_bits == 8U) {
+        cast_line << "sxtb " << *result_register << ", " << *source_register;
+      } else if (*source_bits == 16U) {
+        cast_line << "sxth " << *result_register << ", " << *source_register;
+      } else if (*source_bits == 32U && *result_bits == 64U) {
+        cast_line << "sxtw " << *result_register << ", " << *source_register;
+      } else {
+        return false;
+      }
+      break;
+    case bir::CastOpcode::ZExt:
+      if (*source_bits == *result_bits) {
+        cast_line << "mov " << *result_register << ", " << *source_register;
+      } else {
+        cast_line << "ubfx " << *result_register << ", " << *source_register
+                  << ", #0, #" << *source_bits;
+      }
+      break;
+    case bir::CastOpcode::Trunc:
+      if (*result_bits > 32U) {
+        return false;
+      }
+      if (*result_bits == 32U) {
+        cast_line << "mov " << *result_register << ", " << *source_register;
+      } else {
+        const std::uint64_t mask = (std::uint64_t{1} << *result_bits) - 1U;
+        cast_line << "and " << *result_register << ", " << *source_register
+                  << ", #" << mask;
+      }
+      break;
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      return false;
+  }
+  lines.push_back(cast_line.str());
+  lines.push_back(std::string{*store_mnemonic} + " " + *result_register + ", " +
+                  frame_slot_address(context.function,
+                                     *destination_home.offset_bytes));
+  return true;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_scalar_cast_publication_to_prepared_stack(
     const module::BlockLoweringContext& context,
@@ -1356,6 +1487,11 @@ lower_scalar_cast_publication_to_prepared_stack(
   }
 
   std::vector<std::string> lines;
+  if (append_simple_integer_cast_from_preserved_stack_source(
+          context, *cast, *home, lines)) {
+    return make_select_chain_materialization_instruction(
+        context, instruction_index, std::move(lines));
+  }
   const auto source_bits = integer_bit_width(cast->operand.type);
   const auto result_bits = integer_bit_width(cast->result.type);
   if (cast->opcode == bir::CastOpcode::ZExt && source_bits.has_value() &&
