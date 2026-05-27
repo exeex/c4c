@@ -1,17 +1,20 @@
 Status: Active
 Source Idea Path: ideas/open/46_aarch64_duplicate_prepared_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Audit ALU, Calls, And Comparison
+Current Step ID: Step 6
+Current Step Title: Create Seven Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Audit ALU, Calls, And Comparison is complete for the AArch64
-duplicate-authority audit. The Step 1 authority baseline is retained below
-because the durable audit and follow-up idea split still depend on the same
-shared authority and column contract.
+Step 5 - Write Durable Audit Findings is complete for the AArch64
+duplicate-authority audit. `ideas/open/46_aarch64_duplicate_prepared_authority_audit.md`
+now contains a compact seven-file audit table summarizing duplicated authority,
+existing shared facts, missing shared authority, target-emission residue, and
+repair-planning proof questions. The Step 1 authority baseline is retained
+below because the follow-up idea split still depends on the same shared
+authority and column contract.
 
 Shared prepared authority baseline to use during the seven-file audit:
 
@@ -241,17 +244,15 @@ Step 4 audit table rows:
 
 ## Suggested Next
 
-Proceed to Step 5 of `plan.md`: write the durable compact audit findings into
-`ideas/open/46_aarch64_duplicate_prepared_authority_audit.md`, preserving the
-seven-file evidence and keeping implementation files untouched.
+Proceed to Step 6 of `plan.md`: create exactly seven follow-up ideas under
+`ideas/open/`, one for each audited AArch64 file family. Use the durable source
+idea table plus the detailed audit rows below as source material.
 
 ## Watchouts
 
 This remains audit-only. Do not edit implementation files, tests, build
-metadata, expectations, `plan.md`, or
-`ideas/open/46_aarch64_duplicate_prepared_authority_audit.md` during executor
-audit packets unless the supervisor delegates the later durable source-idea
-update step.
+metadata, expectations, or `plan.md` during follow-up idea creation. The source
+audit idea should not need another rewrite until Step 7 close or handoff.
 
 Do not classify target-local register spelling, scratch ordering, large-offset
 materialization, instruction mnemonic choice, condition-code spelling, or ABI
