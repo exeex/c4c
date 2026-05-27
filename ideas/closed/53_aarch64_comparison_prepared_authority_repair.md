@@ -86,6 +86,19 @@ stack-home/select producer gates that should be shared prepared authority.
 - Stack-home/select/load producer gates are replaced by a shared
   fused-compare operand producer-kind query where needed.
 
+## Completion Note
+
+Closed on 2026-05-27 after Step 7 validation. The active runbook recorded no
+remaining in-scope `comparison.cpp` prepared-authority work. Close-scope
+canonical regression logs were regenerated with matching build, `^backend_`,
+and selected AArch64 c-testsuite scope; the regression guard passed with
+non-decreasing pass count and no new failing tests. The remaining failures
+were the known out-of-scope shape:
+`backend_aarch64_instruction_dispatch`,
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`,
+`c_testsuite_aarch64_backend_src_00196_c`, and
+`c_testsuite_aarch64_backend_src_00207_c`.
+
 ## Reviewer Reject Signals
 
 - Reject reconstructing fused-compare predicate or branch targets from raw
