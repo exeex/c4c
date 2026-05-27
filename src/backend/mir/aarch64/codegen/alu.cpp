@@ -3206,6 +3206,14 @@ void record_emitted_scalar_register(BlockScalarLoweringState& state,
   state.emitted_registers[value_name] = std::move(reg);
 }
 
+void clear_emitted_scalar_register(BlockScalarLoweringState& state,
+                                   c4c::ValueNameId value_name) {
+  if (value_name == c4c::kInvalidValueName) {
+    return;
+  }
+  state.emitted_registers.erase(value_name);
+}
+
 void clear_call_clobbered_emitted_scalar_registers(BlockScalarLoweringState& state) {
   for (auto it = state.emitted_registers.begin();
        it != state.emitted_registers.end();) {
@@ -3972,6 +3980,7 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           if (auto load_source = make_unpublished_load_local_source_operand(
                   context, binary->lhs, instruction_index);
               load_source.has_value()) {
+            clear_emitted_scalar_register(scalar_state, lhs_home->value_name);
             scalar_record->scalar_alu->lhs = make_memory_operand(*load_source);
             scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
           } else if (const auto emitted_lhs =
@@ -3987,6 +3996,7 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           if (auto load_source = make_unpublished_load_local_source_operand(
                   context, binary->rhs, instruction_index);
               load_source.has_value()) {
+            clear_emitted_scalar_register(scalar_state, rhs_home->value_name);
             scalar_record->scalar_alu->rhs = make_memory_operand(*load_source);
             scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
           } else if (const auto emitted_rhs =

@@ -8,48 +8,42 @@ Current Step Title: Repair Unpublished Load-Local Producer Authority
 
 ## Just Finished
 
-Step 3: Repair Unpublished Load-Local Producer Authority completed.
+Step 3 regression fix completed.
 
-Added an indexed prepared memory-access lookup by block label plus instruction
-index and routed the unpublished load-local producer query through
-`PreparedFunctionLookups::memory_accesses` together with
-`PreparedFunctionLookups::edge_publication_source_producers`.
+Fixed `c_testsuite_aarch64_backend_src_00164_c` by keeping the shared
+unpublished load-local source producer's BIR instruction index separate from
+the prepared memory-access index. When the position-indexed memory access is
+missing or belongs to a different result value, the shared helper now recovers
+the load source through the result-value indexed prepared memory-access lookup.
 
-Removed the ALU-facing shared helper's fallback from result-value memory-access
-scans to source-producer authority. The shared helper now requires indexed
-source-producer facts for the value and consumer instruction boundary, then
-uses indexed memory accesses for the load access and intervening store checks.
+Kept the ALU path consuming the shared prepared authority and clearing stale
+emitted-register state when that authority supplies a memory source, so later
+retargeting cannot replace the recovered load-local source with an obsolete
+register value.
 
-Preserved the no-intervening-store safety property in shared prepared authority:
-an intervening store with missing/mismatched access or overlapping prepared
-range still blocks the unpublished load-local source, while non-overlapping
-stores remain allowed.
-
-Adjusted the focused AArch64 prepared scalar ALU test context to attach
-`PreparedFunctionLookups`, matching production traversal, and added
-`backend_store_source_publication_plan` coverage for indexed unpublished
-load-local source authority, missing source-producer rejection, non-overlapping
-store allowance, and overlapping store rejection.
+Adjusted focused store-source publication-plan coverage to exercise a valid
+source-producer whose position-indexed memory access points at a different
+load, plus the existing missing-index and intervening-store safety cases.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet from the active plan. Keep it
-bounded away from unpublished load-local source authority unless review finds a
-regression in this slice.
+Proceed to supervisor review or the next supervisor-selected packet. This
+regression fix is ready for broader validation if the supervisor wants to
+roll the full-suite baseline forward.
 
 ## Watchouts
 
-No direct users of the compatibility wrapper
-`find_prepared_memory_access_by_result_value_name` remain under `src/`; only
-the inline wrapper definition remains. The ALU unpublished load-local path now
-requires `PreparedFunctionLookups`; hand-built test contexts that exercise this
-path need to attach those lookups like traversal does.
+Prepared memory-access `inst_index` is not always the raw BIR instruction
+index after preparation. Shared source-authority code must not treat a
+position-indexed memory-access hit as authoritative unless it also matches the
+source result value.
 
 ## Proof
 
 Ran the delegated proof command exactly:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default 2>&1 | tee test_after.log; ctest --test-dir build -j --output-on-failure -R "^(backend_codegen_route_aarch64_alu_unpublished_load_local_after_call|backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_prepared_lookup_helper|backend_publication_plan_record|backend_store_source_publication_plan)$" 2>&1 | tee -a test_after.log'`
+`bash -lc 'set -o pipefail; cmake --build --preset default 2>&1 | tee test_after.log; ctest --test-dir build -j --output-on-failure -R "^(c_testsuite_aarch64_backend_src_00164_c|backend_codegen_route_aarch64_alu_unpublished_load_local_after_call|backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_prepared_lookup_helper|backend_publication_plan_record|backend_store_source_publication_plan)$" 2>&1 | tee -a test_after.log'`
 
-Result: build succeeded; all 8 focused tests passed. Proof log:
+Result: build succeeded; all 9 delegated tests passed, including
+`c_testsuite_aarch64_backend_src_00164_c`. Proof log:
 `test_after.log`.

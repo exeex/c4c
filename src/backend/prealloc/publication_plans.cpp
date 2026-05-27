@@ -902,6 +902,7 @@ find_prepared_same_block_load_local_source_producer(
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
   std::size_t producer_instruction_index = 0;
   BlockLabelId producer_block_label = block_label;
+  const PreparedMemoryAccess* load_access = nullptr;
   if (producer != nullptr &&
       producer->kind == PreparedEdgePublicationSourceProducerKind::LoadLocal &&
       producer->load_local != nullptr) {
@@ -910,19 +911,53 @@ find_prepared_same_block_load_local_source_producer(
     producer_instruction_index = producer->instruction_index;
     producer_block_label = producer->block_label;
   } else {
-    return std::nullopt;
+    const auto value_name = resolve_prepared_value_name_id(names, value.name);
+    if (!value_name.has_value()) {
+      return std::nullopt;
+    }
+    load_access =
+        find_unique_indexed_prepared_memory_access_by_result_value_name(
+            memory_accesses, *value_name);
+    if (load_access == nullptr ||
+        load_access->block_label != block_label ||
+        load_access->inst_index >= before_instruction_index ||
+        load_access->inst_index >= block->insts.size()) {
+      return std::nullopt;
+    }
+    load_local = std::get_if<bir::LoadLocalInst>(&block->insts[load_access->inst_index]);
+    if (load_local == nullptr ||
+        !prepared_load_access_matches_result(names, load_access, *load_local)) {
+      return std::nullopt;
+    }
+    producer_instruction_index = load_access->inst_index;
+    producer_block_label = load_access->block_label;
   }
 
-  auto* load_access =
-      find_indexed_prepared_memory_access(memory_accesses,
-                                          producer_block_label,
-                                          producer_instruction_index);
+  if (load_access == nullptr) {
+    load_access =
+        find_indexed_prepared_memory_access(memory_accesses,
+                                            producer_block_label,
+                                            producer_instruction_index);
+    if ((load_access == nullptr ||
+         !prepared_load_access_matches_result(names, load_access, *load_local)) &&
+        load_local != nullptr) {
+      const auto load_result_name =
+          existing_prepared_value_name_id(names, load_local->result);
+      if (load_result_name.has_value()) {
+        load_access =
+            find_unique_indexed_prepared_memory_access_by_result_value_name(
+                memory_accesses, *load_result_name);
+      }
+    }
+  }
   const auto load_access_matches =
       load_access != nullptr &&
       producer_instruction_index < block->insts.size() &&
       load_local != nullptr &&
       prepared_load_access_matches_result(names, load_access, *load_local);
   if (load_local == nullptr ||
+      producer_block_label != block_label ||
+      producer_instruction_index >= before_instruction_index ||
       producer_instruction_index >= block->insts.size() ||
       !load_access_matches ||
       !prepared_load_access_matches_result(names, load_access, *load_local) ||

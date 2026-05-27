@@ -466,7 +466,9 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
   prepare::PreparedNameTables names;
   const auto block_label = c4c::BlockLabelId{23};
   const auto slot_id = prepare::PreparedFrameSlotId{9};
+  const auto other_slot_id = prepare::PreparedFrameSlotId{10};
   const auto loaded_name = names.value_names.intern("%loaded");
+  const auto other_name = names.value_names.intern("%other");
   const auto stored_name = names.value_names.intern("%stored");
 
   prepare::PreparedStackLayout stack_layout;
@@ -476,6 +478,14 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
       .function_name = 17,
       .offset_bytes = 64,
       .size_bytes = 32,
+      .align_bytes = 8,
+  });
+  stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = other_slot_id,
+      .object_id = 5,
+      .function_name = 17,
+      .offset_bytes = 96,
+      .size_bytes = 8,
       .align_bytes = 8,
   });
 
@@ -518,7 +528,57 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
     return fail("expected indexed unpublished load-local source authority");
   }
 
-  if (prepare::find_prepared_same_block_load_local_source_producer(
+  bir::Block mismatched_position_block;
+  mismatched_position_block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%other"),
+      .slot_name = "other",
+      .byte_offset = 0,
+      .align_bytes = 8,
+  });
+  mismatched_position_block.insts.push_back(block.insts[0]);
+  const auto* mismatched_position_load =
+      std::get_if<bir::LoadLocalInst>(&mismatched_position_block.insts[1]);
+  prepare::PreparedEdgePublicationSourceProducerLookups mismatched_position_producers;
+  mismatched_position_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .load_local = mismatched_position_load,
+      });
+  auto shifted_loaded_access = frame_slot_load_access(loaded_name, slot_id, 0, 0);
+  shifted_loaded_access.inst_index = 0;
+  auto wrong_position_access =
+      frame_slot_load_access(other_name, other_slot_id, 0, 1);
+  wrong_position_access.inst_index = 1;
+  prepare::PreparedAddressingFunction mismatched_position_addressing;
+  mismatched_position_addressing.accesses = {
+      shifted_loaded_access,
+      wrong_position_access,
+  };
+  const auto mismatched_position_memory_accesses =
+      prepare::make_prepared_memory_access_lookups(&mismatched_position_addressing);
+  const auto source_from_result_index =
+      prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &mismatched_position_memory_accesses,
+          &mismatched_position_producers,
+          block_label,
+          &mismatched_position_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          2);
+  if (!source_from_result_index.has_value() ||
+      source_from_result_index->producer == nullptr ||
+      source_from_result_index->source_access !=
+          &mismatched_position_addressing.accesses.front()) {
+    return fail(
+        "source-producer authority should recover mismatched position accesses from result-indexed memory access");
+  }
+
+  const auto source_from_memory_access =
+      prepare::find_prepared_same_block_load_local_source_producer(
           names,
           stack_layout,
           &memory_accesses,
@@ -526,9 +586,27 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          1);
+  if (!source_from_memory_access.has_value() ||
+      source_from_memory_access->producer != nullptr ||
+      source_from_memory_access->source_access != &addressing.accesses.front()) {
+    return fail("load-local source authority should recover from indexed memory access");
+  }
+
+  prepare::PreparedAddressingFunction empty_addressing;
+  const auto empty_memory_accesses =
+      prepare::make_prepared_memory_access_lookups(&empty_addressing);
+  if (prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &empty_memory_accesses,
+          nullptr,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
           1)
           .has_value()) {
-    return fail("load-local source authority should require source-producer facts");
+    return fail("load-local source authority should require indexed memory access");
   }
 
   bir::Block non_overlapping_store_block;
