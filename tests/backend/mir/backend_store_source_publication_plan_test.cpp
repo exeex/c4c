@@ -673,6 +673,19 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
                        .align_bytes = 4,
                        .base_link_name_id = global_name,
                    },
+           },
+           bir::StoreGlobalInst{
+               .global_name_id = global_name,
+               .value = bir::Value::named(bir::TypeKind::I32, "%tail"),
+               .byte_offset = 8,
+               .address =
+                   bir::MemoryAddress{
+                       .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                       .byte_offset = 8,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .base_link_name_id = global_name,
+                   },
            }},
   };
   const prepare::PreparedValueLocationFunction value_locations{
@@ -745,20 +758,43 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
                        .align_bytes = 4,
                        .can_use_base_plus_offset = true,
                    },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = 17,
+               .block_label = 23,
+               .inst_index = 4,
+               .stored_value_name = tail_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 8,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
            }},
   };
 
   const auto pending = prepare::plan_pending_prepared_store_global_publications(
       &value_locations, &addressing, c4c::BlockLabelId{23}, &block, 1);
-  if (pending.size() != 2 ||
+  if (pending.size() != 3 ||
       pending[0].instruction_index != 1 ||
       pending[1].instruction_index != 3 ||
+      pending[2].instruction_index != 4 ||
       !pending[0].store_source.pending_publication ||
       !pending[0].store_source.stack_homes_only ||
       pending[0].store_source.duplicate_publication ||
       pending[0].store_source.source_value_name != selected_name ||
-      pending[1].store_source.source_value_name != tail_name) {
+      pending[1].store_source.source_value_name != tail_name ||
+      !pending[2].store_source.duplicate_publication ||
+      pending[2].store_source.source_value_name != tail_name) {
     return fail("expected prepared pending global publication candidates");
+  }
+  const auto replay = prepare::plan_pending_prepared_store_global_publications(
+      &value_locations, &addressing, c4c::BlockLabelId{23}, &block, 3);
+  if (!replay.empty()) {
+    return fail("expected prepared pending global publication replay suppression");
   }
 
   const auto normal = prepare::plan_prepared_store_global_publication(

@@ -1,6 +1,7 @@
 #include "publication_plans.hpp"
 
 #include <algorithm>
+#include <unordered_set>
 #include <variant>
 
 namespace c4c::backend::prepare {
@@ -64,6 +65,25 @@ namespace {
          std::get_if<bir::BinaryInst>(&inst) != nullptr ||
          std::get_if<bir::CastInst>(&inst) != nullptr ||
          std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
+}
+
+[[nodiscard]] bool prepared_store_global_publication_run_has_prior_store(
+    const bir::Block* block,
+    std::size_t instruction_index) {
+  if (block == nullptr || instruction_index == 0 ||
+      instruction_index > block->insts.size()) {
+    return false;
+  }
+  for (std::size_t index = instruction_index; index > 0; --index) {
+    const auto& candidate = block->insts[index - 1U];
+    if (!is_prepared_store_global_publication_run_instruction(candidate)) {
+      return false;
+    }
+    if (std::get_if<bir::StoreGlobalInst>(&candidate) != nullptr) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] const PreparedMemoryAccess* find_publication_memory_access(
@@ -660,9 +680,11 @@ plan_pending_prepared_store_global_publications(
     const bir::Block* block,
     std::size_t instruction_index) {
   std::vector<PreparedStoreGlobalPublicationCandidate> candidates;
-  if (block == nullptr) {
+  if (block == nullptr ||
+      prepared_store_global_publication_run_has_prior_store(block, instruction_index)) {
     return candidates;
   }
+  std::unordered_set<ValueNameId> published_source_names;
   for (std::size_t index = instruction_index; index < block->insts.size(); ++index) {
     const auto& candidate = block->insts[index];
     if (!is_prepared_store_global_publication_run_instruction(candidate)) {
@@ -672,16 +694,22 @@ plan_pending_prepared_store_global_publications(
     if (store == nullptr) {
       continue;
     }
+    auto plan = plan_prepared_store_global_publication(value_locations,
+                                                       addressing,
+                                                       block_label,
+                                                       *store,
+                                                       index,
+                                                       true,
+                                                       true);
+    if (plan.source_value_name != kInvalidValueName) {
+      const auto [_, inserted] = published_source_names.insert(plan.source_value_name);
+      if (!inserted) {
+        plan.duplicate_publication = true;
+      }
+    }
     candidates.push_back(PreparedStoreGlobalPublicationCandidate{
         .instruction_index = index,
-        .store_source =
-            plan_prepared_store_global_publication(value_locations,
-                                                   addressing,
-                                                   block_label,
-                                                   *store,
-                                                   index,
-                                                   true,
-                                                   true),
+        .store_source = plan,
     });
   }
   return candidates;
