@@ -103,3 +103,12 @@ semantic authority in AArch64.
   semantic source/home facts are also reselected locally.
 - Reject expectation downgrades, unsupported-test rewrites, or helper renames
   claimed as semantic capability progress.
+
+## Closure Notes
+
+Closed after Step 6 validation recorded in `todo.md`: focused dispatch and
+materialization regression logs passed 9/9 before and 9/9 after, the
+non-decreasing regression guard passed with no new failures, and broader
+backend validation remained 165/167 with only the known failures
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
