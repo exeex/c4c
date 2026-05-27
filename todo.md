@@ -8,27 +8,26 @@ Current Step Title: Repair call-boundary source and indirect-callee authority
 
 ## Just Finished
 
-Step 4 boundary-source subpacket replaced the
-`materialize_call_boundary_source_to_destination` prepared-name/BIR-result scan
-in `calls.cpp` with a prepared edge-publication source-producer lookup. The
-call-boundary materializer now consumes prepared producer payloads for the
-source value and does not recover semantic source facts by walking prior BIR
-results.
+Step 4 indirect-callee subpacket replaced the indirect callee local-load and
+select-chain source recovery in `calls.cpp` with prepared source-producer
+authority. Indirect callee materialization now seeds from the prepared callee
+value-name/source-producer fact, resolves load-local stored values through a
+shared prepared lookup query, and drives CSEL recursion from prepared select
+producer facts instead of same-block producer walks or call operand spelling.
 
 ## Suggested Next
 
-Next bounded implementation packet: continue Step 4 on the indirect-callee
-authority subpacket, keeping it separate from the completed boundary-source
-repair unless the supervisor chooses a different boundary.
+Next bounded implementation packet: supervisor review or route the remaining
+Step 4 cleanup, if any, around prepared call-boundary/indirect-callee authority
+without reopening the completed boundary-source and indirect-callee repairs.
 
 ## Watchouts
 
-The boundary-source helper still requires an existing prepared source-producer
-fact for the source value and validates the prepared block label plus producer
-instruction position before asking value-publication lowering to materialize
-the source into the destination register. The delegated broader `^backend_` run
-still shows the same two pre-existing failures previously recorded here:
-`backend_aarch64_instruction_dispatch` and
+The indirect-callee path now requires an existing prepared source-producer for
+the prepared callee value name and validates that the producer is in the
+current prepared block before materialization. The delegated broader
+`^backend_` run still shows the same two pre-existing failures previously
+recorded here: `backend_aarch64_instruction_dispatch` and
 `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
 
 ## Proof

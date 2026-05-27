@@ -685,6 +685,146 @@ void collect_block_entry_republication_effects(
   return nullptr;
 }
 
+[[nodiscard]] const PreparedFrameSlot* prepared_frame_slot_for_access(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* access) {
+  if (access == nullptr ||
+      access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value()) {
+    return nullptr;
+  }
+  return find_frame_slot_by_id(stack_layout, *access->address.frame_slot_id);
+}
+
+[[nodiscard]] std::optional<std::int64_t> prepared_access_absolute_offset(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* access) {
+  const auto* slot = prepared_frame_slot_for_access(stack_layout, access);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(slot->offset_bytes) +
+         access->address.byte_offset;
+}
+
+[[nodiscard]] bool prepared_access_ranges_overlap(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* lhs,
+    const PreparedMemoryAccess* rhs) {
+  const auto lhs_offset = prepared_access_absolute_offset(stack_layout, lhs);
+  const auto rhs_offset = prepared_access_absolute_offset(stack_layout, rhs);
+  if (!lhs_offset.has_value() || !rhs_offset.has_value() ||
+      lhs == nullptr || rhs == nullptr) {
+    return true;
+  }
+  const auto lhs_end = *lhs_offset +
+                       static_cast<std::int64_t>(lhs->address.size_bytes);
+  const auto rhs_end = *rhs_offset +
+                       static_cast<std::int64_t>(rhs->address.size_bytes);
+  return *lhs_offset < rhs_end && *rhs_offset < lhs_end;
+}
+
+[[nodiscard]] bool prepared_access_ranges_match(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* lhs,
+    const PreparedMemoryAccess* rhs) {
+  const auto lhs_offset = prepared_access_absolute_offset(stack_layout, lhs);
+  const auto rhs_offset = prepared_access_absolute_offset(stack_layout, rhs);
+  return lhs_offset.has_value() &&
+         rhs_offset.has_value() &&
+         *lhs_offset == *rhs_offset &&
+         lhs != nullptr &&
+         rhs != nullptr &&
+         lhs->address.size_bytes == rhs->address.size_bytes;
+}
+
+[[nodiscard]] std::optional<ValueNameId> prepared_existing_value_name_id(
+    const PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  return value_name != kInvalidValueName ? std::optional<ValueNameId>{value_name}
+                                         : std::nullopt;
+}
+
+[[nodiscard]] bool prepared_load_access_matches_result(
+    const PreparedNameTables& names,
+    const PreparedMemoryAccess* access,
+    const bir::LoadLocalInst& load) {
+  const auto result_name = prepared_existing_value_name_id(names, load.result);
+  return result_name.has_value() &&
+         access != nullptr &&
+         access->result_value_name == result_name;
+}
+
+[[nodiscard]] bool prepared_store_access_matches_value(
+    const PreparedNameTables& names,
+    const PreparedMemoryAccess* access,
+    const bir::StoreLocalInst& store) {
+  if (access == nullptr) {
+    return false;
+  }
+  const auto stored_name = prepared_existing_value_name_id(names, store.value);
+  return stored_name.has_value() ? access->stored_value_name == stored_name
+                                 : !access->stored_value_name.has_value();
+}
+
+[[nodiscard]] const bir::Value* prepared_lookup_source_producer_result(
+    const PreparedEdgePublicationSourceProducer& producer) {
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr ? &producer.load_local->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr ? &producer.load_global->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr ? &producer.cast->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr ? &producer.binary->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr ? &producer.select->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+prepared_same_block_source_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (source_producers == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  const auto* producer =
+      find_indexed_prepared_edge_publication_source_producer(
+          source_producers, value_name);
+  if (producer == nullptr ||
+      producer->block_label != block_label ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= block->insts.size()) {
+    return nullptr;
+  }
+  const auto* result = prepared_lookup_source_producer_result(*producer);
+  return result != nullptr &&
+                 result->kind == bir::Value::Kind::Named &&
+                 result->name == value.name &&
+                 result->type == value.type
+             ? producer
+             : nullptr;
+}
+
 }  // namespace
 
 [[nodiscard]] std::size_t prepared_call_position_key(std::size_t block_index,
@@ -1813,6 +1953,71 @@ find_indexed_prepared_edge_publication_source_producer(
     return nullptr;
   }
   return &it->second;
+}
+
+std::optional<PreparedSameBlockLoadLocalStoredValueSource>
+find_prepared_same_block_load_local_stored_value_source(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto* producer = prepared_same_block_source_producer(
+      names, source_producers, block_label, block, value, before_instruction_index);
+  if (addressing == nullptr ||
+      producer == nullptr ||
+      producer->kind != PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      producer->load_local == nullptr ||
+      producer->block_label == kInvalidBlockLabel ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= (block != nullptr ? block->insts.size()
+                                                       : std::size_t{0})) {
+    return std::nullopt;
+  }
+
+  const auto* load_access =
+      find_prepared_memory_access(*addressing,
+                                  producer->block_label,
+                                  producer->instruction_index);
+  if (!prepared_load_access_matches_result(names, load_access, *producer->load_local) ||
+      prepared_frame_slot_for_access(stack_layout, load_access) == nullptr) {
+    return std::nullopt;
+  }
+
+  for (std::size_t index = producer->instruction_index; index > 0; --index) {
+    const auto store_index = index - 1;
+    const auto* store = std::get_if<bir::StoreLocalInst>(&block->insts[store_index]);
+    if (store == nullptr) {
+      continue;
+    }
+    const auto* store_access =
+        find_prepared_memory_access(*addressing, producer->block_label, store_index);
+    if (store_access == nullptr ||
+        !prepared_store_access_matches_value(names, store_access, *store)) {
+      if (prepared_access_ranges_overlap(stack_layout, load_access, store_access)) {
+        return std::nullopt;
+      }
+      continue;
+    }
+    if (!prepared_access_ranges_overlap(stack_layout, load_access, store_access)) {
+      continue;
+    }
+    if (!prepared_access_ranges_match(stack_layout, load_access, store_access)) {
+      return std::nullopt;
+    }
+    return PreparedSameBlockLoadLocalStoredValueSource{
+        .stored_value = store->value,
+        .store_instruction_index = store_index,
+        .load_producer = producer,
+        .load_access = load_access,
+        .store_access = store_access,
+    };
+  }
+
+  return std::nullopt;
 }
 
 [[nodiscard]] const std::vector<const PreparedEdgePublication*>*

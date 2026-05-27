@@ -13,7 +13,6 @@
 #include "alu.hpp"
 #include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
-#include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
 #include "memory_dynamic_stack.hpp"
@@ -5709,119 +5708,6 @@ void record_call_boundary_source_in_destination(
   return false;
 }
 
-[[nodiscard]] c4c::SlotNameId local_load_effective_slot_id(
-    const bir::LoadLocalInst& load) {
-  if (load.address.has_value() &&
-      load.address->base_slot_id != c4c::kInvalidSlotName) {
-    return load.address->base_slot_id;
-  }
-  return load.slot_id;
-}
-
-[[nodiscard]] c4c::SlotNameId local_store_effective_slot_id(
-    const bir::StoreLocalInst& store) {
-  if (store.address.has_value() &&
-      store.address->base_slot_id != c4c::kInvalidSlotName) {
-    return store.address->base_slot_id;
-  }
-  return store.slot_id;
-}
-
-[[nodiscard]] std::int64_t local_load_effective_byte_offset(
-    const bir::LoadLocalInst& load) {
-  return load.address.has_value()
-             ? load.address->byte_offset
-             : static_cast<std::int64_t>(load.byte_offset);
-}
-
-[[nodiscard]] std::int64_t local_store_effective_byte_offset(
-    const bir::StoreLocalInst& store) {
-  return store.address.has_value()
-             ? store.address->byte_offset
-             : static_cast<std::int64_t>(store.byte_offset);
-}
-
-[[nodiscard]] bool same_local_scalar_slot_access(
-    const bir::LoadLocalInst& load,
-    const bir::StoreLocalInst& store) {
-  const auto load_slot_id = local_load_effective_slot_id(load);
-  const auto store_slot_id = local_store_effective_slot_id(store);
-  if (load_slot_id != c4c::kInvalidSlotName ||
-      store_slot_id != c4c::kInvalidSlotName) {
-    if (load_slot_id == c4c::kInvalidSlotName ||
-        store_slot_id == c4c::kInvalidSlotName ||
-        load_slot_id != store_slot_id) {
-      return false;
-    }
-  } else if (!load.slot_name.empty() || !store.slot_name.empty()) {
-    if (load.slot_name.empty() || store.slot_name.empty() ||
-        load.slot_name != store.slot_name) {
-      return false;
-    }
-  }
-
-  const auto load_size = dispatch_publication_scalar_type_size_bytes(load.result.type);
-  const auto store_size = dispatch_publication_scalar_type_size_bytes(store.value.type);
-  return load_size.has_value() &&
-         store_size.has_value() &&
-         *load_size == *store_size &&
-         local_load_effective_byte_offset(load) ==
-             local_store_effective_byte_offset(store);
-}
-
-struct LocalLoadStoredValue {
-  bir::Value value;
-  std::size_t store_instruction_index = 0;
-};
-
-[[nodiscard]] std::optional<LocalLoadStoredValue>
-find_latest_same_block_local_load_store(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load,
-    std::size_t load_instruction_index) {
-  if (context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  const std::size_t limit =
-      std::min(load_instruction_index, context.bir_block->insts.size());
-  for (std::size_t index = limit; index > 0; --index) {
-    const auto store_index = index - 1;
-    const auto* store =
-        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[store_index]);
-    if (store != nullptr && same_local_scalar_slot_access(load, *store)) {
-      return LocalLoadStoredValue{
-          .value = store->value,
-          .store_instruction_index = store_index,
-      };
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<LocalLoadStoredValue>
-resolve_indirect_callee_local_load_store(
-    const module::BlockLoweringContext& context,
-    const bir::Value& callee_value,
-    std::size_t call_instruction_index) {
-  if (callee_value.kind != bir::Value::Kind::Named || callee_value.name.empty()) {
-    return std::nullopt;
-  }
-  const auto* producer =
-      find_same_block_named_producer(context, callee_value.name, call_instruction_index);
-  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer)
-                                         : nullptr;
-  const auto load_index = producer_instruction_index(context, producer);
-  if (load == nullptr || !load_index.has_value()) {
-    return std::nullopt;
-  }
-  auto stored =
-      find_latest_same_block_local_load_store(context, *load, *load_index);
-  if (!stored.has_value()) {
-    return std::nullopt;
-  }
-  return stored;
-}
-
 [[nodiscard]] std::vector<std::uint8_t> indirect_callee_materialization_scratch_indices() {
   std::vector<std::uint8_t> indices;
   for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
@@ -5854,8 +5740,123 @@ resolve_indirect_callee_local_load_store(
   return std::nullopt;
 }
 
+[[nodiscard]] const bir::Value* prepared_indirect_callee_source_producer_result(
+    const prepare::PreparedEdgePublicationSourceProducer& producer) {
+  switch (producer.kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr ? &producer.load_local->result : nullptr;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr ? &producer.load_global->result : nullptr;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr ? &producer.cast->result : nullptr;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr ? &producer.binary->result : nullptr;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr ? &producer.select->result : nullptr;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
+find_prepared_indirect_callee_source_producer(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    c4c::ValueNameId value_name,
+    std::size_t before_instruction_index) {
+  if (source_producers == nullptr ||
+      context.function.prepared == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          source_producers, value_name);
+  if (producer == nullptr ||
+      producer->block_label != context.control_flow_block->block_label ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= context.bir_block->insts.size()) {
+    return nullptr;
+  }
+  const auto* result = prepared_indirect_callee_source_producer_result(*producer);
+  if (result == nullptr ||
+      result->kind != bir::Value::Kind::Named ||
+      result->name.empty()) {
+    return nullptr;
+  }
+  const auto resolved =
+      context.function.prepared->names.value_names.find(result->name);
+  return resolved == value_name ? producer : nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
+find_prepared_indirect_callee_source_producer(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name =
+      context.function.prepared->names.value_names.find(value.name);
+  return find_prepared_indirect_callee_source_producer(
+      context, source_producers, value_name, before_instruction_index);
+}
+
+[[nodiscard]] prepare::PreparedDirectGlobalSelectChainDependency
+find_prepared_indirect_callee_direct_global_select_chain(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.control_flow_block == nullptr) {
+    return {};
+  }
+  return prepare::find_prepared_direct_global_select_chain_dependency(
+      context.function.prepared->names,
+      source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockLoadLocalStoredValueSource>
+find_prepared_indirect_callee_stored_value_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return prepare::find_prepared_same_block_load_local_stored_value_source(
+      context.function.prepared->names,
+      context.function.prepared->stack_layout,
+      addressing,
+      source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
+}
+
 [[nodiscard]] bool emit_indirect_callee_value_to_register_with_csel(
     const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     const bir::Value& value,
     std::size_t before_instruction_index,
     std::uint8_t target_index,
@@ -5867,11 +5868,14 @@ resolve_indirect_callee_local_load_store(
     return false;
   }
   const auto* producer =
-      value.kind == bir::Value::Kind::Named
-          ? find_same_block_named_producer(context, value.name, before_instruction_index)
-          : nullptr;
+      find_prepared_indirect_callee_source_producer(
+          context, source_producers, value, before_instruction_index);
   const auto* select =
-      producer != nullptr ? std::get_if<bir::SelectInst>(producer) : nullptr;
+      producer != nullptr &&
+              producer->kind ==
+                  prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization
+          ? producer->select
+          : nullptr;
   if (select == nullptr) {
     const auto scratch_index =
         choose_scratch_index(scratch_indices, target_index, occupied_indices);
@@ -5893,8 +5897,7 @@ resolve_indirect_callee_local_load_store(
     return false;
   }
 
-  const auto producer_index =
-      producer_instruction_index(context, producer).value_or(before_instruction_index);
+  const auto producer_index = producer->instruction_index;
   const auto true_index =
       choose_scratch_index(scratch_indices, target_index, occupied_indices);
   if (!true_index.has_value()) {
@@ -5906,6 +5909,7 @@ resolve_indirect_callee_local_load_store(
   auto true_value = select->true_value;
   true_value.type = value.type;
   if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        source_producers,
                                                         false_value,
                                                         producer_index,
                                                         target_index,
@@ -5919,6 +5923,7 @@ resolve_indirect_callee_local_load_store(
   auto true_occupied = occupied_indices;
   true_occupied.push_back(target_index);
   if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        source_producers,
                                                         true_value,
                                                         producer_index,
                                                         *true_index,
@@ -6013,15 +6018,47 @@ materialize_indirect_call_callee_to_prepared_register(
     return std::nullopt;
   }
 
-  bir::Value source_value = *call.callee_value;
+  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
+      fallback_source_producers;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
+  if (source_producers == nullptr &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr) {
+    fallback_source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared,
+            *context.function.control_flow);
+    source_producers = &*fallback_source_producers;
+  }
+  const auto* callee_producer =
+      find_prepared_indirect_callee_source_producer(
+          context, source_producers, callee.value_name, instruction_index);
+  const auto* callee_source = callee_producer != nullptr
+                                  ? prepared_indirect_callee_source_producer_result(
+                                        *callee_producer)
+                                  : nullptr;
+  if (callee_source == nullptr) {
+    return std::nullopt;
+  }
+
+  bir::Value source_value = *callee_source;
   std::size_t source_before_index = instruction_index;
-  if (const auto stored = resolve_indirect_callee_local_load_store(
-          context, *call.callee_value, instruction_index);
-      stored.has_value() &&
-      select_chain_contains_direct_global_load(
-          context, stored->value, stored->store_instruction_index)) {
-    source_value = stored->value;
-    source_before_index = stored->store_instruction_index;
+  if (const auto stored = find_prepared_indirect_callee_stored_value_source(
+          context, source_producers, source_value, instruction_index);
+      stored.has_value()) {
+    const auto direct_global_dependency =
+        find_prepared_indirect_callee_direct_global_select_chain(
+            context,
+            source_producers,
+            stored->stored_value,
+            stored->store_instruction_index);
+    if (direct_global_dependency.contains_direct_global_load) {
+      source_value = stored->stored_value;
+      source_before_index = stored->store_instruction_index;
+    }
   }
 
   const auto target_register = abi::parse_aarch64_register_name(*callee.register_name);
@@ -6036,6 +6073,7 @@ materialize_indirect_call_callee_to_prepared_register(
   const auto scratches = indirect_callee_materialization_scratch_indices();
   std::vector<std::string> lines;
   if (!emit_indirect_callee_value_to_register_with_csel(context,
+                                                        source_producers,
                                                         source_value,
                                                         source_before_index,
                                                         result_register->index,
