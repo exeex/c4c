@@ -1,284 +1,238 @@
-# AArch64 ALU Prepared Authority Repair Runbook
+# AArch64 Calls Prepared Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/51_aarch64_alu_prepared_authority_repair.md
-Supersedes active route: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md is parked open after Step 8 exposed an ALU-owned stale-home blocker.
+Source Idea: ideas/open/52_aarch64_calls_prepared_authority_repair.md
+Supersedes active route: ideas/open/51_aarch64_alu_prepared_authority_repair.md is parked open after Step 7 classified the remaining focused failure as calls/variadic ownership, not ordinary ALU stale-home ownership.
 
 ## Purpose
 
-Turn `src/backend/mir/aarch64/codegen/alu.cpp` into a consumer of prepared
-value-home, storage, memory-access, scalar-publication, edge source-producer,
-move-bundle, branch/return, and select-chain facts instead of rediscovering
-scalar source and result authority locally.
+Turn AArch64 call, call-boundary, and variadic helper lowering into consumers
+of prepared call plans, argument/result plans, source selections, boundary
+effects, move bundles, value homes, and variadic access plans instead of
+rediscovering ABI source and cursor authority locally.
 
 ## Goal
 
-Repair ordinary AArch64 scalar ALU stale-home reads by replacing local
-same-block load-local producer and publication recovery with shared prepared
-authority.
+Repair the remaining `c_testsuite_aarch64_backend_src_00204_c` failure first by
+making small variadic aggregate `va_arg` lowering use the prepared AAPCS64
+register-save and overflow cursor authority for byval aggregates such as
+`struct s9`.
 
 ## Core Rule
 
-Prefer shared prepared scalar publication/source-producer authority over local
-same-block producer walks, load/store alias scans, raw move-bundle scans, or
-expectation downgrades.
+Prefer shared prepared call, variadic access-plan, source-selection, and
+boundary-effect facts over raw call operands, callee-name analysis, BIR value
+spelling, frame-slot naming, recursive same-block producer walks, or
+named-case workarounds.
 
 ## Read First
 
-- `ideas/open/51_aarch64_alu_prepared_authority_repair.md`
-- `src/backend/mir/aarch64/codegen/alu.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+- `ideas/open/52_aarch64_calls_prepared_authority_repair.md`
+- `todo.md`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
-- Prepared authority definitions and lookup helpers for:
-  - `PreparedValueHome`
-  - `PreparedStoragePlanValue`
-  - `PreparedValueHomeLookups`
-  - `PreparedAddressingFunction`
-  - `PreparedScalarPublicationPlan`
-  - `PreparedEdgePublicationSourceProducerLookups`
-  - `PreparedEdgePublicationSourceProducer`
-  - `PreparedMoveBundle`
-  - `PreparedMovePhase::BeforeReturn`
+- `src/backend/mir/aarch64/codegen/variadic.cpp`
+- `src/backend/mir/aarch64/codegen/variadic.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/prealloc/prepared_lookups.cpp`
+- prepared call and variadic facts for:
+  - `PreparedCallPlan`
+  - `PreparedCallArgumentPlan`
+  - `PreparedCallArgumentSourceSelection`
+  - `PreparedCallBoundaryEffectPlan`
+  - `PreparedCallPreservedValue`
+  - `PreparedVariadicEntryPlanFunction`
+  - `PreparedVariadicAggregateVaArgAccessPlan`
 
 ## Current Targets
 
-- `make_prepared_scalar_alu_record`
-- `make_prepared_scalar_unary_record`
-- `make_prepared_scalar_operand`
-- `make_prepared_scalar_result_operand`
-- `make_prepared_scalar_load_source`
-- `find_same_block_load_local_producer_index`
-- `has_intervening_store_to_local_load_source`
-- `make_unpublished_load_local_source_operand`
-- `find_return_abi_register`
-- `find_return_chain_register`
-- `lower_scalar_select_publication`
+- `complete_variadic_call_record`
+- `make_variadic_aggregate_va_arg_record`
+- `print_aggregate_va_arg_lowering_lines`
+- `append_aggregate_copy_from_va_list_field`
+- aggregate va_arg overflow cursor advancement
+- aggregate va_arg register-save versus overflow source selection
+- byval aggregate call argument register/stack placement for the `00204`
+  `struct s9` case
+- remaining `calls.cpp` duplicated authority listed in the source idea after
+  the variadic failure is reduced
 
 ## Non-Goals
 
-- Do not change arithmetic opcode spelling, immediate optimizations,
-  accumulator/direct-register paths, mul/div/rem scratch ordering, 32-bit
-  sign/zero extension, or register-read hazard checks except to consume shared
-  prepared facts.
-- Do not implement calls, comparison, memory, or dispatch-value-materialization
-  repairs under this plan.
-- Do not push call-argument producer logic into ALU without an explicit shared
-  query contract.
-- Do not treat target-local scratch ordering as duplicate semantic authority
-  by itself.
-- Do not claim helper renames, line-count reduction, expectation rewrites, or
-  unsupported-test downgrades as capability progress.
+- Do not change AAPCS64 register/stack staging, `bl`/`blr` spelling, stack
+  cleanup, source reload sequencing, ABI result store spelling, or variadic
+  layout constants except to consume or correct prepared facts.
+- Do not implement a broad call lowering rewrite.
+- Do not push call-argument producer logic into ALU or dispatch value
+  materialization follow-ups without an explicit shared-query contract.
+- Do not downgrade expectations, mark supported tests unsupported, or claim
+  helper renames as capability progress.
+- Do not close the parked ALU idea as part of this route switch.
 
 ## Working Model
 
-- ALU operand/result records should remain consumers of prepared value-home and
-  storage facts.
-- Scalar load source recovery should consume a prepared memory-access lookup by
-  result value id/name instead of scanning `PreparedAddressingFunction::accesses`
-  by spelling.
-- Same-block unpublished `load_local` producer recovery should be owned by a
-  shared scalar-publication or source-producer query keyed by source value and
-  consumer instruction index.
-- Before-return retargeting should consume prepared move or return-chain
-  authority instead of raw move-bundle or forward BIR scans.
-- Direct-global select-chain scalar publication should consume the shared
-  select-chain materialization authority used by other non-edge consumers.
+- The caller-side prepared plan for the first `stdarg` call in `00204` appears
+  coherent: the format pointer is in `x0`, the first three `struct s9`
+  variadic byval arguments are passed in register pairs `x1/x2`, `x3/x4`, and
+  `x5/x6`, and the remaining three are passed in outgoing stack slots.
+- The callee-side `myprintf` prologue saves general-purpose argument registers
+  into the register-save area and initializes a negative `gp_offset`.
+- The observed crash is in `%9s` aggregate `va_arg` handling when the overflow
+  path dereferences `x13 = 0x10`; the suspected authority gap is cursor
+  advancement from a spill slot instead of the loaded overflow pointer.
+- Variadic helper machine nodes are selected through `calls.cpp`, completed
+  from prepared variadic facts, and printed/lowered through `variadic.cpp`.
+  Keep edits aligned with that ownership instead of adding testcase-specific
+  branches.
 
 ## Execution Rules
 
-- Start from the remaining dispatch close-readiness failures:
-  `c_testsuite_aarch64_backend_src_00164_c` and
+- Start from the focused proof that currently passes 5/6 and fails only
   `c_testsuite_aarch64_backend_src_00204_c`.
-- Establish a focused baseline for the old four-test family before further
-  backend surgery:
-  `00164`, `00176`, `00181`, and `00204`.
-- Split the stale-home seam into small probes under `tests/backend/case/`
-  before changing shared ALU authority.
-- Keep probes semantic and same-feature, not named-case shortcuts for one
-  c-testsuite file.
+- Preserve `00164`, `00176`, `00181`, and the two ALU probes as guardrails
+  while repairing `00204`.
+- Add or use nearby semantic backend probes for variadic aggregate `va_arg`
+  register-save and overflow paths before relying on one c-testsuite case.
+- If tracing proves the concrete repair belongs wholly outside calls,
+  call-boundary, or variadic prepared call authority, stop and request a source
+  idea split instead of widening this plan silently.
 - Each code-changing step needs fresh build or compile proof. The supervisor
-  chooses the exact proving subset.
-- If a probe proves the remaining failure is in `calls.cpp` rather than
-  ordinary ALU operand/source publication, stop and route through
-  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of
-  widening this plan.
+  chooses the exact proving subset and any broader validation checkpoint.
 
 ## Steps
 
-### Step 1: Establish the remaining stale-home baseline
+### Step 1: Establish variadic aggregate va_arg cursor baseline
 
-Goal: make the current failure family explicit before touching ALU lowering.
+Goal: make the remaining failure and the prepared variadic facts explicit
+before changing lowering.
 
-Primary target: `todo.md` proof state and the supervisor-selected c-testsuite
-subset
+Primary target: `todo.md` proof state and focused dumps for `00204`
 
 Actions:
 
-- Run or delegate the focused four-test baseline:
-  `c_testsuite_aarch64_backend_src_00164_c`,
-  `c_testsuite_aarch64_backend_src_00176_c`,
-  `c_testsuite_aarch64_backend_src_00181_c`, and
-  `c_testsuite_aarch64_backend_src_00204_c`.
-- Confirm the expected current shape: `00176` and `00181` pass after the
-  select-chain label-identity repair; `00164` and `00204` still fail at
-  runtime from stale or uninitialized ALU operands.
-- Record the exact observed stale homes, producer values, and consumer
-  instructions in `todo.md`.
+- Re-run or reuse the supervisor-selected focused subset that currently passes
+  5/6 and fails only `c_testsuite_aarch64_backend_src_00204_c`.
+- Dump BIR, prepared BIR, and relevant machine/assembly for `myprintf` and the
+  first `stdarg` call.
+- Record the aggregate access plan fields for the first `%9s` `va_arg`:
+  source class, progression field, overflow source field, register-save lane
+  homes, strides, source va_list home, and cursor update sequence.
+- Confirm whether the bad `x13 = 0x10` value comes from prepared fact
+  selection, record construction, or printer/lowering emission.
 
 Completion check:
 
-- `todo.md` records the fresh baseline command, result, and the first concrete
-  ALU stale-home sequence to reduce.
+- `todo.md` records the exact cursor source, the prepared fact that should own
+  it, and the first bounded code packet.
 
-### Step 2: Add focused backend probes for unpublished load-local ALU operands
+### Step 2: Add focused variadic aggregate probes
 
-Goal: split the remaining failure seam into repo-local probes before changing
-ALU authority.
+Goal: prove the repair against same-feature variadic aggregate paths, not only
+against c-testsuite `00204`.
 
 Primary target: `tests/backend/case/`
 
 Actions:
 
-- Add one minimal probe where an unpublished same-block `load_local` feeds an
-  ordinary scalar ALU operand after another materialization event.
-- Add a nearby same-feature probe that varies the consumer shape, such as a
-  second binary operator, chained ALU consumer, or call boundary before the ALU
-  use.
-- Keep expected output behavior-focused; do not encode c-testsuite-specific
-  names, instruction labels, or temporary register choices.
-- Use the probes to classify whether the stale read is selected by ALU operand
-  publication, call argument materialization, or a shared source-producer gap.
+- Add a minimal probe where a small aggregate variadic argument is consumed
+  from the register-save area.
+- Add a nearby probe where the same aggregate shape is consumed from the
+  overflow area after register-passed variadic slots are exhausted.
+- Keep expected behavior semantic; do not encode c-testsuite symbol names,
+  instruction labels, temporary registers, or exact spill-slot numbering.
 
 Completion check:
 
-- At least two focused probes exist under `tests/backend/case/`, and `todo.md`
-  records which route owns the stale-home decision.
+- The probes distinguish register-save and overflow cursor behavior and fail
+  or pass for the same reason as the traced prepared authority.
 
-### Step 3: Route scalar load source lookup through prepared memory authority
+### Step 3: Repair aggregate va_arg cursor authority
 
-Goal: stop `make_prepared_scalar_load_source` from using local value-spelling
-scans as load source authority.
+Goal: make aggregate `va_arg` lowering advance from the authoritative loaded
+cursor for both register-save and overflow paths.
 
-Primary target: `make_prepared_scalar_load_source`
+Primary target: `make_variadic_aggregate_va_arg_record`,
+`print_aggregate_va_arg_lowering_lines`, and the prepared aggregate access
+plan consumed by those helpers
 
 Actions:
 
-- Consume an existing prepared memory-access lookup by result value id/name if
-  one already exists.
-- Add a narrow shared lookup only if `PreparedAddressingFunction::accesses`
-  cannot answer the needed query without a local scan in ALU.
-- Preserve stack/global scalar load behavior while moving the lookup authority
-  out of `alu.cpp`.
+- Inspect whether `overflow_source_field`,
+  `overflow_source_field_offset_bytes`, `overflow_stride_bytes`,
+  `progression_field`, and `progression_stride_bytes` encode the needed
+  cursor source and update destination.
+- If prepared facts are correct, change lowering to update the va_list field
+  from the loaded cursor plus stride instead of from an unrelated spill slot.
+- If prepared facts are incomplete, add or consume the smallest shared
+  prepared variadic access-plan fact instead of adding a local fallback.
+- Preserve HFA and scalar `va_arg` behavior while repairing the small byval
+  aggregate path.
 
 Completion check:
 
-- Scalar load source recovery no longer linearly scans
-  `PreparedAddressingFunction::accesses` by value spelling in ALU, with proof
-  for the focused probes and the relevant c-testsuite subset.
+- Focused variadic probes and `c_testsuite_aarch64_backend_src_00204_c` no
+  longer fault from a bad overflow cursor, with no expectation downgrades.
 
-### Step 4: Replace same-block load-local producer recovery
+### Step 4: Verify byval aggregate call-boundary source selection
 
-Goal: remove ALU-owned same-block load-local producer and no-intervening-store
-logic as the source of unpublished operand truth.
+Goal: keep caller-side aggregate argument placement aligned with prepared
+call argument/source-selection authority.
 
-Primary target: `find_same_block_load_local_producer_index`,
-`has_intervening_store_to_local_load_source`, and
-`make_unpublished_load_local_source_operand`
+Primary target: `calls.cpp` byval aggregate argument materialization paths
 
 Actions:
 
-- Consume or add a prepared scalar-publication/source-producer query keyed by
-  source value and consumer instruction index.
-- Use the shared query to decide whether an unpublished load-local producer can
-  be read from prepared memory/source authority instead of from its assigned
-  result home.
-- Remove or fail-close local same-block producer/no-intervening-store scans
-  after the shared path exists.
+- Use the `00204` first `stdarg` call as a guardrail: first three `struct s9`
+  values should remain register-passed in pairs and later values stack-passed.
+- Inspect `PreparedCallArgumentSourceSelection` use for byval register lanes,
+  frame-slot values, prior preservation, and outgoing stack slots.
+- Replace any local source recovery that conflicts with the prepared call plan
+  before claiming the variadic consumer repair complete.
 
 Completion check:
 
-- Ordinary scalar ALU operands for unpublished same-block load-local producers
-  consume shared authority, and the focused probes plus `00164`/`00204` no
-  longer show stale-home operand reads.
+- Caller-side byval aggregate placement remains prepared-plan driven and
+  agrees with the callee-side variadic access model.
 
-### Step 5: Repair before-return and return-chain authority
+### Step 5: Continue calls prepared-authority cleanup
 
-Goal: keep ALU return retargeting anchored in shared prepared move or
-return-chain facts.
+Goal: reduce the duplicate call authority listed in the source idea after the
+variadic aggregate blocker is fixed.
 
-Primary target: `find_return_abi_register` and `find_return_chain_register`
+Primary target: `src/backend/mir/aarch64/codegen/calls.cpp`
 
 Actions:
 
-- Add or consume a prepared before-return move lookup by source value id and
-  destination register bank.
-- Add a prepared return/result-chain publication query only if the move lookup
-  does not cover the remaining return-chain behavior.
-- Remove raw move-bundle and forward name-chain scans once shared authority is
-  available.
+- Route immediate ABI binding lookup through shared argument binding facts.
+- Route frame-slot argument move lookup through shared move or argument-plan
+  facts.
+- Route scalar call-argument and indirect-callee materialization through
+  shared producer/source-selection facts.
+- Route call-boundary source materialization and after-call result publication
+  through prepared boundary/result authority.
 
 Completion check:
 
-- Before-return ABI retargeting and any surviving return-chain behavior consume
-  shared prepared authority, with proof for affected return routes.
+- Remaining call lowering paths fail closed on missing prepared facts and no
+  longer use raw operand, BIR-name, frame-slot-name, or move-bundle scans as
+  durable authority.
 
-### Step 6: Route ALU select-chain publication through shared select authority
+### Step 6: Close or split the calls route
 
-Goal: align `lower_scalar_select_publication` with the shared non-edge
-select-chain materialization authority.
+Goal: decide whether the source idea is complete or whether a separate
+initiative remains.
 
-Primary target: `lower_scalar_select_publication`
+Primary target: `plan.md`, `todo.md`, and supervisor-selected validation logs
 
 Actions:
 
-- Consume the shared scalar select-chain materialization query selected for
-  non-edge consumers.
-- Remove direct-global select-chain shortcuts whose only proof is a narrow
-  named case.
-- Preserve behavior for direct-global select-chain scalar publication through
-  shared authority.
+- Run the supervisor-selected broader validation for the calls route.
+- Request reviewer scrutiny if any slice claims progress through a narrow
+  named case, expectation rewrite, or retained local scan.
+- Close only if the source idea acceptance criteria are satisfied; otherwise
+  leave a bounded follow-up packet or ask the plan owner to split a distinct
+  initiative.
 
 Completion check:
 
-- Direct-global select-chain scalar publication consumes shared select-chain
-  materialization authority, with proof for a direct-global route and a nearby
-  same-feature route.
-
-### Step 7: Classify remaining stale-home ownership
-
-Goal: decide whether the remaining `00164`/`00204` stale-home family is still
-owned by ALU prepared-authority repair, by calls/call-boundary publication, or
-by a missing shared value-home/source-producer query.
-
-Primary target: ownership trace in `todo.md`, using the remaining `00164`
-post-`%t106` values `%t109`, `%t110`, `%t111`, and `%t112` as the first
-reduction target.
-
-Actions:
-
-- Do not close this plan or add another ALU-local fallback while the focused
-  stale-home family remains at the 4/6 split.
-- Trace the prepared homes, scalar publications, call-clobber behavior, and ALU
-  operand materialization for `%t109`, `%t110`, `%t111`, and `%t112`.
-- Determine where the stale operand decision is made:
-  - ALU-owned operand/source materialization still selecting a stale home.
-  - Call-boundary or call-argument publication invalidating or failing to
-    republish the prepared home.
-  - Shared prepared value-home/source-producer authority missing a query needed
-    by multiple consumers.
-- If the trace proves the owner is call-boundary or call-argument
-  publication, stop and route through
-  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of
-  widening this plan.
-- If the trace proves a missing shared query is the owner, define the smallest
-  shared-authority packet and the proof subset before implementation.
-- Regenerate the supervisor-selected canonical `test_after.log` before any
-  closure or acceptance decision; the current workspace may not have the root
-  proof log that `todo.md` previously referenced.
-
-Completion check:
-
-- `todo.md` records the ownership classification, the traced prepared-home and
-  publication path for `%t109`/`%t110`/`%t111`/`%t112`, the conditional route
-  decision, and the next bounded packet. Closure remains blocked unless the
-  stale-home family is green or formally reclassified outside ALU scope.
+- The source idea is either closed with regression proof or remains open with a
+  precise next packet that does not hide route drift.
