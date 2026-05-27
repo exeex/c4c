@@ -8,33 +8,27 @@ Current Step Title: Preserve block-entry and value-home helpers as prepared cons
 
 ## Just Finished
 
-Completed Step 2 by replacing the remaining direct-global select-chain root
-metadata query in `prepare::find_prepared_direct_global_select_chain_dependency`
-with prepared source-producer authority.
+Completed Step 3's narrow `value_publication_may_read_register_index` repair.
 
-The prepared helper now consumes `PreparedEdgePublicationSourceProducerLookups`,
-the prepared name table, the current block label, the BIR block, the named
-source value, and the before-instruction index. It validates the indexed
-producer fact against the BIR instruction, walks prepared load-global,
-load-local, cast, binary, and select producer facts recursively, and returns
-both direct-global reachability and root metadata without calling
-`mir::find_same_block_named_producer_record` or
-`mir::select_chain_contains_dependency`.
+The helper now consumes current block-entry/value-home facts before producer
+lookup, validates prepared source-producer facts by block label, instruction
+index, result value, and payload pointer before recursive cast/binary/select
+dependency checks, and preserves the existing same-block fallback only when
+prepared source facts do not answer.
 
 ## Suggested Next
 
-Begin Step 3 by preserving block-entry and value-home helper behavior while
-keeping their producer and publication decisions on prepared authority. Start
-with the narrowest helper that still falls back to local same-block producer
-metadata for prepared block-entry/value-home decisions.
+Continue Step 3 by checking the remaining block-entry/value-home publication
+helpers for any producer-sensitive decisions that still bypass prepared source
+or value-home authority.
 
 ## Watchouts
 
-Step 2 needed the store-source call path to pass the same prepared
-source-producer authority into the shared helper, so `memory.cpp` has a narrow
-signature-adaptation change for that direct caller. Keep local-slot address
-repair out of the next route, and do not reintroduce same-block MIR scans into
-prepared direct-global select-chain dependency planning.
+This packet intentionally left the legacy same-block query as a fallback for
+cases where prepared source-producer facts are absent or invalid; prepared facts
+take precedence when they validate. No raw move-bundle/value-name scans,
+expectation downgrades, local-slot address changes, or test-specific shortcuts
+were added.
 
 ## Proof
 
