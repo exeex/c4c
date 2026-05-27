@@ -226,11 +226,14 @@ struct PreparedRecoveredStoreSourcePublication {
   std::size_t instruction_index = 0;
 };
 
-struct PreparedStoreSourceDirectGlobalSelectChainDependency {
+struct PreparedDirectGlobalSelectChainDependency {
   bool contains_direct_global_load = false;
   bool root_is_select = false;
   std::optional<std::size_t> root_instruction_index;
 };
+
+using PreparedStoreSourceDirectGlobalSelectChainDependency =
+    PreparedDirectGlobalSelectChainDependency;
 
 struct PreparedStoreSourcePublicationInputs {
   const bir::Value* source_value = nullptr;
@@ -278,6 +281,12 @@ prepared_store_source_load_local_is_byval_formal_pointer_source(
     const bir::Function* bir_function,
     const PreparedAddressingFunction* addressing,
     const PreparedEdgePublicationSourceProducer* source_producer);
+
+[[nodiscard]] PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
 
 [[nodiscard]] PreparedStoreSourceDirectGlobalSelectChainDependency
 find_prepared_store_source_direct_global_select_chain_dependency(

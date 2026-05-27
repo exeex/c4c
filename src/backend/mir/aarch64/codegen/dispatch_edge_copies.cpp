@@ -14,6 +14,7 @@
 #include "prepared_value_home_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +30,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] const bir::Block* find_bir_block(
@@ -1355,7 +1357,9 @@ lower_predecessor_select_parallel_copy_sources(
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,
-    bool reload_current_memory_loads) {
+    bool reload_current_memory_loads,
+    const prepare::PreparedDirectGlobalSelectChainDependency*
+        direct_global_dependency) {
   if (value.kind == bir::Value::Kind::Immediate) {
     const auto target_view = scalar_view_for_type(value.type);
     const auto target = target_view.has_value()
@@ -1372,6 +1376,21 @@ lower_predecessor_select_parallel_copy_sources(
   }
   for (const auto active : active_values) {
     if (active == value.name) {
+      return false;
+    }
+  }
+  const bool root_value = active_values.empty() &&
+                          direct_global_dependency != nullptr;
+  if (root_value) {
+    const auto root = mir::find_same_block_named_producer_record(
+        context.bir_block, value.name, before_instruction_index);
+    if (!direct_global_dependency->contains_direct_global_load ||
+        !direct_global_dependency->root_instruction_index.has_value() ||
+        !root ||
+        *direct_global_dependency->root_instruction_index !=
+            root.instruction_index ||
+        direct_global_dependency->root_is_select !=
+            (root.kind == mir::SameBlockProducerKind::Select)) {
       return false;
     }
   }
@@ -1447,7 +1466,8 @@ lower_predecessor_select_parallel_copy_sources(
                                            lines,
                                            label_index,
                                            active_values,
-                                           reload_current_memory_loads)) {
+                                           reload_current_memory_loads,
+                                           direct_global_dependency)) {
     active_values.pop_back();
     return false;
   }
@@ -1463,7 +1483,8 @@ lower_predecessor_select_parallel_copy_sources(
                                            lines,
                                            label_index,
                                            active_values,
-                                           reload_current_memory_loads)) {
+                                           reload_current_memory_loads,
+                                           direct_global_dependency)) {
     active_values.pop_back();
     return false;
   }
@@ -1529,22 +1550,27 @@ materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
+    const prepare::PreparedCallArgumentPlan* argument_plan,
     BlockScalarLoweringState& scalar_state) {
   const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value() ||
-      find_emitted_scalar_register(scalar_state, *value_name).has_value() ||
-      !select_chain_contains_direct_global_load(context,
-                                                value,
-                                                before_instruction_index)) {
+  if (!value_name.has_value() || argument_plan == nullptr ||
+      argument_plan->instruction_index != before_instruction_index ||
+      !argument_plan->source_value_id.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
     return std::nullopt;
   }
-  if (context.function.value_locations != nullptr) {
-    const auto* home =
-        find_value_home(context,
-*value_name);
-    if (home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot) {
-      return std::nullopt;
-    }
+  const auto* value_home = find_value_home(context, *value_name);
+  if (value_home == nullptr ||
+      value_home->value_id != *argument_plan->source_value_id ||
+      value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  const auto direct_global_dependency =
+      prepare::find_prepared_direct_global_select_chain_dependency(
+          context.bir_block, value, before_instruction_index);
+  if (!direct_global_dependency.contains_direct_global_load ||
+      !direct_global_dependency.root_instruction_index.has_value()) {
+    return std::nullopt;
   }
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   if (scratches.size() < 2U) {
@@ -1552,15 +1578,12 @@ materialize_direct_global_select_chain_call_argument(
   }
   if (context.function.value_locations != nullptr &&
       (value.type == bir::TypeKind::F32 || value.type == bir::TypeKind::F64)) {
-    const auto* home =
-        find_value_home(context,
-*value_name);
-    if (home == nullptr ||
-        home->kind != prepare::PreparedValueHomeKind::Register ||
-        !home->register_name.has_value()) {
+    if (value_home->kind != prepare::PreparedValueHomeKind::Register ||
+        !value_home->register_name.has_value()) {
       return std::nullopt;
     }
-    const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+    const auto parsed =
+        abi::parse_aarch64_register_name(*value_home->register_name);
     if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
       return std::nullopt;
     }
@@ -1581,7 +1604,7 @@ materialize_direct_global_select_chain_call_argument(
     RegisterOperand emitted{
         .reg = *result_register,
         .role = RegisterOperandRole::StoragePlan,
-        .value_id = home->value_id,
+        .value_id = value_home->value_id,
         .value_name = *value_name,
         .prepared_bank = prepare::PreparedRegisterBank::Fpr,
         .expected_view = result_register->view,
@@ -1596,20 +1619,13 @@ materialize_direct_global_select_chain_call_argument(
   }
   std::optional<abi::RegisterReference> result_register;
   std::optional<prepare::PreparedValueHome> result_home;
-  if (context.function.value_locations != nullptr) {
-    if (const auto* home =
-            find_value_home(context,
-*value_name);
-        home != nullptr) {
-      result_home = *home;
-      if (home->kind == prepare::PreparedValueHomeKind::Register &&
-          home->register_name.has_value()) {
-        if (const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
-            parsed.has_value() &&
-            parsed->bank == abi::RegisterBank::GeneralPurpose) {
-          result_register = abi::gp_register(parsed->index, *result_view);
-        }
-      }
+  result_home = *value_home;
+  if (value_home->kind == prepare::PreparedValueHomeKind::Register &&
+      value_home->register_name.has_value()) {
+    if (const auto parsed = abi::parse_aarch64_register_name(*value_home->register_name);
+        parsed.has_value() &&
+        parsed->bank == abi::RegisterBank::GeneralPurpose) {
+      result_register = abi::gp_register(parsed->index, *result_view);
     }
   }
   if (!result_register.has_value()) {
@@ -1641,7 +1657,8 @@ materialize_direct_global_select_chain_call_argument(
                                            lines,
                                            label_index,
                                            active_values,
-                                           true) ||
+                                           true,
+                                           &direct_global_dependency) ||
       lines.empty()) {
     return std::nullopt;
   }

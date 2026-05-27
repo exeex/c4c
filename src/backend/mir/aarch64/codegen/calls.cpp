@@ -5266,17 +5266,18 @@ lower_scalar_call_argument_producers(
   std::vector<module::MachineInstruction> lowered;
   for (std::size_t argument_index = 0; argument_index < arguments.size(); ++argument_index) {
     const auto& argument = arguments[argument_index];
+    std::vector<std::string_view> active_values;
+    const auto* argument_plan =
+        find_prepared_call_argument_plan(&call_plan, argument_index);
     if (auto select_chain =
             materialize_direct_global_select_chain_call_argument(context,
                                                                  argument,
                                                                  instruction_index,
+                                                                 argument_plan,
                                                                  scalar_state)) {
       lowered.push_back(std::move(*select_chain));
       continue;
     }
-    std::vector<std::string_view> active_values;
-    const auto* argument_plan =
-        find_prepared_call_argument_plan(&call_plan, argument_index);
     const auto* local_aggregate_address_argument =
         argument_plan != nullptr &&
                 argument_plan->allows_local_aggregate_address_publication

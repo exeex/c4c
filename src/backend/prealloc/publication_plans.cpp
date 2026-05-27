@@ -472,12 +472,12 @@ bool prepared_store_source_load_local_is_byval_formal_pointer_source(
              names, bir_function, *access->address.pointer_value_name);
 }
 
-PreparedStoreSourceDirectGlobalSelectChainDependency
-find_prepared_store_source_direct_global_select_chain_dependency(
+PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  PreparedStoreSourceDirectGlobalSelectChainDependency dependency;
+  PreparedDirectGlobalSelectChainDependency dependency;
   if (block == nullptr ||
       value.kind != bir::Value::Kind::Named ||
       value.name.empty()) {
@@ -496,6 +496,15 @@ find_prepared_store_source_direct_global_select_chain_dependency(
   dependency.root_is_select = root.kind == mir::SameBlockProducerKind::Select;
   dependency.root_instruction_index = root.instruction_index;
   return dependency;
+}
+
+PreparedStoreSourceDirectGlobalSelectChainDependency
+find_prepared_store_source_direct_global_select_chain_dependency(
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  return find_prepared_direct_global_select_chain_dependency(
+      block, value, before_instruction_index);
 }
 
 }  // namespace c4c::backend::prepare

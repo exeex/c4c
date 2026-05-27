@@ -1,6 +1,7 @@
 #pragma once
 
 #include "alu.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -107,7 +108,9 @@ lower_predecessor_select_parallel_copy_sources(
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,
-    bool reload_current_memory_loads = false);
+    bool reload_current_memory_loads = false,
+    const prepare::PreparedDirectGlobalSelectChainDependency*
+        direct_global_dependency = nullptr);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_select_chain_materialization_instruction(
@@ -120,6 +123,7 @@ materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
+    const prepare::PreparedCallArgumentPlan* argument_plan,
     BlockScalarLoweringState& scalar_state);
 
 }  // namespace c4c::backend::aarch64::codegen

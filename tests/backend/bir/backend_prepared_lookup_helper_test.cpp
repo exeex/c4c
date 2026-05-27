@@ -1,5 +1,6 @@
 #include "src/backend/prealloc/module.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
+#include "src/backend/prealloc/publication_plans.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -1780,6 +1781,64 @@ int verify_edge_publication_source_producer_facts() {
   return 0;
 }
 
+int verify_direct_global_select_chain_dependency_query() {
+  const c4c::LinkNameId global_name{41};
+  const bir::Value loaded =
+      bir::Value::named(bir::TypeKind::I32, "%query.loaded");
+  const bir::Value selected =
+      bir::Value::named(bir::TypeKind::I32, "%query.selected");
+  const bir::Value direct =
+      bir::Value::named(bir::TypeKind::I32, "%query.direct");
+  const bir::Block block{
+      .insts =
+          {bir::LoadGlobalInst{
+               .result = loaded,
+               .global_name_id = global_name,
+           },
+           bir::SelectInst{
+               .predicate = bir::BinaryOpcode::Eq,
+               .result = selected,
+               .compare_type = bir::TypeKind::I32,
+               .lhs = bir::Value::immediate_i32(1),
+               .rhs = bir::Value::immediate_i32(1),
+               .true_value = loaded,
+               .false_value = bir::Value::immediate_i32(0),
+           },
+           bir::LoadGlobalInst{
+               .result = direct,
+               .global_name_id = global_name,
+           }},
+  };
+
+  const auto select_dependency =
+      prepare::find_prepared_direct_global_select_chain_dependency(
+          &block, selected, 3);
+  if (!select_dependency.contains_direct_global_load ||
+      !select_dependency.root_is_select ||
+      select_dependency.root_instruction_index != std::size_t{1}) {
+    return fail("direct-global select-chain query should expose select root facts");
+  }
+
+  const auto direct_dependency =
+      prepare::find_prepared_direct_global_select_chain_dependency(
+          &block, direct, 3);
+  if (!direct_dependency.contains_direct_global_load ||
+      direct_dependency.root_is_select ||
+      direct_dependency.root_instruction_index != std::size_t{2}) {
+    return fail("direct-global select-chain query should expose direct load root facts");
+  }
+
+  const auto missing_dependency =
+      prepare::find_prepared_direct_global_select_chain_dependency(
+          &block, bir::Value::named(bir::TypeKind::I32, "%missing"), 3);
+  if (missing_dependency.contains_direct_global_load ||
+      missing_dependency.root_instruction_index.has_value()) {
+    return fail("direct-global select-chain query should fail closed on missing roots");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1814,6 +1873,10 @@ int main() {
     return result;
   }
   if (const int result = verify_edge_publication_source_producer_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_direct_global_select_chain_dependency_query();
       result != 0) {
     return result;
   }
