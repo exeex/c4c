@@ -221,6 +221,13 @@ struct PreparedEdgePublicationSourceProducer {
   const bir::SelectInst* select = nullptr;
 };
 
+struct PreparedSameBlockScalarProducer {
+  PreparedEdgePublicationSourceProducer producer;
+  const bir::Inst* instruction = nullptr;
+  std::size_t instruction_index = 0;
+  ValueNameId value_name = kInvalidValueName;
+};
+
 struct PreparedSameBlockLoadLocalStoredValueSource {
   bir::Value stored_value;
   std::size_t store_instruction_index = 0;
@@ -584,6 +591,16 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
 find_indexed_prepared_edge_publication_source_producer(
     const PreparedEdgePublicationSourceProducerLookups* lookups,
     ValueNameId value_name);
+
+[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    ValueNameId value_name,
+    bir::TypeKind value_type,
+    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedSameBlockLoadLocalStoredValueSource>
 find_prepared_same_block_load_local_stored_value_source(

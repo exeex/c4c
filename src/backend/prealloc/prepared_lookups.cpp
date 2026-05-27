@@ -907,22 +907,76 @@ void collect_block_entry_republication_effects(
   return nullptr;
 }
 
-[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+[[nodiscard]] bool prepared_source_producer_matches_instruction(
+    const PreparedEdgePublicationSourceProducer& producer,
+    const bir::Inst& inst) {
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local == std::get_if<bir::LoadLocalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global == std::get_if<bir::LoadGlobalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast == std::get_if<bir::CastInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary == std::get_if<bir::BinaryInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select == std::get_if<bir::SelectInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] const bir::Value* prepared_instruction_result_value_ref(
+    const bir::Inst& inst) {
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return &load_local->result;
+  }
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    return &load_global->result;
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return &cast->result;
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return &binary->result;
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    return &select->result;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_result_matches_value_name(
+    const PreparedNameTables& names,
+    const bir::Value& result,
+    bir::TypeKind value_type,
+    ValueNameId value_name) {
+  if (result.kind != bir::Value::Kind::Named ||
+      result.name.empty() ||
+      result.type != value_type ||
+      value_name == kInvalidValueName) {
+    return false;
+  }
+  return names.value_names.find(result.name) == value_name;
+}
+
+[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
 prepared_same_block_source_producer(
     const PreparedNameTables& names,
     const PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockLabelId block_label,
     const bir::Block* block,
-    const bir::Value& value,
+    ValueNameId value_name,
+    bir::TypeKind value_type,
     std::size_t before_instruction_index) {
   if (source_producers == nullptr ||
       block_label == kInvalidBlockLabel ||
       block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
+      value_name == kInvalidValueName) {
+    return std::nullopt;
   }
-  const auto value_name = names.value_names.find(value.name);
   const auto* producer =
       find_indexed_prepared_edge_publication_source_producer(
           source_producers, value_name);
@@ -930,15 +984,29 @@ prepared_same_block_source_producer(
       producer->block_label != block_label ||
       producer->instruction_index >= before_instruction_index ||
       producer->instruction_index >= block->insts.size()) {
-    return nullptr;
+    return std::nullopt;
   }
-  const auto* result = prepared_lookup_source_producer_result(*producer);
-  return result != nullptr &&
-                 result->kind == bir::Value::Kind::Named &&
-                 result->name == value.name &&
-                 result->type == value.type
-             ? producer
-             : nullptr;
+  const auto& inst = block->insts[producer->instruction_index];
+  if (!prepared_source_producer_matches_instruction(*producer, inst)) {
+    return std::nullopt;
+  }
+  const auto* producer_result = prepared_lookup_source_producer_result(*producer);
+  const auto* instruction_result = prepared_instruction_result_value_ref(inst);
+  if (producer_result == nullptr ||
+      instruction_result == nullptr ||
+      producer_result != instruction_result ||
+      !prepared_result_matches_value_name(names,
+                                          *instruction_result,
+                                          value_type,
+                                          value_name)) {
+    return std::nullopt;
+  }
+  return PreparedSameBlockScalarProducer{
+      .producer = *producer,
+      .instruction = &inst,
+      .instruction_index = producer->instruction_index,
+      .value_name = value_name,
+  };
 }
 
 }  // namespace
@@ -2107,6 +2175,24 @@ find_indexed_prepared_edge_publication_source_producer(
   return &it->second;
 }
 
+std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    ValueNameId value_name,
+    bir::TypeKind value_type,
+    std::size_t before_instruction_index) {
+  return prepared_same_block_source_producer(names,
+                                            source_producers,
+                                            block_label,
+                                            block,
+                                            value_name,
+                                            value_type,
+                                            before_instruction_index);
+}
+
 std::optional<PreparedSameBlockLoadLocalStoredValueSource>
 find_prepared_same_block_load_local_stored_value_source(
     const PreparedNameTables& names,
@@ -2117,8 +2203,20 @@ find_prepared_same_block_load_local_stored_value_source(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  const auto* producer = prepared_same_block_source_producer(
-      names, source_producers, block_label, block, value, before_instruction_index);
+  const auto value_name = prepared_existing_value_name_id(names, value);
+  const auto producer_context =
+      value_name.has_value()
+          ? find_prepared_same_block_scalar_producer(names,
+                                                    source_producers,
+                                                    block_label,
+                                                    block,
+                                                    *value_name,
+                                                    value.type,
+                                                    before_instruction_index)
+          : std::nullopt;
+  const auto* producer = producer_context.has_value()
+                             ? &producer_context->producer
+                             : nullptr;
   if (addressing == nullptr ||
       producer == nullptr ||
       producer->kind != PreparedEdgePublicationSourceProducerKind::LoadLocal ||
