@@ -81,6 +81,23 @@ direct-global select-chain scalar publication.
 - Direct-global select-chain scalar publication consumes the same shared
   select-chain materialization authority chosen for other non-edge consumers.
 
+## Closure Note
+
+Closed after Step 6 final validation. The active runbook repaired the ALU
+authority families covered by this idea and the final audit found no new
+expectation downgrades, unsupported rewrites, prepared-access value-spelling
+scans in ALU, same-block load/store alias scans in ALU, raw move-bundle scans
+or forward BIR return-chain walks in ALU, or direct-global select-chain
+named-case expansion in ALU.
+
+Close-gate validation used matching before/after runs of the final validation
+scope: backend subset plus targeted c-testsuite cases 00164, 00196, and 00207.
+Both runs kept the same known failure shape: backend failures
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`,
+targeted `00164` passing, and known targeted `00196` runtime mismatch plus
+`00207` timeout.
+
 ## Reviewer Reject Signals
 
 - Reject new scans over `PreparedAddressingFunction::accesses` keyed by value
