@@ -310,6 +310,9 @@ void apply_frame_pointer_base_policy(const module::FunctionLoweringContext& cont
   }
 }
 
+std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type);
+std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type);
+
 std::optional<RegisterOperand> find_memory_return_abi_register(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id,
@@ -318,45 +321,47 @@ std::optional<RegisterOperand> find_memory_return_abi_register(
   if (context.function.value_locations == nullptr) {
     return std::nullopt;
   }
-  const auto expected_view = scalar_register_view(type);
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BeforeReturn ||
-        bundle.block_index != context.block_index) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.from_value_id != value_id ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
-        continue;
-      }
-
-      abi::PreparedRegisterConversionResult converted;
-      if (move.destination_register_placement.has_value()) {
-        converted = abi::convert_prepared_register(*move.destination_register_placement,
-                                                   std::nullopt,
-                                                   expected_view);
-      } else if (move.destination_register_name.has_value()) {
-        converted = abi::convert_prepared_register(*move.destination_register_name,
-                                                   std::nullopt,
-                                                   std::nullopt,
-                                                   expected_view);
-      } else {
-        continue;
-      }
-      if (!converted.reg.has_value()) {
-        continue;
-      }
-      return RegisterOperand{
-          .reg = *converted.reg,
-          .role = RegisterOperandRole::CallAbi,
-          .value_id = value_id,
-          .value_name = value_name,
-          .expected_view = expected_view,
-      };
-    }
+  const auto expected_view = scalar_storage_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  const auto destination_bank = scalar_fp_register_view(type).has_value()
+                                    ? prepare::PreparedRegisterBank::Fpr
+                                    : prepare::PreparedRegisterBank::Gpr;
+  const auto* move =
+      prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          context.function.move_bundle_lookups,
+          context.function.value_locations,
+          context.block_index,
+          value_id,
+          destination_bank);
+  if (move == nullptr) {
+    return std::nullopt;
+  }
+
+  abi::PreparedRegisterConversionResult converted;
+  if (move->destination_register_placement.has_value()) {
+    converted = abi::convert_prepared_register(*move->destination_register_placement,
+                                               std::nullopt,
+                                               expected_view);
+  } else if (move->destination_register_name.has_value()) {
+    converted = abi::convert_prepared_register(*move->destination_register_name,
+                                               std::nullopt,
+                                               std::nullopt,
+                                               expected_view);
+  } else {
+    return std::nullopt;
+  }
+  if (!converted.reg.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = value_id,
+      .value_name = value_name,
+      .expected_view = expected_view,
+  };
 }
 
 void retarget_load_result_to_return_abi(const module::BlockLoweringContext& context,
