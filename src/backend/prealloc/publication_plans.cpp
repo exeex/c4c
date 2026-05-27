@@ -401,6 +401,44 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   return plan;
 }
 
+PreparedFixedFormalStoreSourcePublication
+plan_prepared_fixed_formal_store_source_publication(
+    const PreparedFormalPublicationInputs& formal_inputs,
+    const PreparedStoreSourcePublicationInputs& store_inputs) {
+  PreparedFixedFormalStoreSourcePublication result{
+      .store_source = plan_prepared_store_source_publication(store_inputs),
+  };
+  if (!prepared_store_source_publication_available(result.store_source) ||
+      result.store_source.intent !=
+          PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+      result.store_source.source_home == nullptr ||
+      result.store_source.source_value_name == kInvalidValueName) {
+    return result;
+  }
+
+  const auto formal_plans = plan_prepared_formal_publications(formal_inputs);
+  for (const auto& formal : formal_plans) {
+    if (!prepared_formal_publication_available(formal) ||
+        formal.value_name != result.store_source.source_value_name ||
+        formal.value_id != std::optional<PreparedValueId>{
+                               result.store_source.source_value_id} ||
+        formal.home != result.store_source.source_home ||
+        formal.type != result.store_source.source_value.type ||
+        formal.formal == nullptr ||
+        formal.formal->is_byval) {
+      continue;
+    }
+    if (result.fixed_formal_source) {
+      result.fixed_formal_source = false;
+      result.formal_publication = PreparedFormalPublicationPlan{};
+      return result;
+    }
+    result.formal_publication = formal;
+    result.fixed_formal_source = true;
+  }
+  return result;
+}
+
 std::optional<PreparedRecoveredStoreSourcePublication>
 find_prepared_recovered_narrow_store_source_for_wide_local_load(
     const PreparedNameTables& names,

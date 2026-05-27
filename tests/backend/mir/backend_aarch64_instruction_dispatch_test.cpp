@@ -14522,6 +14522,42 @@ int fixed_formal_register_home_publishes_to_local_slot_before_local_loads() {
     return fail("expected formal register to seed the local slot before local loads: " +
                 printed.assembly);
   }
+
+  auto missing_authority = prepared_with_fixed_formal_local_slot_publication();
+  const auto missing_param_name =
+      missing_authority.names.value_names.find("%p.x");
+  missing_authority.value_locations.functions.front().value_homes.clear();
+  const auto& missing_function_cf =
+      missing_authority.control_flow.functions.front();
+  const auto missing_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          missing_authority,
+          missing_authority.target_profile,
+          missing_function_cf);
+  const auto missing_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          missing_function_context,
+          missing_function_cf.blocks.front(),
+          0);
+  aarch64_codegen::BlockScalarLoweringState missing_state;
+  aarch64_codegen::record_emitted_scalar_register(
+      missing_state,
+      missing_param_name,
+      aarch64_codegen::RegisterOperand{
+          .reg = aarch64_abi::w_register(0),
+          .role = aarch64_codegen::RegisterOperandRole::StoragePlan,
+          .value_id = prepare::PreparedValueId{410},
+          .value_name = missing_param_name,
+          .expected_view = aarch64_abi::RegisterView::W,
+      });
+  if (aarch64_codegen::lower_fixed_formal_store_local_publication(
+          missing_block_context,
+          missing_authority.module.functions.front().blocks.front().insts.front(),
+          0,
+          missing_state)
+          .has_value()) {
+    return fail("expected fixed-formal store-local publication to fail closed without prepared formal/source-home authority");
+  }
   return 0;
 }
 

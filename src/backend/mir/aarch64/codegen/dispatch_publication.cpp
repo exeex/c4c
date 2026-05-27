@@ -1222,27 +1222,70 @@ void retarget_store_local_value_to_emitted_scalar(
   }
   return std::nullopt;
 }
-[[nodiscard]] bool store_local_value_is_fixed_formal(
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_store_local_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return nullptr;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return addressing != nullptr
+             ? prepare::find_prepared_memory_access(
+                   *addressing,
+                   context.control_flow_block->block_label,
+                   instruction_index)
+             : nullptr;
+}
+[[nodiscard]] std::optional<prepare::PreparedFixedFormalStoreSourcePublication>
+plan_fixed_formal_store_local_publication(
     const module::BlockLoweringContext& context,
     const bir::StoreLocalInst& store,
-    c4c::ValueNameId value_name) {
+    std::size_t instruction_index) {
   if (context.function.prepared == nullptr ||
       context.function.bir_function == nullptr ||
+      context.function.value_locations == nullptr ||
       store.value.kind != bir::Value::Kind::Named) {
-    return false;
+    return std::nullopt;
   }
-  for (const auto& param : context.function.bir_function->params) {
-    if (param.is_varargs || param.is_sret || param.is_byval ||
-        param.type != store.value.type) {
-      continue;
-    }
-    const auto param_name = prepare::resolve_prepared_value_name_id(
-        context.function.prepared->names, param.name);
-    if (param_name.has_value() && *param_name == value_name) {
-      return true;
-    }
+  const auto* access = prepared_store_local_access(context, instruction_index);
+  const auto* source_home = prepared_value_home_for_value(context, store.value);
+  const auto* destination_slot =
+      access != nullptr &&
+              access->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+              access->address.frame_slot_id.has_value()
+          ? find_frame_slot(context.function.prepared->stack_layout,
+                            *access->address.frame_slot_id)
+          : nullptr;
+  const auto* destination_object =
+      destination_slot != nullptr
+          ? find_stack_object(context.function.prepared->stack_layout,
+                              destination_slot->object_id)
+          : nullptr;
+  auto planned = prepare::plan_prepared_fixed_formal_store_source_publication(
+      prepare::PreparedFormalPublicationInputs{
+          .names = &context.function.prepared->names,
+          .function = context.function.bir_function,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = context.function.value_home_lookups,
+      },
+      prepare::PreparedStoreSourcePublicationInputs{
+          .source_value = &store.value,
+          .destination_access = access,
+          .source_home = source_home,
+          .destination_frame_slot = destination_slot,
+          .destination_stack_object = destination_object,
+          .intent =
+              prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      });
+  if (!planned.fixed_formal_source ||
+      !prepare::prepared_store_source_publication_available(planned.store_source)) {
+    return std::nullopt;
   }
-  return false;
+  return planned;
 }
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_fixed_formal_store_local_publication(
@@ -1255,18 +1298,32 @@ lower_fixed_formal_store_local_publication(
       store->value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
-  const auto value_name = prepared_named_value_id(context, store->value);
-  if (!value_name.has_value() ||
-      !store_local_value_is_fixed_formal(context, *store, *value_name)) {
+  const auto planned =
+      plan_fixed_formal_store_local_publication(context, *store, instruction_index);
+  if (!planned.has_value() ||
+      planned->store_source.destination_base_kind !=
+          prepare::PreparedAddressBaseKind::FrameSlot ||
+      !planned->store_source.destination_can_use_base_plus_offset ||
+      !planned->store_source.destination_stack_offset_bytes.has_value()) {
     return std::nullopt;
   }
-  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
-  const auto address = prepared_frame_slot_load_address(context, instruction_index);
+  const auto emitted =
+      find_emitted_scalar_register(scalar_state,
+                                   planned->store_source.source_value_name);
   const auto mnemonic = fixed_formal_scalar_store_mnemonic(store->value.type);
-  if (!emitted.has_value() || !address.has_value() || !mnemonic.has_value() ||
+  if (!emitted.has_value() || !mnemonic.has_value() ||
       !abi::is_gp_register(emitted->reg)) {
     return std::nullopt;
   }
+  const std::int64_t signed_offset =
+      static_cast<std::int64_t>(
+          *planned->store_source.destination_stack_offset_bytes) +
+      planned->store_source.destination_byte_offset;
+  if (signed_offset < 0) {
+    return std::nullopt;
+  }
+  const auto address =
+      frame_slot_address(context.function, static_cast<std::size_t>(signed_offset));
   auto store_reg = emitted->reg;
   if (const auto expected_view = scalar_register_view(store->value.type);
       expected_view.has_value()) {
@@ -1298,7 +1355,7 @@ lower_fixed_formal_store_local_publication(
           .side_effects = true,
           .inline_asm_template = std::string{*mnemonic} + " " +
                                  std::string{abi::register_name(store_reg)} +
-                                 ", " + *address,
+                                 ", " + address,
       },
   };
   return module::MachineInstruction{

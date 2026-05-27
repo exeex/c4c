@@ -46,6 +46,16 @@ prepare::PreparedValueHome source_home(
   };
 }
 
+bir::CallArgAbiInfo register_abi(bir::TypeKind type) {
+  return bir::CallArgAbiInfo{
+      .type = type,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  };
+}
+
 int records_local_store_source_identity() {
   const auto source = bir::Value::named(bir::TypeKind::I64, "%stored");
   auto access = frame_slot_store_access(101, 7, 16);
@@ -100,6 +110,77 @@ int records_local_store_source_identity() {
       plan.source_slot_id != std::optional<prepare::PreparedFrameSlotId>{7}) {
     return fail("expected local store-source publication identity");
   }
+  return 0;
+}
+
+int records_fixed_formal_store_source_from_prepared_publication_plan() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("fixed_formal_store");
+  const auto formal_name = names.value_names.intern("%formal");
+  bir::Function function;
+  function.name = "fixed_formal_store";
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "%formal",
+      .abi = register_abi(bir::TypeKind::I32),
+  });
+  auto access = frame_slot_store_access(formal_name, 11, 0);
+  auto home = source_home(prepare::PreparedValueHomeKind::Register, 6, formal_name);
+  home.register_name = "w0";
+  prepare::PreparedValueLocationFunction locations{
+      .function_name = function_name,
+      .value_homes = {home},
+  };
+  const auto lookups = prepare::make_prepared_value_home_lookups(&locations);
+  const auto source = bir::Value::named(bir::TypeKind::I32, "%formal");
+  const auto planned =
+      prepare::plan_prepared_fixed_formal_store_source_publication(
+          prepare::PreparedFormalPublicationInputs{
+              .names = &names,
+              .function = &function,
+              .value_locations = &locations,
+              .value_home_lookups = &lookups,
+          },
+          prepare::PreparedStoreSourcePublicationInputs{
+              .source_value = &source,
+              .destination_access = &access,
+              .source_home = &locations.value_homes.front(),
+              .intent =
+                  prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+          });
+
+  if (!planned.fixed_formal_source ||
+      !prepare::prepared_store_source_publication_available(planned.store_source) ||
+      planned.store_source.source_value_name != formal_name ||
+      planned.store_source.source_home != &locations.value_homes.front() ||
+      planned.formal_publication.value_name != formal_name ||
+      planned.formal_publication.value_id !=
+          std::optional<prepare::PreparedValueId>{6}) {
+    return fail("expected fixed-formal store-source publication from prepared planning");
+  }
+
+  function.params.front().is_byval = true;
+  const auto byval_rejected =
+      prepare::plan_prepared_fixed_formal_store_source_publication(
+          prepare::PreparedFormalPublicationInputs{
+              .names = &names,
+              .function = &function,
+              .value_locations = &locations,
+              .value_home_lookups = &lookups,
+          },
+          prepare::PreparedStoreSourcePublicationInputs{
+              .source_value = &source,
+              .destination_access = &access,
+              .source_home = &locations.value_homes.front(),
+              .intent =
+                  prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+          });
+  if (byval_rejected.fixed_formal_source ||
+      !prepare::prepared_store_source_publication_available(
+          byval_rejected.store_source)) {
+    return fail("expected fixed-formal planning to reject byval formals without losing store facts");
+  }
+
   return 0;
 }
 
@@ -442,6 +523,10 @@ int rejects_incomplete_inputs() {
 
 int main() {
   if (int rc = records_local_store_source_identity(); rc != 0) {
+    return rc;
+  }
+  if (int rc = records_fixed_formal_store_source_from_prepared_publication_plan();
+      rc != 0) {
     return rc;
   }
   if (int rc = records_recovered_source_without_target_policy(); rc != 0) {

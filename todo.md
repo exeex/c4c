@@ -3,40 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/48_aarch64_dispatch_publication_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Route local-slot and aggregate-address publication through prepared address authority
+Current Step ID: Step 6
+Current Step Title: Consume store-source publication planning for fixed-formal stores
 
 ## Just Finished
 
-Step 5 replaced local-slot and aggregate-address publication's stack-object
-spelling and `.0` lane recovery with prepared frame-address authority.
+Step 6 routed fixed-formal store-local publication classification through
+store-source publication planning instead of local BIR parameter identity
+checks.
 
-`PreparedAddressMaterializationLookups` now has the shared
-`find_indexed_prepared_frame_address_offset_for_value` query. The query is keyed
-by block label and prepared value name, requires indexed prepared
-address-materialization authority, validates the prepared frame-slot id against
-the stack layout, selects the latest reaching materialization, accepts duplicate
-identical prepared facts, rejects conflicting same-instruction authority, and
-fails closed when the indexed authority is absent.
+`publication_plans` now exposes
+`plan_prepared_fixed_formal_store_source_publication`, a narrow wrapper around
+`PreparedStoreSourcePublicationInputs`,
+`plan_prepared_store_source_publication`, and prepared formal-publication
+authority. It preserves the store-source plan, marks fixed-formal source
+availability only when the prepared formal publication matches the planned
+source home/value/type, rejects byval formals, and fails closed on ambiguity or
+missing authority.
 
-`emit_local_slot_address_publication_to_register` now materializes the source
-address from the shared prepared frame-address query instead of reconstructing a
-stack object by rendered value spelling. `local_aggregate_address_frame_offset`
-now consumes the same prepared value-keyed query instead of synthesizing a
-`<aggregate>.0` lane name, and `local_slot_address_frame_offset` no longer
-derives authority from stack-object spelling.
+`lower_fixed_formal_store_local_publication` now builds a
+`PreparedStoreSourcePublicationInputs` record from the prepared memory access,
+source home, destination frame slot, and destination stack object. It requires
+the shared fixed-formal store-source plan before materializing the local-slot
+store, and computes the target frame address from planned destination facts
+instead of using the removed `store_local_value_is_fixed_formal` BIR-param scan.
 
-The prepared lookup helper test covers the shared frame-address query, including
-latest-reaching selection, missing-index fail-closed behavior, future
-materialization rejection, no lane-name recovery, duplicate identical authority,
-and conflicting-authority rejection. The route test still covers the repaired
-local aggregate address publication path through AArch64 lowering.
+The store-source publication plan test covers the shared fixed-formal wrapper
+and byval rejection. The AArch64 instruction dispatch test still covers the
+fixed-formal local-slot route and now verifies fail-closed behavior when the BIR
+parameter is still present but prepared formal/source-home authority is absent.
 
 ## Suggested Next
 
-Implement Step 6 for fixed-formal store publication authority. Route the fixed
-formal store path through prepared store-source/address authority without adding
-local spelling scans or expectation downgrades.
+Ask the supervisor to decide whether idea 48 needs close-scope consolidation or
+another targeted packet. If continuing within this idea, keep the next packet
+bounded to a mapped publication-authority gap and use the existing prepared
+planning/query seams.
 
 ## Watchouts
 
@@ -46,10 +48,10 @@ AArch64 follow-up scopes. Reject value-home spelling scans, same-block producer
 scans, raw move-bundle scans, lane-name matching, and expectation downgrades as
 progress.
 
-For later steps, fixed-formal stores should be classified by store-source
-publication planning. Keep address publication using prepared value-keyed
-address-materialization authority; do not reintroduce local object-name or lane
-suffix matching.
+Fixed-formal store publication now depends on prepared store-source and
+formal-publication authority. Do not reintroduce local BIR parameter scans,
+prepared-name/type matching, object-name recovery, lane suffix recovery, or
+expectation downgrades.
 
 Step 2 intentionally did not change `value_publication_may_read_register_index`;
 the active plan treats that as register-hazard behavior unless it starts
@@ -64,11 +66,15 @@ Step 5's frame-address query intentionally requires indexed prepared
 address-materialization authority. A stack object name, rendered value spelling,
 or aggregate lane suffix is not enough to authorize local address publication.
 
+Step 6 used the existing `backend_store_source_publication_plan` target, whose
+source file is `tests/backend/mir/backend_store_source_publication_plan_test.cpp`
+in this tree.
+
 ## Proof
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_prepared_lookup_helper)$' --output-on-failure | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_store_source_publication_plan|backend_prepared_lookup_helper)$' --output-on-failure | tee test_after.log`
 
 Result: passed, 3/3 focused tests green. `test_after.log` now contains the
-Step 5 proof.
+Step 6 proof.

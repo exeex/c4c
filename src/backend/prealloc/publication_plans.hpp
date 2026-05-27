@@ -2,6 +2,7 @@
 
 #include "addressing.hpp"
 #include "calls.hpp"
+#include "formal_publications.hpp"
 #include "frame.hpp"
 #include "names.hpp"
 #include "prepared_lookups.hpp"
@@ -257,12 +258,23 @@ struct PreparedStoreSourcePublicationInputs {
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
 };
 
+struct PreparedFixedFormalStoreSourcePublication {
+  PreparedStoreSourcePublicationPlan store_source;
+  PreparedFormalPublicationPlan formal_publication;
+  bool fixed_formal_source = false;
+};
+
 [[nodiscard]] bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);
+
+[[nodiscard]] PreparedFixedFormalStoreSourcePublication
+plan_prepared_fixed_formal_store_source_publication(
+    const PreparedFormalPublicationInputs& formal_inputs,
+    const PreparedStoreSourcePublicationInputs& store_inputs);
 
 [[nodiscard]] std::optional<PreparedRecoveredStoreSourcePublication>
 find_prepared_recovered_narrow_store_source_for_wide_local_load(
