@@ -52,6 +52,6 @@ Ran:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_prepared_edge_publication$'`
 
-Result: passed. Full combined output is in `test_after.log`.
+Result: passed. The accepted proof log was rolled forward to `test_before.log`.
 
 Additional local sanity: `ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'` passed.
