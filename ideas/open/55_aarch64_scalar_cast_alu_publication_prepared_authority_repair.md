@@ -29,9 +29,17 @@ scalar cast plus ALU publication gap.
 - `src/backend/mir/aarch64/codegen/cast_ops.cpp`
 - `src/backend/mir/aarch64/codegen/alu.cpp`
 
-Prepared lookup/query files may be touched only when the scalar cast and ALU
-publication paths need one shared source/home query that does not already
-exist.
+Prepared lookup/query and placement files may be touched only when the scalar
+cast and ALU publication paths need one shared source/home query or a prepared
+source-preservation placement that does not already exist. Likely bounded
+surfaces are:
+
+- `src/backend/prealloc/prepared_lookups.cpp`
+- `src/backend/prealloc/prepared_lookups.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/regalloc/consumer_moves.cpp`
+- `src/backend/prealloc/regalloc/consumer_moves.hpp`
 
 ## Current Dirty Context
 
@@ -71,6 +79,10 @@ explicitly owns and proves them.
 - Add a small prepared scalar cast/publication source query only if existing
   prepared facts cannot answer the source for both `cast_ops.cpp` and
   `alu.cpp` without raw value-name or same-block producer scans.
+- Preserve or place source values before block-entry or edge publication
+  supersedes their physical register when later scalar cast/ALU publication
+  still needs the original value and reloading memory would observe mutated
+  state.
 - Reuse the dispatch/select-chain query only if tracing proves the cast/ALU
   publication path needs an already-prepared selected pointer source; do not
   move the repair back into `dispatch_value_materialization.cpp` without that
@@ -92,6 +104,9 @@ explicitly owns and proves them.
 
 - The first bad `00204` scalar publication site is traced to a concrete cast or
   ALU lowering path with the prepared source/home fact that should control it.
+- If the stale source has no safe current home, prepared planning preserves or
+  relocates that source before block-entry/edge publication overwrites its
+  physical register, rather than making cast lowering reload a mutated local.
 - Cast and ALU publication lowering consume prepared source/home authority for
   pointer-derived scalar publications instead of reusing stale live registers
   or raw BIR producer scans.
@@ -110,6 +125,9 @@ explicitly owns and proves them.
   used as the durable source of truth when prepared facts exist.
 - Reject changes that only suppress `mov w9, w13; sxtw x9, w9` textually
   without proving the selected pointer and integer offset sources are separated.
+- Reject cast-only changes that detect stale register authority but then reload
+  mutable memory at the join instead of preserving the original source value
+  before block-entry or edge publication overwrites its register.
 - Reject expectation downgrades, unsupported-test rewrites, helper renames, or
   classification-only notes claimed as capability progress.
 - Reject committing the dirty memory or edge-copy context under this idea

@@ -7,33 +7,38 @@ Supersedes active route: ideas/open/49_aarch64_dispatch_value_materialization_pr
 ## Purpose
 
 Make AArch64 scalar cast and ALU publication paths consume prepared source/home
-authority when publishing pointer-derived scalar values, so a live pointer
-register is not reinterpreted as a stale 32-bit offset source.
+authority when publishing pointer-derived scalar values, including cases where
+block-entry or edge publication has reused the physical register that formerly
+held the scalar source.
 
 ## Goal
 
 Repair the remaining `00204` post-join mismatch around
 `%t45.byte_offset.i64` / `%t45`: the aggregate byte-copy address path must keep
-the selected pointer value and integer offset source distinct, and must not
-materialize a pointer-shaped scratch through `mov w9, w13; sxtw x9, w9`.
+selected pointer value `%t49` and prior offset source `%t35` distinct, and must
+not materialize a pointer-shaped scratch through `mov w9, w13; sxtw x9, w9`.
 
 ## Core Rule
 
-Prefer prepared value-home, scalar-publication, source-producer, block-entry,
-and edge-publication facts for scalar cast/ALU source selection. Add one small
-shared query only if existing prepared facts cannot serve both `cast_ops.cpp`
-and `alu.cpp`. Do not recover truth from raw BIR spelling, same-block scans, or
-the current scratch register contents.
+Prepared publication must either provide a valid current source for scalar
+cast/ALU consumers or preserve/place that source before block-entry or edge
+publication overwrites its physical register. Do not recover truth from raw BIR
+spelling, same-block scans, mutable local reloads, or the current scratch
+register contents.
 
 ## Read First
 
 - `ideas/open/55_aarch64_scalar_cast_alu_publication_prepared_authority_repair.md`
-- `review/dispatch-step3-route-review.md`
 - `todo.md`
 - `src/backend/mir/aarch64/codegen/cast_ops.cpp`
 - `src/backend/mir/aarch64/codegen/alu.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
 - `src/backend/prealloc/prepared_lookups.cpp`
+- `src/backend/prealloc/prepared_lookups.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/regalloc/consumer_moves.cpp`
+- `src/backend/prealloc/regalloc/consumer_moves.hpp`
 - prepared facts for:
   - `PreparedValueHome`
   - `PreparedStoragePlanValue`
@@ -44,19 +49,21 @@ the current scratch register contents.
 
 ## Current Targets
 
-- scalar cast publication for pointer-derived values
-- ALU stack publication for derived scalar values
-- source selection for `%t45.byte_offset.i64` / `%t45`
-- register-home freshness where join-block publication has already placed the
-  selected pointer in `x13`
+- scalar cast publication for `%t45.byte_offset.i64`
+- preservation or placement of `%t35` after `%t49` takes over `x13` at
+  `vaarg.join.39`
+- shared prepared query consumed by `cast_ops.cpp` and later `alu.cpp`, only if
+  preservation/placement already exists but is not exposed
 - current incomplete predecessor context:
   - `src/backend/mir/aarch64/codegen/memory.cpp`
   - `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
 
 ## Non-Goals
 
-- Do not continue implementation under the dispatch value-materialization route
-  unless tracing proves a shared query must be exposed for cast/ALU consumers.
+- Do not repair this by reloading `%lv.ap.24` at the join; that local has been
+  mutated and no longer represents the original `%t35`.
+- Do not continue with a cast-only patch that merely rejects stale `x13` without
+  providing a valid replacement source.
 - Do not alter calls/variadic layout, ABI staging, memory cursor constants, or
   edge-copy mechanics under this route.
 - Do not accept the dirty `memory.cpp` or `dispatch_edge_copies.cpp` changes as
@@ -76,101 +83,133 @@ the current scratch register contents.
 - The dispatch value-materialization audit found that `%t49` is already
   republished into `x13`; a direct `dispatch_value_materialization.cpp` helper
   edit did not affect the bad sequence and was reverted.
-- The remaining bad sequence appears later in ordinary scalar cast/ALU
-  publication for `%t45.byte_offset.i64` / `%t45`, where `x13` is treated as an
-  integer offset source and narrowed through `w13`.
-- That ownership surface spans `cast_ops.cpp` and `alu.cpp`, so it needs a
-  separate source idea instead of widening idea 49.
+- Step 1 traced the remaining bad sequence to scalar cast publication for
+  `%t45.byte_offset.i64`, through `lower_scalar_cast_publication_to_prepared_stack`
+  and recursive `CastOpcode::SExt` publication for `%t35`.
+- Step 2 proved a cast-only repair is unsafe: `cast_ops.cpp` can detect that
+  `x13` is stale for `%t35`, but no exposed prepared fact provides the original
+  `%t35` after block-entry/edge publication makes `x13` authoritative for `%t49`.
+- The next owner is prepared source preservation or placement, not testcase
+  matching and not a mutable local reload.
 
 ## Execution Rules
 
 - Treat existing `memory.cpp` and `dispatch_edge_copies.cpp` edits as
   incomplete worktree context. Preserve them while diagnosing unless the
   supervisor explicitly asks for revert or reroute.
-- Begin with classification/proof of the exact emitter for the bad scalar
-  publication before changing code.
+- Start with the prepared-planning question: where should `%t35` be preserved,
+  or where should `%t45.byte_offset.i64` / `%t45` be materialized, so the scalar
+  cast consumer has a semantically valid source?
+- Keep cast/ALU emitter edits minimal until the prepared source query or
+  placement exists.
 - Keep the proof ladder at minimum:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
 - A green `00204` alone is not enough; the same-feature probes must stay in the
   subset and no expectation may be weakened.
-- If tracing proves the true owner is outside cast/ALU publication, stop for a
-  lifecycle split instead of broadening this runbook silently.
+- If tracing proves source preservation belongs to a separate non-scalar route,
+  stop for lifecycle split instead of broadening this runbook silently.
 
 ## Steps
 
 ### Step 1: Establish scalar cast ALU publication baseline
 
 Goal: prove the exact cast or ALU publication emitter for the remaining
-pointer-corrupting sequence before any more implementation.
+pointer-corrupting sequence.
 
 Primary target: `todo.md` proof state and focused dumps for `00204`
 
 Actions:
 
-- Rerun or reuse the supervisor-selected eight-test focused subset.
+- Run the supervisor-selected eight-test focused subset.
 - Dump the prepared BIR and assembly around `vaarg.join.39`,
   `%t45.byte_offset.i64`, `%t45`, `%t49`, and the aggregate byte-copy loads.
 - Trace which `cast_ops.cpp` or `alu.cpp` lowering function emits the
   `mov w9, w13; sxtw x9, w9` sequence.
 - Record the prepared value-home, scalar-publication, block-entry, or
   source-producer fact that should identify the source register or home.
-- Confirm whether `dispatch_value_materialization.cpp` is only an upstream
-  producer or must expose a shared query for this cast/ALU consumer.
 
 Completion check:
 
 - `todo.md` names the first bad scalar publication emitter, the stale source it
-  used, the prepared authority it should consume, and whether the next packet
-  is cast-only, ALU-only, or a small shared-query repair.
+  used, and the prepared authority conflict.
 
-### Step 2: Repair scalar cast source selection
+### Step 2: Reject unsafe cast-only repair
 
-Goal: make cast lowering consume the authoritative full-width source for
-pointer-derived scalar publications.
+Goal: prove whether `cast_ops.cpp` already has a valid replacement source once
+it detects stale register authority.
 
-Primary target: `cast_ops.cpp`, plus shared prepared lookup code only if Step 1
-proves no existing query is sufficient
+Primary target: `cast_ops.cpp` diagnosis and `todo.md`
 
 Actions:
 
-- Replace stale live-register or raw producer recovery with the prepared source
-  selected in Step 1.
-- Preserve correct sign/zero-extension semantics for true integer casts.
-- Keep pointer-derived publications from narrowing through `w` registers unless
-  the source type and prepared facts prove a real 32-bit integer value.
-- Add a focused probe only if existing probes cannot distinguish pointer-source
-  preservation from integer cast spelling.
+- Check whether `lower_scalar_cast_publication_to_prepared_stack` can replace
+  stale `find_emitted_scalar_register` state with an existing prepared source.
+- Distinguish true current homes from historical register homes overwritten by
+  block-entry or edge publication.
+- Reject mutable local reloads when the local may have changed since the source
+  value was produced.
 
 Completion check:
 
-- Cast lowering no longer corrupts pointer-derived scalar sources, and focused
-  proof shows no expectation downgrade or named-case branch.
+- `todo.md` records that the cast-only path is blocked unless prepared planning
+  preserves or relocates `%t35`, or exposes a valid current source query.
 
-### Step 3: Repair ALU stack-publication source selection
+### Step 3: Repair prepared source preservation or placement
 
-Goal: make ALU publication choose prepared homes/sources for derived scalar
-values instead of republishing stale register contents.
+Goal: give scalar cast/ALU publication a semantically valid source when a join
+or edge publication reuses the source value's physical register for another
+value.
 
-Primary target: `alu.cpp`, plus shared prepared lookup code only if Step 1 or
-Step 2 proves the query belongs outside one file
+Primary target: `src/backend/prealloc/publication_plans.cpp`,
+`src/backend/prealloc/publication_plans.hpp`,
+`src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/prealloc/prepared_lookups.hpp`, and possibly
+`src/backend/prealloc/regalloc/consumer_moves.cpp` /
+`src/backend/prealloc/regalloc/consumer_moves.hpp`
 
 Actions:
 
-- Audit the ALU stack-publication path for `%t45.byte_offset.i64` / `%t45`.
-- Prefer prepared value-home, storage-plan, scalar-publication, or
-  source-producer facts before reusing register homes.
+- Inspect prepared block-entry, edge-publication, move-bundle, and consumer-move
+  facts for `%t35`, `%t45.byte_offset.i64`, `%t45`, and `%t49`.
+- Choose the smallest semantic repair:
+  - preserve `%t35` before `%t49` overwrites `x13`,
+  - materialize `%t45.byte_offset.i64` / `%t45` before `%t35` is overwritten,
+  - or expose an existing preserved source through a prepared lookup consumed
+    by scalar cast/ALU publication.
+- Do not add a value-name-only query or same-block producer scan.
+- Do not route the repair through a join-time reload of `%lv.ap.24`.
+- Update `cast_ops.cpp` only as a consumer of the new or existing prepared
+  source answer if the prepared layer repair requires it.
+
+Completion check:
+
+- The prepared plan either emits a preservation/consumer move or exposes a
+  current source for `%t35` before the scalar cast publication needs it, and
+  the eight-test focused subset shows `00204` has moved past this stale-source
+  failure without weakening the probes.
+
+### Step 4: Repair ALU publication consumers if still stale
+
+Goal: apply the same prepared source/home authority to ALU stack-publication
+paths if Step 3 exposes the shared query but only cast has consumed it.
+
+Primary target: `src/backend/mir/aarch64/codegen/alu.cpp`
+
+Actions:
+
+- Audit ALU stack-publication paths for derived scalar values using stale
+  emitted register state.
+- Prefer the prepared source-preservation query or placement result before
+  reusing register homes.
 - Keep integer ALU opcode spelling and scratch-order behavior unchanged except
   for source authority selection.
-- Ensure pointer and offset sources remain distinct across join-block
-  publication.
 
 Completion check:
 
-- The bad `mov w9, w13; sxtw x9, w9` sequence is removed for the correct
-  semantic reason, and the focused subset no longer fails from this stale
-  scalar-publication path.
+- ALU publication no longer republish stale registers for derived scalar values,
+  and the focused subset remains green or records the next non-ALU owner.
 
-### Step 4: Validate combined dirty context and scalar publication repair
+### Step 5: Validate combined dirty context and scalar publication repair
 
 Goal: decide whether the current worktree can become one coherent accepted
 slice or whether predecessor repairs need their own lifecycle route.
@@ -186,33 +225,13 @@ Actions:
 - Confirm the scalar cast/ALU repair does not depend on a testcase-shaped
   branch or expectation rewrite.
 - Ask for reviewer scrutiny before acceptance if the final diff spans memory,
-  edge copies, cast, and ALU.
+  edge copies, prepared planning, cast, and ALU.
 
 Completion check:
 
 - `todo.md` records one of: commit as a coherent proven slice, split dirty
   predecessor repairs into their own owner route, or stop for supervisor
   direction.
-
-### Step 5: Continue cast ALU prepared-authority cleanup
-
-Goal: reduce remaining duplicate scalar cast/ALU publication authority in the
-new source idea after the `00204` blocker is resolved.
-
-Primary target: `cast_ops.cpp` and `alu.cpp`
-
-Actions:
-
-- Remove or route any remaining raw source-selection scans found during Step 1.
-- Share the chosen prepared scalar-publication query between cast and ALU paths
-  where both need the same source answer.
-- Keep target-local opcode selection, scratch hazards, and extension semantics
-  local to their emitters.
-
-Completion check:
-
-- Cast and ALU publication paths use prepared source/home facts for semantic
-  source selection, with any remaining target-local logic clearly separated.
 
 ### Step 6: Close or park the scalar cast ALU route
 
