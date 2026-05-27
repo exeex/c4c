@@ -3,31 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/52_aarch64_calls_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Repair call-boundary source and indirect-callee authority
+Current Step ID: Step 5
+Current Step Title: Repair after-call result publication authority
 
 ## Just Finished
 
-Step 4 indirect-callee subpacket replaced the indirect callee local-load and
-select-chain source recovery in `calls.cpp` with prepared source-producer
-authority. Indirect callee materialization now seeds from the prepared callee
-value-name/source-producer fact, resolves load-local stored values through a
-shared prepared lookup query, and drives CSEL recursion from prepared select
-producer facts instead of same-block producer walks or call operand spelling.
+Step 5 repaired after-call result publication authority in `calls.cpp`.
+`record_call_result_source_register` no longer scans raw after-call move
+bundles for semantic result authority; scalar GPR and FPR call-result source
+registers are now recorded from `PreparedCallResultPlan` source register,
+bank, placement, width, occupied-register, and destination-value facts.
 
 ## Suggested Next
 
-Next bounded implementation packet: supervisor review or route the remaining
-Step 4 cleanup, if any, around prepared call-boundary/indirect-callee authority
-without reopening the completed boundary-source and indirect-callee repairs.
+Next bounded implementation packet: supervisor review the Step 5 result
+publication slice and decide whether the remaining plan work needs another
+prepared-authority cleanup or a reviewer pass before lifecycle closure.
 
 ## Watchouts
 
-The indirect-callee path now requires an existing prepared source-producer for
-the prepared callee value name and validates that the producer is in the
-current prepared block before materialization. The delegated broader
-`^backend_` run still shows the same two pre-existing failures previously
-recorded here: `backend_aarch64_instruction_dispatch` and
+`record_call_result_source_register` intentionally handles only scalar GPR/FPR
+result source publication. Vreg/f128 call-result movement remains handled by
+the after-call lowering path rather than scalar-state publication. The
+delegated broader `^backend_` run still shows the same two pre-existing
+failures previously recorded here: `backend_aarch64_instruction_dispatch` and
 `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
 
 ## Proof

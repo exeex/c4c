@@ -6106,114 +6106,76 @@ void record_call_result_source_register(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state) {
-  if (context.function.value_locations != nullptr) {
-    const auto* bundle = prepare::find_prepared_move_bundle(
-        *context.function.value_locations,
-        prepare::PreparedMovePhase::AfterCall,
-        call_plan.block_index,
-        call_plan.instruction_index);
-    if (bundle != nullptr) {
-      for (const auto& move : bundle->moves) {
-        if (move.destination_kind !=
-                prepare::PreparedMoveDestinationKind::CallResultAbi ||
-            move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-            move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
-          continue;
-        }
-        const auto* home =
-            find_value_home(context,
-move.to_value_id);
-        if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
-          continue;
-        }
-        const auto expected_view =
-            move.destination_register_name.has_value()
-                ? abi::parse_aarch64_register_name(*move.destination_register_name)
-                : std::nullopt;
-        if (!expected_view.has_value() ||
-            expected_view->bank != abi::RegisterBank::FpSimd) {
-          continue;
-        }
-        abi::PreparedRegisterConversionResult converted;
-        if (move.destination_register_placement.has_value()) {
-          converted = abi::convert_prepared_register(
-              *move.destination_register_placement,
-              prepare::PreparedRegisterClass::Float,
-              expected_view->view);
-        } else if (move.destination_register_name.has_value()) {
-          converted = abi::convert_prepared_register(
-              *move.destination_register_name,
-              prepare::PreparedRegisterBank::Fpr,
-              prepare::PreparedRegisterClass::Float,
-              expected_view->view);
-        } else {
-          continue;
-        }
-        if (!converted.reg.has_value() ||
-            converted.reg->bank != abi::RegisterBank::FpSimd) {
-          continue;
-        }
-        record_emitted_scalar_register(
-            scalar_state,
-            home->value_name,
-            RegisterOperand{
-                .reg = *converted.reg,
-                .role = RegisterOperandRole::CallAbi,
-                .value_id = home->value_id,
-                .value_name = home->value_name,
-                .prepared_class = prepare::PreparedRegisterClass::Float,
-                .prepared_bank = prepare::PreparedRegisterBank::Fpr,
-                .expected_view = converted.reg->view,
-                .contiguous_width = move.destination_contiguous_width,
-                .occupied_register_references = {*converted.reg},
-                .occupied_registers = {abi::register_name(*converted.reg)},
-            });
-      }
-    }
-  }
-
   if (!call_plan.result.has_value() ||
       !call_plan.result->destination_value_id.has_value() ||
-      !call_plan.result->source_register_name.has_value() ||
-      call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr ||
-      context.function.value_locations == nullptr) {
+      !call_plan.result->source_register_name.has_value()) {
     return;
   }
-  const auto* home =
-      find_value_home(context,
-*call_plan.result->destination_value_id);
-  if (home == nullptr) {
+  const auto& result = *call_plan.result;
+  const auto* home = find_value_home(context, *result.destination_value_id);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
     return;
   }
-  const auto parsed = abi::parse_aarch64_register_name(
-      *call_plan.result->source_register_name);
-  if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+  const auto parsed = abi::parse_aarch64_register_name(*result.source_register_name);
+  if (!parsed.has_value()) {
     return;
   }
-  auto viewed = *parsed;
-  if (call_plan.result->source_register_placement.has_value()) {
-    if (const auto converted =
-            abi::convert_prepared_register(*call_plan.result->source_register_placement,
-                                           prepare::PreparedRegisterClass::General,
-                                           parsed->view);
-        converted.reg.has_value()) {
-      viewed = *converted.reg;
-    }
+
+  prepare::PreparedRegisterClass prepared_class =
+      prepare::PreparedRegisterClass::None;
+  abi::RegisterBank expected_bank = parsed->bank;
+  switch (result.source_register_bank.value_or(prepare::PreparedRegisterBank::None)) {
+    case prepare::PreparedRegisterBank::Gpr:
+      prepared_class = prepare::PreparedRegisterClass::General;
+      expected_bank = abi::RegisterBank::GeneralPurpose;
+      break;
+    case prepare::PreparedRegisterBank::Fpr:
+      prepared_class = prepare::PreparedRegisterClass::Float;
+      expected_bank = abi::RegisterBank::FpSimd;
+      break;
+    case prepare::PreparedRegisterBank::None:
+    case prepare::PreparedRegisterBank::Vreg:
+      return;
+  }
+  if (parsed->bank != expected_bank) {
+    return;
+  }
+
+  abi::PreparedRegisterConversionResult converted;
+  if (result.source_register_placement.has_value()) {
+    converted =
+        abi::convert_prepared_register(*result.source_register_placement,
+                                       prepared_class,
+                                       parsed->view);
+  } else {
+    converted =
+        abi::convert_prepared_register(*result.source_register_name,
+                                       result.source_register_bank,
+                                       prepared_class,
+                                       parsed->view);
+  }
+  if (!converted.reg.has_value() || converted.reg->bank != expected_bank) {
+    return;
   }
   record_emitted_scalar_register(
       scalar_state,
       home->value_name,
       RegisterOperand{
-          .reg = viewed,
+          .reg = *converted.reg,
           .role = RegisterOperandRole::CallAbi,
           .value_id = home->value_id,
           .value_name = home->value_name,
-          .prepared_class = prepare::PreparedRegisterClass::General,
-          .prepared_bank = prepare::PreparedRegisterBank::Gpr,
-          .expected_view = viewed.view,
-          .contiguous_width = call_plan.result->source_contiguous_width,
-          .occupied_register_references = {viewed},
-          .occupied_registers = {abi::register_name(viewed)},
+          .prepared_class = prepared_class,
+          .prepared_bank = *result.source_register_bank,
+          .expected_view = converted.reg->view,
+          .contiguous_width = result.source_contiguous_width,
+          .occupied_register_references = {*converted.reg},
+          .occupied_registers =
+              result.source_occupied_register_names.empty()
+                  ? std::vector<std::string_view>{abi::register_name(*converted.reg)}
+                  : std::vector<std::string_view>(
+                        result.source_occupied_register_names.begin(),
+                        result.source_occupied_register_names.end()),
       });
 }
 
