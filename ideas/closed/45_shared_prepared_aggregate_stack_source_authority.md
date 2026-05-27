@@ -48,6 +48,43 @@ inventing aggregate lane/source semantics locally.
 - No target consumes aggregate stack sources by byte-size-only scalar overfit.
 - Focused proof and backend validation pass.
 
+## Closure Note
+
+Closed as a precise shared-producer-gap outcome after Step 2 made the aggregate
+`StackSlot -> Register` family observable and fail-closed through shared
+prepared facts. `PreparedAggregateStackSourceAuthority` and
+`prepare_aggregate_stack_source_authority(...)` now expose the candidate facts
+currently available from shared prepare: source and destination value
+identity, source and destination scalar type views, source stack slot id,
+stack byte offset, stack size/copy width, stack alignment, destination storage
+kind, and destination register placement when move authority provides one.
+
+The selected aggregate family remains explicitly unsupported with
+`MissingAggregateCopyAuthority`. That status is not permission for target
+lowering; it records that no real shared producer currently supplies the
+authority required for aggregate copies:
+
+- destination lane mapping
+- lane widths and byte offsets
+- ABI layout reference
+- partial-copy validity
+- scratch ownership expectations
+
+Step 3 target consumption was intentionally skipped because consuming the
+candidate facts without those producer fields would be target-local aggregate
+semantic recovery and byte-size/fixture overfit. Existing scalar I32/I64
+stack-source behavior remains separate and supported, while aggregate
+neighbors continue to fail closed.
+
+Validation evidence at close:
+
+- Step 1 commit `43fe21b98` recorded the aggregate authority audit and exact
+  producer gap.
+- Step 2 commit `3945f8683` added the shared authority carrier and focused
+  missing-authority lookup path without enabling target aggregate lowering.
+- Backend CTest passed 163/163 after Step 2.
+- Regression guard passed for the accepted Step 2 backend validation scope.
+
 ## Reviewer Reject Signals
 
 - A patch maps aggregate stack sources to scalar loads based only on size,
