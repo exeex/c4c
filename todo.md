@@ -3,48 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/51_aarch64_alu_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add focused backend probes for unpublished load-local ALU operands
+Current Step ID: Step 3
+Current Step Title: Route scalar load source lookup through prepared memory authority
 
 ## Just Finished
 
-Step 2 added two focused backend probes under `tests/backend/case/` for the
-remaining unpublished `load_local` / stale-home ALU operand seam:
+Step 3 moved ALU scalar load source lookup off ALU-local value-spelling scans
+over `PreparedAddressingFunction::accesses`.
 
-- `tests/backend/case/aarch64_alu_unpublished_load_local_after_call.c`
-  isolates a post-`printf` materialization event followed by ordinary
-  `load_local -> and -> xor -> or` scalar ALU consumers. It distinguishes ALU
-  operand selection after a variadic call/materialization from the larger
-  external testcase's surrounding logical/select chain.
-- `tests/backend/case/aarch64_alu_unpublished_load_local_call_boundary.c`
-  varies the same-feature shape by inserting a direct noinline call boundary
-  before the same `load_local -> and -> xor -> or` scalar ALU chain. It
-  distinguishes a general call-boundary clobber/source-producer gap from a
-  printf-specific variadic call argument route.
+`make_prepared_scalar_load_source` now asks prepared addressing for a unique
+memory access by prepared result value id. The unpublished same-block
+`load_local` path now asks prepared addressing for a unique same-block,
+before-consumer memory access by prepared result value id, then keeps the
+ALU-side instruction/memory-access validation before accepting it as a scalar
+load operand.
 
-Both probes are registered as AArch64 route-only backend tests in
-`tests/backend/CMakeLists.txt`. They do not require AArch64 runtime emulation
-and passed on current HEAD without weakening behavior expectations.
+This preserves the current behavior split while relocating the lookup authority
+out of `alu.cpp`: the focused probes and `00176`/`00181` pass, and the known
+`00164`/`00204` stale-home failures remain for the next producer-recovery
+packet.
 
 ## Suggested Next
 
-Run Step 3 against the focused probes by routing scalar load source lookup
-through prepared memory/source authority, then prove the two registered probes
-plus the existing four-test baseline.
+Run Step 4 by replacing same-block unpublished `load_local` producer recovery
+with shared prepared scalar-publication or source-producer authority keyed by
+source value and consumer instruction index.
 
 ## Watchouts
 
-Fresh Step 1 baseline pass/fail split remains:
-`c_testsuite_aarch64_backend_src_00164_c` failed,
-`c_testsuite_aarch64_backend_src_00176_c` passed,
-`c_testsuite_aarch64_backend_src_00181_c` passed, and
-`c_testsuite_aarch64_backend_src_00204_c` failed.
+The Step 3 proof is monotonic against the delegated baseline, not fully green:
+`c_testsuite_aarch64_backend_src_00164_c` and
+`c_testsuite_aarch64_backend_src_00204_c` still fail, while the two focused
+probes plus `00176`/`00181` pass.
 
-The focused probe dumps both show the stale-home candidate shape as ordinary
-ALU operands loaded after a call/materialization boundary. That keeps the
-remaining seam classified as ALU-owned or shared source-producer-owned for the
-next packet, not calls-owned yet: the probe ALU chain is not a call-argument
-materialization path.
+The remaining stale-home behavior is not fixed by moving the memory-access
+lookup authority alone. The next packet should own the same-block source
+producer/publication decision rather than adding ALU-local fallbacks.
 
 The `00204` failure still starts in the stdarg output after otherwise-correct
 argument and return-value sections; keep it as a secondary signal until the
@@ -60,16 +54,15 @@ the ALU-owned stale-home baseline is reduced or reclassified.
 
 ## Proof
 
-Focused registered-probe proof ran and is preserved in `test_after.log`:
+Delegated Step 3 proof ran and is preserved in `test_after.log`:
 
-`cmake --build --preset default`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-`ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)$'`
-
-Then, for route-shape observation:
-
-`build/c4cll --dump-prepared-bir --target aarch64-linux-gnu <probe> --mir-focus-function main`
-
-Result: build succeeded after CMake regeneration; both registered probe tests
-passed, and the prepared-BIR dumps show the intended `load_local` ALU operand
-chain.
+Result: build succeeded; CTest returned the delegated baseline split, 4/6
+passed. Passing tests:
+`backend_codegen_route_aarch64_alu_unpublished_load_local_after_call`,
+`backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary`,
+`c_testsuite_aarch64_backend_src_00176_c`, and
+`c_testsuite_aarch64_backend_src_00181_c`. Failing tests:
+`c_testsuite_aarch64_backend_src_00164_c` and
+`c_testsuite_aarch64_backend_src_00204_c`.

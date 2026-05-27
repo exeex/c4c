@@ -849,15 +849,9 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
 
-  const prepare::PreparedMemoryAccess* source_access = nullptr;
-  for (const auto& access : addressing->accesses) {
-    if (access.result_value_name == std::optional<c4c::ValueNameId>{home.value_name}) {
-      if (source_access != nullptr) {
-        return std::nullopt;
-      }
-      source_access = &access;
-    }
-  }
+  const auto* source_access =
+      prepare::find_prepared_memory_access_by_result_value_name(
+          *addressing, home.value_name);
   if (source_access == nullptr) {
     return std::nullopt;
   }
@@ -992,25 +986,18 @@ find_prepared_load_local_source_access(
     return nullptr;
   }
   const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
-  const prepare::PreparedMemoryAccess* matched = nullptr;
-  for (const auto& access : addressing->accesses) {
-    if (access.block_label != context.control_flow_block->block_label ||
-        access.inst_index >= limit ||
-        access.result_value_name != value_name ||
-        access.inst_index >= context.bir_block->insts.size()) {
-      continue;
-    }
-    const auto& inst = context.bir_block->insts[access.inst_index];
-    if (std::get_if<bir::LoadLocalInst>(&inst) == nullptr ||
-        !prepared_memory_access_matches_instruction(context, &access, inst)) {
-      return nullptr;
-    }
-    if (matched != nullptr) {
-      return nullptr;
-    }
-    matched = &access;
+  const auto* access =
+      prepare::find_prepared_memory_access_before_by_result_value_name(
+          *addressing, context.control_flow_block->block_label, *value_name, limit);
+  if (access == nullptr || access->inst_index >= context.bir_block->insts.size()) {
+    return nullptr;
   }
-  return matched;
+  const auto& inst = context.bir_block->insts[access->inst_index];
+  if (std::get_if<bir::LoadLocalInst>(&inst) == nullptr ||
+      !prepared_memory_access_matches_instruction(context, access, inst)) {
+    return nullptr;
+  }
+  return access;
 }
 
 [[nodiscard]] bool has_prepared_intervening_store_to_load_source(

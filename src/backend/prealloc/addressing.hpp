@@ -248,6 +248,53 @@ struct PreparedAddressing {
   return matched;
 }
 
+[[nodiscard]] inline const PreparedMemoryAccess*
+find_prepared_memory_access_by_result_value_name(
+    const PreparedAddressingFunction& function_addressing,
+    ValueNameId result_value_name) {
+  if (result_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const PreparedMemoryAccess* matched = nullptr;
+  for (const auto& access : function_addressing.accesses) {
+    if (access.result_value_name != result_value_name) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &access;
+  }
+  return matched;
+}
+
+[[nodiscard]] inline const PreparedMemoryAccess*
+find_prepared_memory_access_before_by_result_value_name(
+    const PreparedAddressingFunction& function_addressing,
+    BlockLabelId block_label,
+    ValueNameId result_value_name,
+    std::size_t before_instruction_index) {
+  if (block_label == kInvalidBlockLabel ||
+      result_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const PreparedMemoryAccess* matched = nullptr;
+  for (const auto& access : function_addressing.accesses) {
+    if (access.block_label != block_label ||
+        access.inst_index >= before_instruction_index ||
+        access.result_value_name != result_value_name) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &access;
+  }
+  return matched;
+}
+
 [[nodiscard]] inline const PreparedAddressMaterialization*
 find_prepared_address_materialization(
     const PreparedAddressingFunction& function_addressing,
