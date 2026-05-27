@@ -1,101 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/54_aarch64_global_value_materialization_consumer_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Existing Consumer Recovery
+Current Step ID: 2
+Current Step Title: Route `globals.cpp` Through Prepared Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for the non-dispatch global-load materialization
-consumers without implementation edits.
+Completed Step 2 implementation for `globals.cpp` GOT global-load
+materialization.
 
-Exact recovery sites found:
+Added `prepare::find_prepared_global_load_access(...)`, keyed by prepared
+addressing function, block label, instruction index, and expected
+`bir::LoadGlobalInst`. The query validates the prepared memory access against
+the `LoadGlobal` result via `prepared_global_load_access_matches_result`,
+requires a global-symbol prepared address with `symbol_name` and
+`can_use_base_plus_offset`, and returns `{load_global, access}`. The existing
+dispatch-shaped `prepare::find_prepared_same_block_global_load_access(...)`
+now delegates to that shared query.
 
-- `src/backend/mir/aarch64/codegen/globals.cpp:762`
-  `make_load_global_got_materialization_instruction` recovers authority locally
-  at lines 767-771 by calling `find_load_global_target(context, load_global)`
-  and testing `target_global->address_materialization_policy ==
-  GotRequired`, then recovers the emitted symbol at line 804 with
-  `load_global_symbol_label(context, load_global, target_global)`. This should
-  consume the prepared `PreparedMemoryAccess` for the same block/instruction
-  and use `PreparedMemoryAccess::address` plus
-  `prepare::prepared_global_symbol_address_policy(address,
-  context.function.target_profile)` as the policy authority. The existing
-  private `prepared_global_memory_access(context, instruction_index)` helper at
-  `globals.cpp:207` already performs the exact block/instruction lookup, but
-  it only returns a raw access and does not validate that the access matches the
-  `LoadGlobal` result.
-- `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp:234`
-  `emit_fp_value_to_register` handles same-block `LoadGlobal` FP producers by
-  recovering the producer through `find_same_block_named_producer`, then
-  locally recovers symbol identity and policy at lines 241-248 with
-  `find_load_global_target`, `load_global_symbol_label`, and
-  `target_global->address_materialization_policy == GotRequired`; lines
-  249-257 emit GOT and lines 259-265 emit direct. This should consume the same
-  prepared global-load access used by dispatch:
-  `prepare::find_prepared_same_block_global_load_access(...)` when starting
-  from a prepared same-block producer, or an equivalent shared query that
-  returns `{load_global, access}` for the raw same-block producer.
-- `src/backend/mir/aarch64/codegen/globals.cpp:719`
-  `emit_prepared_global_symbol_load_to_register` already uses prepared
-  authority (`prepared_global_memory_access` and
-  `prepared_global_symbol_address_policy`) but is direct-only at lines 736-740.
-  It is not the bad recovery site, but its body is the closest reusable
-  emission shape if the next packet extracts a shared prepared global-load
-  emitter.
-
-Prepared authority to preserve:
-
-- `src/backend/prealloc/addressing.hpp:42` stores `PreparedAddress` with
-  `symbol_name`, `byte_offset`, `can_use_base_plus_offset`, and
-  `global_address_materialization_policy`; `prepared_global_symbol_address_policy`
-  at lines 55-72 is the authority for explicit prepared policy or static-model
-  direct fallback.
-- `src/backend/prealloc/stack_layout/coordinator.cpp:627` prepares
-  `LoadGlobal` memory accesses by resolving semantic link-name identity and
-  global-address policy into `PreparedMemoryAccess::address`.
-- `src/backend/prealloc/prepared_lookups.cpp:2207`
-  `find_prepared_same_block_global_load_access` validates the same-block
-  `LoadGlobal` producer, fetches `PreparedMemoryAccess` by prepared block label
-  and instruction index, checks result identity, requires
-  `PreparedAddressBaseKind::GlobalSymbol`, `symbol_name`, and
-  `can_use_base_plus_offset`, and returns both the `LoadGlobal` and the access.
+`make_load_global_got_materialization_instruction` now uses the prepared query
+through `prepared_current_global_load_access(...)`, derives GOT eligibility
+from `prepare::prepared_global_symbol_address_policy(access.address,
+context.function.target_profile)`, gets the symbol with
+`prepare::prepared_link_name(...)`, and uses `access.address.byte_offset` for
+the final indirect load. It no longer uses `find_load_global_target`,
+target-global policy, or `load_global_symbol_label` when the prepared access
+can express the current `LoadGlobal`.
 
 ## Suggested Next
 
-Delegate Step 2 implementation for `globals.cpp`: route
-`make_load_global_got_materialization_instruction` through prepared
-global-address authority by replacing the `find_load_global_target` /
-`load_global_symbol_label` / `target_global->address_materialization_policy`
-gate with a prepared access lookup and
-`prepare::prepared_global_symbol_address_policy`. Add the smallest shared query
-only if `prepared_global_memory_access(context, instruction_index)` plus local
-validation cannot safely prove the `LoadGlobal` result match.
-
-Suggested proof subset for that packet: fresh build or targeted compile proof
-for the AArch64 backend target, then the narrow AArch64 global-load
-materialization tests that exercise GOT-required and direct global loads.
+Delegate Step 3 for `fp_value_materialization.cpp`: route same-block FP
+`LoadGlobal` materialization through prepared global-load authority without
+recovering symbol identity or address policy from raw globals.
 
 ## Watchouts
 
-`find_prepared_same_block_global_load_access` is currently dispatch-shaped
-because it requires `PreparedSameBlockScalarProducer`; `globals.cpp` has the
-current `LoadGlobal` instruction and instruction index, not that producer
-wrapper. Prefer a narrow shared query keyed by prepared addressing function,
-block label, instruction index, and expected `LoadGlobal` when needed, rather
-than recreating symbol or policy recovery in either consumer.
-
-When Step 3 reaches `fp_value_materialization.cpp`, the local raw
-`find_same_block_named_producer` path should either be paired with a prepared
-same-block producer query or replaced by one before calling
-`find_prepared_same_block_global_load_access`; otherwise the FP route would
-still trust raw producer discovery and only partially consume prepared
-authority.
+The new shared query is intentionally access-validation only; callers still
+choose whether they need GOT or direct lowering by consulting
+`prepare::prepared_global_symbol_address_policy`. Step 3 should avoid touching
+`fp_value_materialization.cpp` until delegated because it is outside this
+packet.
 
 ## Proof
 
-Audit-only packet; no build/test required by the supervisor, and no
-`test_after.log` was created or modified. Used `c4c-clang-tools` symbol
-queries first, then narrow source inspection.
+Ran exactly:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_cli_dump_prepared_bir_is_prepared|backend_cli_dump_prepared_bir_exposes_contract_sections)$') > test_after.log 2>&1`
+
+Result: passed. `test_after.log` records a successful preset build and 4/4
+matching tests passed.

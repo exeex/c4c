@@ -608,6 +608,14 @@ find_prepared_same_block_scalar_producer(
     std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global);
+
+[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
 find_prepared_same_block_global_load_access(
     const PreparedNameTables& names,
     const PreparedAddressingFunction* addressing,

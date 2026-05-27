@@ -3,7 +3,6 @@
 #include "calls.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
-#include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 
 #include <algorithm>
@@ -219,6 +218,27 @@ std::string prefixed_relocation_operand(std::string_view prefix, std::string_vie
              ? prepare::find_prepared_memory_access(
                    *addressing, context.control_flow_block->block_label, instruction_index)
              : nullptr;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockGlobalLoadAccess>
+prepared_current_global_load_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return prepare::find_prepared_global_load_access(
+      context.function.prepared->names,
+      addressing,
+      context.control_flow_block->block_label,
+      instruction_index,
+      load_global);
 }
 
 std::string tls_relocation_prefix(prepare::PreparedTlsRelocationKind kind) {
@@ -764,10 +784,19 @@ std::optional<module::MachineInstruction> make_load_global_got_materialization_i
     std::size_t instruction_index,
     const bir::LoadGlobalInst& load_global,
     BlockScalarLoweringState& scalar_state) {
-  const bir::Global* target_global = find_load_global_target(context, load_global);
-  if (target_global == nullptr ||
-      target_global->address_materialization_policy !=
-          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+  const auto prepared_access =
+      prepared_current_global_load_access(context, instruction_index, load_global);
+  if (!prepared_access.has_value() ||
+      prepared_access->access == nullptr ||
+      prepared_access->access->address.base_kind !=
+          prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !prepared_access->access->address.symbol_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto address_policy = prepare::prepared_global_symbol_address_policy(
+      prepared_access->access->address, context.function.target_profile);
+  if (!address_policy.has_value() ||
+      *address_policy != bir::GlobalAddressMaterializationPolicy::GotRequired) {
     return std::nullopt;
   }
   const auto value_name = prepared_named_value_id(context, load_global.result);
@@ -801,17 +830,20 @@ std::optional<module::MachineInstruction> make_load_global_got_materialization_i
   }
   const std::string address = abi::register_name(*address_register);
   const std::string target = abi::register_name(*target_register);
-  const auto symbol_label = load_global_symbol_label(context, load_global, target_global);
+  const auto symbol_label =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *prepared_access->access->address.symbol_name);
   if (symbol_label.empty()) {
     return std::nullopt;
   }
 
   std::vector<std::string> lines;
-  lines.push_back("adrp " + address + ", :got:" + symbol_label);
+  lines.push_back("adrp " + address + ", :got:" + std::string{symbol_label});
   lines.push_back("ldr " + address + ", [" + address + ", :got_lo12:" +
-                  symbol_label + "]");
+                  std::string{symbol_label} + "]");
   lines.push_back("ldr " + target + ", " +
-                  register_indirect_address(address, load_global.byte_offset));
+                  register_indirect_address(address,
+                                            prepared_access->access->address.byte_offset));
 
   if (const auto* home = prepared_value_home_for_value(context, load_global.result);
       home != nullptr &&

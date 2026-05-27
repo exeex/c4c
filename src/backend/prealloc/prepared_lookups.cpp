@@ -2204,25 +2204,22 @@ find_prepared_same_block_scalar_producer(
 }
 
 std::optional<PreparedSameBlockGlobalLoadAccess>
-find_prepared_same_block_global_load_access(
+find_prepared_global_load_access(
     const PreparedNameTables& names,
     const PreparedAddressingFunction* addressing,
-    const PreparedSameBlockScalarProducer& producer) {
-  if (addressing == nullptr ||
-      producer.producer.kind != PreparedEdgePublicationSourceProducerKind::LoadGlobal ||
-      producer.producer.load_global == nullptr ||
-      producer.producer.block_label == kInvalidBlockLabel) {
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global) {
+  if (addressing == nullptr || block_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
   const auto* access =
-      find_prepared_memory_access(*addressing,
-                                  producer.producer.block_label,
-                                  producer.producer.instruction_index);
+      find_prepared_memory_access(*addressing, block_label, instruction_index);
   if (!prepared_global_load_access_matches_result(
           names,
           access,
-          *producer.producer.load_global) ||
+          load_global) ||
       access->address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
       !access->address.symbol_name.has_value() ||
       !access->address.can_use_base_plus_offset) {
@@ -2230,9 +2227,25 @@ find_prepared_same_block_global_load_access(
   }
 
   return PreparedSameBlockGlobalLoadAccess{
-      .load_global = producer.producer.load_global,
+      .load_global = &load_global,
       .access = access,
   };
+}
+
+std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_same_block_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    const PreparedSameBlockScalarProducer& producer) {
+  if (producer.producer.kind != PreparedEdgePublicationSourceProducerKind::LoadGlobal ||
+      producer.producer.load_global == nullptr) {
+    return std::nullopt;
+  }
+  return find_prepared_global_load_access(names,
+                                          addressing,
+                                          producer.producer.block_label,
+                                          producer.producer.instruction_index,
+                                          *producer.producer.load_global);
 }
 
 std::optional<PreparedSameBlockLoadLocalStoredValueSource>
