@@ -1902,6 +1902,7 @@ int verify_prepared_frame_address_offset_lookup() {
   const c4c::ValueNameId aggregate_lane_value{24};
   constexpr auto aggregate_value_id = prepare::PreparedValueId{230};
   constexpr auto shadow_value_id = prepare::PreparedValueId{231};
+  constexpr auto ordinary_spill_value_id = prepare::PreparedValueId{232};
   prepare::PreparedStackLayout stack_layout{
       .objects =
           {prepare::PreparedStackObject{
@@ -1909,6 +1910,16 @@ int verify_prepared_frame_address_offset_lookup() {
               .function_name = function_name,
               .source_kind = "local_slot",
               .size_bytes = 16,
+              .align_bytes = 8,
+              .address_exposed = true,
+              .requires_home_slot = true,
+              .permanent_home_slot = true,
+          },
+           prepare::PreparedStackObject{
+              .object_id = prepare::PreparedObjectId{6},
+              .function_name = function_name,
+              .source_kind = "regalloc.spill_slot",
+              .size_bytes = 8,
               .align_bytes = 8,
           }},
       .frame_slots =
@@ -1918,6 +1929,14 @@ int verify_prepared_frame_address_offset_lookup() {
               .function_name = function_name,
               .offset_bytes = 32,
               .size_bytes = 16,
+              .align_bytes = 8,
+          },
+           prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{10},
+              .object_id = prepare::PreparedObjectId{6},
+              .function_name = function_name,
+              .offset_bytes = 64,
+              .size_bytes = 8,
               .align_bytes = 8,
           }},
   };
@@ -1960,6 +1979,14 @@ int verify_prepared_frame_address_offset_lookup() {
                .result_value_name = aggregate_lane_value,
                .result_value_id = shadow_value_id,
                .frame_slot_id = prepare::PreparedFrameSlotId{9},
+           },
+           prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 10,
+               .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+               .result_value_id = ordinary_spill_value_id,
+               .frame_slot_id = prepare::PreparedFrameSlotId{10},
            }},
   };
   prepare::PreparedValueHomeLookups value_home_lookups;
@@ -2020,6 +2047,11 @@ int verify_prepared_frame_address_offset_lookup() {
       shadow->materialization != &addressing.address_materializations[1] ||
       shadow->stack_offset_bytes != std::size_t{44}) {
     return fail("frame-address id lookup should prefer explicit prepared value ids over names");
+  }
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout, &lookups, &value_home_lookups, block_label, ordinary_spill_value_id, 10)
+          .has_value()) {
+    return fail("frame-address id lookup should reject non-addressable spill slots");
   }
 
   auto duplicate_lookups = lookups;

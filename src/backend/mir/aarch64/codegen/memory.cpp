@@ -3485,6 +3485,7 @@ lower_store_local_value_publication(
                  std::get_if<MemoryOperand>(&memory_record->value->payload);
              target_memory != nullptr &&
              (has_prepared_select_producer ||
+              has_prepared_cast_producer ||
               has_direct_global_select_chain)) {
     if (store_source_plan_available &&
         (store_source_plan.destination_base_kind !=
@@ -3509,12 +3510,26 @@ lower_store_local_value_publication(
         stack_home.empty()) {
       return std::nullopt;
     }
-    emitted = emit_value_publication_to_register(context,
-                                                 value,
-                                                 instruction_index,
-                                                 scratches.front().index,
-                                                 scratches[1].index,
-                                                 lines);
+    if (has_prepared_cast_producer &&
+        store_source_plan.source_cast != nullptr &&
+        store_source_plan.source_producer_instruction_index.has_value() &&
+        (store_source_plan.source_cast->opcode == bir::CastOpcode::IntToPtr ||
+         store_source_plan.source_cast->opcode == bir::CastOpcode::PtrToInt)) {
+      emitted = emit_value_publication_to_register(
+          context,
+          store_source_plan.source_cast->operand,
+          *store_source_plan.source_producer_instruction_index,
+          scratches.front().index,
+          scratches[1].index,
+          lines);
+    } else {
+      emitted = emit_value_publication_to_register(context,
+                                                   value,
+                                                   instruction_index,
+                                                   scratches.front().index,
+                                                   scratches[1].index,
+                                                   lines);
+    }
     if (emitted) {
       lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
                       ", " + stack_home);

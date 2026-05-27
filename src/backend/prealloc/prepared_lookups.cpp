@@ -801,6 +801,25 @@ void collect_block_entry_republication_effects(
   return nullptr;
 }
 
+[[nodiscard]] const PreparedStackObject* find_stack_object_by_id(
+    const PreparedStackLayout& stack_layout,
+    PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_frame_address_object_is_addressable(
+    const PreparedStackLayout& stack_layout,
+    const PreparedFrameSlot& slot) {
+  const auto* object = find_stack_object_by_id(stack_layout, slot.object_id);
+  return object != nullptr &&
+         (object->address_exposed || object->permanent_home_slot);
+}
+
 [[nodiscard]] const PreparedFrameSlot* prepared_frame_slot_for_access(
     const PreparedStackLayout& stack_layout,
     const PreparedMemoryAccess* access) {
@@ -2008,10 +2027,8 @@ find_indexed_prepared_frame_address_offset_for_value(
     }
     const auto* slot =
         find_frame_slot_by_id(stack_layout, *materialization->frame_slot_id);
-    if (slot == nullptr) {
-      continue;
-    }
-    if (materialization->byte_offset < 0) {
+    if (slot == nullptr || materialization->byte_offset < 0 ||
+        !prepared_frame_address_object_is_addressable(stack_layout, *slot)) {
       continue;
     }
     if (selected != nullptr &&
@@ -2085,7 +2102,8 @@ find_indexed_prepared_frame_address_offset_for_value_id(
     }
     const auto* slot =
         find_frame_slot_by_id(stack_layout, *materialization->frame_slot_id);
-    if (slot == nullptr || materialization->byte_offset < 0) {
+    if (slot == nullptr || materialization->byte_offset < 0 ||
+        !prepared_frame_address_object_is_addressable(stack_layout, *slot)) {
       continue;
     }
     if (selected != nullptr &&
