@@ -8,35 +8,32 @@ Current Step Title: Replace Same-Block Scalar Producer Recovery
 
 ## Just Finished
 
-Step 2 - Replace Same-Block Scalar Producer Recovery completed. Added the
-shared prepared helper
-`prepare::find_prepared_same_block_scalar_producer`, keyed by prepared named
-value plus `before_instruction_index`, returning
-`PreparedSameBlockScalarProducer` only when the prepared source producer matches
-the requested block label, instruction index, instruction variant pointer, and
-result value identity. `dispatch_value_materialization.cpp` now consumes that
-helper through a narrow context adapter instead of owning local
-`prepared_source_producer_for_value`,
-`prepared_source_producer_matches_instruction`, and
-`prepared_same_block_scalar_producer_context` logic.
+Step 2 - Replace Same-Block Scalar Producer Recovery continued. Moved the
+same-block load-global address-policy authority into prepared lookups with
+`prepare::find_prepared_same_block_global_load_access`, which consumes the
+shared `PreparedSameBlockScalarProducer`, verifies the prepared memory access by
+result value name and producer position, and only exposes global-symbol
+base-plus-offset accesses to dispatch. `dispatch_value_materialization.cpp` now
+emits the prepared global load from that prepared result instead of owning local
+memory-access matching and global-symbol eligibility checks.
 
 ## Suggested Next
 
-Implement the next Step 2 packet by moving the remaining dispatch-specific
-load-global address-policy or select-chain producer authority into prepared
-lookups only if it can stay narrow and reusable. Keep the packet bounded to one
-producer family and continue using the prepared same-block scalar producer
-helper as the entry authority.
+Implement the next Step 2 packet by assessing the remaining select-chain
+producer authority. Keep it bounded to prepared same-block producer entry, and
+stop for plan-owner/reviewer input if moving select-chain recursion would
+require touching edge-copy ownership or changing source intent.
 
 ## Watchouts
 
 - `prepare::find_prepared_same_block_scalar_producer` validates producer
   pointer identity against the BIR instruction variant; callers should not
   bypass it with raw value-name scans.
-- The helper intentionally rejects immediate and unknown source-producer kinds.
-- `find_prepared_same_block_load_local_stored_value_source` now routes through
-  the same helper, so future changes to this authority affect recovered
-  narrow-store source lookup as well as dispatch materialization.
+- `find_prepared_same_block_global_load_access` intentionally does not emit
+  code or choose target relocation syntax; it only selects a prepared global
+  load access whose address is eligible for base-plus-offset materialization.
+- The load-global packet did not touch `globals.cpp`,
+  `fp_value_materialization.cpp`, or edge-copy publication files.
 - Do not widen into `globals.cpp`, `fp_value_materialization.cpp`, or edge-copy
   publication files without a new packet.
 

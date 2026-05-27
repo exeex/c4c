@@ -77,38 +77,19 @@ prepared_same_block_scalar_producer(
       before_instruction_index);
 }
 
-[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_global_load_access(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    const bir::Inst& producer) {
-  const auto* access = prepared_memory_access(context, instruction_index);
-  if (!prepared_memory_access_matches_instruction(context, access, producer) ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      !access->address.symbol_name.has_value() ||
-      !access->address.can_use_base_plus_offset) {
-    return nullptr;
-  }
-  return access;
-}
-
 [[nodiscard]] bool emit_prepared_global_load_to_register(
     const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
     const bir::LoadGlobalInst& load_global,
-    const bir::Inst& producer,
+    const prepare::PreparedMemoryAccess& access,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines) {
   if (context.function.prepared == nullptr) {
     return false;
   }
-  const auto* access = prepared_global_load_access(context, instruction_index, producer);
-  if (access == nullptr) {
-    return false;
-  }
   const auto symbol_label =
       prepare::prepared_link_name(context.function.prepared->names,
-                                  *access->address.symbol_name);
+                                  *access.address.symbol_name);
   const auto mnemonic = scalar_load_mnemonic(load_global.result.type);
   const auto load_view = scalar_view_for_type(load_global.result.type);
   const auto load_target =
@@ -120,7 +101,7 @@ prepared_same_block_scalar_producer(
   }
 
   const auto policy = prepare::prepared_global_symbol_address_policy(
-      access->address, context.function.target_profile);
+      access.address, context.function.target_profile);
   if (!policy.has_value()) {
     return false;
   }
@@ -131,10 +112,10 @@ prepared_same_block_scalar_producer(
       lines.push_back("ldr " + *address + ", [" + *address + ", :got_lo12:" +
                       std::string{symbol_label} + "]");
       lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
-                      register_indirect_address(*address, access->address.byte_offset));
+                      register_indirect_address(*address, access.address.byte_offset));
       return true;
     case bir::GlobalAddressMaterializationPolicy::Direct: {
-      const auto symbol = relocation_operand(symbol_label, access->address.byte_offset);
+      const auto symbol = relocation_operand(symbol_label, access.address.byte_offset);
       lines.push_back("adrp " + *address + ", " + symbol);
       lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
       lines.push_back(std::string{*mnemonic} + " " + *load_target + ", [" + *address +
@@ -369,8 +350,7 @@ prepared_same_block_scalar_producer(
         context, *load_local, index, target_index, scratch_index, lines);
   }
 
-  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(producer);
-      load_global != nullptr) {
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
     if (const auto* home = prepared_value_home_for_value(context, value);
         !reload_current_memory_loads && home != nullptr &&
         home->kind == prepare::PreparedValueHomeKind::StackSlot &&
@@ -384,10 +364,25 @@ prepared_same_block_scalar_producer(
                                                  lines,
                                                  fixed_slots_use_frame_pointer(context.function));
     }
-    return emit_prepared_global_load_to_register(context,
-                                                 producer_context->instruction_index,
-                                                 *load_global,
-                                                 *producer,
+    const auto* addressing =
+        context.function.prepared != nullptr && context.function.control_flow != nullptr
+            ? prepare::find_prepared_addressing(
+                  *context.function.prepared,
+                  context.function.control_flow->function_name)
+            : nullptr;
+    const auto prepared_access =
+        context.function.prepared != nullptr
+            ? prepare::find_prepared_same_block_global_load_access(
+                  context.function.prepared->names,
+                  addressing,
+                  *producer_context)
+            : std::nullopt;
+    return prepared_access.has_value() &&
+           prepared_access->load_global != nullptr &&
+           prepared_access->access != nullptr &&
+           emit_prepared_global_load_to_register(context,
+                                                 *prepared_access->load_global,
+                                                 *prepared_access->access,
                                                  target_index,
                                                  scratch_index,
                                                  lines);

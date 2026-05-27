@@ -236,6 +236,11 @@ struct PreparedSameBlockLoadLocalStoredValueSource {
   const PreparedMemoryAccess* store_access = nullptr;
 };
 
+struct PreparedSameBlockGlobalLoadAccess {
+  const bir::LoadGlobalInst* load_global = nullptr;
+  const PreparedMemoryAccess* access = nullptr;
+};
+
 struct PreparedEdgePublication {
   PreparedEdgePublicationLookupStatus status =
       PreparedEdgePublicationLookupStatus::MissingDestinationValue;
@@ -601,6 +606,12 @@ find_prepared_same_block_scalar_producer(
     ValueNameId value_name,
     bir::TypeKind value_type,
     std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_same_block_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    const PreparedSameBlockScalarProducer& producer);
 
 [[nodiscard]] std::optional<PreparedSameBlockLoadLocalStoredValueSource>
 find_prepared_same_block_load_local_stored_value_source(

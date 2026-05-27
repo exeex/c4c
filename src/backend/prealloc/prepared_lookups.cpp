@@ -875,6 +875,16 @@ void collect_block_entry_republication_effects(
          access->result_value_name == result_name;
 }
 
+[[nodiscard]] bool prepared_global_load_access_matches_result(
+    const PreparedNameTables& names,
+    const PreparedMemoryAccess* access,
+    const bir::LoadGlobalInst& load) {
+  const auto result_name = prepared_existing_value_name_id(names, load.result);
+  return result_name.has_value() &&
+         access != nullptr &&
+         access->result_value_name == result_name;
+}
+
 [[nodiscard]] bool prepared_store_access_matches_value(
     const PreparedNameTables& names,
     const PreparedMemoryAccess* access,
@@ -2191,6 +2201,38 @@ find_prepared_same_block_scalar_producer(
                                             value_name,
                                             value_type,
                                             before_instruction_index);
+}
+
+std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_same_block_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    const PreparedSameBlockScalarProducer& producer) {
+  if (addressing == nullptr ||
+      producer.producer.kind != PreparedEdgePublicationSourceProducerKind::LoadGlobal ||
+      producer.producer.load_global == nullptr ||
+      producer.producer.block_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  const auto* access =
+      find_prepared_memory_access(*addressing,
+                                  producer.producer.block_label,
+                                  producer.producer.instruction_index);
+  if (!prepared_global_load_access_matches_result(
+          names,
+          access,
+          *producer.producer.load_global) ||
+      access->address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return std::nullopt;
+  }
+
+  return PreparedSameBlockGlobalLoadAccess{
+      .load_global = producer.producer.load_global,
+      .access = access,
+  };
 }
 
 std::optional<PreparedSameBlockLoadLocalStoredValueSource>
