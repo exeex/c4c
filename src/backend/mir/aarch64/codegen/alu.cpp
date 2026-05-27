@@ -916,19 +916,19 @@ namespace mir = c4c::backend::mir;
       *context.function.prepared, context.function.control_flow->function_name);
 }
 
-[[nodiscard]] const prepare::PreparedMemoryAccess*
-find_prepared_load_local_source_access(
+[[nodiscard]] std::optional<prepare::PreparedScalarLoadLocalSourceProducer>
+find_prepared_load_local_source_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   if (context.bir_block == nullptr ||
       context.control_flow_block == nullptr ||
       context.function.prepared == nullptr) {
-    return nullptr;
+    return std::nullopt;
   }
   const auto* addressing = prepared_addressing_function(context);
   if (addressing == nullptr) {
-    return nullptr;
+    return std::nullopt;
   }
   const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers =
       context.function.prepared_lookups != nullptr
@@ -952,7 +952,7 @@ find_prepared_load_local_source_access(
           context.bir_block,
           value,
           before_instruction_index);
-  return source.has_value() ? source->source_access : nullptr;
+  return source;
 }
 
 [[nodiscard]] bool load_local_home_needs_consumer_publication(
@@ -972,13 +972,19 @@ find_prepared_load_local_source_access(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  const auto* load_access =
-      find_prepared_load_local_source_access(context, value, before_instruction_index);
-  if (load_access == nullptr || context.bir_block == nullptr) {
+  const auto source =
+      find_prepared_load_local_source_producer(context, value, before_instruction_index);
+  if (!source.has_value() || source->source_access == nullptr ||
+      context.bir_block == nullptr) {
     return std::nullopt;
   }
   const auto* load =
-      std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[load_access->inst_index]);
+      source->producer != nullptr ? source->producer->load_local : nullptr;
+  if (load == nullptr &&
+      source->source_access->inst_index < context.bir_block->insts.size()) {
+    load = std::get_if<bir::LoadLocalInst>(
+        &context.bir_block->insts[source->source_access->inst_index]);
+  }
   if (load == nullptr) {
     return std::nullopt;
   }
@@ -986,19 +992,20 @@ find_prepared_load_local_source_access(
   if (home == nullptr || !load_local_home_needs_consumer_publication(*home)) {
     return std::nullopt;
   }
-  auto source = make_prepared_scalar_load_source(context, *home, *load_access);
-  if (!source.has_value() ||
-      source->base_kind != MemoryBaseKind::FrameSlot ||
-      source->support != MemoryOperandSupportKind::Prepared ||
-      !source->can_use_base_plus_offset ||
-      !source->byte_offset_is_prepared_snapshot) {
+  auto source_operand =
+      make_prepared_scalar_load_source(context, *home, *source->source_access);
+  if (!source_operand.has_value() ||
+      source_operand->base_kind != MemoryBaseKind::FrameSlot ||
+      source_operand->support != MemoryOperandSupportKind::Prepared ||
+      !source_operand->can_use_base_plus_offset ||
+      !source_operand->byte_offset_is_prepared_snapshot) {
     return std::nullopt;
   }
   if (const auto loaded_size = scalar_type_size_bytes(load->result.type)) {
-    source->size_bytes = *loaded_size;
-    source->align_bytes = *loaded_size;
+    source_operand->size_bytes = *loaded_size;
+    source_operand->align_bytes = *loaded_size;
   }
-  return source;
+  return source_operand;
 }
 
 [[nodiscard]] std::string relocation_operand(std::string_view label,

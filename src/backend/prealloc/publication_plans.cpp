@@ -750,16 +750,69 @@ find_prepared_same_block_load_local_source_producer(
     std::size_t before_instruction_index) {
   const auto* producer = prepared_select_chain_source_producer(
       names, source_producers, block_label, block, value, before_instruction_index);
-  if (producer == nullptr ||
-      producer->kind != PreparedEdgePublicationSourceProducerKind::LoadLocal ||
-      producer->load_local == nullptr ||
-      addressing == nullptr) {
+  if (addressing == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
     return std::nullopt;
   }
 
-  const auto* load_access = find_prepared_memory_access(
-      *addressing, block_label, producer->instruction_index);
-  if (!prepared_load_access_matches_result(names, load_access, *producer->load_local) ||
+  const bir::LoadLocalInst* load_local = nullptr;
+  const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
+  std::size_t producer_instruction_index = 0;
+  BlockLabelId producer_block_label = block_label;
+  const auto value_name = resolve_prepared_value_name_id(names, value.name);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  if (producer != nullptr &&
+      producer->kind == PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+      producer->load_local != nullptr) {
+    load_local = producer->load_local;
+    source_producer = producer;
+    producer_instruction_index = producer->instruction_index;
+    producer_block_label = producer->block_label;
+  } else {
+    const auto* access = find_prepared_memory_access_before_by_result_value_name(
+        *addressing, block_label, *value_name, before_instruction_index);
+    if (access == nullptr) {
+      access = find_prepared_memory_access_by_result_value_name(
+          *addressing, *value_name);
+    }
+    if (access == nullptr || access->inst_index >= block->insts.size()) {
+      return std::nullopt;
+    }
+    load_local = std::get_if<bir::LoadLocalInst>(&block->insts[access->inst_index]);
+    if (load_local == nullptr ||
+        !prepared_load_access_matches_result(names, access, *load_local)) {
+      return std::nullopt;
+    }
+    producer_instruction_index = access->inst_index;
+    producer_block_label = access->block_label;
+  }
+
+  auto* load_access =
+      find_prepared_memory_access(*addressing, producer_block_label, producer_instruction_index);
+  if (load_access == nullptr ||
+      producer_instruction_index >= block->insts.size()) {
+    load_access =
+        find_prepared_memory_access_by_result_value_name(*addressing, *value_name);
+    if (load_access != nullptr) {
+      producer_instruction_index = load_access->inst_index;
+      producer_block_label = load_access->block_label;
+    }
+  }
+  const auto* indexed_load_local =
+      producer_instruction_index < block->insts.size()
+          ? std::get_if<bir::LoadLocalInst>(&block->insts[producer_instruction_index])
+          : nullptr;
+  if (indexed_load_local != nullptr) {
+    load_local = indexed_load_local;
+  }
+  if (load_local == nullptr ||
+      producer_instruction_index >= block->insts.size() ||
+      !prepared_load_access_matches_result(names, load_access, *load_local) ||
       prepared_frame_slot_for_access(stack_layout, load_access) == nullptr) {
     return std::nullopt;
   }
@@ -767,13 +820,13 @@ find_prepared_same_block_load_local_source_producer(
   const auto limit =
       block != nullptr ? std::min(before_instruction_index, block->insts.size())
                        : std::size_t{0};
-  for (std::size_t index = producer->instruction_index + 1; index < limit; ++index) {
+  for (std::size_t index = producer_instruction_index + 1; index < limit; ++index) {
     const auto* store = std::get_if<bir::StoreLocalInst>(&block->insts[index]);
     if (store == nullptr) {
       continue;
     }
     const auto* store_access =
-        find_prepared_memory_access(*addressing, block_label, index);
+        find_prepared_memory_access(*addressing, producer_block_label, index);
     if (store_access == nullptr ||
         !prepared_store_access_matches_value(names, store_access, *store) ||
         prepared_access_ranges_overlap(stack_layout, load_access, store_access)) {
@@ -782,7 +835,7 @@ find_prepared_same_block_load_local_source_producer(
   }
 
   return PreparedScalarLoadLocalSourceProducer{
-      .producer = producer,
+      .producer = source_producer,
       .source_access = load_access,
   };
 }
