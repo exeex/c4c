@@ -2636,6 +2636,42 @@ find_prepared_fused_compare_operand_producer(
   return result;
 }
 
+std::optional<PreparedMaterializedConditionProducer>
+find_prepared_materialized_condition_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& condition_value,
+    std::size_t before_instruction_index) {
+  if (condition_value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto condition_value_name =
+      existing_prepared_value_name_id(names, condition_value);
+  if (!condition_value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto producer =
+      find_prepared_same_block_scalar_producer(names,
+                                              source_producers,
+                                              block_label,
+                                              block,
+                                              *condition_value_name,
+                                              condition_value.type,
+                                              before_instruction_index);
+  if (!producer.has_value() ||
+      producer->producer.kind != PreparedEdgePublicationSourceProducerKind::Binary ||
+      producer->producer.binary == nullptr) {
+    return std::nullopt;
+  }
+  return PreparedMaterializedConditionProducer{
+      .binary = producer->producer.binary,
+      .instruction_index = producer->instruction_index,
+      .condition_value_name = *condition_value_name,
+  };
+}
+
 std::optional<PreparedSameBlockGlobalLoadAccess>
 find_prepared_global_load_access(
     const PreparedNameTables& names,

@@ -251,6 +251,12 @@ struct PreparedFusedCompareOperandProducer {
   std::optional<std::int64_t> integer_constant;
 };
 
+struct PreparedMaterializedConditionProducer {
+  const bir::BinaryInst* binary = nullptr;
+  std::size_t instruction_index = 0;
+  ValueNameId condition_value_name = kInvalidValueName;
+};
+
 struct PreparedSameBlockLoadLocalStoredValueSource {
   bir::Value stored_value;
   std::size_t store_instruction_index = 0;
@@ -685,6 +691,15 @@ find_prepared_fused_compare_operand_producer(
     BlockLabelId block_label,
     const bir::Block* block,
     const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<PreparedMaterializedConditionProducer>
+find_prepared_materialized_condition_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& condition_value,
     std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>

@@ -1171,6 +1171,39 @@ find_prepared_fused_compare_operand_producer(
       before_instruction_index);
 }
 
+[[nodiscard]] std::optional<prepare::PreparedMaterializedConditionProducer>
+find_prepared_materialized_condition_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& condition_value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_materialized_condition_producer(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        condition_value,
+        before_instruction_index);
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  return prepare::find_prepared_materialized_condition_producer(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      condition_value,
+      before_instruction_index);
+}
+
 [[nodiscard]] module::MachineInstruction make_branch_compare_assembler_instruction(
     const module::BlockLoweringContext& context,
     std::vector<std::string> lines) {
@@ -1460,14 +1493,11 @@ lower_materialized_compare_condition_branch(
   if (condition_home == nullptr) {
     return std::nullopt;
   }
-  const auto* producer =
-      hooks.find_same_block_named_producer(context,
-                                           branch_condition->condition_value.name,
-                                           context.bir_block->insts.size());
-  const auto producer_index = hooks.producer_instruction_index(context, producer);
-  const auto* binary =
-      producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
-  if (binary == nullptr || !producer_index.has_value()) {
+  const auto producer =
+      find_prepared_materialized_condition_producer(
+          context, branch_condition->condition_value, context.bir_block->insts.size());
+  const auto* binary = producer.has_value() ? producer->binary : nullptr;
+  if (binary == nullptr) {
     return std::nullopt;
   }
   const auto condition = branch_condition_suffix(binary->opcode);
@@ -1520,7 +1550,7 @@ lower_materialized_compare_condition_branch(
   } else {
     if (!hooks.emit_value_publication_to_register(context,
                                                   lhs,
-                                                  *producer_index,
+                                                  producer->instruction_index,
                                                   scratches[0].index,
                                                   scratches[1].index,
                                                   lines,
@@ -1555,7 +1585,7 @@ lower_materialized_compare_condition_branch(
       }
       if (!hooks.emit_value_publication_to_register(context,
                                                     rhs_value,
-                                                    *producer_index,
+                                                    producer->instruction_index,
                                                     rhs_target_index,
                                                     rhs_scratch_index,
                                                     lines,
