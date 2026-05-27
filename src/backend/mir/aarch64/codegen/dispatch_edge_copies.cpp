@@ -126,6 +126,67 @@ prepared_edge_publication_producer_context(
       .instruction_index = *publication.source_producer_instruction_index,
   };
 }
+[[nodiscard]] std::optional<EdgeProducerContext>
+prepared_edge_source_producer_context(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducer& producer) {
+  if (producer.block_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  auto producer_context =
+      prepared_edge_publication_producer_block_context(context, producer.block_label);
+  if (!producer_context.has_value() || producer_context->bir_block == nullptr ||
+      producer.instruction_index >= producer_context->bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto& inst = producer_context->bir_block->insts[producer.instruction_index];
+  switch (producer.kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      if (producer.load_local != std::get_if<bir::LoadLocalInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      if (producer.cast != std::get_if<bir::CastInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      if (producer.binary != std::get_if<bir::BinaryInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      if (producer.select != std::get_if<bir::SelectInst>(&inst)) {
+        return std::nullopt;
+      }
+      break;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return std::nullopt;
+  }
+  return EdgeProducerContext{
+      .context = *producer_context,
+      .producer = &inst,
+      .instruction_index = producer.instruction_index,
+  };
+}
+[[nodiscard]] std::optional<EdgeProducerContext>
+prepared_edge_named_source_producer_context(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value() || context.function.prepared_lookups == nullptr) {
+    return std::nullopt;
+  }
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          &context.function.prepared_lookups->edge_publication_source_producers,
+          *value_name);
+  return producer != nullptr
+             ? prepared_edge_source_producer_context(context, *producer)
+             : std::nullopt;
+}
 
 struct EdgeSelectChainState {
   std::size_t label_index = 0;
@@ -139,7 +200,7 @@ struct EdgeSelectChainState {
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
     const bir::Value& value,
-    std::size_t successor_before_instruction_index,
+    std::size_t,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
@@ -281,7 +342,7 @@ struct EdgeSelectChainState {
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
     const bir::Value& value,
-    std::size_t successor_before_instruction_index,
+    std::size_t,
     std::uint8_t register_index,
     const prepare::PreparedEdgePublication* prepared_publication,
     unsigned depth) {
@@ -298,8 +359,7 @@ struct EdgeSelectChainState {
   const auto producer =
       require_prepared_producer
           ? prepared_edge_publication_producer_context(edge_context, *prepared_publication)
-          : find_edge_named_producer(
-                edge_context, successor_context, value.name, successor_before_instruction_index);
+          : prepared_edge_named_source_producer_context(edge_context, value);
   if (!producer.has_value() || producer->producer == nullptr) {
     const auto* home =
         require_prepared_producer && prepared_publication->source_home != nullptr
@@ -309,7 +369,7 @@ struct EdgeSelectChainState {
            prepared_value_home_reads_register_index(*home, register_index);
   }
   const auto& dependency_successor_context =
-      require_prepared_producer ? producer->context : successor_context;
+      producer->context;
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
     auto operand = cast->operand;
@@ -488,7 +548,7 @@ struct EdgeSelectChainState {
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
     const bir::Value& value,
-    std::size_t successor_before_instruction_index,
+    std::size_t,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
@@ -513,11 +573,7 @@ struct EdgeSelectChainState {
   const auto producer =
       require_prepared_producer
           ? prepared_edge_publication_producer_context(edge_context, *prepared_publication)
-          : find_edge_named_producer(
-                edge_context,
-                successor_context,
-                value.name,
-                successor_before_instruction_index);
+          : prepared_edge_named_source_producer_context(edge_context, value);
   if (require_prepared_producer && !producer.has_value()) {
     return false;
   }
@@ -567,9 +623,9 @@ struct EdgeSelectChainState {
                fixed_slots_use_frame_pointer(producer->context.function));
   }
   const auto* dependency_publication =
-      require_prepared_producer ? prepared_publication : nullptr;
+      prepared_publication;
   const auto& dependency_successor_context =
-      require_prepared_producer ? producer->context : successor_context;
+      producer->context;
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
     auto operand = cast->operand;

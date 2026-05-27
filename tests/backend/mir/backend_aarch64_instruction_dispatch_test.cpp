@@ -18967,13 +18967,13 @@ int edge_publication_dependency_uses_prepared_root_producer() {
                                                    1);
 
   const auto source = bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum");
-  if (!aarch64_codegen::edge_value_publication_may_read_register_index(
+  if (aarch64_codegen::edge_value_publication_may_read_register_index(
           pred_context,
           join_context,
           source,
           1,
           0)) {
-    return fail("expected legacy edge dependency scan to see the successor decoy x0 read");
+    return fail("expected prepared source-producer lookup to ignore successor decoy");
   }
 
   const auto& pred_binary =
@@ -19020,6 +19020,8 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   const auto bir_join_label =
       prepared.module.names.block_labels.intern("dispatch.edge.prepared.emit.join");
   const auto sum_name = prepared.names.value_names.intern("%edge.prepared.emit.sum");
+  const auto child_name =
+      prepared.names.value_names.intern("%edge.prepared.emit.child");
   const auto lhs_name = prepared.names.value_names.intern("%edge.prepared.emit.lhs");
   const auto unrelated_name =
       prepared.names.value_names.intern("%edge.prepared.emit.unrelated");
@@ -19042,10 +19044,19 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                     bir::BinaryInst{
                         .opcode = bir::BinaryOpcode::Add,
                         .result = bir::Value::named(bir::TypeKind::I64,
-                                                    "%edge.prepared.emit.sum"),
+                                                    "%edge.prepared.emit.child"),
                         .operand_type = bir::TypeKind::I64,
                         .lhs = bir::Value::named(bir::TypeKind::I64,
                                                  "%edge.prepared.emit.lhs"),
+                        .rhs = bir::Value::immediate_i64(2),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I64,
+                                                    "%edge.prepared.emit.sum"),
+                        .operand_type = bir::TypeKind::I64,
+                        .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                 "%edge.prepared.emit.child"),
                         .rhs = bir::Value::immediate_i64(1),
                     }},
                .terminator =
@@ -19061,10 +19072,11 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                    {bir::BinaryInst{
                        .opcode = bir::BinaryOpcode::Add,
                        .result = bir::Value::named(bir::TypeKind::I64,
-                                                   "%edge.prepared.emit.lhs"),
+                                                   "%edge.prepared.emit.child"),
                        .operand_type = bir::TypeKind::I64,
-                       .lhs = bir::Value::immediate_i64(40),
-                       .rhs = bir::Value::immediate_i64(2),
+                       .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                "%edge.prepared.emit.unrelated"),
+                       .rhs = bir::Value::immediate_i64(99),
                    }},
                .terminator = bir::Terminator{bir::ReturnTerminator{}},
                .label_id = bir_join_label,
@@ -19094,6 +19106,13 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                .register_name = std::string{"x3"},
            },
            prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{543},
+               .function_name = function_name,
+               .value_name = child_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x5"},
+           },
+           prepare::PreparedValueHome{
                .value_id = prepare::PreparedValueId{541},
                .function_name = function_name,
                .value_name = sum_name,
@@ -19105,13 +19124,23 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                .function_name = function_name,
                .value_name = unrelated_name,
                .kind = prepare::PreparedValueHomeKind::Register,
-               .register_name = std::string{"x4"},
+               .register_name = std::string{"x0"},
            }},
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto prepared_lookups =
+  const auto& pred_child_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[child_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{1},
+          .binary = &pred_child_binary,
+      };
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -19127,7 +19156,7 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   const auto source =
       bir::Value::named(bir::TypeKind::I64, "%edge.prepared.emit.sum");
   const auto& pred_binary =
-      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[1]);
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
   prepare::PreparedEdgePublication publication{
       .status = prepare::PreparedEdgePublicationLookupStatus::Available,
       .predecessor_label = pred_label,
@@ -19139,7 +19168,7 @@ int prepared_root_emission_uses_producer_context_for_operands() {
       .source_producer_kind =
           prepare::PreparedEdgePublicationSourceProducerKind::Binary,
       .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{1},
+      .source_producer_instruction_index = std::size_t{2},
       .source_binary = &pred_binary,
   };
   std::vector<std::string> lines;
@@ -19154,9 +19183,20 @@ int prepared_root_emission_uses_producer_context_for_operands() {
     return fail("expected prepared root emission to materialize from producer context");
   }
   if (lines != std::vector<std::string>{"mov x0, x3",
+                                        "mov x9, #2",
+                                        "add x0, x0, x9",
                                         "mov x9, #1",
                                         "add x0, x0, x9"}) {
-    return fail("expected prepared root emission to ignore successor operand decoy");
+    return fail("expected nested prepared source producer to ignore successor decoy");
+  }
+  if (aarch64_codegen::edge_value_publication_may_read_register_index(
+          pred_context,
+          join_context,
+          source,
+          1,
+          0,
+          &publication)) {
+    return fail("expected nested prepared source hazard check to ignore successor decoy");
   }
   auto mismatched_publication = publication;
   mismatched_publication.source_value =
