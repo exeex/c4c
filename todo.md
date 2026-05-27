@@ -1,15 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/46_aarch64_duplicate_prepared_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Shared Authority And Reference Responsibilities
+Current Step ID: Step 2
+Current Step Title: Audit Edge Copy And Publication Files
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Inventory Shared Authority And Reference Responsibilities is complete
-for the AArch64 duplicate-authority audit.
+Step 2 - Audit Edge Copy And Publication Files is complete for the AArch64
+duplicate-authority audit. The Step 1 authority baseline is retained below
+because later audit packets still depend on the same shared authority and
+column contract.
 
 Shared prepared authority baseline to use during the seven-file audit:
 
@@ -167,13 +169,31 @@ Audit table column contract for Steps 2-4:
 | `proof needed` | Narrow proof or local read needed when classification is uncertain; otherwise `none`. |
 | `reject signal` | The overfit/drift condition a reviewer should reject, such as expectation downgrade, named-case shortcut, duplicate same-block scan, or vague "move to BIR" wording. |
 
+Step 2 audit table rows:
+
+| file | candidate helper/path | local fact rederived | shared authority to consume | missing shared field/query | ARM reference responsibility | classification | proof needed | reject signal |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `prepared_edge_publication_producer_context` (`source_producer_block_label`, `source_producer_instruction_index`, `source_producer_kind`) | Edge source producer block, instruction index, and typed producer pointer for edge publication lowering. | `PreparedEdgePublication`, `PreparedEdgePublicationSourceProducer`, `find_indexed_prepared_edge_publication_source_producer`, `PreparedFunctionLookups::edge_publication_source_producers` | none | `emit.rs` operand loading after the source is known (`operand_to_x0`, `operand_to_callee_reg`) | consume-shared | none | Reject replacing the prepared source-producer fields with a fresh same-block scan or name-shaped producer match. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `find_edge_named_producer` plus `unique_branch_predecessor_context` fallback | Named value producer across successor, edge predecessor, and up to four linear predecessors when no prepared publication is required. | `PreparedEdgePublicationSourceProducerLookups`, `PreparedEdgePublication`, `find_indexed_prepared_edge_publication_source_producer`, `find_unique_indexed_prepared_edge_publication` | prepared edge dependency query by source value plus edge context, if fallback cases prove still unsupported by current lookups | `emit.rs` may load operands from already-known homes (`operand_to_x0`), but does not own predecessor producer discovery. | legacy-fallback | Local read of callers that pass `prepared_publication == nullptr` to decide whether each should be converted to prepared lookup consumption or left as pre-prepared fallback. | Reject extending the predecessor-depth scan or adding named-case shortcuts instead of consuming a prepared producer/publication fact. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `emit_edge_load_local_to_register_impl` `prepared_memory_access` path | Load-local source memory base, frame slot, pointer base value, and byte offset for edge publication materialization. | `PreparedEdgePublication::source_memory_*`, `PreparedEdgePublicationSourceMemoryAccessStatus`, `PreparedMemoryAccess`, `PreparedValueHome` | none | `emit.rs` owns load spelling and base-plus-offset emission (`emit_load_from_sp`, `emit_load_from_reg`). | consume-shared | none | Reject re-scanning BIR load-local/address operands when `PreparedEdgePublication` already carries source memory facts. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `edge_value_publication_may_read_register_index` and recursive operand checks | Register-read hazard for choosing target/scratch ordering while materializing cast, binary, and select producer chains. | `PreparedEdgePublication::source_home`, `PreparedEdgePublication::source_producer_kind`, `PreparedValueHome` | none | `emit.rs` owns scratch/register hazard decisions during compare and operand loading (`emit_int_cmp_insn`, `operand_to_x0`). | target-emission | none | Reject classifying scratch-order or register-alias checks as duplicate authority unless the route also rederives semantic source/home facts. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `should_emit_block_entry_edge_copy_move` and `lower_predecessor_select_parallel_copy_sources` | Out-of-SSA block-entry move redundancy and matching predecessor/successor edge publication for a parallel-copy move. | `PreparedMoveBundle`, `PreparedMoveAuthorityKind::OutOfSsaParallelCopy`, `find_prepared_move_bundle`, `find_unique_indexed_block_entry_parallel_copy_edge_publication`, `prepared_edge_publication_redundant_block_entry_parallel_copy_move`, `prepared_edge_publication_matches_parallel_copy_move_source` | none | `emit.rs` owns actual move/load/store emission after the copy contract is known (`store_x0_to`, `emit_store_to_sp`). | consume-shared | none | Reject local predecessor/successor/move matching that bypasses the prepared edge-publication and move-bundle helpers. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | `emit_select_chain_value_to_register` and `materialize_direct_global_select_chain_call_argument` | Select-chain producer shape and direct-global-load dependency for late call-argument materialization. | `PreparedEdgePublicationSourceProducerKind::SelectMaterialization`, `PreparedEdgePublicationSourceProducerLookups`, `PreparedStoreSourcePublicationPlan::direct_global_select_chain_dependency` | prepared call-argument/select-chain dependency query if this call-argument path is not covered by current prepared call plans | `emit.rs` owns compare/select instruction spelling (`emit_int_cmp_insn`, `emit_select`) after source selection. | legacy-fallback | Local read during calls audit to decide whether this path belongs to `PreparedCallPlan` or a shared select-chain dependency helper. | Reject claiming progress by only special-casing direct-global select chains in this AArch64 helper. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `current_block_entry_publication_register` value-home name scan fallback | Value-name to `PreparedValueHome` recovery when `prepared_named_value_id` did not resolve the BIR value. | `PreparedValueHomeLookups::value_ids`, `find_prepared_value_id`, `find_indexed_prepared_value_home`, `PreparedBlockEntryPublication` | none | `emit.rs` can choose register names, but value-home lookup is shared prepared authority. | consume-shared | none | Reject manual iteration over `value_locations->value_homes` by spelling when indexed value-id/home lookups are available. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `collect_current_block_entry_publications`, `value_has_current_block_entry_publication`, `record_current_block_entry_publication_registers`, `block_entry_move_clobbers_current_join_publication` | Current block-entry publication availability, destination register, and clobber state for emitted scalar tracking. | `PreparedBlockEntryPublication`, `PreparedBlockEntryPublicationStatus`, `collect_prepared_block_entry_publications`, `prepared_block_entry_publication_available` | none | `emit.rs` owns register spelling and emitted move ordering, not block-entry publication discovery. | consume-shared | none | Reject rebuilding block-entry publication state from raw move bundles when `PreparedBlockEntryPublication` is already available. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `lower_missing_conditional_branch_condition_publication` | Conditional-branch condition producer instruction recovered by same-block producer scan before calling scalar lowering. | `PreparedBranchCondition`, `PreparedScalarPublicationPlan`, `PreparedEdgePublicationSourceProducerLookups` | prepared branch-condition producer instruction index or scalar-publication query for materialized branch conditions | `emit.rs` owns branch/compare emission (`emit_branch_nonzero`, `emit_int_cmp_insn`) after the condition source is known. | missing-shared-field | Inspect prepared control-flow branch-condition records and scalar publication planner before repair to decide where the producer index belongs. | Reject extending same-block condition scans or adding named branch-condition shortcuts instead of adding/consuming shared producer authority. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `lower_missing_fused_compare_operand_publication` and `lower_missing_fused_compare_operand_publications` | Fused-compare operand publication need, destination home, current block-entry publication, and scratch target selection. | `PreparedBranchCondition`, `PreparedScalarPublicationPlan`, `PreparedBlockEntryPublication`, `PreparedValueHome` | scalar-publication helper for branch/fused-compare operand publication, if `plan_prepared_scalar_publication` cannot represent this hook today | `emit.rs` owns fused compare-branch operand loading and compare spelling (`emit_int_cmp_insn`, `emit_fused_cmp_branch`). | consume-shared | Local read of `plan_prepared_scalar_publication` call sites before repair to verify the existing planner can cover fused-compare operands. | Reject lowering fused-compare operands through ad hoc same-block source scans when a scalar publication plan can supply the source/home contract. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `memory_load_result_feeds_before_return_fpr_abi` inside `retarget_memory_result_to_prepared_home` | Before-return FPR ABI consumer for a memory load result, found by scanning raw move bundles. | `PreparedMoveBundle`, `PreparedMovePhase::BeforeReturn`, `PreparedMoveBundleLookups`, `find_prepared_move_bundle`, `PreparedValueHome` | before-return move lookup by source value id and destination register bank | `emit.rs` owns result register spelling and loads/stores (`emit_load_from_sp`, `store_x0_to`), not return-move discovery. | missing-shared-field | Verify whether existing move-bundle indexes can answer source-value/destination-bank queries without raw bundle iteration. | Reject further raw scans of `move_bundles` for before-return publication facts. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `lower_local_slot_address_publication`, `local_slot_address_frame_offset`, `local_aggregate_address_frame_offset` | Local-slot/aggregate address base frame offset recovered from stack object source kind, object name, lane `.0`, and frame-slot scan. | `PreparedScalarPublicationPlan`, `PreparedValueHomeKind::PointerBasePlusOffset`, `PreparedAddressMaterialization`, `PreparedAggregateStackSourceAuthority` | prepared local-slot address/frame-offset query keyed by value or stack object | `emit.rs` owns `add sp/fp, #offset` address emission (`emit_add_sp_offset`, `emit_alloca_addr`). | missing-shared-field | Inspect prepared address-materialization records before repair to decide whether to add a query or consume an existing pointer-base-plus-offset home. | Reject string-shaped lane-name scans such as `.0` as the durable source of aggregate/local-slot address authority. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `lower_fixed_formal_store_local_publication` and `store_local_value_is_fixed_formal` | Fixed formal store source and destination frame-slot publication recovered from BIR params plus prepared memory access. | `PreparedStoreSourcePublicationPlan`, `PreparedStoreSourcePublicationInputs`, `PreparedMemoryAccess`, `plan_prepared_store_source_publication` | none | `emit.rs` owns final store mnemonic and frame-slot addressing (`emit_store_to_sp`, `store_x0_to`). | consume-shared | none | Reject rederiving formal-parameter identity from BIR params when the store-source publication planner can own source/destination intent. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | `value_publication_may_read_register_index` recursive producer walk | Register-read hazard for scratch/target selection while publishing cast, binary, and select values. | `PreparedValueHome`, `PreparedBlockEntryPublication`, `PreparedEdgePublicationSourceProducerLookups` | none | `emit.rs` owns scratch ordering and compare operand loading hazards (`emit_int_cmp_insn`, `operand_to_x0`). | target-emission | none | Reject treating target-local register hazard analysis alone as duplicate authority without a semantic source/home rederivation. |
+
 ## Suggested Next
 
-Proceed to Step 2 of `plan.md`: audit
-`src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` and
-`src/backend/mir/aarch64/codegen/dispatch_publication.cpp` against this
-baseline, filling the table columns above with concrete helper names and
-classifications.
+Proceed to Step 3 of `plan.md`: audit
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` and
+`src/backend/mir/aarch64/codegen/memory.cpp` against the retained Step 1
+baseline, preserving the same table column contract and classification set.
 
 ## Watchouts
 
@@ -188,6 +208,12 @@ materialization, instruction mnemonic choice, condition-code spelling, or ABI
 register/stack emission as duplicate authority by itself. The duplicate signal
 requires rederiving a semantic prepared fact that should come from the shared
 records/helpers named above.
+
+Step 2 left three proof questions for later repair planning, not this
+audit-only packet: whether edge dependency producer lookup needs a new prepared
+query, whether branch/fused-compare publication can use
+`plan_prepared_scalar_publication` as-is, and whether before-return move
+lookups can answer source-value/destination-bank queries without raw scans.
 
 ## Proof
 
