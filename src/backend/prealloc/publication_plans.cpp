@@ -794,8 +794,12 @@ find_prepared_same_block_load_local_source_producer(
 
   auto* load_access =
       find_prepared_memory_access(*addressing, producer_block_label, producer_instruction_index);
-  if (load_access == nullptr ||
-      producer_instruction_index >= block->insts.size()) {
+  const auto load_access_matches =
+      load_access != nullptr &&
+      producer_instruction_index < block->insts.size() &&
+      load_local != nullptr &&
+      prepared_load_access_matches_result(names, load_access, *load_local);
+  if (!load_access_matches) {
     load_access =
         find_prepared_memory_access_by_result_value_name(*addressing, *value_name);
     if (load_access != nullptr) {
@@ -807,7 +811,8 @@ find_prepared_same_block_load_local_source_producer(
       producer_instruction_index < block->insts.size()
           ? std::get_if<bir::LoadLocalInst>(&block->insts[producer_instruction_index])
           : nullptr;
-  if (indexed_load_local != nullptr) {
+  if (indexed_load_local != nullptr &&
+      prepared_load_access_matches_result(names, load_access, *indexed_load_local)) {
     load_local = indexed_load_local;
   }
   if (load_local == nullptr ||
