@@ -13,6 +13,7 @@
 #include "globals.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,106 @@ namespace c4c::backend::aarch64::codegen {
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
+
+namespace {
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
+prepared_same_block_scalar_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
+      context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_same_block_scalar_producer(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        *value_name,
+        value.type,
+        before_instruction_index);
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  return prepare::find_prepared_same_block_scalar_producer(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      *value_name,
+      value.type,
+      before_instruction_index);
+}
+
+[[nodiscard]] const prepare::PreparedAddressingFunction* prepared_addressing_function(
+    const module::BlockLoweringContext& context) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return nullptr;
+  }
+  return prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+}
+
+[[nodiscard]] bool emit_prepared_fp_global_load_to_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryAccess& access,
+    abi::RegisterReference destination,
+    std::uint8_t gp_scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr ||
+      access.address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access.address.symbol_name.has_value() ||
+      !access.address.can_use_base_plus_offset) {
+    return false;
+  }
+  const auto address = abi::gp_register(gp_scratch_index, abi::RegisterView::X);
+  const auto policy = prepare::prepared_global_symbol_address_policy(
+      access.address, context.function.target_profile);
+  const auto symbol_label =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *access.address.symbol_name);
+  if (!address.has_value() || !policy.has_value() || symbol_label.empty()) {
+    return false;
+  }
+
+  const std::string address_name{abi::register_name(*address)};
+  const std::string destination_name{abi::register_name(destination)};
+  switch (*policy) {
+    case bir::GlobalAddressMaterializationPolicy::GotRequired:
+      lines.push_back("adrp " + address_name + ", :got:" + std::string{symbol_label});
+      lines.push_back("ldr " + address_name + ", [" + address_name + ", :got_lo12:" +
+                      std::string{symbol_label} + "]");
+      lines.push_back("ldr " + destination_name + ", " +
+                      register_indirect_address(address_name,
+                                                access.address.byte_offset));
+      return true;
+    case bir::GlobalAddressMaterializationPolicy::Direct: {
+      const auto symbol = relocation_operand(symbol_label, access.address.byte_offset);
+      lines.push_back("adrp " + address_name + ", " + symbol);
+      lines.push_back("add " + address_name + ", " + address_name + ", :lo12:" +
+                      symbol);
+      lines.push_back("ldr " + destination_name + ", [" + address_name + "]");
+      return true;
+    }
+    case bir::GlobalAddressMaterializationPolicy::Unspecified:
+      return false;
+  }
+  return false;
+}
+
+}  // namespace
 
 [[nodiscard]] bool emit_fp_immediate_to_register(std::vector<std::string>& lines,
                                                  const bir::Value& value,
@@ -234,6 +335,26 @@ namespace prepare = c4c::backend::prepare;
   if (const auto* load_global =
           producer != nullptr ? std::get_if<bir::LoadGlobalInst>(producer) : nullptr;
       load_global != nullptr) {
+    const auto prepared_producer =
+        prepared_same_block_scalar_producer(context, value, before_instruction_index);
+    const auto* addressing = prepared_addressing_function(context);
+    const auto prepared_access =
+        context.function.prepared != nullptr && prepared_producer.has_value()
+            ? prepare::find_prepared_same_block_global_load_access(
+                  context.function.prepared->names,
+                  addressing,
+                  *prepared_producer)
+            : std::nullopt;
+    if (prepared_access.has_value() &&
+        prepared_access->access != nullptr &&
+        emit_prepared_fp_global_load_to_register(context,
+                                                 *prepared_access->access,
+                                                 *destination_view,
+                                                 gp_scratch_index,
+                                                 lines)) {
+      return true;
+    }
+
     const auto address = abi::gp_register(gp_scratch_index, abi::RegisterView::X);
     if (!address.has_value() || load_global->global_name.empty()) {
       return false;
