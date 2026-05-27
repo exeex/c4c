@@ -1,290 +1,268 @@
-# AArch64 Dispatch Value Materialization Prepared Authority Repair Runbook
+# AArch64 ALU Prepared Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
+Source Idea: ideas/open/51_aarch64_alu_prepared_authority_repair.md
+Supersedes active route: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md is parked open after Step 8 exposed an ALU-owned stale-home blocker.
 
 ## Purpose
 
-Turn `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` into
-a consumer of shared prepared source, producer, publication, memory, global,
-select-chain, and local-slot address facts instead of locally rediscovering
-the same value-materialization authority.
+Turn `src/backend/mir/aarch64/codegen/alu.cpp` into a consumer of prepared
+value-home, storage, memory-access, scalar-publication, edge source-producer,
+move-bundle, branch/return, and select-chain facts instead of rediscovering
+scalar source and result authority locally.
 
 ## Goal
 
-Remove or fail-close duplicate semantic source reconstruction in AArch64 value
-materialization while preserving emitted behavior.
+Repair ordinary AArch64 scalar ALU stale-home reads by replacing local
+same-block load-local producer and publication recovery with shared prepared
+authority.
 
 ## Core Rule
 
-Prefer prepared/shared authority over same-block producer recursion, neighbor
-scans, global-name policy recovery, local-slot spelling, or expectation
-downgrades as progress.
+Prefer shared prepared scalar publication/source-producer authority over local
+same-block producer walks, load/store alias scans, raw move-bundle scans, or
+expectation downgrades.
 
 ## Read First
 
-- `ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md`
+- `ideas/open/51_aarch64_alu_prepared_authority_repair.md`
+- `src/backend/mir/aarch64/codegen/alu.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
 - Prepared authority definitions and lookup helpers for:
+  - `PreparedValueHome`
+  - `PreparedStoragePlanValue`
+  - `PreparedValueHomeLookups`
+  - `PreparedAddressingFunction`
+  - `PreparedScalarPublicationPlan`
   - `PreparedEdgePublicationSourceProducerLookups`
   - `PreparedEdgePublicationSourceProducer`
-  - `PreparedScalarPublicationPlan`
-  - `PreparedValueHome`
-  - `PreparedBlockEntryPublication`
-  - `collect_prepared_block_entry_publications`
-  - `prepared_block_entry_publication_available`
-  - `find_indexed_prepared_value_home`
-  - `PreparedMemoryAccess`
-  - `PreparedAddressingFunction`
-  - `PreparedStoreSourcePublicationPlan`
-  - `find_prepared_recovered_narrow_store_source_for_wide_local_load`
-  - `PreparedAddressMaterialization`
+  - `PreparedMoveBundle`
+  - `PreparedMovePhase::BeforeReturn`
 
 ## Current Targets
 
-- `emit_value_publication_to_register`
-- `find_same_block_named_producer`
-- recursive cast/binary/load/select materialization from named producers
-- `current_block_entry_publication_register`
-- `value_has_current_block_entry_publication`
-- `prepared_value_home_for_value`
-- `prepared_local_load_offset`
-- `emit_prepared_pointer_value_load_to_register`
-- `find_prepared_recovered_narrow_store_source_for_wide_local_load`
-- `find_load_global_target`
-- `load_global_symbol_label`
-- GOT/direct global-load emission paths
-- `emit_select_chain_value_to_register`
-- `emit_local_slot_address_publication_to_register`
+- `make_prepared_scalar_alu_record`
+- `make_prepared_scalar_unary_record`
+- `make_prepared_scalar_operand`
+- `make_prepared_scalar_result_operand`
+- `make_prepared_scalar_load_source`
+- `find_same_block_load_local_producer_index`
+- `has_intervening_store_to_local_load_source`
+- `make_unpublished_load_local_source_operand`
+- `find_return_abi_register`
+- `find_return_chain_register`
+- `lower_scalar_select_publication`
 
 ## Non-Goals
 
-- Do not change recursive operand emission, scratch/read-write hazard checks,
-  load/global address spelling, compare/select instruction spelling, or
-  AArch64-specific GOT/direct emission mechanics unless required to consume a
-  shared semantic contract.
-- Do not expand this idea into calls, ALU, comparison, publication, or memory
-  repairs outside this file.
-- Do not classify scratch-order checks alone as duplicate authority unless the
-  code also reselects semantic source or home facts locally.
-- Do not claim line-count reduction, helper renames, or expectation rewrites as
-  capability progress.
-- Do not downgrade supported-path tests to `unsupported`.
+- Do not change arithmetic opcode spelling, immediate optimizations,
+  accumulator/direct-register paths, mul/div/rem scratch ordering, 32-bit
+  sign/zero extension, or register-read hazard checks except to consume shared
+  prepared facts.
+- Do not implement calls, comparison, memory, or dispatch-value-materialization
+  repairs under this plan.
+- Do not push call-argument producer logic into ALU without an explicit shared
+  query contract.
+- Do not treat target-local scratch ordering as duplicate semantic authority
+  by itself.
+- Do not claim helper renames, line-count reduction, expectation rewrites, or
+  unsupported-test downgrades as capability progress.
 
 ## Working Model
 
-- Prepared source-producer and scalar-publication facts should own scalar
-  materialization source identity for non-edge callers.
-- Prepared block-entry publication and value-home records should own current
-  block-entry and value-home availability.
-- Prepared memory/access and recovered store-source facts should own load-local
-  materialization.
-- Prepared address/materialization authority should own global-load GOT/direct
-  policy if existing records can express it; otherwise a narrow shared query
-  should be added before removing local fallback behavior.
-- Shared scalar select-chain authority should own non-edge/non-store
-  select-chain materialization when producer facts are insufficient.
-- The local-slot address authority selected by the publication repair should
-  be reused here instead of adding another frame-offset recovery path.
+- ALU operand/result records should remain consumers of prepared value-home and
+  storage facts.
+- Scalar load source recovery should consume a prepared memory-access lookup by
+  result value id/name instead of scanning `PreparedAddressingFunction::accesses`
+  by spelling.
+- Same-block unpublished `load_local` producer recovery should be owned by a
+  shared scalar-publication or source-producer query keyed by source value and
+  consumer instruction index.
+- Before-return retargeting should consume prepared move or return-chain
+  authority instead of raw move-bundle or forward BIR scans.
+- Direct-global select-chain scalar publication should consume the shared
+  select-chain materialization authority used by other non-edge consumers.
 
 ## Execution Rules
 
-- Keep each code-changing step behavior-preserving unless the source idea
-  explicitly requires fail-closed behavior for unsupported local rediscovery.
-- Before adding a new query, prove the existing prepared lookup surface cannot
-  answer the required value-materialization context.
-- Add only narrowly scoped shared queries for real scalar-materialization,
-  global-load, select-chain, or local-slot authority gaps.
-- Each implementation packet needs fresh build or compile proof. The supervisor
+- Start from the remaining dispatch close-readiness failures:
+  `c_testsuite_aarch64_backend_src_00164_c` and
+  `c_testsuite_aarch64_backend_src_00204_c`.
+- Establish a focused baseline for the old four-test family before further
+  backend surgery:
+  `00164`, `00176`, `00181`, and `00204`.
+- Split the stale-home seam into small probes under `tests/backend/case/`
+  before changing shared ALU authority.
+- Keep probes semantic and same-feature, not named-case shortcuts for one
+  c-testsuite file.
+- Each code-changing step needs fresh build or compile proof. The supervisor
   chooses the exact proving subset.
-- Narrow proof must cover the repaired materialization route and any retained
-  fallback path for that route.
+- If a probe proves the remaining failure is in `calls.cpp` rather than
+  ordinary ALU operand/source publication, stop and route through
+  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of
+  widening this plan.
 
 ## Steps
 
-### Step 1: Map value-materialization authority gaps
+### Step 1: Establish the remaining stale-home baseline
 
-Goal: establish where `dispatch_value_materialization.cpp` already consumes
-prepared authority and where it reconstructs semantic materialization facts
-locally.
+Goal: make the current failure family explicit before touching ALU lowering.
 
-Primary target: `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
-
-Actions:
-
-- Inspect non-edge callers of `emit_value_publication_to_register` and record
-  where same-block producer recursion is still the source of truth.
-- Inspect block-entry/value-home helpers and confirm which paths are already
-  pure consumers of prepared block-entry and value-home facts.
-- Inspect load-local, load-global, select-chain, and local-slot address paths
-  for local source, policy, or frame-offset recovery.
-- Identify the first fallback route to repair and the smallest proof subset
-  that covers it.
-
-Completion check:
-
-- `todo.md` names the exact first fallback route to repair and the proof subset
-  the supervisor selected for that route.
-
-### Step 2: Route non-edge scalar producer materialization through prepared source authority
-
-Goal: stop same-block named producer recursion from growing as scalar
-materialization authority for non-edge callers.
-
-Primary target: `emit_value_publication_to_register`,
-`find_same_block_named_producer`, and recursive cast/binary/load/select
-lowering
+Primary target: `todo.md` proof state and the supervisor-selected c-testsuite
+subset
 
 Actions:
 
-- Consume `PreparedEdgePublicationSourceProducerLookups`,
-  `PreparedEdgePublicationSourceProducer`, `PreparedScalarPublicationPlan`, and
-  `PreparedValueHome` where they cover non-edge scalar sources.
-- Add a prepared scalar-materialization/source-producer query by value and
-  instruction index only if non-edge callers cannot consume existing prepared
-  producers.
-- Remove or fail-close local same-block producer recursion as semantic source
-  authority after the shared path exists.
+- Run or delegate the focused four-test baseline:
+  `c_testsuite_aarch64_backend_src_00164_c`,
+  `c_testsuite_aarch64_backend_src_00176_c`,
+  `c_testsuite_aarch64_backend_src_00181_c`, and
+  `c_testsuite_aarch64_backend_src_00204_c`.
+- Confirm the expected current shape: `00176` and `00181` pass after the
+  select-chain label-identity repair; `00164` and `00204` still fail at
+  runtime from stale or uninitialized ALU operands.
+- Record the exact observed stale homes, producer values, and consumer
+  instructions in `todo.md`.
 
 Completion check:
 
-- Non-edge scalar materialization consumes prepared producer/home authority or
-  a documented shared scalar query, with proof for the repaired route.
+- `todo.md` records the fresh baseline command, result, and the first concrete
+  ALU stale-home sequence to reduce.
 
-### Step 3: Preserve block-entry and value-home helpers as prepared consumers
+### Step 2: Add focused backend probes for unpublished load-local ALU operands
 
-Goal: ensure block-entry and value-home checks remain consumers of prepared
-facts, not local rediscovery.
+Goal: split the remaining failure seam into repo-local probes before changing
+ALU authority.
 
-Primary target: `current_block_entry_publication_register`,
-`value_has_current_block_entry_publication`, and
-`prepared_value_home_for_value`
+Primary target: `tests/backend/case/`
 
 Actions:
 
-- Consume `PreparedBlockEntryPublication`, `PreparedValueHome`,
-  `collect_prepared_block_entry_publications`,
-  `prepared_block_entry_publication_available`, and
-  `find_indexed_prepared_value_home`.
-- Reject raw move-bundle, value-home spelling, or value-name scans as a
-  replacement for prepared block-entry/value-home checks.
-- Document any retained fallback as fail-closed or as an explicit shared-query
-  gap in `todo.md`.
+- Add one minimal probe where an unpublished same-block `load_local` feeds an
+  ordinary scalar ALU operand after another materialization event.
+- Add a nearby same-feature probe that varies the consumer shape, such as a
+  second binary operator, chained ALU consumer, or call boundary before the ALU
+  use.
+- Keep expected output behavior-focused; do not encode c-testsuite-specific
+  names, instruction labels, or temporary register choices.
+- Use the probes to classify whether the stale read is selected by ALU operand
+  publication, call argument materialization, or a shared source-producer gap.
 
 Completion check:
 
-- Block-entry/value-home materialization decisions are prepared-fact consumers,
-  with proof for any route changed in this step.
+- At least two focused probes exist under `tests/backend/case/`, and `todo.md`
+  records which route owns the stale-home decision.
 
-### Step 4: Route load-local materialization through prepared memory and recovered-source facts
+### Step 3: Route scalar load source lookup through prepared memory authority
 
-Goal: keep load-local source materialization anchored in prepared memory and
-recovered store-source authority without neighbor scans.
+Goal: stop `make_prepared_scalar_load_source` from using local value-spelling
+scans as load source authority.
 
-Primary target: the load-local branch using `prepared_local_load_offset`,
-`emit_prepared_pointer_value_load_to_register`, and
-`find_prepared_recovered_narrow_store_source_for_wide_local_load`
+Primary target: `make_prepared_scalar_load_source`
 
 Actions:
 
-- Consume `PreparedMemoryAccess`, `PreparedAddressingFunction`,
-  `PreparedStoreSourcePublicationPlan`, and recovered narrow-store source
-  facts for load-local materialization.
-- Remove or fail-close neighbor scans or local reconstruction that duplicate
-  prepared memory/source authority.
-- Preserve final load behavior unless prepared authority proves a local
-  fallback unsupported.
+- Consume an existing prepared memory-access lookup by result value id/name if
+  one already exists.
+- Add a narrow shared lookup only if `PreparedAddressingFunction::accesses`
+  cannot answer the needed query without a local scan in ALU.
+- Preserve stack/global scalar load behavior while moving the lookup authority
+  out of `alu.cpp`.
 
 Completion check:
 
-- Load-local source materialization consumes prepared memory/recovered-source
-  facts, with proof for the affected route.
+- Scalar load source recovery no longer linearly scans
+  `PreparedAddressingFunction::accesses` by value spelling in ALU, with proof
+  for the focused probes and the relevant c-testsuite subset.
 
-### Step 5: Route global-load materialization through shared address authority
+### Step 4: Replace same-block load-local producer recovery
 
-Goal: prevent local global-name spelling, GOT policy, or direct-global recovery
-from becoming a second semantic authority.
+Goal: remove ALU-owned same-block load-local producer and no-intervening-store
+logic as the source of unpublished operand truth.
 
-Primary target: `find_load_global_target`, `load_global_symbol_label`, and
-GOT/direct global-load emission paths
+Primary target: `find_same_block_load_local_producer_index`,
+`has_intervening_store_to_local_load_source`, and
+`make_unpublished_load_local_source_operand`
 
 Actions:
 
-- Check whether `PreparedAddressMaterialization` can carry the needed
-  global-load address and GOT/direct policy.
-- Add or consume a prepared global-load address/materialization query keyed by
-  value or instruction only if existing prepared address authority cannot cover
-  the path.
-- Replace local fallback behavior only after the shared authority is available
-  and covered by tests.
+- Consume or add a prepared scalar-publication/source-producer query keyed by
+  source value and consumer instruction index.
+- Use the shared query to decide whether an unpublished load-local producer can
+  be read from prepared memory/source authority instead of from its assigned
+  result home.
+- Remove or fail-close local same-block producer/no-intervening-store scans
+  after the shared path exists.
 
 Completion check:
 
-- Global-load materialization consumes shared address/materialization authority,
-  with proof for GOT/direct policy preservation.
+- Ordinary scalar ALU operands for unpublished same-block load-local producers
+  consume shared authority, and the focused probes plus `00164`/`00204` no
+  longer show stale-home operand reads.
 
-### Step 6: Route non-edge select-chain materialization through shared scalar authority
+### Step 5: Repair before-return and return-chain authority
 
-Goal: stop local select-chain materialization from duplicating shared
-select-chain authority for non-edge/non-store consumers.
+Goal: keep ALU return retargeting anchored in shared prepared move or
+return-chain facts.
 
-Primary target: the select branch calling `emit_select_chain_value_to_register`
-with `prepared_named_value_id`
+Primary target: `find_return_abi_register` and `find_return_chain_register`
 
 Actions:
 
-- Consume existing prepared producer/scalar-publication facts where they cover
-  non-edge select-chain materialization.
-- Add or consume a prepared scalar select-chain materialization query if shared
-  producer facts are insufficient.
-- Avoid direct-global or named select-chain shortcuts whose evidence is only
-  one testcase.
+- Add or consume a prepared before-return move lookup by source value id and
+  destination register bank.
+- Add a prepared return/result-chain publication query only if the move lookup
+  does not cover the remaining return-chain behavior.
+- Remove raw move-bundle and forward name-chain scans once shared authority is
+  available.
 
 Completion check:
 
-- Non-edge select-chain materialization is routed through shared scalar or
-  select-chain authority, with proof for the repaired path and a nearby
-  same-feature route when available.
+- Before-return ABI retargeting and any surviving return-chain behavior consume
+  shared prepared authority, with proof for affected return routes.
 
-### Step 7: Reuse prepared local-slot address authority
+### Step 6: Route ALU select-chain publication through shared select authority
 
-Goal: remove local-slot address/frame-offset recovery that duplicates the
-authority selected by the publication repair.
+Goal: align `lower_scalar_select_publication` with the shared non-edge
+select-chain materialization authority.
 
-Primary target: `emit_local_slot_address_publication_to_register`
+Primary target: `lower_scalar_select_publication`
 
 Actions:
 
-- Reuse the prepared local-slot address/frame-offset query or authority
-  selected by the publication repair.
-- Prefer pointer-base-plus-offset homes or prepared address materialization
-  over stack-object spelling or lane-based recovery.
-- Do not add a second AArch64-only local-slot address authority path.
+- Consume the shared scalar select-chain materialization query selected for
+  non-edge consumers.
+- Remove direct-global select-chain shortcuts whose only proof is a narrow
+  named case.
+- Preserve behavior for direct-global select-chain scalar publication through
+  shared authority.
 
 Completion check:
 
-- Local-slot address materialization consumes the shared publication-repair
-  authority, with proof for the affected address route.
+- Direct-global select-chain scalar publication consumes shared select-chain
+  materialization authority, with proof for a direct-global route and a nearby
+  same-feature route.
 
-### Step 8: Consolidate proof and close readiness
+### Step 7: Consolidate proof and route ownership
 
-Goal: ensure the completed repair is not a testcase-overfit slice.
+Goal: ensure the ALU prepared-authority repair is not testcase-overfit and did
+not absorb calls-owned work.
 
 Primary target: lifecycle proof in `todo.md`, `test_before.log`, and
 `test_after.log`
 
 Actions:
 
-- Confirm all remaining local fallback paths are removed, fail-closed, or
-  documented as shared-query gaps with corresponding shared queries.
 - Confirm no expectations were downgraded and no unsupported-path rewrites were
-  used as capability proof.
-- Run the supervisor-selected broader validation after the repaired
-  materialization routes have landed or the repair is ready to close.
+  used as progress.
+- Confirm any calls-owned findings were routed to
+  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of fixed
+  in ALU without a shared-query contract.
+- Run the supervisor-selected broader validation once the focused stale-home
+  family is green.
 
 Completion check:
 
-- `todo.md` records fresh proof covering non-edge scalar materialization,
-  block-entry/value-home consumption, load-local materialization, global-load
-  authority, select-chain authority, and local-slot address authority as
-  applicable.
+- `todo.md` records fresh proof covering the focused probes, the four-test
+  c-testsuite family, and the broader validation selected by the supervisor.
