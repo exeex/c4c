@@ -69,6 +69,26 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 scalability prepared_call_boundary
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_alu_unpublished_load_local_after_call
+  SRC "${BACKEND_CASE_ROOT}/aarch64_alu_unpublished_load_local_after_call.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_alu_unpublished_load_local_after_call.s"
+  REQUIRED_SNIPPETS ".text"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 alu prepared_authority probe
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_alu_unpublished_load_local_call_boundary
+  SRC "${BACKEND_CASE_ROOT}/aarch64_alu_unpublished_load_local_call_boundary.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_alu_unpublished_load_local_call_boundary.s"
+  REQUIRED_SNIPPETS ".text"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 alu prepared_authority probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
