@@ -1,194 +1,200 @@
-# AArch64 Edge Terminator Consumer Preservation Repair Runbook
+# AArch64 HFA Aggregate Return Result Consumption Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md
-Activated After: closed idea 52
+Source Idea: ideas/open/57_aarch64_hfa_aggregate_return_result_consumption_repair.md
+Switched From: ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md
 
 ## Purpose
 
-Resume the parked edge/terminator consumer-preservation repair now that the
-call/byval publication owner has been closed, and judge the edge-preservation
-contract on its own source-idea criteria.
+Route the non-owned first bad fact discovered during idea 56 Step 1 into its
+own precise lifecycle owner.
 
 ## Goal
 
-Repair prepared edge and terminator publication so successor consumers can use
-the correct predecessor value even when out-of-SSA edge publication reuses the
-same physical register for another incoming value.
+Repair AArch64 HFA aggregate call-result consumption so caller-side stores,
+copies, and conversions consume the prepared ABI result lane registers after a
+call, not stale allocated FPR homes.
 
 ## Core Rule
 
-Fix the prepared placement and consumption contract. Do not repair the route
-with testcase names, join-time reloads from mutated locals, textual assembly
-suppression, or AArch64-only instruction shuffling that leaves prepared
-planning unable to describe the preservation requirement.
+Use prepared call-result lane authority. Do not repair this route with
+testcase names, rendered assembly filtering, local ABI reclassification, or
+edge/terminator preservation changes.
 
 ## Read First
 
-- `ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md`
-- `src/backend/prealloc/regalloc/consumer_moves.cpp`
-- `src/backend/prealloc/regalloc/consumer_moves.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/publication_plans.hpp`
+- `ideas/open/57_aarch64_hfa_aggregate_return_result_consumption_repair.md`
+- `src/backend/mir/aarch64/AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`
+- `src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md`
 - `src/backend/prealloc/prepared_lookups.cpp`
 - `src/backend/prealloc/prepared_lookups.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+- `src/backend/mir/aarch64/module/module.cpp`
+- `src/backend/mir/aarch64/module/module.hpp`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/cast_ops.cpp`
+- `tests/backend/bir/backend_prepare_liveness_test.cpp`
+- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
 
 ## Current Scope
 
-- Prepared consumer-move placement that depends on predecessor terminator or
-  edge-publication clobbers.
-- Out-of-SSA edge publication ordering when a source register for a later
-  successor consumer is reused for another incoming value.
-- Shared prepared lookup facts needed by AArch64 lowering to consume preserved
-  sources without raw BIR scans.
-- Minimal AArch64 consumer changes only when they consume the prepared
-  preservation answer.
+- HFA aggregate call-result lanes returned in AAPCS64 FP/SIMD result
+  registers.
+- Prepared `AfterCall` move bundles and ABI bindings for HFA result lanes.
+- AArch64 caller-side consumers that store, copy, convert, or materialize those
+  lanes after the call.
+- Minimal prepared lookup or module-record plumbing needed to expose existing
+  call-result lane facts to consumers.
 
 ## Non-Goals
 
-- Do not reload `%lv.ap.24` in the join block after the va_list field has been
-  mutated.
-- Do not add cast-only or ALU-only stale-register fallbacks without providing a
-  valid preserved source.
-- Do not change AAPCS64 call staging, variadic layout constants, or va_list
-  cursor writeback rules.
-- Do not fold unrelated dispatch value-materialization, memory identity,
-  comparison, global-load, or broad calls lowering repairs into this route.
-- Do not weaken expectations or mark supported probes unsupported.
+- Do not implement idea 56 edge/terminator consumer preservation here.
+- Do not change variadic register-save area layout, va_list cursor writeback,
+  by-value argument publication, or general call staging unless tracing proves
+  they are required for HFA return-result consumption.
+- Do not rewrite callee-side return publication unless the callee no longer
+  publishes the HFA ABI result lanes.
+- Do not weaken tests or mark supported cases unsupported.
 
 ## Working Model
 
-The target failure family is a prepared-placement bug: a successor consumer
-needs a predecessor value after edge publication would clobber the physical
-register that still appears to hold the source. Prepared planning must either
-place the consumer move before predecessor edge publication or expose a
-preserved source home that successor lowering can consume.
+The observed failure is a call-result consumption bug: `fr_hfa12` publishes HFA
+lanes to `s0` and `s1`, but the caller later stores or converts stale `s9` and
+`s13`. Prepared liveness already expects HFA call-result lanes to appear as
+distinct `AfterCall` ABI bindings. AArch64 lowering must preserve and consume
+that authority through the caller-side aggregate-result uses.
 
 ## Execution Rules
 
-- Treat the `%t35 -> %t45.byte_offset.i64` case as a diagnostic example only.
-  The implementation must be value- and block-agnostic.
-- Prefer prepared/regalloc facts over raw BIR scans or name matching.
-- Keep AArch64 edits limited to consuming the prepared preservation result.
+- Treat `00204` and `fr_hfa12` as diagnostics only; implement a lane- and
+  value-agnostic HFA call-result rule.
+- Prefer existing `PreparedMoveBundle`, `AbiBindingRecord`,
+  `CallResultRecord`, and value-home facts over raw BIR scans.
+- If a new helper is needed, keep it narrow: answer which ABI result lane is
+  authoritative for a post-call aggregate-result consumer.
 - After each code-changing step, run a fresh build or compile proof plus the
   supervisor-selected focused subset.
-- Escalate to broader backend validation when a step changes shared prealloc
-  placement or publication-plan behavior.
+- If tracing exposes another owner before an HFA return-result consumer bug,
+  stop and classify it before expanding this plan.
 
 ## Ordered Steps
 
-### Step 1: Re-establish the Edge-Preservation Failure Boundary
+### Step 1: Reproduce And Trace The HFA Return-Result Consumer
 
-Goal: Confirm what remains after idea 52 closed and identify whether the
-edge/terminator preservation acceptance criteria can now be judged directly.
-
-Primary target: focused backend/runtime probes selected by the supervisor.
-
-Actions:
-
-- Inspect current prepared consumer-move and edge-publication behavior around
-  successor consumers whose predecessor source register is clobbered.
-- Re-run or request the focused eight-test subset referenced by the source
-  idea, including the pointer-select and variadic aggregate byte-copy probes.
-- Record whether any remaining failure is still an edge/terminator
-  preservation failure or belongs to a different owner.
-
-Completion check:
-
-- The current first bad fact is classified as either this idea's preservation
-  gap or a precise non-owned follow-up before implementation proceeds.
-
-### Step 2: Repair Prepared Preservation Placement
-
-Goal: Make prepared planning represent sources that must survive predecessor
-edge publication or terminator-side clobbering.
+Goal: Identify the exact caller-side consumer that uses stale FPR homes after
+the HFA-returning call.
 
 Primary targets:
 
-- `src/backend/prealloc/regalloc/consumer_moves.cpp`
-- `src/backend/prealloc/regalloc/consumer_moves.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/publication_plans.hpp`
+- `c_testsuite_aarch64_backend_src_00204_c`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/cast_ops.cpp`
 
 Actions:
 
-- Find where successor consumer moves are placed relative to predecessor
-  terminator and edge-publication moves.
-- Add or repair the general rule that detects when edge publication reuses a
-  source register needed by a later successor consumer.
-- Represent the result as prepared placement or preserved-source data, not as a
-  special case for one block, value, register, or testcase.
+- Re-run the supervisor-selected focused subset or inspect its existing proof
+  for the `fr_hfa12()` mismatch.
+- Trace the machine records emitted immediately after `bl fr_hfa12`.
+- Identify whether stale `s9`/`s13` are selected by memory, cast, dispatch, or
+  call-result publication lowering.
+- Record the prepared facts that should have selected `s0`/`s1`.
 
 Completion check:
 
-- Prepared planning can explain that the affected source is moved or preserved
-  before the clobbering edge publication, and nearby same-feature cases use the
-  same rule.
+- The stale consumer path and the missing prepared authority lookup are named
+  before implementation proceeds.
 
-### Step 3: Expose And Consume The Prepared Preservation Answer
+### Step 2: Expose The Prepared HFA Result Lane Authority
 
-Goal: Ensure AArch64 lowering consumes the repaired preservation contract
-instead of trusting stale emitted-register mappings.
+Goal: Ensure consumers can ask for the ABI result lane source for each
+post-call HFA aggregate-result value.
 
 Primary targets:
 
 - `src/backend/prealloc/prepared_lookups.cpp`
 - `src/backend/prealloc/prepared_lookups.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+- `src/backend/mir/aarch64/module/module.cpp`
+- `src/backend/mir/aarch64/module/module.hpp`
 
 Actions:
 
-- Add a narrow shared lookup only if existing prepared structures cannot answer
-  which preserved source or placement applies.
-- Update AArch64 edge-copy lowering to consume the prepared answer while
-  preserving existing instruction spelling and edge-copy mechanics.
-- Avoid raw BIR scans, same-block producer walks, temporary-name checks, or
-  textual suppression of the bad assembly sequence.
+- Inspect existing `AfterCall` move-bundle, ABI-binding, call-result record,
+  and value-home accessors.
+- Reuse an existing lookup if it already maps the aggregate-result lane to the
+  ABI source register.
+- Add only the smallest missing structured lookup or record field if current
+  consumers cannot reach the existing prepared lane facts.
 
 Completion check:
 
-- AArch64 lowering no longer uses stale register authority after edge
-  publication changes the physical register's semantic owner.
+- AArch64 lowering can identify `s0`/`s1` as the authoritative sources for the
+  observed HFA result lanes without testcase names or raw BIR scans.
 
-### Step 4: Prove The Focused Preservation Family
+### Step 3: Consume ABI Result Lanes In Caller-Side Aggregate Uses
 
-Goal: Demonstrate the repaired prepared contract covers the known focused
-family without downgrading expectations.
+Goal: Make post-call stores, copies, and conversions consume the HFA ABI result
+lanes instead of stale allocated homes.
 
-Primary target: supervisor-selected focused subset for the source idea.
+Primary targets:
+
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/cast_ops.cpp`
+
+Actions:
+
+- Update the traced consumer path to prefer the prepared HFA call-result lane
+  source when the use is tied to an aggregate result immediately after a call.
+- Preserve existing scalar call-result and non-HFA aggregate behavior.
+- Fail closed with a diagnostic if a required HFA result lane has no prepared
+  ABI source.
+
+Completion check:
+
+- The caller-side sequence after `bl fr_hfa12` stores or consumes `s0`/`s1`
+  for the returned lanes and no longer uses stale `s9`/`s13` for those values.
+
+### Step 4: Prove Focused HFA Return-Result Behavior
+
+Goal: Demonstrate the repaired route fixes the first bad fact without
+downgrading nearby same-feature tests.
+
+Primary target: supervisor-selected focused subset.
 
 Actions:
 
 - Run the exact build and focused proof command delegated by the supervisor.
-- Include the pointer-select and variadic aggregate byte-copy probes named by
-  the source idea.
-- Inspect any failure for route ownership before making more changes.
+- Include `c_testsuite_aarch64_backend_src_00204_c` and prepared HFA
+  call-result lane tests.
+- Inspect any remaining `00204` failure and classify it before making more
+  changes.
 
 Completion check:
 
-- The focused subset passes, or any remaining failure is classified to a
-  precise next owner with evidence that edge/terminator preservation is no
-  longer the first bad fact.
+- The observed `fr_hfa12()` mismatch is gone for semantic reasons, or a new
+  first bad fact is classified to a precise owner.
 
-### Step 5: Broader Regression Check And Closure Readiness
+### Step 5: Broader Regression Check And Handoff
 
-Goal: Establish whether the repaired shared prealloc behavior is safe enough
-for supervisor review and possible source-idea closure.
+Goal: Establish whether the HFA result-consumption repair is safe enough for
+supervisor review and possible return to idea 56.
 
 Primary target: repo-native broader backend validation chosen by the
 supervisor.
 
 Actions:
 
-- Run the supervisor-selected broader check after the focused subset is green
-  or the route is otherwise ready for review.
-- Compare the implementation against the source idea's reviewer reject signals.
-- Leave any remaining non-owned work in `todo.md` or a separate open idea
-  rather than expanding this route.
+- Run the supervisor-selected broader check once the focused route is green or
+  otherwise ready for review.
+- Compare the implementation against the source idea's reviewer reject
+  signals.
+- If `00204` advances to an edge/terminator preservation first bad fact, record
+  that evidence so the supervisor can decide whether to reactivate idea 56.
 
 Completion check:
 
 - Fresh proof exists, no expectation downgrade or testcase-shaped shortcut is
-  present, and the supervisor has enough evidence to review or delegate
-  closure judgment.
+  present, and any remaining work has a precise lifecycle owner.

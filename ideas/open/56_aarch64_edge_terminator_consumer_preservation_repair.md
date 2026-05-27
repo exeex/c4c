@@ -84,6 +84,21 @@ but it is parked until the call/byval publication owner is repaired or a later
 review confirms the edge-preservation acceptance criteria can be judged
 independently.
 
+## Reactivation Boundary Note
+
+After idea 52 closed, Step 1 re-ran the focused eight-test subset and reached
+7/8 with only `c_testsuite_aarch64_backend_src_00204_c` still failing. The
+first remaining bad fact is earlier than the historical `stdarg`/`myprintf`
+edge path: straight-line `ret()` calls `fr_hfa12()` and prints `2.0 12.1`
+instead of `12.1 12.2`.
+
+The callee publishes the two HFA return lanes to `s0` and `s1`, but the caller
+stores and converts stale `s9`/`s13` after `bl fr_hfa12`. That is an AArch64
+HFA aggregate return-result publication/consumption issue, not an
+edge/terminator consumer-preservation issue. Active implementation has moved to
+`ideas/open/57_aarch64_hfa_aggregate_return_result_consumption_repair.md` so
+this idea is not expanded to cover the non-owned first bad fact.
+
 ## Reviewer Reject Signals
 
 - Reject named-case logic for `00204`, `myprintf`, `%t35`, `%t45`, `%t49`,

@@ -1,55 +1,34 @@
 Status: Active
-Source Idea Path: ideas/open/56_aarch64_edge_terminator_consumer_preservation_repair.md
+Source Idea Path: ideas/open/57_aarch64_hfa_aggregate_return_result_consumption_repair.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Re-establish the Edge-Preservation Failure Boundary
+Current Step Title: Reproduce And Trace The HFA Return-Result Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 re-established the focused edge-preservation boundary after idea 52
-closure. The delegated eight-test subset now passes seven tests and fails only
-`c_testsuite_aarch64_backend_src_00204_c`.
-
-The first bad fact in the remaining `00204` failure is before the
-`stdarg`/`myprintf` edge-preservation path: in `ret()`, the first mismatched
-line is `fr_hfa12()` returning/printing `2.0 12.1` instead of `12.1 12.2`.
-The generated callee `fr_hfa12` moves the two float lanes to ABI result
-registers `s0` and `s1`, but the caller side after `bl fr_hfa12` stores
-`s9`/`s13` and then converts those stale registers for `printf`. That classifies
-the current first bad fact as a non-owned AArch64 HFA aggregate return-result
-publication/consumption issue, not idea 56 edge/terminator consumer
-preservation.
+Lifecycle switched away from idea 56 because its Step 1 classification found a
+non-owned first bad fact: `fr_hfa12()` returns through `s0`/`s1`, but the caller
+after `bl fr_hfa12` stores or converts stale `s9`/`s13`, producing `2.0 12.1`
+instead of `12.1 12.2`.
 
 ## Suggested Next
 
-Supervisor should route a precise non-owned follow-up for AArch64 HFA aggregate
-return-result consumption in callers before any idea 56 implementation packet.
-If the supervisor still wants to judge later `stdarg`/`myprintf` evidence, rerun
-the focused subset after the HFA return-result first bad fact is repaired.
+Start Step 1 of `plan.md`: reproduce or inspect the focused proof for the
+`fr_hfa12()` mismatch, trace the post-call caller-side consumer, and identify
+which prepared HFA call-result lane fact should select `s0`/`s1`.
 
 ## Watchouts
 
-- Do not start the idea 56 edge/terminator preservation implementation from the
-  current `00204` failure: the live first bad fact is caller-side HFA return ABI
-  consumption in straight-line `ret()`, not an edge copy, predecessor
-  terminator, or join-block consumer.
-- Do not treat the historical `%t35`, `%t45`, `%t49`, `vaarg.join.39`, or
-  `x13` names as implementation selectors.
-- Do not reload mutated va_list locals in the join block.
+- Treat `00204`, `ret`, `fr_hfa12`, `s9`, and `s13` as diagnostics only.
+- Do not route implementation through idea 56 edge/terminator preservation
+  while the first bad fact is HFA aggregate return-result consumption.
+- Do not change variadic va_list layout, by-value argument publication, or
+  callee-side return publication unless tracing proves they are the active
+  first bad fact.
 - Do not weaken expectations or mark supported probes unsupported.
-- Keep any implementation packet within the source idea's prepared
-  edge/terminator preservation scope.
 
 ## Proof
 
-`test_after.log` contains:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'
-```
-
-Result: build succeeded; 7/8 selected tests passed. The only failure is
-`c_testsuite_aarch64_backend_src_00204_c` with a runtime mismatch, classified
-above as non-owned by idea 56.
+Lifecycle-only switch; no build or test command was run by the plan owner.
