@@ -1,5 +1,6 @@
 #include "publication_plans.hpp"
 
+#include <algorithm>
 #include <variant>
 
 namespace c4c::backend::prepare {
@@ -318,6 +319,23 @@ prepared_select_chain_contains_direct_global_load(
           ? static_cast<std::int64_t>(*load_lane_offset)
           : std::int64_t{0};
   return *store_offset == *load_offset + lane_offset;
+}
+
+[[nodiscard]] bool prepared_access_ranges_overlap(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* lhs,
+    const PreparedMemoryAccess* rhs) {
+  const auto lhs_offset = prepared_access_absolute_offset(stack_layout, lhs);
+  const auto rhs_offset = prepared_access_absolute_offset(stack_layout, rhs);
+  if (!lhs_offset.has_value() || !rhs_offset.has_value() ||
+      lhs == nullptr || rhs == nullptr) {
+    return true;
+  }
+  const auto lhs_end = *lhs_offset +
+                       static_cast<std::int64_t>(lhs->address.size_bytes);
+  const auto rhs_end = *rhs_offset +
+                       static_cast<std::int64_t>(rhs->address.size_bytes);
+  return *lhs_offset < rhs_end && *rhs_offset < lhs_end;
 }
 
 [[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
@@ -718,6 +736,55 @@ find_prepared_store_source_direct_global_select_chain_dependency(
       block,
       value,
       before_instruction_index);
+}
+
+std::optional<PreparedScalarLoadLocalSourceProducer>
+find_prepared_same_block_load_local_source_producer(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto* producer = prepared_select_chain_source_producer(
+      names, source_producers, block_label, block, value, before_instruction_index);
+  if (producer == nullptr ||
+      producer->kind != PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      producer->load_local == nullptr ||
+      addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* load_access = find_prepared_memory_access(
+      *addressing, block_label, producer->instruction_index);
+  if (!prepared_load_access_matches_result(names, load_access, *producer->load_local) ||
+      prepared_frame_slot_for_access(stack_layout, load_access) == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto limit =
+      block != nullptr ? std::min(before_instruction_index, block->insts.size())
+                       : std::size_t{0};
+  for (std::size_t index = producer->instruction_index + 1; index < limit; ++index) {
+    const auto* store = std::get_if<bir::StoreLocalInst>(&block->insts[index]);
+    if (store == nullptr) {
+      continue;
+    }
+    const auto* store_access =
+        find_prepared_memory_access(*addressing, block_label, index);
+    if (store_access == nullptr ||
+        !prepared_store_access_matches_value(names, store_access, *store) ||
+        prepared_access_ranges_overlap(stack_layout, load_access, store_access)) {
+      return std::nullopt;
+    }
+  }
+
+  return PreparedScalarLoadLocalSourceProducer{
+      .producer = producer,
+      .source_access = load_access,
+  };
 }
 
 }  // namespace c4c::backend::prepare

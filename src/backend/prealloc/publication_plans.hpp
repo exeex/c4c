@@ -237,6 +237,11 @@ struct PreparedDirectGlobalSelectChainDependency {
 using PreparedStoreSourceDirectGlobalSelectChainDependency =
     PreparedDirectGlobalSelectChainDependency;
 
+struct PreparedScalarLoadLocalSourceProducer {
+  const PreparedEdgePublicationSourceProducer* producer = nullptr;
+  const PreparedMemoryAccess* source_access = nullptr;
+};
+
 struct PreparedStoreSourcePublicationInputs {
   const bir::Value* source_value = nullptr;
   const PreparedMemoryAccess* destination_access = nullptr;
@@ -307,6 +312,17 @@ find_prepared_direct_global_select_chain_dependency(
 [[nodiscard]] PreparedStoreSourceDirectGlobalSelectChainDependency
 find_prepared_store_source_direct_global_select_chain_dependency(
     const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<PreparedScalarLoadLocalSourceProducer>
+find_prepared_same_block_load_local_source_producer(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
     const PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockLabelId block_label,
     const bir::Block* block,

@@ -904,21 +904,6 @@ namespace mir = c4c::backend::mir;
   };
 }
 
-[[nodiscard]] std::optional<c4c::ValueNameId> prepared_value_name_id(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.function.prepared == nullptr ||
-      value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return std::nullopt;
-  }
-  const auto value_name =
-      context.function.prepared->names.value_names.find(value.name);
-  if (value_name == c4c::kInvalidValueName) {
-    return std::nullopt;
-  }
-  return value_name;
-}
-
 [[nodiscard]] const prepare::PreparedAddressingFunction* prepared_addressing_function(
     const module::BlockLoweringContext& context) {
   if (context.function.prepared == nullptr ||
@@ -929,110 +914,43 @@ namespace mir = c4c::backend::mir;
       *context.function.prepared, context.function.control_flow->function_name);
 }
 
-[[nodiscard]] bool byte_ranges_overlap(std::int64_t lhs_offset,
-                                       std::size_t lhs_size,
-                                       std::int64_t rhs_offset,
-                                       std::size_t rhs_size) {
-  const auto lhs_end = lhs_offset + static_cast<std::int64_t>(lhs_size);
-  const auto rhs_end = rhs_offset + static_cast<std::int64_t>(rhs_size);
-  return lhs_offset < rhs_end && rhs_offset < lhs_end;
-}
-
-[[nodiscard]] std::optional<std::int64_t> prepared_frame_slot_offset(
-    const prepare::PreparedStackLayout& stack_layout,
-    const prepare::PreparedMemoryAccess& access) {
-  if (access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access.address.frame_slot_id.has_value()) {
-    return std::nullopt;
-  }
-  const auto* slot =
-      find_scalar_frame_slot_by_id(stack_layout, *access.address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-  return static_cast<std::int64_t>(slot->offset_bytes) + access.address.byte_offset;
-}
-
-[[nodiscard]] bool prepared_store_access_may_alias_load_access(
-    const prepare::PreparedStackLayout& stack_layout,
-    const prepare::PreparedMemoryAccess& store_access,
-    const prepare::PreparedMemoryAccess& load_access) {
-  const auto store_offset = prepared_frame_slot_offset(stack_layout, store_access);
-  const auto load_offset = prepared_frame_slot_offset(stack_layout, load_access);
-  if (!store_offset.has_value() || !load_offset.has_value()) {
-    return true;
-  }
-  return byte_ranges_overlap(*load_offset,
-                             load_access.address.size_bytes,
-                             *store_offset,
-                             store_access.address.size_bytes);
-}
-
 [[nodiscard]] const prepare::PreparedMemoryAccess*
 find_prepared_load_local_source_access(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   if (context.bir_block == nullptr ||
-      context.control_flow_block == nullptr) {
-    return nullptr;
-  }
-  const auto value_name = prepared_value_name_id(context, value);
-  if (!value_name.has_value()) {
+      context.control_flow_block == nullptr ||
+      context.function.prepared == nullptr) {
     return nullptr;
   }
   const auto* addressing = prepared_addressing_function(context);
   if (addressing == nullptr) {
     return nullptr;
   }
-  const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
-  const auto* access =
-      prepare::find_prepared_memory_access_before_by_result_value_name(
-          *addressing, context.control_flow_block->block_label, *value_name, limit);
-  if (access == nullptr || access->inst_index >= context.bir_block->insts.size()) {
-    return nullptr;
+  const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
+  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
+      fallback_source_producers;
+  if (source_producers == nullptr && context.function.control_flow != nullptr) {
+    fallback_source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared, *context.function.control_flow);
+    source_producers = &*fallback_source_producers;
   }
-  const auto& inst = context.bir_block->insts[access->inst_index];
-  if (std::get_if<bir::LoadLocalInst>(&inst) == nullptr ||
-      !prepared_memory_access_matches_instruction(context, access, inst)) {
-    return nullptr;
-  }
-  return access;
-}
-
-[[nodiscard]] bool has_prepared_intervening_store_to_load_source(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMemoryAccess& load_access,
-    std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.bir_block == nullptr ||
-      context.control_flow_block == nullptr) {
-    return true;
-  }
-  const auto* addressing = prepared_addressing_function(context);
-  if (addressing == nullptr) {
-    return true;
-  }
-  const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
-  for (std::size_t index = load_access.inst_index + 1; index < limit; ++index) {
-    const auto* store =
-        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index]);
-    if (store == nullptr) {
-      continue;
-    }
-    const auto* store_access = prepare::find_prepared_memory_access(
-        *addressing, context.control_flow_block->block_label, index);
-    if (store_access == nullptr ||
-        !prepared_memory_access_matches_instruction(
-            context, store_access, context.bir_block->insts[index])) {
-      return true;
-    }
-    if (prepared_store_access_may_alias_load_access(
-            context.function.prepared->stack_layout, *store_access, load_access)) {
-      return true;
-    }
-  }
-  return false;
+  const auto source =
+      prepare::find_prepared_same_block_load_local_source_producer(
+          context.function.prepared->names,
+          context.function.prepared->stack_layout,
+          addressing,
+          source_producers,
+          context.control_flow_block->block_label,
+          context.bir_block,
+          value,
+          before_instruction_index);
+  return source.has_value() ? source->source_access : nullptr;
 }
 
 [[nodiscard]] bool load_local_home_needs_consumer_publication(
@@ -1059,9 +977,7 @@ find_prepared_load_local_source_access(
   }
   const auto* load =
       std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[load_access->inst_index]);
-  if (load == nullptr ||
-      has_prepared_intervening_store_to_load_source(
-          context, *load_access, before_instruction_index)) {
+  if (load == nullptr) {
     return std::nullopt;
   }
   const auto* home = find_named_value_home(load->result, context.function);
