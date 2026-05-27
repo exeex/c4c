@@ -110,3 +110,15 @@ sources, indirect callee sources, and after-call result registers.
   select-chain shortcuts, or indirect-callee named-case fixes.
 - Reject expectation downgrades, unsupported-test rewrites, broad call rewrites
   outside this file, or helper renames claimed as capability progress.
+
+## Parked Lifecycle Note
+
+The active route reached Step 4 and established that direct variadic
+by-value aggregate call lane publication now has the missing prepared
+single-GPR lane facts. Focused proof remained `7/8` only because the remaining
+`00204` mismatch moved outside this idea's owned file: aggregate `va_arg`
+register-save consumption in
+`src/backend/mir/aarch64/codegen/variadic.cpp` forms the source address from
+the post-incremented `gp_offset`/`fp_offset` value. Idea 52 stays open for its
+broader duplicate call-authority acceptance criteria, but it is parked while
+the variadic register-save owner is repaired separately.
