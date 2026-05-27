@@ -2077,6 +2077,100 @@ int verify_prepared_frame_address_offset_lookup() {
   return 0;
 }
 
+int verify_prepared_memory_access_lookup() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("memory_lookup");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto duplicate_name = prepared.names.value_names.intern("%duplicate");
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {return_block(block_label)},
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 42,
+                  .function_name = function_name,
+                  .value_name = loaded_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 77,
+                  .function_name = function_name,
+                  .value_name = duplicate_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x1"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .result_value_name = loaded_name,
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = duplicate_name,
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 2,
+                  .result_value_name = duplicate_name,
+              },
+          },
+  });
+
+  const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto& accesses = prepared.addressing.functions.front().accesses;
+  const auto* named_access =
+      prepare::find_unique_indexed_prepared_memory_access_by_result_value_name(
+          &lookups.memory_accesses, loaded_name);
+  if (named_access != &accesses[0]) {
+    return fail("memory-access lookup should find a unique result value name");
+  }
+  const auto* value_id_access =
+      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+          &lookups.memory_accesses, 42);
+  if (value_id_access != &accesses[0]) {
+    return fail("memory-access lookup should find a unique result value id");
+  }
+  if (prepare::find_unique_indexed_prepared_memory_access_by_result_value_name(
+          &lookups.memory_accesses, duplicate_name) != nullptr) {
+    return fail("memory-access lookup should preserve duplicate-name ambiguity");
+  }
+  if (prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+          &lookups.memory_accesses, 77) != nullptr) {
+    return fail("memory-access lookup should preserve duplicate-id ambiguity");
+  }
+  const auto* duplicate_accesses =
+      prepare::find_indexed_prepared_memory_accesses_by_result_value_name(
+          &lookups.memory_accesses, duplicate_name);
+  if (duplicate_accesses == nullptr || duplicate_accesses->size() != 2 ||
+      (*duplicate_accesses)[0] != &accesses[1] ||
+      (*duplicate_accesses)[1] != &accesses[2]) {
+    return fail("memory-access lookup should retain all duplicate entries");
+  }
+  if (prepare::find_unique_indexed_prepared_memory_access_by_result_value_name(
+          &lookups.memory_accesses, c4c::kInvalidValueName) != nullptr) {
+    return fail("memory-access lookup should reject invalid result value names");
+  }
+
+  return 0;
+}
+
 int verify_direct_global_select_chain_dependency_query() {
   prepare::PreparedNameTables names;
   const auto block_label = names.block_labels.intern("query.entry");
@@ -2214,6 +2308,9 @@ int main() {
   }
   if (const int result = verify_prepared_frame_address_offset_lookup();
       result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_memory_access_lookup(); result != 0) {
     return result;
   }
   if (const int result = verify_direct_global_select_chain_dependency_query();

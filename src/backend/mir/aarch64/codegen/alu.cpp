@@ -840,20 +840,14 @@ namespace mir = c4c::backend::mir;
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home) {
   if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
+      context.function.prepared_lookups == nullptr ||
       home.value_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
 
-  const auto* addressing = prepare::find_prepared_addressing(
-      *context.function.prepared, context.function.control_flow->function_name);
-  if (addressing == nullptr) {
-    return std::nullopt;
-  }
-
   const auto* source_access =
-      prepare::find_prepared_memory_access_by_result_value_name(
-          *addressing, home.value_name);
+      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+          &context.function.prepared_lookups->memory_accesses, home.value_id);
   if (source_access == nullptr) {
     return std::nullopt;
   }

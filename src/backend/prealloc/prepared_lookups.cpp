@@ -1254,6 +1254,33 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
+[[nodiscard]] PreparedMemoryAccessLookups make_prepared_memory_access_lookups(
+    const PreparedAddressingFunction* addressing,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  PreparedMemoryAccessLookups lookups;
+  if (addressing == nullptr) {
+    return lookups;
+  }
+  lookups.accesses_by_result_value_name.reserve(addressing->accesses.size());
+  lookups.accesses_by_result_value_id.reserve(addressing->accesses.size());
+  for (const auto& access : addressing->accesses) {
+    if (!access.result_value_name.has_value() ||
+        *access.result_value_name == kInvalidValueName) {
+      continue;
+    }
+    lookups.accesses_by_result_value_name[*access.result_value_name].push_back(&access);
+    if (value_home_lookups == nullptr) {
+      continue;
+    }
+    const auto value_id = find_indexed_prepared_value_id(
+        value_home_lookups, nullptr, nullptr, *access.result_value_name);
+    if (value_id.has_value()) {
+      lookups.accesses_by_result_value_id[*value_id].push_back(&access);
+    }
+  }
+  return lookups;
+}
+
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations) {
   PreparedMoveBundleLookups lookups;
@@ -1648,7 +1675,10 @@ make_prepared_edge_publication_source_producer_lookups(
   const auto* call_plans = find_prepared_call_plans(prepared, function.function_name);
   const auto* value_locations =
       find_prepared_value_location_function(prepared, function.function_name);
+  const auto* addressing = find_prepared_addressing(prepared, function.function_name);
   auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
+  auto memory_access_lookups =
+      make_prepared_memory_access_lookups(addressing, &value_home_lookups);
   auto move_bundle_lookups = make_prepared_move_bundle_lookups(value_locations);
   publish_prepared_after_call_result_lane_bindings(move_bundle_lookups,
                                                    prepared,
@@ -1663,6 +1693,7 @@ make_prepared_edge_publication_source_producer_lookups(
       .call_plans = make_prepared_call_plan_lookups(prepared, call_plans, function),
       .address_materializations =
           make_prepared_address_materialization_lookups(prepared, function.function_name),
+      .memory_accesses = std::move(memory_access_lookups),
       .move_bundles = std::move(move_bundle_lookups),
       .return_chains = make_prepared_return_chain_lookups(prepared, function),
       .value_homes = std::move(value_home_lookups),
@@ -1982,6 +2013,60 @@ find_indexed_prepared_address_materializations(
     return nullptr;
   }
   return &it->second;
+}
+
+[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
+find_indexed_prepared_memory_accesses_by_result_value_name(
+    const PreparedMemoryAccessLookups* lookups,
+    ValueNameId result_value_name) {
+  if (lookups == nullptr || result_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const auto it = lookups->accesses_by_result_value_name.find(result_value_name);
+  if (it == lookups->accesses_by_result_value_name.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+[[nodiscard]] const PreparedMemoryAccess*
+find_unique_indexed_prepared_memory_access_by_result_value_name(
+    const PreparedMemoryAccessLookups* lookups,
+    ValueNameId result_value_name) {
+  const auto* accesses =
+      find_indexed_prepared_memory_accesses_by_result_value_name(lookups,
+                                                                 result_value_name);
+  if (accesses == nullptr || accesses->size() != 1) {
+    return nullptr;
+  }
+  return accesses->front();
+}
+
+[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
+find_indexed_prepared_memory_accesses_by_result_value_id(
+    const PreparedMemoryAccessLookups* lookups,
+    PreparedValueId result_value_id) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->accesses_by_result_value_id.find(result_value_id);
+  if (it == lookups->accesses_by_result_value_id.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+[[nodiscard]] const PreparedMemoryAccess*
+find_unique_indexed_prepared_memory_access_by_result_value_id(
+    const PreparedMemoryAccessLookups* lookups,
+    PreparedValueId result_value_id) {
+  const auto* accesses =
+      find_indexed_prepared_memory_accesses_by_result_value_id(lookups,
+                                                               result_value_id);
+  if (accesses == nullptr || accesses->size() != 1) {
+    return nullptr;
+  }
+  return accesses->front();
 }
 
 [[nodiscard]] std::vector<const PreparedAddressMaterialization*>
