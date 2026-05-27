@@ -71,6 +71,16 @@ Likely owned implementation surfaces:
 - Any remaining failure is classified to a precise next owner before more
   implementation.
 
+## Closure Note
+
+Closed after re-running the post-idea-57 focused acceptance boundary. Matching
+canonical `test_before.log` and `test_after.log` both cover the focused
+eight-test subset and report 8/8 passing tests, including the pointer-select
+and variadic aggregate byte-copy probes plus `00204`. The close-time
+`c4c-regression-guard` comparison with `--allow-non-decreasing-passed` passed
+with no new failures and no pass-count decrease. The strict guard only rejects
+the already-green baseline because the pass count did not strictly increase.
+
 ## Parked Route Note
 
 Step 5 classified the remaining `00204` runtime mismatch after the edge
