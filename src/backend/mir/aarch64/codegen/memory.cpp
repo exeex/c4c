@@ -376,40 +376,52 @@ void retarget_load_result_to_return_abi(const module::BlockLoweringContext& cont
   record.result_register = *return_register;
 }
 
-std::optional<prepare::PreparedValueId> find_value_home_id(
-    const prepare::PreparedValueLocationFunction& value_locations,
+std::optional<prepare::PreparedValueId> indexed_value_home_id(
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedRegallocFunction* regalloc,
+    const prepare::PreparedValueLocationFunction* value_locations,
     c4c::ValueNameId value_name) {
   if (value_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
-  for (const auto& home : value_locations.value_homes) {
-    if (home.value_name == value_name) {
-      return home.value_id;
-    }
-  }
-  return std::nullopt;
+  return prepare::find_indexed_prepared_value_id(
+      value_home_lookups, regalloc, value_locations, value_name);
 }
 
-PreparedMemoryOperandRecordError find_unique_value_home_id(
-    const prepare::PreparedValueLocationFunction& value_locations,
+bool indexed_value_home_id_is_ambiguous(
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    c4c::ValueNameId value_name,
+    prepare::PreparedValueId selected_value_id) {
+  if (value_home_lookups == nullptr || value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  for (const auto& [value_id, home] : value_home_lookups->homes_by_id) {
+    if (home != nullptr &&
+        home->value_name == value_name &&
+        value_id != selected_value_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+PreparedMemoryOperandRecordError require_indexed_value_home_id(
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedRegallocFunction* regalloc,
+    const prepare::PreparedValueLocationFunction* value_locations,
     c4c::ValueNameId value_name,
     prepare::PreparedValueId& out) {
   if (value_name == c4c::kInvalidValueName) {
     return PreparedMemoryOperandRecordError::MissingPointerValueName;
   }
 
-  std::optional<prepare::PreparedValueId> found;
-  for (const auto& home : value_locations.value_homes) {
-    if (home.value_name != value_name) {
-      continue;
-    }
-    if (found.has_value()) {
-      return PreparedMemoryOperandRecordError::AmbiguousPointerValueHome;
-    }
-    found = home.value_id;
-  }
+  const auto found =
+      indexed_value_home_id(value_home_lookups, regalloc, value_locations, value_name);
   if (!found.has_value()) {
     return PreparedMemoryOperandRecordError::MissingPointerValueHome;
+  }
+  if (indexed_value_home_id_is_ambiguous(value_home_lookups, value_name, *found)) {
+    return PreparedMemoryOperandRecordError::AmbiguousPointerValueHome;
   }
 
   out = *found;
@@ -499,6 +511,8 @@ std::optional<c4c::LinkNameId> global_symbol_id_from_address_or_inst(
 
 PreparedMemoryOperandRecordError validate_memory_base_identity(
     const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedRegallocFunction* regalloc,
     const prepare::PreparedValueLocationFunction& value_locations,
     const bir::MemoryAddress* address,
     c4c::LinkNameId fallback_link_name,
@@ -544,7 +558,11 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
 
       prepare::PreparedValueId pointer_value_id = 0;
       const auto error =
-          find_unique_value_home_id(value_locations, *memory.pointer_value_name, pointer_value_id);
+          require_indexed_value_home_id(value_home_lookups,
+                                        regalloc,
+                                        &value_locations,
+                                        *memory.pointer_value_name,
+                                        pointer_value_id);
       if (error != PreparedMemoryOperandRecordError::None) {
         return error;
       }
@@ -588,6 +606,8 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
 
 PreparedMemoryOperandRecordError apply_load_identity(
     const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedRegallocFunction* regalloc,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedMemoryAccess& access,
     const bir::Value& result,
@@ -600,12 +620,15 @@ PreparedMemoryOperandRecordError apply_load_identity(
     return PreparedMemoryOperandRecordError::ResultValueMismatch;
   }
   memory.result_value_name = *result_name;
-  memory.result_value_id = find_value_home_id(value_locations, *result_name);
+  memory.result_value_id =
+      indexed_value_home_id(value_home_lookups, regalloc, &value_locations, *result_name);
   return PreparedMemoryOperandRecordError::None;
 }
 
 PreparedMemoryOperandRecordError apply_store_identity(
     const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const prepare::PreparedRegallocFunction* regalloc,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedMemoryAccess& access,
     const bir::Value& stored,
@@ -624,7 +647,8 @@ PreparedMemoryOperandRecordError apply_store_identity(
     return PreparedMemoryOperandRecordError::StoredValueMismatch;
   }
   memory.stored_value_name = *stored_name;
-  memory.stored_value_id = find_value_home_id(value_locations, *stored_name);
+  memory.stored_value_id =
+      indexed_value_home_id(value_home_lookups, regalloc, &value_locations, *stored_name);
   return PreparedMemoryOperandRecordError::None;
 }
 
@@ -1363,8 +1387,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           load.address ? &*load.address : nullptr,
           c4c::kInvalidLinkName,
@@ -1382,6 +1410,8 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_load_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
@@ -1740,8 +1770,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           store.address ? &*store.address : nullptr,
           c4c::kInvalidLinkName,
@@ -1759,6 +1793,8 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_store_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
@@ -1964,7 +2000,10 @@ PreparedMemoryInstructionRecordResult make_va_list_field_load_memory_instruction
   }
   address.result_value_name = *result_name;
   address.result_value_id =
-      find_value_home_id(*context.function.value_locations, *result_name);
+      indexed_value_home_id(context.function.value_home_lookups,
+                            context.function.regalloc,
+                            context.function.value_locations,
+                            *result_name);
   return make_load_memory_instruction_record(
       PreparedMemoryOperandRecordResult{
           .record = address,
@@ -1992,7 +2031,10 @@ PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instructio
   if (stored_name.has_value()) {
     address.stored_value_name = *stored_name;
     address.stored_value_id =
-        find_value_home_id(*context.function.value_locations, *stored_name);
+        indexed_value_home_id(context.function.value_home_lookups,
+                              context.function.regalloc,
+                              context.function.value_locations,
+                              *stored_name);
   }
   return make_store_memory_instruction_record(
       PreparedMemoryOperandRecordResult{
@@ -2156,8 +2198,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           load.address ? &*load.address : nullptr,
           load.global_name_id,
@@ -2175,6 +2221,8 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_load_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
@@ -2218,8 +2266,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (!result.record.has_value()) {
     return result;
   }
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&value_locations);
   if (const auto error = validate_memory_base_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           store.address ? &*store.address : nullptr,
           store.global_name_id,
@@ -2237,6 +2289,8 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   }
   if (const auto error = apply_store_identity(
           names,
+          &value_home_lookups,
+          nullptr,
           value_locations,
           *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
