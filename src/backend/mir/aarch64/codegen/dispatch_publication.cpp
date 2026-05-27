@@ -633,15 +633,42 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home) {
   for (const auto& publication : collect_current_block_entry_publications(context)) {
-    const auto* move = publication.move;
-    if (move != nullptr &&
-        move->op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+    if (prepare::prepared_block_entry_publication_available(publication) &&
         publication.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
         publication.destination_value_id == home.value_id) {
       return true;
     }
   }
   return false;
+}
+[[nodiscard]] const prepare::PreparedValueHome*
+current_block_entry_publication_home(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return nullptr;
+  }
+
+  std::optional<prepare::PreparedValueId> value_id;
+  if (context.function.value_home_lookups != nullptr) {
+    const auto value_id_it =
+        context.function.value_home_lookups->value_ids.find(*value_name);
+    if (value_id_it == context.function.value_home_lookups->value_ids.end()) {
+      return nullptr;
+    }
+    value_id = value_id_it->second;
+  } else {
+    value_id = prepare::find_prepared_value_id(context.function.regalloc,
+                                               context.function.value_locations,
+                                               *value_name);
+  }
+  return value_id.has_value()
+             ? prepare::find_indexed_prepared_value_home(
+                   context.function.value_home_lookups,
+                   context.function.value_locations,
+                   *value_id)
+             : nullptr;
 }
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,
@@ -652,27 +679,7 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
       value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
-  auto value_name = prepared_named_value_id(context, value);
-  const prepare::PreparedValueHome* home =
-      value_name.has_value()
-          ? find_value_home(context,
-*value_name)
-          : nullptr;
-  if (home == nullptr && context.function.prepared != nullptr && !value.name.empty()) {
-    for (const auto& candidate : context.function.value_locations->value_homes) {
-      if (candidate.value_name == c4c::kInvalidValueName) {
-        continue;
-      }
-      const auto candidate_name =
-          prepare::prepared_value_name(context.function.prepared->names,
-                                       candidate.value_name);
-      if (candidate_name == value.name) {
-        home = &candidate;
-        value_name = candidate.value_name;
-        break;
-      }
-    }
-  }
+  const auto* home = current_block_entry_publication_home(context, value);
   if (home == nullptr) {
     return std::nullopt;
   }
@@ -1275,12 +1282,7 @@ lower_fixed_formal_store_local_publication(
     return false;
   }
   for (const auto& publication : collect_current_block_entry_publications(context)) {
-    if (publication.status ==
-            prepare::PreparedBlockEntryPublicationStatus::UnsupportedOperation ||
-        publication.status ==
-            prepare::PreparedBlockEntryPublicationStatus::UnsupportedDestinationKind ||
-        publication.status ==
-            prepare::PreparedBlockEntryPublicationStatus::UnsupportedDestinationStorage ||
+    if (!prepare::prepared_block_entry_publication_available(publication) ||
         !publication.destination_register_name.has_value()) {
       continue;
     }

@@ -5,6 +5,7 @@
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch_edge_copies.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch_publication.hpp"
 #include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
@@ -25993,6 +25994,159 @@ int block_entry_edge_copy_redundancy_uses_prepared_publication_authority() {
   return 0;
 }
 
+int block_entry_publication_register_uses_indexed_value_identity() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.block.entry.publication.indexed");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.block.entry.publication.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.block.entry.publication.join");
+  const auto value_name =
+      prepared.names.value_names.intern("%block.entry.indexed.value");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{720},
+              .function_name = function_name,
+              .value_name = value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"w6"},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{720},
+                      .to_value_id = prepare::PreparedValueId{720},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w6"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w6"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .source_parallel_copy_step_index = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_indexed_block_entry_publication",
+                  }},
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto join_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks[1],
+                                                   1);
+  const auto value =
+      bir::Value::named(bir::TypeKind::I32, "%block.entry.indexed.value");
+  const auto published =
+      aarch64_codegen::current_block_entry_publication_register(
+          join_context, value, aarch64_abi::RegisterView::W);
+  if (!published.has_value() ||
+      published->value_id != prepare::PreparedValueId{720} ||
+      published->value_name != value_name ||
+      published->reg.index != 6 ||
+      published->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected block-entry publication register to use indexed prepared value identity");
+  }
+
+  auto missing_value_id_lookups = prepared_lookups;
+  missing_value_id_lookups.value_homes.value_ids.clear();
+  auto missing_context = join_context;
+  attach_prepared_function_lookups(missing_context.function,
+                                   missing_value_id_lookups);
+  if (aarch64_codegen::current_block_entry_publication_register(
+          missing_context, value, aarch64_abi::RegisterView::W)
+          .has_value()) {
+    return fail("expected block-entry publication register to fail closed without indexed value identity");
+  }
+
+  auto unsupported_storage_locations = prepared.value_locations.functions.front();
+  unsupported_storage_locations.move_bundles.front()
+      .moves.front()
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  auto unsupported_storage_context = join_context;
+  unsupported_storage_context.function.value_locations =
+      &unsupported_storage_locations;
+  unsupported_storage_context.function.value_home_lookups = nullptr;
+  if (aarch64_codegen::value_has_current_block_entry_publication(
+          unsupported_storage_context,
+          unsupported_storage_locations.value_homes.front())) {
+    return fail("expected current publication lookup to require prepared availability status");
+  }
+
+  auto missing_home_locations = prepared.value_locations.functions.front();
+  missing_home_locations.move_bundles.front().moves.front().to_value_id =
+      prepare::PreparedValueId{999};
+  auto missing_home_context = join_context;
+  missing_home_context.function.value_locations = &missing_home_locations;
+  missing_home_context.function.value_home_lookups = nullptr;
+  const auto register_operand = aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::w_register(6),
+      .role = aarch64_codegen::RegisterOperandRole::StoragePlan,
+      .value_id = prepare::PreparedValueId{720},
+      .value_name = value_name,
+      .expected_view = aarch64_abi::RegisterView::W,
+  };
+  const auto& source_move =
+      missing_home_locations.move_bundles.front().moves.front();
+  aarch64_module::MachineInstruction instruction;
+  instruction.target.payload = aarch64_codegen::CallBoundaryMoveInstructionRecord{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_parallel_copy_predecessor_label = pred_label,
+      .source_parallel_copy_successor_label = join_label,
+      .move = source_move,
+      .destination_register = register_operand,
+      .source_move = &source_move,
+  };
+  if (aarch64_codegen::block_entry_move_clobbers_current_join_publication(
+          missing_home_context, instruction)) {
+    return fail("expected block-entry clobber check to fail closed without prepared publication availability");
+  }
+
+  return 0;
+}
+
 int predecessor_join_source_publication_materializes_edge_multiply() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -32379,6 +32533,11 @@ int main() {
   }
   if (const int status =
           block_entry_edge_copy_redundancy_uses_prepared_publication_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_entry_publication_register_uses_indexed_value_identity();
       status != 0) {
     return status;
   }
