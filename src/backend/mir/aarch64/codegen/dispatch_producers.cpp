@@ -128,11 +128,95 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
   return record.kind == mir::SameBlockProducerKind::LoadGlobal;
 }
 
+[[nodiscard]] std::optional<bool>
+prepared_select_chain_contains_direct_global_load(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth) {
+  if (depth > 64U) {
+    return false;
+  }
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return false;
+  }
+  if (context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto producer = prepared_source_producer_for_value(context, value);
+  if (!producer.has_value() ||
+      producer->block_label != context.control_flow_block->block_label ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+
+  const auto& inst = context.bir_block->insts[producer->instruction_index];
+  switch (producer->kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer->load_global == std::get_if<bir::LoadGlobalInst>(&inst)
+                 ? std::optional<bool>{true}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer->load_local == std::get_if<bir::LoadLocalInst>(&inst)
+                 ? std::optional<bool>{false}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast: {
+      const auto* cast = std::get_if<bir::CastInst>(&inst);
+      if (producer->cast != cast || cast == nullptr) {
+        return std::nullopt;
+      }
+      return prepared_select_chain_contains_direct_global_load(
+          context, cast->operand, producer->instruction_index, depth + 1U);
+    }
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary: {
+      const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+      if (producer->binary != binary || binary == nullptr) {
+        return std::nullopt;
+      }
+      const auto lhs = prepared_select_chain_contains_direct_global_load(
+          context, binary->lhs, producer->instruction_index, depth + 1U);
+      if (!lhs.has_value() || *lhs) {
+        return lhs;
+      }
+      return prepared_select_chain_contains_direct_global_load(
+          context, binary->rhs, producer->instruction_index, depth + 1U);
+    }
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization: {
+      const auto* select = std::get_if<bir::SelectInst>(&inst);
+      if (producer->select != select || select == nullptr) {
+        return std::nullopt;
+      }
+      const auto true_value =
+          prepared_select_chain_contains_direct_global_load(
+              context, select->true_value, producer->instruction_index, depth + 1U);
+      if (!true_value.has_value() || *true_value) {
+        return true_value;
+      }
+      return prepared_select_chain_contains_direct_global_load(
+          context, select->false_value, producer->instruction_index, depth + 1U);
+    }
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return false;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool select_chain_contains_direct_global_load(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
     unsigned depth) {
+  const auto prepared = prepared_select_chain_contains_direct_global_load(
+      context, value, before_instruction_index, depth);
+  if (prepared.has_value()) {
+    return *prepared;
+  }
   return mir::select_chain_contains_dependency(
       context.bir_block, value, before_instruction_index, dependency_is_load_global, depth);
 }

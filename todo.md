@@ -8,41 +8,38 @@ Current Step Title: Route non-edge scalar producer materialization through prepa
 
 ## Just Finished
 
-Completed Step 2 select-chain materialization repair for the non-edge
-named-value route.
+Continued Step 2 by moving the non-edge direct-global select-chain boolean
+dependency query onto prepared source-producer authority when those facts can
+answer it.
 
-`find_same_block_select_producer` now consumes
-`PreparedEdgePublicationSourceProducerLookups` before falling back to the
-legacy MIR same-block scan. The prepared select producer must be in the current
-block, precede the materialization point, be recorded as
-`SelectMaterialization`, point at an indexed `SelectInst`, and match the
-requested named result and type. This moves the select-chain materializer's
-producer selection onto the same prepared source authority used by
-`emit_value_publication_to_register` while preserving behavior when no complete
-prepared select fact is available.
+`select_chain_contains_direct_global_load` now first traverses
+`PreparedEdgePublicationSourceProducerLookups` for the current block and
+materialization point, recursing through prepared cast, binary, and select
+producer facts and recognizing prepared `LoadGlobal` facts directly. It falls
+back to the legacy MIR dependency traversal only when prepared producer facts
+are missing, ambiguous, out of block, out of range, or inconsistent with the
+indexed instruction.
 
 ## Suggested Next
 
-Continue Step 2 with the remaining narrow authority gap: direct-global
-select-chain dependency detection still derives `contains_direct_global_load`
-and root metadata through `mir::select_chain_contains_dependency` /
-`mir::find_same_block_named_producer_record`. Decide whether existing prepared
-source-producer facts are sufficient to answer that dependency query or whether
-a dedicated prepared select-chain dependency lookup is needed.
+Complete Step 2 by adding a shared prepared select-chain dependency query that
+returns both `contains_direct_global_load` and root metadata from
+`PreparedEdgePublicationSourceProducerLookups`. The exact missing query shape
+is: input prepared source-producer lookups, current block label, current BIR
+block, named source value, and before-instruction index; output whether a
+direct global load is reachable plus the root producer kind/select bit and root
+instruction index. That would replace the remaining root-metadata use of
+`mir::find_same_block_named_producer_record` in the direct-global select-chain
+prepared helper.
 
 ## Watchouts
 
-The repaired route still reconstructs cast, binary, load-local, load-global,
-and select emission after selecting a prepared source producer. Remaining Step
-2 gap: direct-global select-chain dependency discovery is still a local
-dependency walk, and the local-slot address subroute remains separate work.
-Do not mix local-slot address repair into the direct-global select-chain packet.
-
-The new `LoadGlobal` prepared producer kind is now part of the shared source
-producer fact and edge-copy producer identity checks can validate it. The
-intentional repair in this packet is still the non-edge scalar publication
-consumer; any broader edge-copy load-global behavior should be reviewed as a
-separate packet.
+The non-edge boolean query no longer relies on local same-block traversal when
+prepared producer facts are complete. The existing
+`prepare::find_prepared_direct_global_select_chain_dependency` helper still
+derives root metadata through MIR same-block producer records, so Step 2 should
+remain open until that shared root-metadata query exists or the supervisor
+chooses to split it. Keep local-slot address repair out of this route.
 
 ## Proof
 
