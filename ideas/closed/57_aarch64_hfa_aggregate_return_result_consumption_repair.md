@@ -97,3 +97,19 @@ Likely proof surfaces:
 - Reject broad AArch64 call or memory rewrites that do not prove HFA aggregate
   result consumers now read the ABI result lanes published at the call
   boundary.
+
+## Closure Note
+
+Closed after reviewer approval in
+`review/idea57-hfa-result-route-review.md` and normalized backend regression
+proof. The implementation consumes prepared `AfterCall` `CallResultAbi` lane
+authority for HFA aggregate result lanes and reasserts only explicit result
+lanes after prepared after-call moves, avoiding testcase names, expectation
+downgrades, raw assembly filtering, or unrelated edge/terminator work.
+
+Close-time backend proof used canonical `test_before.log` and
+`test_after.log`; both logs report `165/167` passing with no new failures. The
+remaining known backend failures are `backend_aarch64_instruction_dispatch`
+and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`, which
+are outside this idea's HFA result-consumption scope.
