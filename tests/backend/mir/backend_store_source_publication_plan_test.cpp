@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <optional>
+#include <variant>
 
 namespace {
 
@@ -278,6 +279,8 @@ int classifies_byval_load_local_source_from_prepared_authority() {
 }
 
 int records_direct_global_select_chain_dependency_from_prepared_authority() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
   bir::Block block;
   block.label = "entry";
   block.insts.push_back(bir::LoadGlobalInst{
@@ -293,10 +296,35 @@ int records_direct_global_select_chain_dependency_from_prepared_authority() {
       .true_value = bir::Value::named(bir::TypeKind::Ptr, "%global_ptr"),
       .false_value = bir::Value::named(bir::TypeKind::Ptr, "%fallback"),
   });
+  const auto* load_global = std::get_if<bir::LoadGlobalInst>(&block.insts[0]);
+  const auto* select = std::get_if<bir::SelectInst>(&block.insts[1]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      names.value_names.intern("%global_ptr"),
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_global = load_global,
+      });
+  source_producers.producers_by_value_name.emplace(
+      names.value_names.intern("%selected"),
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .select = select,
+      });
 
   const auto dependency =
       prepare::find_prepared_store_source_direct_global_select_chain_dependency(
-          &block, bir::Value::named(bir::TypeKind::Ptr, "%selected"), 2);
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::Ptr, "%selected"),
+          2);
   const auto source = bir::Value::named(bir::TypeKind::Ptr, "%selected");
   auto destination_access = frame_slot_store_access(103, 10, 0);
   const auto plan = prepare::plan_prepared_store_source_publication({

@@ -1392,21 +1392,21 @@ lower_predecessor_select_parallel_copy_sources(
   const bool root_value = active_values.empty() &&
                           direct_global_dependency != nullptr;
   if (root_value) {
-    const auto root = mir::find_same_block_named_producer_record(
-        context.bir_block, value.name, before_instruction_index);
+    const auto prepared_value_name = prepared_named_value_id(context, value);
     if (!direct_global_dependency->contains_direct_global_load ||
         !direct_global_dependency->root_instruction_index.has_value() ||
-        !root ||
-        *direct_global_dependency->root_instruction_index !=
-            root.instruction_index ||
-        direct_global_dependency->root_is_select !=
-            (root.kind == mir::SameBlockProducerKind::Select)) {
+        !prepared_value_name.has_value() ||
+        *prepared_value_name != root_value_name) {
       return false;
     }
   }
 
   const auto producer =
       find_same_block_select_producer(context, value, before_instruction_index);
+  if (root_value &&
+      direct_global_dependency->root_is_select != (producer.select != nullptr)) {
+    return false;
+  }
   if (producer.select == nullptr) {
     return emit_value_publication_to_register(
         context,
@@ -1575,9 +1575,33 @@ materialize_direct_global_select_chain_call_argument(
       value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
-  const auto direct_global_dependency =
-      prepare::find_prepared_direct_global_select_chain_dependency(
-          context.bir_block, value, before_instruction_index);
+  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
+      fallback_source_producers;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
+  if (source_producers == nullptr &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr) {
+    fallback_source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared,
+            *context.function.control_flow);
+    source_producers = &*fallback_source_producers;
+  }
+  prepare::PreparedDirectGlobalSelectChainDependency direct_global_dependency;
+  if (context.function.prepared != nullptr &&
+      context.control_flow_block != nullptr) {
+    direct_global_dependency =
+        prepare::find_prepared_direct_global_select_chain_dependency(
+            context.function.prepared->names,
+            source_producers,
+            context.control_flow_block->block_label,
+            context.bir_block,
+            value,
+            before_instruction_index);
+  }
   if (!direct_global_dependency.contains_direct_global_load ||
       !direct_global_dependency.root_instruction_index.has_value()) {
     return std::nullopt;

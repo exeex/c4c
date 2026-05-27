@@ -3032,9 +3032,34 @@ plan_store_local_source_publication(
                 addressing,
                 source_producer)
           : false;
-  const auto direct_global_select_chain =
-      prepare::find_prepared_store_source_direct_global_select_chain_dependency(
-          context.bir_block, store.value, instruction_index);
+  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
+      fallback_source_producers;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
+  if (source_producers == nullptr &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr) {
+    fallback_source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared,
+            *context.function.control_flow);
+    source_producers = &*fallback_source_producers;
+  }
+  prepare::PreparedStoreSourceDirectGlobalSelectChainDependency
+      direct_global_select_chain;
+  if (context.function.prepared != nullptr &&
+      context.control_flow_block != nullptr) {
+    direct_global_select_chain =
+        prepare::find_prepared_store_source_direct_global_select_chain_dependency(
+            context.function.prepared->names,
+            source_producers,
+            context.control_flow_block->block_label,
+            context.bir_block,
+            store.value,
+            instruction_index);
+  }
   const bir::Value* recovered_value =
       recovered_source.has_value() ? &recovered_source->stored_value : nullptr;
   return prepare::plan_prepared_store_source_publication({

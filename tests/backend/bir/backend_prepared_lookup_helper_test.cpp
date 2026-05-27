@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
+#include <variant>
 
 namespace {
 
@@ -2013,6 +2014,8 @@ int verify_prepared_frame_address_offset_lookup() {
 }
 
 int verify_direct_global_select_chain_dependency_query() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("query.entry");
   const c4c::LinkNameId global_name{41};
   const bir::Value loaded =
       bir::Value::named(bir::TypeKind::I32, "%query.loaded");
@@ -2040,10 +2043,39 @@ int verify_direct_global_select_chain_dependency_query() {
                .global_name_id = global_name,
            }},
   };
+  const auto* loaded_inst = std::get_if<bir::LoadGlobalInst>(&block.insts[0]);
+  const auto* selected_inst = std::get_if<bir::SelectInst>(&block.insts[1]);
+  const auto* direct_inst = std::get_if<bir::LoadGlobalInst>(&block.insts[2]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      names.value_names.intern(loaded.name),
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_global = loaded_inst,
+      });
+  source_producers.producers_by_value_name.emplace(
+      names.value_names.intern(selected.name),
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .select = selected_inst,
+      });
+  source_producers.producers_by_value_name.emplace(
+      names.value_names.intern(direct.name),
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .load_global = direct_inst,
+      });
 
   const auto select_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
-          &block, selected, 3);
+          names, &source_producers, block_label, &block, selected, 3);
   if (!select_dependency.contains_direct_global_load ||
       !select_dependency.root_is_select ||
       select_dependency.root_instruction_index != std::size_t{1}) {
@@ -2052,7 +2084,7 @@ int verify_direct_global_select_chain_dependency_query() {
 
   const auto direct_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
-          &block, direct, 3);
+          names, &source_producers, block_label, &block, direct, 3);
   if (!direct_dependency.contains_direct_global_load ||
       direct_dependency.root_is_select ||
       direct_dependency.root_instruction_index != std::size_t{2}) {
@@ -2061,7 +2093,12 @@ int verify_direct_global_select_chain_dependency_query() {
 
   const auto missing_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
-          &block, bir::Value::named(bir::TypeKind::I32, "%missing"), 3);
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%missing"),
+          3);
   if (missing_dependency.contains_direct_global_load ||
       missing_dependency.root_instruction_index.has_value()) {
     return fail("direct-global select-chain query should fail closed on missing roots");

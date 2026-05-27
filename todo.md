@@ -3,43 +3,38 @@
 Status: Active
 Source Idea Path: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Route non-edge scalar producer materialization through prepared source authority
+Current Step ID: Step 3
+Current Step Title: Preserve block-entry and value-home helpers as prepared consumers
 
 ## Just Finished
 
-Continued Step 2 by moving the non-edge direct-global select-chain boolean
-dependency query onto prepared source-producer authority when those facts can
-answer it.
+Completed Step 2 by replacing the remaining direct-global select-chain root
+metadata query in `prepare::find_prepared_direct_global_select_chain_dependency`
+with prepared source-producer authority.
 
-`select_chain_contains_direct_global_load` now first traverses
-`PreparedEdgePublicationSourceProducerLookups` for the current block and
-materialization point, recursing through prepared cast, binary, and select
-producer facts and recognizing prepared `LoadGlobal` facts directly. It falls
-back to the legacy MIR dependency traversal only when prepared producer facts
-are missing, ambiguous, out of block, out of range, or inconsistent with the
-indexed instruction.
+The prepared helper now consumes `PreparedEdgePublicationSourceProducerLookups`,
+the prepared name table, the current block label, the BIR block, the named
+source value, and the before-instruction index. It validates the indexed
+producer fact against the BIR instruction, walks prepared load-global,
+load-local, cast, binary, and select producer facts recursively, and returns
+both direct-global reachability and root metadata without calling
+`mir::find_same_block_named_producer_record` or
+`mir::select_chain_contains_dependency`.
 
 ## Suggested Next
 
-Complete Step 2 by adding a shared prepared select-chain dependency query that
-returns both `contains_direct_global_load` and root metadata from
-`PreparedEdgePublicationSourceProducerLookups`. The exact missing query shape
-is: input prepared source-producer lookups, current block label, current BIR
-block, named source value, and before-instruction index; output whether a
-direct global load is reachable plus the root producer kind/select bit and root
-instruction index. That would replace the remaining root-metadata use of
-`mir::find_same_block_named_producer_record` in the direct-global select-chain
-prepared helper.
+Begin Step 3 by preserving block-entry and value-home helper behavior while
+keeping their producer and publication decisions on prepared authority. Start
+with the narrowest helper that still falls back to local same-block producer
+metadata for prepared block-entry/value-home decisions.
 
 ## Watchouts
 
-The non-edge boolean query no longer relies on local same-block traversal when
-prepared producer facts are complete. The existing
-`prepare::find_prepared_direct_global_select_chain_dependency` helper still
-derives root metadata through MIR same-block producer records, so Step 2 should
-remain open until that shared root-metadata query exists or the supervisor
-chooses to split it. Keep local-slot address repair out of this route.
+Step 2 needed the store-source call path to pass the same prepared
+source-producer authority into the shared helper, so `memory.cpp` has a narrow
+signature-adaptation change for that direct caller. Keep local-slot address
+repair out of the next route, and do not reintroduce same-block MIR scans into
+prepared direct-global select-chain dependency planning.
 
 ## Proof
 

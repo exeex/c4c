@@ -1,12 +1,185 @@
 #include "publication_plans.hpp"
 
-#include "../mir/query.hpp"
+#include <variant>
 
 namespace c4c::backend::prepare {
 
-namespace mir = c4c::backend::mir;
-
 namespace {
+
+[[nodiscard]] const bir::Value* prepared_source_producer_result(
+    const PreparedEdgePublicationSourceProducer& producer) {
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr ? &producer.load_local->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr ? &producer.load_global->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr ? &producer.cast->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr ? &producer.binary->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr ? &producer.select->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_source_producer_matches_indexed_instruction(
+    const PreparedEdgePublicationSourceProducer& producer,
+    const bir::Inst& inst,
+    const bir::Value& value) {
+  const auto* result = prepared_source_producer_result(producer);
+  if (result == nullptr ||
+      result->kind != bir::Value::Kind::Named ||
+      value.kind != bir::Value::Kind::Named ||
+      result->name != value.name ||
+      result->type != value.type) {
+    return false;
+  }
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local == std::get_if<bir::LoadLocalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global == std::get_if<bir::LoadGlobalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast == std::get_if<bir::CastInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary == std::get_if<bir::BinaryInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select == std::get_if<bir::SelectInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+prepared_select_chain_source_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (source_producers == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name = resolve_prepared_value_name_id(names, value.name);
+  if (!value_name.has_value()) {
+    return nullptr;
+  }
+  const auto* producer =
+      find_indexed_prepared_edge_publication_source_producer(
+          source_producers, *value_name);
+  if (producer == nullptr ||
+      producer->block_label != block_label ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= block->insts.size()) {
+    return nullptr;
+  }
+  const auto& inst = block->insts[producer->instruction_index];
+  return prepared_source_producer_matches_indexed_instruction(*producer, inst, value)
+             ? producer
+             : nullptr;
+}
+
+[[nodiscard]] std::optional<bool>
+prepared_select_chain_contains_direct_global_load(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 64U) {
+    return false;
+  }
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return false;
+  }
+  const auto* producer = prepared_select_chain_source_producer(
+      names, source_producers, block_label, block, value, before_instruction_index);
+  if (producer == nullptr) {
+    return std::nullopt;
+  }
+  switch (producer->kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return true;
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+      return false;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer->cast != nullptr
+                 ? prepared_select_chain_contains_direct_global_load(
+                       names,
+                       source_producers,
+                       block_label,
+                       block,
+                       producer->cast->operand,
+                       producer->instruction_index,
+                       depth + 1U)
+                 : std::nullopt;
+    case PreparedEdgePublicationSourceProducerKind::Binary: {
+      if (producer->binary == nullptr) {
+        return std::nullopt;
+      }
+      const auto lhs = prepared_select_chain_contains_direct_global_load(
+          names,
+          source_producers,
+          block_label,
+          block,
+          producer->binary->lhs,
+          producer->instruction_index,
+          depth + 1U);
+      if (!lhs.has_value() || *lhs) {
+        return lhs;
+      }
+      return prepared_select_chain_contains_direct_global_load(
+          names,
+          source_producers,
+          block_label,
+          block,
+          producer->binary->rhs,
+          producer->instruction_index,
+          depth + 1U);
+    }
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization: {
+      if (producer->select == nullptr) {
+        return std::nullopt;
+      }
+      const auto true_value = prepared_select_chain_contains_direct_global_load(
+          names,
+          source_producers,
+          block_label,
+          block,
+          producer->select->true_value,
+          producer->instruction_index,
+          depth + 1U);
+      if (!true_value.has_value() || *true_value) {
+        return true_value;
+      }
+      return prepared_select_chain_contains_direct_global_load(
+          names,
+          source_producers,
+          block_label,
+          block,
+          producer->select->false_value,
+          producer->instruction_index,
+          depth + 1U);
+    }
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] PreparedScalarPublicationPlan missing_destination_home(
     const bir::Value* source_value,
@@ -194,11 +367,6 @@ namespace {
     }
   }
   return false;
-}
-
-[[nodiscard]] bool dependency_is_load_global(
-    const mir::DependencyTraversalRecord& record) {
-  return record.kind == mir::SameBlockProducerKind::LoadGlobal;
 }
 
 }  // namespace
@@ -513,37 +681,51 @@ bool prepared_store_source_load_local_is_byval_formal_pointer_source(
 
 PreparedDirectGlobalSelectChainDependency
 find_prepared_direct_global_select_chain_dependency(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   PreparedDirectGlobalSelectChainDependency dependency;
-  if (block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
+  const auto* root = prepared_select_chain_source_producer(
+      names, source_producers, block_label, block, value, before_instruction_index);
+  if (root == nullptr) {
     return dependency;
   }
-  const auto root = mir::find_same_block_named_producer_record(
-      block, value.name, before_instruction_index);
-  if (!root) {
+  const auto contains_direct_global_load =
+      prepared_select_chain_contains_direct_global_load(
+          names,
+          source_producers,
+          block_label,
+          block,
+          value,
+          before_instruction_index);
+  if (!contains_direct_global_load.has_value() || !*contains_direct_global_load) {
     return dependency;
   }
-  dependency.contains_direct_global_load = mir::select_chain_contains_dependency(
-      block, value, before_instruction_index, dependency_is_load_global);
-  if (!dependency.contains_direct_global_load) {
-    return dependency;
-  }
-  dependency.root_is_select = root.kind == mir::SameBlockProducerKind::Select;
-  dependency.root_instruction_index = root.instruction_index;
+  dependency.contains_direct_global_load = true;
+  dependency.root_is_select =
+      root->kind == PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+  dependency.root_instruction_index = root->instruction_index;
   return dependency;
 }
 
 PreparedStoreSourceDirectGlobalSelectChainDependency
 find_prepared_store_source_direct_global_select_chain_dependency(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   return find_prepared_direct_global_select_chain_dependency(
-      block, value, before_instruction_index);
+      names,
+      source_producers,
+      block_label,
+      block,
+      value,
+      before_instruction_index);
 }
 
 }  // namespace c4c::backend::prepare
