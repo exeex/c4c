@@ -3,6 +3,7 @@
 #include "../abi/abi.hpp"
 #include "../codegen/instruction.hpp"
 #include "../../mir.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -124,6 +125,12 @@ struct BuildResult {
 
 [[nodiscard]] std::vector<codegen::InstructionRecord> selected_machine_nodes(
     const MachineFunction& function);
+
+[[nodiscard]] const prepare::PreparedAfterCallResultLaneBinding*
+find_prepared_after_call_result_lane_binding(const FunctionLoweringContext& context,
+                                             std::size_t block_index,
+                                             std::size_t instruction_index,
+                                             prepare::PreparedValueId value_id);
 
 [[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
 }  // namespace c4c::backend::aarch64::module

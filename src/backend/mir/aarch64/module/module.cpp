@@ -1,6 +1,7 @@
 #include "module.hpp"
 
 #include "../codegen/module_compile.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 namespace c4c::backend::aarch64::module {
 
@@ -20,6 +21,18 @@ std::vector<codegen::InstructionRecord> selected_machine_nodes(
     }
   }
   return nodes;
+}
+
+const prepare::PreparedAfterCallResultLaneBinding*
+find_prepared_after_call_result_lane_binding(const FunctionLoweringContext& context,
+                                             std::size_t block_index,
+                                             std::size_t instruction_index,
+                                             prepare::PreparedValueId value_id) {
+  return prepare::find_indexed_prepared_after_call_result_lane_binding(
+      context.move_bundle_lookups,
+      block_index,
+      instruction_index,
+      value_id);
 }
 
 BuildResult build(const prepare::PreparedBirModule& prepared) {

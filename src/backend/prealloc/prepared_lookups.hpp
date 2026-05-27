@@ -59,12 +59,25 @@ struct PreparedFrameAddressOffset {
   std::int64_t materialization_byte_offset = 0;
 };
 
+struct PreparedAfterCallResultLaneBinding {
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedAbiBinding* abi_binding = nullptr;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t lane_index = 0;
+};
+
 struct PreparedMoveBundleLookups {
   std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
   std::unordered_map<std::size_t, const PreparedMoveResolution*>
       before_call_argument_moves_by_position_and_abi;
   std::unordered_map<std::size_t, const PreparedMoveResolution*>
       before_return_abi_moves_by_source_and_bank;
+  std::vector<PreparedAfterCallResultLaneBinding> after_call_result_lane_bindings;
+  std::unordered_map<std::size_t, const PreparedAfterCallResultLaneBinding*>
+      after_call_result_lane_bindings_by_position_and_value;
 };
 
 struct PreparedReturnChainLookups {
@@ -406,6 +419,10 @@ struct PreparedFunctionLookups {
     std::size_t block_index,
     std::size_t instruction_index,
     std::size_t abi_index);
+[[nodiscard]] std::size_t prepared_after_call_result_lane_position_key(
+    std::size_t block_index,
+    std::size_t instruction_index,
+    PreparedValueId value_id);
 [[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
     std::size_t block_index,
     PreparedValueId source_value_id,
@@ -541,6 +558,13 @@ find_indexed_prepared_before_call_argument_move(
     std::size_t block_index,
     std::size_t instruction_index,
     std::size_t abi_index);
+
+[[nodiscard]] const PreparedAfterCallResultLaneBinding*
+find_indexed_prepared_after_call_result_lane_binding(
+    const PreparedMoveBundleLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    PreparedValueId value_id);
 
 [[nodiscard]] const PreparedMoveResolution*
 find_prepared_before_return_abi_move_by_source_and_destination_bank(
