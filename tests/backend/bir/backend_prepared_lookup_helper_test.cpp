@@ -1894,6 +1894,124 @@ int verify_before_return_abi_move_source_bank_lookup() {
   return 0;
 }
 
+int verify_prepared_frame_address_offset_lookup() {
+  const c4c::FunctionNameId function_name{13};
+  const c4c::BlockLabelId block_label{17};
+  const c4c::ValueNameId aggregate_value{23};
+  const c4c::ValueNameId aggregate_lane_value{24};
+  prepare::PreparedStackLayout stack_layout{
+      .objects =
+          {prepare::PreparedStackObject{
+              .object_id = prepare::PreparedObjectId{5},
+              .function_name = function_name,
+              .source_kind = "local_slot",
+              .size_bytes = 16,
+              .align_bytes = 8,
+          }},
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{9},
+              .object_id = prepare::PreparedObjectId{5},
+              .function_name = function_name,
+              .offset_bytes = 32,
+              .size_bytes = 16,
+              .align_bytes = 8,
+          }},
+  };
+  prepare::PreparedAddressingFunction addressing{
+      .function_name = function_name,
+      .address_materializations =
+          {prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 3,
+               .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+               .result_value_name = aggregate_value,
+               .frame_slot_id = prepare::PreparedFrameSlotId{9},
+               .byte_offset = 36,
+           },
+           prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 7,
+               .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+               .result_value_name = aggregate_value,
+               .frame_slot_id = prepare::PreparedFrameSlotId{9},
+               .byte_offset = 40,
+           },
+           prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 9,
+               .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+               .result_value_name = aggregate_lane_value,
+               .frame_slot_id = prepare::PreparedFrameSlotId{9},
+           }},
+  };
+  prepare::PreparedAddressMaterializationLookups lookups;
+  for (const auto& materialization : addressing.address_materializations) {
+    lookups.materializations_by_block[materialization.block_label].push_back(
+        &materialization);
+  }
+
+  const auto first =
+      prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &lookups, block_label, aggregate_value, 3);
+  if (!first.has_value() ||
+      first->materialization != &addressing.address_materializations[0] ||
+      first->frame_slot_id != prepare::PreparedFrameSlotId{9} ||
+      first->object_id != prepare::PreparedObjectId{5} ||
+      first->stack_offset_bytes != std::size_t{36}) {
+    return fail("frame-address lookup should resolve prepared materialization offset");
+  }
+
+  const auto latest =
+      prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &lookups, block_label, aggregate_value, 8);
+  if (!latest.has_value() ||
+      latest->materialization != &addressing.address_materializations[1] ||
+      latest->stack_offset_bytes != std::size_t{40}) {
+    return fail("frame-address lookup should pick latest reaching materialization");
+  }
+
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, nullptr, block_label, aggregate_value, 8).has_value()) {
+    return fail("frame-address lookup should fail closed without indexed authority");
+  }
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &lookups, block_label, aggregate_value, 2).has_value()) {
+    return fail("frame-address lookup should not use future materializations");
+  }
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &lookups, block_label, aggregate_value).value_or(
+              prepare::PreparedFrameAddressOffset{})
+          .materialization == &addressing.address_materializations[2]) {
+    return fail("frame-address lookup should not recover aggregate authority from lane names");
+  }
+
+  auto duplicate_lookups = lookups;
+  duplicate_lookups.materializations_by_block[block_label].push_back(
+      &addressing.address_materializations[1]);
+  const auto duplicate =
+      prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &duplicate_lookups, block_label, aggregate_value, 8);
+  if (!duplicate.has_value() ||
+      duplicate->materialization != &addressing.address_materializations[1]) {
+    return fail("frame-address lookup should accept duplicate identical authority");
+  }
+
+  auto conflicting = addressing.address_materializations[1];
+  conflicting.byte_offset = 48;
+  duplicate_lookups.materializations_by_block[block_label].push_back(&conflicting);
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value(
+          stack_layout, &duplicate_lookups, block_label, aggregate_value, 8)
+          .has_value()) {
+    return fail("frame-address lookup should reject conflicting prepared authority");
+  }
+
+  return 0;
+}
+
 int verify_direct_global_select_chain_dependency_query() {
   const c4c::LinkNameId global_name{41};
   const bir::Value loaded =
@@ -1990,6 +2108,10 @@ int main() {
     return result;
   }
   if (const int result = verify_before_return_abi_move_source_bank_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_frame_address_offset_lookup();
       result != 0) {
     return result;
   }

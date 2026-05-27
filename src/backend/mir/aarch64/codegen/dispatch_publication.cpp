@@ -333,58 +333,42 @@ namespace prepare = c4c::backend::prepare;
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
+[[nodiscard]] std::optional<std::size_t> prepared_frame_address_offset_for_value(
     const module::BlockLoweringContext& context,
-    std::string_view local_slot_name) {
+    c4c::ValueNameId value_name,
+    std::optional<std::size_t> before_or_at_instruction_index) {
   if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      local_slot_name.empty()) {
+      context.function.address_materialization_lookups == nullptr ||
+      context.control_flow_block == nullptr ||
+      value_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
-  const prepare::PreparedFrameSlot* selected_slot = nullptr;
-  for (const auto& object : context.function.prepared->stack_layout.objects) {
-    if (object.function_name != context.function.control_flow->function_name ||
-        object.source_kind != "local_slot") {
-      continue;
-    }
-    const auto object_name =
-        prepare::prepared_stack_object_name(context.function.prepared->names, object);
-    if (object_name != local_slot_name) {
-      continue;
-    }
-    for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
-      if (slot.object_id != object.object_id) {
-        continue;
-      }
-      if (selected_slot == nullptr ||
-          slot.offset_bytes < selected_slot->offset_bytes) {
-        selected_slot = &slot;
-      }
-    }
-  }
-  return selected_slot != nullptr
-             ? std::optional<std::size_t>{selected_slot->offset_bytes}
+  const auto resolved =
+      prepare::find_indexed_prepared_frame_address_offset_for_value(
+          context.function.prepared->stack_layout,
+          context.function.address_materialization_lookups,
+          context.control_flow_block->block_label,
+          value_name,
+          before_or_at_instruction_index);
+  return resolved.has_value()
+             ? std::optional<std::size_t>{resolved->stack_offset_bytes}
              : std::nullopt;
+}
+[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
+    const module::BlockLoweringContext&,
+    std::string_view) {
+  return std::nullopt;
 }
 [[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name) {
-  if (context.function.prepared == nullptr ||
-      value_name == c4c::kInvalidValueName) {
-    return std::nullopt;
-  }
-  const auto source_name =
-      prepare::prepared_value_name(context.function.prepared->names, value_name);
-  if (source_name.empty()) {
-    return std::nullopt;
-  }
-  const std::string first_lane_name = std::string{source_name} + ".0";
-  return local_slot_address_frame_offset(context, first_lane_name);
+  return prepared_frame_address_offset_for_value(context, value_name, std::nullopt);
 }
-[[nodiscard]] bool emit_local_slot_address_publication_to_register(
+[[nodiscard]] bool emit_local_slot_address_publication_to_register_impl(
     const module::BlockLoweringContext& context,
     const bir::BinaryInst& binary,
     std::uint8_t target_index,
+    std::optional<std::size_t> instruction_index,
     std::vector<std::string>& lines) {
   if (binary.result.type != bir::TypeKind::Ptr ||
       binary.operand_type != bir::TypeKind::Ptr ||
@@ -397,9 +381,8 @@ namespace prepare = c4c::backend::prepare;
   const auto lhs_name = prepared_named_value_id(context, binary.lhs);
   const auto base_offset =
       lhs_name.has_value()
-          ? local_slot_address_frame_offset(
-                context,
-                prepare::prepared_value_name(context.function.prepared->names, *lhs_name))
+          ? prepared_frame_address_offset_for_value(
+                context, *lhs_name, instruction_index)
           : std::nullopt;
   if (!base_offset.has_value()) {
     return false;
@@ -429,6 +412,14 @@ namespace prepare = c4c::backend::prepare;
   lines.push_back("add " + *target + ", " + std::string{base} + ", #" +
                   std::to_string(adjusted_offset));
   return true;
+}
+[[nodiscard]] bool emit_local_slot_address_publication_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  return emit_local_slot_address_publication_to_register_impl(
+      context, binary, target_index, std::nullopt, lines);
 }
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_local_slot_address_publication(
@@ -470,8 +461,8 @@ lower_local_slot_address_publication(
   }
 
   std::vector<std::string> lines;
-  if (!emit_local_slot_address_publication_to_register(
-          context, *binary, result_register->reg.index, lines)) {
+  if (!emit_local_slot_address_publication_to_register_impl(
+          context, *binary, result_register->reg.index, instruction_index, lines)) {
     return std::nullopt;
   }
   if (result_stack_offset_bytes.has_value()) {

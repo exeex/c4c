@@ -49,6 +49,14 @@ struct PreparedAddressMaterializationLookups {
       materializations_by_block;
 };
 
+struct PreparedFrameAddressOffset {
+  const PreparedAddressMaterialization* materialization = nullptr;
+  PreparedFrameSlotId frame_slot_id = 0;
+  PreparedObjectId object_id = 0;
+  std::size_t stack_offset_bytes = 0;
+  std::int64_t materialization_byte_offset = 0;
+};
+
 struct PreparedMoveBundleLookups {
   std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
   std::unordered_map<std::size_t, const PreparedMoveResolution*>
@@ -471,6 +479,14 @@ find_indexed_prepared_address_materializations(
 collect_prepared_address_materializations_for_block(
     const PreparedAddressingFunction& addressing,
     BlockLabelId block_label);
+
+[[nodiscard]] std::optional<PreparedFrameAddressOffset>
+find_indexed_prepared_frame_address_offset_for_value(
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterializationLookups* lookups,
+    BlockLabelId block_label,
+    ValueNameId value_name,
+    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
 
 [[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
     const PreparedMoveBundleLookups* lookups,
