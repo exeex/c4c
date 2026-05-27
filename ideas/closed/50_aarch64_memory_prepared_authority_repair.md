@@ -110,3 +110,11 @@ publication tracking that duplicate or should feed shared prepared authority.
 - Reject expectation downgrades, unsupported-test rewrites, broad memory
   rewrites outside this file's authority repair, or helper renames claimed as
   progress.
+
+## Closure Notes
+
+Closed after Step 6 validation. The runbook replaced the targeted duplicate
+memory-authority recovery with prepared value-home, move, pointer-base,
+store-source, and store-global publication facts. Close-scope regression guard
+covered the backend bucket plus the named AArch64 c-testsuite cases and kept
+the known four-failure baseline shape unchanged.
