@@ -1900,6 +1900,8 @@ int verify_prepared_frame_address_offset_lookup() {
   const c4c::BlockLabelId block_label{17};
   const c4c::ValueNameId aggregate_value{23};
   const c4c::ValueNameId aggregate_lane_value{24};
+  constexpr auto aggregate_value_id = prepare::PreparedValueId{230};
+  constexpr auto shadow_value_id = prepare::PreparedValueId{231};
   prepare::PreparedStackLayout stack_layout{
       .objects =
           {prepare::PreparedStackObject{
@@ -1934,6 +1936,16 @@ int verify_prepared_frame_address_offset_lookup() {
            prepare::PreparedAddressMaterialization{
                .function_name = function_name,
                .block_label = block_label,
+               .inst_index = 6,
+               .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+               .result_value_name = aggregate_value,
+               .result_value_id = shadow_value_id,
+               .frame_slot_id = prepare::PreparedFrameSlotId{9},
+               .byte_offset = 44,
+           },
+           prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = block_label,
                .inst_index = 7,
                .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
                .result_value_name = aggregate_value,
@@ -1946,9 +1958,13 @@ int verify_prepared_frame_address_offset_lookup() {
                .inst_index = 9,
                .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
                .result_value_name = aggregate_lane_value,
+               .result_value_id = shadow_value_id,
                .frame_slot_id = prepare::PreparedFrameSlotId{9},
            }},
   };
+  prepare::PreparedValueHomeLookups value_home_lookups;
+  value_home_lookups.value_ids.emplace(aggregate_value, aggregate_value_id);
+  value_home_lookups.value_ids.emplace(aggregate_lane_value, shadow_value_id);
   prepare::PreparedAddressMaterializationLookups lookups;
   for (const auto& materialization : addressing.address_materializations) {
     lookups.materializations_by_block[materialization.block_label].push_back(
@@ -1970,7 +1986,7 @@ int verify_prepared_frame_address_offset_lookup() {
       prepare::find_indexed_prepared_frame_address_offset_for_value(
           stack_layout, &lookups, block_label, aggregate_value, 8);
   if (!latest.has_value() ||
-      latest->materialization != &addressing.address_materializations[1] ||
+      latest->materialization != &addressing.address_materializations[2] ||
       latest->stack_offset_bytes != std::size_t{40}) {
     return fail("frame-address lookup should pick latest reaching materialization");
   }
@@ -1986,22 +2002,38 @@ int verify_prepared_frame_address_offset_lookup() {
   if (prepare::find_indexed_prepared_frame_address_offset_for_value(
           stack_layout, &lookups, block_label, aggregate_value).value_or(
               prepare::PreparedFrameAddressOffset{})
-          .materialization == &addressing.address_materializations[2]) {
+          .materialization == &addressing.address_materializations[3]) {
     return fail("frame-address lookup should not recover aggregate authority from lane names");
+  }
+  const auto id_latest =
+      prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout, &lookups, &value_home_lookups, block_label, aggregate_value_id, 8);
+  if (!id_latest.has_value() ||
+      id_latest->materialization != &addressing.address_materializations[2] ||
+      id_latest->stack_offset_bytes != std::size_t{40}) {
+    return fail("frame-address id lookup should consume prepared value-id authority");
+  }
+  const auto shadow =
+      prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout, &lookups, &value_home_lookups, block_label, shadow_value_id, 8);
+  if (!shadow.has_value() ||
+      shadow->materialization != &addressing.address_materializations[1] ||
+      shadow->stack_offset_bytes != std::size_t{44}) {
+    return fail("frame-address id lookup should prefer explicit prepared value ids over names");
   }
 
   auto duplicate_lookups = lookups;
   duplicate_lookups.materializations_by_block[block_label].push_back(
-      &addressing.address_materializations[1]);
+      &addressing.address_materializations[2]);
   const auto duplicate =
       prepare::find_indexed_prepared_frame_address_offset_for_value(
           stack_layout, &duplicate_lookups, block_label, aggregate_value, 8);
   if (!duplicate.has_value() ||
-      duplicate->materialization != &addressing.address_materializations[1]) {
+      duplicate->materialization != &addressing.address_materializations[2]) {
     return fail("frame-address lookup should accept duplicate identical authority");
   }
 
-  auto conflicting = addressing.address_materializations[1];
+  auto conflicting = addressing.address_materializations[2];
   conflicting.byte_offset = 48;
   duplicate_lookups.materializations_by_block[block_label].push_back(&conflicting);
   if (prepare::find_indexed_prepared_frame_address_offset_for_value(

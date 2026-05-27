@@ -557,6 +557,15 @@ find_indexed_prepared_frame_address_offset_for_value(
     ValueNameId value_name,
     std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
 
+[[nodiscard]] std::optional<PreparedFrameAddressOffset>
+find_indexed_prepared_frame_address_offset_for_value_id(
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterializationLookups* lookups,
+    const PreparedValueHomeLookups* value_home_lookups,
+    BlockLabelId block_label,
+    PreparedValueId value_id,
+    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
+
 [[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
     const PreparedMoveBundleLookups* lookups,
     const PreparedValueLocationFunction* value_locations,

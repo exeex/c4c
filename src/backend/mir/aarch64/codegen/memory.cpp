@@ -179,27 +179,6 @@ const prepare::PreparedStackObject* find_stack_object_by_object_id(
   return nullptr;
 }
 
-const prepare::PreparedStackObject* find_stack_object_by_value_name(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedStackLayout& stack_layout,
-    c4c::FunctionNameId function_name,
-    c4c::ValueNameId value_name) {
-  if (function_name == c4c::kInvalidFunctionName || value_name == c4c::kInvalidValueName) {
-    return nullptr;
-  }
-  const auto value_text = prepare::prepared_value_name(names, value_name);
-  for (const auto& object : stack_layout.objects) {
-    if (object.function_name != function_name) {
-      continue;
-    }
-    if (object.value_name == value_name ||
-        (!value_text.empty() && prepare::prepared_stack_object_name(names, object) == value_text)) {
-      return &object;
-    }
-  }
-  return nullptr;
-}
-
 std::optional<FrameSlotOperand> make_frame_slot_operand_from_stack_slot(
     const prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedFrameSlot& slot) {
@@ -240,9 +219,9 @@ bool resolve_frame_slot_memory_offset(const prepare::PreparedStackLayout& stack_
 }
 
 bool rewrite_local_address_store_value(
-    const prepare::PreparedNameTables& names,
     const prepare::PreparedStackLayout& stack_layout,
-    c4c::FunctionNameId function_name,
+    const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
     const bir::StoreLocalInst& store,
     MemoryInstructionRecord& record) {
   if (record.memory_kind != MemoryInstructionKind::Store ||
@@ -251,14 +230,22 @@ bool rewrite_local_address_store_value(
       !record.address.stored_value_name.has_value()) {
     return true;
   }
-
-  const auto* object =
-      find_stack_object_by_value_name(
-          names, stack_layout, function_name, *record.address.stored_value_name);
-  if (object == nullptr) {
+  if (!record.address.stored_value_id.has_value()) {
     return true;
   }
-  const auto* slot = prepare::find_prepared_frame_slot(stack_layout, object->object_id);
+
+  const auto prepared_address =
+      prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout,
+          address_materialization_lookups,
+          value_home_lookups,
+          record.address.block_label,
+          *record.address.stored_value_id,
+          record.address.instruction_index);
+  if (!prepared_address.has_value()) {
+    return true;
+  }
+  const auto* slot = find_frame_slot_by_slot_id(stack_layout, prepared_address->frame_slot_id);
   if (slot == nullptr) {
     return false;
   }
@@ -271,9 +258,9 @@ bool rewrite_local_address_store_value(
 }
 
 bool apply_stack_layout_to_memory_record(
-    const prepare::PreparedNameTables& names,
     const prepare::PreparedStackLayout& stack_layout,
-    c4c::FunctionNameId function_name,
+    const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
     const bir::StoreLocalInst* local_store,
     MemoryInstructionRecord& record) {
   if (!resolve_frame_slot_memory_offset(stack_layout, record.address)) {
@@ -283,7 +270,7 @@ bool apply_stack_layout_to_memory_record(
     return true;
   }
   return rewrite_local_address_store_value(
-      names, stack_layout, function_name, *local_store, record);
+      stack_layout, address_materialization_lookups, value_home_lookups, *local_store, record);
 }
 
 void apply_frame_pointer_base_policy(const module::FunctionLoweringContext& context,
@@ -2436,10 +2423,17 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         memory_error_message(prepared.error));
     return MemoryInstructionLoweringResult{.handled = true};
   }
+  const auto local_value_home_lookups =
+      context.function.value_home_lookups == nullptr
+          ? prepare::make_prepared_value_home_lookups(context.function.value_locations)
+          : prepare::PreparedValueHomeLookups{};
+  const auto* value_home_lookups =
+      context.function.value_home_lookups == nullptr ? &local_value_home_lookups
+                                                     : context.function.value_home_lookups;
   if (context.function.prepared == nullptr ||
-      !apply_stack_layout_to_memory_record(context.function.prepared->names,
-                                           context.function.prepared->stack_layout,
-                                           context.function.control_flow->function_name,
+      !apply_stack_layout_to_memory_record(context.function.prepared->stack_layout,
+                                           context.function.address_materialization_lookups,
+                                           value_home_lookups,
                                            local_store,
                                            *prepared.record)) {
     append_memory_diagnostic(

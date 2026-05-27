@@ -2043,6 +2043,77 @@ find_indexed_prepared_frame_address_offset_for_value(
   };
 }
 
+std::optional<PreparedFrameAddressOffset>
+find_indexed_prepared_frame_address_offset_for_value_id(
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterializationLookups* lookups,
+    const PreparedValueHomeLookups* value_home_lookups,
+    BlockLabelId block_label,
+    PreparedValueId value_id,
+    std::optional<std::size_t> before_or_at_instruction_index) {
+  if (lookups == nullptr || block_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  const auto* materializations =
+      find_indexed_prepared_address_materializations(lookups, block_label);
+  if (materializations == nullptr) {
+    return std::nullopt;
+  }
+
+  const PreparedAddressMaterialization* selected = nullptr;
+  const PreparedFrameSlot* selected_slot = nullptr;
+  for (const auto* materialization : *materializations) {
+    std::optional<PreparedValueId> materialization_value_id =
+        materialization != nullptr ? materialization->result_value_id : std::nullopt;
+    if (!materialization_value_id.has_value() &&
+        materialization != nullptr &&
+        materialization->result_value_name.has_value() &&
+        value_home_lookups != nullptr) {
+      const auto it =
+          value_home_lookups->value_ids.find(*materialization->result_value_name);
+      if (it != value_home_lookups->value_ids.end()) {
+        materialization_value_id = it->second;
+      }
+    }
+    if (materialization == nullptr ||
+        materialization->kind != PreparedAddressMaterializationKind::FrameSlot ||
+        materialization_value_id != std::optional<PreparedValueId>{value_id} ||
+        !materialization->frame_slot_id.has_value() ||
+        (before_or_at_instruction_index.has_value() &&
+         materialization->inst_index > *before_or_at_instruction_index)) {
+      continue;
+    }
+    const auto* slot =
+        find_frame_slot_by_id(stack_layout, *materialization->frame_slot_id);
+    if (slot == nullptr || materialization->byte_offset < 0) {
+      continue;
+    }
+    if (selected != nullptr &&
+        selected->inst_index == materialization->inst_index) {
+      if (selected->frame_slot_id == materialization->frame_slot_id &&
+          selected->byte_offset == materialization->byte_offset) {
+        continue;
+      }
+      return std::nullopt;
+    }
+    if (selected == nullptr || selected->inst_index < materialization->inst_index) {
+      selected = materialization;
+      selected_slot = slot;
+    }
+  }
+  if (selected == nullptr || selected_slot == nullptr ||
+      !selected->frame_slot_id.has_value() || selected->byte_offset < 0) {
+    return std::nullopt;
+  }
+  return PreparedFrameAddressOffset{
+      .materialization = selected,
+      .frame_slot_id = *selected->frame_slot_id,
+      .object_id = selected_slot->object_id,
+      .stack_offset_bytes = static_cast<std::size_t>(selected->byte_offset),
+      .materialization_byte_offset = selected->byte_offset,
+  };
+}
+
 [[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
     const PreparedMoveBundleLookups* lookups,
     const PreparedValueLocationFunction* value_locations,
