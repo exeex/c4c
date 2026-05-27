@@ -554,7 +554,7 @@ prepared_same_block_scalar_producer_context(
                                                before_instruction_index,
                                                target_index,
                                                scratch_index,
-                                               producer_context->instruction_index,
+                                               before_instruction_index,
                                                *root_value_name,
                                                lines,
                                                label_index,
