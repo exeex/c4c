@@ -235,32 +235,6 @@ prepared_select_chain_contains_direct_global_load(
   return std::nullopt;
 }
 
-[[nodiscard]] std::string_view local_slot_reference_name(
-    const bir::NameTables& bir_names,
-    std::string_view raw_name,
-    SlotNameId slot_id) {
-  if (!raw_name.empty()) {
-    return raw_name;
-  }
-  return slot_id != kInvalidSlotName ? bir_names.slot_names.spelling(slot_id)
-                                     : std::string_view{};
-}
-
-[[nodiscard]] bool local_slot_reference_matches(
-    const bir::NameTables& bir_names,
-    const bir::LoadLocalInst& load,
-    const bir::StoreLocalInst& store) {
-  if (load.slot_id != kInvalidSlotName && store.slot_id != kInvalidSlotName &&
-      load.slot_id == store.slot_id) {
-    return true;
-  }
-  const auto load_name =
-      local_slot_reference_name(bir_names, load.slot_name, load.slot_id);
-  const auto store_name =
-      local_slot_reference_name(bir_names, store.slot_name, store.slot_id);
-  return !load_name.empty() && load_name == store_name;
-}
-
 [[nodiscard]] const PreparedFrameSlot* find_frame_slot(
     const PreparedStackLayout& stack_layout,
     PreparedFrameSlotId slot_id) {
@@ -272,52 +246,78 @@ prepared_select_chain_contains_direct_global_load(
   return nullptr;
 }
 
-[[nodiscard]] const PreparedStackObject* find_stack_object(
+[[nodiscard]] const PreparedFrameSlot* prepared_frame_slot_for_access(
     const PreparedStackLayout& stack_layout,
-    PreparedObjectId object_id) {
-  for (const auto& object : stack_layout.objects) {
-    if (object.object_id == object_id) {
-      return &object;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] std::string_view prepared_frame_slot_object_name(
-    const PreparedNameTables& names,
-    const PreparedStackLayout& stack_layout,
-    PreparedFrameSlotId slot_id) {
-  const auto* slot = find_frame_slot(stack_layout, slot_id);
-  const auto* object =
-      slot != nullptr ? find_stack_object(stack_layout, slot->object_id) : nullptr;
-  return object != nullptr ? prepared_stack_object_name(names, *object)
-                           : std::string_view{};
-}
-
-[[nodiscard]] std::string_view prepared_load_local_frame_object_name(
-    const PreparedNameTables& names,
-    const PreparedStackLayout& stack_layout,
-    const PreparedAddressingFunction* addressing,
-    BlockLabelId block_label,
-    std::size_t load_instruction_index) {
-  const auto* access =
-      addressing != nullptr
-          ? find_prepared_memory_access(*addressing, block_label, load_instruction_index)
-          : nullptr;
+    const PreparedMemoryAccess* access) {
   if (access == nullptr ||
       access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
       !access->address.frame_slot_id.has_value()) {
-    return std::string_view{};
+    return nullptr;
   }
-  return prepared_frame_slot_object_name(
-      names, stack_layout, *access->address.frame_slot_id);
+  return find_frame_slot(stack_layout, *access->address.frame_slot_id);
 }
 
-[[nodiscard]] bool value_name_has_slot_prefix(std::string_view value_name,
-                                              std::string_view slot_name) {
-  return !slot_name.empty() && value_name.size() > slot_name.size() &&
-         value_name.substr(0, slot_name.size()) == slot_name &&
-         value_name[slot_name.size()] == '.';
+[[nodiscard]] std::optional<ValueNameId> existing_prepared_value_name_id(
+    const PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name;
+}
+
+[[nodiscard]] bool prepared_load_access_matches_result(
+    const PreparedNameTables& names,
+    const PreparedMemoryAccess* access,
+    const bir::LoadLocalInst& load) {
+  const auto result_name = existing_prepared_value_name_id(names, load.result);
+  return result_name.has_value() &&
+         access != nullptr &&
+         access->result_value_name == result_name;
+}
+
+[[nodiscard]] bool prepared_store_access_matches_value(
+    const PreparedNameTables& names,
+    const PreparedMemoryAccess* access,
+    const bir::StoreLocalInst& store) {
+  if (access == nullptr) {
+    return false;
+  }
+  const auto stored_name = existing_prepared_value_name_id(names, store.value);
+  return stored_name.has_value() ? access->stored_value_name == stored_name
+                                 : !access->stored_value_name.has_value();
+}
+
+[[nodiscard]] std::optional<std::int64_t> prepared_access_absolute_offset(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* access) {
+  const auto* slot = prepared_frame_slot_for_access(stack_layout, access);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(slot->offset_bytes) +
+         access->address.byte_offset;
+}
+
+[[nodiscard]] bool prepared_store_access_targets_load_byte(
+    const PreparedStackLayout& stack_layout,
+    const PreparedMemoryAccess* load_access,
+    const PreparedMemoryAccess* store_access,
+    std::optional<std::size_t> load_lane_offset) {
+  const auto load_offset = prepared_access_absolute_offset(stack_layout, load_access);
+  const auto store_offset = prepared_access_absolute_offset(stack_layout, store_access);
+  if (!load_offset.has_value() || !store_offset.has_value()) {
+    return false;
+  }
+  const auto lane_offset =
+      load_lane_offset.has_value()
+          ? static_cast<std::int64_t>(*load_lane_offset)
+          : std::int64_t{0};
+  return *store_offset == *load_offset + lane_offset;
 }
 
 [[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
@@ -335,19 +335,6 @@ prepared_select_chain_contains_direct_global_load(
     value = value * 10U + static_cast<std::size_t>(ch - '0');
   }
   return value;
-}
-
-[[nodiscard]] bool store_local_targets_logical_slot(
-    const bir::NameTables& bir_names,
-    const bir::StoreLocalInst& store,
-    std::string_view slot_name) {
-  const auto store_name =
-      local_slot_reference_name(bir_names, store.slot_name, store.slot_id);
-  if (!store_name.empty() && store_name == slot_name) {
-    return true;
-  }
-  return store.value.kind == bir::Value::Kind::Named &&
-         value_name_has_slot_prefix(store.value.name, slot_name);
 }
 
 [[nodiscard]] bool is_byval_formal_value_name(
@@ -611,7 +598,7 @@ plan_prepared_fixed_formal_store_source_publication(
 std::optional<PreparedRecoveredStoreSourcePublication>
 find_prepared_recovered_narrow_store_source_for_wide_local_load(
     const PreparedNameTables& names,
-    const bir::NameTables& bir_names,
+    const bir::NameTables&,
     const PreparedStackLayout& stack_layout,
     const PreparedAddressingFunction* addressing,
     BlockLabelId block_label,
@@ -625,11 +612,15 @@ find_prepared_recovered_narrow_store_source_for_wide_local_load(
   if (!load_bits.has_value()) {
     return std::nullopt;
   }
-  const auto load_slot_name =
-      local_slot_reference_name(bir_names, load.slot_name, load.slot_id);
-  const auto load_frame_object_name =
-      prepared_load_local_frame_object_name(
-          names, stack_layout, addressing, block_label, load_instruction_index);
+  const auto* load_access =
+      addressing != nullptr
+          ? find_prepared_memory_access(
+                *addressing, block_label, load_instruction_index)
+          : nullptr;
+  if (!prepared_load_access_matches_result(names, load_access, load) ||
+      prepared_frame_slot_for_access(stack_layout, load_access) == nullptr) {
+    return std::nullopt;
+  }
   const auto load_lane_offset =
       load.result.kind == bir::Value::Kind::Named
           ? parse_trailing_dot_offset(load.result.name)
@@ -637,13 +628,14 @@ find_prepared_recovered_narrow_store_source_for_wide_local_load(
   for (std::size_t index = load_instruction_index; index > 0; --index) {
     const auto* store =
         std::get_if<bir::StoreLocalInst>(&block->insts[index - 1]);
+    const auto* store_access =
+        store != nullptr && addressing != nullptr
+            ? find_prepared_memory_access(*addressing, block_label, index - 1)
+            : nullptr;
     if (store == nullptr ||
-        (!local_slot_reference_matches(bir_names, load, *store) &&
-         !store_local_targets_logical_slot(bir_names, *store, load_slot_name) &&
-         !store_local_targets_logical_slot(bir_names, *store, load_frame_object_name) &&
-         !(load_lane_offset.has_value() &&
-           store->value.kind == bir::Value::Kind::Named &&
-           parse_trailing_dot_offset(store->value.name) == load_lane_offset))) {
+        !prepared_store_access_matches_value(names, store_access, *store) ||
+        !prepared_store_access_targets_load_byte(
+            stack_layout, load_access, store_access, load_lane_offset)) {
       continue;
     }
     const auto store_bits = integer_bit_width(store->value.type);

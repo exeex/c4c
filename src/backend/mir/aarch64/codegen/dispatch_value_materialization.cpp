@@ -319,6 +319,10 @@ prepared_same_block_scalar_producer_context(
                                                      lines)) {
       return true;
     }
+    const auto* load_access = prepared_memory_access(context, index);
+    if (!prepared_memory_access_matches_instruction(context, load_access, *producer)) {
+      return false;
+    }
     const auto* addressing =
         context.function.prepared != nullptr && context.function.control_flow != nullptr
             ? prepare::find_prepared_addressing(

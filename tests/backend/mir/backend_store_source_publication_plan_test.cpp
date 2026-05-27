@@ -35,6 +35,28 @@ prepare::PreparedMemoryAccess frame_slot_store_access(
   };
 }
 
+prepare::PreparedMemoryAccess frame_slot_load_access(
+    c4c::ValueNameId result_value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t inst_index,
+    std::int64_t byte_offset) {
+  return prepare::PreparedMemoryAccess{
+      .function_name = 17,
+      .block_label = 23,
+      .inst_index = inst_index,
+      .result_value_name = result_value_name,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = slot_id,
+              .byte_offset = byte_offset,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+  };
+}
+
 prepare::PreparedValueHome source_home(
     prepare::PreparedValueHomeKind kind,
     prepare::PreparedValueId value_id,
@@ -209,6 +231,95 @@ int records_recovered_source_without_target_policy() {
           prepare::PreparedStorageEncodingKind::Register) {
     return fail("expected recovered source facts without target policy");
   }
+  return 0;
+}
+
+int recovered_narrow_store_requires_prepared_memory_access() {
+  const auto block_label = c4c::BlockLabelId{23};
+  const auto slot_id = prepare::PreparedFrameSlotId{9};
+
+  bir::NameTables bir_names;
+  prepare::PreparedNameTables names;
+  const auto narrow_name = names.value_names.intern("%narrow_store");
+  const auto wide_name = names.value_names.intern("%wide_load");
+  prepare::PreparedStackLayout stack_layout;
+  stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = 4,
+      .function_name = 17,
+      .offset_bytes = 64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block block;
+  block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "spelling_only_store",
+      .value = bir::Value::named(bir::TypeKind::I8, "%narrow_store"),
+      .byte_offset = 0,
+      .align_bytes = 1,
+  });
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%wide_load"),
+      .slot_name = "different_load_spelling",
+      .byte_offset = 0,
+      .align_bytes = 4,
+  });
+
+  prepare::PreparedAddressingFunction addressing;
+  auto store_access = frame_slot_store_access(narrow_name, slot_id, 0);
+  store_access.inst_index = 0;
+  auto load_access = frame_slot_load_access(wide_name, slot_id, 1, 0);
+  addressing.accesses = {store_access, load_access};
+
+  const auto recovered =
+      prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &addressing,
+          block_label,
+          &block,
+          std::get<bir::LoadLocalInst>(block.insts[1]),
+          1);
+  if (!recovered.has_value() ||
+      recovered->instruction_index != std::size_t{0} ||
+      recovered->stored_value.name != "%narrow_store") {
+    return fail("expected recovered source through prepared frame-slot access");
+  }
+
+  auto missing_store_access = addressing;
+  missing_store_access.accesses = {load_access};
+  if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &missing_store_access,
+          block_label,
+          &block,
+          std::get<bir::LoadLocalInst>(block.insts[1]),
+          1)
+          .has_value()) {
+    return fail("recovered source should not use local spelling without store access");
+  }
+
+  auto mismatched_store_access = store_access;
+  mismatched_store_access.address.byte_offset = 1;
+  auto mismatched_addressing = addressing;
+  mismatched_addressing.accesses = {mismatched_store_access, load_access};
+  if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &mismatched_addressing,
+          block_label,
+          &block,
+          std::get<bir::LoadLocalInst>(block.insts[1]),
+          1)
+          .has_value()) {
+    return fail("recovered source should reject prepared access offset drift");
+  }
+
   return 0;
 }
 
@@ -558,6 +669,9 @@ int main() {
     return rc;
   }
   if (int rc = records_recovered_source_without_target_policy(); rc != 0) {
+    return rc;
+  }
+  if (int rc = recovered_narrow_store_requires_prepared_memory_access(); rc != 0) {
     return rc;
   }
   if (int rc = classifies_byval_load_local_source_from_prepared_authority(); rc != 0) {
