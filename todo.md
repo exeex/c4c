@@ -8,34 +8,38 @@ Current Step Title: Replace Same-Block Scalar Producer Recovery
 
 ## Just Finished
 
-Step 2 - Replace Same-Block Scalar Producer Recovery continued. Moved the
-same-block load-global address-policy authority into prepared lookups with
-`prepare::find_prepared_same_block_global_load_access`, which consumes the
-shared `PreparedSameBlockScalarProducer`, verifies the prepared memory access by
-result value name and producer position, and only exposes global-symbol
-base-plus-offset accesses to dispatch. `dispatch_value_materialization.cpp` now
-emits the prepared global load from that prepared result instead of owning local
-memory-access matching and global-symbol eligibility checks.
+Step 2 - Replace Same-Block Scalar Producer Recovery continued. Assessed the
+remaining select-chain branch reached after
+`prepare::find_prepared_same_block_scalar_producer`: the dispatch root producer
+is already prepared-authorized, but the recursive select-chain materializer
+delegates to `emit_select_chain_value_to_register`, whose producer lookup lives
+outside this packet and can still fall back through
+`find_same_block_select_producer`. No narrow owned-file implementation is
+justified because changing that authority boundary requires the shared
+edge-copy/select-chain emitter or producer lookup ownership, not another
+dispatch-local source-of-truth check.
 
 ## Suggested Next
 
-Implement the next Step 2 packet by assessing the remaining select-chain
-producer authority. Keep it bounded to prepared same-block producer entry, and
-stop for plan-owner/reviewer input if moving select-chain recursion would
-require touching edge-copy ownership or changing source intent.
+Route the next coherent packet through plan-owner or a widened executor slice
+that explicitly owns the shared select-chain producer lookup in
+`dispatch_edge_copies.cpp`/`dispatch_producers.cpp`, so recursive select-chain
+materialization can require prepared producer authority without dispatch-local
+same-block fallback.
 
 ## Watchouts
 
 - `prepare::find_prepared_same_block_scalar_producer` validates producer
   pointer identity against the BIR instruction variant; callers should not
   bypass it with raw value-name scans.
-- `find_prepared_same_block_global_load_access` intentionally does not emit
-  code or choose target relocation syntax; it only selects a prepared global
-  load access whose address is eligible for base-plus-offset materialization.
-- The load-global packet did not touch `globals.cpp`,
-  `fp_value_materialization.cpp`, or edge-copy publication files.
-- Do not widen into `globals.cpp`, `fp_value_materialization.cpp`, or edge-copy
-  publication files without a new packet.
+- The root dispatch select branch is not the remaining authority gap; the gap
+  is the recursive select-chain producer selection inside the shared emitter.
+- Do not add a second dispatch-local select-chain walker in
+  `dispatch_value_materialization.cpp`; that would extend the duplicate
+  authority pattern rather than repair it.
+- This packet intentionally did not touch `dispatch_edge_copies.cpp`,
+  `dispatch_producers.cpp`, `globals.cpp`, `fp_value_materialization.cpp`, or
+  edge-copy publication files.
 
 ## Proof
 
