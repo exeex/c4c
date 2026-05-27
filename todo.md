@@ -1,12 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/46_aarch64_duplicate_prepared_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 6
-Current Step Title: Create Seven Follow-Up Ideas
+Current Step ID: Step 7
+Current Step Title: Close Or Hand Off The Audit
 
 # Current Packet
 
 ## Just Finished
+
+Step 6 - Create Seven Follow-Up Ideas is complete. Seven new numbered
+follow-up ideas now exist under `ideas/open/`, one for each audited AArch64
+file family:
+
+- `ideas/open/47_aarch64_dispatch_edge_copies_prepared_authority_repair.md`
+- `ideas/open/48_aarch64_dispatch_publication_prepared_authority_repair.md`
+- `ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md`
+- `ideas/open/50_aarch64_memory_prepared_authority_repair.md`
+- `ideas/open/51_aarch64_alu_prepared_authority_repair.md`
+- `ideas/open/52_aarch64_calls_prepared_authority_repair.md`
+- `ideas/open/53_aarch64_comparison_prepared_authority_repair.md`
+
+Each follow-up owns exactly one audited file, names duplicated helper/fallback
+paths, shared facts to consume or add, out-of-scope target-emission behavior,
+acceptance criteria, and concrete reviewer reject signals.
 
 Step 5 - Write Durable Audit Findings is complete for the AArch64
 duplicate-authority audit. `ideas/open/46_aarch64_duplicate_prepared_authority_audit.md`
@@ -244,15 +260,16 @@ Step 4 audit table rows:
 
 ## Suggested Next
 
-Proceed to Step 6 of `plan.md`: create exactly seven follow-up ideas under
-`ideas/open/`, one for each audited AArch64 file family. Use the durable source
-idea table plus the detailed audit rows below as source material.
+Proceed to Step 7 of `plan.md`: close or hand off the audit. Verify the durable
+audit table covers all seven files, the seven follow-up ideas exist, and no
+implementation, test, build metadata, or expectation files changed.
 
 ## Watchouts
 
 This remains audit-only. Do not edit implementation files, tests, build
-metadata, expectations, or `plan.md` during follow-up idea creation. The source
-audit idea should not need another rewrite until Step 7 close or handoff.
+metadata, expectations, or `plan.md` during close/handoff verification. The
+source audit idea should not need another rewrite until the lifecycle close
+flow decides whether closure is accepted.
 
 Do not classify target-local register spelling, scratch ordering, large-offset
 materialization, instruction mnemonic choice, condition-code spelling, or ABI
@@ -271,5 +288,5 @@ materialization query.
 
 ## Proof
 
-No build/test proof was required or run for this audit-only packet. No
-`test_after.log` was produced or updated.
+No build/test proof was required or run for this lifecycle-only idea creation
+packet. No `test_after.log` was produced or updated.
