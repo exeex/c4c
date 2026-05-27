@@ -2004,6 +2004,146 @@ PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instructio
       store.value);
 }
 
+[[nodiscard]] const bir::BinaryInst* va_list_field_cursor_update_producer(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::StoreLocalInst& store) {
+  if (context.bir_block == nullptr ||
+      instruction_index == 0 ||
+      store.value.kind != bir::Value::Kind::Named ||
+      store.value.type != bir::TypeKind::Ptr) {
+    return nullptr;
+  }
+  const auto* binary =
+      std::get_if<bir::BinaryInst>(&context.bir_block->insts[instruction_index - 1U]);
+  if (binary == nullptr ||
+      binary->opcode != bir::BinaryOpcode::Add ||
+      binary->result != store.value ||
+      binary->lhs.kind != bir::Value::Kind::Named ||
+      binary->lhs.type != bir::TypeKind::Ptr ||
+      binary->rhs.kind != bir::Value::Kind::Immediate) {
+    return nullptr;
+  }
+  const auto* load =
+      instruction_index >= 2U
+          ? std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[instruction_index - 2U])
+          : nullptr;
+  if (load == nullptr ||
+      load->result != binary->lhs ||
+      load->slot_name != store.slot_name ||
+      load->byte_offset != 0 ||
+      load->result.type != bir::TypeKind::Ptr) {
+    return nullptr;
+  }
+  return binary;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_va_list_field_cursor_update_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::StoreLocalInst& store) {
+  const auto field = find_va_list_field_address(context, store.slot_name);
+  const auto* producer =
+      va_list_field_cursor_update_producer(context, instruction_index, store);
+  if (!field.has_value() ||
+      producer == nullptr ||
+      producer->rhs.immediate < 0 ||
+      store.byte_offset != 0 ||
+      field->field_size_bytes != scalar_type_size_bytes(store.value.type)) {
+    return std::nullopt;
+  }
+
+  const auto cursor = make_named_prepared_result_register(context, producer->lhs);
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::optional<abi::RegisterReference> scratch;
+  for (const auto candidate : scratches) {
+    if (cursor.has_value() &&
+        abi::is_gp_register(cursor->reg) &&
+        cursor->reg.index == candidate.index) {
+      continue;
+    }
+    if (field->base_register.reg.index == candidate.index) {
+      continue;
+    }
+    scratch = abi::gp_register(candidate.index, abi::RegisterView::X);
+    if (scratch.has_value()) {
+      break;
+    }
+  }
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto scratch_name = gp_register_name(scratch->index, abi::RegisterView::X);
+  const auto store_mnemonic = scalar_store_mnemonic(store.value.type);
+  if (!scratch_name.has_value() || !store_mnemonic.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  const auto stride = static_cast<std::uint64_t>(producer->rhs.immediate);
+  if (cursor.has_value()) {
+    const std::string cursor_name{abi::register_name(cursor->reg)};
+    if (stride == 0) {
+      lines.push_back("mov " + *scratch_name + ", " + cursor_name);
+    } else {
+      lines.push_back("add " + *scratch_name + ", " + cursor_name + ", #" +
+                      std::to_string(stride));
+    }
+  } else {
+    const std::string base_name{abi::register_name(field->base_register.reg)};
+    lines.push_back("ldr " + *scratch_name + ", " +
+                    register_indirect_address(base_name, field->field_offset_bytes));
+    if (stride != 0) {
+      lines.push_back("add " + *scratch_name + ", " + *scratch_name + ", #" +
+                      std::to_string(stride));
+    }
+  }
+
+  const std::string base_name{abi::register_name(field->base_register.reg)};
+  lines.push_back(std::string{*store_mnemonic} + " " + *scratch_name + ", " +
+                  register_indirect_address(base_name, field->field_offset_bytes));
+
+  auto address = make_va_list_field_memory_operand(
+      context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{
+              .status = MachineNodeSelectionStatus::Selected,
+          },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = {make_memory_operand(std::move(address))},
+      .side_effects = {MachineSideEffectKind::MemoryWrite},
+      .payload =
+          AssemblerInstructionRecord{
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = [&] {
+                std::string text;
+                for (std::size_t index = 0; index < lines.size(); ++index) {
+                  if (index != 0) {
+                    text += '\n';
+                  }
+                  text += lines[index];
+                }
+                return text;
+              }(),
+          },
+  };
+  return make_bir_machine_instruction(context, instruction_index, std::move(target));
+}
+
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
@@ -2199,6 +2339,12 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         instruction_index,
         *global_load);
   } else if (local_store != nullptr) {
+    if (auto va_list_cursor_update =
+            make_va_list_field_cursor_update_machine_instruction(
+                context, instruction_index, *local_store)) {
+      return MemoryInstructionLoweringResult{.handled = true,
+                                             .instruction = std::move(va_list_cursor_update)};
+    }
     prepared =
         make_va_list_field_store_memory_instruction_record(
             context, instruction_index, *local_store);

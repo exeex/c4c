@@ -395,6 +395,51 @@ prepared_publication_source_memory_access(
   }
   return publication.source_memory_access;
 }
+[[nodiscard]] std::optional<abi::RegisterReference>
+prepared_publication_source_register(
+    const prepare::PreparedEdgePublication& publication,
+    const bir::Value& value) {
+  if (!prepared_edge_publication_source_matches_value(publication, value) ||
+      !prepared_publication_source_home_matches_source(publication) ||
+      publication.source_home == nullptr ||
+      publication.source_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !publication.source_home->register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_view_for_type(value.type);
+  const auto parsed =
+      abi::parse_aarch64_register_name(*publication.source_home->register_name);
+  if (!expected_view.has_value() ||
+      !parsed.has_value() ||
+      parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  return abi::gp_register(parsed->index, *expected_view);
+}
+[[nodiscard]] bool emit_prepared_va_list_field_carrier_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  if (!prepared_va_list_field_address(context, load.slot_name).has_value()) {
+    return false;
+  }
+  const auto* home = prepared_value_home_for_value(context, load.result);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return false;
+  }
+  return emit_prepared_value_home_to_register(
+      context.function.prepared != nullptr
+          ? &context.function.prepared->stack_layout
+          : nullptr,
+      *home,
+      load.result.type,
+      target_index,
+      lines,
+      fixed_slots_use_frame_pointer(context.function));
+}
 [[nodiscard]] bool edge_value_publication_may_read_register_index(
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
@@ -477,6 +522,13 @@ prepared_publication_source_memory_access(
                                                           prepared_publication,
                                                           depth + 1);
   }
+  if (const auto* load = std::get_if<bir::LoadLocalInst>(producer->producer);
+      load != nullptr &&
+      prepared_va_list_field_address(producer->context, load->slot_name).has_value()) {
+    const auto* home = prepared_value_home_for_value(producer->context, load->result);
+    return home != nullptr &&
+           prepared_value_home_reads_register_index(*home, register_index);
+  }
   return false;
 }
 [[nodiscard]] bool emit_edge_load_local_to_register(
@@ -513,6 +565,19 @@ prepared_publication_source_memory_access(
       target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
   if (!mnemonic.has_value() || !target.has_value()) {
     return false;
+  }
+  if (prepared_publication != nullptr) {
+    if (const auto source =
+            prepared_publication_source_register(*prepared_publication,
+                                                 load.result)) {
+      const auto source_name = abi::register_name(*source);
+      lines.push_back("mov " + *target + ", " + source_name);
+      return true;
+    }
+  }
+  if (emit_prepared_va_list_field_carrier_to_register(
+          producer.context, load, target_index, lines)) {
+    return true;
   }
   if (emit_prepared_va_list_field_load_to_register(
           producer.context, load, target_index, lines)) {
