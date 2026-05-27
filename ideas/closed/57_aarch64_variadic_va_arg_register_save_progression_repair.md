@@ -59,6 +59,17 @@ instead of the slot selected by the old offset.
   variadic register-save owner rather than expanding back into calls or memory
   routes without evidence.
 
+## Closure Note
+
+Closed after the focused variadic register-save close gate passed with matching
+canonical logs. `test_before.log` was regenerated from temporary worktree
+commit `fc2463b69` using the focused eight-test command and showed `7/8`,
+failing only `c_testsuite_aarch64_backend_src_00204_c`. Current
+`test_after.log` used the same focused command and passed `8/8`. The
+regression guard reported the `00204` failure resolved with no new failures.
+
+The rejected full-suite `test_baseline.new.log` was not used for closure.
+
 ## Reviewer Reject Signals
 
 - Reject changes that key behavior to `00204`, `myprintf`, `%7s`, `%9s`,
