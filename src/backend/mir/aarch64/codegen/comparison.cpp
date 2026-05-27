@@ -1138,6 +1138,70 @@ namespace {
   return address;
 }
 
+[[nodiscard]] std::vector<prepare::PreparedBlockEntryPublication>
+collect_prepared_current_block_entry_publications(
+    const module::BlockLoweringContext& context) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return {};
+  }
+  return prepare::collect_prepared_block_entry_publications(
+      context.function.value_locations, context.control_flow_block->block_label);
+}
+
+[[nodiscard]] bool prepared_value_has_current_block_entry_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home) {
+  for (const auto& publication : collect_prepared_current_block_entry_publications(context)) {
+    if (prepare::prepared_block_entry_publication_available(publication) &&
+        publication.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+        publication.destination_value_id == home.value_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<RegisterOperand>
+prepared_current_block_entry_publication_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    abi::RegisterView expected_view) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr ||
+      value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, value);
+  const auto* home = value_name.has_value() ? find_value_home(context, *value_name) : nullptr;
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& publication : collect_prepared_current_block_entry_publications(context)) {
+    if (publication.destination_value_id != home->value_id ||
+        !prepare::prepared_block_entry_publication_available(publication) ||
+        !publication.destination_register_name.has_value()) {
+      continue;
+    }
+    const auto parsed =
+        abi::parse_aarch64_register_name(*publication.destination_register_name);
+    if (!parsed.has_value() ||
+        parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      continue;
+    }
+    auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
+    reg.view = expected_view;
+    return RegisterOperand{
+        .reg = reg,
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .expected_view = expected_view,
+    };
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
     const module::BlockLoweringContext& context,
@@ -1639,7 +1703,7 @@ lower_current_block_entry_fused_compare_branch(
   auto lhs = *branch_condition->lhs;
   lhs.type = *branch_condition->compare_type;
   const auto published_lhs =
-      hooks.current_block_entry_publication_register(context, lhs, *operand_view);
+      prepared_current_block_entry_publication_register(context, lhs, *operand_view);
   if (!published_lhs.has_value() ||
       published_lhs->reg.bank != abi::RegisterBank::GeneralPurpose ||
       branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
@@ -1697,20 +1761,25 @@ lower_constant_rhs_fused_compare_branch(
   }
   auto rhs = *branch_condition->rhs;
   rhs.type = *branch_condition->compare_type;
-  const auto rhs_producer = mir::find_same_block_binary_producer(context.bir_block, rhs);
+  const auto rhs_producer =
+      find_prepared_fused_compare_operand_producer(context,
+                                                   rhs,
+                                                   context.bir_block->insts.size());
   const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
       rhs_name.has_value() && context.function.value_locations != nullptr
           ? find_value_home(context, *rhs_name)
           : nullptr;
-  if (!rhs_producer ||
+  if (!rhs_producer.has_value() ||
+      rhs_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      rhs_producer->binary == nullptr ||
       rhs_home == nullptr ||
       rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      hooks.value_has_current_block_entry_publication(context, *rhs_home)) {
+      prepared_value_has_current_block_entry_publication(context, *rhs_home)) {
     return std::nullopt;
   }
-  const auto rhs_constant = mir::evaluate_same_block_integer_constant(context.bir_block, rhs);
-  if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(rhs_constant->value)) {
+  if (!rhs_producer->integer_constant.has_value() ||
+      !is_cmp_immediate_encodable(*rhs_producer->integer_constant)) {
     return std::nullopt;
   }
 
@@ -1735,7 +1804,7 @@ lower_constant_rhs_fused_compare_branch(
     return std::nullopt;
   }
   lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
-                  std::to_string(rhs_constant->value));
+                  std::to_string(*rhs_producer->integer_constant));
   lines.push_back("b." + std::string{*condition} + " " +
                   machine_block_label(branch_condition->function_name,
                                       branch_condition->true_label));
