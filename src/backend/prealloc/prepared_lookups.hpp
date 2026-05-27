@@ -176,6 +176,89 @@ struct PreparedEdgePublicationSourceProducerLookups {
       producers_by_value_name;
 };
 
+enum class PreparedTypedStackSourcePublicationStatus {
+  Available,
+  MissingPublication,
+  UnsupportedPublication,
+  UnsupportedSourceHome,
+  MissingConcreteStackSource,
+  MissingSameWidthI32Type,
+  UnsupportedDestinationStorage,
+  UnsupportedMoveAuthority,
+  MissingDestinationRegisterPlacement,
+  MissingDestinationGprBank,
+  MissingDestinationRegisterView,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_typed_stack_source_publication_status_name(
+    PreparedTypedStackSourcePublicationStatus status) {
+  switch (status) {
+    case PreparedTypedStackSourcePublicationStatus::Available:
+      return "available";
+    case PreparedTypedStackSourcePublicationStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedTypedStackSourcePublicationStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case PreparedTypedStackSourcePublicationStatus::UnsupportedSourceHome:
+      return "unsupported_source_home";
+    case PreparedTypedStackSourcePublicationStatus::MissingConcreteStackSource:
+      return "missing_concrete_stack_source";
+    case PreparedTypedStackSourcePublicationStatus::MissingSameWidthI32Type:
+      return "missing_same_width_i32_type";
+    case PreparedTypedStackSourcePublicationStatus::UnsupportedDestinationStorage:
+      return "unsupported_destination_storage";
+    case PreparedTypedStackSourcePublicationStatus::UnsupportedMoveAuthority:
+      return "unsupported_move_authority";
+    case PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterPlacement:
+      return "missing_destination_register_placement";
+    case PreparedTypedStackSourcePublicationStatus::MissingDestinationGprBank:
+      return "missing_destination_gpr_bank";
+    case PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterView:
+      return "missing_destination_register_view";
+  }
+  return "unknown";
+}
+
+enum class PreparedTypedStackSourceExtensionPolicy {
+  None,
+  SameWidthNoExtension,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_typed_stack_source_extension_policy_name(
+    PreparedTypedStackSourceExtensionPolicy policy) {
+  switch (policy) {
+    case PreparedTypedStackSourceExtensionPolicy::None:
+      return "none";
+    case PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension:
+      return "same_width_no_extension";
+  }
+  return "unknown";
+}
+
+struct PreparedTypedStackSourcePublication {
+  PreparedTypedStackSourcePublicationStatus status =
+      PreparedTypedStackSourcePublicationStatus::MissingPublication;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  PreparedValueId source_value_id = 0;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+  ValueNameId destination_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::TypeKind destination_type = c4c::backend::bir::TypeKind::Void;
+  PreparedTypedStackSourceExtensionPolicy extension_policy =
+      PreparedTypedStackSourceExtensionPolicy::None;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_stack_size_bytes;
+  std::optional<std::size_t> source_stack_align_bytes;
+  PreparedRegisterBank destination_register_bank = PreparedRegisterBank::None;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
+};
+
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
@@ -262,6 +345,10 @@ prepared_edge_publication_matches_parallel_copy_move_source(
     const PreparedEdgePublication& publication,
     const PreparedMoveResolution& move,
     const PreparedValueHome& source_home);
+
+[[nodiscard]] PreparedTypedStackSourcePublication
+prepare_same_width_i32_stack_source_publication(
+    const PreparedEdgePublication* publication);
 
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,

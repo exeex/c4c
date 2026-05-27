@@ -1011,6 +1011,108 @@ prepared_edge_publication_matches_parallel_copy_move_source(
          !move.source_immediate_i32.has_value();
 }
 
+[[nodiscard]] PreparedTypedStackSourcePublication
+prepare_same_width_i32_stack_source_publication(
+    const PreparedEdgePublication* publication) {
+  PreparedTypedStackSourcePublication prepared;
+  prepared.publication = publication;
+  if (publication == nullptr) {
+    return prepared;
+  }
+
+  prepared.source_type = publication->source_value.type;
+  prepared.destination_type = publication->destination_value.type;
+  prepared.destination_value_id = publication->destination_value_id;
+  prepared.destination_value_name = publication->destination_value_name;
+  prepared.move = publication->move;
+
+  if (publication->status != PreparedEdgePublicationLookupStatus::Available) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::UnsupportedPublication;
+    return prepared;
+  }
+  if (!publication->source_value_id.has_value()) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::UnsupportedPublication;
+    return prepared;
+  }
+  prepared.source_value_id = *publication->source_value_id;
+  prepared.source_value_name = publication->source_value_name;
+
+  if (publication->source_home == nullptr ||
+      publication->source_home_kind != PreparedValueHomeKind::StackSlot) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::UnsupportedSourceHome;
+    return prepared;
+  }
+  prepared.source_home = publication->source_home;
+  prepared.source_slot_id = publication->source_home->slot_id;
+  prepared.source_stack_offset_bytes = publication->source_home->offset_bytes;
+  prepared.source_stack_size_bytes = publication->source_home->size_bytes;
+  prepared.source_stack_align_bytes = publication->source_home->align_bytes;
+  if (!prepared.source_slot_id.has_value() ||
+      !prepared.source_stack_offset_bytes.has_value() ||
+      !prepared.source_stack_size_bytes.has_value() ||
+      *prepared.source_stack_size_bytes != 4) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingConcreteStackSource;
+    return prepared;
+  }
+
+  if (publication->source_value.type != bir::TypeKind::I32 ||
+      publication->destination_value.type != bir::TypeKind::I32) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingSameWidthI32Type;
+    return prepared;
+  }
+
+  if (publication->destination_storage_kind != PreparedMoveStorageKind::Register) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::UnsupportedDestinationStorage;
+    return prepared;
+  }
+  if (publication->move == nullptr) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterPlacement;
+    return prepared;
+  }
+  if (publication->move->authority_kind !=
+          PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      publication->move->destination_kind != PreparedMoveDestinationKind::Value ||
+      publication->move->op_kind != PreparedMoveResolutionOpKind::Move ||
+      publication->move->from_value_id != prepared.source_value_id ||
+      publication->move->to_value_id != prepared.destination_value_id) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::UnsupportedMoveAuthority;
+    return prepared;
+  }
+  if (!publication->move->destination_register_placement.has_value()) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterPlacement;
+    return prepared;
+  }
+
+  prepared.destination_register_placement =
+      publication->move->destination_register_placement;
+  prepared.destination_register_bank =
+      prepared.destination_register_placement->bank;
+  if (prepared.destination_register_bank != PreparedRegisterBank::Gpr) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingDestinationGprBank;
+    return prepared;
+  }
+  if (!has_prepared_register_placement(*prepared.destination_register_placement)) {
+    prepared.status =
+        PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterView;
+    return prepared;
+  }
+
+  prepared.extension_policy =
+      PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension;
+  prepared.status = PreparedTypedStackSourcePublicationStatus::Available;
+  return prepared;
+}
+
 [[nodiscard]] const PreparedCallPlan* find_indexed_prepared_call_plan(
     const PreparedCallPlanLookups* lookups,
     const PreparedCallPlansFunction* call_plans,

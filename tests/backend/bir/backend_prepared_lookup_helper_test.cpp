@@ -1315,6 +1315,130 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   return 0;
 }
 
+int verify_same_width_i32_stack_source_publication_facts() {
+  const auto source_name = c4c::ValueNameId{101};
+  const auto destination_name = c4c::ValueNameId{102};
+  prepare::PreparedValueHome source_home{
+      .value_id = prepare::PreparedValueId{201},
+      .value_name = source_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .offset_bytes = std::size_t{16},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  };
+  prepare::PreparedMoveResolution move{
+      .from_value_id = prepare::PreparedValueId{201},
+      .to_value_id = prepare::PreparedValueId{202},
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .destination_register_placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+          .slot_index = 3,
+          .contiguous_width = 1,
+      },
+  };
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .destination_value = bir::Value::named(bir::TypeKind::I32, "%typed.dst"),
+      .source_value = bir::Value::named(bir::TypeKind::I32, "%typed.src"),
+      .destination_value_id = prepare::PreparedValueId{202},
+      .destination_value_name = destination_name,
+      .source_value_id = prepare::PreparedValueId{201},
+      .source_value_name = source_name,
+      .source_home = &source_home,
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .move = &move,
+  };
+
+  const auto typed =
+      prepare::prepare_same_width_i32_stack_source_publication(&publication);
+  if (typed.status !=
+          prepare::PreparedTypedStackSourcePublicationStatus::Available ||
+      typed.publication != &publication || typed.source_home != &source_home ||
+      typed.move != &move ||
+      typed.source_value_id != prepare::PreparedValueId{201} ||
+      typed.destination_value_id != prepare::PreparedValueId{202} ||
+      typed.source_type != bir::TypeKind::I32 ||
+      typed.destination_type != bir::TypeKind::I32 ||
+      typed.extension_policy !=
+          prepare::PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension ||
+      typed.source_slot_id != prepare::PreparedFrameSlotId{7} ||
+      typed.source_stack_offset_bytes != std::size_t{16} ||
+      typed.source_stack_size_bytes != std::size_t{4} ||
+      typed.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      typed.destination_register_placement != move.destination_register_placement) {
+    return fail("typed stack-source publication should expose shared I32 stack and GPR facts");
+  }
+
+  auto missing_type = publication;
+  missing_type.source_value.type = bir::TypeKind::F32;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&missing_type)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::MissingSameWidthI32Type) {
+    return fail("typed stack-source publication should fail closed without same-width I32 types");
+  }
+
+  auto missing_offset_home = source_home;
+  missing_offset_home.offset_bytes.reset();
+  auto missing_concrete = publication;
+  missing_concrete.source_home = &missing_offset_home;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&missing_concrete)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::MissingConcreteStackSource) {
+    return fail("typed stack-source publication should require concrete stack-source facts");
+  }
+
+  auto missing_placement_move = move;
+  missing_placement_move.destination_register_placement.reset();
+  auto missing_placement = publication;
+  missing_placement.move = &missing_placement_move;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&missing_placement)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::
+          MissingDestinationRegisterPlacement) {
+    return fail("typed stack-source publication should require destination placement authority");
+  }
+
+  auto temp_save_move = move;
+  temp_save_move.op_kind =
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
+  auto unsupported_move = publication;
+  unsupported_move.move = &temp_save_move;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&unsupported_move)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::UnsupportedMoveAuthority) {
+    return fail("typed stack-source publication should reject unsupported move authority");
+  }
+
+  auto fpr_move = move;
+  fpr_move.destination_register_placement->bank = prepare::PreparedRegisterBank::Fpr;
+  auto missing_gpr = publication;
+  missing_gpr.move = &fpr_move;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&missing_gpr)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::MissingDestinationGprBank) {
+    return fail("typed stack-source publication should require destination GPR bank authority");
+  }
+
+  auto missing_view_move = move;
+  missing_view_move.destination_register_placement->pool =
+      prepare::PreparedRegisterSlotPool::None;
+  auto missing_view = publication;
+  missing_view.move = &missing_view_move;
+  if (prepare::prepare_same_width_i32_stack_source_publication(&missing_view)
+          .status !=
+      prepare::PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterView) {
+    return fail("typed stack-source publication should require destination register view authority");
+  }
+
+  return 0;
+}
+
 int verify_edge_publication_source_producer_facts() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("producer_facts");
@@ -1529,6 +1653,10 @@ int main() {
   }
   if (const int result =
           verify_edge_publication_shared_source_and_parallel_copy_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_same_width_i32_stack_source_publication_facts();
       result != 0) {
     return result;
   }
