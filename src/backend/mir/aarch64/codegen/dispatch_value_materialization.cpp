@@ -790,7 +790,7 @@ prepared_same_block_scalar_producer_context(
     return false;
   }
   if (emit_local_slot_address_publication_to_register(
-          context, *binary, target_index, lines)) {
+          context, *binary, target_index, producer_context->instruction_index, lines)) {
     return true;
   }
   auto lhs = binary->lhs;

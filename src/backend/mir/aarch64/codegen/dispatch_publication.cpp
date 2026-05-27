@@ -417,9 +417,10 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     const bir::BinaryInst& binary,
     std::uint8_t target_index,
+    std::optional<std::size_t> before_or_at_instruction_index,
     std::vector<std::string>& lines) {
   return emit_local_slot_address_publication_to_register_impl(
-      context, binary, target_index, std::nullopt, lines);
+      context, binary, target_index, before_or_at_instruction_index, lines);
 }
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_local_slot_address_publication(

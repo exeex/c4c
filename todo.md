@@ -3,36 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/49_aarch64_dispatch_value_materialization_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 6
-Current Step Title: Route non-edge select-chain materialization through shared scalar authority
+Current Step ID: Step 7
+Current Step Title: Reuse prepared local-slot address authority
 
 ## Just Finished
 
-Completed Step 6 root select-chain routing in
-`dispatch_value_materialization.cpp`.
+Completed Step 7 local-slot address publication routing for dispatch value
+materialization.
 
-The non-edge select branch in `emit_value_publication_to_register` now requires
-a prepared root value id before delegating to the shared
-`emit_select_chain_value_to_register` emitter, and it seeds that shared emitter
-with the prepared source-producer instruction index instead of the consumer's
-local `before_instruction_index`. This keeps the root select-chain
-materialization anchored to prepared scalar producer authority while preserving
-the existing shared select-chain emission mechanics.
+`emit_local_slot_address_publication_to_register` now accepts the prepared
+address lookup instruction fence selected by its caller and forwards that fence
+to the shared implementation. The dispatch value materialization route passes
+the prepared same-block binary producer instruction index, so local-slot address
+publication uses the prepared frame-address materialization authority for that
+producer instead of selecting an unconstrained later block-local address fact.
 
 ## Suggested Next
 
-Execute Step 7 in the active runbook: audit
-`emit_local_slot_address_publication_to_register` and route local-slot
-address/frame-offset materialization through the prepared local-slot address
-authority selected by the publication repair.
+Execute the next active runbook step after supervisor review: audit remaining
+dispatch value materialization publication helpers for any path that still
+recovers semantic authority from local spelling or fallback lane recovery before
+consulting prepared facts.
 
 ## Watchouts
 
-A stricter recursive prepared-coverage gate was tested and rejected because an
-existing supported stack-homed select publication route can contain an
-intermediate select value with no prepared name/home. That is a real prepared
-authority gap for possible follow-up, but this Step 6 packet kept the completed
-slice to the prepared root select-chain authority inside the owned file.
+The local-slot address helper still deliberately returns `false` when no
+prepared frame-address materialization exists for the base value under the
+caller-provided instruction fence. This packet did not add a spelling fallback
+or infer object identity from stack-object names.
 
 Do not implement `globals.cpp` or `fp_value_materialization.cpp` global-load
 consumer rewrites under this active plan; those remain follow-up work under the

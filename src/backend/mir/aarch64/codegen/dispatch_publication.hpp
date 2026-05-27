@@ -107,6 +107,7 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     const bir::BinaryInst& binary,
     std::uint8_t target_index,
+    std::optional<std::size_t> before_or_at_instruction_index,
     std::vector<std::string>& lines);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
