@@ -43,6 +43,11 @@ into existing prepared facts or a narrow shared prepared query.
 - Prepared lookup, publication-plan, memory-access, or value-home files may be
   touched only when a missing shared query is required for this dispatch
   materialization contract.
+- Select-chain producer lookup files may be touched only for Step 4 when the
+  recursive shared select-chain emitter still owns duplicate producer
+  selection:
+  - `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+  - `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
 
 ## Non-Goals
 
@@ -141,8 +146,10 @@ Actions:
 Completion check:
 
 - Same-block named producer recursion no longer grows as the source of truth
-  for scalar materialization, and focused build plus test proof is recorded in
-  `todo.md`.
+  for scalar materialization at the dispatch root. Recursive select-chain
+  producer fallback through `emit_select_chain_value_to_register` is not a
+  Step 2 closure blocker; it belongs to Step 4 shared select-chain producer
+  authority. Focused build plus test proof is recorded in `todo.md`.
 
 ## Step 3 - Repair Load-Local Materialization Authority
 
@@ -178,6 +185,8 @@ authority instead of local global-symbol or select-chain recovery.
 Primary target:
 
 - `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
 
 Actions:
 
@@ -189,6 +198,10 @@ Actions:
 - For non-edge/non-store select-chain materialization, add or consume a shared
   scalar select-chain materialization query when shared producer facts cannot
   express the route.
+- If recursive select-chain materialization delegates to
+  `emit_select_chain_value_to_register`, repair producer lookup at the shared
+  select-chain producer/emitter boundary instead of adding another
+  dispatch-local walker.
 - Do not hard-code global names, direct/GOT policy, or select-chain cases.
 
 Completion check:
