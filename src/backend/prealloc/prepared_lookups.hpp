@@ -94,6 +94,29 @@ enum class PreparedEdgePublicationSourceProducerKind {
   return "unknown";
 }
 
+enum class PreparedEdgePublicationSourceMemoryAccessStatus {
+  Unavailable,
+  Available,
+  MissingPreparedMemoryAccess,
+  IncompletePreparedMemoryAccess,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_edge_publication_source_memory_access_status_name(
+    PreparedEdgePublicationSourceMemoryAccessStatus status) {
+  switch (status) {
+    case PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable:
+      return "unavailable";
+    case PreparedEdgePublicationSourceMemoryAccessStatus::Available:
+      return "available";
+    case PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess:
+      return "missing_prepared_memory_access";
+    case PreparedEdgePublicationSourceMemoryAccessStatus::IncompletePreparedMemoryAccess:
+      return "incomplete_prepared_memory_access";
+  }
+  return "unknown";
+}
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -125,6 +148,20 @@ struct PreparedEdgePublication {
   const bir::CastInst* source_cast = nullptr;
   const bir::BinaryInst* source_binary = nullptr;
   const bir::SelectInst* source_select = nullptr;
+  PreparedEdgePublicationSourceMemoryAccessStatus source_memory_access_status =
+      PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable;
+  const PreparedMemoryAccess* source_memory_access = nullptr;
+  PreparedAddressBaseKind source_memory_base_kind = PreparedAddressBaseKind::None;
+  std::optional<PreparedFrameSlotId> source_memory_frame_slot_id;
+  std::optional<LinkNameId> source_memory_symbol_name;
+  std::optional<ValueNameId> source_memory_pointer_value_name;
+  std::int64_t source_memory_byte_offset = 0;
+  std::size_t source_memory_size_bytes = 0;
+  std::size_t source_memory_align_bytes = 0;
+  bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
+  bool source_memory_is_volatile = false;
+  bool source_memory_can_use_base_plus_offset = false;
+  bool source_memory_requires_address_materialization = false;
   const PreparedValueHome* source_home = nullptr;
   PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   const PreparedValueHome* destination_home = nullptr;

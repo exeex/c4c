@@ -393,6 +393,81 @@ void apply_source_producer_fact(
   publication.source_select = producer->select;
 }
 
+[[nodiscard]] bool prepared_address_has_complete_base(const PreparedAddress& address) {
+  switch (address.base_kind) {
+    case PreparedAddressBaseKind::FrameSlot:
+      return address.frame_slot_id.has_value();
+    case PreparedAddressBaseKind::GlobalSymbol:
+      return address.symbol_name.has_value();
+    case PreparedAddressBaseKind::PointerValue:
+      return address.pointer_value_name.has_value();
+    case PreparedAddressBaseKind::StringConstant:
+      return true;
+    case PreparedAddressBaseKind::None:
+      return false;
+  }
+  return false;
+}
+
+void copy_source_memory_access_fact(PreparedEdgePublication& publication,
+                                    const PreparedMemoryAccess& access) {
+  publication.source_memory_access = &access;
+  publication.source_memory_base_kind = access.address.base_kind;
+  publication.source_memory_frame_slot_id = access.address.frame_slot_id;
+  publication.source_memory_symbol_name = access.address.symbol_name;
+  publication.source_memory_pointer_value_name = access.address.pointer_value_name;
+  publication.source_memory_byte_offset = access.address.byte_offset;
+  publication.source_memory_size_bytes = access.address.size_bytes;
+  publication.source_memory_align_bytes = access.address.align_bytes;
+  publication.source_memory_address_space = access.address_space;
+  publication.source_memory_is_volatile = access.is_volatile;
+  publication.source_memory_can_use_base_plus_offset =
+      access.address.can_use_base_plus_offset;
+  publication.source_memory_requires_address_materialization =
+      !access.address.can_use_base_plus_offset;
+}
+
+void apply_source_memory_access_fact(
+    PreparedEdgePublication& publication,
+    const PreparedAddressingFunction* function_addressing) {
+  publication.source_memory_access_status =
+      PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable;
+  if (publication.source_producer_kind !=
+      PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+    return;
+  }
+  if (!publication.source_producer_block_label.has_value() ||
+      !publication.source_producer_instruction_index.has_value() ||
+      function_addressing == nullptr) {
+    publication.source_memory_access_status =
+        PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess;
+    return;
+  }
+
+  const auto* access =
+      find_prepared_memory_access(*function_addressing,
+                                  *publication.source_producer_block_label,
+                                  *publication.source_producer_instruction_index);
+  if (access == nullptr) {
+    publication.source_memory_access_status =
+        PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess;
+    return;
+  }
+  copy_source_memory_access_fact(publication, *access);
+  const bool result_matches =
+      access->result_value_name.has_value() &&
+      access->result_value_name == publication.source_value_name;
+  if (!result_matches || !prepared_address_has_complete_base(access->address) ||
+      access->address.size_bytes == 0 || access->address.align_bytes == 0) {
+    publication.source_memory_access_status =
+        PreparedEdgePublicationSourceMemoryAccessStatus::IncompletePreparedMemoryAccess;
+    return;
+  }
+
+  publication.source_memory_access_status =
+      PreparedEdgePublicationSourceMemoryAccessStatus::Available;
+}
+
 [[nodiscard]] bool prepared_value_spelling_matches(const bir::Value& value,
                                                    std::string_view spelling) {
   return value.kind == bir::Value::Kind::Named && value.name == spelling;
@@ -750,6 +825,9 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
       value_home_lookups == nullptr ? &local_value_home_lookups : value_home_lookups;
   const auto source_producers =
       make_edge_publication_source_producers(prepared, function);
+  const auto* function_addressing =
+      prepared != nullptr ? find_prepared_addressing(*prepared, function.function_name)
+                          : nullptr;
 
   for (const auto& join_transfer : function.join_transfers) {
     const auto carrier_kind = effective_prepared_join_transfer_carrier_kind(join_transfer);
@@ -832,6 +910,7 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
         }
       }
       apply_source_producer_fact(publication, source_producers);
+      apply_source_memory_access_fact(publication, function_addressing);
       if (publication.source_value_id.has_value()) {
         publication.source_and_destination_same_value_id =
             *publication.source_value_id == publication.destination_value_id;

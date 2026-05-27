@@ -2,8 +2,10 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -137,6 +139,60 @@ prepare::PreparedFunctionLookups make_lookups(
     const prepare::PreparedBirModule& prepared) {
   return prepare::make_prepared_function_lookups(
       prepared, prepared.control_flow.functions.front());
+}
+
+void make_load_local_dynamic_stack_source(
+    prepare::PreparedBirModule& prepared,
+    const FixtureIds& ids,
+    std::optional<prepare::PreparedMemoryAccess> access) {
+  auto& function = prepared.module.functions.front();
+  function.blocks = {bir::Block{
+      .label = std::string{"left"},
+      .insts = {bir::LoadLocalInst{
+          .result = bir::Value::named(bir::TypeKind::I32, "%src"),
+          .slot_name = std::string{"dynamic_slot"},
+          .byte_offset = 12,
+          .align_bytes = 4,
+      }},
+      .label_id = ids.predecessor,
+  }};
+
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  source_home.register_name.reset();
+  source_home.slot_id = prepare::PreparedFrameSlotId{17};
+  source_home.offset_bytes.reset();
+  source_home.size_bytes = 4;
+  source_home.align_bytes = 4;
+  source_home.pointer_base_value_name = ids.base_name;
+  source_home.pointer_byte_delta = 12;
+
+  prepared.addressing.functions.clear();
+  prepare::PreparedAddressingFunction function_addressing{
+      .function_name = ids.function,
+  };
+  if (access.has_value()) {
+    function_addressing.accesses.push_back(*access);
+  }
+  prepared.addressing.functions.push_back(std::move(function_addressing));
+}
+
+prepare::PreparedMemoryAccess load_local_source_access(const FixtureIds& ids) {
+  return prepare::PreparedMemoryAccess{
+      .function_name = ids.function,
+      .block_label = ids.predecessor,
+      .inst_index = 0,
+      .result_value_name = ids.source_name,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = ids.base_name,
+              .byte_offset = 12,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+  };
 }
 
 void set_edge_publication_value_types(prepare::PreparedBirModule& prepared,
@@ -1224,6 +1280,123 @@ int check_pointer_base_fail_closed_forms() {
   return 0;
 }
 
+int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+
+  make_load_local_dynamic_stack_source(prepared, ids, load_local_source_access(ids));
+  auto lookups = make_lookups(prepared);
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, ids.predecessor, ids.successor, 2);
+  if (publication == nullptr) {
+    return fail("expected dynamic stack-source publication");
+  }
+  if (!expect(publication->source_producer_kind ==
+                  prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+              "shared publication should identify the LoadLocal source producer") ||
+      !expect(publication->source_memory_access_status ==
+                  prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available,
+              "shared publication should expose available source memory access") ||
+      !expect(publication->source_memory_access != nullptr,
+              "shared publication should carry the exact source memory access") ||
+      !expect(publication->source_memory_base_kind ==
+                  prepare::PreparedAddressBaseKind::PointerValue,
+              "shared publication should preserve the source memory base kind") ||
+      !expect(publication->source_memory_pointer_value_name == ids.base_name,
+              "shared publication should preserve the source memory base value") ||
+      !expect(publication->source_memory_byte_offset == 12,
+              "shared publication should preserve the source memory offset") ||
+      !expect(publication->source_memory_size_bytes == 4,
+              "shared publication should preserve the source memory size") ||
+      !expect(publication->source_memory_align_bytes == 4,
+              "shared publication should preserve the source memory alignment") ||
+      !expect(publication->source_memory_can_use_base_plus_offset,
+              "shared publication should preserve base-plus-offset availability") ||
+      !expect(!publication->source_memory_requires_address_materialization,
+              "shared publication should not require materialization for base-plus-offset access")) {
+    return 1;
+  }
+
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V should keep dynamic stack-source lowering fail-closed until it consumes shared memory authority")) {
+    return 1;
+  }
+
+  auto missing_access = make_register_edge_publication_module();
+  const auto missing_ids = FixtureIds{
+      .function = missing_access.names.function_names.find("join_regs"),
+      .predecessor = missing_access.names.block_labels.find("left"),
+      .successor = missing_access.names.block_labels.find("join"),
+      .source_name = missing_access.names.value_names.find("%src"),
+      .base_name = missing_access.names.value_names.find("%base"),
+      .destination_name = missing_access.names.value_names.find("%dst"),
+  };
+  make_load_local_dynamic_stack_source(missing_access, missing_ids, std::nullopt);
+  lookups = make_lookups(missing_access);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, missing_ids.predecessor, missing_ids.successor, 2);
+  if (publication == nullptr ||
+      !expect(publication->source_memory_access_status ==
+                  prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
+                      MissingPreparedMemoryAccess,
+              "shared publication should distinguish a LoadLocal with no prepared memory access")) {
+    return 1;
+  }
+
+  auto incomplete = make_register_edge_publication_module();
+  const auto incomplete_ids = FixtureIds{
+      .function = incomplete.names.function_names.find("join_regs"),
+      .predecessor = incomplete.names.block_labels.find("left"),
+      .successor = incomplete.names.block_labels.find("join"),
+      .source_name = incomplete.names.value_names.find("%src"),
+      .base_name = incomplete.names.value_names.find("%base"),
+      .destination_name = incomplete.names.value_names.find("%dst"),
+  };
+  auto incomplete_access = load_local_source_access(incomplete_ids);
+  incomplete_access.address.pointer_value_name.reset();
+  make_load_local_dynamic_stack_source(incomplete, incomplete_ids, incomplete_access);
+  lookups = make_lookups(incomplete);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, incomplete_ids.predecessor, incomplete_ids.successor, 2);
+  if (publication == nullptr ||
+      !expect(publication->source_memory_access_status ==
+                  prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
+                      IncompletePreparedMemoryAccess,
+              "shared publication should distinguish incomplete prepared source memory access")) {
+    return 1;
+  }
+
+  auto plain_prepared = make_register_edge_publication_module();
+  const auto plain_ids = FixtureIds{
+      .function = plain_prepared.names.function_names.find("join_regs"),
+      .predecessor = plain_prepared.names.block_labels.find("left"),
+      .successor = plain_prepared.names.block_labels.find("join"),
+      .source_name = plain_prepared.names.value_names.find("%src"),
+      .base_name = plain_prepared.names.value_names.find("%base"),
+      .destination_name = plain_prepared.names.value_names.find("%dst"),
+  };
+  const auto plain = make_lookups(plain_prepared);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &plain.edge_publications, plain_ids.predecessor, plain_ids.successor, 2);
+  if (publication == nullptr ||
+      !expect(publication->source_memory_access_status ==
+                  prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable,
+              "non-LoadLocal source publications should keep source memory access unavailable")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_and_unsupported_homes_fail_closed() {
   auto prepared = make_register_edge_publication_module();
   const auto predecessor = prepared.names.block_labels.find("left");
@@ -1386,6 +1559,11 @@ int main() {
     return result;
   }
   if (const int result = check_pointer_base_fail_closed_forms();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          check_load_local_dynamic_stack_source_exposes_shared_memory_access();
       result != 0) {
     return result;
   }
