@@ -3,6 +3,7 @@
 #include "frame.hpp"
 #include "names.hpp"
 
+#include "../../target_profile.hpp"
 #include "../bir/bir.hpp"
 
 #include <cstddef>
@@ -43,11 +44,32 @@ struct PreparedAddress {
   std::optional<PreparedFrameSlotId> frame_slot_id;
   std::optional<LinkNameId> symbol_name;
   std::optional<ValueNameId> pointer_value_name;
+  bir::GlobalAddressMaterializationPolicy global_address_materialization_policy =
+      bir::GlobalAddressMaterializationPolicy::Unspecified;
   std::int64_t byte_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool can_use_base_plus_offset = false;
 };
+
+[[nodiscard]] inline std::optional<bir::GlobalAddressMaterializationPolicy>
+prepared_global_symbol_address_policy(
+    const PreparedAddress& address,
+    const c4c::TargetProfile* target_profile) {
+  if (address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value()) {
+    return std::nullopt;
+  }
+  if (address.global_address_materialization_policy !=
+      bir::GlobalAddressMaterializationPolicy::Unspecified) {
+    return address.global_address_materialization_policy;
+  }
+  if (target_profile != nullptr &&
+      target_profile->relocation_model == c4c::TargetRelocationModel::Static) {
+    return bir::GlobalAddressMaterializationPolicy::Direct;
+  }
+  return std::nullopt;
+}
 
 enum class PreparedValueHomeKind;
 

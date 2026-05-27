@@ -142,6 +142,76 @@ prepared_same_block_scalar_producer_context(
   };
 }
 
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_global_load_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Inst& producer) {
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (!prepared_memory_access_matches_instruction(context, access, producer) ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return nullptr;
+  }
+  return access;
+}
+
+[[nodiscard]] bool emit_prepared_global_load_to_register(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global,
+    const bir::Inst& producer,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto* access = prepared_global_load_access(context, instruction_index, producer);
+  if (access == nullptr) {
+    return false;
+  }
+  const auto symbol_label =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *access->address.symbol_name);
+  const auto mnemonic = scalar_load_mnemonic(load_global.result.type);
+  const auto load_view = scalar_view_for_type(load_global.result.type);
+  const auto load_target =
+      load_view.has_value() ? gp_register_name(target_index, *load_view) : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (symbol_label.empty() || !mnemonic.has_value() || !load_target.has_value() ||
+      !address.has_value()) {
+    return false;
+  }
+
+  const auto policy = prepare::prepared_global_symbol_address_policy(
+      access->address, context.function.target_profile);
+  if (!policy.has_value()) {
+    return false;
+  }
+
+  switch (*policy) {
+    case bir::GlobalAddressMaterializationPolicy::GotRequired:
+      lines.push_back("adrp " + *address + ", :got:" + std::string{symbol_label});
+      lines.push_back("ldr " + *address + ", [" + *address + ", :got_lo12:" +
+                      std::string{symbol_label} + "]");
+      lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
+                      register_indirect_address(*address, access->address.byte_offset));
+      return true;
+    case bir::GlobalAddressMaterializationPolicy::Direct: {
+      const auto symbol = relocation_operand(symbol_label, access->address.byte_offset);
+      lines.push_back("adrp " + *address + ", " + symbol);
+      lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
+      lines.push_back(std::string{*mnemonic} + " " + *load_target + ", [" + *address +
+                      "]");
+      return true;
+    }
+    case bir::GlobalAddressMaterializationPolicy::Unspecified:
+      return false;
+  }
+  return false;
+}
+
 }  // namespace
 
 [[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
@@ -383,30 +453,13 @@ prepared_same_block_scalar_producer_context(
                                                  lines,
                                                  fixed_slots_use_frame_pointer(context.function));
     }
-    const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
-    if (!address.has_value() || load_global->global_name.empty()) {
-      return false;
-    }
-    const bir::Global* target_global = find_load_global_target(context, *load_global);
-    const auto symbol_label = load_global_symbol_label(context, *load_global, target_global);
-    if (symbol_label.empty()) {
-      return false;
-    }
-    if (target_global != nullptr &&
-        target_global->address_materialization_policy ==
-            bir::GlobalAddressMaterializationPolicy::GotRequired) {
-      lines.push_back("adrp " + *address + ", :got:" + symbol_label);
-      lines.push_back("ldr " + *address + ", [" + *address + ", :got_lo12:" +
-                      symbol_label + "]");
-      lines.push_back("ldr " + *target + ", " +
-                      register_indirect_address(*address, load_global->byte_offset));
-      return true;
-    }
-    const auto symbol = relocation_operand(symbol_label, load_global->byte_offset);
-    lines.push_back("adrp " + *address + ", " + symbol);
-    lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
-    lines.push_back("ldr " + *target + ", [" + *address + "]");
-    return true;
+    return emit_prepared_global_load_to_register(context,
+                                                 producer_context->instruction_index,
+                                                 *load_global,
+                                                 *producer,
+                                                 target_index,
+                                                 scratch_index,
+                                                 lines);
   }
 
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {

@@ -56,6 +56,29 @@ struct FunctionStackObjectPlan {
   return nullptr;
 }
 
+[[nodiscard]] const bir::Global* find_global_by_symbol(
+    const bir::Module& module,
+    const bir::NameTables& bir_names,
+    std::string_view raw_symbol_name,
+    LinkNameId link_name_id) {
+  if (link_name_id != kInvalidLinkName) {
+    return find_global_by_link_name_id(module, link_name_id);
+  }
+  if (raw_symbol_name.empty()) {
+    return nullptr;
+  }
+  for (const auto& global : module.globals) {
+    if (global.name == raw_symbol_name) {
+      return &global;
+    }
+    if (global.link_name_id != kInvalidLinkName &&
+        bir_names.link_names.spelling(global.link_name_id) == raw_symbol_name) {
+      return &global;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] bool module_has_function_link_name_id(const bir::Module& module,
                                                     LinkNameId link_name_id) {
   if (link_name_id == kInvalidLinkName) {
@@ -94,6 +117,23 @@ struct FunctionStackObjectPlan {
     return std::nullopt;
   }
   return names.link_names.intern(spelling);
+}
+
+[[nodiscard]] std::optional<bir::GlobalAddressMaterializationPolicy>
+prepared_global_address_policy(const c4c::TargetProfile& target_profile,
+                               const bir::Global& global) {
+  auto policy = global.address_materialization_policy;
+  if (policy == bir::GlobalAddressMaterializationPolicy::Unspecified) {
+    if (target_profile.relocation_model != c4c::TargetRelocationModel::Static) {
+      return std::nullopt;
+    }
+    policy = bir::GlobalAddressMaterializationPolicy::Direct;
+  }
+  if (policy == bir::GlobalAddressMaterializationPolicy::GotRequired &&
+      global.is_thread_local) {
+    return std::nullopt;
+  }
+  return policy;
 }
 
 [[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
@@ -392,7 +432,9 @@ struct FunctionStackObjectPlan {
 
 [[nodiscard]] std::optional<PreparedAddress> build_direct_symbol_backed_address(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::NameTables& bir_names,
+    const c4c::TargetProfile& target_profile,
     const std::optional<bir::MemoryAddress>& address,
     std::string_view fallback_symbol_name,
     LinkNameId fallback_symbol_link_name_id,
@@ -425,9 +467,19 @@ struct FunctionStackObjectPlan {
     if (!symbol_name.has_value()) {
       return std::nullopt;
     }
+    const auto* global =
+        find_global_by_symbol(module, bir_names, fallback_symbol_name, fallback_symbol_link_name_id);
+    if (global == nullptr) {
+      return std::nullopt;
+    }
+    const auto policy = prepared_global_address_policy(target_profile, *global);
+    if (!policy.has_value()) {
+      return std::nullopt;
+    }
     return PreparedAddress{
         .base_kind = PreparedAddressBaseKind::GlobalSymbol,
         .symbol_name = *symbol_name,
+        .global_address_materialization_policy = *policy,
         .byte_offset = fallback_byte_offset,
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
@@ -459,10 +511,24 @@ struct FunctionStackObjectPlan {
   if (!prepared_symbol_name.has_value()) {
     return std::nullopt;
   }
+  std::optional<bir::GlobalAddressMaterializationPolicy> global_policy;
+  if (base_kind == PreparedAddressBaseKind::GlobalSymbol) {
+    const auto* global =
+        find_global_by_symbol(module, bir_names, symbol_name, symbol_link_name_id);
+    if (global == nullptr) {
+      return std::nullopt;
+    }
+    global_policy = prepared_global_address_policy(target_profile, *global);
+    if (!global_policy.has_value()) {
+      return std::nullopt;
+    }
+  }
 
   return PreparedAddress{
       .base_kind = base_kind,
       .symbol_name = *prepared_symbol_name,
+      .global_address_materialization_policy =
+          global_policy.value_or(bir::GlobalAddressMaterializationPolicy::Unspecified),
       .byte_offset = address->byte_offset + fallback_byte_offset,
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
@@ -472,7 +538,9 @@ struct FunctionStackObjectPlan {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::NameTables& bir_names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -488,7 +556,9 @@ struct FunctionStackObjectPlan {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      module,
       bir_names,
+      target_profile,
       inst.address,
       {},
       kInvalidLinkName,
@@ -512,7 +582,9 @@ struct FunctionStackObjectPlan {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::NameTables& bir_names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -528,7 +600,9 @@ struct FunctionStackObjectPlan {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      module,
       bir_names,
+      target_profile,
       inst.address,
       {},
       kInvalidLinkName,
@@ -552,7 +626,9 @@ struct FunctionStackObjectPlan {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::NameTables& bir_names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -572,7 +648,9 @@ struct FunctionStackObjectPlan {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      module,
       bir_names,
+      target_profile,
       inst.address,
       inst.global_name,
       inst.global_name_id,
@@ -596,7 +674,9 @@ struct FunctionStackObjectPlan {
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
     PreparedNameTables& names,
+    const bir::Module& module,
     const bir::NameTables& bir_names,
+    const c4c::TargetProfile& target_profile,
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
@@ -616,7 +696,9 @@ struct FunctionStackObjectPlan {
       size_bytes);
   auto address = build_direct_symbol_backed_address(
       names,
+      module,
       bir_names,
+      target_profile,
       inst.address,
       inst.global_name,
       inst.global_name_id,
@@ -794,6 +876,8 @@ struct FunctionStackObjectPlan {
 void append_direct_frame_slot_accesses(PreparedNameTables& names,
                                        PreparedAddressingFunction& function_addressing,
                                        FunctionNameId function_name_id,
+                                       const bir::Module& module,
+                                       const c4c::TargetProfile& target_profile,
                                        const bir::NameTables& bir_names,
                                        const bir::Function& function,
                                        const FrameSlotMap& frame_slots_by_name) {
@@ -810,7 +894,14 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, bir_names, function_name_id, block_label_id, inst_index, *load_local);
+                names,
+                module,
+                bir_names,
+                target_profile,
+                function_name_id,
+                block_label_id,
+                inst_index,
+                *load_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -836,7 +927,14 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, bir_names, function_name_id, block_label_id, inst_index, *store_local);
+                names,
+                module,
+                bir_names,
+                target_profile,
+                function_name_id,
+                block_label_id,
+                inst_index,
+                *store_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
@@ -862,7 +960,14 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, bir_names, function_name_id, block_label_id, inst_index, *load_global);
+                names,
+                module,
+                bir_names,
+                target_profile,
+                function_name_id,
+                block_label_id,
+                inst_index,
+                *load_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -876,7 +981,14 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                names, bir_names, function_name_id, block_label_id, inst_index, *store_global);
+                names,
+                module,
+                bir_names,
+                target_profile,
+                function_name_id,
+                block_label_id,
+                inst_index,
+                *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -1368,6 +1480,8 @@ void publish_function_addressing_facts(PreparedNameTables& names,
       names,
       function_addressing,
       function_name_id,
+      module,
+      target_profile,
       module.names,
       function,
       frame_slots_by_name);

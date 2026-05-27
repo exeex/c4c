@@ -733,6 +733,12 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
       !access->address.can_use_base_plus_offset) {
     return false;
   }
+  const auto policy = prepare::prepared_global_symbol_address_policy(
+      access->address, context.function.target_profile);
+  if (!policy.has_value() ||
+      *policy != bir::GlobalAddressMaterializationPolicy::Direct) {
+    return false;
+  }
   const auto symbol_name =
       prepare::prepared_link_name(context.function.prepared->names,
                                   *access->address.symbol_name);
@@ -746,9 +752,7 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
       !address.has_value()) {
     return false;
   }
-  const auto symbol =
-      relocation_operand(symbol_name,
-                         static_cast<std::size_t>(access->address.byte_offset));
+  const auto symbol = relocation_operand(symbol_name, access->address.byte_offset);
   lines.push_back("adrp " + *address + ", " + symbol);
   lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
   lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
