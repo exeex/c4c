@@ -5445,35 +5445,48 @@ lower_scalar_call_argument_producers(
 
 
 
-[[nodiscard]] std::optional<bir::Value> find_bir_value_for_prepared_name(
+[[nodiscard]] std::optional<bir::Value> prepared_call_boundary_source_value(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr) {
+  if (value_name == c4c::kInvalidValueName ||
+      context.function.prepared_lookups == nullptr ||
+      context.control_flow_block == nullptr) {
     return std::nullopt;
   }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const auto result = instruction_result_value(context.bir_block->insts[index - 1]);
-    if (!result.has_value()) {
-      continue;
-    }
-    const auto prepared_name = prepared_named_value_id(context, *result);
-    if (prepared_name == std::optional<c4c::ValueNameId>{value_name}) {
-      return result;
-    }
-  }
-  if (before_instruction_index >= context.bir_block->insts.size()) {
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          &context.function.prepared_lookups->edge_publication_source_producers,
+          value_name);
+  if (producer == nullptr ||
+      producer->block_label != context.control_flow_block->block_label ||
+      producer->instruction_index >= before_instruction_index) {
     return std::nullopt;
   }
-  if (const auto* call =
-          std::get_if<bir::CallInst>(&context.bir_block->insts[before_instruction_index]);
-      call != nullptr) {
-    for (const auto& argument : call->args) {
-      const auto prepared_name = prepared_named_value_id(context, argument);
-      if (prepared_name == std::optional<c4c::ValueNameId>{value_name}) {
-        return argument;
-      }
-    }
+  switch (producer->kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer->load_local != nullptr
+                 ? std::optional<bir::Value>{producer->load_local->result}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer->load_global != nullptr
+                 ? std::optional<bir::Value>{producer->load_global->result}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer->cast != nullptr
+                 ? std::optional<bir::Value>{producer->cast->result}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer->binary != nullptr
+                 ? std::optional<bir::Value>{producer->binary->result}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer->select != nullptr
+                 ? std::optional<bir::Value>{producer->select->result}
+                 : std::nullopt;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return std::nullopt;
   }
   return std::nullopt;
 }
@@ -5499,7 +5512,7 @@ materialize_call_boundary_source_to_destination(
   }
 
   const auto source_value =
-      find_bir_value_for_prepared_name(
+      prepared_call_boundary_source_value(
           context, *move_record->source_memory->result_value_name, instruction_index);
   if (!source_value.has_value()) {
     return std::nullopt;

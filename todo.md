@@ -3,32 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/52_aarch64_calls_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair scalar call-argument producer materialization authority
+Current Step ID: Step 4
+Current Step Title: Repair call-boundary source and indirect-callee authority
 
 ## Just Finished
 
-Step 3 replaced the scalar call-argument materialization path in `calls.cpp`
-so `materialize_scalar_call_argument_value` and
-`lower_scalar_call_argument_producers` consume prepared edge-publication source
-producer facts for scalar binary and load-local argument producers instead of
-recovering producer/source authority with recursive same-block producer scans.
-Direct-global select-chain call arguments still route through the shared
-prepared direct-global select-chain query and prepared call-argument plan.
+Step 4 boundary-source subpacket replaced the
+`materialize_call_boundary_source_to_destination` prepared-name/BIR-result scan
+in `calls.cpp` with a prepared edge-publication source-producer lookup. The
+call-boundary materializer now consumes prepared producer payloads for the
+source value and does not recover semantic source facts by walking prior BIR
+results.
 
 ## Suggested Next
 
-Next bounded implementation packet: continue to the next Step 3-adjacent or
-Step 4 call authority cluster selected by the supervisor, with special attention
-to any remaining scalar call argument paths that still depend on non-prepared
-source recovery outside this packet's two target functions.
+Next bounded implementation packet: continue Step 4 on the indirect-callee
+authority subpacket, keeping it separate from the completed boundary-source
+repair unless the supervisor chooses a different boundary.
 
 ## Watchouts
 
-The scalar call-argument producer lookup uses prepared value-name producer facts
-and validates the prepared block label plus instruction position before
-materializing a binary producer. The delegated broader `^backend_` run still
-shows the same two pre-existing failures previously recorded here:
+The boundary-source helper still requires an existing prepared source-producer
+fact for the source value and validates the prepared block label plus producer
+instruction position before asking value-publication lowering to materialize
+the source into the destination register. The delegated broader `^backend_` run
+still shows the same two pre-existing failures previously recorded here:
 `backend_aarch64_instruction_dispatch` and
 `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
 
