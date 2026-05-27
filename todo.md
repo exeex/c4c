@@ -8,47 +8,35 @@ Current Step Title: Route non-edge select-chain materialization through shared s
 
 ## Just Finished
 
-Completed the first Step 5 global-load value materialization routing packet.
+Completed Step 6 root select-chain routing in
+`dispatch_value_materialization.cpp`.
 
-`dispatch_value_materialization.cpp` no longer recovers global-load labels or
-GOT/direct policy through `find_load_global_target`,
-`load_global_symbol_label`, `LoadGlobalInst::global_name`, or module-global
-searches. Same-block `LoadGlobal` rematerialization now requires a matching
-`PreparedMemoryAccess` with a prepared global-symbol base, consumes the prepared
-symbol and byte offset, and selects GOT/direct emission through prepared address
-policy. Prepared addressing now carries global address materialization policy
-on symbol-backed accesses; the shared prepared-address helper treats an
-unspecified policy as direct only for static targets and otherwise fails closed.
-
-Route review in `review/step5-global-consumer-route-review.md` rejected the
-previous Suggested Next as active Step 5 work because the remaining global-load
-consumers in `globals.cpp` and `fp_value_materialization.cpp` are outside this
-source idea's owned-file boundary. That follow-up is recorded separately in
-`ideas/open/54_aarch64_global_value_materialization_consumer_authority_repair.md`.
+The non-edge select branch in `emit_value_publication_to_register` now requires
+a prepared root value id before delegating to the shared
+`emit_select_chain_value_to_register` emitter, and it seeds that shared emitter
+with the prepared source-producer instruction index instead of the consumer's
+local `before_instruction_index`. This keeps the root select-chain
+materialization anchored to prepared scalar producer authority while preserving
+the existing shared select-chain emission mechanics.
 
 ## Suggested Next
 
-Execute Step 6 in the active runbook: audit the non-edge select branch in
-`dispatch_value_materialization.cpp` that calls
-`emit_select_chain_value_to_register` with `prepared_named_value_id`, then
-route any duplicate select-chain materialization through existing prepared
-producer/scalar-publication facts or a narrowly justified shared scalar
-select-chain query.
+Execute Step 7 in the active runbook: audit
+`emit_local_slot_address_publication_to_register` and route local-slot
+address/frame-offset materialization through the prepared local-slot address
+authority selected by the publication repair.
 
 ## Watchouts
 
-`PreparedAddressMaterialization` was not sufficient for ordinary scalar
-global-load values because those loads are memory accesses, not pointer address
-materializations. The narrow prepared authority added here is
-`PreparedAddress::global_address_materialization_policy` plus
-`prepared_global_symbol_address_policy`; non-static unspecified policy remains
-fail-closed. `clang-format` is not installed in this workspace, so formatting
-was checked manually, with `git diff --check`, and by the build.
+A stricter recursive prepared-coverage gate was tested and rejected because an
+existing supported stack-homed select publication route can contain an
+intermediate select value with no prepared name/home. That is a real prepared
+authority gap for possible follow-up, but this Step 6 packet kept the completed
+slice to the prepared root select-chain authority inside the owned file.
 
-Do not implement `make_load_global_got_materialization_instruction` or FP
-`LoadGlobal` consumer rewrites as active Step 5 work for this plan. Those are
-follow-up consumer repairs under the new separate source idea unless the
-supervisor explicitly switches lifecycle state.
+Do not implement `globals.cpp` or `fp_value_materialization.cpp` global-load
+consumer rewrites under this active plan; those remain follow-up work under the
+separate global consumer idea unless lifecycle state changes.
 
 ## Proof
 

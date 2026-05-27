@@ -543,6 +543,10 @@ prepared_same_block_scalar_producer_context(
   }
 
   if (std::get_if<bir::SelectInst>(producer) != nullptr) {
+    const auto root_value_name = prepared_named_value_id(context, value);
+    if (!root_value_name.has_value()) {
+      return false;
+    }
     std::size_t label_index = 0;
     std::vector<std::string_view> active_values;
     return emit_select_chain_value_to_register(context,
@@ -550,9 +554,8 @@ prepared_same_block_scalar_producer_context(
                                                before_instruction_index,
                                                target_index,
                                                scratch_index,
-                                               before_instruction_index,
-                                               prepared_named_value_id(context, value)
-                                                   .value_or(c4c::kInvalidValueName),
+                                               producer_context->instruction_index,
+                                               *root_value_name,
                                                lines,
                                                label_index,
                                                active_values,
