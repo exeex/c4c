@@ -51,6 +51,8 @@ struct PreparedAddressMaterializationLookups {
 
 struct PreparedMoveBundleLookups {
   std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
+  std::unordered_map<std::size_t, const PreparedMoveResolution*>
+      before_return_abi_moves_by_source_and_bank;
 };
 
 struct PreparedValueHomeLookups {
@@ -370,6 +372,10 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_move_bundle_position_key(PreparedMovePhase phase,
                                                             std::size_t block_index,
                                                             std::size_t instruction_index);
+[[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank);
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
@@ -472,6 +478,14 @@ collect_prepared_address_materializations_for_block(
     PreparedMovePhase phase,
     std::size_t block_index,
     std::size_t instruction_index);
+
+[[nodiscard]] const PreparedMoveResolution*
+find_prepared_before_return_abi_move_by_source_and_destination_bank(
+    const PreparedMoveBundleLookups* lookups,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank);
 
 [[nodiscard]] const PreparedEdgePublicationSourceProducer*
 find_indexed_prepared_edge_publication_source_producer(

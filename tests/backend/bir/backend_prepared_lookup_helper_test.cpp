@@ -1781,6 +1781,119 @@ int verify_edge_publication_source_producer_facts() {
   return 0;
 }
 
+int verify_before_return_abi_move_source_bank_lookup() {
+  prepare::PreparedValueLocationFunction locations{
+      .function_name = c4c::FunctionNameId{11},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+               .function_name = c4c::FunctionNameId{11},
+               .phase = prepare::PreparedMovePhase::BeforeReturn,
+               .block_index = 3,
+               .instruction_index = 9,
+               .moves =
+                   {prepare::PreparedMoveResolution{
+                        .from_value_id = prepare::PreparedValueId{41},
+                        .to_value_id = prepare::PreparedValueId{41},
+                        .destination_kind =
+                            prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                        .destination_storage_kind =
+                            prepare::PreparedMoveStorageKind::Register,
+                        .destination_register_name = std::string{"s0"},
+                        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                        .destination_register_placement =
+                            prepare::PreparedRegisterPlacement{
+                                .bank = prepare::PreparedRegisterBank::Fpr,
+                                .pool =
+                                    prepare::PreparedRegisterSlotPool::CallResult,
+                                .slot_index = 0,
+                                .contiguous_width = 1,
+                            },
+                    },
+                    prepare::PreparedMoveResolution{
+                        .from_value_id = prepare::PreparedValueId{42},
+                        .to_value_id = prepare::PreparedValueId{42},
+                        .destination_kind =
+                            prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                        .destination_storage_kind =
+                            prepare::PreparedMoveStorageKind::Register,
+                        .destination_register_name = std::string{"x0"},
+                        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                        .destination_register_placement =
+                            prepare::PreparedRegisterPlacement{
+                                .bank = prepare::PreparedRegisterBank::Gpr,
+                                .pool =
+                                    prepare::PreparedRegisterSlotPool::CallResult,
+                                .slot_index = 0,
+                                .contiguous_width = 1,
+                            },
+                    },
+                    prepare::PreparedMoveResolution{
+                        .from_value_id = prepare::PreparedValueId{43},
+                        .to_value_id = prepare::PreparedValueId{43},
+                        .destination_kind =
+                            prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                        .destination_storage_kind =
+                            prepare::PreparedMoveStorageKind::Register,
+                        .destination_register_name = std::string{"s1"},
+                        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                    }},
+           }},
+  };
+
+  const auto lookups = prepare::make_prepared_move_bundle_lookups(&locations);
+  const auto* indexed =
+      prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          &lookups,
+          &locations,
+          3,
+          prepare::PreparedValueId{41},
+          prepare::PreparedRegisterBank::Fpr);
+  if (indexed != &locations.move_bundles.front().moves[0]) {
+    return fail("before-return FPR ABI lookup should find the prepared source move");
+  }
+
+  const auto* fallback =
+      prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          nullptr,
+          &locations,
+          3,
+          prepare::PreparedValueId{41},
+          prepare::PreparedRegisterBank::Fpr);
+  if (fallback != &locations.move_bundles.front().moves[0]) {
+    return fail("before-return FPR ABI fallback should use shared lookup semantics");
+  }
+
+  if (prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          &lookups,
+          &locations,
+          3,
+          prepare::PreparedValueId{42},
+          prepare::PreparedRegisterBank::Fpr) != nullptr) {
+    return fail("before-return FPR ABI lookup should reject GPR destinations");
+  }
+
+  if (prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          &lookups,
+          &locations,
+          3,
+          prepare::PreparedValueId{43},
+          prepare::PreparedRegisterBank::Fpr) != nullptr) {
+    return fail("before-return FPR ABI lookup should require prepared placement authority");
+  }
+
+  prepare::PreparedMoveBundleLookups empty_lookups;
+  if (prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+          &empty_lookups,
+          &locations,
+          3,
+          prepare::PreparedValueId{41},
+          prepare::PreparedRegisterBank::Fpr) != nullptr) {
+    return fail("before-return FPR ABI lookup should fail closed with missing indexed authority");
+  }
+
+  return 0;
+}
+
 int verify_direct_global_select_chain_dependency_query() {
   const c4c::LinkNameId global_name{41};
   const bir::Value loaded =
@@ -1873,6 +1986,10 @@ int main() {
     return result;
   }
   if (const int result = verify_edge_publication_source_producer_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_before_return_abi_move_source_bank_lookup();
       result != 0) {
     return result;
   }

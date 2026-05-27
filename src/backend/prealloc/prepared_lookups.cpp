@@ -670,6 +670,15 @@ void collect_block_entry_republication_effects(
          instruction_index;
 }
 
+[[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank) {
+  return (static_cast<std::size_t>(destination_bank) << 56U) ^
+         (block_index << 32U) ^
+         static_cast<std::size_t>(source_value_id);
+}
+
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
@@ -829,6 +838,28 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
         prepared_move_bundle_position_key(bundle.phase, bundle.block_index,
                                           bundle.instruction_index),
         &bundle);
+    if (bundle.phase != PreparedMovePhase::BeforeReturn) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.from_value_id == PreparedValueId{0} ||
+          move.destination_kind != PreparedMoveDestinationKind::FunctionReturnAbi ||
+          move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+          move.op_kind != PreparedMoveResolutionOpKind::Move ||
+          !move.destination_register_placement.has_value() ||
+          move.destination_register_placement->bank == PreparedRegisterBank::None) {
+        continue;
+      }
+      const auto key = prepared_before_return_abi_move_source_bank_key(
+          bundle.block_index,
+          move.from_value_id,
+          move.destination_register_placement->bank);
+      const auto [it, inserted] =
+          lookups.before_return_abi_moves_by_source_and_bank.emplace(key, &move);
+      if (!inserted) {
+        it->second = nullptr;
+      }
+    }
   }
   return lookups;
 }
@@ -1388,6 +1419,62 @@ collect_prepared_address_materializations_for_block(
                                                                 phase,
                                                                 block_index,
                                                                 instruction_index);
+}
+
+[[nodiscard]] bool prepared_move_targets_destination_bank(
+    const PreparedMoveResolution& move,
+    PreparedRegisterBank destination_bank) {
+  return destination_bank != PreparedRegisterBank::None &&
+         move.destination_register_placement.has_value() &&
+         move.destination_register_placement->bank == destination_bank;
+}
+
+[[nodiscard]] const PreparedMoveResolution*
+find_prepared_before_return_abi_move_by_source_and_destination_bank(
+    const PreparedMoveBundleLookups* lookups,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank) {
+  if (source_value_id == PreparedValueId{0} ||
+      destination_bank == PreparedRegisterBank::None) {
+    return nullptr;
+  }
+  if (lookups != nullptr) {
+    const auto it =
+        lookups->before_return_abi_moves_by_source_and_bank.find(
+            prepared_before_return_abi_move_source_bank_key(block_index,
+                                                            source_value_id,
+                                                            destination_bank));
+    return it != lookups->before_return_abi_moves_by_source_and_bank.end()
+               ? it->second
+               : nullptr;
+  }
+  if (value_locations == nullptr) {
+    return nullptr;
+  }
+
+  const PreparedMoveResolution* selected = nullptr;
+  for (const auto& bundle : value_locations->move_bundles) {
+    if (bundle.phase != PreparedMovePhase::BeforeReturn ||
+        bundle.block_index != block_index) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.from_value_id != source_value_id ||
+          move.destination_kind != PreparedMoveDestinationKind::FunctionReturnAbi ||
+          move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+          move.op_kind != PreparedMoveResolutionOpKind::Move ||
+          !prepared_move_targets_destination_bank(move, destination_bank)) {
+        continue;
+      }
+      if (selected != nullptr) {
+        return nullptr;
+      }
+      selected = &move;
+    }
+  }
+  return selected;
 }
 
 [[nodiscard]] const PreparedEdgePublicationSourceProducer*

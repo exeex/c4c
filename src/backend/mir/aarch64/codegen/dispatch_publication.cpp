@@ -1,6 +1,7 @@
 #include "dispatch_publication.hpp"
 
 #include "../../query.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "cast_ops.hpp"
@@ -1017,43 +1018,15 @@ void record_memory_result(BlockScalarLoweringState& scalar_state,
                                  memory_record->result_value_name,
                                  *memory_record->result_register);
 }
-[[nodiscard]] bool before_return_move_targets_fpr_abi(
-    const prepare::PreparedMoveResolution& move) {
-  if (move.destination_register_placement.has_value()) {
-    return move.destination_register_placement->bank ==
-           prepare::PreparedRegisterBank::Fpr;
-  }
-  if (!move.destination_register_name.has_value()) {
-    return false;
-  }
-  const auto parsed =
-      abi::parse_aarch64_register_name(*move.destination_register_name);
-  return parsed.has_value() && parsed->bank == abi::RegisterBank::FpSimd;
-}
 bool memory_load_result_feeds_before_return_fpr_abi(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id) {
-  if (context.function.value_locations == nullptr) {
-    return false;
-  }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BeforeReturn ||
-        bundle.block_index != context.block_index) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.from_value_id == value_id &&
-          move.destination_kind ==
-              prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
-          move.destination_storage_kind ==
-              prepare::PreparedMoveStorageKind::Register &&
-          move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-          before_return_move_targets_fpr_abi(move)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+             context.function.move_bundle_lookups,
+             context.function.value_locations,
+             context.block_index,
+             value_id,
+             prepare::PreparedRegisterBank::Fpr) != nullptr;
 }
 [[nodiscard]] const prepare::PreparedStoragePlanValue* find_storage_plan_value(
     const prepare::PreparedStoragePlanFunction& storage_plan,

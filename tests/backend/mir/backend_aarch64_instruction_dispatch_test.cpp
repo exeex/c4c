@@ -23846,6 +23846,34 @@ int hfa_return_frame_slot_lane_load_publishes_prepared_home() {
       move_printed.instruction_lines != std::vector<std::string>{"fmov s1, s20"}) {
     return fail("expected printable HFA lane load home and return publication");
   }
+
+  prepare::PreparedMoveBundleLookups empty_move_lookups;
+  auto missing_lookup_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, function_cf);
+  missing_lookup_function_context.move_bundle_lookups = &empty_move_lookups;
+  const auto missing_lookup_block_context =
+      aarch64_codegen::make_block_lowering_context(missing_lookup_function_context,
+                                                   block_cf,
+                                                   0);
+  aarch64_module::MachineBlock missing_lookup_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_lookup_diagnostics;
+  (void)aarch64_codegen::dispatch_prepared_block(missing_lookup_block_context,
+                                                 missing_lookup_block,
+                                                 missing_lookup_diagnostics);
+  if (missing_lookup_block.instructions.empty()) {
+    return fail("expected HFA lane load route to lower with missing move lookup");
+  }
+  const auto* missing_lookup_memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &missing_lookup_block.instructions.front().target.payload);
+  if (missing_lookup_memory == nullptr ||
+      !missing_lookup_memory->result_register.has_value()) {
+    return fail("expected HFA lane load to retain a result register without move lookup");
+  }
+  if (missing_lookup_memory->result_register->reg == aarch64_abi::s_register(20)) {
+    return fail("expected HFA lane load retargeting to fail closed without prepared move lookup");
+  }
   return 0;
 }
 
