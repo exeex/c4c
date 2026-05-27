@@ -1439,6 +1439,120 @@ int verify_same_width_i32_stack_source_publication_facts() {
   return 0;
 }
 
+int verify_aggregate_stack_source_authority_status() {
+  const auto source_name = c4c::ValueNameId{111};
+  const auto destination_name = c4c::ValueNameId{112};
+  prepare::PreparedValueHome source_home{
+      .value_id = prepare::PreparedValueId{211},
+      .value_name = source_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{17},
+      .offset_bytes = std::size_t{32},
+      .size_bytes = std::size_t{16},
+      .align_bytes = std::size_t{8},
+  };
+  prepare::PreparedMoveResolution move{
+      .from_value_id = prepare::PreparedValueId{211},
+      .to_value_id = prepare::PreparedValueId{212},
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .destination_register_placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+          .slot_index = 1,
+          .contiguous_width = 2,
+      },
+  };
+  prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .destination_value = bir::Value::named(bir::TypeKind::I32, "%agg.dst"),
+      .source_value = bir::Value::named(bir::TypeKind::I32, "%agg.src"),
+      .destination_value_id = prepare::PreparedValueId{212},
+      .destination_value_name = destination_name,
+      .source_value_id = prepare::PreparedValueId{211},
+      .source_value_name = source_name,
+      .source_home = &source_home,
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .destination_home_kind = prepare::PreparedValueHomeKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .move = &move,
+  };
+
+  const auto aggregate =
+      prepare::prepare_aggregate_stack_source_authority(&publication);
+  if (aggregate.status !=
+          prepare::PreparedAggregateStackSourceAuthorityStatus::
+              MissingAggregateCopyAuthority ||
+      aggregate.source_value_id != prepare::PreparedValueId{211} ||
+      aggregate.destination_value_id != prepare::PreparedValueId{212} ||
+      aggregate.source_type != bir::TypeKind::I32 ||
+      aggregate.destination_type != bir::TypeKind::I32 ||
+      aggregate.source_slot_id != prepare::PreparedFrameSlotId{17} ||
+      aggregate.source_stack_offset_bytes != std::size_t{32} ||
+      aggregate.source_stack_size_bytes != std::size_t{16} ||
+      aggregate.source_stack_align_bytes != std::size_t{8} ||
+      aggregate.copy_width_bytes != std::size_t{16} ||
+      aggregate.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      aggregate.destination_register_placement != move.destination_register_placement ||
+      aggregate.has_destination_lane_mapping ||
+      aggregate.has_lane_widths_and_offsets ||
+      aggregate.partial_copy_allowed ||
+      aggregate.has_abi_layout_reference ||
+      aggregate.has_scratch_ownership) {
+    return fail("aggregate stack-source authority should expose concrete facts but report the missing copy contract");
+  }
+  if (prepare::prepared_aggregate_stack_source_authority_status_name(
+          aggregate.status) != "missing_aggregate_copy_authority") {
+    return fail("aggregate stack-source authority status should have a stable name");
+  }
+
+  auto scalar_source = source_home;
+  scalar_source.size_bytes = std::size_t{4};
+  auto scalar_publication = publication;
+  scalar_publication.source_home = &scalar_source;
+  if (prepare::prepare_aggregate_stack_source_authority(&scalar_publication)
+          .status != prepare::PreparedAggregateStackSourceAuthorityStatus::Unavailable) {
+    return fail("scalar stack-source publications should remain outside aggregate authority");
+  }
+
+  auto incomplete_source = source_home;
+  incomplete_source.align_bytes.reset();
+  auto incomplete_publication = publication;
+  incomplete_publication.source_home = &incomplete_source;
+  if (prepare::prepare_aggregate_stack_source_authority(&incomplete_publication)
+          .status !=
+      prepare::PreparedAggregateStackSourceAuthorityStatus::
+          IncompleteConcreteStackSource) {
+    return fail("aggregate stack-source authority should distinguish incomplete concrete source facts");
+  }
+
+  auto missing_placement_move = move;
+  missing_placement_move.destination_register_placement.reset();
+  auto incomplete_mapping = publication;
+  incomplete_mapping.move = &missing_placement_move;
+  if (prepare::prepare_aggregate_stack_source_authority(&incomplete_mapping)
+          .status !=
+      prepare::PreparedAggregateStackSourceAuthorityStatus::
+          IncompleteDestinationMapping) {
+    return fail("aggregate stack-source authority should distinguish incomplete destination mapping");
+  }
+
+  auto unsupported_move = move;
+  unsupported_move.op_kind =
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
+  auto unsupported_publication = publication;
+  unsupported_publication.move = &unsupported_move;
+  if (prepare::prepare_aggregate_stack_source_authority(&unsupported_publication)
+          .status !=
+      prepare::PreparedAggregateStackSourceAuthorityStatus::UnsupportedMoveAuthority) {
+    return fail("aggregate stack-source authority should reject unsupported move authority");
+  }
+
+  return 0;
+}
+
 int verify_edge_publication_source_producer_facts() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("producer_facts");
@@ -1657,6 +1771,10 @@ int main() {
     return result;
   }
   if (const int result = verify_same_width_i32_stack_source_publication_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_aggregate_stack_source_authority_status();
       result != 0) {
     return result;
   }

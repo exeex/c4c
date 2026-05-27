@@ -119,6 +119,46 @@ namespace {
   return false;
 }
 
+[[nodiscard]] std::optional<std::size_t> scalar_type_size_bytes(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::Ptr:
+      return std::size_t{8};
+    case bir::TypeKind::F128:
+      return std::size_t{16};
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool stack_source_size_is_aggregate_width(
+    std::size_t source_size_bytes,
+    bir::TypeKind source_type,
+    bir::TypeKind destination_type) {
+  const auto source_scalar_size = scalar_type_size_bytes(source_type);
+  const auto destination_scalar_size = scalar_type_size_bytes(destination_type);
+  if (source_scalar_size.has_value() && source_size_bytes > *source_scalar_size) {
+    return true;
+  }
+  if (destination_scalar_size.has_value() &&
+      source_size_bytes > *destination_scalar_size) {
+    return true;
+  }
+  return !source_scalar_size.has_value() && !destination_scalar_size.has_value() &&
+         source_size_bytes > 8;
+}
+
 [[nodiscard]] std::optional<ValueNameId> existing_prepared_value_name_id(
     const PreparedNameTables& names,
     const bir::Value& value) {
@@ -952,6 +992,8 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
         }
       }
       publication.status = PreparedEdgePublicationLookupStatus::Available;
+      publication.aggregate_stack_source_authority =
+          prepare_aggregate_stack_source_authority(&publication);
       lookups.publications.push_back(std::move(publication));
     }
   }
@@ -1088,6 +1130,88 @@ prepared_edge_publication_matches_parallel_copy_move_source(
   return move.destination_kind == PreparedMoveDestinationKind::Value &&
          move.op_kind == PreparedMoveResolutionOpKind::Move &&
          !move.source_immediate_i32.has_value();
+}
+
+[[nodiscard]] PreparedAggregateStackSourceAuthority
+prepare_aggregate_stack_source_authority(
+    const PreparedEdgePublication* publication) {
+  PreparedAggregateStackSourceAuthority authority;
+  if (publication == nullptr) {
+    return authority;
+  }
+
+  authority.destination_value_id = publication->destination_value_id;
+  authority.destination_value_name = publication->destination_value_name;
+  authority.source_type = publication->source_value.type;
+  authority.destination_type = publication->destination_value.type;
+  authority.destination_storage_kind = publication->destination_storage_kind;
+
+  if (publication->status != PreparedEdgePublicationLookupStatus::Available) {
+    authority.status =
+        PreparedAggregateStackSourceAuthorityStatus::UnsupportedPublication;
+    return authority;
+  }
+  if (!publication->source_value_id.has_value()) {
+    return authority;
+  }
+  authority.source_value_id = *publication->source_value_id;
+  authority.source_value_name = publication->source_value_name;
+
+  if (publication->source_home == nullptr ||
+      publication->source_home_kind != PreparedValueHomeKind::StackSlot) {
+    return authority;
+  }
+  if (publication->destination_home_kind != PreparedValueHomeKind::Register ||
+      publication->destination_storage_kind != PreparedMoveStorageKind::Register) {
+    authority.status =
+        PreparedAggregateStackSourceAuthorityStatus::UnsupportedDestinationStorage;
+    return authority;
+  }
+
+  authority.source_slot_id = publication->source_home->slot_id;
+  authority.source_stack_offset_bytes = publication->source_home->offset_bytes;
+  authority.source_stack_size_bytes = publication->source_home->size_bytes;
+  authority.source_stack_align_bytes = publication->source_home->align_bytes;
+
+  if (!authority.source_stack_size_bytes.has_value() ||
+      !stack_source_size_is_aggregate_width(*authority.source_stack_size_bytes,
+                                            publication->source_value.type,
+                                            publication->destination_value.type)) {
+    authority.status = PreparedAggregateStackSourceAuthorityStatus::Unavailable;
+    return authority;
+  }
+
+  authority.copy_width_bytes = authority.source_stack_size_bytes;
+  if (!authority.source_slot_id.has_value() ||
+      !authority.source_stack_offset_bytes.has_value() ||
+      !authority.source_stack_align_bytes.has_value()) {
+    authority.status =
+        PreparedAggregateStackSourceAuthorityStatus::IncompleteConcreteStackSource;
+    return authority;
+  }
+
+  if (publication->move == nullptr ||
+      publication->move->authority_kind !=
+          PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      publication->move->destination_kind != PreparedMoveDestinationKind::Value ||
+      publication->move->op_kind != PreparedMoveResolutionOpKind::Move ||
+      publication->move->from_value_id != authority.source_value_id ||
+      publication->move->to_value_id != authority.destination_value_id) {
+    authority.status =
+        PreparedAggregateStackSourceAuthorityStatus::UnsupportedMoveAuthority;
+    return authority;
+  }
+  if (!publication->move->destination_register_placement.has_value()) {
+    authority.status =
+        PreparedAggregateStackSourceAuthorityStatus::IncompleteDestinationMapping;
+    return authority;
+  }
+  authority.destination_register_placement =
+      publication->move->destination_register_placement;
+
+  authority.status =
+      PreparedAggregateStackSourceAuthorityStatus::MissingAggregateCopyAuthority;
+  return authority;
 }
 
 [[nodiscard]] PreparedTypedStackSourcePublication

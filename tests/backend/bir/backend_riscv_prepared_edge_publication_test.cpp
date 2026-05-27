@@ -533,6 +533,7 @@ int check_stack_source_fail_closed_forms() {
     source_home.slot_id = prepare::PreparedFrameSlotId{17};
     source_home.offset_bytes = offset;
     source_home.size_bytes = size;
+    source_home.align_bytes = size;
     source_home.immediate_i32.reset();
     source_home.pointer_base_value_name.reset();
     source_home.pointer_byte_delta.reset();
@@ -643,9 +644,26 @@ int check_stack_source_fail_closed_forms() {
     return 1;
   }
   lookups = make_lookups(prepared);
+  const auto* aggregate_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, ids.predecessor, ids.successor, 2);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+  if (!expect(aggregate_publication != nullptr &&
+                  aggregate_publication->aggregate_stack_source_authority.status ==
+                      prepare::PreparedAggregateStackSourceAuthorityStatus::
+                          MissingAggregateCopyAuthority &&
+                  aggregate_publication->aggregate_stack_source_authority
+                          .copy_width_bytes == std::size_t{16} &&
+                  !aggregate_publication->aggregate_stack_source_authority
+                       .has_destination_lane_mapping &&
+                  !aggregate_publication->aggregate_stack_source_authority
+                       .has_abi_layout_reference &&
+                  !aggregate_publication->aggregate_stack_source_authority
+                       .has_scratch_ownership,
+              "shared aggregate stack-source authority should expose the concrete "
+              "copy candidate while preserving the missing aggregate contract") ||
+      !expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
               "RISC-V stack-source helper should reject aggregate-width stack sources") ||
       !expect(intent.instruction_text.empty() &&
                   !intent.source_stack_slot_id.has_value() &&
@@ -665,9 +683,20 @@ int check_stack_source_fail_closed_forms() {
     return 1;
   }
   lookups = make_lookups(prepared);
+  aggregate_publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &lookups.edge_publications, ids.predecessor, ids.successor, 2);
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+  if (!expect(aggregate_publication != nullptr &&
+                  aggregate_publication->aggregate_stack_source_authority.status ==
+                      prepare::PreparedAggregateStackSourceAuthorityStatus::
+                          MissingAggregateCopyAuthority &&
+                  aggregate_publication->aggregate_stack_source_authority
+                          .source_stack_offset_bytes == std::size_t{4096},
+              "shared aggregate stack-source authority should preserve large-offset "
+              "candidate facts without enabling target lowering") ||
+      !expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
               "RISC-V large-offset aggregate-width stack source should stay "
               "fail-closed without prepared aggregate copy authority") ||
       !expect(intent.instruction_text.empty() &&

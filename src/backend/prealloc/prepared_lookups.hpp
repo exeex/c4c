@@ -117,6 +117,64 @@ prepared_edge_publication_source_memory_access_status_name(
   return "unknown";
 }
 
+enum class PreparedAggregateStackSourceAuthorityStatus {
+  Unavailable,
+  Available,
+  UnsupportedPublication,
+  IncompleteConcreteStackSource,
+  UnsupportedDestinationStorage,
+  UnsupportedMoveAuthority,
+  IncompleteDestinationMapping,
+  MissingAggregateCopyAuthority,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_aggregate_stack_source_authority_status_name(
+    PreparedAggregateStackSourceAuthorityStatus status) {
+  switch (status) {
+    case PreparedAggregateStackSourceAuthorityStatus::Unavailable:
+      return "unavailable";
+    case PreparedAggregateStackSourceAuthorityStatus::Available:
+      return "available";
+    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case PreparedAggregateStackSourceAuthorityStatus::IncompleteConcreteStackSource:
+      return "incomplete_concrete_stack_source";
+    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedDestinationStorage:
+      return "unsupported_destination_storage";
+    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedMoveAuthority:
+      return "unsupported_move_authority";
+    case PreparedAggregateStackSourceAuthorityStatus::IncompleteDestinationMapping:
+      return "incomplete_destination_mapping";
+    case PreparedAggregateStackSourceAuthorityStatus::MissingAggregateCopyAuthority:
+      return "missing_aggregate_copy_authority";
+  }
+  return "unknown";
+}
+
+struct PreparedAggregateStackSourceAuthority {
+  PreparedAggregateStackSourceAuthorityStatus status =
+      PreparedAggregateStackSourceAuthorityStatus::Unavailable;
+  PreparedValueId source_value_id = 0;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+  ValueNameId destination_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::TypeKind destination_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_stack_size_bytes;
+  std::optional<std::size_t> source_stack_align_bytes;
+  std::optional<std::size_t> copy_width_bytes;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
+  bool has_destination_lane_mapping = false;
+  bool has_lane_widths_and_offsets = false;
+  bool partial_copy_allowed = false;
+  bool has_abi_layout_reference = false;
+  bool has_scratch_ownership = false;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -162,6 +220,7 @@ struct PreparedEdgePublication {
   bool source_memory_is_volatile = false;
   bool source_memory_can_use_base_plus_offset = false;
   bool source_memory_requires_address_materialization = false;
+  PreparedAggregateStackSourceAuthority aggregate_stack_source_authority;
   const PreparedValueHome* source_home = nullptr;
   PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   const PreparedValueHome* destination_home = nullptr;
@@ -382,6 +441,10 @@ prepared_edge_publication_matches_parallel_copy_move_source(
     const PreparedEdgePublication& publication,
     const PreparedMoveResolution& move,
     const PreparedValueHome& source_home);
+
+[[nodiscard]] PreparedAggregateStackSourceAuthority
+prepare_aggregate_stack_source_authority(
+    const PreparedEdgePublication* publication);
 
 [[nodiscard]] PreparedTypedStackSourcePublication
 prepare_same_width_i32_stack_source_publication(
