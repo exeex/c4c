@@ -89,6 +89,26 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 alu prepared_authority probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy
+  SRC "${BACKEND_CASE_ROOT}/aarch64_pointer_select_aggregate_byte_copy.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_pointer_select_aggregate_byte_copy.s"
+  REQUIRED_SNIPPETS ".text"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 dispatch_value_materialization aggregate_copy probe
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy
+  SRC "${BACKEND_CASE_ROOT}/aarch64_variadic_aggregate_overflow_byte_copy.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_variadic_aggregate_overflow_byte_copy.s"
+  REQUIRED_SNIPPETS ".text"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 dispatch_value_materialization variadic aggregate_copy probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)

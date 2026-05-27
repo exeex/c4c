@@ -8,47 +8,46 @@ Current Step Title: Establish pointer-select aggregate-copy baseline and probes
 
 ## Just Finished
 
-Lifecycle reset from calls prepared-authority repair to dispatch value
-materialization repair, based on `review/calls-step3-route-review.md`.
+Step 1 established the dispatch-route baseline for the remaining pointer-select
+aggregate-copy failure and registered both backend route probes.
 
-The reviewer judged the existing cursor and edge-copy fixes as semantic, not
-testcase-overfit, but found the proposed next `%t49` pointer-select /
-aggregate-copy materialization packet to be route drift under
-`ideas/open/52_aarch64_calls_prepared_authority_repair.md`.
+Added two source probes under `tests/backend/case/`:
 
-Current uncommitted implementation context:
+- `aarch64_pointer_select_aggregate_byte_copy.c` covers a branch-selected local
+  aggregate pointer loaded after the join and consumed by byte-copy loads from
+  `addr %t33+N`.
+- `aarch64_variadic_aggregate_overflow_byte_copy.c` covers repeated 9-byte
+  aggregate `va_arg` copies. Prepared BIR converts the va_arg joins into
+  pointer-valued selects such as `%t33`, `%t51`, `%t69`, and `%t87`, each
+  feeding `addr %tNN+N` byte-copy loads.
 
-- `src/backend/mir/aarch64/codegen/memory.cpp` updates the va_list field from
-  the loaded cursor for the generic `load field -> add stride -> store same
-  field` pattern.
-- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` publishes a
-  prepared `LoadLocal` edge source from an authoritative register home before
-  considering source memory reloads.
-- These changes improved `c_testsuite_aarch64_backend_src_00204_c` from a
-  segmentation fault to `[RUNTIME_MISMATCH]`, but the focused proof is still
-  5/6, so the code slice is not acceptance-ready.
+Fresh `00204` observations:
 
-The remaining known failure is after `vaarg.join.39`: `%t49` pointer/select
-aggregate-copy materialization still rebuilds pointer-derived scratch state via
-32-bit moves such as `mov w9, w13; sxtw x9, w9`, and later `addr %t49+N`
-byte-copy loads consume the bad pointer-derived value.
+- BIR has `%t49 = bir.phi ptr [vaarg.reg.38, %t45] [vaarg.stack.36, %t47]`
+  followed by byte-copy loads from `addr %t49` through `addr %t49+8`.
+- Prepared BIR rewrites that into `%t49.phi.sel0` and `%t49` pointer-valued
+  selects; the byte-copy loads still consume `addr %t49+N`.
+- Assembly still materializes the selected pointer through a 32-bit truncating
+  path at `vaarg.join.39`: `mov w9, w13; sxtw x9, w9`, then continues with
+  byte loads from `x13`.
+- The authoritative source should remain the prepared selected pointer value
+  itself, backed by prepared value-home/select-chain facts for the join result,
+  not a locally rebuilt integer scratch value.
+
+Registered both probes in `tests/backend/CMakeLists.txt` with the existing
+`c4c_add_backend_codegen_route_test` helper. `ctest -N -R` now lists all eight
+focused tests, including:
+
+- `backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy`
+- `backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy`
 
 ## Suggested Next
 
-Delegate Step 1 under the dispatch value-materialization route:
-
-- Re-run or reuse the focused subset that currently passes 5/6 and fails only
-  `c_testsuite_aarch64_backend_src_00204_c`.
-- Dump BIR, prepared BIR, and assembly around `vaarg.join.39`, `%t49`, and the
-  `addr %t49+N` aggregate byte-copy loads.
-- Add or identify semantic probes for pointer-valued select results feeding
-  byte-copy/address-offset loads and for the variadic aggregate-copy path after
-  the cursor fix.
-- Record which prepared value-home, block-entry publication, edge-publication
-  source, or select-chain fact should own the authoritative pointer source.
-
-The next code-changing packet should not be accepted unless it has same-feature
-semantic probe proof in addition to `00204`.
+Delegate a code packet owning `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
+and any directly required helper headers to make non-edge pointer-valued select
+materialization load/publish the prepared pointer home directly for aggregate
+byte-copy address consumers, preserving the already-present cursor and edge-copy
+context without broadening those implementation edits.
 
 ## Watchouts
 
@@ -61,20 +60,23 @@ and proven.
 Keep `ideas/open/52_aarch64_calls_prepared_authority_repair.md` open and parked.
 This reset does not close the calls route or the earlier ALU route.
 
-If Step 1 proves the remaining repair requires a broader shared contract across
-calls, dispatch edge copies, and value materialization, stop for lifecycle split
-instead of expanding the dispatch plan silently.
+The plain pointer probe initially failed semantic BIR lowering when the selected
+pointer targeted global aggregates and when the aggregate was 9 bytes; the
+representable same-feature source uses local 4-byte aggregates. The variadic
+probe preserves the 9-byte overflow-copy shape and reproduces the pointer-select
+byte-copy lowering directly.
+
+The two new probes pass as route-generation probes with `.text` required
+snippets. They are semantic source-shape coverage, not final correctness proof
+for the still-failing `00204` runtime case.
 
 ## Proof
 
-No validation run in this lifecycle reset.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Most recent executor proof before reset:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
-
-Result: 5/6 passed. Passing tests were the two ALU prepared-authority probes,
-`00164`, `00176`, and `00181`; failing test was
-`c_testsuite_aarch64_backend_src_00204_c` with `[RUNTIME_MISMATCH]`.
+Result: 7/8 passed. Passing tests were the two dispatch value-materialization
+probes, the two ALU prepared-authority probes, `00164`, `00176`, and `00181`;
+failing test was `c_testsuite_aarch64_backend_src_00204_c` with
+`[RUNTIME_MISMATCH]`.
 
 Proof log: `test_after.log`.
