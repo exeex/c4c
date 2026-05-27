@@ -341,7 +341,7 @@ void append_i128_compare_diagnostic(
     c4c::BlockLabelId bir_label_id,
     std::string_view bir_label) {
   if (prepared_label == c4c::kInvalidBlockLabel ||
-      bir_label_id == c4c::kInvalidBlockLabel) {
+      (bir_label_id == c4c::kInvalidBlockLabel && bir_label.empty())) {
     return false;
   }
   if (prepared_label == bir_label_id) {
@@ -368,28 +368,50 @@ void append_i128_compare_diagnostic(
   return canonical;
 }
 
-[[nodiscard]] bir::Terminator canonicalize_conditional_branch_terminator_targets(
+[[nodiscard]] PreparedBranchRecordError validate_prepared_conditional_branch_terminator(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedControlFlowBlock& block,
+    const prepare::PreparedBranchCondition& branch_condition,
     const bir::Terminator& terminator) {
-  bir::Terminator canonical = terminator;
-  if (block.terminator_kind != bir::TerminatorKind::CondBranch ||
-      canonical.kind != bir::TerminatorKind::CondBranch) {
-    return canonical;
+  if (terminator.kind != bir::TerminatorKind::CondBranch) {
+    return PreparedBranchRecordError::TerminatorKindMismatch;
   }
-  if (bir_terminator_target_matches_prepared_label(names,
-                                                   block.true_label,
-                                                   canonical.true_label_id,
-                                                   canonical.true_label)) {
-    canonical.true_label_id = block.true_label;
+  if (terminator.true_label_id == c4c::kInvalidBlockLabel &&
+      names.block_labels.find(terminator.true_label) == c4c::kInvalidBlockLabel) {
+    return PreparedBranchRecordError::MissingBranchTarget;
   }
-  if (bir_terminator_target_matches_prepared_label(names,
-                                                   block.false_label,
-                                                   canonical.false_label_id,
-                                                   canonical.false_label)) {
-    canonical.false_label_id = block.false_label;
+  if (terminator.false_label_id == c4c::kInvalidBlockLabel &&
+      names.block_labels.find(terminator.false_label) == c4c::kInvalidBlockLabel) {
+    return PreparedBranchRecordError::MissingBranchTarget;
   }
-  return canonical;
+  if (!bir_terminator_target_matches_prepared_label(names,
+                                                    branch_condition.true_label,
+                                                    terminator.true_label_id,
+                                                    terminator.true_label) ||
+      !bir_terminator_target_matches_prepared_label(names,
+                                                    branch_condition.false_label,
+                                                    terminator.false_label_id,
+                                                    terminator.false_label) ||
+      !bir_terminator_target_matches_prepared_label(names,
+                                                    block.true_label,
+                                                    terminator.true_label_id,
+                                                    terminator.true_label) ||
+      !bir_terminator_target_matches_prepared_label(names,
+                                                    block.false_label,
+                                                    terminator.false_label_id,
+                                                    terminator.false_label)) {
+    return PreparedBranchRecordError::TerminatorTargetMismatch;
+  }
+  const bool is_fused_compare =
+      branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare;
+  if ((!is_fused_compare && terminator.condition.type != bir::TypeKind::I1) ||
+      (is_fused_compare && terminator.condition.type == bir::TypeKind::Void)) {
+    return PreparedBranchRecordError::MissingBranchCondition;
+  }
+  if (branch_condition.condition_value != terminator.condition) {
+    return PreparedBranchRecordError::ConditionValueMismatch;
+  }
+  return PreparedBranchRecordError::None;
 }
 
 }  // namespace
@@ -542,8 +564,7 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedControlFlowBlock& block,
-    const prepare::PreparedBranchCondition& branch_condition,
-    const bir::Terminator& terminator) {
+    const prepare::PreparedBranchCondition& branch_condition) {
   if (branch_condition.function_name == c4c::kInvalidFunctionName ||
       value_locations.function_name != branch_condition.function_name) {
     return branch_record_error(PreparedBranchRecordError::InvalidFunction);
@@ -552,38 +573,28 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       branch_condition.block_label != block.block_label) {
     return branch_record_error(PreparedBranchRecordError::InvalidSourceBlock);
   }
-  if (block.terminator_kind != bir::TerminatorKind::CondBranch ||
-      terminator.kind != bir::TerminatorKind::CondBranch) {
+  if (block.terminator_kind != bir::TerminatorKind::CondBranch) {
     return branch_record_error(PreparedBranchRecordError::TerminatorKindMismatch);
   }
   if (block.true_label == c4c::kInvalidBlockLabel ||
       block.false_label == c4c::kInvalidBlockLabel ||
       branch_condition.true_label == c4c::kInvalidBlockLabel ||
-      branch_condition.false_label == c4c::kInvalidBlockLabel ||
-      terminator.true_label_id == c4c::kInvalidBlockLabel ||
-      terminator.false_label_id == c4c::kInvalidBlockLabel) {
+      branch_condition.false_label == c4c::kInvalidBlockLabel) {
     return branch_record_error(PreparedBranchRecordError::MissingBranchTarget);
   }
   if (block.true_label != branch_condition.true_label ||
-      block.false_label != branch_condition.false_label ||
-      terminator.true_label_id != branch_condition.true_label ||
-      terminator.false_label_id != branch_condition.false_label) {
+      block.false_label != branch_condition.false_label) {
     return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
   }
   const bool is_fused_compare =
       branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare;
   if (!is_fused_compare &&
-      (branch_condition.condition_value.type != bir::TypeKind::I1 ||
-       terminator.condition.type != bir::TypeKind::I1)) {
+      branch_condition.condition_value.type != bir::TypeKind::I1) {
     return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
   }
   if (is_fused_compare &&
-      (branch_condition.condition_value.type == bir::TypeKind::Void ||
-       terminator.condition.type == bir::TypeKind::Void)) {
+      branch_condition.condition_value.type == bir::TypeKind::Void) {
     return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
-  }
-  if (branch_condition.condition_value != terminator.condition) {
-    return branch_record_error(PreparedBranchRecordError::ConditionValueMismatch);
   }
 
   const auto* condition_home =
@@ -797,22 +808,30 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
 
-  const auto canonical_terminator = canonicalize_conditional_branch_terminator_targets(
-      context.function.prepared->names,
-      *context.control_flow_block,
-      context.bir_block->terminator);
   auto prepared_record = make_prepared_conditional_branch_record(
       context.function.prepared->names,
       *context.function.value_locations,
       *context.control_flow_block,
-      *branch_condition,
-      canonical_terminator);
+      *branch_condition);
   if (!prepared_record.record.has_value()) {
     append_branch_diagnostic(
         diagnostics,
         context,
         std::string{"AArch64 conditional branch lowering rejected prepared branch facts: "} +
             std::string{prepared_branch_record_error_name(prepared_record.error)});
+    return std::nullopt;
+  }
+  const auto terminator_validation = validate_prepared_conditional_branch_terminator(
+      context.function.prepared->names,
+      *context.control_flow_block,
+      *branch_condition,
+      context.bir_block->terminator);
+  if (terminator_validation != PreparedBranchRecordError::None) {
+    append_branch_diagnostic(
+        diagnostics,
+        context,
+        std::string{"AArch64 conditional branch lowering rejected raw terminator validation: "} +
+            std::string{prepared_branch_record_error_name(terminator_validation)});
     return std::nullopt;
   }
 

@@ -25,18 +25,6 @@ bir::Terminator unconditional_terminator(c4c::BlockLabelId target_label) {
   };
 }
 
-bir::Terminator conditional_terminator(const bir::Value& condition,
-                                       c4c::BlockLabelId true_label,
-                                       c4c::BlockLabelId false_label) {
-  return bir::CondBranchTerminator{
-      .condition = condition,
-      .true_label = "then",
-      .false_label = "else",
-      .true_label_id = true_label,
-      .false_label_id = false_label,
-  };
-}
-
 prepare::PreparedValueLocationFunction value_locations(
     c4c::FunctionNameId function_name,
     c4c::ValueNameId condition_name,
@@ -133,8 +121,7 @@ int conditional_branch_record_preserves_materialized_bool_facts() {
   };
 
   const auto result = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations, block, branch_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations, block, branch_condition);
   if (!result.record.has_value()) {
     return fail("expected materialized-bool branch conversion to succeed");
   }
@@ -201,8 +188,7 @@ int conditional_branch_record_preserves_fused_compare_facts() {
   };
 
   const auto result = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations, block, branch_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations, block, branch_condition);
   if (!result.record.has_value()) {
     return fail("expected fused-compare branch conversion to succeed");
   }
@@ -274,20 +260,21 @@ int missing_required_facts_fail_closed() {
   };
 
   const auto unsupported = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations_without_condition, block, branch_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations_without_condition, block, branch_condition);
   if (unsupported.record.has_value() ||
       unsupported.error != aarch64_codegen::PreparedBranchRecordError::UnsupportedComparePredicate) {
     return fail("expected unsupported predicate to fail closed");
   }
 
-  const auto mismatched_terminator = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations_without_condition, block, branch_condition,
-      conditional_terminator(condition_value, false_label, true_label));
-  if (mismatched_terminator.record.has_value() ||
-      mismatched_terminator.error !=
+  auto mismatched_prepared_targets = branch_condition;
+  mismatched_prepared_targets.true_label = false_label;
+  mismatched_prepared_targets.false_label = true_label;
+  const auto mismatched_prepared = aarch64_codegen::make_prepared_conditional_branch_record(
+      names, locations_without_condition, block, mismatched_prepared_targets);
+  if (mismatched_prepared.record.has_value() ||
+      mismatched_prepared.error !=
           aarch64_codegen::PreparedBranchRecordError::TerminatorTargetMismatch) {
-    return fail("expected mismatched structured target ids to fail closed");
+    return fail("expected mismatched prepared target authority to fail closed");
   }
 
   const auto locations_missing_condition = prepare::PreparedValueLocationFunction{
@@ -295,8 +282,7 @@ int missing_required_facts_fail_closed() {
       .value_homes = {},
   };
   const auto missing_condition_home = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations_missing_condition, block, branch_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations_missing_condition, block, branch_condition);
   if (missing_condition_home.record.has_value() ||
       missing_condition_home.error !=
           aarch64_codegen::PreparedBranchRecordError::MissingConditionValueHome) {

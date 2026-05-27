@@ -56,18 +56,6 @@ prepare::PreparedValueLocationFunction value_locations(c4c::FunctionNameId funct
   };
 }
 
-bir::Terminator conditional_terminator(const bir::Value& condition,
-                                       c4c::BlockLabelId true_label,
-                                       c4c::BlockLabelId false_label) {
-  return bir::CondBranchTerminator{
-      .condition = condition,
-      .true_label = "then",
-      .false_label = "else",
-      .true_label_id = true_label,
-      .false_label_id = false_label,
-  };
-}
-
 int materialized_bool_candidate_keeps_condition_and_targets_only() {
   const auto pair = aarch64_codegen::BranchTargetPairRecord{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -138,8 +126,7 @@ int prepared_fused_and_non_fusable_compare_candidates_are_distinct() {
   };
 
   const auto fused = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations, block, fused_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations, block, fused_condition);
   if (!fused.record.has_value() || !fused.record->condition_record.has_value() ||
       !fused.record->condition_record->compare_branch_candidate.has_value()) {
     return fail("expected fused compare candidate conversion to succeed");
@@ -161,8 +148,7 @@ int prepared_fused_and_non_fusable_compare_candidates_are_distinct() {
   auto non_fusable_condition = fused_condition;
   non_fusable_condition.can_fuse_with_branch = false;
   const auto non_fusable = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations, block, non_fusable_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations, block, non_fusable_condition);
   if (!non_fusable.record.has_value() ||
       !non_fusable.record->condition_record->compare_branch_candidate.has_value()) {
     return fail("expected non-fusable compare facts to remain explicit");
@@ -218,8 +204,7 @@ int unsupported_predicates_fail_closed_before_candidate_record() {
   };
 
   const auto result = aarch64_codegen::make_prepared_conditional_branch_record(
-      names, locations, block, branch_condition,
-      conditional_terminator(condition_value, true_label, false_label));
+      names, locations, block, branch_condition);
   if (result.record.has_value() ||
       result.error != aarch64_codegen::PreparedBranchRecordError::UnsupportedComparePredicate) {
     return fail("expected non-compare predicate to fail closed");

@@ -31,8 +31,7 @@ struct I128RelationalComparePrintSpelling {
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedControlFlowBlock& block,
-    const prepare::PreparedBranchCondition& branch_condition,
-    const bir::Terminator& terminator);
+    const prepare::PreparedBranchCondition& branch_condition);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_prepared_branch_terminator(const module::BlockLoweringContext& context,
