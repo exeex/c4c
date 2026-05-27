@@ -15,6 +15,7 @@
 #include "machine_printer.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
+#include "prepared_value_home_materialization.hpp"
 #include "variadic.hpp"
 
 #include <algorithm>
@@ -735,6 +736,55 @@ void record_current_block_entry_publication_registers(
   }
 }
 
+[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
+prepared_publication_source_producer_for_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    const auto* producer =
+        prepare::find_indexed_prepared_edge_publication_source_producer(
+            &context.function.prepared_lookups->edge_publication_source_producers,
+            *value_name);
+    return producer != nullptr
+               ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
+                     *producer}
+               : std::nullopt;
+  }
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return std::nullopt;
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          &source_producers,
+          *value_name);
+  return producer != nullptr
+             ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
+                   *producer}
+             : std::nullopt;
+}
+
+[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducer& producer) {
+  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
+      producer.block_label != context.control_flow_block->block_label ||
+      producer.instruction_index >= context.bir_block->insts.size() ||
+      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+    return nullptr;
+  }
+  return &context.bir_block->insts[producer.instruction_index];
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_missing_conditional_branch_condition_publication(
     const module::BlockLoweringContext& context,
@@ -752,21 +802,33 @@ lower_missing_conditional_branch_condition_publication(
       find_emitted_scalar_register(scalar_state, *condition_name).has_value()) {
     return std::nullopt;
   }
-  const auto* producer =
-      condition.kind == bir::Value::Kind::Named
-          ? find_same_block_named_producer(
-                context, condition.name, context.bir_block->insts.size())
+  const auto* branch_condition =
+      context.function.control_flow != nullptr
+          ? prepare::find_prepared_branch_condition(
+                *context.function.control_flow,
+                context.control_flow_block->block_label)
           : nullptr;
-  const auto producer_index = producer_instruction_index(context, producer);
-  if (producer == nullptr || !producer_index.has_value()) {
+  if (branch_condition == nullptr ||
+      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      branch_condition->condition_value.name != condition.name) {
     return std::nullopt;
   }
-  return lower_scalar_control_value_instruction(context,
-                                                *producer,
-                                                *producer_index,
-                                                scalar_state,
-                                                diagnostics,
-                                                true);
+  const auto producer =
+      prepared_publication_source_producer_for_value(context,
+                                                     branch_condition->condition_value);
+  const auto* producer_inst =
+      producer.has_value() ? prepared_source_producer_instruction(context, *producer)
+                           : nullptr;
+  if (!producer.has_value() || producer_inst == nullptr) {
+    return std::nullopt;
+  }
+  return lower_scalar_control_value_instruction(
+      context,
+      *producer_inst,
+      producer->instruction_index,
+      scalar_state,
+      diagnostics,
+      true);
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -845,15 +907,38 @@ lower_missing_fused_compare_operand_publication(
     return std::nullopt;
   }
   std::vector<std::string> lines;
-  if (!emit_value_publication_to_register(context,
-                                          value,
-                                          context.bir_block->insts.size(),
-                                          target_index,
-                                          scratch_index,
-                                          lines,
-                                          true) ||
-      lines.empty()) {
-    return std::nullopt;
+  const auto producer = prepared_publication_source_producer_for_value(context, value);
+  const auto* producer_inst =
+      producer.has_value() ? prepared_source_producer_instruction(context, *producer)
+                           : nullptr;
+  if (producer_inst != nullptr) {
+    if (!emit_value_publication_to_register(context,
+                                            value,
+                                            context.bir_block->insts.size(),
+                                            target_index,
+                                            scratch_index,
+                                            lines,
+                                            true) ||
+        lines.empty()) {
+      return std::nullopt;
+    }
+  } else {
+    const auto plan = prepare::plan_prepared_scalar_publication(
+        prepare::PreparedScalarPublicationInputs{
+            .source_value = &value,
+            .destination_home = home,
+        });
+    if (!prepare::prepared_scalar_publication_available(plan) ||
+        (plan.hook_kind != prepare::PreparedScalarPublicationHookKind::RegisterHome &&
+         plan.hook_kind != prepare::PreparedScalarPublicationHookKind::StackSlotHome) ||
+        !emit_prepared_value_home_publication_to_register(context,
+                                                          value,
+                                                          *home,
+                                                          target_index,
+                                                          lines) ||
+        lines.empty()) {
+      return std::nullopt;
+    }
   }
   auto reg = abi::x_register(target_index);
   if (resolved.has_value() && resolved->register_reference.has_value()) {

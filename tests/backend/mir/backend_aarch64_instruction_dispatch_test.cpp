@@ -26147,6 +26147,156 @@ int block_entry_publication_register_uses_indexed_value_identity() {
   return 0;
 }
 
+int branch_condition_publication_uses_prepared_source_producer_authority() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.branch.prepared.source");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.branch.prepared.source.entry");
+  const auto true_label =
+      prepared.names.block_labels.intern("dispatch.branch.prepared.source.true");
+  const auto false_label =
+      prepared.names.block_labels.intern("dispatch.branch.prepared.source.false");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.prepared.source.entry");
+  const auto bir_true_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.prepared.source.true");
+  const auto bir_false_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.prepared.source.false");
+  const auto condition_name = prepared.names.value_names.intern("%prepared.cond");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.branch.prepared.source",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.branch.prepared.source.entry",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Eq,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I32, "%prepared.cond"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::immediate_i32(7),
+                       .rhs = bir::Value::immediate_i32(7),
+                   }},
+               .terminator =
+                   bir::Terminator{bir::CondBranchTerminator{
+                       .condition =
+                           bir::Value::named(bir::TypeKind::I32, "%prepared.cond"),
+                       .true_label = "dispatch.branch.prepared.source.true",
+                       .false_label = "dispatch.branch.prepared.source.false",
+                       .true_label_id = bir_true_label,
+                       .false_label_id = bir_false_label,
+                   }},
+               .label_id = bir_entry_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.prepared.source.true",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_true_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.prepared.source.false",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_false_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = entry_label,
+               .terminator_kind = bir::TerminatorKind::CondBranch,
+               .true_label = true_label,
+               .false_label = false_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = true_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = false_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .branch_conditions =
+          {prepare::PreparedBranchCondition{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
+              .condition_value =
+                  bir::Value::named(bir::TypeKind::I32, "%prepared.cond"),
+              .true_label = true_label,
+              .false_label = false_label,
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{731},
+              .function_name = function_name,
+              .value_name = condition_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"w9"},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {register_storage(prepare::PreparedValueId{731},
+                                  condition_name,
+                                  "w9")},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  auto publication =
+      aarch64_codegen::lower_missing_conditional_branch_condition_publication(
+          block_context, scalar_state, diagnostics);
+  if (!publication.has_value() || !diagnostics.empty()) {
+    return fail("expected missing branch condition publication to use prepared source producer authority");
+  }
+  aarch64_module::MachineBlock block;
+  block.instructions.push_back(*publication);
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("cmp w9, #7") == std::string::npos ||
+      printed.assembly.find("cset w9, eq") == std::string::npos) {
+    return fail("expected prepared source producer to materialize compare condition: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  auto missing_source_lookups = prepared_lookups;
+  missing_source_lookups.edge_publication_source_producers
+      .producers_by_value_name.clear();
+  auto missing_context = block_context;
+  attach_prepared_function_lookups(missing_context.function,
+                                   missing_source_lookups);
+  aarch64_codegen::BlockScalarLoweringState missing_state;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  if (aarch64_codegen::lower_missing_conditional_branch_condition_publication(
+          missing_context, missing_state, missing_diagnostics)
+          .has_value()) {
+    return fail("expected missing branch condition publication to fail closed without prepared source producer authority");
+  }
+
+  return 0;
+}
+
 int predecessor_join_source_publication_materializes_edge_multiply() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -32538,6 +32688,11 @@ int main() {
   }
   if (const int status =
           block_entry_publication_register_uses_indexed_value_identity();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          branch_condition_publication_uses_prepared_source_producer_authority();
       status != 0) {
     return status;
   }
