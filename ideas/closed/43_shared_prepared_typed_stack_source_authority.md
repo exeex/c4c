@@ -62,3 +62,16 @@ or raw register spelling.
   records.
 - A patch weakens the fail-closed tests from idea 40 instead of replacing them
   with shared authority.
+
+## Closure Note
+
+Closed after the active runbook completed Steps 1 through 4. The implementation
+adds shared `PreparedTypedStackSourcePublication` authority for the selected
+same-width `I32` `StackSlot(size=4) -> Register` form, consumes that authority
+in RISC-V without target-local inference, preserves existing concrete `I64` and
+large-offset stack-source behavior, and keeps subword, widening, `F32`,
+dynamic-address, and aggregate neighboring forms fail-closed.
+
+Acceptance proof included the accepted full-suite baseline after Step 3 at
+3411/3411 passing and a close-time focused regression guard for
+`^backend_riscv_prepared_edge_publication$` with 1/1 passing before and after.
