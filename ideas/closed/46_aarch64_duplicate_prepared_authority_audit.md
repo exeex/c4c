@@ -99,3 +99,31 @@ rewrite the seven files.
 - A patch produces vague follow-up ideas that do not own one audited file each.
 - A patch ignores the reference ARM layout or the existing prepared authority
   in `src/backend/prealloc`.
+
+## Final Close Note
+
+Closed on 2026-05-27 after Step 7 verification. The durable audit table covers
+all seven requested AArch64 files, and the repair work was split into seven
+numbered follow-up ideas under `ideas/open/`:
+
+- `47_aarch64_dispatch_edge_copies_prepared_authority_repair.md`
+- `48_aarch64_dispatch_publication_prepared_authority_repair.md`
+- `49_aarch64_dispatch_value_materialization_prepared_authority_repair.md`
+- `50_aarch64_memory_prepared_authority_repair.md`
+- `51_aarch64_alu_prepared_authority_repair.md`
+- `52_aarch64_calls_prepared_authority_repair.md`
+- `53_aarch64_comparison_prepared_authority_repair.md`
+
+The audit found duplicated or missing shared-authority questions in all seven
+files: edge/publication source recovery, block-entry and move-bundle recovery,
+value-home and memory-access lookup gaps, store-source and select-chain
+fallbacks, call argument/result/callee materialization gaps, and comparison
+producer recovery. It also preserved target-local residue explicitly:
+AArch64 should keep register naming, scratch and hazard ordering, address and
+offset folding, opcode selection, ABI staging, branch/compare spelling, and
+final load/store/move emission after shared authority has selected the semantic
+contract.
+
+This was an audit-only lifecycle slice. No implementation, test, build
+metadata, or expectation files were changed by the active plan; follow-up
+implementation belongs to ideas 47-53.
