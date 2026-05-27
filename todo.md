@@ -8,14 +8,21 @@ Current Step Title: Trace The First Bad Publication
 
 ## Just Finished
 
-Lifecycle activation created the runbook for Step 1 from the selected source
-idea.
+Step 1 - Trace The First Bad Publication: recorded the current scalar cast/ALU
+publication boundary after prerequisite closures. The focused boundary is
+currently green across the ALU unpublished-load-local probes, aggregate byte-copy
+backend routes, and the four AArch64 C tests including `00204`.
+
+The stale cast/ALU publication first bad fact is not currently reproducible in
+the delegated proof subset. No owned cast, ALU, or prepared-preservation first
+bad fact remains classified for implementation in this packet.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: trace the first stale-source scalar publication
-to its owning cast, ALU, or prepared-preservation path and record the prepared
-facts that should control source selection.
+Supervisor/plan-owner closure review is recommended over implementation. If the
+source idea still needs work, the next packet should first identify new failing
+evidence outside this green boundary before touching cast, ALU, prepared lookup,
+or preservation code.
 
 ## Watchouts
 
@@ -25,7 +32,12 @@ facts that should control source selection.
   combined slice.
 - Keep routine execution progress in this file rather than rewriting
   `plan.md`.
+- Current proof only classifies the delegated eight-test boundary; it does not
+  prove broader backend closure.
 
 ## Proof
 
-Lifecycle-only activation. No build or test proof required.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'`
+
+Result: build succeeded; focused subset is 8/8 passing. Proof log:
+`test_after.log`.
