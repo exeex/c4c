@@ -68,3 +68,17 @@ only `dispatch_value_materialization.cpp`.
   dispatch value-materialization routes under this idea.
 - Reject retaining the old local global-symbol or GOT/direct policy recovery
   behind a newly named helper without changing the authority source.
+
+## Closure Note
+
+Closed after Step 5 final validation. Ordinary global-load materialization and
+FP `LoadGlobal` materialization now consume the shared prepared global-address
+authority, with the narrow shared query exercised by the focused global/FP
+materialization scope.
+
+Canonical close logs used the same focused 5-test command before and after;
+both passed 5/5. The close-time regression guard with
+`--allow-non-decreasing-passed` passed with no new failures. Broader backend
+validation remained 165/167 with only the known failures
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
