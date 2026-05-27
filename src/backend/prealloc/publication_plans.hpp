@@ -348,7 +348,7 @@ find_prepared_store_source_direct_global_select_chain_dependency(
 find_prepared_same_block_load_local_source_producer(
     const PreparedNameTables& names,
     const PreparedStackLayout& stack_layout,
-    const PreparedAddressingFunction* addressing,
+    const PreparedMemoryAccessLookups* memory_accesses,
     const PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockLabelId block_label,
     const bir::Block* block,

@@ -642,6 +642,8 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   };
   prepared.value_locations.functions.push_back(locations);
   prepared.storage_plans.functions.push_back(storage);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
 
   c4c::backend::aarch64::module::BlockLoweringContext context{
       .function =
@@ -652,6 +654,7 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
               .bir_function = &function,
               .value_locations = &prepared.value_locations.functions.back(),
               .storage_plan = &prepared.storage_plans.functions.back(),
+              .prepared_lookups = &prepared_lookups,
           },
       .control_flow_block = &control_flow.blocks.front(),
       .bir_block = &block,

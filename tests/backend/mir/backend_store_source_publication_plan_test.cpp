@@ -462,6 +462,160 @@ int records_direct_global_select_chain_dependency_from_prepared_authority() {
   return 0;
 }
 
+int finds_unpublished_load_local_source_from_indexed_authority() {
+  prepare::PreparedNameTables names;
+  const auto block_label = c4c::BlockLabelId{23};
+  const auto slot_id = prepare::PreparedFrameSlotId{9};
+  const auto loaded_name = names.value_names.intern("%loaded");
+  const auto stored_name = names.value_names.intern("%stored");
+
+  prepare::PreparedStackLayout stack_layout;
+  stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = 4,
+      .function_name = 17,
+      .offset_bytes = 64,
+      .size_bytes = 32,
+      .align_bytes = 8,
+  });
+
+  bir::Block block;
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%loaded"),
+      .slot_name = "slot",
+      .byte_offset = 0,
+      .align_bytes = 8,
+  });
+  const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[0]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = load,
+      });
+
+  prepare::PreparedAddressingFunction addressing;
+  addressing.accesses = {frame_slot_load_access(loaded_name, slot_id, 0, 0)};
+  const auto memory_accesses = prepare::make_prepared_memory_access_lookups(&addressing);
+
+  const auto source =
+      prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &memory_accesses,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          1);
+  if (!source.has_value() ||
+      source->producer == nullptr ||
+      source->producer->load_local != load ||
+      source->source_access != &addressing.accesses.front()) {
+    return fail("expected indexed unpublished load-local source authority");
+  }
+
+  if (prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &memory_accesses,
+          nullptr,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          1)
+          .has_value()) {
+    return fail("load-local source authority should require source-producer facts");
+  }
+
+  bir::Block non_overlapping_store_block;
+  non_overlapping_store_block.insts.push_back(block.insts[0]);
+  non_overlapping_store_block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "slot",
+      .value = bir::Value::named(bir::TypeKind::I64, "%stored"),
+      .byte_offset = 16,
+      .align_bytes = 8,
+  });
+  const auto* non_overlapping_load =
+      std::get_if<bir::LoadLocalInst>(&non_overlapping_store_block.insts[0]);
+  prepare::PreparedEdgePublicationSourceProducerLookups non_overlapping_producers;
+  non_overlapping_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = non_overlapping_load,
+      });
+  auto non_overlapping_store = frame_slot_store_access(stored_name, slot_id, 16);
+  non_overlapping_store.inst_index = 1;
+  prepare::PreparedAddressingFunction non_overlapping_addressing;
+  non_overlapping_addressing.accesses = {
+      frame_slot_load_access(loaded_name, slot_id, 0, 0),
+      non_overlapping_store,
+  };
+  const auto non_overlapping_accesses =
+      prepare::make_prepared_memory_access_lookups(&non_overlapping_addressing);
+  if (!prepare::find_prepared_same_block_load_local_source_producer(
+           names,
+           stack_layout,
+           &non_overlapping_accesses,
+           &non_overlapping_producers,
+           block_label,
+           &non_overlapping_store_block,
+           bir::Value::named(bir::TypeKind::I64, "%loaded"),
+           2)
+           .has_value()) {
+    return fail("non-overlapping intervening store should preserve load-local source");
+  }
+
+  bir::Block overlapping_store_block;
+  overlapping_store_block.insts.push_back(block.insts[0]);
+  overlapping_store_block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "slot",
+      .value = bir::Value::named(bir::TypeKind::I64, "%stored"),
+      .byte_offset = 0,
+      .align_bytes = 8,
+  });
+  const auto* overlapping_load =
+      std::get_if<bir::LoadLocalInst>(&overlapping_store_block.insts[0]);
+  prepare::PreparedEdgePublicationSourceProducerLookups overlapping_producers;
+  overlapping_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = overlapping_load,
+      });
+  auto overlapping_store = frame_slot_store_access(stored_name, slot_id, 0);
+  overlapping_store.inst_index = 1;
+  prepare::PreparedAddressingFunction overlapping_addressing;
+  overlapping_addressing.accesses = {
+      frame_slot_load_access(loaded_name, slot_id, 0, 0),
+      overlapping_store,
+  };
+  const auto overlapping_accesses =
+      prepare::make_prepared_memory_access_lookups(&overlapping_addressing);
+  if (prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &overlapping_accesses,
+          &overlapping_producers,
+          block_label,
+          &overlapping_store_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          2)
+          .has_value()) {
+    return fail("overlapping intervening store should block load-local source");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule cast_store_source_fixture() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("store_cast_source");
@@ -874,6 +1028,10 @@ int main() {
     return rc;
   }
   if (int rc = records_direct_global_select_chain_dependency_from_prepared_authority();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc = finds_unpublished_load_local_source_from_indexed_authority();
       rc != 0) {
     return rc;
   }

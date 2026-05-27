@@ -1094,6 +1094,12 @@ prepared_same_block_source_producer(
   return seed;
 }
 
+[[nodiscard]] std::size_t prepared_memory_access_position_key(
+    BlockLabelId block_label,
+    std::size_t instruction_index) {
+  return (static_cast<std::size_t>(block_label) << 32U) ^ instruction_index;
+}
+
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
@@ -1261,9 +1267,15 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   if (addressing == nullptr) {
     return lookups;
   }
+  lookups.accesses_by_position.reserve(addressing->accesses.size());
   lookups.accesses_by_result_value_name.reserve(addressing->accesses.size());
   lookups.accesses_by_result_value_id.reserve(addressing->accesses.size());
   for (const auto& access : addressing->accesses) {
+    if (access.block_label != kInvalidBlockLabel) {
+      lookups.accesses_by_position.emplace(
+          prepared_memory_access_position_key(access.block_label, access.inst_index),
+          &access);
+    }
     if (!access.result_value_name.has_value() ||
         *access.result_value_name == kInvalidValueName) {
       continue;
@@ -2027,6 +2039,21 @@ find_indexed_prepared_memory_accesses_by_result_value_name(
     return nullptr;
   }
   return &it->second;
+}
+
+[[nodiscard]] const PreparedMemoryAccess* find_indexed_prepared_memory_access(
+    const PreparedMemoryAccessLookups* lookups,
+    BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (lookups == nullptr || block_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  const auto it = lookups->accesses_by_position.find(
+      prepared_memory_access_position_key(block_label, instruction_index));
+  if (it == lookups->accesses_by_position.end()) {
+    return nullptr;
+  }
+  return it->second;
 }
 
 [[nodiscard]] const PreparedMemoryAccess*

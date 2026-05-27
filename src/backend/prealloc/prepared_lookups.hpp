@@ -52,6 +52,7 @@ struct PreparedAddressMaterializationLookups {
 };
 
 struct PreparedMemoryAccessLookups {
+  std::unordered_map<std::size_t, const PreparedMemoryAccess*> accesses_by_position;
   std::unordered_map<ValueNameId, std::vector<const PreparedMemoryAccess*>>
       accesses_by_result_value_name;
   std::unordered_map<PreparedValueId, std::vector<const PreparedMemoryAccess*>>
@@ -450,6 +451,9 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_return_chain_value_key(std::size_t block_index,
                                                           std::size_t instruction_index,
                                                           ValueNameId value_name);
+[[nodiscard]] std::size_t prepared_memory_access_position_key(
+    BlockLabelId block_label,
+    std::size_t instruction_index);
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
@@ -560,6 +564,11 @@ find_indexed_prepared_address_materializations(
 find_indexed_prepared_memory_accesses_by_result_value_name(
     const PreparedMemoryAccessLookups* lookups,
     ValueNameId result_value_name);
+
+[[nodiscard]] const PreparedMemoryAccess* find_indexed_prepared_memory_access(
+    const PreparedMemoryAccessLookups* lookups,
+    BlockLabelId block_label,
+    std::size_t instruction_index);
 
 [[nodiscard]] const PreparedMemoryAccess*
 find_unique_indexed_prepared_memory_access_by_result_value_name(

@@ -900,16 +900,6 @@ namespace mir = c4c::backend::mir;
   };
 }
 
-[[nodiscard]] const prepare::PreparedAddressingFunction* prepared_addressing_function(
-    const module::BlockLoweringContext& context) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
-    return nullptr;
-  }
-  return prepare::find_prepared_addressing(
-      *context.function.prepared, context.function.control_flow->function_name);
-}
-
 [[nodiscard]] std::optional<prepare::PreparedScalarLoadLocalSourceProducer>
 find_prepared_load_local_source_producer(
     const module::BlockLoweringContext& context,
@@ -917,31 +907,16 @@ find_prepared_load_local_source_producer(
     std::size_t before_instruction_index) {
   if (context.bir_block == nullptr ||
       context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr) {
+      context.function.prepared == nullptr ||
+      context.function.prepared_lookups == nullptr) {
     return std::nullopt;
-  }
-  const auto* addressing = prepared_addressing_function(context);
-  if (addressing == nullptr) {
-    return std::nullopt;
-  }
-  const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
-  if (source_producers == nullptr && context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared, *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
   }
   const auto source =
       prepare::find_prepared_same_block_load_local_source_producer(
           context.function.prepared->names,
           context.function.prepared->stack_layout,
-          addressing,
-          source_producers,
+          &context.function.prepared_lookups->memory_accesses,
+          &context.function.prepared_lookups->edge_publication_source_producers,
           context.control_flow_block->block_label,
           context.bir_block,
           value,
