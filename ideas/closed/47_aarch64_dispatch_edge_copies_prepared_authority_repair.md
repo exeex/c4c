@@ -97,3 +97,18 @@ by prealloc/shared prepared records.
   call-argument case pass.
 - Reject expectation downgrades, unsupported-test rewrites, or claims of
   capability progress based only on helper renames or comment changes.
+
+## Closure Note
+
+Closed after Steps 2-6 routed the owned AArch64 dispatch edge-copy fallback
+paths through prepared/shared authority and recorded close-scope proof.
+`todo.md` recorded coverage for source-producer authority, null-publication
+fallback behavior, load-local source-memory materialization, block-entry
+move-bundle matching, and select-chain/direct-global shared authority.
+
+Close-scope guard used canonical `test_before.log` and `test_after.log` from:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_store_source_publication_plan|backend_aarch64|backend_codegen_route_aarch64|backend_cli_aarch64)' | tee test_after.log`
+
+Regression guard result with non-decreasing passed-count policy: before 39/39,
+after 39/39, PASS.
