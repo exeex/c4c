@@ -1,47 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/44_shared_prepared_dynamic_stack_source_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Shared Prepared Dynamic Stack-Source Authority
+Current Step ID: Step 3
+Current Step Title: Consume Shared Dynamic Authority In RISC-V
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md`: added shared prepared source-memory-access authority for
-`LoadLocal`-produced dynamic `StackSlot` edge-publication sources.
+Step 3 of `plan.md`: consumed shared prepared dynamic stack-source authority in
+the RISC-V edge-publication helper for the selected same-width i32
+`LoadLocal`-produced `StackSlot -> Register` family.
 
-`PreparedEdgePublication` now carries a target-neutral
-`source_memory_access_status` plus copied source memory-access facts:
-base kind/name, byte offset, size/alignment, address space, volatility, and
-base-plus-offset/address-materialization requirement. The lookup builder
-populates those facts only from the exact `PreparedMemoryAccess` at the
-published `LoadLocal` producer block/instruction. Non-`LoadLocal` sources stay
-`unavailable`; `LoadLocal` producers with no matching prepared access report
-`missing_prepared_memory_access`; malformed/mismatched accesses report
-`incomplete_prepared_memory_access`.
+RISC-V now emits `lw` from dynamic `StackSlot` source memory only when the
+shared publication is available, the source producer is `LoadLocal`, the source
+home is `StackSlot` with no concrete `offset_bytes`, the shared source memory
+access is `available`, the source/destination types and memory width are i32,
+the move has valid OutOfSsa parallel-copy authority, and the shared address
+contract is a target-usable pointer base plus signed-12-bit offset. The helper
+records shared source-memory base/offset/size/alignment facts without inventing
+a stack offset.
 
-Focused RISC-V edge-publication coverage now proves the available dynamic
-`StackSlot` source facts are exposed, missing/incomplete states remain
-distinct, non-`LoadLocal` sources remain unavailable, and current RISC-V
-dynamic stack-source lowering still fails closed until Step 3 consumes the
-shared authority.
+Missing, unavailable, incomplete, address-materialization-required, and non-i32
+dynamic source-memory cases remain fail-closed. Clearing shared lookup or
+publication authority prevents RISC-V from rediscovering the dynamic load, and
+ordinary pointer-base publication still remains address-value materialization
+rather than a memory load.
 
 ## Suggested Next
 
-Step 3 should consume the shared `source_memory_access_status == available`
-facts in RISC-V for the selected same-width i32 dynamic `StackSlot -> Register`
-family, while preserving fail-closed behavior for unavailable, missing, and
-incomplete source memory-access states.
+Step 4 should validate existing supported and fail-closed behavior around the
+RISC-V edge-publication coverage, with special attention to concrete offset,
+large-offset, and dynamic-neighbor guardrails.
 
 ## Watchouts
 
-The new shared fact does not by itself authorize RISC-V lowering. Step 3 should
-require `LoadLocal`, `PreparedValueHomeKind::StackSlot`, no concrete
-`offset_bytes`, `source_memory_access_status == available`, matching i32 width,
-valid OutOfSsa move authority, and a target-usable address contract. Keep
-`PointerBasePlusOffset` as address-value materialization, not source memory
-load authority.
+The RISC-V consumer is intentionally narrow: it only handles pointer-value
+base-plus-offset source memory that fits the RISC-V load immediate and does not
+require address materialization. Future dynamic source-memory families need
+their own shared scratch/address-materialization contract before RISC-V should
+emit them.
 
 ## Proof
 

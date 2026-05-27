@@ -1324,10 +1324,49 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
     return 1;
   }
 
+  const auto asm_text = riscv::emit_prepared_module(prepared);
+  if (!expect(asm_text.find("lw a1, 12(s2)") != std::string::npos,
+              "RISC-V should lower the dynamic stack-source load from shared source memory authority")) {
+    return 1;
+  }
+
   auto intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V should keep dynamic stack-source lowering fail-closed until it consumes shared memory authority")) {
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V should consume available shared source memory authority for the selected dynamic stack source") ||
+      !expect(intent.publication == publication,
+              "RISC-V dynamic stack-source helper should preserve shared publication authority") ||
+      !expect(intent.source_value_id == 1 && intent.destination_value_id == 2,
+              "RISC-V dynamic stack-source helper should preserve prepared value ids") ||
+      !expect(intent.source_stack_slot_id == prepare::PreparedFrameSlotId{17} &&
+                  !intent.source_stack_offset_bytes.has_value() &&
+                  intent.source_stack_size_bytes == 4 &&
+                  intent.source_stack_align_bytes == 4,
+              "RISC-V dynamic stack-source helper should record StackSlot provenance without inventing a concrete offset") ||
+      !expect(intent.source_memory_base_value_id == 3 &&
+                  intent.source_memory_base_register == "s2" &&
+                  intent.source_memory_byte_offset == 12 &&
+                  intent.source_memory_size_bytes == 4 &&
+                  intent.source_memory_align_bytes == 4,
+              "RISC-V dynamic stack-source helper should record shared source memory address facts") ||
+      !expect(intent.destination_register == "a1" &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic stack-source helper should render target-local i32 load syntax")) {
+    return 1;
+  }
+
+  intent = riscv::consume_edge_publication_move_intent(
+      nullptr, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingSharedLookups,
+              "RISC-V dynamic stack-source helper should fail closed when shared lookups are cleared")) {
+    return 1;
+  }
+
+  lookups.edge_publications.publications_by_edge_destination.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingPublication,
+              "RISC-V dynamic stack-source helper should not rediscover edge moves after shared publication authority is removed")) {
     return 1;
   }
 
@@ -1349,6 +1388,15 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
                   prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
                       MissingPreparedMemoryAccess,
               "shared publication should distinguish a LoadLocal with no prepared memory access")) {
+    return 1;
+  }
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, missing_ids.predecessor, missing_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic stack-source helper should reject missing shared source memory access") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_memory_byte_offset.has_value(),
+              "RISC-V dynamic stack-source helper should not infer a load from LoadLocal shape or pointer decorations")) {
     return 1;
   }
 
@@ -1374,6 +1422,14 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
               "shared publication should distinguish incomplete prepared source memory access")) {
     return 1;
   }
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, incomplete_ids.predecessor, incomplete_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic stack-source helper should reject incomplete shared source memory access") ||
+      !expect(intent.instruction_text.empty(),
+              "RISC-V dynamic stack-source helper should not emit from incomplete source memory facts")) {
+    return 1;
+  }
 
   auto plain_prepared = make_register_edge_publication_module();
   const auto plain_ids = FixtureIds{
@@ -1391,6 +1447,62 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
       !expect(publication->source_memory_access_status ==
                   prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable,
               "non-LoadLocal source publications should keep source memory access unavailable")) {
+    return 1;
+  }
+  intent = riscv::consume_edge_publication_move_intent(
+      &plain, plain_ids.predecessor, plain_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "mv a1, a0",
+              "RISC-V should preserve ordinary register publication behavior when source memory access is unavailable")) {
+    return 1;
+  }
+
+  auto materialization_required = make_register_edge_publication_module();
+  const auto materialization_ids = FixtureIds{
+      .function = materialization_required.names.function_names.find("join_regs"),
+      .predecessor = materialization_required.names.block_labels.find("left"),
+      .successor = materialization_required.names.block_labels.find("join"),
+      .source_name = materialization_required.names.value_names.find("%src"),
+      .base_name = materialization_required.names.value_names.find("%base"),
+      .destination_name = materialization_required.names.value_names.find("%dst"),
+  };
+  auto materialized_access = load_local_source_access(materialization_ids);
+  materialized_access.address.can_use_base_plus_offset = false;
+  make_load_local_dynamic_stack_source(
+      materialization_required, materialization_ids, materialized_access);
+  lookups = make_lookups(materialization_required);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications,
+      materialization_ids.predecessor,
+      materialization_ids.successor,
+      2);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, materialization_ids.predecessor, materialization_ids.successor, 2);
+  if (publication == nullptr ||
+      !expect(publication->source_memory_access_status ==
+                  prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available,
+              "shared publication should still expose complete source memory facts that require address materialization") ||
+      !expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic stack-source helper should reject source memory access without a base-plus-offset contract")) {
+    return 1;
+  }
+
+  auto wide = make_register_edge_publication_module();
+  const auto wide_ids = FixtureIds{
+      .function = wide.names.function_names.find("join_regs"),
+      .predecessor = wide.names.block_labels.find("left"),
+      .successor = wide.names.block_labels.find("join"),
+      .source_name = wide.names.value_names.find("%src"),
+      .base_name = wide.names.value_names.find("%base"),
+      .destination_name = wide.names.value_names.find("%dst"),
+  };
+  make_load_local_dynamic_stack_source(wide, wide_ids, load_local_source_access(wide_ids));
+  set_edge_publication_value_types(wide, bir::TypeKind::I64, bir::TypeKind::I64);
+  lookups = make_lookups(wide);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, wide_ids.predecessor, wide_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic stack-source helper should keep non-i32 dynamic loads fail-closed")) {
     return 1;
   }
 

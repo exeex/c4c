@@ -47,6 +47,12 @@ struct EdgePublicationMoveIntent {
   c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy
       source_stack_extension_policy =
           c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy::None;
+  std::optional<c4c::backend::prepare::PreparedValueId>
+      source_memory_base_value_id;
+  std::string source_memory_base_register;
+  std::optional<std::int64_t> source_memory_byte_offset;
+  std::optional<std::size_t> source_memory_size_bytes;
+  std::optional<std::size_t> source_memory_align_bytes;
   std::optional<c4c::backend::prepare::PreparedValueId> source_pointer_base_value_id;
   std::string source_pointer_base_register;
   std::optional<std::int64_t> source_pointer_byte_delta;

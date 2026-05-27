@@ -41,6 +41,11 @@ void clear_stack_source_intent(EdgePublicationMoveIntent& intent) {
   intent.source_stack_align_bytes.reset();
   intent.source_stack_extension_policy =
       c4c::backend::prepare::PreparedTypedStackSourceExtensionPolicy::None;
+  intent.source_memory_base_value_id.reset();
+  intent.source_memory_base_register.clear();
+  intent.source_memory_byte_offset.reset();
+  intent.source_memory_size_bytes.reset();
+  intent.source_memory_align_bytes.reset();
 }
 
 void copy_same_width_i32_stack_source_publication(
@@ -129,6 +134,7 @@ bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) 
 std::optional<std::string> render_edge_publication_source_operand(
     EdgePublicationMoveIntent& intent,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
     const c4c::backend::prepare::PreparedValueHome& source_home) {
   namespace prepare = c4c::backend::prepare;
 
@@ -150,6 +156,70 @@ std::optional<std::string> render_edge_publication_source_operand(
     intent.source_stack_offset_bytes = *source_home.offset_bytes;
     intent.source_stack_size_bytes = *source_home.size_bytes;
     return std::to_string(*source_home.offset_bytes) + "(sp)";
+  }
+  if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+      !source_home.offset_bytes.has_value() &&
+      source_home.size_bytes == std::optional<std::size_t>{4} &&
+      publication.source_producer_kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+      publication.source_memory_access_status ==
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available &&
+      publication.source_memory_access != nullptr &&
+      publication.source_value.type == c4c::backend::bir::TypeKind::I32 &&
+      publication.destination_value.type == c4c::backend::bir::TypeKind::I32 &&
+      publication.source_memory_base_kind ==
+          prepare::PreparedAddressBaseKind::PointerValue &&
+      publication.source_memory_pointer_value_name.has_value() &&
+      publication.source_memory_size_bytes == 4 &&
+      publication.source_memory_align_bytes >= 4 &&
+      publication.source_memory_address_space ==
+          c4c::backend::bir::AddressSpace::Default &&
+      !publication.source_memory_is_volatile &&
+      publication.source_memory_can_use_base_plus_offset &&
+      !publication.source_memory_requires_address_materialization &&
+      fits_signed_12_bit_immediate(publication.source_memory_byte_offset) &&
+      publication.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      publication.move != nullptr &&
+      publication.source_value_id.has_value() &&
+      publication.move->authority_kind ==
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+      publication.move->destination_kind ==
+          prepare::PreparedMoveDestinationKind::Value &&
+      publication.move->op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      publication.move->from_value_id == *publication.source_value_id &&
+      publication.move->to_value_id == publication.destination_value_id &&
+      publication.move->destination_register_placement.has_value()) {
+    const auto base_id_it =
+        lookups->value_homes.value_ids.find(
+            *publication.source_memory_pointer_value_name);
+    if (base_id_it == lookups->value_homes.value_ids.end()) {
+      return std::nullopt;
+    }
+    const auto base_home_it =
+        lookups->value_homes.homes_by_id.find(base_id_it->second);
+    if (base_home_it == lookups->value_homes.homes_by_id.end() ||
+        base_home_it->second == nullptr ||
+        base_home_it->second->kind != prepare::PreparedValueHomeKind::Register ||
+        !base_home_it->second->register_name.has_value()) {
+      return std::nullopt;
+    }
+    intent.source_stack_slot_id = source_home.slot_id;
+    intent.source_stack_size_bytes = source_home.size_bytes;
+    intent.source_stack_align_bytes = source_home.align_bytes;
+    intent.source_stack_extension_policy =
+        prepare::PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension;
+    intent.source_memory_base_value_id = base_id_it->second;
+    intent.source_memory_base_register = *base_home_it->second->register_name;
+    intent.source_memory_byte_offset = publication.source_memory_byte_offset;
+    intent.source_memory_size_bytes = publication.source_memory_size_bytes;
+    intent.source_memory_align_bytes = publication.source_memory_align_bytes;
+    intent.destination_register_placement =
+        publication.move->destination_register_placement;
+    intent.destination_register_bank =
+        intent.destination_register_placement->bank;
+    return std::to_string(publication.source_memory_byte_offset) + "(" +
+           intent.source_memory_base_register + ")";
   }
   if (source_home.kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
       source_home.pointer_base_value_name.has_value() &&
@@ -275,7 +345,10 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     return intent;
   }
   const auto source_operand =
-      render_edge_publication_source_operand(intent, lookups, *publication->source_home);
+      render_edge_publication_source_operand(intent,
+                                             lookups,
+                                             *publication,
+                                             *publication->source_home);
   if (!source_operand.has_value()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
@@ -345,6 +418,19 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
             "\n    add t6, sp, t6" +
             "\n    lw " + intent.destination_register + ", 0(t6)";
       }
+    } else if (intent.source_memory_byte_offset.has_value()) {
+      const auto register_name =
+          riscv_gpr_register_name_from_placement(*intent.destination_register_placement);
+      if (!register_name.has_value()) {
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        intent.destination_register.clear();
+        intent.instruction_text.clear();
+        clear_stack_source_intent(intent);
+        return intent;
+      }
+      intent.destination_register = *register_name;
+      intent.instruction_text =
+          "lw " + intent.destination_register + ", " + *source_operand;
     } else if (intent.source_pointer_byte_delta.has_value()) {
       if (!destination_home.register_name.has_value()) {
         intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
