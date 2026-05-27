@@ -244,25 +244,41 @@ Completion check:
   materialization authority, with proof for a direct-global route and a nearby
   same-feature route.
 
-### Step 7: Consolidate proof and route ownership
+### Step 7: Classify remaining stale-home ownership
 
-Goal: ensure the ALU prepared-authority repair is not testcase-overfit and did
-not absorb calls-owned work.
+Goal: decide whether the remaining `00164`/`00204` stale-home family is still
+owned by ALU prepared-authority repair, by calls/call-boundary publication, or
+by a missing shared value-home/source-producer query.
 
-Primary target: lifecycle proof in `todo.md`, `test_before.log`, and
-`test_after.log`
+Primary target: ownership trace in `todo.md`, using the remaining `00164`
+post-`%t106` values `%t109`, `%t110`, `%t111`, and `%t112` as the first
+reduction target.
 
 Actions:
 
-- Confirm no expectations were downgraded and no unsupported-path rewrites were
-  used as progress.
-- Confirm any calls-owned findings were routed to
-  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of fixed
-  in ALU without a shared-query contract.
-- Run the supervisor-selected broader validation once the focused stale-home
-  family is green.
+- Do not close this plan or add another ALU-local fallback while the focused
+  stale-home family remains at the 4/6 split.
+- Trace the prepared homes, scalar publications, call-clobber behavior, and ALU
+  operand materialization for `%t109`, `%t110`, `%t111`, and `%t112`.
+- Determine where the stale operand decision is made:
+  - ALU-owned operand/source materialization still selecting a stale home.
+  - Call-boundary or call-argument publication invalidating or failing to
+    republish the prepared home.
+  - Shared prepared value-home/source-producer authority missing a query needed
+    by multiple consumers.
+- If the trace proves the owner is call-boundary or call-argument
+  publication, stop and route through
+  `ideas/open/52_aarch64_calls_prepared_authority_repair.md` instead of
+  widening this plan.
+- If the trace proves a missing shared query is the owner, define the smallest
+  shared-authority packet and the proof subset before implementation.
+- Regenerate the supervisor-selected canonical `test_after.log` before any
+  closure or acceptance decision; the current workspace may not have the root
+  proof log that `todo.md` previously referenced.
 
 Completion check:
 
-- `todo.md` records fresh proof covering the focused probes, the four-test
-  c-testsuite family, and the broader validation selected by the supervisor.
+- `todo.md` records the ownership classification, the traced prepared-home and
+  publication path for `%t109`/`%t110`/`%t111`/`%t112`, the conditional route
+  decision, and the next bounded packet. Closure remains blocked unless the
+  stale-home family is green or formally reclassified outside ALU scope.
