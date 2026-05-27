@@ -8,37 +8,35 @@ Current Step Title: Route non-edge scalar producer materialization through prepa
 
 ## Just Finished
 
-Completed Step 2 first repair route for non-edge scalar named-value
-materialization in `emit_value_publication_to_register`.
+Completed Step 2 select-chain materialization repair for the non-edge
+named-value route.
 
-The named-value producer selector now consumes prepared/shared authority through
-`PreparedEdgePublicationSourceProducerLookups` and a guarded same-block
-prepared producer context: the prepared producer must be in the current block,
-before the requested materialization point, match the indexed instruction kind,
-and match the requested result value. The same prepared route is also used by
-the scratch-write hazard query so it no longer grows a same-block producer
-lookup recursion independently.
-
-The shared prepared source-producer fact now records `LoadGlobalInst` producers
-as well as load-local, cast, binary, and select producers, preserving the
-existing load-global materialization route without falling back to a local
-same-block producer scan. Existing prepared value-home and block-entry
-publication branches remain the first consumers when they can answer.
+`find_same_block_select_producer` now consumes
+`PreparedEdgePublicationSourceProducerLookups` before falling back to the
+legacy MIR same-block scan. The prepared select producer must be in the current
+block, precede the materialization point, be recorded as
+`SelectMaterialization`, point at an indexed `SelectInst`, and match the
+requested named result and type. This moves the select-chain materializer's
+producer selection onto the same prepared source authority used by
+`emit_value_publication_to_register` while preserving behavior when no complete
+prepared select fact is available.
 
 ## Suggested Next
 
-Continue Step 2 with the next prepared-authority gap: inspect whether select
-chain materialization and direct-global select dependencies can consume a
-prepared non-edge select-chain authority instead of relying on local dependency
-walks inside the select materializer.
+Continue Step 2 with the remaining narrow authority gap: direct-global
+select-chain dependency detection still derives `contains_direct_global_load`
+and root metadata through `mir::select_chain_contains_dependency` /
+`mir::find_same_block_named_producer_record`. Decide whether existing prepared
+source-producer facts are sufficient to answer that dependency query or whether
+a dedicated prepared select-chain dependency lookup is needed.
 
 ## Watchouts
 
 The repaired route still reconstructs cast, binary, load-local, load-global,
-and select emission after selecting a prepared source producer. Remaining Step 2
-gap: select-chain and local-slot address subroutes still have their own local
-authority questions and should be handled as separate narrow packets, not mixed
-into this slice.
+and select emission after selecting a prepared source producer. Remaining Step
+2 gap: direct-global select-chain dependency discovery is still a local
+dependency walk, and the local-slot address subroute remains separate work.
+Do not mix local-slot address repair into the direct-global select-chain packet.
 
 The new `LoadGlobal` prepared producer kind is now part of the shared source
 producer fact and edge-copy producer identity checks can validate it. The
