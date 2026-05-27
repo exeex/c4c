@@ -8,65 +8,53 @@ Current Step Title: Validate Dispatch And Shared Prepared Behavior
 
 ## Just Finished
 
-Step 5 - Repair Local-Slot Address Materialization Authority completed by audit;
-no code repair was needed. In `emit_value_publication_to_register`, the add/sub
-pointer path first delegates to `emit_local_slot_address_publication_to_register`
-before falling back to generic recursive binary materialization. The delegated
-helper resolves the named base through `prepared_named_value_id` and requires
-`prepared_frame_address_offset_for_value`, backed by indexed prepared frame-slot
-address materialization facts, before emitting the frame-address `add`.
-`local_slot_address_frame_offset` remains a null stub, so the audited
-publication route is not using slot-name parsing or local offset reconstruction
-as authority.
+Step 6 - Validate Dispatch And Shared Prepared Behavior completed. Supervisor
+ran the final focused dispatch/materialization validation with matching
+canonical `test_before.log` and `test_after.log` scope, then reran broader
+backend validation.
 
-Lifecycle decision: idea 49 is not closure-ready yet. Step 6 remains as the
-active acceptance packet because the canonical `test_before.log` and
-`test_after.log` currently record only the Step 5 four-test focused proof, not a
-final validation scope covering all repaired dispatch and shared prepared
-behavior. The close gate is therefore unmet.
+Focused final validation covers dispatch value publication, load-local,
+load-global, select-chain, local-slot address, and prepared handoff routes
+touched or audited by Steps 2 through 5. The focused subset passed 9/9 before
+and 9/9 after, and the non-decreasing regression guard reported no new
+failures.
+
+Broader backend validation remained at 165/167. The only failing tests were the
+known failures `backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`; no new
+backend failures appeared.
 
 ## Suggested Next
 
-Run Step 6 validation as a final no-code packet. Acceptance requires:
-
-- build first with `cmake --build --preset default`;
-- focused proof covering dispatch value publication, load-local, load-global,
-  select-chain, and local-slot address materialization routes touched or audited
-  by Steps 2 through 5;
-- broader backend proof using matching canonical `test_before.log` and
-  `test_after.log` scope, or existing canonical logs explicitly replaced with
-  that scope;
-- after broader backend proof, failures must be limited to the known
-  `backend_aarch64_instruction_dispatch` and
-  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
-  failures, with no new focused failures and no new backend regressions;
-- `todo.md` must record the exact commands and log locations before lifecycle
-  closure is requested again.
+Request lifecycle closure review for idea 49. If closure is rejected, the
+remaining acceptance criterion should name a concrete failing route outside the
+final focused 9/9 boundary and the broader backend known-failure pair.
 
 ## Watchouts
 
-- `emit_local_slot_address_publication_to_register` and the backing helper live
-  in `dispatch_publication.cpp`, outside this packet's owned edit set; this
-  packet audited them as context and did not modify them.
-- Recent supervisor broader backend validation was reported as 165/167 with
-  only the known `backend_aarch64_instruction_dispatch` and
-  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
-  failures, but that result is not represented in the current canonical
-  before/after logs.
-- This lifecycle packet intentionally did not touch implementation files,
-  `plan.md`, idea files, or test logs.
+- The broader backend command is not fully green because the two known backend
+  failures remain: `backend_aarch64_instruction_dispatch` and
+  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
+- Canonical root logs `test_before.log` and `test_after.log` now represent the
+  final focused 9-test Step 6 validation scope, not the broader backend run.
+- This validation packet intentionally did not touch implementation files,
+  `plan.md`, or idea files.
 
 ## Proof
 
-Ran fixed proof command:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value)$') > test_after.log 2>&1`
+Focused before/after command for both canonical logs:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg)$'`
 
-Result: passed. `test_after.log` exists and records the build plus 4/4 passing
-focused tests.
+Focused result: `test_before.log` passed 9/9; `test_after.log` passed 9/9.
 
-Close-gate check: current canonical logs are not sufficient for closure. Running
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
-on the current four-test logs reported 4/4 before and 4/4 after, with no new
-failures, but default guard status was FAIL because the pass count did not
-strictly increase. More importantly, those logs do not cover Step 6 final
-validation.
+Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Guard result: PASS, before 9/9, after 9/9, no new failures.
+
+Broader backend command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Broader backend result: 165/167. Known failures only:
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
