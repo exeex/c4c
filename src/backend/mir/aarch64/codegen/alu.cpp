@@ -767,6 +767,75 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_scalar_load_source(
     const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedMemoryAccess& source_access) {
+  if (context.function.prepared == nullptr || home.value_name == c4c::kInvalidValueName ||
+      source_access.result_value_name != std::optional<c4c::ValueNameId>{home.value_name}) {
+    return std::nullopt;
+  }
+
+  if (source_access.address.base_kind == prepare::PreparedAddressBaseKind::GlobalSymbol) {
+    if (!source_access.address.symbol_name.has_value()) {
+      return std::nullopt;
+    }
+    return MemoryOperand{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = source_access.function_name,
+        .block_label = source_access.block_label,
+        .instruction_index = source_access.inst_index,
+        .result_value_id = home.value_id,
+        .result_value_name = home.value_name,
+        .base_kind = MemoryBaseKind::Symbol,
+        .symbol_name = source_access.address.symbol_name,
+        .symbol_label = std::string{
+            prepare::prepared_link_name(context.function.prepared->names,
+                                        *source_access.address.symbol_name)},
+        .byte_offset = source_access.address.byte_offset,
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = source_access.address.size_bytes,
+        .align_bytes = source_access.address.align_bytes,
+        .address_space = source_access.address_space,
+        .is_volatile = source_access.is_volatile,
+        .can_use_base_plus_offset = source_access.address.can_use_base_plus_offset,
+    };
+  }
+
+  if (source_access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !source_access.address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = find_scalar_frame_slot_by_id(
+      context.function.prepared->stack_layout,
+      *source_access.address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = source_access.function_name,
+      .block_label = source_access.block_label,
+      .instruction_index = source_access.inst_index,
+      .result_value_id = home.value_id,
+      .result_value_name = home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = source_access.address.frame_slot_id,
+      .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
+                     source_access.address.byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = home.size_bytes.value_or(source_access.address.size_bytes),
+      .align_bytes = home.align_bytes.value_or(source_access.address.align_bytes),
+      .address_space = source_access.address_space,
+      .is_volatile = source_access.is_volatile,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_prepared_scalar_load_source(
+    const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home) {
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
@@ -793,64 +862,7 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
 
-  if (source_access->address.base_kind == prepare::PreparedAddressBaseKind::GlobalSymbol) {
-    if (!source_access->address.symbol_name.has_value()) {
-      return std::nullopt;
-    }
-    return MemoryOperand{
-        .surface = RecordSurfaceKind::MachineInstructionNode,
-        .support = MemoryOperandSupportKind::Prepared,
-        .function_name = source_access->function_name,
-        .block_label = source_access->block_label,
-        .instruction_index = source_access->inst_index,
-        .result_value_id = home.value_id,
-        .result_value_name = home.value_name,
-        .base_kind = MemoryBaseKind::Symbol,
-        .symbol_name = source_access->address.symbol_name,
-        .symbol_label = std::string{
-            prepare::prepared_link_name(context.function.prepared->names,
-                                        *source_access->address.symbol_name)},
-        .byte_offset = source_access->address.byte_offset,
-        .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = source_access->address.size_bytes,
-        .align_bytes = source_access->address.align_bytes,
-        .address_space = source_access->address_space,
-        .is_volatile = source_access->is_volatile,
-        .can_use_base_plus_offset = source_access->address.can_use_base_plus_offset,
-    };
-  }
-
-  if (source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !source_access->address.frame_slot_id.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto* slot = find_scalar_frame_slot_by_id(
-      context.function.prepared->stack_layout,
-      *source_access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = source_access->function_name,
-      .block_label = source_access->block_label,
-      .instruction_index = source_access->inst_index,
-      .result_value_id = home.value_id,
-      .result_value_name = home.value_name,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = source_access->address.frame_slot_id,
-      .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
-                     source_access->address.byte_offset,
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = home.size_bytes.value_or(source_access->address.size_bytes),
-      .align_bytes = home.align_bytes.value_or(source_access->address.align_bytes),
-      .address_space = source_access->address_space,
-      .is_volatile = source_access->is_volatile,
-      .can_use_base_plus_offset = true,
-  };
+  return make_prepared_scalar_load_source(context, home, *source_access);
 }
 
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_stack_home_load_source(
@@ -898,56 +910,29 @@ namespace mir = c4c::backend::mir;
   };
 }
 
-[[nodiscard]] std::optional<std::size_t> find_same_block_load_local_producer_index(
+[[nodiscard]] std::optional<c4c::ValueNameId> prepared_value_name_id(
     const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
+    const bir::Value& value) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return std::nullopt;
   }
-  const std::size_t limit =
-      std::min(before_instruction_index, context.bir_block->insts.size());
-  for (std::size_t index = limit; index > 0; --index) {
-    const std::size_t candidate_index = index - 1;
-    const auto* load =
-        std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[candidate_index]);
-    if (load != nullptr &&
-        load->result.kind == bir::Value::Kind::Named &&
-        load->result.name == value.name) {
-      return candidate_index;
-    }
+  const auto value_name =
+      context.function.prepared->names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return value_name;
 }
 
-[[nodiscard]] c4c::SlotNameId local_load_slot_id(const bir::LoadLocalInst& load) {
-  if (load.address.has_value() &&
-      load.address->base_slot_id != c4c::kInvalidSlotName) {
-    return load.address->base_slot_id;
+[[nodiscard]] const prepare::PreparedAddressingFunction* prepared_addressing_function(
+    const module::BlockLoweringContext& context) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return nullptr;
   }
-  return load.slot_id;
-}
-
-[[nodiscard]] c4c::SlotNameId local_store_slot_id(const bir::StoreLocalInst& store) {
-  if (store.address.has_value() &&
-      store.address->base_slot_id != c4c::kInvalidSlotName) {
-    return store.address->base_slot_id;
-  }
-  return store.slot_id;
-}
-
-[[nodiscard]] std::int64_t local_load_byte_offset(const bir::LoadLocalInst& load) {
-  return load.address.has_value()
-             ? load.address->byte_offset
-             : static_cast<std::int64_t>(load.byte_offset);
-}
-
-[[nodiscard]] std::int64_t local_store_byte_offset(const bir::StoreLocalInst& store) {
-  return store.address.has_value()
-             ? store.address->byte_offset
-             : static_cast<std::int64_t>(store.byte_offset);
+  return prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
 }
 
 [[nodiscard]] bool byte_ranges_overlap(std::int64_t lhs_offset,
@@ -959,49 +944,104 @@ namespace mir = c4c::backend::mir;
   return lhs_offset < rhs_end && rhs_offset < lhs_end;
 }
 
-[[nodiscard]] bool store_may_alias_local_load(const bir::StoreLocalInst& store,
-                                              const bir::LoadLocalInst& load) {
-  const auto load_slot_id = local_load_slot_id(load);
-  const auto store_slot_id = local_store_slot_id(store);
-  if (load_slot_id != c4c::kInvalidSlotName ||
-      store_slot_id != c4c::kInvalidSlotName) {
-    if (load_slot_id == c4c::kInvalidSlotName ||
-        store_slot_id == c4c::kInvalidSlotName ||
-        load_slot_id != store_slot_id) {
-      return false;
-    }
-  } else if (!load.slot_name.empty() || !store.slot_name.empty()) {
-    if (load.slot_name.empty() || store.slot_name.empty() ||
-        load.slot_name != store.slot_name) {
-      return false;
-    }
+[[nodiscard]] std::optional<std::int64_t> prepared_frame_slot_offset(
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedMemoryAccess& access) {
+  if (access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access.address.frame_slot_id.has_value()) {
+    return std::nullopt;
   }
-
-  const auto load_size = scalar_type_size_bytes(load.result.type);
-  const auto store_size = scalar_type_size_bytes(store.value.type);
-  if (!load_size.has_value() || !store_size.has_value()) {
-    return true;
+  const auto* slot =
+      find_scalar_frame_slot_by_id(stack_layout, *access.address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
   }
-  return byte_ranges_overlap(local_load_byte_offset(load),
-                             *load_size,
-                             local_store_byte_offset(store),
-                             *store_size);
+  return static_cast<std::int64_t>(slot->offset_bytes) + access.address.byte_offset;
 }
 
-[[nodiscard]] bool has_intervening_store_to_local_load_source(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load,
-    std::size_t producer_index,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr) {
+[[nodiscard]] bool prepared_store_access_may_alias_load_access(
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedMemoryAccess& store_access,
+    const prepare::PreparedMemoryAccess& load_access) {
+  const auto store_offset = prepared_frame_slot_offset(stack_layout, store_access);
+  const auto load_offset = prepared_frame_slot_offset(stack_layout, load_access);
+  if (!store_offset.has_value() || !load_offset.has_value()) {
     return true;
   }
-  const std::size_t limit =
-      std::min(before_instruction_index, context.bir_block->insts.size());
-  for (std::size_t index = producer_index + 1; index < limit; ++index) {
+  return byte_ranges_overlap(*load_offset,
+                             load_access.address.size_bytes,
+                             *store_offset,
+                             store_access.address.size_bytes);
+}
+
+[[nodiscard]] const prepare::PreparedMemoryAccess*
+find_prepared_load_local_source_access(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      context.control_flow_block == nullptr) {
+    return nullptr;
+  }
+  const auto value_name = prepared_value_name_id(context, value);
+  if (!value_name.has_value()) {
+    return nullptr;
+  }
+  const auto* addressing = prepared_addressing_function(context);
+  if (addressing == nullptr) {
+    return nullptr;
+  }
+  const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
+  const prepare::PreparedMemoryAccess* matched = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.block_label != context.control_flow_block->block_label ||
+        access.inst_index >= limit ||
+        access.result_value_name != value_name ||
+        access.inst_index >= context.bir_block->insts.size()) {
+      continue;
+    }
+    const auto& inst = context.bir_block->insts[access.inst_index];
+    if (std::get_if<bir::LoadLocalInst>(&inst) == nullptr ||
+        !prepared_memory_access_matches_instruction(context, &access, inst)) {
+      return nullptr;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &access;
+  }
+  return matched;
+}
+
+[[nodiscard]] bool has_prepared_intervening_store_to_load_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryAccess& load_access,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.bir_block == nullptr ||
+      context.control_flow_block == nullptr) {
+    return true;
+  }
+  const auto* addressing = prepared_addressing_function(context);
+  if (addressing == nullptr) {
+    return true;
+  }
+  const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = load_access.inst_index + 1; index < limit; ++index) {
     const auto* store =
         std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index]);
-    if (store != nullptr && store_may_alias_local_load(*store, load)) {
+    if (store == nullptr) {
+      continue;
+    }
+    const auto* store_access = prepare::find_prepared_memory_access(
+        *addressing, context.control_flow_block->block_label, index);
+    if (store_access == nullptr ||
+        !prepared_memory_access_matches_instruction(
+            context, store_access, context.bir_block->insts[index])) {
+      return true;
+    }
+    if (prepared_store_access_may_alias_load_access(
+            context.function.prepared->stack_layout, *store_access, load_access)) {
       return true;
     }
   }
@@ -1025,23 +1065,23 @@ namespace mir = c4c::backend::mir;
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  const auto producer_index =
-      find_same_block_load_local_producer_index(context, value, before_instruction_index);
-  if (!producer_index.has_value() || context.bir_block == nullptr) {
+  const auto* load_access =
+      find_prepared_load_local_source_access(context, value, before_instruction_index);
+  if (load_access == nullptr || context.bir_block == nullptr) {
     return std::nullopt;
   }
   const auto* load =
-      std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[*producer_index]);
+      std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[load_access->inst_index]);
   if (load == nullptr ||
-      has_intervening_store_to_local_load_source(
-          context, *load, *producer_index, before_instruction_index)) {
+      has_prepared_intervening_store_to_load_source(
+          context, *load_access, before_instruction_index)) {
     return std::nullopt;
   }
   const auto* home = find_named_value_home(load->result, context.function);
   if (home == nullptr || !load_local_home_needs_consumer_publication(*home)) {
     return std::nullopt;
   }
-  auto source = make_prepared_scalar_load_source(context, *home);
+  auto source = make_prepared_scalar_load_source(context, *home, *load_access);
   if (!source.has_value() ||
       source->base_kind != MemoryBaseKind::FrameSlot ||
       source->support != MemoryOperandSupportKind::Prepared ||

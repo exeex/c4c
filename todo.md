@@ -8,39 +8,29 @@ Current Step Title: Route load-local materialization through prepared memory and
 
 ## Just Finished
 
-Completed a Step 4 audit of the remaining ALU unpublished load-local source
-consumers.
-
-`src/backend/mir/aarch64/codegen/alu.cpp` still has a non-prepared load-local
-consumer route: `make_unpublished_load_local_source_operand` finds a
-same-block `LoadLocal` producer by result-name scan, checks intervening stores
-through local slot/offset reconstruction, then builds a memory operand from the
-value home. Its direct ALU users are `ScalarFallbackOperandSelector::select`,
-`append_control_value_to_register`, and the two lhs/rhs override paths in
-`lower_scalar_instruction`.
+Completed Step 4's narrow ALU unpublished load-local source operand repair.
+`src/backend/mir/aarch64/codegen/alu.cpp` now admits
+`make_unpublished_load_local_source_operand` through prepared memory access
+facts keyed by the producer load's prepared access and the current consumer
+index. The stale same-block result-name producer scan and local slot/offset
+alias reconstruction helper family was removed; intervening-store rejection now
+uses prepared memory accesses and prepared frame-slot ranges, failing closed
+when required prepared facts are missing or incomplete.
 
 ## Suggested Next
 
-Keep Step 4 active. Repair the narrow ALU helper
-`make_unpublished_load_local_source_operand` so the unpublished load-local
-source operand is admitted only through prepared memory/access authority keyed
-to the producer load and current consumer, or fail-closes when no matching
-prepared fact exists. Suggested proof subset:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Supervisor should review and commit this Step 4 slice if the diff is accepted.
 
 ## Watchouts
 
-The stale helper family is:
-`find_same_block_load_local_producer_index`, `store_may_alias_local_load`,
-`has_intervening_store_to_local_load_source`, and
-`make_unpublished_load_local_source_operand`. `make_prepared_scalar_load_source`
-already consumes `PreparedMemoryAccess`, but the unpublished helper still uses
-same-block producer discovery and local alias reconstruction to decide whether
-that prepared operand may be used. `test_after.log` is not present in this
-workspace; the latest backend proof is only recorded in the previous todo state.
+`make_prepared_scalar_load_source` still has its existing unique-result-name
+fallback for unrelated callers, but the Step 4 unpublished load-local route
+uses the new access-keyed overload. No tests or expectations were changed.
 
 ## Proof
 
-No build required or run for this audit-only packet. Used `rg` plus
-`c4c-clang-tool-ccdb function-callers/function-callees` against
-`src/backend/mir/aarch64/codegen/alu.cpp`; no `test_after.log` was generated.
+Ran exactly:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+
+Result: build succeeded; CTest passed 163/163 backend tests. CTest output is
+captured in `test_after.log`.
