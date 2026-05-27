@@ -8,30 +8,39 @@ Current Step Title: Route load-local materialization through prepared memory and
 
 ## Just Finished
 
-Completed Step 4's first narrow load-local materialization packet.
+Completed a Step 4 audit of the remaining ALU unpublished load-local source
+consumers.
 
-`emit_value_publication_to_register` now fail-closes the generic `LoadLocal`
-materialization route unless the producer has a matching
-`PreparedMemoryAccess`. Recovered narrow-store source lookup now requires the
-load and prior store to line up through prepared frame-slot access offsets,
-instead of accepting local-slot spelling or value-name prefix reconstruction.
+`src/backend/mir/aarch64/codegen/alu.cpp` still has a non-prepared load-local
+consumer route: `make_unpublished_load_local_source_operand` finds a
+same-block `LoadLocal` producer by result-name scan, checks intervening stores
+through local slot/offset reconstruction, then builds a memory operand from the
+value home. Its direct ALU users are `ScalarFallbackOperandSelector::select`,
+`append_control_value_to_register`, and the two lhs/rhs override paths in
+`lower_scalar_instruction`.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining load-local consumers that still build
-memory operands from same-block `LoadLocal` shape, starting with the ALU
-unpublished load-local source helpers, and route or document them against
-prepared memory access facts.
+Keep Step 4 active. Repair the narrow ALU helper
+`make_unpublished_load_local_source_operand` so the unpublished load-local
+source operand is admitted only through prepared memory/access authority keyed
+to the producer load and current consumer, or fail-closes when no matching
+prepared fact exists. Suggested proof subset:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
 
 ## Watchouts
 
-The va-list and prepared global-symbol special cases still run before the new
-generic load-local access gate because they consume their own prepared helper
-authority. `clang-format` was unavailable in this container, so formatting was
-checked manually.
+The stale helper family is:
+`find_same_block_load_local_producer_index`, `store_may_alias_local_load`,
+`has_intervening_store_to_local_load_source`, and
+`make_unpublished_load_local_source_operand`. `make_prepared_scalar_load_source`
+already consumes `PreparedMemoryAccess`, but the unpublished helper still uses
+same-block producer discovery and local alias reconstruction to decide whether
+that prepared operand may be used. `test_after.log` is not present in this
+workspace; the latest backend proof is only recorded in the previous todo state.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed with 100% tests passed, 0 tests failed out of 163. CTest output is in
-`test_after.log`.
+No build required or run for this audit-only packet. Used `rg` plus
+`c4c-clang-tool-ccdb function-callers/function-callees` against
+`src/backend/mir/aarch64/codegen/alu.cpp`; no `test_after.log` was generated.
