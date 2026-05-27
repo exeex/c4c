@@ -1,45 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/44_shared_prepared_dynamic_stack_source_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Consume Shared Dynamic Authority In RISC-V
+Current Step ID: Step 4
+Current Step Title: Validate Existing Supported And Fail-Closed Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md`: consumed shared prepared dynamic stack-source authority in
-the RISC-V edge-publication helper for the selected same-width i32
-`LoadLocal`-produced `StackSlot -> Register` family.
+Step 4 of `plan.md`: validated the existing supported and fail-closed behavior
+for the dynamic stack-source authority work without changing implementation or
+tests.
 
-RISC-V now emits `lw` from dynamic `StackSlot` source memory only when the
-shared publication is available, the source producer is `LoadLocal`, the source
-home is `StackSlot` with no concrete `offset_bytes`, the shared source memory
-access is `available`, the source/destination types and memory width are i32,
-the move has valid OutOfSsa parallel-copy authority, and the shared address
-contract is a target-usable pointer base plus signed-12-bit offset. The helper
-records shared source-memory base/offset/size/alignment facts without inventing
-a stack offset.
+The existing RISC-V prepared edge-publication coverage records the supported
+same-width i32 `LoadLocal`-produced dynamic `StackSlot -> Register` load from
+shared source-memory authority, while preserving StackSlot provenance without
+inventing a concrete stack offset. It also keeps the concrete-offset i32/i64
+stack-source paths, large-offset i32/i64 stack-source materialization paths,
+pointer-base materialization path, and stack-destination/stack-to-stack
+coverage intact.
 
-Missing, unavailable, incomplete, address-materialization-required, and non-i32
-dynamic source-memory cases remain fail-closed. Clearing shared lookup or
-publication authority prevents RISC-V from rediscovering the dynamic load, and
-ordinary pointer-base publication still remains address-value materialization
-rather than a memory load.
+The existing negative coverage remains fail-closed for missing shared lookups,
+missing publication authority, cleared publication lookup authority, dynamic
+stack sources without prepared source-memory access, incomplete source-memory
+facts, unavailable/address-materialization-required source-memory access,
+non-i32 dynamic source-memory loads, pointer-base decorations without stack-load
+authority, subword/sign-extension cases without prepared authority, aggregate
+widths, unsupported homes, non-move edge publications, and stack-source or
+stack-destination forms lacking concrete-offset authority where required.
 
 ## Suggested Next
 
-Step 4 should validate existing supported and fail-closed behavior around the
-RISC-V edge-publication coverage, with special attention to concrete offset,
-large-offset, and dynamic-neighbor guardrails.
+Supervisor should compare `test_baseline.log` against `test_after.log` and
+decide whether to close, deactivate, or extend the active lifecycle state.
 
 ## Watchouts
 
-The RISC-V consumer is intentionally narrow: it only handles pointer-value
-base-plus-offset source memory that fits the RISC-V load immediate and does not
-require address materialization. Future dynamic source-memory families need
-their own shared scratch/address-materialization contract before RISC-V should
-emit them.
+This packet was validation-only. No implementation files, tests, `plan.md`, or
+source idea files were modified.
 
 ## Proof
 
@@ -48,4 +46,11 @@ Ran:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
 Result: build passed; backend CTest passed 163/163. Proof log:
+`test_after.log`.
+
+Then ran the delegated closure proof:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure | tee test_after.log`
+
+Result: build passed; full CTest passed 3411/3411. Proof log:
 `test_after.log`.
