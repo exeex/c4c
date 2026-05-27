@@ -63,6 +63,10 @@ struct PreparedMoveBundleLookups {
       before_return_abi_moves_by_source_and_bank;
 };
 
+struct PreparedReturnChainLookups {
+  std::unordered_map<std::size_t, ValueNameId> terminal_return_values_by_chain_value;
+};
+
 struct PreparedValueHomeLookups {
   std::unordered_map<PreparedValueId, const PreparedValueHome*> homes_by_id;
   std::unordered_map<ValueNameId, PreparedValueId> value_ids;
@@ -374,6 +378,7 @@ struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
   PreparedMoveBundleLookups move_bundles;
+  PreparedReturnChainLookups return_chains;
   PreparedValueHomeLookups value_homes;
   PreparedEdgePublicationLookups edge_publications;
   PreparedEdgePublicationSourceProducerLookups edge_publication_source_producers;
@@ -389,6 +394,9 @@ struct PreparedFunctionLookups {
     std::size_t block_index,
     PreparedValueId source_value_id,
     PreparedRegisterBank destination_bank);
+[[nodiscard]] std::size_t prepared_return_chain_value_key(std::size_t block_index,
+                                                          std::size_t instruction_index,
+                                                          ValueNameId value_name);
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
@@ -410,6 +418,10 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
 
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations);
+
+[[nodiscard]] PreparedReturnChainLookups make_prepared_return_chain_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function);
 
 [[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
     const PreparedValueLocationFunction* value_locations);
@@ -507,6 +519,12 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
     std::size_t block_index,
     PreparedValueId source_value_id,
     PreparedRegisterBank destination_bank);
+
+[[nodiscard]] ValueNameId find_prepared_return_chain_terminal_value(
+    const PreparedReturnChainLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    ValueNameId value_name);
 
 [[nodiscard]] const PreparedEdgePublicationSourceProducer*
 find_indexed_prepared_edge_publication_source_producer(
