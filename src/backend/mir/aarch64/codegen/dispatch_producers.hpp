@@ -25,6 +25,11 @@ using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
     const bir::Value& value,
     std::size_t before_instruction_index);
 
+[[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
 [[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
     const module::BlockLoweringContext& context,
     const bir::Value& value,

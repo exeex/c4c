@@ -80,7 +80,7 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
   }
   const auto* select =
       std::get_if<bir::SelectInst>(&context.bir_block->insts[producer->instruction_index]);
-  if (select == nullptr || producer->select == nullptr ||
+  if (select == nullptr || producer->select != select ||
       select->result.kind != bir::Value::Kind::Named ||
       select->result.name != value.name ||
       select->result.type != value.type) {
@@ -109,6 +109,13 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
   }
   return mir::find_same_block_select_producer(
       context.bir_block, value, before_instruction_index);
+}
+
+[[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  return prepared_same_block_select_producer(context, value, before_instruction_index);
 }
 
 [[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
