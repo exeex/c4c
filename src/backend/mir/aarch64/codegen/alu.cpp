@@ -1166,11 +1166,6 @@ find_prepared_load_local_source_producer(
   return reg;
 }
 
-[[nodiscard]] bool value_matches_name(const bir::Value& value,
-                                      std::string_view name) {
-  return value.kind == bir::Value::Kind::Named && value.name == name;
-}
-
 [[nodiscard]] std::optional<RegisterOperand> find_return_chain_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -4051,24 +4046,21 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         }
         if (result_register.has_value() && result_home != nullptr &&
             result_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
-            authoritative_immediate.has_value() && context.bir_block != nullptr &&
-            context.function.prepared != nullptr &&
-            instruction_index + 1 < context.bir_block->insts.size()) {
-          const auto* next_binary =
-              std::get_if<bir::BinaryInst>(&context.bir_block->insts[instruction_index + 1]);
-          const auto current_name =
-              prepare::prepared_value_name(context.function.prepared->names,
-                                           result_home->value_name);
-          const bool next_lhs_consumes =
-              next_binary != nullptr && value_matches_name(next_binary->lhs, current_name);
-          const bool next_rhs_consumes =
-              next_binary != nullptr && value_matches_name(next_binary->rhs, current_name);
-          const bir::Value* other_operand =
-              next_lhs_consumes ? &next_binary->rhs
-                                : (next_rhs_consumes ? &next_binary->lhs : nullptr);
+            authoritative_immediate.has_value() &&
+            context.function.prepared_lookups != nullptr &&
+            context.function.value_locations != nullptr) {
+          const auto next_operand_value_name =
+              prepare::find_prepared_return_chain_next_operand_value(
+                  &context.function.prepared_lookups->return_chains,
+                  context.block_index,
+                  instruction_index,
+                  result_home->value_name);
           const auto* other_home =
-              other_operand != nullptr ? find_named_value_home(*other_operand, context.function)
-                                       : nullptr;
+              prepare::find_indexed_prepared_value_home(
+                  context.function.value_home_lookups,
+                  nullptr,
+                  context.function.value_locations,
+                  next_operand_value_name);
           const auto other_reg =
               other_home != nullptr && other_home->register_name.has_value()
                   ? abi::parse_aarch64_register_name(*other_home->register_name)

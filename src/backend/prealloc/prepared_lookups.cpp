@@ -1389,7 +1389,8 @@ void publish_prepared_return_chain(
     std::size_t block_index,
     std::size_t instruction_index,
     ValueNameId chain_value_name,
-    ValueNameId terminal_value_name) {
+    ValueNameId terminal_value_name,
+    ValueNameId next_operand_value_name) {
   if (chain_value_name == kInvalidValueName ||
       terminal_value_name == kInvalidValueName) {
     return;
@@ -1400,6 +1401,14 @@ void publish_prepared_return_chain(
       lookups.terminal_return_values_by_chain_value.emplace(key, terminal_value_name);
   if (!inserted && it->second != terminal_value_name) {
     it->second = kInvalidValueName;
+  }
+  if (next_operand_value_name == kInvalidValueName) {
+    return;
+  }
+  const auto [next_it, next_inserted] =
+      lookups.next_operand_values_by_chain_value.emplace(key, next_operand_value_name);
+  if (!next_inserted && next_it->second != next_operand_value_name) {
+    next_it->second = kInvalidValueName;
   }
 }
 
@@ -1444,6 +1453,7 @@ void publish_prepared_return_chain(
       }
 
       std::string current_name = binary->result.name;
+      ValueNameId next_operand_value_name = kInvalidValueName;
       bool reaches_return = false;
       for (std::size_t next_index = instruction_index + 1;
            next_index < bir_block->insts.size();
@@ -1462,6 +1472,17 @@ void publish_prepared_return_chain(
             next_binary->result.kind != bir::Value::Kind::Named) {
           break;
         }
+        if (next_index == instruction_index + 1) {
+          const bir::Value& other_operand =
+              prepared_value_matches_name(next_binary->lhs, current_name)
+                  ? next_binary->rhs
+                  : next_binary->lhs;
+          if (const auto other_name =
+                  existing_prepared_value_name_id(prepared.names, other_operand);
+              other_name.has_value()) {
+            next_operand_value_name = *other_name;
+          }
+        }
         current_name = next_binary->result.name;
       }
       reaches_return =
@@ -1471,7 +1492,8 @@ void publish_prepared_return_chain(
                                       block_index,
                                       instruction_index,
                                       *chain_value_name,
-                                      *terminal_value_name);
+                                      *terminal_value_name,
+                                      next_operand_value_name);
       }
     }
   }
@@ -2368,6 +2390,21 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
   const auto it = lookups->terminal_return_values_by_chain_value.find(
       prepared_return_chain_value_key(block_index, instruction_index, value_name));
   return it != lookups->terminal_return_values_by_chain_value.end()
+             ? it->second
+             : kInvalidValueName;
+}
+
+[[nodiscard]] ValueNameId find_prepared_return_chain_next_operand_value(
+    const PreparedReturnChainLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    ValueNameId value_name) {
+  if (lookups == nullptr || value_name == kInvalidValueName) {
+    return kInvalidValueName;
+  }
+  const auto it = lookups->next_operand_values_by_chain_value.find(
+      prepared_return_chain_value_key(block_index, instruction_index, value_name));
+  return it != lookups->next_operand_values_by_chain_value.end()
              ? it->second
              : kInvalidValueName;
 }

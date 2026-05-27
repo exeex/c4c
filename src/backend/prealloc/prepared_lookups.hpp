@@ -90,6 +90,7 @@ struct PreparedMoveBundleLookups {
 
 struct PreparedReturnChainLookups {
   std::unordered_map<std::size_t, ValueNameId> terminal_return_values_by_chain_value;
+  std::unordered_map<std::size_t, ValueNameId> next_operand_values_by_chain_value;
 };
 
 struct PreparedValueHomeLookups {
@@ -637,6 +638,12 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
     PreparedRegisterBank destination_bank);
 
 [[nodiscard]] ValueNameId find_prepared_return_chain_terminal_value(
+    const PreparedReturnChainLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    ValueNameId value_name);
+
+[[nodiscard]] ValueNameId find_prepared_return_chain_next_operand_value(
     const PreparedReturnChainLookups* lookups,
     std::size_t block_index,
     std::size_t instruction_index,
