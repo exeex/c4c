@@ -2042,20 +2042,17 @@ lower_scalar_select_publication(
             *context.function.prepared, *context.function.control_flow);
     source_producers = &*fallback_source_producers;
   }
-  const auto result_value_name = prepared_named_value_id(context, select.result);
-  const auto direct_global_dependency =
+  const auto select_chain_materialization =
       context.control_flow_block != nullptr
-          ? prepare::find_prepared_direct_global_select_chain_dependency(
+          ? prepare::find_prepared_scalar_select_chain_materialization(
                 context.function.prepared->names,
                 source_producers,
                 context.control_flow_block->block_label,
                 context.bir_block,
                 select.result,
                 instruction_index + 1U)
-          : prepare::PreparedDirectGlobalSelectChainDependency{};
-  if (result_value_name.has_value() &&
-      direct_global_dependency.contains_direct_global_load &&
-      direct_global_dependency.root_instruction_index.has_value()) {
+          : prepare::PreparedScalarSelectChainMaterialization{};
+  if (select_chain_materialization.available) {
     const auto scratch = scalar_gp_scratch_register(*result_view, {&result_register});
     if (scratch.has_value()) {
       std::vector<std::string> lines;
@@ -2066,13 +2063,16 @@ lower_scalar_select_publication(
                                               instruction_index + 1U,
                                               result_register.reg.index,
                                               scratch->reg.index,
-                                              *direct_global_dependency.root_instruction_index,
-                                              *result_value_name,
+                                              *select_chain_materialization
+                                                   .direct_global_dependency
+                                                   .root_instruction_index,
+                                              select_chain_materialization.root_value_name,
                                               lines,
                                               label_index,
                                               active_values,
                                               true,
-                                              &direct_global_dependency)) {
+                                              &select_chain_materialization
+                                                   .direct_global_dependency)) {
         const auto publication = scalar_alu_stack_publication_lines(
             ScalarAluRecord{.result_type = select.result.type,
                             .result_stack_offset_bytes = result_stack_offset_bytes,

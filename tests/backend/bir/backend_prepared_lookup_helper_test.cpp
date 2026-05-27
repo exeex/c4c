@@ -2239,6 +2239,17 @@ int verify_direct_global_select_chain_dependency_query() {
       select_dependency.root_instruction_index != std::size_t{1}) {
     return fail("direct-global select-chain query should expose select root facts");
   }
+  const auto select_materialization =
+      prepare::find_prepared_scalar_select_chain_materialization(
+          names, &source_producers, block_label, &block, selected, 3);
+  if (!select_materialization.available ||
+      select_materialization.root_value_name != names.value_names.find(selected.name) ||
+      !select_materialization.direct_global_dependency.contains_direct_global_load ||
+      !select_materialization.direct_global_dependency.root_is_select ||
+      select_materialization.direct_global_dependency.root_instruction_index !=
+          std::size_t{1}) {
+    return fail("scalar select-chain materialization query should expose root authority");
+  }
 
   const auto direct_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -2260,6 +2271,19 @@ int verify_direct_global_select_chain_dependency_query() {
   if (missing_dependency.contains_direct_global_load ||
       missing_dependency.root_instruction_index.has_value()) {
     return fail("direct-global select-chain query should fail closed on missing roots");
+  }
+  const auto missing_materialization =
+      prepare::find_prepared_scalar_select_chain_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%missing"),
+          3);
+  if (missing_materialization.available ||
+      missing_materialization.root_value_name != c4c::kInvalidValueName ||
+      missing_materialization.direct_global_dependency.contains_direct_global_load) {
+    return fail("scalar select-chain materialization query should fail closed");
   }
 
   return 0;

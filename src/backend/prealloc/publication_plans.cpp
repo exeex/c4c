@@ -878,6 +878,40 @@ find_prepared_store_source_direct_global_select_chain_dependency(
       before_instruction_index);
 }
 
+PreparedScalarSelectChainMaterialization
+find_prepared_scalar_select_chain_materialization(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  PreparedScalarSelectChainMaterialization materialization;
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return materialization;
+  }
+  const auto value_name = resolve_prepared_value_name_id(names, value.name);
+  if (!value_name.has_value()) {
+    return materialization;
+  }
+  auto dependency =
+      find_prepared_direct_global_select_chain_dependency(
+          names,
+          source_producers,
+          block_label,
+          block,
+          value,
+          before_instruction_index);
+  if (!dependency.contains_direct_global_load ||
+      !dependency.root_instruction_index.has_value()) {
+    return materialization;
+  }
+  materialization.available = true;
+  materialization.root_value_name = *value_name;
+  materialization.direct_global_dependency = dependency;
+  return materialization;
+}
+
 std::optional<PreparedScalarLoadLocalSourceProducer>
 find_prepared_same_block_load_local_source_producer(
     const PreparedNameTables& names,
