@@ -741,13 +741,16 @@ InstructionDispatchResult dispatch_prepared_block(
           block.instructions.push_back(std::move(*lowered));
           clear_call_clobbered_emitted_scalar_registers(scalar_state);
           if (call_plan != nullptr) {
-            record_call_result_source_register(context, *call_plan, scalar_state);
+            record_call_result_source_register(
+                context, instruction_index, *call_plan, scalar_state);
             auto after_call_moves =
                 lower_after_call_moves(context, *call_plan, instruction_index, diagnostics);
             for (auto& after_call_move : after_call_moves) {
               record_call_boundary_destination(after_call_move, scalar_state);
               block.instructions.push_back(std::move(after_call_move));
             }
+            record_call_result_source_register(
+                context, instruction_index, *call_plan, scalar_state, true);
           }
         }
       } else if (lower_store_local_with_address_materialization(

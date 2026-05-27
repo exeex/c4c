@@ -6104,79 +6104,203 @@ materialize_indirect_call_callee_to_prepared_register(
 
 void record_call_result_source_register(
     const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
     const prepare::PreparedCallPlan& call_plan,
-    BlockScalarLoweringState& scalar_state) {
-  if (!call_plan.result.has_value() ||
+    BlockScalarLoweringState& scalar_state,
+    bool result_lanes_only) {
+  if (result_lanes_only ||
+      !call_plan.result.has_value() ||
       !call_plan.result->destination_value_id.has_value() ||
       !call_plan.result->source_register_name.has_value()) {
-    return;
-  }
-  const auto& result = *call_plan.result;
-  const auto* home = find_value_home(context, *result.destination_value_id);
-  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
-    return;
-  }
-  const auto parsed = abi::parse_aarch64_register_name(*result.source_register_name);
-  if (!parsed.has_value()) {
-    return;
-  }
-
-  prepare::PreparedRegisterClass prepared_class =
-      prepare::PreparedRegisterClass::None;
-  abi::RegisterBank expected_bank = parsed->bank;
-  switch (result.source_register_bank.value_or(prepare::PreparedRegisterBank::None)) {
-    case prepare::PreparedRegisterBank::Gpr:
-      prepared_class = prepare::PreparedRegisterClass::General;
-      expected_bank = abi::RegisterBank::GeneralPurpose;
-      break;
-    case prepare::PreparedRegisterBank::Fpr:
-      prepared_class = prepare::PreparedRegisterClass::Float;
-      expected_bank = abi::RegisterBank::FpSimd;
-      break;
-    case prepare::PreparedRegisterBank::None:
-    case prepare::PreparedRegisterBank::Vreg:
+    if (context.bir_block == nullptr ||
+        instruction_index >= context.bir_block->insts.size()) {
       return;
+    }
+  } else {
+    const auto& result = *call_plan.result;
+    const auto* home = find_value_home(context, *result.destination_value_id);
+    if (home != nullptr && home->value_name != c4c::kInvalidValueName) {
+      const auto parsed = abi::parse_aarch64_register_name(*result.source_register_name);
+      if (parsed.has_value()) {
+        prepare::PreparedRegisterClass prepared_class =
+            prepare::PreparedRegisterClass::None;
+        abi::RegisterBank expected_bank = parsed->bank;
+        switch (result.source_register_bank.value_or(
+            prepare::PreparedRegisterBank::None)) {
+          case prepare::PreparedRegisterBank::Gpr:
+            prepared_class = prepare::PreparedRegisterClass::General;
+            expected_bank = abi::RegisterBank::GeneralPurpose;
+            break;
+          case prepare::PreparedRegisterBank::Fpr:
+            prepared_class = prepare::PreparedRegisterClass::Float;
+            expected_bank = abi::RegisterBank::FpSimd;
+            break;
+          case prepare::PreparedRegisterBank::None:
+          case prepare::PreparedRegisterBank::Vreg:
+            break;
+        }
+        if (prepared_class != prepare::PreparedRegisterClass::None &&
+            parsed->bank == expected_bank) {
+          abi::PreparedRegisterConversionResult converted;
+          if (result.source_register_placement.has_value()) {
+            converted =
+                abi::convert_prepared_register(*result.source_register_placement,
+                                               prepared_class,
+                                               parsed->view);
+          } else {
+            converted =
+                abi::convert_prepared_register(*result.source_register_name,
+                                               result.source_register_bank,
+                                               prepared_class,
+                                               parsed->view);
+          }
+          if (converted.reg.has_value() && converted.reg->bank == expected_bank) {
+            record_emitted_scalar_register(
+                scalar_state,
+                home->value_name,
+                RegisterOperand{
+                    .reg = *converted.reg,
+                    .role = RegisterOperandRole::CallAbi,
+                    .value_id = home->value_id,
+                    .value_name = home->value_name,
+                    .prepared_class = prepared_class,
+                    .prepared_bank = *result.source_register_bank,
+                    .expected_view = converted.reg->view,
+                    .contiguous_width = result.source_contiguous_width,
+                    .occupied_register_references = {*converted.reg},
+                    .occupied_registers =
+                        result.source_occupied_register_names.empty()
+                            ? std::vector<std::string_view>{
+                                  abi::register_name(*converted.reg)}
+                            : std::vector<std::string_view>(
+                                  result.source_occupied_register_names.begin(),
+                                  result.source_occupied_register_names.end()),
+                });
+          }
+        }
+      }
+    }
   }
-  if (parsed->bank != expected_bank) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return;
+  }
+  const auto* call = std::get_if<bir::CallInst>(
+      &context.bir_block->insts[instruction_index]);
+  if (call == nullptr) {
     return;
   }
 
-  abi::PreparedRegisterConversionResult converted;
-  if (result.source_register_placement.has_value()) {
-    converted =
-        abi::convert_prepared_register(*result.source_register_placement,
-                                       prepared_class,
-                                       parsed->view);
-  } else {
-    converted =
-        abi::convert_prepared_register(*result.source_register_name,
-                                       result.source_register_bank,
-                                       prepared_class,
-                                       parsed->view);
+  auto record_lane_binding = [&](const bir::Value& value) {
+    const auto value_name = prepared_named_value_id(context, value);
+    if (!value_name.has_value()) {
+      return;
+    }
+    const auto* home = find_value_home(context, *value_name);
+    if (home == nullptr || home->value_id == prepare::PreparedValueId{0}) {
+      return;
+    }
+    const auto* binding =
+        module::find_prepared_after_call_result_lane_binding(context.function,
+                                                             context.block_index,
+                                                             instruction_index,
+                                                             home->value_id);
+    if (binding == nullptr || binding->abi_binding == nullptr ||
+        binding->abi_binding->destination_kind !=
+            prepare::PreparedMoveDestinationKind::CallResultAbi ||
+        binding->abi_binding->destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::Register) {
+      return;
+    }
+
+    const auto& abi_binding = *binding->abi_binding;
+    std::optional<prepare::PreparedRegisterBank> prepared_bank;
+    std::optional<prepare::PreparedRegisterClass> prepared_class;
+    std::optional<abi::RegisterView> expected_view;
+    if (abi_binding.destination_register_placement.has_value()) {
+      prepared_bank = abi_binding.destination_register_placement->bank;
+      switch (value.type) {
+        case bir::TypeKind::F32:
+          expected_view = abi::RegisterView::S;
+          break;
+        case bir::TypeKind::F64:
+          expected_view = abi::RegisterView::D;
+          break;
+        default:
+          expected_view = scalar_register_view(value.type);
+          break;
+      }
+    } else if (abi_binding.destination_register_name.has_value()) {
+      const auto parsed =
+          abi::parse_aarch64_register_name(*abi_binding.destination_register_name);
+      if (!parsed.has_value()) {
+        return;
+      }
+      prepared_bank = parsed->bank == abi::RegisterBank::FpSimd
+                          ? prepare::PreparedRegisterBank::Fpr
+                          : prepare::PreparedRegisterBank::Gpr;
+      expected_view = parsed->view;
+    } else {
+      return;
+    }
+    switch (*prepared_bank) {
+      case prepare::PreparedRegisterBank::Gpr:
+        prepared_class = prepare::PreparedRegisterClass::General;
+        break;
+      case prepare::PreparedRegisterBank::Fpr:
+        prepared_class = prepare::PreparedRegisterClass::Float;
+        break;
+      case prepare::PreparedRegisterBank::None:
+      case prepare::PreparedRegisterBank::Vreg:
+      case prepare::PreparedRegisterBank::AggregateAddress:
+        return;
+    }
+
+    abi::PreparedRegisterConversionResult converted;
+    if (abi_binding.destination_register_placement.has_value()) {
+      converted =
+          abi::convert_prepared_register(*abi_binding.destination_register_placement,
+                                         prepared_class,
+                                         expected_view);
+    } else {
+      converted =
+          abi::convert_prepared_register(*abi_binding.destination_register_name,
+                                         prepared_bank,
+                                         prepared_class,
+                                         expected_view);
+    }
+    if (!converted.reg.has_value()) {
+      return;
+    }
+    record_emitted_scalar_register(
+        scalar_state,
+        *value_name,
+        RegisterOperand{
+            .reg = *converted.reg,
+            .role = RegisterOperandRole::CallAbi,
+            .value_id = binding->value_id,
+            .value_name = *value_name,
+            .prepared_class = *prepared_class,
+            .prepared_bank = *prepared_bank,
+            .expected_view = converted.reg->view,
+            .contiguous_width = abi_binding.destination_contiguous_width,
+            .occupied_register_references = {*converted.reg},
+            .occupied_registers =
+                abi_binding.destination_occupied_register_names.empty()
+                    ? std::vector<std::string_view>{
+                          abi::register_name(*converted.reg)}
+                    : std::vector<std::string_view>(
+                          abi_binding.destination_occupied_register_names.begin(),
+                          abi_binding.destination_occupied_register_names.end()),
+        });
+  };
+
+  if (!result_lanes_only && call->result.has_value()) {
+    record_lane_binding(*call->result);
   }
-  if (!converted.reg.has_value() || converted.reg->bank != expected_bank) {
-    return;
+  for (const auto& lane : call->result_lanes) {
+    record_lane_binding(lane);
   }
-  record_emitted_scalar_register(
-      scalar_state,
-      home->value_name,
-      RegisterOperand{
-          .reg = *converted.reg,
-          .role = RegisterOperandRole::CallAbi,
-          .value_id = home->value_id,
-          .value_name = home->value_name,
-          .prepared_class = prepared_class,
-          .prepared_bank = *result.source_register_bank,
-          .expected_view = converted.reg->view,
-          .contiguous_width = result.source_contiguous_width,
-          .occupied_register_references = {*converted.reg},
-          .occupied_registers =
-              result.source_occupied_register_names.empty()
-                  ? std::vector<std::string_view>{abi::register_name(*converted.reg)}
-                  : std::vector<std::string_view>(
-                        result.source_occupied_register_names.begin(),
-                        result.source_occupied_register_names.end()),
-      });
 }
 
 void retarget_fpr_call_result_store_value_to_emitted_scalar(

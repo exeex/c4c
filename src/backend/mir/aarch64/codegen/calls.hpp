@@ -97,8 +97,10 @@ materialize_indirect_call_callee_to_prepared_register(
 
 void record_call_result_source_register(
     const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
     const prepare::PreparedCallPlan& call_plan,
-    BlockScalarLoweringState& scalar_state);
+    BlockScalarLoweringState& scalar_state,
+    bool result_lanes_only = false);
 
 void retarget_fpr_call_result_store_value_to_emitted_scalar(
     const module::BlockLoweringContext& context,
