@@ -3958,65 +3958,78 @@ lower_pointer_base_plus_offset_store_local_publication(
 
 namespace {
 
-[[nodiscard]] bool is_store_global_select_snapshot_run_instruction(const bir::Inst& inst) {
-  return std::get_if<bir::SelectInst>(&inst) != nullptr ||
-         std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
-         std::get_if<bir::BinaryInst>(&inst) != nullptr ||
-         std::get_if<bir::CastInst>(&inst) != nullptr ||
-         std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
+[[nodiscard]] const prepare::PreparedAddressingFunction*
+prepared_store_global_addressing(const module::BlockLoweringContext& context) {
+  return context.function.prepared != nullptr &&
+                 context.function.control_flow != nullptr
+             ? prepare::find_prepared_addressing(*context.function.prepared,
+                                                 context.function.control_flow->function_name)
+             : nullptr;
 }
 
 }  // namespace
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_store_global_value_publication_from_plan(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const module::MachineInstruction& lowered_memory,
+    const prepare::PreparedStoreSourcePublicationPlan& plan);
+
 void lower_pending_store_global_stack_value_publications(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    std::unordered_set<c4c::ValueNameId>& published_stack_values,
+    std::unordered_set<c4c::ValueNameId>&,
     module::MachineBlock& block) {
-  if (context.bir_block == nullptr) {
+  const auto* addressing = prepared_store_global_addressing(context);
+  const auto pending_publications =
+      prepare::plan_pending_prepared_store_global_publications(
+          context.function.value_locations,
+          addressing,
+          context.control_flow_block != nullptr
+              ? context.control_flow_block->block_label
+              : c4c::kInvalidBlockLabel,
+          context.bir_block,
+          instruction_index);
+  if (pending_publications.empty()) {
     return;
   }
-  for (std::size_t index = instruction_index; index < context.bir_block->insts.size();
-       ++index) {
-    const auto& candidate = context.bir_block->insts[index];
-    if (!is_store_global_select_snapshot_run_instruction(candidate)) {
-      break;
-    }
-    if (std::get_if<bir::StoreGlobalInst>(&candidate) == nullptr) {
+  for (const auto& pending : pending_publications) {
+    if (!prepare::prepared_store_source_publication_available(pending.store_source)) {
       continue;
     }
+    const auto& candidate = context.bir_block->insts[pending.instruction_index];
     module::ModuleLoweringDiagnostics ignored_diagnostics;
     auto lowered_memory =
-        lower_memory_instruction(context, candidate, index, ignored_diagnostics);
+        lower_memory_instruction(context,
+                                 candidate,
+                                 pending.instruction_index,
+                                 ignored_diagnostics);
     if (!lowered_memory.handled || !lowered_memory.instruction.has_value()) {
       continue;
     }
     if (auto publication =
-            lower_store_global_value_publication(context,
-                                                 candidate,
-                                                 index,
-                                                 *lowered_memory.instruction,
-                                                 &published_stack_values,
-                                                 true)) {
+            lower_store_global_value_publication_from_plan(
+                context,
+                pending.instruction_index,
+                *lowered_memory.instruction,
+                pending.store_source)) {
       block.instructions.push_back(std::move(*publication));
     }
   }
 }
+
 [[nodiscard]] std::optional<module::MachineInstruction>
-lower_store_global_value_publication(
+lower_store_global_value_publication_from_plan(
     const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
     std::size_t instruction_index,
     const module::MachineInstruction& lowered_memory,
-    std::unordered_set<c4c::ValueNameId>* published_stack_values,
-    bool stack_homes_only) {
-  const auto* store = std::get_if<bir::StoreGlobalInst>(&inst);
-  if (store == nullptr || store->value.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-  const auto store_value_name = prepared_named_value_id(context, store->value);
-  if (store_value_name.has_value() && published_stack_values != nullptr &&
-      published_stack_values->find(*store_value_name) != published_stack_values->end()) {
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  if (!prepare::prepared_store_source_publication_available(plan) ||
+      plan.intent !=
+          prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+      plan.duplicate_publication ||
+      plan.source_value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
   const auto* memory_record =
@@ -4030,13 +4043,13 @@ lower_store_global_value_publication(
   }
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   std::vector<std::string> lines;
-  auto value = store->value;
+  auto value = plan.source_value;
   bool emitted = false;
   bool published_stack_home = false;
   if (const auto* target_register =
           std::get_if<RegisterOperand>(&memory_record->value->payload);
       target_register != nullptr) {
-    if (stack_homes_only) {
+    if (plan.stack_homes_only) {
       return std::nullopt;
     }
     if (abi::is_reserved_mir_scratch(target_register->reg) || scratches.empty()) {
@@ -4081,14 +4094,11 @@ lower_store_global_value_publication(
                                                  scratches.front().index,
                                                  scratches[1].index,
                                                  lines,
-                                                 stack_homes_only);
+                                                 plan.stack_homes_only);
     if (emitted) {
       lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
                       ", " + stack_home);
       published_stack_home = true;
-      if (store_value_name.has_value() && published_stack_values != nullptr) {
-        published_stack_values->insert(*store_value_name);
-      }
     }
   }
   if (!emitted || lines.empty()) {
@@ -4147,6 +4157,34 @@ lower_store_global_value_publication(
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_store_global_value_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const module::MachineInstruction& lowered_memory,
+    std::unordered_set<c4c::ValueNameId>*,
+    bool stack_homes_only) {
+  const auto* store = std::get_if<bir::StoreGlobalInst>(&inst);
+  if (store == nullptr) {
+    return std::nullopt;
+  }
+  const auto plan = prepare::plan_prepared_store_global_publication(
+      context.function.value_locations,
+      prepared_store_global_addressing(context),
+      context.control_flow_block != nullptr
+          ? context.control_flow_block->block_label
+          : c4c::kInvalidBlockLabel,
+      *store,
+      instruction_index,
+      false,
+      stack_homes_only);
+  return lower_store_global_value_publication_from_plan(context,
+                                                        instruction_index,
+                                                        lowered_memory,
+                                                        plan);
 }
 
 }  // namespace c4c::backend::aarch64::codegen

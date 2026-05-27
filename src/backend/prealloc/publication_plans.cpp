@@ -57,6 +57,53 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool is_prepared_store_global_publication_run_instruction(
+    const bir::Inst& inst) {
+  return std::get_if<bir::SelectInst>(&inst) != nullptr ||
+         std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
+         std::get_if<bir::BinaryInst>(&inst) != nullptr ||
+         std::get_if<bir::CastInst>(&inst) != nullptr ||
+         std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
+}
+
+[[nodiscard]] const PreparedMemoryAccess* find_publication_memory_access(
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (addressing == nullptr) {
+    return nullptr;
+  }
+  const auto found =
+      std::find_if(addressing->accesses.begin(),
+                   addressing->accesses.end(),
+                   [block_label, instruction_index](const PreparedMemoryAccess& access) {
+                     return access.inst_index == instruction_index &&
+                            (block_label == kInvalidBlockLabel ||
+                             access.block_label == block_label);
+                   });
+  return found != addressing->accesses.end() ? &*found : nullptr;
+}
+
+[[nodiscard]] const PreparedValueHome* find_publication_source_home(
+    const PreparedValueLocationFunction* value_locations,
+    std::optional<ValueNameId> value_name) {
+  if (value_locations == nullptr ||
+      !value_name.has_value() ||
+      *value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const auto found =
+      std::find_if(value_locations->value_homes.begin(),
+                   value_locations->value_homes.end(),
+                   [value_name](const PreparedValueHome& home) {
+                     return home.value_name == *value_name;
+                   });
+  if (found != value_locations->value_homes.end()) {
+    return &*found;
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const PreparedEdgePublicationSourceProducer*
 prepared_select_chain_source_producer(
     const PreparedNameTables& names,
@@ -575,6 +622,69 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   }
 
   return plan;
+}
+
+PreparedStoreSourcePublicationPlan plan_prepared_store_global_publication(
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::StoreGlobalInst& store,
+    std::size_t instruction_index,
+    bool pending_publication,
+    bool stack_homes_only) {
+  const auto* access =
+      find_publication_memory_access(addressing, block_label, instruction_index);
+  const auto* source_home =
+      find_publication_source_home(value_locations,
+                                   access != nullptr ? access->stored_value_name
+                                                     : std::nullopt);
+  const bool duplicate_publication =
+      !pending_publication && source_home != nullptr &&
+      source_home->kind == PreparedValueHomeKind::StackSlot;
+  return plan_prepared_store_source_publication({
+      .source_value = &store.value,
+      .destination_access = access,
+      .source_home = source_home,
+      .intent = PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .pending_publication = pending_publication,
+      .stack_homes_only = stack_homes_only,
+      .duplicate_publication = duplicate_publication,
+  });
+}
+
+std::vector<PreparedStoreGlobalPublicationCandidate>
+plan_pending_prepared_store_global_publications(
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    std::size_t instruction_index) {
+  std::vector<PreparedStoreGlobalPublicationCandidate> candidates;
+  if (block == nullptr) {
+    return candidates;
+  }
+  for (std::size_t index = instruction_index; index < block->insts.size(); ++index) {
+    const auto& candidate = block->insts[index];
+    if (!is_prepared_store_global_publication_run_instruction(candidate)) {
+      break;
+    }
+    const auto* store = std::get_if<bir::StoreGlobalInst>(&candidate);
+    if (store == nullptr) {
+      continue;
+    }
+    candidates.push_back(PreparedStoreGlobalPublicationCandidate{
+        .instruction_index = index,
+        .store_source =
+            plan_prepared_store_global_publication(value_locations,
+                                                   addressing,
+                                                   block_label,
+                                                   *store,
+                                                   index,
+                                                   true,
+                                                   true),
+    });
+  }
+  return candidates;
 }
 
 PreparedFixedFormalStoreSourcePublication

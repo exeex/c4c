@@ -632,6 +632,166 @@ int records_global_pending_publication_flags() {
   return 0;
 }
 
+int plans_pending_global_publication_candidates_from_prepared_state() {
+  const auto selected_name = c4c::ValueNameId{701};
+  const auto tail_name = c4c::ValueNameId{702};
+  const auto global_name = c4c::LinkNameId{17};
+  const bir::Block block{
+      .insts =
+          {bir::SelectInst{
+               .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+               .compare_type = bir::TypeKind::I32,
+               .lhs = bir::Value::immediate_i32(1),
+               .rhs = bir::Value::immediate_i32(1),
+               .true_value = bir::Value::immediate_i32(2),
+               .false_value = bir::Value::immediate_i32(3),
+           },
+           bir::StoreGlobalInst{
+               .global_name_id = global_name,
+               .value = bir::Value::named(bir::TypeKind::I32, "%selected"),
+               .address =
+                   bir::MemoryAddress{
+                       .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .base_link_name_id = global_name,
+                   },
+           },
+           bir::LoadGlobalInst{
+               .result = bir::Value::named(bir::TypeKind::I32, "%old"),
+               .global_name_id = global_name,
+           },
+           bir::StoreGlobalInst{
+               .global_name_id = global_name,
+               .value = bir::Value::named(bir::TypeKind::I32, "%tail"),
+               .byte_offset = 4,
+               .address =
+                   bir::MemoryAddress{
+                       .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                       .byte_offset = 4,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .base_link_name_id = global_name,
+                   },
+           }},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = 17,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{21},
+               .function_name = 17,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{51},
+               .offset_bytes = std::size_t{16},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{22},
+               .function_name = 17,
+               .value_name = tail_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{52},
+               .offset_bytes = std::size_t{20},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           }},
+  };
+  const prepare::PreparedAddressingFunction addressing{
+      .function_name = 17,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = 17,
+               .block_label = 99,
+               .inst_index = 1,
+               .stored_value_name = tail_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 12,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = 17,
+               .block_label = 23,
+               .inst_index = 1,
+               .stored_value_name = selected_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = 17,
+               .block_label = 23,
+               .inst_index = 3,
+               .stored_value_name = tail_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 4,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  };
+
+  const auto pending = prepare::plan_pending_prepared_store_global_publications(
+      &value_locations, &addressing, c4c::BlockLabelId{23}, &block, 1);
+  if (pending.size() != 2 ||
+      pending[0].instruction_index != 1 ||
+      pending[1].instruction_index != 3 ||
+      !pending[0].store_source.pending_publication ||
+      !pending[0].store_source.stack_homes_only ||
+      pending[0].store_source.duplicate_publication ||
+      pending[0].store_source.source_value_name != selected_name ||
+      pending[1].store_source.source_value_name != tail_name) {
+    return fail("expected prepared pending global publication candidates");
+  }
+
+  const auto normal = prepare::plan_prepared_store_global_publication(
+      &value_locations,
+      &addressing,
+      c4c::BlockLabelId{23},
+      *std::get_if<bir::StoreGlobalInst>(&block.insts[1]),
+      1,
+      false,
+      false);
+  if (!prepare::prepared_store_source_publication_available(normal) ||
+      normal.pending_publication ||
+      normal.stack_homes_only ||
+      !normal.duplicate_publication ||
+      normal.source_home_kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return fail("expected prepared duplicate global stack-home publication plan");
+  }
+  const auto wrong_block = prepare::plan_prepared_store_global_publication(
+      &value_locations,
+      &addressing,
+      c4c::BlockLabelId{99},
+      *std::get_if<bir::StoreGlobalInst>(&block.insts[1]),
+      1,
+      false,
+      false);
+  if (!prepare::prepared_store_source_publication_available(wrong_block) ||
+      wrong_block.source_value_name != tail_name ||
+      wrong_block.source_home != &value_locations.value_homes[1]) {
+    return fail("expected store-global publication lookup to honor block label");
+  }
+  return 0;
+}
+
 int rejects_incomplete_inputs() {
   const auto source = bir::Value::named(bir::TypeKind::I64, "%missing_access");
   const auto missing_source = prepare::plan_prepared_store_source_publication({});
@@ -688,6 +848,10 @@ int main() {
     return rc;
   }
   if (int rc = records_global_pending_publication_flags(); rc != 0) {
+    return rc;
+  }
+  if (int rc = plans_pending_global_publication_candidates_from_prepared_state();
+      rc != 0) {
     return rc;
   }
   return rejects_incomplete_inputs();

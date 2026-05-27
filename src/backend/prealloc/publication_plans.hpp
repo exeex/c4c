@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::prepare {
 
@@ -272,12 +273,35 @@ struct PreparedFixedFormalStoreSourcePublication {
   bool fixed_formal_source = false;
 };
 
+struct PreparedStoreGlobalPublicationCandidate {
+  std::size_t instruction_index = 0;
+  PreparedStoreSourcePublicationPlan store_source;
+};
+
 [[nodiscard]] bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);
+
+[[nodiscard]] PreparedStoreSourcePublicationPlan
+plan_prepared_store_global_publication(
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::StoreGlobalInst& store,
+    std::size_t instruction_index,
+    bool pending_publication,
+    bool stack_homes_only);
+
+[[nodiscard]] std::vector<PreparedStoreGlobalPublicationCandidate>
+plan_pending_prepared_store_global_publications(
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    std::size_t instruction_index);
 
 [[nodiscard]] PreparedFixedFormalStoreSourcePublication
 plan_prepared_fixed_formal_store_source_publication(
