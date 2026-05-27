@@ -98,6 +98,36 @@ sources, indirect callee sources, and after-call result registers.
 - Call result publication consumes `PreparedCallResultPlan` or a shared
   after-call result lookup rather than raw after-call move-bundle scans.
 
+## Closure Note
+
+Closed after reviewer route approval in
+`review/idea52-closure-route-review.md` and normalized backend close proof.
+The reviewer judged the implementation to match the source idea, with no
+testcase overfit and no remaining blocking duplicate call authority.
+
+Step 6 acceptance evidence:
+
+- Immediate ABI binding and frame-slot argument move selection consume shared
+  prepared lookup authority rather than local semantic scans.
+- Scalar call-argument and direct-global select-chain materialization consume
+  prepared source-producer authority; retained recursive emission is
+  target-local materialization mechanics.
+- Call-boundary source materialization no longer scans BIR values by prepared
+  spelling.
+- Indirect-callee materialization moved source recovery behind prepared lookup
+  facts instead of local load/store matching in `calls.cpp`.
+- Scalar call-result source publication records from
+  `PreparedCallResultPlan` facts instead of raw after-call move-bundle scans.
+
+Close proof used canonical backend logs for the same command:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Both `test_before.log` and `test_after.log` reported `165/167` passing, with
+the same two known failures:
+`backend_aarch64_instruction_dispatch` and
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`.
+The regression guard passed with `--allow-non-decreasing-passed`, reporting no
+new failures and no pass-count regression.
+
 ## Reviewer Reject Signals
 
 - Reject fallback to raw call operands, callee-name analysis, frame-slot names,
