@@ -1038,6 +1038,150 @@ prepared_same_block_source_producer(
   };
 }
 
+[[nodiscard]] std::optional<std::int64_t> evaluate_prepared_same_block_integer_constant(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  if (depth > 4U ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = existing_prepared_value_name_id(names, value);
+  const auto producer =
+      value_name.has_value()
+          ? prepared_same_block_source_producer(names,
+                                                source_producers,
+                                                block_label,
+                                                block,
+                                                *value_name,
+                                                value.type,
+                                                before_instruction_index)
+          : std::nullopt;
+  if (!producer.has_value() ||
+      producer->producer.kind != PreparedEdgePublicationSourceProducerKind::Binary ||
+      producer->producer.binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto* binary = producer->producer.binary;
+  const auto lhs =
+      evaluate_prepared_same_block_integer_constant(names,
+                                                    source_producers,
+                                                    block_label,
+                                                    block,
+                                                    binary->lhs,
+                                                    producer->instruction_index,
+                                                    depth + 1U);
+  const auto rhs =
+      evaluate_prepared_same_block_integer_constant(names,
+                                                    source_producers,
+                                                    block_label,
+                                                    block,
+                                                    binary->rhs,
+                                                    producer->instruction_index,
+                                                    depth + 1U);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_value = *lhs;
+  const auto rhs_value = *rhs;
+  switch (binary->opcode) {
+    case bir::BinaryOpcode::Add:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) +
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::Sub:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) -
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::Mul:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) *
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::And:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) &
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::Or:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) |
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::Xor:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) ^
+                                       static_cast<std::uint64_t>(rhs_value));
+    case bir::BinaryOpcode::Shl:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value)
+                                       << static_cast<unsigned>(rhs_value));
+    case bir::BinaryOpcode::LShr:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) >>
+                                       static_cast<unsigned>(rhs_value));
+    case bir::BinaryOpcode::AShr:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return lhs_value >> static_cast<unsigned>(rhs_value);
+    case bir::BinaryOpcode::SDiv:
+      return rhs_value != 0 ? std::optional<std::int64_t>{lhs_value / rhs_value}
+                            : std::nullopt;
+    case bir::BinaryOpcode::UDiv:
+      return rhs_value != 0
+                 ? std::optional<std::int64_t>{static_cast<std::int64_t>(
+                       static_cast<std::uint64_t>(lhs_value) /
+                       static_cast<std::uint64_t>(rhs_value))}
+                 : std::nullopt;
+    case bir::BinaryOpcode::SRem:
+      return rhs_value != 0 ? std::optional<std::int64_t>{lhs_value % rhs_value}
+                            : std::nullopt;
+    case bir::BinaryOpcode::URem:
+      return rhs_value != 0
+                 ? std::optional<std::int64_t>{static_cast<std::int64_t>(
+                       static_cast<std::uint64_t>(lhs_value) %
+                       static_cast<std::uint64_t>(rhs_value))}
+                 : std::nullopt;
+    case bir::BinaryOpcode::Eq:
+      return lhs_value == rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Ne:
+      return lhs_value != rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Slt:
+      return lhs_value < rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Sle:
+      return lhs_value <= rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Sgt:
+      return lhs_value > rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Sge:
+      return lhs_value >= rhs_value ? 1 : 0;
+    case bir::BinaryOpcode::Ult:
+      return static_cast<std::uint64_t>(lhs_value) <
+                     static_cast<std::uint64_t>(rhs_value)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Ule:
+      return static_cast<std::uint64_t>(lhs_value) <=
+                     static_cast<std::uint64_t>(rhs_value)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Ugt:
+      return static_cast<std::uint64_t>(lhs_value) >
+                     static_cast<std::uint64_t>(rhs_value)
+                 ? 1
+                 : 0;
+    case bir::BinaryOpcode::Uge:
+      return static_cast<std::uint64_t>(lhs_value) >=
+                     static_cast<std::uint64_t>(rhs_value)
+                 ? 1
+                 : 0;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 [[nodiscard]] std::size_t prepared_call_position_key(std::size_t block_index,
@@ -2439,6 +2583,57 @@ find_prepared_same_block_scalar_producer(
                                             value_name,
                                             value_type,
                                             before_instruction_index);
+}
+
+std::optional<PreparedFusedCompareOperandProducer>
+find_prepared_fused_compare_operand_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return PreparedFusedCompareOperandProducer{
+        .kind = PreparedEdgePublicationSourceProducerKind::Immediate,
+        .integer_constant = value.immediate,
+    };
+  }
+  const auto value_name = existing_prepared_value_name_id(names, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto producer =
+      find_prepared_same_block_scalar_producer(names,
+                                              source_producers,
+                                              block_label,
+                                              block,
+                                              *value_name,
+                                              value.type,
+                                              before_instruction_index);
+  if (!producer.has_value()) {
+    return std::nullopt;
+  }
+  PreparedFusedCompareOperandProducer result{
+      .kind = producer->producer.kind,
+      .instruction = producer->instruction,
+      .instruction_index = producer->instruction_index,
+      .value_name = *value_name,
+      .cast = producer->producer.cast,
+      .load_local = producer->producer.load_local,
+      .load_global = producer->producer.load_global,
+      .binary = producer->producer.binary,
+      .select = producer->producer.select,
+  };
+  result.integer_constant =
+      evaluate_prepared_same_block_integer_constant(names,
+                                                    source_producers,
+                                                    block_label,
+                                                    block,
+                                                    value,
+                                                    before_instruction_index,
+                                                    0U);
+  return result;
 }
 
 std::optional<PreparedSameBlockGlobalLoadAccess>

@@ -237,6 +237,7 @@ prepare::PreparedBirModule prepared_with_i32_sext_i64_fused_compare_branch() {
   const auto else_label = prepared.names.block_labels.intern("sext.cond.else");
   const auto condition_name = prepared.names.value_names.intern("%cond");
   const auto source_name = prepared.names.value_names.intern("%src");
+  prepared.names.value_names.intern("%wide");
   const auto function_link_name =
       prepared.module.names.link_names.intern("sext.cond.fn");
   const auto bir_entry_label =
@@ -344,6 +345,7 @@ prepare::PreparedBirModule prepared_with_i32_sext_i64_constant_udiv_bound_branch
   const auto condition_name = prepared.names.value_names.intern("%cond");
   const auto source_name = prepared.names.value_names.intern("%src");
   const auto bound_name = prepared.names.value_names.intern("%bound");
+  prepared.names.value_names.intern("%wide");
   const auto function_link_name =
       prepared.module.names.link_names.intern("sext.bound.fn");
   const auto bir_entry_label =
