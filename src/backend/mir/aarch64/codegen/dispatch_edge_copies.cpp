@@ -1221,26 +1221,30 @@ lower_predecessor_join_source_publication(
       !move->source_parallel_copy_successor_label.has_value()) {
     return true;
   }
-  if (move->destination_register.has_value() &&
-      context.function.prepared_lookups != nullptr) {
-    const auto* publication =
-        prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
-            &context.function.prepared_lookups->edge_publications,
-            *move->source_parallel_copy_predecessor_label,
-            *move->source_parallel_copy_successor_label,
-            move->move);
-    if (publication != nullptr &&
-        prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
-            *publication, move->source_move)) {
-      return false;
-    }
+  if (context.function.prepared_lookups == nullptr) {
+    return true;
   }
-  if (move->source_register.has_value() &&
-      move->destination_register.has_value() &&
-      registers_alias(*move->source_register, *move->destination_register)) {
+  const auto* publication =
+      prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+          &context.function.prepared_lookups->edge_publications,
+          *move->source_parallel_copy_predecessor_label,
+          *move->source_parallel_copy_successor_label,
+          move->move);
+  if (publication == nullptr) {
+    return true;
+  }
+  if (prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
+          *publication, move->source_move)) {
     return false;
   }
-  if (move->source_memory.has_value()) {
+  if (move->source_move != nullptr &&
+      publication->source_home != nullptr &&
+      publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+      publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
+      prepare::prepared_edge_publication_matches_parallel_copy_move_source(
+          *publication, *move->source_move, *publication->source_home)) {
     return false;
   }
   return true;
@@ -1295,11 +1299,6 @@ lower_predecessor_select_parallel_copy_sources(
         destination_home == nullptr ||
         source_home->value_name == c4c::kInvalidValueName ||
         destination_home->kind != prepare::PreparedValueHomeKind::Register) {
-      continue;
-    }
-    if (!prepared_edge_select_source_is_destination_register(*source_home,
-                                                            *destination_home) &&
-        source_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
       continue;
     }
     if (context.function.prepared_lookups == nullptr) {

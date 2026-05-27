@@ -3,29 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/47_aarch64_dispatch_edge_copies_prepared_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Route load-local source materialization through prepared memory facts
+Current Step ID: Step 4
+Current Step Title: Use prepared move-bundle authority for block-entry edge copies
 
 ## Just Finished
 
-Step 3 routed direct load-local edge source materialization through prepared
-source-memory authority. `emit_edge_load_local_to_register_impl` now validates
-direct prepared edge publications with
-`PreparedEdgePublication::source_memory_*`,
-`PreparedEdgePublicationSourceMemoryAccessStatus`, `PreparedMemoryAccess`, and
-the source `PreparedValueHome`, emits frame-slot/pointer loads from the
-prepared source-memory facts, and fails closed when direct publication memory
-authority is missing instead of using value-home materialization or generic
-publication recovery as a substitute for that missing authority.
+Step 4 routed block-entry edge-copy suppression through prepared
+move-bundle/edge-publication authority. `should_emit_block_entry_edge_copy_move`
+now uses `find_unique_indexed_block_entry_parallel_copy_edge_publication`,
+`prepared_edge_publication_redundant_block_entry_parallel_copy_move`, and
+`prepared_edge_publication_matches_parallel_copy_move_source` instead of local
+same-register or source-memory suppression. `lower_predecessor_select_parallel_copy_sources`
+continues to start from the prepared block-entry move bundle and now relies on
+the edge-publication source-match helper before attempting source
+materialization.
 
-The focused tests now cover direct load-publication emission from prepared
-source memory, fail-closed behavior when the publication source-memory status is
-missing, and prepared lookup exposure of the copied source-memory facts.
+The AArch64 dispatch test now covers a redundant out-of-SSA block-entry
+edge-copy route where prepared edge-publication authority suppresses the move,
+and the same record emits when prepared lookup authority is absent.
 
 ## Suggested Next
 
-Implement Step 4 by routing block-entry edge-copy redundancy and parallel-copy
-source matching through prepared move-bundle and edge-publication authority.
+Implement Step 5 by routing select-chain/direct-global late call-argument
+materialization through the chosen prepared call-plan or shared select-chain
+dependency authority.
 
 ## Watchouts
 
@@ -33,7 +34,9 @@ source matching through prepared move-bundle and edge-publication authority.
 defined/exported, but the repaired source-producer materialization and hazard
 paths no longer call them. Load-local materialization still allows the
 non-direct/null-publication prepared-memory-access route; the direct prepared
-publication route now requires available source-memory authority.
+publication route now requires available source-memory authority. Block-entry
+edge-copy suppression no longer drops same-register or source-memory moves
+without prepared edge-publication authority.
 
 ## Proof
 
