@@ -3,56 +3,56 @@
 Status: Active
 Source Idea Path: ideas/open/57_aarch64_variadic_va_arg_register_save_progression_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair register-save source address ordering
+Current Step ID: Step 3
+Current Step Title: Validate variadic route acceptance
 
 ## Just Finished
 
-Completed Step 2 implementation for aggregate `va_arg` register-save source
-address ordering in `src/backend/mir/aarch64/codegen/variadic.cpp`.
+Classified Step 3 acceptance after the aggregate register-save ordering fix.
+The remaining `00204` stdarg string corruption is outside this packet's owned
+`src/backend/mir/aarch64/codegen/variadic.cpp` route.
 
-The shared aggregate register-save copy helper now accepts an already-loaded
-pre-increment progression offset register. The `RegisterSaveArea` branch loads
-the current `gp_offset`/`fp_offset` with `ldrsw`, computes the advanced value in
-the other scratch register for the overflow decision, uses the sign-extended
-old offset for the current aggregate source address, and stores the advanced
-offset only after the register-save copy. This covers both
-`GpRegisterSaveArea` and `FpRegisterSaveArea` aggregate paths through the shared
-helper. The overflow-area fallback still passes no preloaded offset and keeps
-its pointer-field copy/update behavior.
+The failing string-aggregate cases in `myprintf` are already expanded in
+prepared BIR as inline `vaarg.regtry`/`vaarg.reg`/`vaarg.stack` CFG, not as
+`MachineOpcode::VariadicVaArgScalar` printed by `variadic.cpp`. The prepared
+BIR for the first string case computes `%t20 = %lv.ap.8 + sext(%t10)`, where
+`%t10` is the old `gp_offset`, but the generated AArch64 register-save path
+loads `[x21, #24]` again after storing the advanced `gp_offset` and therefore
+uses the post-increment offset as the source address. That is the same semantic
+ordering fault, but its owner is the lowered inline va_arg/edge-publication
+route for string aggregates, not the variadic scalar helper printer owned by
+this packet.
 
 ## Suggested Next
 
-Classify the remaining `00204` stdarg string corruption after the aggregate
-register-save ordering fix. The generated aggregate HFA register-save paths now
-use the old sign-extended offset before storing the advanced offset, while the
-focused proof still fails in the string-pointer stdarg output, so the next
-packet should inspect the non-aggregate variadic string/pointer route rather
-than reworking aggregate HFA copy ordering.
+Delegate a packet owning the inline va_arg lowering/publication path that turns
+the prepared BIR string-aggregate `vaarg.reg` source into AArch64, with focus on
+preserving the old `gp_offset` carrier across the store of the advanced
+`gp_offset`.
 
 ## Watchouts
 
-The register-save offset must remain sign-extended in the X register; preserving
-only the W register would turn negative AAPCS64 offsets into zero-extended
-addresses. The helper still shares `address_scratch` for source-address
-formation and destination-address fallback materialization, so broad acceptance
-should keep an eye on unusually large destination offsets, even though the
-current aggregate register-save lane offsets are small.
+Do not rework aggregate HFA helper ordering for this symptom: generated HFA
+aggregate helper paths now use `ldrsw` old-offset address formation before
+storing the advanced `fp_offset`. For the string case, the bad assembly appears
+around `myprintf` block `.LBB154_19`: it stores the advanced `[x21, #24]`, then
+reloads `[x21, #24]` for the register-save source address. The BIR source for
+that case expected the old `%t10` offset.
 
-Treat existing dirty `memory.cpp`, `dispatch_edge_copies.cpp`, and transient
+Treat existing dirty `src/backend/mir/aarch64/codegen/memory.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`, and transient
 `review/*` files as external context.
 
 ## Proof
 
-Ran the delegated proof:
+Ran the delegated proof command and preserved output in `test_after.log`:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_pointer_select_aggregate_byte_copy|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy|backend_codegen_route_aarch64_alu_unpublished_load_local_(after_call|call_boundary)|c_testsuite_aarch64_backend_src_00164_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00204_c)$'
 ```
 
-Result: build passed, focused subset `7/8` passed, and only
-`c_testsuite_aarch64_backend_src_00204_c` failed with `[RUNTIME_MISMATCH]`.
-Generated `00204.c.s` confirms the aggregate register-save path now emits
-`ldrsw x10, [x21, #28]`, uses `x10` in the source address before the copy, and
-stores the advanced offset after the copy.
+Result: build passed (`ninja: no work to do`), focused subset `7/8` passed, and
+only `c_testsuite_aarch64_backend_src_00204_c` failed with
+`[RUNTIME_MISMATCH]`. This proof is sufficient for classification but blocked
+for acceptance because the remaining owner is outside the packet's owned files.
 Proof log path: `test_after.log`.
