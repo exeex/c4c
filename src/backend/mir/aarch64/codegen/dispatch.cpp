@@ -50,18 +50,6 @@ namespace prepare = c4c::backend::prepare;
 
 constexpr std::size_t kStackPointerAlignmentBytes = 16;
 
-[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.function.prepared == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return std::nullopt;
-  }
-  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
-                                                 value.name);
-}
-
 [[nodiscard]] std::optional<bir::Value> instruction_result_value(
     const bir::Inst& inst) {
   return std::visit(
@@ -193,15 +181,7 @@ void append_unsupported_instruction_diagnostic(
       result_value->name.empty()) {
     return false;
   }
-  const auto result_value_name = prepared_named_value_id(context, *result_value);
-  if (!result_value_name.has_value()) {
-    return false;
-  }
-  const auto* result_home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *result_value_name);
+  const auto* result_home = prepared_value_home_for_value(context, *result_value);
   return result_home != nullptr &&
          result_home->kind == prepare::PreparedValueHomeKind::StackSlot;
 }
