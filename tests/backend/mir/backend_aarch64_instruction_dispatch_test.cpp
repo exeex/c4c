@@ -10664,6 +10664,20 @@ prepare::PreparedBirModule prepared_with_selected_global_load_fused_branch() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_rhs_selected_global_load_fused_branch() {
+  auto prepared = prepared_with_selected_global_load_fused_branch();
+  auto& block = prepared.module.functions.front().blocks.front();
+  auto* compare = std::get_if<bir::BinaryInst>(&block.insts.back());
+  if (compare != nullptr) {
+    compare->lhs = bir::Value::named(bir::TypeKind::I32, "%pivot");
+    compare->rhs = bir::Value::named(bir::TypeKind::I32, "%selected.load");
+  }
+  auto& branch_condition = prepared.control_flow.functions.front().branch_conditions.back();
+  branch_condition.lhs = bir::Value::named(bir::TypeKind::I32, "%pivot");
+  branch_condition.rhs = bir::Value::named(bir::TypeKind::I32, "%selected.load");
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f64_select_global_call_argument() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -30965,6 +30979,21 @@ int selected_local_store_materializes_binary_snapshot_value_before_writeback() {
   return 0;
 }
 
+std::optional<std::string> first_operand_after_last_mnemonic(
+    const std::string& assembly,
+    std::string_view mnemonic);
+
+std::optional<std::array<std::string, 2>> first_two_operands_after_mnemonic(
+    const std::string& assembly,
+    std::string_view mnemonic,
+    std::size_t after_position);
+
+std::optional<std::string> selected_materialization_result_register(
+    const aarch64_codegen::AssemblerInstructionRecord& publication);
+
+const aarch64_codegen::AssemblerInstructionRecord* find_select_materialization_publication(
+    const aarch64_module::MachineBlock& block);
+
 int selected_global_load_materializes_before_fused_compare_branch() {
   auto prepared = prepared_with_selected_global_load_fused_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -30997,15 +31026,88 @@ int selected_global_load_materializes_before_fused_compare_branch() {
                 printed.diagnostic);
   }
   const auto select_publication = printed.assembly.find(".Lselect_mat_");
-  const auto branch_compare = printed.assembly.find("cmp w10, w9", select_publication);
-  const auto branch = printed.assembly.find("b.lt ", branch_compare);
-  const auto stale_home_reload = printed.assembly.find("ldr w10, [sp, #16]", select_publication);
+  const auto branch = printed.assembly.find("b.lt ", select_publication);
+  const auto branch_compare =
+      branch != std::string::npos ? printed.assembly.rfind("cmp ", branch)
+                                  : std::string::npos;
+  const auto branch_compare_operands =
+      branch_compare != std::string::npos
+          ? first_two_operands_after_mnemonic(printed.assembly, "cmp", branch_compare)
+          : std::nullopt;
+  const auto selected_home_reload = printed.assembly.find("[sp, #16]", select_publication);
+  const auto* publication = find_select_materialization_publication(block);
+  const auto selected_register =
+      publication != nullptr && publication->has_inline_asm_payload
+          ? selected_materialization_result_register(*publication)
+          : std::nullopt;
   if (select_publication == std::string::npos ||
+      selected_register == std::nullopt ||
+      branch_compare_operands == std::nullopt ||
+      branch_compare_operands->at(0) != *selected_register ||
+      branch_compare_operands->at(1) == *selected_register ||
       branch_compare == std::string::npos ||
       branch == std::string::npos ||
-      (stale_home_reload != std::string::npos &&
-       stale_home_reload < branch_compare)) {
-    return fail("expected fused branch to compare the materialized selected global load, not reload its stale stack home: " +
+      (selected_home_reload != std::string::npos &&
+       selected_home_reload < branch_compare)) {
+    return fail("expected fused branch to compare the materialized selected global load as the lhs operand, not reload its stale stack home: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int rhs_selected_global_load_materializes_before_fused_compare_branch() {
+  auto prepared = prepared_with_rhs_selected_global_load_fused_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() > 2 || !result.visited_terminator ||
+      block.instructions.size() < 3) {
+    return fail("expected rhs selected global load to publish before fused branch: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected rhs selected global load branch route to print: " +
+                printed.diagnostic);
+  }
+  const auto select_publication = printed.assembly.find(".Lselect_mat_");
+  const auto branch = printed.assembly.find("b.lt ", select_publication);
+  const auto branch_compare =
+      branch != std::string::npos ? printed.assembly.rfind("cmp ", branch)
+                                  : std::string::npos;
+  const auto branch_compare_operands =
+      branch_compare != std::string::npos
+          ? first_two_operands_after_mnemonic(printed.assembly, "cmp", branch_compare)
+          : std::nullopt;
+  const auto* publication = find_select_materialization_publication(block);
+  const auto selected_register =
+      publication != nullptr && publication->has_inline_asm_payload
+          ? selected_materialization_result_register(*publication)
+          : std::nullopt;
+  if (select_publication == std::string::npos ||
+      selected_register == std::nullopt ||
+      branch_compare_operands == std::nullopt ||
+      branch_compare_operands->at(0) == *selected_register ||
+      branch_compare_operands->at(1) != *selected_register ||
+      branch_compare == std::string::npos ||
+      branch == std::string::npos) {
+    return fail("expected fused branch to compare the materialized selected global load as the rhs operand: " +
                 printed.assembly);
   }
   return 0;
@@ -31266,6 +31368,87 @@ std::optional<std::string> first_operand_after_mnemonic(const std::string& assem
     return std::nullopt;
   }
   return assembly.substr(operand_begin, operand_end - operand_begin);
+}
+
+std::optional<std::string> first_operand_after_last_mnemonic(
+    const std::string& assembly,
+    std::string_view mnemonic) {
+  std::string needle = "    " + std::string{mnemonic} + " ";
+  auto position = assembly.rfind(needle);
+  if (position == std::string::npos) {
+    needle = std::string{mnemonic} + " ";
+    position = assembly.rfind(needle);
+  }
+  if (position == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto operand_begin = position + needle.size();
+  const auto operand_end = assembly.find(',', operand_begin);
+  if (operand_end == std::string::npos) {
+    return std::nullopt;
+  }
+  return assembly.substr(operand_begin, operand_end - operand_begin);
+}
+
+std::string trim_operand(std::string operand) {
+  const auto begin = operand.find_first_not_of(' ');
+  if (begin == std::string::npos) {
+    return {};
+  }
+  const auto end = operand.find_last_not_of(' ');
+  return operand.substr(begin, end - begin + 1U);
+}
+
+std::optional<std::array<std::string, 2>> first_two_operands_after_mnemonic(
+    const std::string& assembly,
+    std::string_view mnemonic,
+    std::size_t after_position) {
+  std::string needle = "    " + std::string{mnemonic} + " ";
+  auto position = assembly.find(needle, after_position);
+  if (position == std::string::npos) {
+    needle = std::string{mnemonic} + " ";
+    position = assembly.find(needle, after_position);
+  }
+  if (position == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto first_begin = position + needle.size();
+  const auto first_end = assembly.find(',', first_begin);
+  if (first_end == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto second_begin = first_end + 1U;
+  auto second_end = assembly.find('\n', second_begin);
+  if (second_end == std::string::npos) {
+    second_end = assembly.size();
+  }
+  return std::array<std::string, 2>{
+      trim_operand(assembly.substr(first_begin, first_end - first_begin)),
+      trim_operand(assembly.substr(second_begin, second_end - second_begin))};
+}
+
+std::optional<std::string> selected_materialization_result_register(
+    const aarch64_codegen::AssemblerInstructionRecord& publication) {
+  if (auto selected =
+          first_operand_after_last_mnemonic(publication.inline_asm_template, "csel");
+      selected.has_value()) {
+    return selected;
+  }
+  return first_operand_after_last_mnemonic(publication.inline_asm_template, "ldr");
+}
+
+const aarch64_codegen::AssemblerInstructionRecord* find_select_materialization_publication(
+    const aarch64_module::MachineBlock& block) {
+  for (const auto& instruction : block.instructions) {
+    const auto* assembler =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+            &instruction.target.payload);
+    if (assembler != nullptr && assembler->has_inline_asm_payload &&
+        assembler->inline_asm_template.find(".Lselect_mat_") != std::string::npos) {
+      return assembler;
+    }
+  }
+  return nullptr;
 }
 
 bool store_uses_register_after(const std::string& assembly,
@@ -32177,6 +32360,11 @@ int main() {
   }
   if (const int status =
           selected_global_load_materializes_before_fused_compare_branch();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          rhs_selected_global_load_materializes_before_fused_compare_branch();
       status != 0) {
     return status;
   }

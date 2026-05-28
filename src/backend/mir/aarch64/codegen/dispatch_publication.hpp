@@ -149,7 +149,8 @@ lower_missing_fused_compare_operand_publication(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics);
+    module::ModuleLoweringDiagnostics& diagnostics,
+    std::optional<std::uint8_t> preferred_target_index = std::nullopt);
 
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_missing_fused_compare_operand_publications(
