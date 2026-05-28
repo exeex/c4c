@@ -51,6 +51,19 @@ authority is already elsewhere.
   the affected lookup and publication-result paths. Escalate to a broader
   regression guard if public headers are removed.
 
+## Closure Note
+
+Closed after the active runbook removed the mechanical public dispatch lookup,
+producer, and publication-result forwarding helpers from the AArch64
+dispatch-family surface. Remaining dispatch lookup exports were explicitly
+identified as carrying AArch64 register/home or scalar-producer policy and are
+not part of this mechanical fold-back idea.
+
+Close proof:
+- Backend guard: `test_before.log` vs `test_after.log`, both 169/169 passing,
+  accepted with non-decreasing mode for this mechanical refactor slice.
+- Full after-check: `/tmp/c4c_step5_full_ctest.log`, 3417/3417 passing.
+
 ## Reviewer Reject Signals
 
 - New semantic lookup policy appears in AArch64 dispatch code while claiming
