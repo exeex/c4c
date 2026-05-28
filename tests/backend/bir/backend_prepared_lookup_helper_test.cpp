@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -1312,6 +1313,120 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   if (!prepare::prepared_edge_publication_matches_parallel_copy_move_source(
           *stack, *stack_move, locations.value_homes[7])) {
     return fail("edge publication should match its stack-source prepared move");
+  }
+  const auto named_facts = prepare::prepare_edge_copy_source_facts(
+      &lookups, predecessor_label, successor_label, named_destination_id);
+  if (named_facts.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      named_facts.publication != named ||
+      named_facts.source_value_id != source_id ||
+      named_facts.source_home != &locations.value_homes[0] ||
+      named_facts.destination_home != &locations.value_homes[1] ||
+      named_facts.source_memory_access_status !=
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable) {
+    return fail("edge source fact query should expose complete named source facts");
+  }
+  const auto immediate_facts = prepare::prepare_block_entry_parallel_copy_edge_source_facts(
+      &lookups,
+      predecessor_label,
+      successor_label,
+      locations.move_bundles.front().moves[1]);
+  if (immediate_facts.status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      immediate_facts.publication != immediate ||
+      immediate_facts.source_value_kind != bir::Value::Kind::Immediate ||
+      immediate_facts.source_home != nullptr ||
+      immediate_facts.move != &locations.move_bundles.front().moves[1]) {
+    return fail("edge source fact query should expose complete immediate move facts");
+  }
+  const auto missing_home_facts = prepare::prepare_edge_copy_source_facts(
+      &lookups, predecessor_label, successor_label, missing_destination_id);
+  if (missing_home_facts.status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceValue ||
+      missing_home_facts.publication != missing ||
+      missing_home_facts.source_value_name != missing_source_name) {
+    return fail("edge source fact query should fail closed for missing source values");
+  }
+  auto facts_mismatched_edge_move = locations.move_bundles.front().moves[0];
+  facts_mismatched_edge_move.source_parallel_copy_successor_label = predecessor_label;
+  if (prepare::prepare_block_entry_parallel_copy_edge_source_facts(
+          &lookups, predecessor_label, successor_label, facts_mismatched_edge_move)
+          .status != prepare::PreparedEdgeCopySourceFactsStatus::MoveEdgeMismatch) {
+    return fail("edge source fact query should diagnose mismatched move edge labels");
+  }
+  auto copied_named_move = locations.move_bundles.front().moves[0];
+  if (prepare::prepare_block_entry_parallel_copy_edge_source_facts(
+          &lookups, predecessor_label, successor_label, copied_named_move)
+          .status !=
+      prepare::PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch) {
+    return fail("edge source fact query should require exact prepared move identity");
+  }
+  prepare::PreparedEdgePublication unavailable_publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::MissingDestinationHome,
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = prepare::PreparedValueId{900},
+  };
+  prepare::PreparedEdgePublication missing_source_home_publication = *named;
+  missing_source_home_publication.destination_value_id = prepare::PreparedValueId{902};
+  missing_source_home_publication.source_home = nullptr;
+  missing_source_home_publication.source_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedEdgePublication ambiguous_a = *named;
+  prepare::PreparedEdgePublication ambiguous_b = *named;
+  ambiguous_a.destination_value_id = prepare::PreparedValueId{901};
+  ambiguous_b.destination_value_id = prepare::PreparedValueId{901};
+  prepare::PreparedEdgePublicationLookups manual_lookups;
+  manual_lookups.publications_by_edge_destination.emplace(
+      prepare::prepared_edge_publication_key(
+          predecessor_label, successor_label, prepare::PreparedValueId{900}),
+      std::vector<const prepare::PreparedEdgePublication*>{&unavailable_publication});
+  manual_lookups.publications_by_edge_destination.emplace(
+      prepare::prepared_edge_publication_key(
+          predecessor_label, successor_label, prepare::PreparedValueId{901}),
+      std::vector<const prepare::PreparedEdgePublication*>{
+          &ambiguous_a,
+          &ambiguous_b,
+      });
+  manual_lookups.publications_by_edge_destination.emplace(
+      prepare::prepared_edge_publication_key(
+          predecessor_label, successor_label, prepare::PreparedValueId{902}),
+      std::vector<const prepare::PreparedEdgePublication*>{
+          &missing_source_home_publication,
+      });
+  if (prepare::prepare_edge_copy_source_facts(
+          nullptr, predecessor_label, successor_label, named_destination_id)
+          .status !=
+      prepare::PreparedEdgeCopySourceFactsStatus::MissingPreparedLookups) {
+    return fail("edge source fact query should diagnose missing prepared lookups");
+  }
+  if (prepare::prepare_edge_copy_source_facts(
+          &lookups, predecessor_label, successor_label, prepare::PreparedValueId{777})
+          .status != prepare::PreparedEdgeCopySourceFactsStatus::MissingPublication) {
+    return fail("edge source fact query should diagnose missing publications");
+  }
+  if (prepare::prepare_edge_copy_source_facts(
+          &manual_lookups,
+          predecessor_label,
+          successor_label,
+          prepare::PreparedValueId{900})
+          .status != prepare::PreparedEdgeCopySourceFactsStatus::PublicationUnavailable) {
+    return fail("edge source fact query should diagnose unavailable publications");
+  }
+  if (prepare::prepare_edge_copy_source_facts(
+          &manual_lookups,
+          predecessor_label,
+          successor_label,
+          prepare::PreparedValueId{901})
+          .status != prepare::PreparedEdgeCopySourceFactsStatus::AmbiguousPublication) {
+    return fail("edge source fact query should diagnose ambiguous publications");
+  }
+  if (prepare::prepare_edge_copy_source_facts(
+          &manual_lookups,
+          predecessor_label,
+          successor_label,
+          prepare::PreparedValueId{902})
+          .status != prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceHome) {
+    return fail("edge source fact query should diagnose missing source homes");
   }
 
   return 0;

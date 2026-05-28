@@ -2861,6 +2861,169 @@ find_indexed_prepared_edge_publications(
   return publications->front();
 }
 
+namespace {
+
+[[nodiscard]] bool prepared_edge_publication_has_producer_pointer(
+    const PreparedEdgePublication& publication) {
+  switch (publication.source_producer_kind) {
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+      return true;
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return publication.source_load_local != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return publication.source_load_global != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return publication.source_cast != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return publication.source_binary != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return publication.source_select != nullptr;
+  }
+  return false;
+}
+
+void copy_prepared_edge_copy_source_fact_fields(
+    PreparedEdgeCopySourceFacts& facts,
+    const PreparedEdgePublication& publication) {
+  facts.publication = &publication;
+  facts.predecessor_label = publication.predecessor_label;
+  facts.successor_label = publication.successor_label;
+  facts.destination_value_id = publication.destination_value_id;
+  facts.move = publication.move;
+  facts.destination_value = publication.destination_value;
+  facts.source_value = publication.source_value;
+  facts.resolved_destination_value_id = publication.destination_value_id;
+  facts.destination_value_name = publication.destination_value_name;
+  facts.source_value_id = publication.source_value_id;
+  facts.source_value_name = publication.source_value_name;
+  facts.source_value_kind = publication.source_value_kind;
+  facts.source_home = publication.source_home;
+  facts.source_home_kind = publication.source_home_kind;
+  facts.destination_home = publication.destination_home;
+  facts.destination_home_kind = publication.destination_home_kind;
+  facts.destination_storage_kind = publication.destination_storage_kind;
+  facts.source_producer_kind = publication.source_producer_kind;
+  facts.source_producer_block_label = publication.source_producer_block_label;
+  facts.source_producer_instruction_index =
+      publication.source_producer_instruction_index;
+  facts.source_load_local = publication.source_load_local;
+  facts.source_load_global = publication.source_load_global;
+  facts.source_cast = publication.source_cast;
+  facts.source_binary = publication.source_binary;
+  facts.source_select = publication.source_select;
+  facts.source_memory_access_status = publication.source_memory_access_status;
+  facts.source_memory_access = publication.source_memory_access;
+  facts.source_memory_base_kind = publication.source_memory_base_kind;
+  facts.source_memory_frame_slot_id = publication.source_memory_frame_slot_id;
+  facts.source_memory_symbol_name = publication.source_memory_symbol_name;
+  facts.source_memory_pointer_value_name =
+      publication.source_memory_pointer_value_name;
+  facts.source_memory_byte_offset = publication.source_memory_byte_offset;
+  facts.source_memory_size_bytes = publication.source_memory_size_bytes;
+  facts.source_memory_align_bytes = publication.source_memory_align_bytes;
+  facts.source_memory_address_space = publication.source_memory_address_space;
+  facts.source_memory_is_volatile = publication.source_memory_is_volatile;
+  facts.source_memory_can_use_base_plus_offset =
+      publication.source_memory_can_use_base_plus_offset;
+  facts.source_memory_requires_address_materialization =
+      publication.source_memory_requires_address_materialization;
+}
+
+[[nodiscard]] PreparedEdgeCopySourceFactsStatus
+validate_prepared_edge_copy_publication_source_facts(
+    const PreparedEdgePublication& publication) {
+  if (publication.status != PreparedEdgePublicationLookupStatus::Available) {
+    return PreparedEdgeCopySourceFactsStatus::PublicationUnavailable;
+  }
+  if (publication.source_value_kind == bir::Value::Kind::Named &&
+      (publication.source_value_name == kInvalidValueName ||
+       !publication.source_value_id.has_value())) {
+    return PreparedEdgeCopySourceFactsStatus::MissingSourceValue;
+  }
+  if (publication.source_value_kind == bir::Value::Kind::Named &&
+      publication.source_home == nullptr) {
+    return PreparedEdgeCopySourceFactsStatus::MissingSourceHome;
+  }
+  if (publication.source_producer_kind !=
+          PreparedEdgePublicationSourceProducerKind::Unknown &&
+      publication.source_producer_kind !=
+          PreparedEdgePublicationSourceProducerKind::Immediate &&
+      (!publication.source_producer_block_label.has_value() ||
+       !publication.source_producer_instruction_index.has_value() ||
+       !prepared_edge_publication_has_producer_pointer(publication))) {
+    return PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+  }
+  if (publication.source_producer_kind ==
+          PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+      publication.source_memory_access_status ==
+          PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess) {
+    return PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess;
+  }
+  if (publication.source_producer_kind ==
+          PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+      publication.source_memory_access_status ==
+          PreparedEdgePublicationSourceMemoryAccessStatus::IncompletePreparedMemoryAccess) {
+    return PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess;
+  }
+  return PreparedEdgeCopySourceFactsStatus::Available;
+}
+
+}  // namespace
+
+[[nodiscard]] PreparedEdgeCopySourceFacts prepare_edge_copy_source_facts(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id) {
+  PreparedEdgeCopySourceFacts facts{
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = destination_value_id,
+  };
+  if (lookups == nullptr) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingPreparedLookups;
+    return facts;
+  }
+  if (predecessor_label == kInvalidBlockLabel) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel;
+    return facts;
+  }
+  if (successor_label == kInvalidBlockLabel) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel;
+    return facts;
+  }
+  if (destination_value_id == PreparedValueId{0}) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingDestinationValue;
+    return facts;
+  }
+  const auto* publications = find_indexed_prepared_edge_publications(
+      lookups, predecessor_label, successor_label, destination_value_id);
+  if (publications == nullptr || publications->empty()) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingPublication;
+    return facts;
+  }
+  if (publications->size() != 1) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::AmbiguousPublication;
+    return facts;
+  }
+  const auto* publication = publications->front();
+  if (publication == nullptr) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingPublication;
+    return facts;
+  }
+  copy_prepared_edge_copy_source_fact_fields(facts, *publication);
+  if (publication->predecessor_label != predecessor_label ||
+      publication->successor_label != successor_label ||
+      publication->destination_value_id != destination_value_id) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::EdgeMismatch;
+    return facts;
+  }
+  facts.status =
+      validate_prepared_edge_copy_publication_source_facts(*publication);
+  return facts;
+}
+
 [[nodiscard]] const PreparedEdgePublication*
 find_unique_indexed_block_entry_parallel_copy_edge_publication(
     const PreparedEdgePublicationLookups* lookups,
@@ -2892,6 +3055,68 @@ find_unique_indexed_block_entry_parallel_copy_edge_publication(
     return nullptr;
   }
   return publication;
+}
+
+[[nodiscard]] PreparedEdgeCopySourceFacts
+prepare_block_entry_parallel_copy_edge_source_facts(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    const PreparedMoveResolution& move) {
+  PreparedEdgeCopySourceFacts facts{
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = move.to_value_id,
+      .move = &move,
+  };
+  if (predecessor_label == kInvalidBlockLabel) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel;
+    return facts;
+  }
+  if (successor_label == kInvalidBlockLabel) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel;
+    return facts;
+  }
+  if (move.destination_kind != PreparedMoveDestinationKind::Value ||
+      move.op_kind != PreparedMoveResolutionOpKind::Move) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::UnsupportedMove;
+    return facts;
+  }
+  if ((move.source_parallel_copy_predecessor_label.has_value() &&
+       *move.source_parallel_copy_predecessor_label != predecessor_label) ||
+      (move.source_parallel_copy_successor_label.has_value() &&
+       *move.source_parallel_copy_successor_label != successor_label)) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::MoveEdgeMismatch;
+    return facts;
+  }
+
+  facts = prepare_edge_copy_source_facts(
+      lookups, predecessor_label, successor_label, move.to_value_id);
+  facts.move = &move;
+  if (facts.status != PreparedEdgeCopySourceFactsStatus::Available) {
+    return facts;
+  }
+  if (facts.publication == nullptr ||
+      facts.publication->phase != PreparedMovePhase::BlockEntry) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::PublicationUnavailable;
+    return facts;
+  }
+  if (facts.publication->move != &move) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch;
+    return facts;
+  }
+  if (move.source_immediate_i32.has_value()) {
+    if (facts.source_value_kind != bir::Value::Kind::Immediate ||
+        facts.source_value.immediate != *move.source_immediate_i32) {
+      facts.status = PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch;
+    }
+    return facts;
+  }
+  if (!facts.source_value_id.has_value() ||
+      *facts.source_value_id != move.from_value_id) {
+    facts.status = PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch;
+  }
+  return facts;
 }
 
 [[nodiscard]] const PreparedCallPreservedValue*

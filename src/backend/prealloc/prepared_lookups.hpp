@@ -161,6 +161,67 @@ prepared_edge_publication_source_memory_access_status_name(
   return "unknown";
 }
 
+enum class PreparedEdgeCopySourceFactsStatus {
+  Available,
+  MissingPreparedLookups,
+  MissingPredecessorLabel,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingPublication,
+  AmbiguousPublication,
+  PublicationUnavailable,
+  EdgeMismatch,
+  UnsupportedMove,
+  MoveEdgeMismatch,
+  PublicationMoveMismatch,
+  MissingSourceValue,
+  MissingSourceHome,
+  MissingSourceProducer,
+  MissingSourceMemoryAccess,
+  IncompleteSourceMemoryAccess,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_edge_copy_source_facts_status_name(
+    PreparedEdgeCopySourceFactsStatus status) {
+  switch (status) {
+    case PreparedEdgeCopySourceFactsStatus::Available:
+      return "available";
+    case PreparedEdgeCopySourceFactsStatus::MissingPreparedLookups:
+      return "missing_prepared_lookups";
+    case PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel:
+      return "missing_predecessor_label";
+    case PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
+    case PreparedEdgeCopySourceFactsStatus::MissingDestinationValue:
+      return "missing_destination_value";
+    case PreparedEdgeCopySourceFactsStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedEdgeCopySourceFactsStatus::AmbiguousPublication:
+      return "ambiguous_publication";
+    case PreparedEdgeCopySourceFactsStatus::PublicationUnavailable:
+      return "publication_unavailable";
+    case PreparedEdgeCopySourceFactsStatus::EdgeMismatch:
+      return "edge_mismatch";
+    case PreparedEdgeCopySourceFactsStatus::UnsupportedMove:
+      return "unsupported_move";
+    case PreparedEdgeCopySourceFactsStatus::MoveEdgeMismatch:
+      return "move_edge_mismatch";
+    case PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch:
+      return "publication_move_mismatch";
+    case PreparedEdgeCopySourceFactsStatus::MissingSourceValue:
+      return "missing_source_value";
+    case PreparedEdgeCopySourceFactsStatus::MissingSourceHome:
+      return "missing_source_home";
+    case PreparedEdgeCopySourceFactsStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
+      return "missing_source_memory_access";
+    case PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
+      return "incomplete_source_memory_access";
+  }
+  return "unknown";
+}
+
 enum class PreparedAggregateStackSourceAuthorityStatus {
   Unavailable,
   Available,
@@ -351,6 +412,51 @@ struct PreparedEdgePublicationLookups {
                      std::vector<const PreparedEdgePublication*>,
                      PreparedEdgePublicationKeyHash>
       publications_by_edge_destination;
+};
+
+struct PreparedEdgeCopySourceFacts {
+  PreparedEdgeCopySourceFactsStatus status =
+      PreparedEdgeCopySourceFactsStatus::MissingPublication;
+  const PreparedEdgePublication* publication = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  const PreparedMoveResolution* move = nullptr;
+  bir::Value destination_value;
+  bir::Value source_value;
+  PreparedValueId resolved_destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
+  const PreparedValueHome* source_home = nullptr;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  const bir::LoadLocalInst* source_load_local = nullptr;
+  const bir::LoadGlobalInst* source_load_global = nullptr;
+  const bir::CastInst* source_cast = nullptr;
+  const bir::BinaryInst* source_binary = nullptr;
+  const bir::SelectInst* source_select = nullptr;
+  PreparedEdgePublicationSourceMemoryAccessStatus source_memory_access_status =
+      PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable;
+  const PreparedMemoryAccess* source_memory_access = nullptr;
+  PreparedAddressBaseKind source_memory_base_kind = PreparedAddressBaseKind::None;
+  std::optional<PreparedFrameSlotId> source_memory_frame_slot_id;
+  std::optional<LinkNameId> source_memory_symbol_name;
+  std::optional<ValueNameId> source_memory_pointer_value_name;
+  std::int64_t source_memory_byte_offset = 0;
+  std::size_t source_memory_size_bytes = 0;
+  std::size_t source_memory_align_bytes = 0;
+  bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
+  bool source_memory_is_volatile = false;
+  bool source_memory_can_use_base_plus_offset = false;
+  bool source_memory_requires_address_materialization = false;
 };
 
 struct PreparedEdgePublicationSourceProducerLookups {
@@ -759,8 +865,21 @@ find_indexed_prepared_edge_publications(
     BlockLabelId successor_label,
     PreparedValueId destination_value_id);
 
+[[nodiscard]] PreparedEdgeCopySourceFacts prepare_edge_copy_source_facts(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    PreparedValueId destination_value_id);
+
 [[nodiscard]] const PreparedEdgePublication*
 find_unique_indexed_block_entry_parallel_copy_edge_publication(
+    const PreparedEdgePublicationLookups* lookups,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    const PreparedMoveResolution& move);
+
+[[nodiscard]] PreparedEdgeCopySourceFacts
+prepare_block_entry_parallel_copy_edge_source_facts(
     const PreparedEdgePublicationLookups* lookups,
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
