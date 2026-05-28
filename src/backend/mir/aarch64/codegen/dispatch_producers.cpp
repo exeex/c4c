@@ -13,7 +13,6 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <variant>
@@ -55,13 +54,68 @@ namespace {
       inst);
 }
 
-[[nodiscard]] std::optional<bir::Value> instruction_result_value(
+[[nodiscard]] std::optional<prepare::PreparedValueId>
+instruction_result_prepared_value_id(
+    const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
   const auto* result = instruction_result_value_ref(inst);
-  if (result == nullptr) {
+  if (result == nullptr ||
+      result->kind != bir::Value::Kind::Named ||
+      result->name.empty()) {
     return std::nullopt;
   }
-  return *result;
+  const auto result_value_name = prepared_named_value_id(context, *result);
+  if (!result_value_name.has_value()) {
+    return std::nullopt;
+  }
+  return prepare::find_indexed_prepared_value_id(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_value_name);
+}
+
+[[nodiscard]] prepare::PreparedCurrentBlockJoinParallelCopySourceFacts
+prepare_current_block_join_parallel_copy_source_facts(
+    const module::BlockLoweringContext& context) {
+  std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
+  const auto* value_home_lookups = context.function.value_home_lookups;
+  if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
+    local_value_home_lookups =
+        prepare::make_prepared_value_home_lookups(context.function.value_locations);
+    value_home_lookups = &*local_value_home_lookups;
+  }
+
+  std::optional<prepare::PreparedEdgePublicationLookups> local_edge_publications;
+  const auto* edge_publications =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publications
+          : nullptr;
+  if (edge_publications == nullptr &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr) {
+    local_edge_publications =
+        prepare::make_prepared_edge_publication_lookups(
+            context.function.prepared->names,
+            *context.function.control_flow,
+            context.function.value_locations,
+            value_home_lookups);
+    edge_publications = &*local_edge_publications;
+  }
+
+  return prepare::prepare_current_block_join_parallel_copy_source_facts(
+      prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+          .names = context.function.prepared != nullptr
+                       ? &context.function.prepared->names
+                       : nullptr,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = value_home_lookups,
+          .edge_publications = edge_publications,
+          .block = context.bir_block,
+          .successor_label =
+              context.control_flow_block != nullptr
+                  ? context.control_flow_block->block_label
+                  : c4c::kInvalidBlockLabel,
+      });
 }
 
 [[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
@@ -302,233 +356,18 @@ prepared_select_chain_contains_direct_global_load(
 [[nodiscard]] bool is_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
-  if (context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr) {
+  const auto result_value_id = instruction_result_prepared_value_id(context, inst);
+  if (!result_value_id.has_value()) {
     return false;
   }
-  const auto result_value = instruction_result_value(inst);
-  if (!result_value.has_value() ||
-      result_value->kind != bir::Value::Kind::Named ||
-      result_value->name.empty()) {
+  const auto query = prepare_current_block_join_parallel_copy_source_facts(context);
+  if (query.status !=
+      prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available) {
     return false;
   }
-  const auto result_value_name = prepared_named_value_id(context, *result_value);
-  if (!result_value_name.has_value()) {
-    return false;
-  }
-  const auto* result_home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *result_value_name);
-  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
-        continue;
-      }
-      if (prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
-              move, result_home->value_id)) {
-        return true;
-      }
-      if (move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-          move.source_immediate_i32.has_value() ||
-          move.from_value_id != result_home->value_id ||
-          move.from_value_id == move.to_value_id) {
-        continue;
-      }
-      const auto* destination_home =
-          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                    context.function.value_locations,
-                                                    move.to_value_id);
-      if (destination_home != nullptr &&
-          (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
-               move, *result_home, *destination_home) ||
-           result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::vector<std::string_view> named_operands_of_instruction(
-    const bir::Inst& inst) {
-  std::vector<std::string_view> operands;
-  auto append_named = [&operands](const bir::Value& value) {
-    if (value.kind == bir::Value::Kind::Named && !value.name.empty()) {
-      operands.push_back(value.name);
-    }
-  };
-  std::visit(
-      [&](const auto& typed_inst) {
-        using T = std::decay_t<decltype(typed_inst)>;
-        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-          append_named(typed_inst.lhs);
-          append_named(typed_inst.rhs);
-        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-          append_named(typed_inst.operand);
-        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          append_named(typed_inst.lhs);
-          append_named(typed_inst.rhs);
-          append_named(typed_inst.true_value);
-          append_named(typed_inst.false_value);
-        }
-      },
-      inst);
-  return operands;
-}
-
-[[nodiscard]] bool is_join_parallel_copy_expression_instruction(
-    const bir::Inst& inst) {
-  return std::get_if<bir::BinaryInst>(&inst) != nullptr ||
-         std::get_if<bir::CastInst>(&inst) != nullptr ||
-         std::get_if<bir::SelectInst>(&inst) != nullptr;
-}
-
-[[nodiscard]] std::optional<std::size_t> find_same_block_result_index(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || value_name.empty()) {
-    return std::nullopt;
-  }
-  const auto limit =
-      std::min(before_instruction_index, context.bir_block->insts.size());
-  for (std::size_t index = limit; index > 0; --index) {
-    const auto* result = instruction_result_value_ref(context.bir_block->insts[index - 1]);
-    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
-        result->name == value_name) {
-      return index - 1;
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] bool same_block_result_depends_on_value(
-    const module::BlockLoweringContext& context,
-    std::string_view source_name,
-    std::string_view dependency_name,
-    std::size_t before_instruction_index,
-    std::size_t depth = 0) {
-  if (source_name.empty() || dependency_name.empty() || depth > 16U) {
-    return false;
-  }
-  if (source_name == dependency_name) {
-    return true;
-  }
-  const auto producer_index =
-      find_same_block_result_index(context, source_name, before_instruction_index);
-  if (!producer_index.has_value()) {
-    return false;
-  }
-  const auto& producer = context.bir_block->insts[*producer_index];
-  if (!is_join_parallel_copy_expression_instruction(producer)) {
-    return false;
-  }
-  auto operand_depends = [&](const bir::Value& operand) {
-    return operand.kind == bir::Value::Kind::Named &&
-           !operand.name.empty() &&
-           (operand.name == dependency_name ||
-            same_block_result_depends_on_value(context,
-                                               operand.name,
-                                               dependency_name,
-                                               *producer_index,
-                                               depth + 1U));
-  };
-  return std::visit(
-      [&](const auto& typed_inst) {
-        using T = std::decay_t<decltype(typed_inst)>;
-        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-          return operand_depends(typed_inst.lhs) ||
-                 operand_depends(typed_inst.rhs);
-        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-          return operand_depends(typed_inst.operand);
-        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          return operand_depends(typed_inst.lhs) ||
-                 operand_depends(typed_inst.rhs) ||
-                 operand_depends(typed_inst.true_value) ||
-                 operand_depends(typed_inst.false_value);
-        }
-        return false;
-      },
-      producer);
-}
-
-[[nodiscard]] bool is_current_block_join_parallel_copy_incoming_expression(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst) {
-  if (context.function.prepared == nullptr ||
-      context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
-      !is_join_parallel_copy_expression_instruction(inst)) {
-    return false;
-  }
-  const auto result_value = instruction_result_value(inst);
-  if (!result_value.has_value() ||
-      result_value->kind != bir::Value::Kind::Named ||
-      result_value->name.empty()) {
-    return false;
-  }
-  const auto result_value_name = prepared_named_value_id(context, *result_value);
-  if (!result_value_name.has_value()) {
-    return false;
-  }
-  const auto* result_home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *result_value_name);
-  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.source_immediate_i32.has_value()) {
-        continue;
-      }
-      const auto* source_home =
-          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                    context.function.value_locations,
-                                                    move.from_value_id);
-      if (source_home == nullptr ||
-          source_home->value_name == c4c::kInvalidValueName) {
-        continue;
-      }
-      if (source_home->value_id == result_home->value_id) {
-        return true;
-      }
-      const auto source_name =
-          prepare::prepared_value_name(context.function.prepared->names,
-                                       source_home->value_name);
-      if (!source_name.empty() &&
-          same_block_result_depends_on_value(context,
-                                             source_name,
-                                             result_value->name,
-                                             context.bir_block->insts.size())) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return std::find(query.source_value_ids.begin(),
+                   query.source_value_ids.end(),
+                   *result_value_id) != query.source_value_ids.end();
 }
 
 [[nodiscard]] CurrentBlockJoinParallelCopyCache
@@ -538,136 +377,22 @@ build_current_block_join_parallel_copy_cache(
   if (context.bir_block == nullptr) {
     return cache;
   }
-  const bool has_relevant_bundle =
-      context.function.value_locations != nullptr &&
-      context.control_flow_block != nullptr &&
-      std::any_of(context.function.value_locations->move_bundles.begin(),
-                  context.function.value_locations->move_bundles.end(),
-                  [&](const prepare::PreparedMoveBundle& bundle) {
-                    return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
-                           bundle.authority_kind ==
-                               prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
-                           bundle.source_parallel_copy_successor_label ==
-                               std::optional<c4c::BlockLabelId>{
-                                   context.control_flow_block->block_label};
-                  });
-  cache.incoming_expressions.reserve(context.bir_block->insts.size());
-  cache.sources.reserve(context.bir_block->insts.size());
-  if (!has_relevant_bundle) {
-    cache.incoming_expressions.assign(context.bir_block->insts.size(), false);
-    cache.sources.assign(context.bir_block->insts.size(), false);
-    return cache;
-  }
-  std::unordered_map<std::string_view, std::size_t> result_indices;
-  result_indices.reserve(context.bir_block->insts.size());
-  for (std::size_t index = 0; index < context.bir_block->insts.size(); ++index) {
-    const auto* result = instruction_result_value_ref(context.bir_block->insts[index]);
-    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
-        !result->name.empty()) {
-      result_indices.emplace(result->name, index);
-    }
-  }
-
-  std::unordered_set<prepare::PreparedValueId> incoming_value_ids;
-  std::unordered_set<prepare::PreparedValueId> source_value_ids;
-  std::unordered_set<std::string_view> incoming_expression_names;
-  std::vector<std::string_view> pending_expression_names;
-  auto add_expression_dependency = [&](std::string_view name) {
-    if (!name.empty()) {
-      pending_expression_names.push_back(name);
-    }
-  };
-
-  for (const auto& bundle : context.function.value_locations->move_bundles) {
-    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
-        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
-        bundle.source_parallel_copy_successor_label !=
-            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
-      continue;
-    }
-    for (const auto& move : bundle.moves) {
-      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-          move.destination_kind != prepare::PreparedMoveDestinationKind::Value) {
-        continue;
-      }
-      if (!move.source_immediate_i32.has_value()) {
-        const auto* source_home =
-            prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                      context.function.value_locations,
-                                                      move.from_value_id);
-        if (source_home != nullptr &&
-            source_home->value_name != c4c::kInvalidValueName) {
-          incoming_value_ids.insert(source_home->value_id);
-          add_expression_dependency(prepare::prepared_value_name(
-              context.function.prepared->names, source_home->value_name));
-        }
-      }
-      if (!prepare::prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
-              move, move.to_value_id)) {
-        continue;
-      }
-      source_value_ids.insert(move.to_value_id);
-      if (move.source_immediate_i32.has_value() ||
-          move.from_value_id == move.to_value_id) {
-        continue;
-      }
-      const auto* result_home =
-          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                    context.function.value_locations,
-                                                    move.from_value_id);
-      const auto* destination_home =
-          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                    context.function.value_locations,
-                                                    move.to_value_id);
-      if (result_home != nullptr && destination_home != nullptr &&
-          (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
-               move, *result_home, *destination_home) ||
-           result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
-        source_value_ids.insert(move.from_value_id);
-      }
-    }
-  }
-
-  while (!pending_expression_names.empty()) {
-    const auto name = pending_expression_names.back();
-    pending_expression_names.pop_back();
-    if (name.empty() || !incoming_expression_names.insert(name).second) {
-      continue;
-    }
-    const auto producer_it = result_indices.find(name);
-    if (producer_it == result_indices.end()) {
-      continue;
-    }
-    const auto& producer = context.bir_block->insts[producer_it->second];
-    if (!is_join_parallel_copy_expression_instruction(producer)) {
-      continue;
-    }
-    for (const auto operand_name : named_operands_of_instruction(producer)) {
-      add_expression_dependency(operand_name);
-    }
-  }
+  const auto query = prepare_current_block_join_parallel_copy_source_facts(context);
+  const std::unordered_set<prepare::PreparedValueId> incoming_value_ids{
+      query.incoming_expression_value_ids.begin(),
+      query.incoming_expression_value_ids.end()};
+  const std::unordered_set<prepare::PreparedValueId> source_value_ids{
+      query.source_value_ids.begin(),
+      query.source_value_ids.end()};
 
   for (const auto& inst : context.bir_block->insts) {
-    const auto* result = instruction_result_value_ref(inst);
-    bool incoming_expression = false;
-    bool source = false;
-    if (result != nullptr && result->kind == bir::Value::Kind::Named &&
-        !result->name.empty()) {
-      const auto result_value_name = prepared_named_value_id(context, *result);
-      const auto* result_home =
-          result_value_name.has_value()
-              ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                          context.function.regalloc,
-                                                          context.function.value_locations,
-                                                          *result_value_name)
-              : nullptr;
-      if (result_home != nullptr && result_home->value_name != c4c::kInvalidValueName) {
-        incoming_expression =
-            incoming_value_ids.find(result_home->value_id) != incoming_value_ids.end() ||
-            incoming_expression_names.find(result->name) != incoming_expression_names.end();
-        source = source_value_ids.find(result_home->value_id) != source_value_ids.end();
-      }
-    }
+    const auto result_value_id = instruction_result_prepared_value_id(context, inst);
+    const bool incoming_expression =
+        result_value_id.has_value() &&
+        incoming_value_ids.find(*result_value_id) != incoming_value_ids.end();
+    const bool source =
+        result_value_id.has_value() &&
+        source_value_ids.find(*result_value_id) != source_value_ids.end();
     cache.incoming_expressions.push_back(incoming_expression);
     cache.sources.push_back(source);
   }
@@ -683,7 +408,8 @@ build_current_block_join_parallel_copy_cache(
       instruction_index < cache.incoming_expressions.size()) {
     return cache.incoming_expressions[instruction_index];
   }
-  return is_current_block_join_parallel_copy_incoming_expression(context, inst);
+  (void)inst;
+  return false;
 }
 
 [[nodiscard]] bool cached_current_block_join_parallel_copy_source(
@@ -694,7 +420,8 @@ build_current_block_join_parallel_copy_cache(
   if (cache.context == &context && instruction_index < cache.sources.size()) {
     return cache.sources[instruction_index];
   }
-  return is_current_block_join_parallel_copy_source(context, inst);
+  (void)inst;
+  return false;
 }
 
 }  // namespace c4c::backend::aarch64::codegen

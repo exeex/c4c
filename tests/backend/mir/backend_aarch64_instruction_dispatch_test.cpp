@@ -26809,6 +26809,30 @@ int predecessor_immediate_select_join_condition_uses_published_zero() {
               .true_label = true_label,
               .false_label = false_label,
           }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value = bir::Value::immediate_i32(0),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%join.selected"),
+                  }},
+          }},
+      .parallel_copy_bundles =
+          {prepare::PreparedParallelCopyBundle{
+              .predecessor_label = pred_label,
+              .successor_label = join_label,
+              .steps =
+                  {prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -27109,6 +27133,47 @@ int short_circuit_join_consumes_edge_published_result() {
               .true_label = true_label,
               .false_label = false_label,
           }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                       .predecessor_label = rhs_label,
+                       .successor_label = join_label,
+                       .incoming_value =
+                           bir::Value::named(bir::TypeKind::I32, "%rhs.truth"),
+                       .destination_value = bir::Value::named(bir::TypeKind::I32,
+                                                              "%short.selected"),
+                   },
+                   prepare::PreparedEdgeValueTransfer{
+                       .predecessor_label = skip_label,
+                       .successor_label = join_label,
+                       .incoming_value = bir::Value::immediate_i32(0),
+                       .destination_value = bir::Value::named(bir::TypeKind::I32,
+                                                              "%short.selected"),
+                   }},
+          }},
+      .parallel_copy_bundles =
+          {prepare::PreparedParallelCopyBundle{
+               .predecessor_label = rhs_label,
+               .successor_label = join_label,
+               .steps =
+                   {prepare::PreparedParallelCopyStep{
+                       .kind = prepare::PreparedParallelCopyStepKind::Move,
+                       .move_index = 0,
+                   }},
+           },
+           prepare::PreparedParallelCopyBundle{
+               .predecessor_label = skip_label,
+               .successor_label = join_label,
+               .steps =
+                   {prepare::PreparedParallelCopyStep{
+                       .kind = prepare::PreparedParallelCopyStepKind::Move,
+                       .move_index = 0,
+                   }},
+           }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
