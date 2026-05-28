@@ -2,6 +2,7 @@
 
 #include "../abi/abi.hpp"
 #include "dispatch_publication.hpp"
+#include "memory.hpp"
 
 #include <algorithm>
 #include <cstddef>

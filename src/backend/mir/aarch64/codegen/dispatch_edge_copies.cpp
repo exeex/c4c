@@ -9,6 +9,7 @@
 #include "dispatch_value_materialization.hpp"
 #include "fp_value_materialization.hpp"
 #include "instruction.hpp"
+#include "memory.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
 #include "select_materialization.hpp"

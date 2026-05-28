@@ -1,6 +1,7 @@
 #include "variadic.hpp"
 #include "constant_materialization.hpp"
 #include "dispatch_publication.hpp"
+#include "memory.hpp"
 #include "mir/printer.hpp"
 
 #include <cstdint>

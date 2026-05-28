@@ -3,6 +3,7 @@
 #include "calls.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_publication.hpp"
+#include "memory.hpp"
 #include "select_materialization.hpp"
 
 #include <algorithm>

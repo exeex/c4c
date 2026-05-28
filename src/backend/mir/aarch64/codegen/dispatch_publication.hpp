@@ -1,7 +1,6 @@
 #pragma once
 
 #include "alu.hpp"
-#include "memory.hpp"
 
 #include <cstddef>
 #include <cstdint>

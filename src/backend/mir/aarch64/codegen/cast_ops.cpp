@@ -3,6 +3,7 @@
 #include "comparison.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
+#include "memory.hpp"
 #include "select_materialization.hpp"
 
 #include <cstdint>
