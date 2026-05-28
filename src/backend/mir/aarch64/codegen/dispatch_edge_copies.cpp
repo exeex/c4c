@@ -215,6 +215,16 @@ prepared_edge_named_source_producer_context(
              : std::nullopt;
 }
 
+[[nodiscard]] bool prepared_edge_copy_source_facts_have_materializable_producer(
+    const prepare::PreparedEdgeCopySourceFacts& facts) {
+  return facts.status == prepare::PreparedEdgeCopySourceFactsStatus::Available &&
+         facts.publication != nullptr &&
+         facts.source_producer_kind !=
+             prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+         facts.source_producer_kind !=
+             prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
+}
+
 struct EdgeSelectChainState {
   std::size_t label_index = 0;
   std::vector<std::string_view> active_values;
@@ -1313,27 +1323,28 @@ lower_predecessor_join_source_publication(
       context.control_flow_block != nullptr) {
     for (const auto& publication :
          context.function.prepared_lookups->edge_publications.publications) {
-      if (publication.status !=
-              prepare::PreparedEdgePublicationLookupStatus::Available ||
-          publication.phase != prepare::PreparedMovePhase::BlockEntry ||
-          publication.predecessor_label != context.control_flow_block->block_label ||
-          publication.source_producer_kind ==
-              prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
-          publication.source_producer_kind ==
-              prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+      const auto source_facts = prepare::prepare_edge_copy_source_facts(
+          &context.function.prepared_lookups->edge_publications,
+          publication.predecessor_label,
+          publication.successor_label,
+          publication.destination_value_id);
+      if (!prepared_edge_copy_source_facts_have_materializable_producer(source_facts) ||
+          source_facts.publication->phase != prepare::PreparedMovePhase::BlockEntry ||
+          source_facts.predecessor_label != context.control_flow_block->block_label) {
         continue;
       }
-      auto producer = prepared_edge_publication_producer_context(context, publication);
+      auto producer =
+          prepared_edge_publication_producer_context(context, *source_facts.publication);
       if (!producer.has_value()) {
         continue;
       }
       if (edge_value_publication_may_read_register_index(
               context,
               producer->context,
-              publication.source_value,
+              source_facts.source_value,
               producer->instruction_index + 1,
               move->destination_register->reg.index,
-              &publication,
+              source_facts.publication,
               0U)) {
         return false;
       }
@@ -1349,27 +1360,26 @@ lower_predecessor_join_source_publication(
   if (context.function.prepared_lookups == nullptr) {
     return true;
   }
-  const auto* publication =
-      prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+  const auto source_facts =
+      prepare::prepare_edge_copy_source_facts(
           &context.function.prepared_lookups->edge_publications,
           *move->source_parallel_copy_predecessor_label,
           *move->source_parallel_copy_successor_label,
-          move->move);
-  if (publication == nullptr) {
+          move->move.to_value_id);
+  if (source_facts.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      source_facts.publication == nullptr ||
+      source_facts.publication->phase != prepare::PreparedMovePhase::BlockEntry) {
     return true;
   }
   if (prepare::prepared_edge_publication_redundant_block_entry_parallel_copy_move(
-          *publication, move->source_move)) {
+          *source_facts.publication, move->source_move)) {
     return false;
   }
   if (move->source_move != nullptr &&
-      publication->source_home != nullptr &&
-      publication->source_producer_kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
-      publication->source_producer_kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
+      prepared_edge_copy_source_facts_have_materializable_producer(source_facts) &&
+      source_facts.source_home != nullptr &&
       prepare::prepared_edge_publication_matches_parallel_copy_move_source(
-          *publication, *move->source_move, *publication->source_home)) {
+          *source_facts.publication, *move->source_move, *source_facts.source_home)) {
     return false;
   }
   return true;
@@ -1418,36 +1428,30 @@ lower_predecessor_select_parallel_copy_sources(
         move.from_value_id == move.to_value_id) {
       continue;
     }
-    const auto* source_home =
-        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                  context.function.value_locations,
-                                                  move.from_value_id);
-    const auto* destination_home =
-        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                  context.function.value_locations,
-                                                  move.to_value_id);
-    if (source_home == nullptr ||
-        destination_home == nullptr ||
-        source_home->value_name == c4c::kInvalidValueName ||
-        destination_home->kind != prepare::PreparedValueHomeKind::Register) {
-      continue;
-    }
     if (context.function.prepared_lookups == nullptr) {
       continue;
     }
-    const auto* publication =
-        prepare::find_unique_indexed_block_entry_parallel_copy_edge_publication(
+    const auto source_facts =
+        prepare::prepare_block_entry_parallel_copy_edge_source_facts(
             &context.function.prepared_lookups->edge_publications,
             context.control_flow_block->block_label,
             *bundle->source_parallel_copy_successor_label,
             move);
-    if (publication == nullptr ||
+    if (!prepared_edge_copy_source_facts_have_materializable_producer(source_facts) ||
+        source_facts.source_home == nullptr ||
+        source_facts.destination_home == nullptr ||
+        source_facts.source_home->value_name == c4c::kInvalidValueName ||
+        source_facts.destination_home->kind != prepare::PreparedValueHomeKind::Register ||
         !prepare::prepared_edge_publication_matches_parallel_copy_move_source(
-            *publication, move, *source_home)) {
+            *source_facts.publication, move, *source_facts.source_home)) {
       continue;
     }
     auto source_lowered = lower_predecessor_join_source_publication(
-        context, *publication, *source_home, *destination_home, scalar_state);
+        context,
+        *source_facts.publication,
+        *source_facts.source_home,
+        *source_facts.destination_home,
+        scalar_state);
     if (!source_lowered.has_value()) {
       lowered.clear();
       return lowered;
