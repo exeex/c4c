@@ -894,6 +894,11 @@ find_prepared_scalar_select_chain_materialization(
   if (!value_name.has_value()) {
     return materialization;
   }
+  const auto* root = prepared_select_chain_source_producer(
+      names, source_producers, block_label, block, value, before_instruction_index);
+  if (root == nullptr) {
+    return materialization;
+  }
   auto dependency =
       find_prepared_direct_global_select_chain_dependency(
           names,
@@ -902,12 +907,11 @@ find_prepared_scalar_select_chain_materialization(
           block,
           value,
           before_instruction_index);
-  if (!dependency.contains_direct_global_load ||
-      !dependency.root_instruction_index.has_value()) {
-    return materialization;
-  }
   materialization.available = true;
   materialization.root_value_name = *value_name;
+  materialization.root_is_select =
+      root->kind == PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+  materialization.root_instruction_index = root->instruction_index;
   materialization.direct_global_dependency = dependency;
   return materialization;
 }

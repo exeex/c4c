@@ -74,6 +74,25 @@ prepared_same_block_scalar_producer(
       before_instruction_index);
 }
 
+[[nodiscard]] prepare::PreparedScalarSelectChainMaterialization
+prepared_scalar_select_chain_materialization(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared_lookups == nullptr ||
+      context.control_flow_block == nullptr) {
+    return prepare::PreparedScalarSelectChainMaterialization{};
+  }
+  return prepare::find_prepared_scalar_select_chain_materialization(
+      context.function.prepared->names,
+      &context.function.prepared_lookups->edge_publication_source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
+}
+
 [[nodiscard]] std::optional<std::int64_t>
 prepared_same_block_integer_constant(
     const module::BlockLoweringContext& context,
@@ -491,10 +510,17 @@ prepared_same_block_integer_constant(
   }
 
   if (std::get_if<bir::SelectInst>(producer) != nullptr) {
-    const auto root_value_name = prepared_named_value_id(context, value);
-    if (!root_value_name.has_value()) {
+    const auto select_chain_materialization =
+        prepared_scalar_select_chain_materialization(
+            context, value, before_instruction_index);
+    if (!select_chain_materialization.available ||
+        !select_chain_materialization.root_instruction_index.has_value()) {
       return false;
     }
+    const auto* direct_global_dependency =
+        select_chain_materialization.direct_global_dependency.contains_direct_global_load
+            ? &select_chain_materialization.direct_global_dependency
+            : nullptr;
     std::size_t label_index = 0;
     std::vector<std::string_view> active_values;
     return emit_select_chain_value_to_register(context,
@@ -502,12 +528,15 @@ prepared_same_block_integer_constant(
                                                before_instruction_index,
                                                target_index,
                                                scratch_index,
-                                               before_instruction_index,
-                                               *root_value_name,
+                                               *select_chain_materialization
+                                                    .root_instruction_index,
+                                               select_chain_materialization
+                                                    .root_value_name,
                                                lines,
                                                label_index,
                                                active_values,
-                                               reload_current_memory_loads);
+                                               reload_current_memory_loads,
+                                               direct_global_dependency);
   }
 
   const auto* binary = std::get_if<bir::BinaryInst>(producer);

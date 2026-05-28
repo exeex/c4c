@@ -2051,18 +2051,10 @@ lower_scalar_select_publication(
   if (!result.has_value()) {
     return std::nullopt;
   }
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
   const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers =
       context.function.prepared_lookups != nullptr
           ? &context.function.prepared_lookups->edge_publication_source_producers
           : nullptr;
-  if (source_producers == nullptr && context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared, *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
-  }
   const auto select_chain_materialization =
       context.control_flow_block != nullptr
           ? prepare::find_prepared_scalar_select_chain_materialization(
@@ -2073,7 +2065,11 @@ lower_scalar_select_publication(
                 select.result,
                 instruction_index + 1U)
           : prepare::PreparedScalarSelectChainMaterialization{};
-  if (select_chain_materialization.available) {
+  if (select_chain_materialization.available &&
+      select_chain_materialization.direct_global_dependency
+          .contains_direct_global_load &&
+      select_chain_materialization.direct_global_dependency
+          .root_instruction_index.has_value()) {
     const auto scratch = scalar_gp_scratch_register(*result_view, {&result_register});
     if (scratch.has_value()) {
       std::vector<std::string> lines;

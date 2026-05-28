@@ -237,6 +237,8 @@ using PreparedStoreSourceDirectGlobalSelectChainDependency =
 struct PreparedScalarSelectChainMaterialization {
   bool available = false;
   ValueNameId root_value_name = kInvalidValueName;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
   PreparedDirectGlobalSelectChainDependency direct_global_dependency;
 };
 

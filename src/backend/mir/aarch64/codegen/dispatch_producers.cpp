@@ -21,7 +21,6 @@
 namespace c4c::backend::aarch64::codegen {
 
 namespace bir = c4c::backend::bir;
-namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 namespace {
@@ -123,11 +122,6 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
   return prepared_same_block_select_producer(context, value, before_instruction_index);
 }
 
-[[nodiscard]] static bool dependency_is_load_global(
-    const mir::DependencyTraversalRecord& record) {
-  return record.kind == mir::SameBlockProducerKind::LoadGlobal;
-}
-
 [[nodiscard]] std::optional<bool>
 prepared_select_chain_contains_direct_global_load(
     const module::BlockLoweringContext& context,
@@ -217,8 +211,7 @@ prepared_select_chain_contains_direct_global_load(
   if (prepared.has_value()) {
     return *prepared;
   }
-  return mir::select_chain_contains_dependency(
-      context.bir_block, value, before_instruction_index, dependency_is_load_global, depth);
+  return false;
 }
 
 [[nodiscard]] std::optional<std::size_t> producer_instruction_index(
