@@ -72,27 +72,13 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    const auto* producer =
-        prepare::find_indexed_prepared_edge_publication_source_producer(
-            &context.function.prepared_lookups->edge_publication_source_producers,
-            *value_name);
-    return producer != nullptr
-               ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
-                     *producer}
-               : std::nullopt;
-  }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
+  if (context.function.prepared_lookups == nullptr) {
     return std::nullopt;
   }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
   const auto* producer =
       prepare::find_indexed_prepared_edge_publication_source_producer(
-          &source_producers, *value_name);
+          &context.function.prepared_lookups->edge_publication_source_producers,
+          *value_name);
   return producer != nullptr
              ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
                    *producer}
@@ -129,19 +115,6 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
 }
 
 }  // namespace
-
-[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (const auto prepared =
-          prepared_same_block_select_producer(context, value, before_instruction_index);
-      prepared) {
-    return prepared;
-  }
-  return mir::find_same_block_select_producer(
-      context.bir_block, value, before_instruction_index);
-}
 
 [[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
     const module::BlockLoweringContext& context,

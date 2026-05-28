@@ -9657,6 +9657,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
   const auto rhs_name = prepared.names.value_names.intern("%rhs");
   const auto true_name = prepared.names.value_names.intern("%true");
   const auto false_name = prepared.names.value_names.intern("%false");
+  prepared.names.value_names.intern("%inner");
   const auto selected_name = prepared.names.value_names.intern("%selected.store");
   const auto tail_old_name = prepared.names.value_names.intern("%tail.old");
   const auto selected_tail_name =
@@ -10004,6 +10005,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_global_load_select_
   const auto elt0_name = prepared.names.value_names.intern("%elt0");
   const auto elt1_name = prepared.names.value_names.intern("%elt1");
   const auto elt2_name = prepared.names.value_names.intern("%elt2");
+  prepared.names.value_names.intern("%inner.load");
   const auto selected_name = prepared.names.value_names.intern("%selected.load");
 
   prepared.module.globals.push_back(bir::Global{
@@ -31075,12 +31077,16 @@ int selected_global_load_materializes_before_fused_compare_branch() {
       branch_compare != std::string::npos
           ? first_two_operands_after_mnemonic(printed.assembly, "cmp", branch_compare)
           : std::nullopt;
-  const auto selected_home_reload = printed.assembly.find("[sp, #16]", select_publication);
   const auto* publication = find_select_materialization_publication(block);
   const auto selected_register =
       publication != nullptr && publication->has_inline_asm_payload
           ? selected_materialization_result_register(*publication)
           : std::nullopt;
+  const auto selected_home_reload =
+      selected_register.has_value()
+          ? printed.assembly.find(
+                "ldr " + *selected_register + ", [sp, #16]", select_publication)
+          : std::string::npos;
   if (select_publication == std::string::npos ||
       selected_register == std::nullopt ||
       branch_compare_operands == std::nullopt ||
@@ -31201,8 +31207,11 @@ int repeated_select_chain_materializations_use_unique_synthetic_labels() {
   auto prepared = prepared_with_dual_i32_select_global_call_arguments();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -31273,8 +31282,11 @@ int selected_i32_global_read_preserves_dynamic_selector_and_call_carrier() {
   auto prepared = prepared_with_dynamic_index_i32_select_global_call_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -31483,16 +31495,17 @@ std::optional<std::string> selected_materialization_result_register(
 
 const aarch64_codegen::AssemblerInstructionRecord* find_select_materialization_publication(
     const aarch64_module::MachineBlock& block) {
+  const aarch64_codegen::AssemblerInstructionRecord* found = nullptr;
   for (const auto& instruction : block.instructions) {
     const auto* assembler =
         std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
             &instruction.target.payload);
     if (assembler != nullptr && assembler->has_inline_asm_payload &&
         assembler->inline_asm_template.find(".Lselect_mat_") != std::string::npos) {
-      return assembler;
+      found = assembler;
     }
   }
-  return nullptr;
+  return found;
 }
 
 bool store_uses_register_after(const std::string& assembly,

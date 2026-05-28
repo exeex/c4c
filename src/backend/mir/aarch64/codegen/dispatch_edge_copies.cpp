@@ -1521,10 +1521,7 @@ lower_predecessor_select_parallel_copy_sources(
   }
 
   const auto producer =
-      direct_global_dependency != nullptr
-          ? find_prepared_same_block_select_producer(
-                context, value, before_instruction_index)
-          : find_same_block_select_producer(context, value, before_instruction_index);
+      find_prepared_same_block_select_producer(context, value, before_instruction_index);
   if (root_value &&
       direct_global_dependency->root_is_select != (producer.select != nullptr)) {
     return false;

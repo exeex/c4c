@@ -16,11 +16,6 @@ namespace bir = c4c::backend::bir;
 
 using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
 
-[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
 [[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
