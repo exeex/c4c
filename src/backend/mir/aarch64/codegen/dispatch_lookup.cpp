@@ -51,23 +51,6 @@ std::optional<c4c::ValueNameId> prepared_named_value_id(
                                                  value.name);
 }
 
-const prepare::PreparedValueHome* find_value_home(
-    const module::BlockLoweringContext& context,
-    prepare::PreparedValueId value_id) {
-  return prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                   context.function.value_locations,
-                                                   value_id);
-}
-
-const prepare::PreparedValueHome* find_value_home(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  return prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                   context.function.regalloc,
-                                                   context.function.value_locations,
-                                                   value_name);
-}
-
 std::optional<RegisterOperand> make_named_prepared_result_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
@@ -78,7 +61,11 @@ std::optional<RegisterOperand> make_named_prepared_result_register(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  const auto* home = find_value_home(context, *value_name);
+  const auto* home = prepare::find_indexed_prepared_value_home(
+      context.function.value_home_lookups,
+      context.function.regalloc,
+      context.function.value_locations,
+      *value_name);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::Register ||
       !home->register_name.has_value()) {
