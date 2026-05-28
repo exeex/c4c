@@ -1,52 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/62_aarch64_shared_edge_dependency_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Migrate Prepared Edge-Publication Consumers
+Current Step ID: Step 4
+Current Step Title: Remove Or Fail-Close Null-Publication Recovery
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Migrate Prepared Edge-Publication Consumers completed.
+Step 4 - Remove Or Fail-Close Null-Publication Recovery completed.
 
-Migrated the AArch64 prepared edge-publication consumers in
-`src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` to obtain source
-identity through shared prepared edge-copy source facts:
+Retired the remaining predecessor-depth producer discovery from the AArch64
+edge-copy route by removing `find_edge_named_producer(...)` and
+`unique_branch_predecessor_context(...)` from
+`src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` and their header
+exports. The edge publication entry points now fail closed when invoked without
+a prepared publication, so null publication no longer cues AArch64-local
+semantic producer recovery.
 
-- block-entry move clobber scanning now revalidates publication source facts
-  with `prepare_edge_copy_source_facts(...)` before producer/materialization
-  checks.
-- copied machine-instruction move suppression now uses
-  `prepare_edge_copy_source_facts(...)` by predecessor, successor, and
-  destination value id, avoiding local publication recovery while preserving
-  target-local redundant/source-move checks.
-- predecessor select parallel-copy source materialization now uses
-  `prepare_block_entry_parallel_copy_edge_source_facts(...)` for publication,
-  source home, destination home, and producer facts before calling the existing
-  AArch64 emission helper.
-
-AArch64 still owns scratch selection, clobber-sensitive ordering, register
-spelling, va-list carrier handling, and machine instruction emission. Missing
-or mismatched shared facts now fail closed by skipping the prepared source
-publication route or leaving ordinary target-local move emission in place; no
-predecessor-depth or local producer recovery was added.
+Prepared-publication dependency walking still preserves target-local scratch
+choice, clobber-sensitive ordering, register spelling, va-list carrier
+emission, and instruction sequencing. Non-edge select-chain discovery and
+branch-fusion behavior were not changed.
 
 ## Suggested Next
 
-Step 4 - Remove Or Fail-Close Null-Publication Recovery: retire or hard
-fail-close the remaining null-publication/local producer fallback paths once
-the supervisor confirms this Step 3 consumer migration is accepted.
+Step 5 - Prove Edge Coverage And Target-Local Preservation: review the Step 4
+diff for renamed fallback scans or overfit behavior, then decide whether to run
+broader regression guard or close/refresh the runbook state.
 
 ## Watchouts
 
-`prepare_block_entry_parallel_copy_edge_source_facts(...)` requires the exact
-prepared move object and is suitable when iterating the prepared move bundle.
-The machine-instruction move suppression path receives a copied move record, so
-it uses `prepare_edge_copy_source_facts(...)` plus the existing source-move
-checks instead of the pointer-identity wrapper. Step 4 should focus on the
-remaining null-publication/local producer fallback helpers, not on weakening
-prepared fact requirements.
+`prepared_edge_named_source_producer_context(...)` remains reachable only under
+a non-null prepared publication while recursively materializing dependencies of
+that publication. The null-publication entry path now fails before it can use
+that helper. Review should verify that this retained dependency walk is not
+treated as a replacement edge-source authority.
 
 ## Proof
 

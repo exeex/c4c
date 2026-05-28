@@ -25,15 +25,6 @@ struct EdgeProducerContext {
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home);
 
-[[nodiscard]] std::optional<module::BlockLoweringContext> unique_branch_predecessor_context(
-    const module::BlockLoweringContext& context);
-
-[[nodiscard]] std::optional<EdgeProducerContext> find_edge_named_producer(
-    const module::BlockLoweringContext& edge_context,
-    const module::BlockLoweringContext& successor_context,
-    std::string_view value_name,
-    std::size_t successor_before_instruction_index);
-
 [[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);

@@ -254,82 +254,6 @@ struct EdgeSelectChainState {
     const prepare::PreparedEdgePublication* prepared_publication,
     EdgeSelectChainState& select_chain_state);
 
-[[nodiscard]] std::optional<module::BlockLoweringContext> unique_branch_predecessor_context(
-    const module::BlockLoweringContext& context) {
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return std::nullopt;
-  }
-  const prepare::PreparedControlFlowBlock* predecessor = nullptr;
-  std::size_t predecessor_index = 0;
-  for (std::size_t index = 0; index < context.function.control_flow->blocks.size(); ++index) {
-    const auto& candidate = context.function.control_flow->blocks[index];
-    if (candidate.terminator_kind == bir::TerminatorKind::Branch &&
-        candidate.branch_target_label == context.control_flow_block->block_label) {
-      if (predecessor != nullptr) {
-        return std::nullopt;
-      }
-      predecessor = &candidate;
-      predecessor_index = index;
-    }
-  }
-  if (predecessor == nullptr) {
-    return std::nullopt;
-  }
-  return module::BlockLoweringContext{
-      .function = context.function,
-      .control_flow_block = predecessor,
-      .bir_block = find_bir_block(context.function, *predecessor),
-      .block_index = predecessor_index,
-  };
-}
-[[nodiscard]] std::optional<EdgeProducerContext> find_edge_named_producer(
-    const module::BlockLoweringContext& edge_context,
-    const module::BlockLoweringContext& successor_context,
-    std::string_view value_name,
-    std::size_t successor_before_instruction_index) {
-  if (value_name.empty()) {
-    return std::nullopt;
-  }
-  const auto try_context =
-      [&](const module::BlockLoweringContext& candidate,
-          std::size_t before_instruction_index) -> std::optional<EdgeProducerContext> {
-    const auto* producer =
-        mir::find_same_block_named_producer(
-            candidate.bir_block, value_name, before_instruction_index);
-    const auto index = producer_instruction_index(candidate, producer);
-    if (producer == nullptr || !index.has_value()) {
-      return std::nullopt;
-    }
-    return EdgeProducerContext{
-        .context = candidate,
-        .producer = producer,
-        .instruction_index = *index,
-    };
-  };
-
-  if (auto producer = try_context(successor_context, successor_before_instruction_index)) {
-    return producer;
-  }
-  if (edge_context.bir_block != nullptr) {
-    if (auto producer = try_context(edge_context, edge_context.bir_block->insts.size())) {
-      return producer;
-    }
-  }
-
-  auto cursor = edge_context;
-  for (unsigned depth; depth < 4U; ++depth) {
-    auto predecessor = unique_branch_predecessor_context(cursor);
-    if (!predecessor.has_value() || predecessor->bir_block == nullptr) {
-      return std::nullopt;
-    }
-    if (auto producer = try_context(*predecessor, predecessor->bir_block->insts.size())) {
-      return producer;
-    }
-    cursor = *predecessor;
-  }
-  return std::nullopt;
-}
 [[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
@@ -474,6 +398,9 @@ prepared_publication_source_register(
     std::uint8_t register_index,
     const prepare::PreparedEdgePublication* prepared_publication,
     unsigned depth) {
+  if (prepared_publication == nullptr) {
+    return false;
+  }
   if (depth == 0U && prepared_publication != nullptr &&
       !prepared_edge_publication_source_matches_value(*prepared_publication, value)) {
     return false;
@@ -565,6 +492,9 @@ prepared_publication_source_register(
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication) {
+  if (prepared_publication == nullptr) {
+    return false;
+  }
   EdgeSelectChainState select_chain_state;
   return emit_edge_load_local_to_register_impl(edge_context,
                                                producer,
@@ -713,7 +643,7 @@ prepared_publication_source_register(
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication) {
-  if (prepared_publication != nullptr &&
+  if (prepared_publication == nullptr ||
       !prepared_edge_publication_source_matches_value(*prepared_publication, value)) {
     return false;
   }
