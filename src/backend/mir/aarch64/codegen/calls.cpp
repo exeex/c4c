@@ -2359,7 +2359,10 @@ make_immediate_cast_call_argument_publication_instruction(
   const auto* source_home =
       context.function.value_locations == nullptr
           ? nullptr
-          : find_value_home(context, move.from_value_id);
+          : prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.value_locations,
+                move.from_value_id);
   const auto classification =
       prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
   const auto* argument = classification.argument_plan;
@@ -3822,7 +3825,10 @@ find_immediate_argument_in_call_plan(
   const auto* destination_home =
       context.function.value_locations == nullptr
           ? nullptr
-          : find_value_home(context, move.to_value_id);
+          : prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.value_locations,
+                move.to_value_id);
   const auto classification =
       prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
   const auto* result_plan = classification.result_plan;
@@ -4650,7 +4656,9 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
       continue;
     }
     const auto* source_home =
-        find_value_home(context, move.from_value_id);
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  move.from_value_id);
     if (source_home == nullptr || !move.destination_register_name.has_value()) {
       continue;
     }
@@ -4776,12 +4784,16 @@ std::vector<module::MachineInstruction> lower_value_moves(
       continue;
     }
     const auto* destination_home =
-        find_value_home(context, move.to_value_id);
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  move.to_value_id);
     if (destination_home == nullptr) {
       continue;
     }
     const auto* source_home =
-        find_value_home(context, move.from_value_id);
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  move.from_value_id);
     if (move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
         destination_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
       if (auto stack_move = make_value_stack_move_instruction(
@@ -5047,8 +5059,15 @@ materialize_local_aggregate_address_call_argument(
   }
   const auto* source_home =
       argument.source_value_id.has_value()
-          ? find_value_home(context, *argument.source_value_id)
-          : find_value_home(context, result_register->value_name);
+          ? prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.value_locations,
+                *argument.source_value_id)
+          : prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.regalloc,
+                context.function.value_locations,
+                result_register->value_name);
   const auto source = make_selected_call_argument_source(
       context,
       argument,
@@ -6149,7 +6168,10 @@ void record_call_result_source_register(
     }
   } else {
     const auto& result = *call_plan.result;
-    const auto* home = find_value_home(context, *result.destination_value_id);
+    const auto* home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  *result.destination_value_id);
     if (home != nullptr && home->value_name != c4c::kInvalidValueName) {
       const auto parsed = abi::parse_aarch64_register_name(*result.source_register_name);
       if (parsed.has_value()) {
@@ -6227,7 +6249,11 @@ void record_call_result_source_register(
     if (!value_name.has_value()) {
       return;
     }
-    const auto* home = find_value_home(context, *value_name);
+    const auto* home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.regalloc,
+                                                  context.function.value_locations,
+                                                  *value_name);
     if (home == nullptr || home->value_id == prepare::PreparedValueId{0}) {
       return;
     }
@@ -6384,7 +6410,10 @@ materialize_missing_frame_slot_call_arguments(
         argument.destination_contiguous_width > 1) {
       continue;
     }
-    const auto* home = find_value_home(context, *argument.source_value_id);
+    const auto* home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  *argument.source_value_id);
     if (home == nullptr ||
         home->kind != prepare::PreparedValueHomeKind::StackSlot ||
         find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
@@ -6586,8 +6615,9 @@ publish_stack_preserved_call_values(
       source_register = emitted->reg;
     } else if (context.function.value_locations != nullptr) {
       const auto* home =
-          find_value_home(context,
-preserved.value_id);
+          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                    context.function.value_locations,
+                                                    preserved.value_id);
       if (home != nullptr &&
           home->kind == prepare::PreparedValueHomeKind::Register &&
           home->register_name.has_value()) {
