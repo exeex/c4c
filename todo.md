@@ -1,55 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/67_aarch64_local_slot_address_offset_probe.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Apply Only The Classification-Sized Follow-Up
+Current Step ID: Step 5
+Current Step Title: Prove Local-Slot Offset Classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed: applied the classification-sized follow-up by deleting only
-the unreachable `local_slot_address_frame_offset` API surface.
+Step 5 completed: proved local-slot offset classification and recorded
+closure-readiness evidence for idea 67.
 
-Changes made:
-- Removed the `local_slot_address_frame_offset` declaration from
-  `dispatch_publication.hpp`.
-- Removed the null `local_slot_address_frame_offset` definition from
-  `dispatch_publication.cpp`.
-- Left `local_aggregate_address_frame_offset`, prepared frame-address
-  materialization, local aggregate address publication, call-source-selection
-  behavior, and tests unchanged.
+Closure-readiness evidence:
+- `local_slot_address_frame_offset` remains absent; scan found no
+  `local_slot_address_frame_offset(` references under `src` or `tests`.
+- The Step 2 runtime probe still covers the supported route: positive evidence
+  expects prepared frame-address materialization to print `add x13, sp, #64`
+  and adjusted local-slot pointer publication to print `add x14, sp, #80`.
+- The Step 2 negative probe still covers incomplete-prepared-facts behavior:
+  without the prepared frame-address materialization, the route must not
+  rederive `add x14, sp, #80` from local-slot identity.
+- Adjacent aggregate/frame-address behavior was not deleted or reshaped:
+  `local_aggregate_address_frame_offset` remains present in
+  `dispatch_publication.*`, and live aggregate/frame-address tests remain in
+  the backend proof bucket.
+- Current tracked diff for this packet is `todo.md` only; implementation/test
+  cleanup from earlier steps is already reflected in the repo state. No
+  unrelated dispatch contraction, unsupported downgrade, shared authority
+  mutation, or testcase-shaped shortcut was found in the closure scans.
 
-Post-delete evidence:
-- `rg` finds no remaining `local_slot_address_frame_offset(` references under
-  `src` or `tests`.
-- The Step 2 runtime probe remains in place to prove current local-slot pointer
-  Add/Sub callers use prepared frame-address materialization and fail closed
-  without those facts.
+The active runbook appears ready for plan-owner closure review from the
+executor side.
 
 ## Suggested Next
 
-Step 5 - Prove Local-Slot Offset Classification: run the delegated closure
-proof, confirm `local_slot_address_frame_offset` remains absent, confirm the
-Step 2 probe still covers local-slot pointer Add/Sub prepared frame-address
-materialization and incomplete-facts fail-closed behavior, and scan the diff
-for unrelated frame/address authority or test expectation changes.
+Plan owner should review idea 67 for lifecycle closure or any final source
+intent gap. No further executor packet is suggested from this runbook unless
+the plan owner or supervisor identifies a closure blocker.
 
 ## Watchouts
 
-Do not broaden closure into shared frame/address authority or adjacent
-aggregate helper cleanup. The only code deletion in this idea so far is the
-dead `local_slot_address_frame_offset` API surface. Keep the Step 2 runtime
-probe as classification evidence and avoid treating it as new capability
-implementation.
+Residual risk is limited to the intended classification scope: this idea proved
+and removed the dead local-slot offset helper surface, but did not classify or
+delete the adjacent aggregate helper. Existing untracked files under `review/`
+were left untouched as transient artifacts.
 
 ## Proof
 
 Proof passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor)$') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-`test_after.log` reports 6/6 tests passed. `git diff --check` passed.
+`test_after.log` reports 169/169 tests passed. `git diff --check` passed.
 
-Route scan:
-`rg -n "local_slot_address_frame_offset\\(" src tests -g '!review/**'`
-found no remaining references.
+Route-quality scans:
+- `rg -n "local_slot_address_frame_offset\\(" src tests -g '!review/**'`
+  found no remaining references.
+- `rg -n "local_aggregate_address_frame_offset\\(|local_slot_address_offset_probe_uses_prepared_frame_materialization|prepared_with_local_slot_address_offset_probe|add x13, sp, #64|add x14, sp, #80|not to rederive frame" src tests -g '!review/**'`
+  confirmed the adjacent aggregate helper remains present and the Step 2 probe
+  still asserts both prepared frame-address materialization and incomplete-facts
+  fail-closed behavior.
