@@ -767,6 +767,12 @@ namespace mir = c4c::backend::mir;
     const bir::Value& value,
     const module::FunctionLoweringContext& context);
 
+[[nodiscard]] bool fixed_slots_use_frame_pointer(
+    const module::FunctionLoweringContext& context) {
+  return context.frame_plan != nullptr &&
+         context.frame_plan->uses_frame_pointer_for_fixed_slots;
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_scalar_load_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home,
@@ -833,6 +839,7 @@ namespace mir = c4c::backend::mir;
       .address_space = source_access.address_space,
       .is_volatile = source_access.is_volatile,
       .can_use_base_plus_offset = true,
+      .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
   };
 }
 
@@ -897,6 +904,7 @@ namespace mir = c4c::backend::mir;
       .size_bytes = size_bytes,
       .align_bytes = home.align_bytes.value_or(size_bytes),
       .can_use_base_plus_offset = true,
+      .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
   };
 }
 
@@ -1220,16 +1228,16 @@ struct ScalarFallbackOperandSelector {
       return make_immediate_scalar_operand(value);
     }
     const auto* home = find_named_value_home(value, context.function);
-    auto load_source =
-        make_unpublished_load_local_source_operand(context, value, instruction_index);
-    if (load_source.has_value()) {
-      return make_memory_operand(*load_source);
-    }
     const auto emitted =
         home == nullptr ? std::optional<RegisterOperand>{}
                         : find_emitted_scalar_register(scalar_state, home->value_name);
     if (emitted.has_value()) {
       return make_register_operand(*emitted);
+    }
+    auto load_source =
+        make_unpublished_load_local_source_operand(context, value, instruction_index);
+    if (load_source.has_value()) {
+      return make_memory_operand(*load_source);
     }
     if (home != nullptr) {
       auto value_home_operand = make_named_scalar_operand(value, context, diagnostics);
@@ -3972,32 +3980,30 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         if (const auto* lhs_home = find_named_value_home(binary->lhs, context.function);
             lhs_home != nullptr &&
             lhs_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate) {
-          if (auto load_source = make_unpublished_load_local_source_operand(
-                  context, binary->lhs, instruction_index);
-              load_source.has_value()) {
-            clear_emitted_scalar_register(scalar_state, lhs_home->value_name);
-            scalar_record->scalar_alu->lhs = make_memory_operand(*load_source);
-            scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
-          } else if (const auto emitted_lhs =
-                         find_emitted_scalar_register(scalar_state, lhs_home->value_name);
-                     emitted_lhs.has_value()) {
+          if (const auto emitted_lhs =
+                  find_emitted_scalar_register(scalar_state, lhs_home->value_name);
+              emitted_lhs.has_value()) {
             scalar_record->scalar_alu->lhs = make_register_operand(*emitted_lhs);
+            scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
+          } else if (auto load_source = make_unpublished_load_local_source_operand(
+                         context, binary->lhs, instruction_index);
+                     load_source.has_value()) {
+            scalar_record->scalar_alu->lhs = make_memory_operand(*load_source);
             scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
           }
         }
         if (const auto* rhs_home = find_named_value_home(binary->rhs, context.function);
             rhs_home != nullptr &&
             rhs_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate) {
-          if (auto load_source = make_unpublished_load_local_source_operand(
-                  context, binary->rhs, instruction_index);
-              load_source.has_value()) {
-            clear_emitted_scalar_register(scalar_state, rhs_home->value_name);
-            scalar_record->scalar_alu->rhs = make_memory_operand(*load_source);
-            scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
-          } else if (const auto emitted_rhs =
-                         find_emitted_scalar_register(scalar_state, rhs_home->value_name);
-                     emitted_rhs.has_value()) {
+          if (const auto emitted_rhs =
+                  find_emitted_scalar_register(scalar_state, rhs_home->value_name);
+              emitted_rhs.has_value()) {
             scalar_record->scalar_alu->rhs = make_register_operand(*emitted_rhs);
+            scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
+          } else if (auto load_source = make_unpublished_load_local_source_operand(
+                         context, binary->rhs, instruction_index);
+                     load_source.has_value()) {
+            scalar_record->scalar_alu->rhs = make_memory_operand(*load_source);
             scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
           }
         }
