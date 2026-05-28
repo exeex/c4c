@@ -9,26 +9,26 @@ Current Step Title: Fold Thin Prepared Lookup Wrappers
 ## Just Finished
 
 Step 2 - Fold Thin Prepared Lookup Wrappers completed a narrow mechanical
-sub-slice in `dispatch_producers.cpp`: replaced the remaining
+sub-slice in `dispatch.cpp`: replaced the remaining
 `find_value_home(context, <ValueNameId>)` use sites with direct
 `prepare::find_indexed_prepared_value_home` owner API calls using
 `context.function.value_home_lookups`, `context.function.regalloc`, and
 `context.function.value_locations`.
 
-`dispatch_producers.cpp` now has no remaining `find_value_home(context, ...)`
+`dispatch.cpp` now has no remaining `find_value_home(context, ...)`
 wrapper call sites.
 
 ## Suggested Next
 
 Continue Step 2 with supervisor-selected acceptance review or the next bounded
-wrapper fold-back outside `dispatch_producers.cpp` if assigned.
+wrapper fold-back outside `dispatch.cpp` if assigned.
 
 ## Watchouts
 
 This packet did not touch `dispatch_lookup.hpp`/`.cpp`, and the
 `find_value_home` wrappers remain available for non-owned call sites. The
-folded name-id sites preserve unresolved-name and missing-home behavior by
-keeping the existing `prepared_named_value_id` gating and null-home checks.
+folded name-id site preserves unresolved-name and missing-home behavior by
+keeping the existing `prepared_named_value_id` gating and null-home check.
 
 ## Proof
 

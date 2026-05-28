@@ -186,7 +186,11 @@ void append_unsupported_instruction_diagnostic(
   if (!result_value_name.has_value()) {
     return false;
   }
-  const auto* result_home = find_value_home(context, *result_value_name);
+  const auto* result_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_value_name);
   return result_home != nullptr &&
          result_home->kind == prepare::PreparedValueHomeKind::StackSlot;
 }
