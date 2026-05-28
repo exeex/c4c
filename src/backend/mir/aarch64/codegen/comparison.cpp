@@ -1173,7 +1173,13 @@ prepared_current_block_entry_publication_register(
     return std::nullopt;
   }
   const auto value_name = prepared_named_value_id(context, value);
-  const auto* home = value_name.has_value() ? find_value_home(context, *value_name) : nullptr;
+  const auto* home =
+      value_name.has_value()
+          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                      context.function.regalloc,
+                                                      context.function.value_locations,
+                                                      *value_name)
+          : nullptr;
   if (home == nullptr) {
     return std::nullopt;
   }
@@ -1557,7 +1563,10 @@ lower_materialized_compare_condition_branch(
       prepared_named_value_id(context, branch_condition->condition_value);
   const auto* condition_home =
       condition_name.has_value() && context.function.value_locations != nullptr
-          ? find_value_home(context, *condition_name)
+          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                      context.function.regalloc,
+                                                      context.function.value_locations,
+                                                      *condition_name)
           : nullptr;
   if (condition_home == nullptr) {
     return std::nullopt;
@@ -1773,7 +1782,10 @@ lower_constant_rhs_fused_compare_branch(
   const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
       rhs_name.has_value() && context.function.value_locations != nullptr
-          ? find_value_home(context, *rhs_name)
+          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                      context.function.regalloc,
+                                                      context.function.value_locations,
+                                                      *rhs_name)
           : nullptr;
   if (!rhs_producer.has_value() ||
       rhs_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
@@ -1867,7 +1879,10 @@ lower_conditional_branch_from_emitted_condition(
     }
     const auto* home =
         context.function.value_locations != nullptr
-            ? find_value_home(context, *condition_name)
+            ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                        context.function.regalloc,
+                                                        context.function.value_locations,
+                                                        *condition_name)
             : nullptr;
     condition_register = RegisterOperand{
         .reg = *reg,
