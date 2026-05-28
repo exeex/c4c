@@ -840,19 +840,13 @@ prepared_publication_source_register(
       return false;
     };
     const auto true_label =
-        select_chain_label(*select_chain_state.root_context,
-                           select_chain_state.root_instruction_index,
-                           select_chain_state.root_value_name,
-                           target_index,
-                           current_label,
-                           "true");
+        select_chain_local_label_reference(current_label, "true");
+    const auto true_definition =
+        select_chain_local_label_definition(current_label, "true");
     const auto end_label =
-        select_chain_label(*select_chain_state.root_context,
-                           select_chain_state.root_instruction_index,
-                           select_chain_state.root_value_name,
-                           target_index,
-                           current_label,
-                           "end");
+        select_chain_local_label_reference(current_label, "end");
+    const auto end_definition =
+        select_chain_local_label_definition(current_label, "end");
 
     auto lhs = select->lhs;
     lhs.type = select->compare_type;
@@ -956,7 +950,7 @@ prepared_publication_source_register(
       return fail_select();
     }
     lines.push_back("b " + end_label);
-    lines.push_back(true_label + ":");
+    lines.push_back(true_definition);
 
     auto true_value = select->true_value;
     true_value.type = select->result.type;
@@ -971,7 +965,7 @@ prepared_publication_source_register(
                                                       select_chain_state)) {
       return fail_select();
     }
-    lines.push_back(end_label + ":");
+    lines.push_back(end_definition);
     select_chain_state.active_values.pop_back();
     if (seeded_root_context) {
       select_chain_state.root_context.reset();

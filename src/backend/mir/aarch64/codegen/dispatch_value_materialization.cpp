@@ -522,6 +522,7 @@ prepared_same_block_integer_constant(
         select_chain_materialization.direct_global_dependency.contains_direct_global_load
             ? &select_chain_materialization.direct_global_dependency
             : nullptr;
+    const std::size_t package_index = before_instruction_index;
     std::size_t label_index = 0;
     std::vector<std::string_view> active_values;
     return emit_select_chain_value_to_register(context,
@@ -533,6 +534,7 @@ prepared_same_block_integer_constant(
                                                     .root_instruction_index,
                                                select_chain_materialization
                                                     .root_value_name,
+                                               package_index,
                                                lines,
                                                label_index,
                                                active_values,

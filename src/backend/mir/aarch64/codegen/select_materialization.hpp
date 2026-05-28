@@ -20,6 +20,15 @@ namespace prepare = c4c::backend::prepare;
     std::size_t instruction_index,
     c4c::ValueNameId root_value_name,
     std::uint8_t target_index,
+    std::size_t package_index,
+    std::size_t label_index,
+    std::string_view suffix);
+
+[[nodiscard]] std::string select_chain_local_label_reference(
+    std::size_t label_index,
+    std::string_view suffix);
+
+[[nodiscard]] std::string select_chain_local_label_definition(
     std::size_t label_index,
     std::string_view suffix);
 
@@ -31,6 +40,7 @@ namespace prepare = c4c::backend::prepare;
     std::uint8_t scratch_index,
     std::size_t root_instruction_index,
     c4c::ValueNameId root_value_name,
+    std::size_t package_index,
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,

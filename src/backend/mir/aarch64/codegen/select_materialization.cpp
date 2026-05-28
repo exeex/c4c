@@ -45,6 +45,7 @@ namespace {
     std::size_t instruction_index,
     c4c::ValueNameId root_value_name,
     std::uint8_t target_index,
+    std::size_t package_index,
     std::size_t label_index,
     std::string_view suffix) {
   const auto function_name = context.function.control_flow != nullptr
@@ -56,7 +57,24 @@ namespace {
   return ".Lselect_mat_" + std::to_string(function_name) + "_" +
          std::to_string(block_label) + "_" + std::to_string(instruction_index) +
          "_" + std::to_string(root_value_name) + "_" + std::to_string(target_index) +
-         "_" + std::to_string(label_index) + "_" + std::string{suffix};
+         "_" + std::to_string(package_index) + "_" + std::to_string(label_index) +
+         "_" + std::string{suffix};
+}
+
+[[nodiscard]] std::string select_chain_local_label_reference(
+    std::size_t label_index,
+    std::string_view suffix) {
+  const auto numeric_label =
+      label_index * 2U + (suffix == "true" ? std::size_t{1} : std::size_t{2});
+  return std::to_string(numeric_label) + "f";
+}
+
+[[nodiscard]] std::string select_chain_local_label_definition(
+    std::size_t label_index,
+    std::string_view suffix) {
+  const auto numeric_label =
+      label_index * 2U + (suffix == "true" ? std::size_t{1} : std::size_t{2});
+  return std::to_string(numeric_label) + ":";
 }
 
 [[nodiscard]] bool emit_select_chain_value_to_register(
@@ -67,6 +85,7 @@ namespace {
     std::uint8_t scratch_index,
     std::size_t root_instruction_index,
     c4c::ValueNameId root_value_name,
+    std::size_t package_index,
     std::vector<std::string>& lines,
     std::size_t& label_index,
     std::vector<std::string_view>& active_values,
@@ -130,11 +149,13 @@ namespace {
   active_values.push_back(value.name);
   const auto current_label = label_index++;
   const auto true_label =
-      select_chain_label(
-          context, root_instruction_index, root_value_name, target_index, current_label, "true");
+      select_chain_local_label_reference(current_label, "true");
+  const auto true_definition =
+      select_chain_local_label_definition(current_label, "true");
   const auto end_label =
-      select_chain_label(
-          context, root_instruction_index, root_value_name, target_index, current_label, "end");
+      select_chain_local_label_reference(current_label, "end");
+  const auto end_definition =
+      select_chain_local_label_definition(current_label, "end");
 
   const auto lhs_name = gp_register_name(target_index, *compare_view);
   if (!lhs_name.has_value() ||
@@ -176,6 +197,7 @@ namespace {
                                            scratch_index,
                                            root_instruction_index,
                                            root_value_name,
+                                           package_index,
                                            lines,
                                            label_index,
                                            active_values,
@@ -185,7 +207,7 @@ namespace {
     return false;
   }
   lines.push_back("b " + end_label);
-  lines.push_back(true_label + ":");
+  lines.push_back(true_definition);
   if (!emit_select_chain_value_to_register(context,
                                            producer.select->true_value,
                                            producer.instruction_index,
@@ -193,6 +215,7 @@ namespace {
                                            scratch_index,
                                            root_instruction_index,
                                            root_value_name,
+                                           package_index,
                                            lines,
                                            label_index,
                                            active_values,
@@ -201,7 +224,7 @@ namespace {
     active_values.pop_back();
     return false;
   }
-  lines.push_back(end_label + ":");
+  lines.push_back(end_definition);
   active_values.pop_back();
   return true;
 }
@@ -366,6 +389,7 @@ materialize_direct_global_select_chain_call_argument(
     return std::nullopt;
   }
   std::vector<std::string> lines;
+  const std::size_t package_index = argument_plan->arg_index;
   std::size_t label_index = 0;
   std::vector<std::string_view> active_values;
   if (!emit_select_chain_value_to_register(context,
@@ -375,6 +399,7 @@ materialize_direct_global_select_chain_call_argument(
                                            *scratch_index,
                                            before_instruction_index,
                                            *value_name,
+                                           package_index,
                                            lines,
                                            label_index,
                                            active_values,

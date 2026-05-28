@@ -2074,6 +2074,7 @@ lower_scalar_select_publication(
     const auto scratch = scalar_gp_scratch_register(*result_view, {&result_register});
     if (scratch.has_value()) {
       std::vector<std::string> lines;
+      const std::size_t package_index = instruction_index + 1U;
       std::size_t label_index = 0;
       std::vector<std::string_view> active_values;
       if (emit_select_chain_value_to_register(context,
@@ -2085,6 +2086,7 @@ lower_scalar_select_publication(
                                                    .direct_global_dependency
                                                    .root_instruction_index,
                                               select_chain_materialization.root_value_name,
+                                              package_index,
                                               lines,
                                               label_index,
                                               active_values,

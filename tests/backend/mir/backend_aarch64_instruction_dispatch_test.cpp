@@ -19506,17 +19506,21 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
     return fail("expected prepared select root emission to use producer context");
   }
   const auto true_label =
-      aarch64_codegen::select_chain_label(pred_context, 0, select_name, 0, 0, "true");
+      aarch64_codegen::select_chain_local_label_reference(0, "true");
+  const auto true_definition =
+      aarch64_codegen::select_chain_local_label_definition(0, "true");
   const auto end_label =
-      aarch64_codegen::select_chain_label(pred_context, 0, select_name, 0, 0, "end");
+      aarch64_codegen::select_chain_local_label_reference(0, "end");
+  const auto end_definition =
+      aarch64_codegen::select_chain_local_label_definition(0, "end");
   if (lines != std::vector<std::string>{"mov x0, x3",
                                         "cmp x0, #0",
                                         "b.eq " + true_label,
                                         "ldr x0, [sp, #88]",
                                         "b " + end_label,
-                                        true_label + ":",
+                                        true_definition,
                                         "mov x0, x4",
-                                        end_label + ":"}) {
+                                        end_definition}) {
     return fail("expected prepared select root emission to avoid generic fallback rediscovery");
   }
   return 0;
@@ -19709,13 +19713,21 @@ int prepared_select_root_nested_select_uses_chain_labels() {
     return fail("expected prepared select root emission to lower nested select");
   }
   const auto root_true_label =
-      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 0, "true");
+      aarch64_codegen::select_chain_local_label_reference(0, "true");
+  const auto root_true_definition =
+      aarch64_codegen::select_chain_local_label_definition(0, "true");
   const auto root_end_label =
-      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 0, "end");
+      aarch64_codegen::select_chain_local_label_reference(0, "end");
+  const auto root_end_definition =
+      aarch64_codegen::select_chain_local_label_definition(0, "end");
   const auto nested_true_label =
-      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 1, "true");
+      aarch64_codegen::select_chain_local_label_reference(1, "true");
+  const auto nested_true_definition =
+      aarch64_codegen::select_chain_local_label_definition(1, "true");
   const auto nested_end_label =
-      aarch64_codegen::select_chain_label(pred_context, 1, root_name, 0, 1, "end");
+      aarch64_codegen::select_chain_local_label_reference(1, "end");
+  const auto nested_end_definition =
+      aarch64_codegen::select_chain_local_label_definition(1, "end");
   if (lines != std::vector<std::string>{"mov x0, x3",
                                         "cmp x0, #0",
                                         "b.eq " + root_true_label,
@@ -19724,13 +19736,13 @@ int prepared_select_root_nested_select_uses_chain_labels() {
                                         "b.eq " + nested_true_label,
                                         "mov x0, #7",
                                         "b " + nested_end_label,
-                                        nested_true_label + ":",
+                                        nested_true_definition,
                                         "mov x0, x6",
-                                        nested_end_label + ":",
+                                        nested_end_definition,
                                         "b " + root_end_label,
-                                        root_true_label + ":",
+                                        root_true_definition,
                                         "mov x0, x4",
-                                        root_end_label + ":"}) {
+                                        root_end_definition}) {
     return fail("expected nested prepared select to share root label sequence");
   }
   return 0;
@@ -31113,7 +31125,7 @@ int selected_global_load_materializes_before_fused_compare_branch() {
     return fail("expected selected global load branch route to print: " +
                 printed.diagnostic);
   }
-  const auto select_publication = printed.assembly.find(".Lselect_mat_");
+  const auto select_publication = printed.assembly.find("b.eq 1f");
   const auto branch = printed.assembly.find("b.lt ", select_publication);
   const auto branch_compare =
       branch != std::string::npos ? printed.assembly.rfind("cmp ", branch)
@@ -31181,7 +31193,7 @@ int rhs_selected_global_load_materializes_before_fused_compare_branch() {
     return fail("expected rhs selected global load branch route to print: " +
                 printed.diagnostic);
   }
-  const auto select_publication = printed.assembly.find(".Lselect_mat_");
+  const auto select_publication = printed.assembly.find("b.eq 1f");
   const auto branch = printed.assembly.find("b.lt ", select_publication);
   const auto branch_compare =
       branch != std::string::npos ? printed.assembly.rfind("cmp ", branch)
@@ -31283,41 +31295,17 @@ int repeated_select_chain_materializations_use_unique_synthetic_labels() {
                 printed.diagnostic);
   }
 
-  std::vector<std::string> label_definitions;
   std::size_t label_count = 0;
   std::size_t search = 0;
-  while ((search = printed.assembly.find(".Lselect_mat_", search)) !=
+  while ((search = printed.assembly.find("\n    1:", search)) !=
          std::string::npos) {
-    const auto line_begin =
-        printed.assembly.rfind('\n', search) == std::string::npos
-            ? std::size_t{0}
-            : printed.assembly.rfind('\n', search) + 1;
-    bool at_line_start = true;
-    for (std::size_t index = line_begin; index < search; ++index) {
-      if (printed.assembly[index] != ' ') {
-        at_line_start = false;
-        break;
-      }
-    }
-    const auto line_end = printed.assembly.find('\n', search);
-    const auto label_end = printed.assembly.find(':', search);
-    if (at_line_start && label_end != std::string::npos &&
-        (line_end == std::string::npos || label_end < line_end)) {
-      const auto label =
-          printed.assembly.substr(search, label_end + 1 - search);
-      if (std::find(label_definitions.begin(), label_definitions.end(), label) !=
-          label_definitions.end()) {
-        return fail("expected unique synthetic select labels, saw duplicate " +
-                    label + " in: " + printed.assembly);
-      }
-      label_definitions.push_back(label);
-      ++label_count;
-    }
+    ++label_count;
     ++search;
   }
-  if (label_count < 4 ||
+  if (label_count < 2 ||
+      printed.assembly.find(".Lselect_mat_") != std::string::npos ||
       printed.assembly.find("bl consume_i32_pair") == std::string::npos) {
-    return fail("expected two select-chain materialization regions before call: " +
+    return fail("expected two reusable local-label select-chain materialization regions before call: " +
                 printed.assembly);
   }
   return 0;
@@ -31358,7 +31346,7 @@ int selected_i32_global_read_preserves_dynamic_selector_and_call_carrier() {
                 printed.diagnostic);
   }
 
-  const auto select_region = printed.assembly.find(".Lselect_mat_");
+  const auto select_region = printed.assembly.find("b.eq 1f");
   const auto search_begin =
       select_region == std::string::npos ? std::size_t{0} : select_region;
   const auto compare = printed.assembly.find("cmp x21, #0");
@@ -31546,7 +31534,8 @@ const aarch64_codegen::AssemblerInstructionRecord* find_select_materialization_p
         std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
             &instruction.target.payload);
     if (assembler != nullptr && assembler->has_inline_asm_payload &&
-        assembler->inline_asm_template.find(".Lselect_mat_") != std::string::npos) {
+        assembler->inline_asm_template.find("\n1:") != std::string::npos &&
+        assembler->inline_asm_template.find("\n2:") != std::string::npos) {
       found = assembler;
     }
   }

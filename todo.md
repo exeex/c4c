@@ -1,44 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/63_aarch64_shared_select_chain_dependency_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Relocate AArch64 Select Materialization Ownership
+Current Step ID: Step 6
+Current Step Title: Prove Select-Chain Coverage And Ownership Split
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 ownership relocation for AArch64 select materialization.
-Moved `select_chain_label`, `emit_select_chain_value_to_register`,
-`make_select_chain_materialization_instruction`, and
-`materialize_direct_global_select_chain_call_argument` out of broad
-`dispatch_edge_copies` ownership into the precise
-`select_materialization` owner. Direct callers now include the focused owner
-for select-chain materialization APIs, while dispatch edge-copy code keeps only
-edge-copy routing and uses the focused owner for its remaining target-local
-label packaging. The moved code preserves target emission behavior and still
-consumes prepared select-chain/call-argument dependency facts from shared
-authority instead of rediscovering semantics locally.
+Completed the Step 6 blocker fix for repeated select materialization packages.
+Replaced emitted `.Lselect_mat_*` branch labels with deterministic assembler
+numeric local labels (`1f`/`1:`, `2f`/`2:`, and so on) in the target-local
+select materialization and edge-publication packaging paths. Repeated packages
+can now reuse the same local label numbers without global assembler symbol
+collisions, while each branch still resolves inside its own package. The repair
+did not change prepared dependency authority, add semantic discovery, or weaken
+the failing c-testsuite cases.
+
+Updated focused AArch64 instruction-dispatch assertions to recognize reusable
+numeric local labels and to keep checking the materialized selected value feeds
+the fused compare/branch path.
 
 ## Suggested Next
 
-Supervisor should route Step 6 proof/review for the ownership split and select-
-chain coverage, including inspection for accidental semantic-discovery
-fallbacks or broad-header coupling.
+Supervisor should review and commit the Step 6 blocker fix with the updated
+proof log, then decide whether the active runbook is ready for lifecycle
+review/closure.
 
 ## Watchouts
 
-This packet intentionally moved only target-local emission ownership. It did
-not migrate indirect-callee semantic dependency authority or add new
-select-chain discovery. The new owner still calls existing prepared
-same-block select producer and prepared call-argument dependency queries; those
-queries remain the semantic authority. The backend test that directly calls
-`select_chain_label` now includes the precise header.
+The fix intentionally uses assembler numeric local labels rather than a
+process-local counter or address-derived discriminator, so output remains
+stable across runs. `select_chain_label` remains available for deterministic
+named-label construction, but emitted repeated packages now use reusable local
+label references/definitions.
 
 ## Proof
 
-Proof command run exactly:
-`(cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+Focused proof command run first:
+`(cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c|backend_aarch64_instruction_dispatch)$') > test_after.log 2>&1`
 
-Result: passed; `test_after.log` is the canonical proof log. `git diff --check`
-also passed.
+Result: passed.
+
+Full Step 6 proof command run exactly:
+`(cmake --build build -j && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
+
+Result: passed; `test_after.log` is the canonical proof log from the full
+proof. `git diff --check` passed.
