@@ -54,3 +54,20 @@ dispatch.
   edge facts.
 - The implementation claims shared migration while only renaming the fallback
   producer helper.
+
+## Closure
+
+Closed after the active runbook completed Step 5. The final audit recorded in
+`todo.md` found that `find_edge_named_producer(...)` and
+`unique_branch_predecessor_context(...)` were removed from the AArch64
+edge-copy route without replacement by a renamed predecessor scan, named-case
+shortcut, weakened expectation, or unsupported downgrade.
+
+Target-local AArch64 behavior remains local for scratch choice,
+clobber-sensitive block-entry ordering, register spelling, va-list carrier
+emission, and machine instruction sequencing. Missing null-publication entry
+paths fail closed before materialization instead of recovering producers through
+AArch64-local semantic discovery.
+
+Closure proof: `(cmake --build build -j && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
+passed 3417/3417 tests, and `git diff --check` passed.
