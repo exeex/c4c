@@ -94,3 +94,23 @@ directly perform the contraction.
   those failures opportunistically.
 - A patch creates vague follow-up ideas that do not name file families or the
   exact ownership class.
+
+## Closure Note
+
+Closed after the dispatch-family audit classified every file or helper group
+named above and materialized the resulting follow-up route into
+`ideas/open/60_aarch64_dispatch_lookup_wrapper_fold_back.md` through
+`ideas/open/67_aarch64_local_slot_address_offset_probe.md`.
+
+The durable classification table is recorded in `todo.md` history at commit
+`8fad13a87`, and the final follow-up set is recorded at `f3bde145f`. The route
+keeps the audit-only boundary intact: no implementation or test files changed
+under this idea, and no compiler capability progress is claimed here.
+
+The follow-up split avoids reintroducing raw producer scans or local fallback
+authority removed by ideas 47 through 49 by keeping mechanical wrapper
+fold-back, shared/BIR authority migration, target-owner relocation, local route
+preservation, and evidence-only probing as separate source ideas. Shared
+authority candidates such as same-block recursion, edge fallback, select-chain
+dependency discovery, and join parallel-copy cache rebuilding were routed into
+their own follow-ups instead of being hidden inside a bulk dispatch merge.
