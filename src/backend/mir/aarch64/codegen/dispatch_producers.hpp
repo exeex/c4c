@@ -31,15 +31,6 @@ using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
     const module::BlockLoweringContext& context,
     const bir::Inst* producer);
 
-[[nodiscard]] const bir::Global* find_load_global_target(
-    const module::BlockLoweringContext& context,
-    const bir::LoadGlobalInst& load_global);
-
-[[nodiscard]] std::string load_global_symbol_label(
-    const module::BlockLoweringContext& context,
-    const bir::LoadGlobalInst& load_global,
-    const bir::Global* target_global);
-
 [[nodiscard]] bool prepared_query_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst);

@@ -2,7 +2,6 @@
 #include "alu.hpp"
 #include "calls.hpp"
 #include "dispatch_lookup.hpp"
-#include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 #include "select_materialization.hpp"
 
@@ -748,6 +747,55 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
 }
 
 }  // namespace
+
+[[nodiscard]] const bir::Global* find_load_global_target(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global) {
+  if (context.function.prepared == nullptr) {
+    return nullptr;
+  }
+  const auto& globals = context.function.prepared->module.globals;
+  if (load_global.global_name_id != c4c::kInvalidLinkName) {
+    const auto it = std::find_if(
+        globals.begin(),
+        globals.end(),
+        [&](const bir::Global& global) {
+          return global.link_name_id == load_global.global_name_id;
+        });
+    if (it != globals.end()) {
+      return &*it;
+    }
+  }
+  if (load_global.global_name.empty()) {
+    return nullptr;
+  }
+  const auto it = std::find_if(
+      globals.begin(),
+      globals.end(),
+      [&](const bir::Global& global) {
+        return global.name == load_global.global_name;
+      });
+  return it == globals.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] std::string load_global_symbol_label(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const bir::Global* target_global) {
+  if (context.function.prepared != nullptr &&
+      load_global.global_name_id != c4c::kInvalidLinkName) {
+    const std::string_view semantic_name =
+        context.function.prepared->module.names.link_names.spelling(
+            load_global.global_name_id);
+    if (!semantic_name.empty()) {
+      return std::string{semantic_name};
+    }
+  }
+  if (target_global != nullptr && !target_global->name.empty()) {
+    return target_global->name;
+  }
+  return load_global.global_name;
+}
 
 [[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
     const module::BlockLoweringContext& context,

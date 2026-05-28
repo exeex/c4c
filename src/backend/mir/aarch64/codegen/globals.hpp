@@ -23,6 +23,13 @@ struct BlockAddressMaterializationIndex {
 
 [[nodiscard]] BlockAddressMaterializationIndex make_block_address_materialization_index(
     const module::BlockLoweringContext& context);
+[[nodiscard]] const bir::Global* find_load_global_target(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global);
+[[nodiscard]] std::string load_global_symbol_label(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const bir::Global* target_global);
 [[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
