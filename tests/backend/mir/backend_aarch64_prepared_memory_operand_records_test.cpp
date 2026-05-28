@@ -41,6 +41,25 @@ prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,
   };
 }
 
+prepare::PreparedValueHome stack_home(prepare::PreparedValueId value_id,
+                                      c4c::FunctionNameId function_name,
+                                      c4c::ValueNameId value_name,
+                                      prepare::PreparedFrameSlotId slot_id,
+                                      std::size_t offset_bytes,
+                                      std::size_t size_bytes,
+                                      std::size_t align_bytes) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = slot_id,
+      .offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+  };
+}
+
 prepare::PreparedStoragePlanValue memory_register_storage(
     prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
@@ -1733,6 +1752,202 @@ int store_local_cast_publication_consumes_prepared_source_producer() {
   return 0;
 }
 
+prepare::PreparedBirModule make_future_store_local_publication_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("future_store_local_publication");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  const auto source_slot_name = prepared.names.slot_names.intern("selected.home");
+  const auto destination_slot_name = prepared.names.slot_names.intern("out");
+
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{50},
+      .function_name = function_name,
+      .slot_name = source_slot_name,
+      .value_name = selected_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{51},
+      .function_name = function_name,
+      .slot_name = destination_slot_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{50},
+      .object_id = prepare::PreparedObjectId{50},
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{51},
+      .object_id = prepare::PreparedObjectId{51},
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label;
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = named_value(bir::TypeKind::I32, "%selected"),
+      .compare_type = bir::TypeKind::I1,
+      .lhs = named_value(bir::TypeKind::I1, "%cond"),
+      .rhs = bir::Value::immediate_i1(false),
+      .true_value = bir::Value::immediate_i32(7),
+      .false_value = bir::Value::immediate_i32(11),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "out",
+      .slot_id = destination_slot_name,
+      .value = named_value(bir::TypeKind::I32, "%selected"),
+      .byte_offset = 0,
+      .align_bytes = 4,
+  });
+
+  bir::Function function;
+  function.name = "future_store_local_publication";
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{50},
+                            function_name,
+                            condition_name,
+                            "w0"),
+              stack_home(prepare::PreparedValueId{51},
+                         function_name,
+                         selected_name,
+                         prepare::PreparedFrameSlotId{50},
+                         24,
+                         4,
+                         4),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .stored_value_name = selected_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{51},
+                          .byte_offset = 0,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+  });
+  return prepared;
+}
+
+bool future_store_local_publication_covers_select(
+    prepare::PreparedBirModule& prepared) {
+  auto& control_flow = prepared.control_flow.functions.front();
+  auto& bir_function = prepared.module.functions.front();
+  auto& locations = prepared.value_locations.functions.front();
+  auto& storage = prepared.storage_plans.functions.front();
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &control_flow,
+      .bir_function = &bir_function,
+      .value_locations = &locations,
+      .storage_plan = &storage,
+      .prepared_lookups = &lookups,
+      .value_home_lookups = &lookups.value_homes,
+  };
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, control_flow.blocks.front(), 0);
+  return aarch64_codegen::future_store_local_stack_value_publication_covers_instruction(
+      block_context, block_context.bir_block->insts[0], 0);
+}
+
+int future_store_local_stack_value_publication_proves_selected_owner() {
+  auto prepared = make_future_store_local_publication_module();
+  if (!future_store_local_publication_covers_select(prepared)) {
+    return fail("expected later store-local publication to own stack-homed select");
+  }
+
+  auto no_later_store = make_future_store_local_publication_module();
+  no_later_store.module.functions.front().blocks.front().insts.pop_back();
+  if (future_store_local_publication_covers_select(no_later_store)) {
+    return fail("expected missing later store-local to fail closed");
+  }
+
+  auto value_mismatch = make_future_store_local_publication_module();
+  auto& mismatched_store = std::get<bir::StoreLocalInst>(
+      value_mismatch.module.functions.front().blocks.front().insts[1]);
+  mismatched_store.value = named_value(bir::TypeKind::I32, "%other");
+  if (future_store_local_publication_covers_select(value_mismatch)) {
+    return fail("expected store-local value mismatch to fail closed");
+  }
+
+  auto type_mismatch = make_future_store_local_publication_module();
+  auto& type_mismatched_store = std::get<bir::StoreLocalInst>(
+      type_mismatch.module.functions.front().blocks.front().insts[1]);
+  type_mismatched_store.value = named_value(bir::TypeKind::I64, "%selected");
+  if (future_store_local_publication_covers_select(type_mismatch)) {
+    return fail("expected store-local type mismatch to fail closed");
+  }
+
+  auto unavailable_publication = make_future_store_local_publication_module();
+  unavailable_publication.addressing.functions.front().accesses.clear();
+  if (future_store_local_publication_covers_select(unavailable_publication)) {
+    return fail("expected unavailable prepared store-source publication to fail closed");
+  }
+
+  auto register_homed_source = make_future_store_local_publication_module();
+  auto& selected_home =
+      register_homed_source.value_locations.functions.front().value_homes[1];
+  selected_home.kind = prepare::PreparedValueHomeKind::Register;
+  selected_home.register_name = "w9";
+  selected_home.slot_id = std::nullopt;
+  selected_home.offset_bytes = std::nullopt;
+  if (future_store_local_publication_covers_select(register_homed_source)) {
+    return fail("expected register-homed store-local source to fail closed");
+  }
+
+  return 0;
+}
+
 int dispatch_selects_address_materialization_from_prepared_carrier() {
   auto fixture = make_address_fixture();
   prepare::PreparedBirModule prepared;
@@ -1871,6 +2086,11 @@ int main() {
     return status;
   }
   if (const int status = store_local_cast_publication_consumes_prepared_source_producer();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          future_store_local_stack_value_publication_proves_selected_owner();
       status != 0) {
     return status;
   }

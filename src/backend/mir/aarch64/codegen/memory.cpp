@@ -4019,6 +4019,55 @@ void lower_pending_store_global_stack_value_publications(
   }
 }
 
+[[nodiscard]] bool future_store_local_stack_value_publication_covers_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr) {
+    return false;
+  }
+  const auto result = instruction_result_value(inst);
+  if (!result.has_value() ||
+      result->kind != bir::Value::Kind::Named ||
+      result->name.empty()) {
+    return false;
+  }
+  const auto result_name = prepared_named_value_id(context, *result);
+  if (!result_name.has_value()) {
+    return false;
+  }
+  const auto* home = find_value_home(context, *result_name);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return false;
+  }
+
+  for (std::size_t index = instruction_index + 1U;
+       index < context.bir_block->insts.size();
+       ++index) {
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index]);
+    if (store == nullptr) {
+      continue;
+    }
+    if (store->value.kind != bir::Value::Kind::Named ||
+        store->value.name != result->name ||
+        store->value.type != result->type) {
+      continue;
+    }
+    const auto plan = plan_store_local_source_publication(context, *store, index);
+    if (!prepare::prepared_store_source_publication_available(plan) ||
+        plan.source_home_kind != prepare::PreparedValueHomeKind::StackSlot) {
+      return false;
+    }
+    if (plan.source_producer_instruction_index == instruction_index) {
+      return true;
+    }
+    return plan.direct_global_select_chain_root_instruction_index == instruction_index;
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_global_value_publication_from_plan(
     const module::BlockLoweringContext& context,

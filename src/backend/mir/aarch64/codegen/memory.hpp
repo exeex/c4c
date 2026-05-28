@@ -96,6 +96,11 @@ void lower_pending_store_global_stack_value_publications(
     std::unordered_set<c4c::ValueNameId>& published_stack_values,
     module::MachineBlock& block);
 
+[[nodiscard]] bool future_store_local_stack_value_publication_covers_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index);
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_global_value_publication(
     const module::BlockLoweringContext& context,

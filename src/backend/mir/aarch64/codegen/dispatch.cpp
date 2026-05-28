@@ -965,8 +965,15 @@ InstructionDispatchResult dispatch_prepared_block(
               block.instructions.push_back(std::move(*formal_store));
             }
           } else {
-            append_unsupported_instruction_diagnostic(
-                diagnostics, context, inst, instruction_index);
+            if (future_store_local_stack_value_publication_covers_instruction(
+                    context,
+                    inst,
+                    instruction_index)) {
+              // The later store-local publication owns this stack-home producer.
+            } else {
+              append_unsupported_instruction_diagnostic(
+                  diagnostics, context, inst, instruction_index);
+            }
           }
         }
       }
