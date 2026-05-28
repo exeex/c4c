@@ -1,37 +1,39 @@
 Status: Active
-Source Idea Path: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
+Source Idea Path: ideas/open/58_aarch64_prepared_authority_regression_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 10
-Current Step Title: Prove Direct Edge LoadLocal Prepared Memory Consumption
+Current Step ID: Step 1
+Current Step Title: Confirm The Returned Failure Shape
 
 # Current Packet
 
 ## Just Finished
 
-Step 10, direct-edge `LoadLocal` prepared source-memory consumption, now has
-focused coverage and the code seam fails closed when the prepared publication
-does not carry matching source-memory authority.
+Idea 60 decomposition is closed and the active lifecycle returned to idea 58.
+The accepted Step 6-10 seam commits split and proved store-local selected
+publication, store-global stack publication, fused-compare selected operand
+order, call/outgoing stack argument materialization, and direct-edge
+`LoadLocal` prepared source-memory consumption.
 
-`dispatch_edge_copies.cpp` now treats a matching direct-edge `LoadLocal`
-prepared publication as requiring the prepared source-memory record before it
-can materialize the edge load. The focused instruction dispatch probe consumes
-the prepared frame-slot source-memory address for the direct edge and verifies
-that removing the prepared source-memory access rejects the route without
-falling back to the source register/home.
+The post-Step-10 review accepted those seams as aligned with idea 60 and found
+no route reset or further decomposition requirement. The focused four-test
+proof remains `3/4`: dispatch, dynamic-stack fixed-slot FP anchoring, and
+`00207` pass; `00196` still fails with the known `joe() && fred()` runtime
+mismatch.
 
 ## Suggested Next
 
-Next packet: supervisor should decide whether the remaining active plan state is
-complete enough for review/closure or whether another isolated publication seam
-needs a bounded executor packet.
+Next packet: execute Step 1 for idea 58 by confirming the returned failure
+shape from `test_after.log`, then select nearby same-feature probes before
+re-inspecting the `78730af2f` boundary for the remaining `00196` family.
 
 ## Watchouts
 
-- This packet accepts only the direct-edge `LoadLocal` prepared source-memory
-  seam in `dispatch_edge_copies.cpp`; the implementation change remains limited
-  to that file.
-- The focused direct-edge probe checks prepared source-memory consumption and
-  fail-closed behavior without binding to exact temporary register names.
+- Do not reopen closed idea 60 seams unless the `00196` investigation proves a
+  shared semantic owner.
+- Do not key behavior to `00196`, exact temporary names, literal labels, or
+  fixed stack offsets.
+- Keep dispatch, dynamic-stack fixed-slot FP anchoring, and `00207` green while
+  repairing the remaining family.
 - `c_testsuite_aarch64_backend_src_00196_c` still fails with the existing
   runtime mismatch (`joe() && fred()` cases print `1` instead of `0`).
 
@@ -49,3 +51,15 @@ Result: build passed. `backend_aarch64_instruction_dispatch`,
 `c_testsuite_aarch64_backend_src_00196_c` failed with the known baseline
 runtime mismatch recorded above. `test_after.log` is preserved with the exact
 delegated proof output.
+
+Plan-owner close gate for idea 60 used the preserved matching four-test logs.
+The strict monotonic check reported no pass-count increase (`3/4` before and
+after), while the documented non-decreasing regression guard passed with no new
+failures:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py \
+  --before test_before.log \
+  --after test_after.log \
+  --allow-non-decreasing-passed
+```

@@ -1,5 +1,16 @@
 # AArch64 Dispatch Prepared Publication Decomposition
 
+Closed: 2026-05-28
+
+Closure summary: the dispatch/prepared-publication dirty stack was split into
+independently accepted seam commits for GOT `LoadGlobal`, store-local selected
+publication, store-global stack publication, fused-compare selected operand
+order, call/outgoing stack argument materialization, and direct-edge
+`LoadLocal` prepared source-memory consumption. The post-Step-10 review
+accepted the seam sequence as aligned and found no route reset or further
+decomposition requirement. The remaining `00196` runtime mismatch stays with
+idea 58's `78730af2f` recovery family.
+
 ## Goal
 
 Split the stuck AArch64 instruction-dispatch prepared-publication route into

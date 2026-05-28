@@ -108,4 +108,16 @@ and `c_testsuite_aarch64_backend_src_00196_c` are still failing, and the
 original four-test recovery criteria are not satisfied.
 
 Follow-up decomposition work now lives in
-`ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md`.
+`ideas/closed/60_aarch64_dispatch_prepared_publication_decomposition.md`.
+
+## Returned Route Note
+
+Idea 60 closed on 2026-05-28 after the post-Step-10 review accepted the
+dispatch/prepared-publication seam sequence. The focused proof is now `3/4`:
+`backend_aarch64_instruction_dispatch`,
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`, and
+`c_testsuite_aarch64_backend_src_00207_c` pass, while
+`c_testsuite_aarch64_backend_src_00196_c` still fails with the known
+`joe() && fred()` runtime mismatch. Resume this idea from the remaining
+`78730af2f` family; keep the closed idea 60 seams as context only unless the
+`00196` investigation proves a shared semantic owner.
