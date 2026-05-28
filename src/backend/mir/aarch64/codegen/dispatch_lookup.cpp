@@ -59,15 +59,6 @@ const prepare::PreparedValueHome* find_value_home(
                                                    value_id);
 }
 
-std::optional<prepare::PreparedValueId> prepared_value_id(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  return prepare::find_indexed_prepared_value_id(context.function.value_home_lookups,
-                                                 context.function.regalloc,
-                                                 context.function.value_locations,
-                                                 value_name);
-}
-
 const prepare::PreparedValueHome* find_value_home(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name) {

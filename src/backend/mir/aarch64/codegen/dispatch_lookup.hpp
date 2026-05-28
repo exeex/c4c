@@ -17,9 +17,6 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] const prepare::PreparedValueHome* find_value_home(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id);
-[[nodiscard]] std::optional<prepare::PreparedValueId> prepared_value_id(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name);
 [[nodiscard]] const prepare::PreparedValueHome* find_value_home(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name);
