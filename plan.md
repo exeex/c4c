@@ -124,32 +124,53 @@ Completion check:
 
 ### Step 6: Prove Store-Local Selected Publication Ownership
 
+Status: Blocked at C-route probe; continue only through a lower-level
+MIR/unit ownership probe.
+
 Goal: decide whether the dirty store-local future-consumer suppression is a
 valid prepared-publication ownership rule.
 
 Primary target: `memory.cpp` / `dispatch.cpp` store-local selected publication
-accounting, plus a focused backend probe such as
-`tests/backend/case/aarch64_store_local_selected_publication.c` if the harness
-can express it.
+accounting, with proof moved below the C backend route harness because the
+candidate C probes did not create the required stack-homed selected producer.
 
 Actions:
 
 - Start from the dirty store-local future-consumer suppression called out in
   `review/remaining_dirty_stack_acceptance_review.md`.
-- Extract or select one focused probe for selected local-store publication
-  ownership.
-- If implementation is delegated, keep code edits limited to the store-local
-  publication owner surface needed by that probe.
+- Treat the attempted C route for
+  `backend_codegen_route_aarch64_store_local_selected_publication` as
+  non-acceptance evidence: it showed that route-level local-store compilation
+  can avoid the intended stack-homed selected-producer shape.
+- Next executor packet must add or extend a lower-level MIR/unit probe for
+  `future_store_local_stack_value_publication_covers_instruction`, preferably
+  in `tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp`
+  unless a closer existing MIR test already owns prepared store-source
+  publication accounting.
+- The probe must construct prepared BIR where the current instruction produces
+  a named, stack-homed selected value and a later same-block `StoreLocal`
+  publication plan covers that exact producer or its direct global select-chain
+  root.
+- The same probe must also fail closed when the future store is absent, uses a
+  different value/type, has no available prepared store-source publication, or
+  covers a register-homed source instead of a stack home.
+- If implementation is delegated after the probe exists, keep code edits
+  limited to `future_store_local_stack_value_publication_covers_instruction`
+  and its direct store-local ownership helper surface. Do not broaden the
+  helper into a generic future-consumer scan.
 - Do not modify calls, store-global publication, fused-compare materialization,
   direct edge `LoadLocal`, or GOT `LoadGlobal` code in this packet.
-- If the probe cannot be expressed without reusing the broad dispatch case as
-  the only proof, record the harness gap and leave the dirty store-local code
-  unaccepted.
+- If that lower-level probe cannot be built without exposing inappropriate
+  private internals or only repeating the broad dispatch case, retire the dirty
+  suppression from the acceptance path: the next executor should remove or
+  quarantine the store-local dirty code without accepting it, while preserving
+  the remaining dirty-stack warning for the other seams.
 
 Completion check:
 
-- The store-local focused probe passes with build proof, or `todo.md` records
-  why the seam remains unaccepted.
+- A focused MIR/unit store-local ownership probe passes with build proof and
+  proves both the positive and fail-closed cases, or `todo.md` records that the
+  dirty suppression was removed/quarantined and remains unaccepted.
 - The focused four-test proof is rerun as integration confirmation, with any
   remaining `00196` failure kept separate unless this seam proves ownership.
 
