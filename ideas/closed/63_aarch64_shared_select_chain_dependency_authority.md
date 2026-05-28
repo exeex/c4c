@@ -61,3 +61,11 @@ generic dispatch family.
 - The result works only by adding select-chain-shaped special cases.
 - The route changes target emission sequencing while claiming only shared
   dependency migration.
+
+## Completion Note
+
+Closed after the active runbook completed inventory, shared call-argument
+facts, call-argument consumer migration, non-call select-chain fact migration,
+target-local select materialization owner relocation, and full-suite Step 6
+proof. Close validation used the full build plus full CTest suite with
+3417/3417 tests passing before and after.
