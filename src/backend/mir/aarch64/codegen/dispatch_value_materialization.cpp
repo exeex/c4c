@@ -32,7 +32,6 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
-namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 namespace {
@@ -56,6 +55,7 @@ prepared_same_block_scalar_producer(
     std::size_t before_instruction_index) {
   if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
       context.function.prepared == nullptr ||
+      context.function.prepared_lookups == nullptr ||
       context.function.control_flow == nullptr ||
       value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return std::nullopt;
@@ -64,27 +64,36 @@ prepared_same_block_scalar_producer(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_same_block_scalar_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        *value_name,
-        value.type,
-        before_instruction_index);
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
   return prepare::find_prepared_same_block_scalar_producer(
       context.function.prepared->names,
-      &source_producers,
+      &context.function.prepared_lookups->edge_publication_source_producers,
       context.control_flow_block->block_label,
       context.bir_block,
       *value_name,
       value.type,
+      before_instruction_index);
+}
+
+[[nodiscard]] std::optional<std::int64_t>
+prepared_same_block_integer_constant(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
+      context.function.prepared == nullptr ||
+      context.function.prepared_lookups == nullptr ||
+      value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  return prepare::evaluate_prepared_same_block_integer_constant(
+      context.function.prepared->names,
+      &context.function.prepared_lookups->edge_publication_source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
       before_instruction_index);
 }
 
@@ -143,7 +152,8 @@ prepared_same_block_scalar_producer(
 
 [[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
     const module::BlockLoweringContext& context,
-    const bir::Value& value) {
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
   if (value.kind == bir::Value::Kind::Immediate) {
     if (value.immediate < 0) {
       return std::nullopt;
@@ -151,11 +161,11 @@ prepared_same_block_scalar_producer(
     return power_of_two_shift(static_cast<std::uint64_t>(value.immediate));
   }
   const auto constant =
-      mir::evaluate_same_block_integer_constant(context.bir_block, value);
-  if (!constant.has_value() || constant->value < 0) {
+      prepared_same_block_integer_constant(context, value, before_instruction_index);
+  if (!constant.has_value() || *constant < 0) {
     return std::nullopt;
   }
-  return power_of_two_shift(static_cast<std::uint64_t>(constant->value));
+  return power_of_two_shift(static_cast<std::uint64_t>(*constant));
 }
 
 [[nodiscard]] bool value_publication_may_write_scratch_register(
@@ -166,7 +176,8 @@ prepared_same_block_scalar_producer(
   if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return false;
   }
-  if (mir::evaluate_same_block_integer_constant(context.bir_block, value).has_value()) {
+  if (prepared_same_block_integer_constant(
+          context, value, before_instruction_index).has_value()) {
     return false;
   }
   if (const auto value_view = scalar_view_for_type(value.type);
@@ -196,7 +207,7 @@ prepared_same_block_scalar_producer(
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     if (binary->opcode == bir::BinaryOpcode::Mul &&
-        value_power_of_two_shift(context, rhs).has_value()) {
+        value_power_of_two_shift(context, rhs, producer_index).has_value()) {
       return value_publication_may_write_scratch_register(
           context, lhs, producer_index, depth + 1);
     }
@@ -234,9 +245,9 @@ prepared_same_block_scalar_producer(
     return false;
   }
   if (const auto constant =
-          mir::evaluate_same_block_integer_constant(context.bir_block, value);
+          prepared_same_block_integer_constant(context, value, before_instruction_index);
       constant.has_value()) {
-    lines.push_back("mov " + *target + ", #" + std::to_string(constant->value));
+    lines.push_back("mov " + *target + ", #" + std::to_string(*constant));
     return true;
   }
   if (auto published =
@@ -503,6 +514,7 @@ prepared_same_block_scalar_producer(
   if (binary == nullptr) {
     return false;
   }
+  const auto binary_index = producer_context->instruction_index;
 
   if (const auto condition = branch_condition_suffix(binary->opcode);
       condition.has_value()) {
@@ -526,13 +538,13 @@ prepared_same_block_scalar_producer(
       rhs.type = binary->operand_type;
       if (!emit_fp_value_to_register(context,
                                      lhs,
-                                     before_instruction_index,
+                                     binary_index,
                                      *lhs_fp,
                                      scratch_index,
                                      lines) ||
           !emit_fp_value_to_register(context,
                                      rhs,
-                                     before_instruction_index,
+                                     binary_index,
                                      *rhs_fp,
                                      target_index,
                                      lines)) {
@@ -559,7 +571,7 @@ prepared_same_block_scalar_producer(
     if (!emit_value_publication_to_register(
             context,
             lhs,
-            before_instruction_index,
+            binary_index,
             target_index,
             scratch_index,
             lines,
@@ -578,7 +590,7 @@ prepared_same_block_scalar_producer(
       if (!rhs_name.has_value() ||
           !emit_value_publication_to_register(context,
                                               rhs,
-                                              before_instruction_index,
+                                              binary_index,
                                               scratch_index,
                                               nested_scratch_index,
                                               lines,
@@ -612,7 +624,7 @@ prepared_same_block_scalar_producer(
     if (!emit_value_publication_to_register(
             context,
             lhs,
-            before_instruction_index,
+            binary_index,
             target_index,
             scratch_index,
             lines,
@@ -622,7 +634,7 @@ prepared_same_block_scalar_producer(
     const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
     if (!emit_value_publication_to_register(context,
                                             rhs,
-                                            before_instruction_index,
+                                            binary_index,
                                             scratch_index,
                                             nested_scratch_index,
                                             lines,
@@ -656,10 +668,10 @@ prepared_same_block_scalar_producer(
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
-    if (const auto shift = value_power_of_two_shift(context, rhs)) {
+    if (const auto shift = value_power_of_two_shift(context, rhs, binary_index)) {
       if (!emit_value_publication_to_register(context,
                                               lhs,
-                                              before_instruction_index,
+                                              binary_index,
                                               target_index,
                                               scratch_index,
                                               lines,
@@ -674,28 +686,26 @@ prepared_same_block_scalar_producer(
     }
     const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
     const bool rhs_reads_target = value_publication_may_read_register_index(
-        context, rhs, before_instruction_index, target_index);
+        context, rhs, binary_index, target_index);
     const bool lhs_reads_scratch = value_publication_may_read_register_index(
-        context, lhs, before_instruction_index, scratch_index);
+        context, lhs, binary_index, scratch_index);
     const bool rhs_writes_target =
         nested_scratch_index == target_index &&
-        value_publication_may_write_scratch_register(
-            context, rhs, before_instruction_index);
+        value_publication_may_write_scratch_register(context, rhs, binary_index);
     const bool lhs_writes_scratch =
-        value_publication_may_write_scratch_register(
-            context, lhs, before_instruction_index);
+        value_publication_may_write_scratch_register(context, lhs, binary_index);
     if ((rhs_reads_target || rhs_writes_target) &&
         !lhs_reads_scratch && !lhs_writes_scratch) {
       if (!emit_value_publication_to_register(context,
                                               rhs,
-                                              before_instruction_index,
+                                              binary_index,
                                               scratch_index,
                                               nested_scratch_index,
                                               lines,
                                               reload_current_memory_loads) ||
           !emit_value_publication_to_register(context,
                                               lhs,
-                                              before_instruction_index,
+                                              binary_index,
                                               target_index,
                                               scratch_index,
                                               lines,
@@ -704,14 +714,14 @@ prepared_same_block_scalar_producer(
       }
     } else if (!emit_value_publication_to_register(context,
                                                    lhs,
-                                                   before_instruction_index,
+                                                   binary_index,
                                                    target_index,
                                                    scratch_index,
                                                    lines,
                                                    reload_current_memory_loads) ||
                !emit_value_publication_to_register(context,
                                                    rhs,
-                                                   before_instruction_index,
+                                                   binary_index,
                                                    scratch_index,
                                                    nested_scratch_index,
                                                    lines,
@@ -736,28 +746,26 @@ prepared_same_block_scalar_producer(
   rhs.type = binary->operand_type;
   const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
   const bool rhs_reads_target = value_publication_may_read_register_index(
-      context, rhs, before_instruction_index, target_index);
+      context, rhs, binary_index, target_index);
   const bool lhs_reads_scratch = value_publication_may_read_register_index(
-      context, lhs, before_instruction_index, scratch_index);
+      context, lhs, binary_index, scratch_index);
   const bool rhs_writes_target =
       nested_scratch_index == target_index &&
-      value_publication_may_write_scratch_register(
-          context, rhs, before_instruction_index);
+      value_publication_may_write_scratch_register(context, rhs, binary_index);
   const bool lhs_writes_scratch =
-      value_publication_may_write_scratch_register(
-          context, lhs, before_instruction_index);
+      value_publication_may_write_scratch_register(context, lhs, binary_index);
   if ((rhs_reads_target || rhs_writes_target) &&
       !lhs_reads_scratch && !lhs_writes_scratch) {
     if (!emit_value_publication_to_register(context,
                                             rhs,
-                                            before_instruction_index,
+                                            binary_index,
                                             scratch_index,
                                             nested_scratch_index,
                                             lines,
                                             reload_current_memory_loads) ||
         !emit_value_publication_to_register(context,
                                             lhs,
-                                            before_instruction_index,
+                                            binary_index,
                                             target_index,
                                             scratch_index,
                                             lines,
@@ -768,14 +776,14 @@ prepared_same_block_scalar_producer(
     if (!emit_value_publication_to_register(
             context,
             lhs,
-            before_instruction_index,
+            binary_index,
             target_index,
             scratch_index,
             lines,
             reload_current_memory_loads) ||
         !emit_value_publication_to_register(context,
                                             rhs,
-                                            before_instruction_index,
+                                            binary_index,
                                             scratch_index,
                                             nested_scratch_index,
                                             lines,

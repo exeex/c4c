@@ -1632,6 +1632,8 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
         prepared.record->inputs[0] = prepared.record->scalar_cast->source;
       }
     }
+  }
+  if (prepared.record->scalar_cast.has_value()) {
     const auto source_is_register =
         prepared.record->scalar_cast->source.kind == OperandKind::Register &&
         std::get_if<RegisterOperand>(&prepared.record->scalar_cast->source.payload) != nullptr;

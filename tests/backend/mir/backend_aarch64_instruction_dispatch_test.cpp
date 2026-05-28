@@ -16464,8 +16464,11 @@ int scalar_byte_load_call_argument_materializes_loaded_value_not_cursor() {
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
   aarch64_module::MachineBlock block;
@@ -24043,8 +24046,11 @@ int prepared_branch_condition_stack_home_publishes_before_branch_use() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
@@ -24329,8 +24335,11 @@ int fp_scalar_compare_result_publication_materializes_fcmp_cset() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
@@ -30413,8 +30422,11 @@ int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts()
                                                      true);
     const auto& function_cf = prepared.control_flow.functions.front();
     const auto& block_cf = function_cf.blocks.front();
-    const auto function_context = aarch64_codegen::make_function_lowering_context(
+    auto function_context = aarch64_codegen::make_function_lowering_context(
         prepared, prepared.target_profile, function_cf);
+    const auto prepared_lookups =
+        prepare::make_prepared_function_lookups(prepared, function_cf);
+    attach_prepared_function_lookups(function_context, prepared_lookups);
     const auto block_context =
         aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -30818,8 +30830,11 @@ int block_dispatch_publishes_stack_homed_i32_select_before_global_store() {
   auto prepared = prepared_with_stack_published_i32_select_global_store();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -31021,8 +31036,11 @@ int selected_global_load_materializes_before_fused_compare_branch() {
   auto prepared = prepared_with_selected_global_load_fused_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -31082,8 +31100,11 @@ int rhs_selected_global_load_materializes_before_fused_compare_branch() {
   auto prepared = prepared_with_rhs_selected_global_load_fused_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -31985,8 +32006,11 @@ int block_dispatch_preserves_pointer_base_for_scaled_index_load_publication() {
   auto prepared = prepared_with_pointer_base_scaled_index_load();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 

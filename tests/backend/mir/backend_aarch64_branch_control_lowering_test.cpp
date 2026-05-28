@@ -4,6 +4,7 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstddef>
@@ -24,6 +25,17 @@ namespace prepare = c4c::backend::prepare;
 int fail(std::string_view message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+void attach_prepared_function_lookups(
+    aarch64_module::FunctionLoweringContext& function_context,
+    const prepare::PreparedFunctionLookups& prepared_lookups) {
+  function_context.prepared_lookups = &prepared_lookups;
+  function_context.call_plan_lookups = &prepared_lookups.call_plans;
+  function_context.address_materialization_lookups =
+      &prepared_lookups.address_materializations;
+  function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
+  function_context.value_home_lookups = &prepared_lookups.value_homes;
 }
 
 prepare::PreparedBirModule prepared_with_unconditional_branch() {
@@ -1278,8 +1290,11 @@ int materialized_compare_branch_does_not_reuse_clobbered_bool_register() {
   auto prepared = prepared_with_materialized_compare_condition_clobber();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
+  auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
 
