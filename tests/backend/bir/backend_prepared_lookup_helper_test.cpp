@@ -2289,6 +2289,149 @@ int verify_direct_global_select_chain_dependency_query() {
   return 0;
 }
 
+int verify_prepared_same_block_scalar_source_facts() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto rhs_name = names.value_names.intern("%rhs");
+  const auto sum_name = names.value_names.intern("%sum");
+  const auto product_name = names.value_names.intern("%product");
+
+  bir::Block block;
+  block.label = "entry";
+  block.label_id = block_label;
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "%lhs"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(2),
+      .rhs = bir::Value::immediate_i64(3),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Shl,
+      .result = bir::Value::named(bir::TypeKind::I64, "%rhs"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(4),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I64, "%rhs"),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Mul,
+      .result = bir::Value::named(bir::TypeKind::I64, "%product"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .rhs = bir::Value::immediate_i64(2),
+  });
+
+  const auto* lhs = std::get_if<bir::BinaryInst>(&block.insts[0]);
+  const auto* rhs = std::get_if<bir::BinaryInst>(&block.insts[1]);
+  const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  const auto* product = std::get_if<bir::BinaryInst>(&block.insts[3]);
+
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      lhs_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .binary = lhs,
+      });
+  source_producers.producers_by_value_name.emplace(
+      rhs_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = rhs,
+      });
+  source_producers.producers_by_value_name.emplace(
+      sum_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = sum,
+      });
+  source_producers.producers_by_value_name.emplace(
+      product_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 3,
+          .binary = product,
+      });
+
+  const auto prepared_sum =
+      prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          4);
+  if (!prepared_sum.has_value() ||
+      prepared_sum->producer.binary != sum ||
+      prepared_sum->instruction_index != 2 ||
+      prepared_sum->value_name != sum_name) {
+    return fail("value-based scalar source facade should expose prepared producer facts");
+  }
+
+  const auto product_constant =
+      prepare::evaluate_prepared_same_block_integer_constant(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%product"),
+          4);
+  if (!product_constant.has_value() || *product_constant != 42) {
+    return fail("prepared integer constant query should fold prepared same-block producers");
+  }
+
+  if (prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%product"),
+          3)
+          .has_value()) {
+    return fail("scalar source facade should fail closed for future producers");
+  }
+  if (prepare::evaluate_prepared_same_block_integer_constant(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          4)
+          .has_value()) {
+    return fail("prepared integer constant query should fail closed for missing facts");
+  }
+
+  auto mismatched_source_producers = source_producers;
+  mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 1;
+  if (prepare::evaluate_prepared_same_block_integer_constant(
+          names,
+          &mismatched_source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%product"),
+          4)
+          .has_value()) {
+    return fail("prepared integer constant query should fail closed on mismatched producer facts");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -2338,6 +2481,10 @@ int main() {
     return result;
   }
   if (const int result = verify_direct_global_select_chain_dependency_query();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_same_block_scalar_source_facts();
       result != 0) {
     return result;
   }

@@ -2585,6 +2585,43 @@ find_prepared_same_block_scalar_producer(
                                             before_instruction_index);
 }
 
+std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto value_name = existing_prepared_value_name_id(names, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  return find_prepared_same_block_scalar_producer(names,
+                                                 source_producers,
+                                                 block_label,
+                                                 block,
+                                                 *value_name,
+                                                 value.type,
+                                                 before_instruction_index);
+}
+
+std::optional<std::int64_t> evaluate_prepared_same_block_integer_constant(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  return evaluate_prepared_same_block_integer_constant(names,
+                                                       source_producers,
+                                                       block_label,
+                                                       block,
+                                                       value,
+                                                       before_instruction_index,
+                                                       0U);
+}
+
 std::optional<PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
     const PreparedNameTables& names,

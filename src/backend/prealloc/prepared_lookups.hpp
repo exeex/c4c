@@ -6,6 +6,7 @@
 #include "value_locations.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -682,6 +683,24 @@ find_prepared_same_block_scalar_producer(
     const bir::Block* block,
     ValueNameId value_name,
     bir::TypeKind value_type,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::int64_t>
+evaluate_prepared_same_block_integer_constant(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
     std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedFusedCompareOperandProducer>
