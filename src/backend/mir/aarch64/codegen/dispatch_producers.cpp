@@ -364,7 +364,10 @@ prepared_select_chain_contains_direct_global_load(
           move.from_value_id == move.to_value_id) {
         continue;
       }
-      const auto* destination_home = find_value_home(context, move.to_value_id);
+      const auto* destination_home =
+          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                    context.function.value_locations,
+                                                    move.to_value_id);
       if (destination_home != nullptr &&
           (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
                move, *result_home, *destination_home) ||
@@ -516,7 +519,10 @@ prepared_select_chain_contains_direct_global_load(
           move.source_immediate_i32.has_value()) {
         continue;
       }
-      const auto* source_home = find_value_home(context, move.from_value_id);
+      const auto* source_home =
+          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                    context.function.value_locations,
+                                                    move.from_value_id);
       if (source_home == nullptr ||
           source_home->value_name == c4c::kInvalidValueName) {
         continue;
@@ -599,7 +605,10 @@ build_current_block_join_parallel_copy_cache(
         continue;
       }
       if (!move.source_immediate_i32.has_value()) {
-        const auto* source_home = find_value_home(context, move.from_value_id);
+        const auto* source_home =
+            prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                      context.function.value_locations,
+                                                      move.from_value_id);
         if (source_home != nullptr &&
             source_home->value_name != c4c::kInvalidValueName) {
           incoming_value_ids.insert(source_home->value_id);
@@ -616,8 +625,14 @@ build_current_block_join_parallel_copy_cache(
           move.from_value_id == move.to_value_id) {
         continue;
       }
-      const auto* result_home = find_value_home(context, move.from_value_id);
-      const auto* destination_home = find_value_home(context, move.to_value_id);
+      const auto* result_home =
+          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                    context.function.value_locations,
+                                                    move.from_value_id);
+      const auto* destination_home =
+          prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                    context.function.value_locations,
+                                                    move.to_value_id);
       if (result_home != nullptr && destination_home != nullptr &&
           (prepare::prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
                move, *result_home, *destination_home) ||

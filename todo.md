@@ -9,28 +9,26 @@ Current Step Title: Fold Thin Prepared Lookup Wrappers
 ## Just Finished
 
 Step 2 - Fold Thin Prepared Lookup Wrappers completed a narrow mechanical
-sub-slice: removed the unused
-`prepared_value_id(const module::BlockLoweringContext&, ValueNameId)` declaration
-and definition from `dispatch_lookup.hpp`/`.cpp`.
+sub-slice in `dispatch_producers.cpp`: replaced every
+`find_value_home(context, <PreparedValueId>)` use with direct
+`prepare::find_indexed_prepared_value_home` owner API calls using
+`context.function.value_home_lookups` and `context.function.value_locations`.
 
-Before removal, `c4c-clang-tool-ccdb function-callers` reported no callers in
-the defining translation unit, and targeted `rg` over AArch64 codegen found only
-the wrapper declaration/definition. A post-edit exact search for
-`prepared_value_id(` found no remaining matches.
+The remaining `find_value_home` calls in `dispatch_producers.cpp` all use
+resolved `ValueNameId` values and were left unchanged for this packet.
 
 ## Suggested Next
 
-Continue Step 2 with the remaining mechanical wrappers from the Step 1
-inventory, such as the still-outstanding unused
-`find_same_block_binary_producer` removal or direct owner-API fold-backs.
+Continue Step 2 with another bounded wrapper fold-back, such as converting the
+remaining `find_value_home(context, <ValueNameId>)` producer-file call sites to
+the direct prepared lookup owner API if the supervisor assigns that scope.
 
 ## Watchouts
 
-`prepared_named_value_id`, both `find_value_home` overloads,
-`find_same_block_named_producer`, `evaluate_same_block_integer_constant`,
-`instruction_result_value`, and `instruction_result_value_ref` remain
-outstanding. Do not migrate shared authority or touch `prepared_named_value_id`
-or `find_value_home` as part of this narrow packet.
+This packet did not touch `dispatch_lookup.hpp`/`.cpp`, and the
+`find_value_home` wrappers remain available for non-owned call sites.
+Preserve the two owner API overload shapes: prepared ids use
+`value_home_lookups` plus `value_locations`; name ids also require `regalloc`.
 
 ## Proof
 
