@@ -1,58 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/65_aarch64_target_owner_relocation.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Retire Dispatch-Family Adapter Surface
+Current Step ID: Step 6
+Current Step Title: Prove Target-Owner Preservation
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 completed: retired the remaining transitive memory-helper exposure from
-the broad dispatch-publication header and recorded the remaining justified
-dispatch-family adapter surfaces.
+Step 6 completed: target-owner preservation and closure-readiness evidence was
+collected for idea 65 without implementation or test edits.
 
-Changes:
-- Removed `memory.hpp` from `dispatch_publication.hpp`; moved memory/address
-  helper consumers now include the precise memory owner directly.
-- Added direct `memory.hpp` includes to `cast_ops.cpp`,
-  `dispatch_edge_copies.cpp`, `globals.cpp`,
-  `prepared_value_home_materialization.cpp`, and `variadic.cpp`.
-- Confirmed Step 2 global helpers are exposed from `globals.hpp`, Step 3
-  memory/address helpers from `memory.hpp`, and Step 4 alias helpers from
-  `alu.hpp`.
-- Added no forwarding wrappers and did not move helper logic into
-  `dispatch.cpp`.
+Proof evidence:
+- Full backend bucket proof passed with 169/169 tests green.
+- `test_after.log` contains the green build and CTest output.
+- `git diff --check` passed after proof.
 
-Remaining justified adapter surface:
-- `dispatch_producers.hpp` still owns producer/source-query routing helpers:
-  same-block select producer discovery, select-chain global-load discovery,
-  producer instruction-index lookup, and current-block join prepared-query
-  routing. These are semantic/route adapters, not target spelling helpers.
-- `dispatch_value_materialization.hpp` still exposes
-  `emit_value_publication_to_register`; it remains a broad recursive
-  target-local value-publication adapter used by several owners and should not
-  be split through forwarding-only cleanup.
-- `dispatch_publication.hpp` still exposes target-local publication,
-  prepared-home, retargeting, fixed-formal/local-slot, block-entry, and
-  branch-fusion publication hooks. Those are still live route/publication
-  adapters until a precise publication owner exists.
+Route-quality scans:
+- Relocated global helpers `find_load_global_target` and
+  `load_global_symbol_label` are declared/defined in `globals.*`; no broad
+  `dispatch_producers.*` declaration remains.
+- Relocated memory/address helpers `register_indirect_address`,
+  `fixed_slots_use_frame_pointer`, `frame_slot_address`,
+  `scalar_load_mnemonic`, `dispatch_publication_scalar_type_size_bytes`,
+  `scalar_load_mnemonic_for_width`, and `scalar_store_mnemonic` are
+  declared/defined in `memory.*`; broad dispatch-family headers do not declare
+  them.
+- Relocated register alias helpers `registers_alias` and
+  `register_operands_share_physical_register` are declared/defined in
+  `alu.*`; broad `dispatch_publication.*` uses are call sites only.
+- `dispatch.cpp` did not accumulate relocated target helper logic. Its scan
+  hits are route-level call/hook wiring for `registers_alias` and
+  `fixed_slots_use_frame_pointer`.
+- No forwarding-only wrappers were added for the relocated helper names.
 
 ## Suggested Next
 
-Step 6 should prove target-owner preservation and closure readiness. Suggested
-packet: run the supervisor-selected final AArch64/backend proof, repeat
-route-quality scans for the relocated global/memory/ALU helper surfaces,
-confirm `dispatch.cpp` did not accumulate helper logic, and decide whether the
-active plan is ready for plan-owner closure review.
+The active plan appears ready for plan-owner closure review. Suggested next
+packet: plan owner should compare the Step 6 evidence against idea 65
+acceptance criteria, decide whether the source idea can close, and handle
+lifecycle closure or any final route notes.
 
 ## Watchouts
 
 No `publication.*` owner existed in this checkout, so remaining
 dispatch-publication declarations are justified rather than force-moved into a
-new source during surface cleanup. Do not broaden Step 6 into behavior changes,
-dispatch sequencing, before-return ordering, prepared-memory retry decisions,
-current-block join query routing, or shared semantic authority.
+new source during surface cleanup. Residual risk is limited to whether the
+supervisor wants broader-than-backend validation before closure; within the
+delegated backend bucket and route-quality scans, no forwarding-only wrapper,
+dispatch.cpp accumulation, or local behavior-change signal is visible.
 
 The global relocation helper in `dispatch_publication.*` and the private
 global-load publication helper in `dispatch_value_materialization.cpp` remain
@@ -61,10 +57,9 @@ deferred.
 ## Proof
 
 Proof passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_|backend_codegen_route_aarch64_)') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-`test_after.log` reports 40/40 tests passed. `git diff --check` passed.
-Route-quality scans confirmed direct `memory.hpp` includes for moved
-memory/address-helper consumers and confirmed relocated Step 2-4 helper
-declarations live in `globals.hpp`, `memory.hpp`, and `alu.hpp`, not in broad
-dispatch-family headers.
+`test_after.log` reports 169/169 backend tests passed. `git diff --check`
+passed. Scan commands run:
+- `rg -n "find_load_global_target|load_global_symbol_label|register_indirect_address|fixed_slots_use_frame_pointer|frame_slot_address|scalar_load_mnemonic|dispatch_publication_scalar_type_size_bytes|scalar_load_mnemonic_for_width|scalar_store_mnemonic|registers_alias|register_operands_share_physical_register" src/backend/mir/aarch64/codegen/dispatch_producers.* src/backend/mir/aarch64/codegen/dispatch_publication.* src/backend/mir/aarch64/codegen/dispatch_value_materialization.* src/backend/mir/aarch64/codegen/globals.* src/backend/mir/aarch64/codegen/memory.* src/backend/mir/aarch64/codegen/alu.*`
+- `rg -n "find_load_global_target|load_global_symbol_label|register_indirect_address|fixed_slots_use_frame_pointer|frame_slot_address|scalar_load_mnemonic|dispatch_publication_scalar_type_size_bytes|scalar_load_mnemonic_for_width|scalar_store_mnemonic|registers_alias|register_operands_share_physical_register|emit_prepared_global_symbol_load_to_register|emit_prepared_global_load_to_register" src/backend/mir/aarch64/codegen/dispatch.cpp`
