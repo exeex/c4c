@@ -53,10 +53,6 @@ namespace {
 
 }  // namespace
 
-[[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
-                                   const RegisterOperand& rhs) {
-  return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
-}
 [[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -387,11 +383,6 @@ lower_local_slot_address_publication(
       scalar_state, result_register->value_name, *result_register);
   return make_select_chain_materialization_instruction(
       context, instruction_index, std::move(lines));
-}
-[[nodiscard]] bool register_operands_share_physical_register(
-    const RegisterOperand& lhs,
-    const RegisterOperand& rhs) {
-  return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
 }
 [[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
     const module::BlockLoweringContext& context,

@@ -19,6 +19,11 @@ struct ScalarAluPrintResult {
   std::string diagnostic;
 };
 
+[[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
+                                   const RegisterOperand& rhs);
+[[nodiscard]] bool register_operands_share_physical_register(
+    const RegisterOperand& lhs,
+    const RegisterOperand& rhs);
 [[nodiscard]] std::optional<abi::RegisterView> scalar_register_view(
     bir::TypeKind type);
 [[nodiscard]] ScalarAluPrintResult make_scalar_alu_print_lines(

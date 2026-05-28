@@ -25,6 +25,18 @@
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
+
+[[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
+                                   const RegisterOperand& rhs) {
+  return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
+}
+
+[[nodiscard]] bool register_operands_share_physical_register(
+    const RegisterOperand& lhs,
+    const RegisterOperand& rhs) {
+  return registers_alias(lhs, rhs);
+}
+
 namespace {
 
 namespace mir = c4c::backend::mir;

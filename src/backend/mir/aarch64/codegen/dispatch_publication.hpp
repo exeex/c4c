@@ -16,9 +16,6 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
-                                   const RegisterOperand& rhs);
-
 [[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type);
 
 [[nodiscard]] std::optional<unsigned> power_of_two_shift(std::uint64_t value);
@@ -94,10 +91,6 @@ lower_local_slot_address_publication(
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
-
-[[nodiscard]] bool register_operands_share_physical_register(
-    const RegisterOperand& lhs,
-    const RegisterOperand& rhs);
 
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,
