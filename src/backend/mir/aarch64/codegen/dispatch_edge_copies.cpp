@@ -1291,6 +1291,38 @@ lower_predecessor_join_source_publication(
   }
   const auto* move =
       std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move != nullptr && move->destination_register.has_value() &&
+      move->destination_register->reg.bank == abi::RegisterBank::GeneralPurpose &&
+      context.function.prepared_lookups != nullptr &&
+      context.control_flow_block != nullptr) {
+    for (const auto& publication :
+         context.function.prepared_lookups->edge_publications.publications) {
+      if (publication.status !=
+              prepare::PreparedEdgePublicationLookupStatus::Available ||
+          publication.phase != prepare::PreparedMovePhase::BlockEntry ||
+          publication.predecessor_label != context.control_flow_block->block_label ||
+          publication.source_producer_kind ==
+              prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+          publication.source_producer_kind ==
+              prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+        continue;
+      }
+      auto producer = prepared_edge_publication_producer_context(context, publication);
+      if (!producer.has_value()) {
+        continue;
+      }
+      if (edge_value_publication_may_read_register_index(
+              context,
+              producer->context,
+              publication.source_value,
+              producer->instruction_index + 1,
+              move->destination_register->reg.index,
+              &publication,
+              0U)) {
+        return false;
+      }
+    }
+  }
   if (move == nullptr ||
       move->authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
       move->source_parallel_copy_predecessor_label !=
