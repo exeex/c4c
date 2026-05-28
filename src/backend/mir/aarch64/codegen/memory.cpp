@@ -2832,7 +2832,10 @@ MemoryInstructionLoweringResult lower_i128_transport_instruction(
     return false;
   }
   const auto* pointer_home =
-      find_value_home(context, *access->address.pointer_value_name);
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *access->address.pointer_value_name);
   if (pointer_home == nullptr) {
     return false;
   }
@@ -2892,7 +2895,10 @@ lower_stack_homed_pointer_value_load_publication(
     return std::nullopt;
   }
   const auto* pointer_home =
-      find_value_home(context, *access->address.pointer_value_name);
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *access->address.pointer_value_name);
   if (pointer_home == nullptr ||
       pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !pointer_home->offset_bytes.has_value()) {
@@ -2903,7 +2909,11 @@ lower_stack_homed_pointer_value_load_publication(
   if (!result_name.has_value()) {
     return std::nullopt;
   }
-  const auto* result_home = find_value_home(context, *result_name);
+  const auto* result_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_name);
   if (result_home == nullptr) {
     return std::nullopt;
   }
@@ -3310,7 +3320,12 @@ plan_pointer_base_plus_offset_store_local_publication(
   const auto* destination_object =
       store_local_destination_stack_object(context, destination_slot);
   const auto* source_home =
-      value_name.has_value() ? find_value_home(context, *value_name) : nullptr;
+      value_name.has_value()
+          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                      context.function.regalloc,
+                                                      context.function.value_locations,
+                                                      *value_name)
+          : nullptr;
   return prepare::plan_prepared_store_source_publication({
       .source_value = &store.value,
       .destination_access = access,
@@ -3614,8 +3629,10 @@ lower_stack_homed_pointer_store_writeback(
     return std::nullopt;
   }
   const auto* pointer_home =
-      find_value_home(context,
-*access->address.pointer_value_name);
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *access->address.pointer_value_name);
   if (pointer_home == nullptr ||
       pointer_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !pointer_home->offset_bytes.has_value()) {
@@ -3799,8 +3816,10 @@ namespace {
     return false;
   }
   const auto* base_home =
-      find_value_home(context,
-*value_home.pointer_base_value_name);
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *value_home.pointer_base_value_name);
   if (base_home == nullptr) {
     return false;
   }
@@ -4050,7 +4069,11 @@ lower_published_store_global_stack_value_publication(
       published_stack_values.find(*result_name) == published_stack_values.end()) {
     return std::nullopt;
   }
-  const auto* home = find_value_home(context, *result_name);
+  const auto* home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_name);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !home->offset_bytes.has_value()) {
@@ -4148,7 +4171,11 @@ lower_published_store_global_stack_value_publication(
   if (!result_name.has_value()) {
     return false;
   }
-  const auto* home = find_value_home(context, *result_name);
+  const auto* home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_name);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::StackSlot) {
     return false;
