@@ -963,9 +963,25 @@ InstructionDispatchResult dispatch_prepared_block(
                                context, inst, memory_lowering_index, scalar_state)) {
               diagnostics.entries.resize(diagnostic_count);
               block.instructions.push_back(std::move(*formal_store));
+            } else if (auto publication =
+                           lower_published_store_global_stack_value_publication(
+                               context,
+                               inst,
+                               instruction_index,
+                               published_store_global_stack_values)) {
+              diagnostics.entries.resize(diagnostic_count);
+              block.instructions.push_back(std::move(*publication));
             }
           } else {
-            if (future_store_local_stack_value_publication_covers_instruction(
+            if (auto publication =
+                    lower_published_store_global_stack_value_publication(
+                        context,
+                        inst,
+                        instruction_index,
+                        published_store_global_stack_values)) {
+              block.instructions.push_back(std::move(*publication));
+            } else if (
+                future_store_local_stack_value_publication_covers_instruction(
                     context,
                     inst,
                     instruction_index)) {

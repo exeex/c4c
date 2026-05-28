@@ -3979,7 +3979,7 @@ lower_store_global_value_publication_from_plan(
 void lower_pending_store_global_stack_value_publications(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    std::unordered_set<c4c::ValueNameId>&,
+    std::unordered_set<c4c::ValueNameId>& published_stack_values,
     module::MachineBlock& block) {
   const auto* addressing = prepared_store_global_addressing(context);
   const auto pending_publications =
@@ -3995,28 +3995,140 @@ void lower_pending_store_global_stack_value_publications(
     return;
   }
   for (const auto& pending : pending_publications) {
-    if (!prepare::prepared_store_source_publication_available(pending.store_source)) {
+    const auto& plan = pending.store_source;
+    if (!prepare::prepared_store_source_publication_available(plan) ||
+        plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+        !plan.pending_publication ||
+        !plan.stack_homes_only ||
+        plan.duplicate_publication ||
+        plan.source_value_name == c4c::kInvalidValueName) {
       continue;
     }
-    const auto& candidate = context.bir_block->insts[pending.instruction_index];
-    module::ModuleLoweringDiagnostics ignored_diagnostics;
-    auto lowered_memory =
-        lower_memory_instruction(context,
-                                 candidate,
-                                 pending.instruction_index,
-                                 ignored_diagnostics);
-    if (!lowered_memory.handled || !lowered_memory.instruction.has_value()) {
+    std::optional<std::size_t> producer_instruction_index;
+    for (std::size_t index = 0; index < pending.instruction_index; ++index) {
+      const auto result = instruction_result_value(context.bir_block->insts[index]);
+      if (result.has_value() &&
+          result->kind == bir::Value::Kind::Named &&
+          result->name == plan.source_value.name &&
+          result->type == plan.source_value.type) {
+        producer_instruction_index = index;
+        break;
+      }
+    }
+    if (!producer_instruction_index.has_value()) {
       continue;
     }
+    std::unordered_set<c4c::ValueNameId> pending_published_stack_values{
+        plan.source_value_name};
     if (auto publication =
-            lower_store_global_value_publication_from_plan(
+            lower_published_store_global_stack_value_publication(
                 context,
-                pending.instruction_index,
-                *lowered_memory.instruction,
-                pending.store_source)) {
+                context.bir_block->insts[*producer_instruction_index],
+                *producer_instruction_index,
+                pending_published_stack_values)) {
+      published_stack_values.insert(plan.source_value_name);
       block.instructions.push_back(std::move(*publication));
     }
   }
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_published_store_global_stack_value_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const std::unordered_set<c4c::ValueNameId>& published_stack_values) {
+  const auto result = instruction_result_value(inst);
+  if (!result.has_value() ||
+      result->kind != bir::Value::Kind::Named ||
+      result->name.empty()) {
+    return std::nullopt;
+  }
+  const auto result_name = prepared_named_value_id(context, *result);
+  if (!result_name.has_value() ||
+      published_stack_values.find(*result_name) == published_stack_values.end()) {
+    return std::nullopt;
+  }
+  const auto* home = find_value_home(context, *result_name);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  const auto store_mnemonic = scalar_store_mnemonic(result->type);
+  const auto store_view = scalar_view_for_type(result->type);
+  const auto store_register =
+      store_view.has_value() && !scratches.empty()
+          ? gp_register_name(scratches.front().index, *store_view)
+          : std::nullopt;
+  if (scratches.size() < 2U || !store_mnemonic.has_value() ||
+      !store_register.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          *result,
+                                          instruction_index + 1U,
+                                          scratches.front().index,
+                                          scratches[1].index,
+                                          lines,
+                                          true)) {
+    return std::nullopt;
+  }
+  lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
+                  ", " + frame_slot_address(context.function, *home->offset_bytes));
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryRead,
+                       MachineSideEffectKind::MemoryWrite},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = [&] {
+            std::string text;
+            for (std::size_t index = 0; index < lines.size(); ++index) {
+              if (index != 0) {
+                text += '\n';
+              }
+              text += lines[index];
+            }
+            return text;
+          }(),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
 }
 
 [[nodiscard]] bool future_store_local_stack_value_publication_covers_instruction(

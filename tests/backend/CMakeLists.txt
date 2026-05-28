@@ -120,6 +120,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 dispatch_value_materialization load_global got probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_store_global_stack_publication
+  SRC "${BACKEND_CASE_ROOT}/aarch64_store_global_stack_publication.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_store_global_stack_publication.s"
+  REQUIRED_SNIPPETS ".text|published_global|adrp x|:lo12:published_global|str w|ldr w|sp"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 store_global stack_publication probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)

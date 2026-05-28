@@ -7,6 +7,7 @@
 #include <iostream>
 #include <optional>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1948,6 +1949,228 @@ int future_store_local_stack_value_publication_proves_selected_owner() {
   return 0;
 }
 
+prepare::PreparedBirModule make_store_global_stack_publication_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("store_global_stack_publication");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  const auto source_slot_name = prepared.names.slot_names.intern("selected.home");
+  const auto global_name = prepared.names.link_names.intern("published_global");
+
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{60},
+      .function_name = function_name,
+      .slot_name = source_slot_name,
+      .value_name = selected_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{60},
+      .object_id = prepare::PreparedObjectId{60},
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label;
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = named_value(bir::TypeKind::I32, "%selected"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = named_value(bir::TypeKind::I32, "%cond"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::immediate_i32(19),
+      .false_value = bir::Value::immediate_i32(23),
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name_id = global_name,
+      .value = named_value(bir::TypeKind::I32, "%selected"),
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .base_link_name_id = global_name,
+          },
+  });
+
+  bir::Function function;
+  function.name = "store_global_stack_publication";
+  function.blocks.push_back(std::move(entry));
+  prepared.module.globals.push_back(bir::Global{
+      .name = "published_global",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.module.functions.push_back(std::move(function));
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{60},
+                            function_name,
+                            condition_name,
+                            "w0"),
+              stack_home(prepare::PreparedValueId{61},
+                         function_name,
+                         selected_name,
+                         prepare::PreparedFrameSlotId{60},
+                         24,
+                         4,
+                         4),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .stored_value_name = selected_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                          .symbol_name = global_name,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+  });
+  return prepared;
+}
+
+bool printed_payload_contains(const aarch64_module::MachineInstruction& instruction,
+                              std::string_view snippet) {
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(instruction.target);
+  return printed.ok &&
+         std::any_of(printed.instruction_lines.begin(),
+                     printed.instruction_lines.end(),
+                     [&](const std::string& line) {
+                       return line.find(snippet) != std::string::npos;
+                     });
+}
+
+int store_global_stack_publication_proves_selected_owner() {
+  auto prepared = make_store_global_stack_publication_module();
+  auto& control_flow = prepared.control_flow.functions.front();
+  auto& bir_function = prepared.module.functions.front();
+  auto& locations = prepared.value_locations.functions.front();
+  auto& storage = prepared.storage_plans.functions.front();
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &control_flow,
+      .bir_function = &bir_function,
+      .value_locations = &locations,
+      .storage_plan = &storage,
+      .prepared_lookups = &lookups,
+      .value_home_lookups = &lookups.value_homes,
+  };
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, control_flow.blocks.front(), 0);
+  std::unordered_set<c4c::ValueNameId> published_stack_values;
+  aarch64_module::MachineBlock block;
+  aarch64_codegen::lower_pending_store_global_stack_value_publications(
+      block_context, 1, published_stack_values, block);
+  const auto selected_name = prepared.names.value_names.find("%selected");
+  if (block.instructions.size() != 1) {
+    return fail("expected pending store-global publication to publish stack-homed select");
+  }
+  if (published_stack_values.find(selected_name) == published_stack_values.end()) {
+    return fail("expected pending store-global publication to record published source name");
+  }
+  if (!printed_payload_contains(block.instructions.front(), "cmp") ||
+      !printed_payload_contains(block.instructions.front(), "[sp, #24]")) {
+    return fail("expected pending store-global publication to materialize selected stack home");
+  }
+
+  const auto republished =
+      aarch64_codegen::lower_published_store_global_stack_value_publication(
+          block_context,
+          block_context.bir_block->insts[0],
+          0,
+          published_stack_values);
+  if (!republished.has_value() ||
+      !printed_payload_contains(*republished, "cmp") ||
+      !printed_payload_contains(*republished, "[sp, #24]")) {
+    return fail("expected original select to republish after store-global stack ownership");
+  }
+
+  std::unordered_set<c4c::ValueNameId> empty_publications;
+  if (aarch64_codegen::lower_published_store_global_stack_value_publication(
+          block_context,
+          block_context.bir_block->insts[0],
+          0,
+          empty_publications)) {
+    return fail("expected unpublished store-global stack value to fail closed");
+  }
+
+  auto register_homed = make_store_global_stack_publication_module();
+  auto& selected_home = register_homed.value_locations.functions.front().value_homes[1];
+  selected_home.kind = prepare::PreparedValueHomeKind::Register;
+  selected_home.register_name = "w9";
+  selected_home.slot_id = std::nullopt;
+  selected_home.offset_bytes = std::nullopt;
+  auto& register_control_flow = register_homed.control_flow.functions.front();
+  auto& register_bir_function = register_homed.module.functions.front();
+  auto& register_locations = register_homed.value_locations.functions.front();
+  auto& register_storage = register_homed.storage_plans.functions.front();
+  const auto register_lookups =
+      prepare::make_prepared_function_lookups(register_homed, register_control_flow);
+  aarch64_module::FunctionLoweringContext register_function_context{
+      .prepared = &register_homed,
+      .target_profile = &register_homed.target_profile,
+      .control_flow = &register_control_flow,
+      .bir_function = &register_bir_function,
+      .value_locations = &register_locations,
+      .storage_plan = &register_storage,
+      .prepared_lookups = &register_lookups,
+      .value_home_lookups = &register_lookups.value_homes,
+  };
+  const auto register_block_context = aarch64_codegen::make_block_lowering_context(
+      register_function_context, register_control_flow.blocks.front(), 0);
+  std::unordered_set<c4c::ValueNameId> register_published_stack_values;
+  aarch64_module::MachineBlock register_block;
+  aarch64_codegen::lower_pending_store_global_stack_value_publications(
+      register_block_context, 1, register_published_stack_values, register_block);
+  if (!register_block.instructions.empty() ||
+      !register_published_stack_values.empty()) {
+    return fail("expected register-homed store-global stack publication to fail closed");
+  }
+
+  return 0;
+}
+
 int dispatch_selects_address_materialization_from_prepared_carrier() {
   auto fixture = make_address_fixture();
   prepare::PreparedBirModule prepared;
@@ -2091,6 +2314,11 @@ int main() {
   }
   if (const int status =
           future_store_local_stack_value_publication_proves_selected_owner();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          store_global_stack_publication_proves_selected_owner();
       status != 0) {
     return status;
   }
