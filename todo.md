@@ -1,42 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: Step 8
-Current Step Title: Prove Fused-Compare Selected Operand Order
+Current Step ID: Step 9
+Current Step Title: Prove Call And Outgoing Stack Argument Materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 8, fused-compare selected operand order, now has focused instruction
-dispatch coverage and remains limited to fused-compare selected operand
-materialization/order.
+Step 9, call and outgoing stack argument materialization, now has focused
+coverage for the prepared call-plan and move-bundle lookup seams.
 
-`lower_missing_fused_compare_operand_publication` accepts an optional preferred
-target scratch, and fused-compare operand publication now prefers the second
-reserved scratch for selected-value materializations when available. This keeps
-the selected materialization distinct from the other compare operand while
-preserving source operand order.
-
-The instruction dispatch test now covers selected global-load materialization
-feeding a fused compare as both the lhs and rhs operand. The probes derive the
-selected materialization result register from the emitted select publication and
-then check the final fused `cmp` operand position, avoiding assertions tied to
-temporary register names.
+`calls.cpp` now falls back to the retained `PreparedCallPlan` argument list when
+immediate stack-argument binding lookup has no indexed call-plan result, and it
+scans the selected before-call move bundle when frame-slot argument move lookup
+has no indexed move result. The focused instruction dispatch test proves the
+immediate outgoing stack argument and frame-slot stack argument routes without
+binding assertions to exact scratch register names.
 
 ## Suggested Next
 
-Next packet: select one remaining dirty seam separately. Calls/outgoing-stack
-publication and direct-edge `LoadLocal` publication remain unaccepted.
+Next packet: isolate direct-edge `LoadLocal` publication separately, or leave it
+unaccepted if no focused proof can be made without broad dispatch-only evidence.
 
 ## Watchouts
 
-- This packet accepts only the fused-compare selected operand materialization
-  and operand-order seam in `dispatch_publication.cpp`/`.hpp` plus focused
-  instruction dispatch coverage.
-- Calls/outgoing-stack and direct-edge `LoadLocal` remain dirty and unaccepted.
-- The fused-compare proof intentionally derives selected registers from the
-  emitted publication and does not bind to concrete temporary register names.
+- This packet accepts only the call/outgoing stack argument materialization seam
+  in `calls.cpp`, plus focused instruction dispatch coverage in
+  `backend_aarch64_instruction_dispatch_test.cpp`.
+- Direct-edge `LoadLocal` publication remains dirty and unaccepted.
+- The focused stack-argument probes check prepared offsets, outgoing area base,
+  and store-before-call ordering instead of exact temporary register names.
 - `c_testsuite_aarch64_backend_src_00196_c` still fails with the existing
   runtime mismatch (`joe() && fred()` cases print `1` instead of `0`).
 

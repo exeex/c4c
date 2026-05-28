@@ -20486,9 +20486,15 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
   }
   const auto printed =
       aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
-  if (!printed.ok ||
-      printed.instruction_lines !=
-          std::vector<std::string>{"ldr x9, [sp, #32]", "str x9, [x16]"}) {
+  if (!printed.ok) {
+    return fail("expected prepared frame-slot value selection to print");
+  }
+  if (printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0].find("ldr ") != 0 ||
+      printed.instruction_lines[0].find("[sp, #32]") == std::string::npos ||
+      printed.instruction_lines[0].find("[sp, #4096]") != std::string::npos ||
+      printed.instruction_lines[1].find("str ") != 0 ||
+      printed.instruction_lines[1].find("[x16]") == std::string::npos) {
     return fail(
         "expected prepared frame-slot value selection to emit from selected "
         "source bytes, not stale source home");
@@ -21037,14 +21043,31 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
                                       : std::string{"none"}));
   }
   const auto printed = print_route_block(function_cf.function_name, block);
-  if (!printed.ok ||
-      printed.assembly.find("sub x16, sp, #16") == std::string::npos ||
-      printed.assembly.find("movz w9, #75") == std::string::npos ||
-      printed.assembly.find("str w9, [x16]") == std::string::npos ||
-      printed.assembly.find("sub sp, sp, #16\n    bl consume_overflow") ==
-          std::string::npos) {
+  if (!printed.ok) {
     return fail("expected immediate stack argument to print before direct call: " +
-                (printed.ok ? printed.assembly : printed.diagnostic));
+                printed.diagnostic);
+  }
+  const auto outgoing_base = printed.assembly.find("sub x16, sp, #16");
+  const auto materialized_immediate = printed.assembly.find("#75", outgoing_base);
+  const auto outgoing_store = printed.assembly.find("str ", materialized_immediate);
+  const auto outgoing_store_base = printed.assembly.find("[x16]", outgoing_store);
+  const auto stack_adjust = printed.assembly.find("sub sp, sp, #16", outgoing_store);
+  const auto call_pos = printed.assembly.find("bl consume_overflow", stack_adjust);
+  const auto restore = printed.assembly.find("add sp, sp, #16", call_pos);
+  if (outgoing_base == std::string::npos ||
+      materialized_immediate == std::string::npos ||
+      outgoing_store == std::string::npos ||
+      outgoing_store_base == std::string::npos ||
+      stack_adjust == std::string::npos ||
+      call_pos == std::string::npos ||
+      restore == std::string::npos ||
+      !(outgoing_base < materialized_immediate &&
+        materialized_immediate < outgoing_store &&
+        outgoing_store < outgoing_store_base &&
+        outgoing_store_base < stack_adjust &&
+        stack_adjust < call_pos && call_pos < restore)) {
+    return fail("expected immediate stack argument to print before direct call: " +
+                printed.assembly);
   }
   return 0;
 }

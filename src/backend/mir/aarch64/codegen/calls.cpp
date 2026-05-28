@@ -3622,6 +3622,20 @@ make_immediate_cast_call_argument_publication_instruction(
       make_call_boundary_move_instruction(std::move(move_record)));
 }
 
+[[nodiscard]] const prepare::PreparedCallArgumentPlan*
+find_immediate_argument_in_call_plan(
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t abi_index) {
+  for (const auto& argument : call_plan.arguments) {
+    if (argument.arg_index == abi_index &&
+        argument.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
+        argument.source_literal.has_value()) {
+      return &argument;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_immediate_binding(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -3641,6 +3655,10 @@ make_immediate_cast_call_argument_publication_instruction(
           call_plan.block_index,
           call_plan.instruction_index,
           *binding.destination_abi_index);
+  if (argument == nullptr) {
+    argument = find_immediate_argument_in_call_plan(
+        call_plan, *binding.destination_abi_index);
+  }
   if (argument == nullptr ||
       (binding.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot &&
        argument->destination_register_bank != prepare::PreparedRegisterBank::Gpr &&
@@ -5100,7 +5118,20 @@ find_prepared_frame_slot_call_argument_move(
           call_plan.instruction_index,
           argument.arg_index);
   if (move == nullptr) {
-    return std::nullopt;
+    for (const auto& candidate : bundle->moves) {
+      const auto classification =
+          prepare::classify_prepared_call_boundary_move(call_plan, *bundle, candidate);
+      if (prepare::prepared_call_boundary_move_classification_available(classification) &&
+          classification.argument_plan == &argument &&
+          classification.destination_kind ==
+              prepare::PreparedMoveDestinationKind::CallArgumentAbi) {
+        move = &candidate;
+        break;
+      }
+    }
+    if (move == nullptr) {
+      return std::nullopt;
+    }
   }
   const auto classification =
       prepare::classify_prepared_call_boundary_move(call_plan, *bundle, *move);
