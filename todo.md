@@ -9,26 +9,30 @@ Current Step Title: Fold Thin Prepared Lookup Wrappers
 ## Just Finished
 
 Step 2 - Fold Thin Prepared Lookup Wrappers completed a narrow mechanical
-sub-slice in `alu.cpp`: replaced the single remaining
-`find_value_home(context, <ValueNameId>)` wrapper use there with a direct
-`prepare::find_indexed_prepared_value_home` owner API call using
-`context.function.value_home_lookups`, `context.function.regalloc`, and
-`context.function.value_locations`.
+sub-slice in `dispatch_edge_copies.cpp`: replaced all remaining
+`find_value_home(context, ...)` wrapper uses there with direct
+`prepare::find_indexed_prepared_value_home` owner API calls. The
+`move.from_value_id` and `move.to_value_id` sites now use the
+`PreparedValueId` overload shape with `context.function.value_home_lookups`
+and `context.function.value_locations`; the resolved-name site now uses the
+`ValueNameId` overload shape with `context.function.regalloc`.
 
-`alu.cpp` now has no remaining `find_value_home(context, ...)`
+`dispatch_edge_copies.cpp` now has no remaining `find_value_home(context, ...)`
 wrapper call sites.
 
 ## Suggested Next
 
 Continue Step 2 with supervisor-selected acceptance review or the next bounded
-wrapper fold-back outside `alu.cpp` if assigned.
+wrapper fold-back outside `dispatch_edge_copies.cpp` if assigned.
 
 ## Watchouts
 
 This packet did not touch `dispatch_lookup.hpp`/`.cpp`, and the
 `find_value_home` wrappers remain available for non-owned call sites. The
 folded name-id site preserves unresolved-name and missing-home behavior by
-keeping the existing `prepared_named_value_id` gating and null-home check.
+keeping the existing `prepared_named_value_id` gating and null-home check; the
+prepared-id edge-copy sites preserve the existing null-home checks and do not
+add raw BIR scans or new AArch64 semantic lookup policy.
 
 ## Proof
 

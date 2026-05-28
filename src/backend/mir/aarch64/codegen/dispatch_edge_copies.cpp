@@ -1402,8 +1402,14 @@ lower_predecessor_select_parallel_copy_sources(
         move.from_value_id == move.to_value_id) {
       continue;
     }
-    const auto* source_home = find_value_home(context, move.from_value_id);
-    const auto* destination_home = find_value_home(context, move.to_value_id);
+    const auto* source_home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  move.from_value_id);
+    const auto* destination_home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.value_locations,
+                                                  move.to_value_id);
     if (source_home == nullptr ||
         destination_home == nullptr ||
         source_home->value_name == c4c::kInvalidValueName ||
@@ -1669,7 +1675,11 @@ materialize_direct_global_select_chain_call_argument(
       find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
     return std::nullopt;
   }
-  const auto* value_home = find_value_home(context, *value_name);
+  const auto* value_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *value_name);
   if (value_home == nullptr ||
       value_home->value_id != *argument_plan->source_value_id ||
       value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
