@@ -2,6 +2,7 @@
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -1432,6 +1433,290 @@ int verify_edge_publication_shared_source_and_parallel_copy_facts() {
   return 0;
 }
 
+int verify_current_block_join_parallel_copy_source_query() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("current_join_query");
+  const auto predecessor_label = names.block_labels.intern("current_join.pred");
+  const auto successor_label = names.block_labels.intern("current_join.succ");
+  const auto incoming_name = names.value_names.intern("%current.incoming");
+  const auto operand_name = names.value_names.intern("%current.operand");
+  const auto destination_name = names.value_names.intern("%current.destination");
+  const auto immediate_destination_name =
+      names.value_names.intern("%current.immediate_destination");
+  const auto stack_source_name = names.value_names.intern("%current.stack_source");
+  const auto stack_destination_name =
+      names.value_names.intern("%current.stack_destination");
+
+  const prepare::PreparedValueId incoming_id{101};
+  const prepare::PreparedValueId operand_id{102};
+  const prepare::PreparedValueId destination_id{103};
+  const prepare::PreparedValueId immediate_destination_id{104};
+  const prepare::PreparedValueId stack_source_id{105};
+  const prepare::PreparedValueId stack_destination_id{106};
+
+  bir::Block block;
+  block.label = "current_join.succ";
+  block.label_id = successor_label;
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%current.operand"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .join_transfers = {
+          prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = successor_label,
+              .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+              .edge_transfers = {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%current.destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::immediate_i32(9),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%current.immediate_destination"),
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = predecessor_label,
+                      .successor_label = successor_label,
+                      .incoming_value = bir::Value::named(
+                          bir::TypeKind::I32, "%current.stack_source"),
+                      .destination_value = bir::Value::named(
+                          bir::TypeKind::I32, "%current.stack_destination"),
+                  },
+              },
+          },
+      },
+      .parallel_copy_bundles = {
+          prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .steps = {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 1,
+                  },
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 2,
+                  },
+              },
+          },
+      },
+  };
+
+  const prepare::PreparedValueLocationFunction locations{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = incoming_id,
+              .function_name = function_name,
+              .value_name = incoming_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x10"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = operand_id,
+              .function_name = function_name,
+              .value_name = operand_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x11"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = destination_id,
+              .function_name = function_name,
+              .value_name = destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x12"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = immediate_destination_id,
+              .function_name = function_name,
+              .value_name = immediate_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x13"},
+          },
+          prepare::PreparedValueHome{
+              .value_id = stack_source_id,
+              .function_name = function_name,
+              .value_name = stack_source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .offset_bytes = std::size_t{16},
+          },
+          prepare::PreparedValueHome{
+              .value_id = stack_destination_id,
+              .function_name = function_name,
+              .value_name = stack_destination_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x14"},
+          },
+      },
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 4,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = incoming_id,
+                      .to_value_id = destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .to_value_id = immediate_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{1},
+                      .source_immediate_i32 = std::int64_t{9},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = stack_source_id,
+                      .to_value_id = stack_destination_id,
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_parallel_copy_step_index = std::size_t{2},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = incoming_id,
+                      .to_value_id = destination_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
+          },
+      },
+  };
+
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&locations);
+  const auto edge_publications =
+      prepare::make_prepared_edge_publication_lookups(
+          names, control_flow, &locations, &value_home_lookups);
+  const auto query =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .value_locations = &locations,
+              .value_home_lookups = &value_home_lookups,
+              .edge_publications = &edge_publications,
+              .block = &block,
+              .successor_label = successor_label,
+          });
+
+  auto contains_value_id = [](const std::vector<prepare::PreparedValueId>& values,
+                              prepare::PreparedValueId value_id) {
+    return std::find(values.begin(), values.end(), value_id) != values.end();
+  };
+  auto contains_value_name = [](const std::vector<c4c::ValueNameId>& values,
+                                c4c::ValueNameId value_name) {
+    return std::find(values.begin(), values.end(), value_name) != values.end();
+  };
+  if (query.status !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      query.facts.size() != 4) {
+    return fail("current-block join query should expose all matching bundle facts");
+  }
+  if (!contains_value_id(query.incoming_expression_value_ids, incoming_id) ||
+      !contains_value_id(query.incoming_expression_value_ids, operand_id) ||
+      !contains_value_name(query.incoming_expression_value_names, incoming_name) ||
+      !contains_value_name(query.incoming_expression_value_names, operand_name)) {
+    return fail("current-block join query should expose incoming expression closure");
+  }
+  if (!contains_value_id(query.source_value_ids, destination_id) ||
+      !contains_value_id(query.source_value_ids, immediate_destination_id) ||
+      !contains_value_id(query.source_value_ids, stack_destination_id) ||
+      !contains_value_id(query.source_value_ids, stack_source_id)) {
+    return fail("current-block join query should expose source value identities");
+  }
+
+  const auto& named_fact = query.facts[0];
+  if (named_fact.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      named_fact.source_value_id != incoming_id ||
+      named_fact.source_home != &locations.value_homes[0] ||
+      named_fact.destination_home != &locations.value_homes[2] ||
+      !named_fact.source_is_incoming_expression ||
+      !named_fact.destination_is_source_value ||
+      named_fact.source_is_source_value ||
+      named_fact.move != &locations.move_bundles.front().moves[0] ||
+      named_fact.publication == nullptr) {
+    return fail("current-block join query should preserve named source provenance");
+  }
+  const auto& immediate_fact = query.facts[1];
+  if (immediate_fact.status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      !immediate_fact.immediate_source ||
+      immediate_fact.source_is_incoming_expression ||
+      !immediate_fact.destination_is_source_value ||
+      immediate_fact.source_home != nullptr) {
+    return fail("current-block join query should classify immediate sources");
+  }
+  const auto& stack_fact = query.facts[2];
+  if (stack_fact.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      !stack_fact.source_home_is_stack ||
+      !stack_fact.source_is_source_value ||
+      stack_fact.source_home != &locations.value_homes[4] ||
+      stack_fact.destination_home != &locations.value_homes[5]) {
+    return fail("current-block join query should expose stack-source source facts");
+  }
+  if (query.facts[3].status !=
+      prepare::PreparedEdgeCopySourceFactsStatus::UnsupportedMove) {
+    return fail("current-block join query should fail closed for unsupported moves");
+  }
+  if (prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .value_locations = &locations,
+              .block = &block,
+              .successor_label = successor_label,
+          })
+          .status !=
+      prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::
+          MissingEdgePublicationLookups) {
+    return fail("current-block join query should require shared edge publications");
+  }
+
+  return 0;
+}
+
 int verify_same_width_i32_stack_source_publication_facts() {
   const auto source_name = c4c::ValueNameId{101};
   const auto destination_name = c4c::ValueNameId{102};
@@ -2594,6 +2879,10 @@ int main() {
   }
   if (const int result =
           verify_edge_publication_shared_source_and_parallel_copy_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_current_block_join_parallel_copy_source_query();
       result != 0) {
     return result;
   }
