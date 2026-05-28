@@ -1,55 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/65_aarch64_target_owner_relocation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Relocate Global And Symbol Target Helpers
+Current Step ID: Step 3
+Current Step Title: Relocate Local-Slot, Frame-Address, And Memory Spelling Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed: relocated AArch64 load-global target lookup and symbol-label
-spelling helpers from broad producer ownership to the globals owner.
+Step 3 completed: relocated a coherent AArch64 memory/address spelling helper
+group from broad dispatch-publication ownership to the memory owner.
 
 Changes:
-- Moved `find_load_global_target` and `load_global_symbol_label` declarations
-  from `dispatch_producers.hpp` to `globals.hpp`.
-- Moved their definitions from `dispatch_producers.cpp` to `globals.cpp`
-  without behavior changes.
-- Removed `globals.cpp`'s producer include; `fp_value_materialization.cpp`
-  already includes `globals.hpp` for the relocated helpers and still keeps
-  `dispatch_producers.hpp` for `producer_instruction_index`.
-- Confirmed `dispatch_producers.*` no longer owns or exposes the global target
-  helpers. Remaining call sites are in `globals.cpp` and
-  `fp_value_materialization.cpp`.
+- Moved `register_indirect_address`, `fixed_slots_use_frame_pointer`,
+  both `frame_slot_address` overloads, `scalar_load_mnemonic`,
+  `dispatch_publication_scalar_type_size_bytes`,
+  `scalar_load_mnemonic_for_width`, and `scalar_store_mnemonic` declarations
+  from `dispatch_publication.hpp` to `memory.hpp`.
+- Moved the matching definitions from `dispatch_publication.cpp` to
+  `memory.cpp` without behavior changes.
+- Kept existing call-site behavior intact by having `dispatch_publication.hpp`
+  include the precise memory owner while its own direct declarations shrink.
+- Did not touch dispatch sequencing/retry logic, branch-fusion ordering,
+  before-return publication ordering, value-publication recursion, tests, or
+  idea 67 local-slot behavior.
 
 ## Suggested Next
 
-Step 3 should relocate the next memory/address spelling group from
-`dispatch_publication.*` into precise target owners. Recommended first cut:
-move scalar load/store mnemonic helpers and frame/register-indirect address
-formatting toward `memory.*` or another existing address/memory owner, while
-leaving branch-fusion sequencing, before-return publication ordering, and
-value-publication recursion untouched.
+Step 4 should relocate scratch, write-hazard, and publication-spelling helpers
+only after choosing a precise target-local owner. Recommended packet: classify
+`registers_alias`, publication register recording, block-entry publication
+clobber checks, and `value_publication_may_read_register_index`/related hazard
+helpers, then move one small group to a publication or value-materialization
+owner without changing `emit_value_publication_to_register` recursion.
 
 ## Watchouts
 
-The private global-load publication helper in
-`dispatch_value_materialization.cpp` remains deferred; moving it would start
-pulling on broad value-publication ownership. Keep Step 3 focused on
-memory/address spelling and avoid forwarding-only renames.
+`dispatch_publication.hpp` still transitively exposes the moved memory helpers
+for existing consumers; later public-surface cleanup can update direct includes
+outside this packet. Avoid forwarding-only wrappers, and do not broaden Step 4
+into dispatch sequencing, before-return ordering, prepared-memory retry
+decisions, current-block join query routing, or shared semantic authority.
 
-Preserve global load spelling, GOT-required/direct labels, frame-slot address
-spelling, fixed-formal stores, scalar load/store mnemonics, local-slot/global
-materialization, scratch hazards, prepared-memory retry routing, and
-address-materialization retry routing. Do not move semantic producer discovery
-or current-block join prepared-query routing.
+The global relocation helper in `dispatch_publication.*` and the private
+global-load publication helper in `dispatch_value_materialization.cpp` remain
+deferred.
 
 ## Proof
 
 Proof passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_prepared_memory_operand_records|backend_aarch64_target_instruction_records|backend_codegen_route_aarch64_got_load_global_prepared_memory|backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_aarch64_target_instruction_records|backend_aarch64_return_lowering|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_store_global_stack_publication|backend_codegen_route_aarch64_got_load_global_prepared_memory)$') > test_after.log 2>&1`
 
-`test_after.log` reports 6/6 tests passed. `git diff --check` passed. A
-targeted `rg` scan confirms the relocated helper names are absent from
-`dispatch_producers.*` and present only in `globals.*` plus direct consumers.
+`test_after.log` reports 9/9 tests passed. `git diff --check` passed. A
+targeted `rg` scan confirms the moved memory/address helper declarations and
+definitions live in `memory.*`; remaining `dispatch_publication.cpp` hits are
+call sites only.

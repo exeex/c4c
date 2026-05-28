@@ -40,6 +40,122 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
+[[nodiscard]] std::string register_indirect_address(std::string_view base,
+                                                    std::size_t byte_offset) {
+  std::string address{"["};
+  address += base;
+  if (byte_offset != 0) {
+    address += ", #";
+    address += std::to_string(byte_offset);
+  }
+  address += "]";
+  return address;
+}
+
+[[nodiscard]] bool fixed_slots_use_frame_pointer(
+    const module::FunctionLoweringContext& context) {
+  return context.frame_plan != nullptr &&
+         context.frame_plan->uses_frame_pointer_for_fixed_slots;
+}
+
+[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes,
+                                             std::string_view base_register) {
+  std::string address{"["};
+  address += base_register;
+  if (offset_bytes != 0) {
+    address += ", #";
+    address += std::to_string(offset_bytes);
+  }
+  address += "]";
+  return address;
+}
+
+[[nodiscard]] std::string frame_slot_address(
+    const module::FunctionLoweringContext& context,
+    std::size_t offset_bytes) {
+  return frame_slot_address(offset_bytes,
+                            fixed_slots_use_frame_pointer(context) ? "x29" : "sp");
+}
+
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"ldrb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"ldrh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"ldr"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::size_t{8};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return std::string_view{"ldrb"};
+    case 2:
+      return std::string_view{"ldrh"};
+    case 4:
+    case 8:
+      return std::string_view{"ldr"};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"strb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"strh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"str"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 namespace {
 
 [[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(

@@ -26,6 +26,21 @@ struct MemoryInstructionLoweringResult {
     PreparedMemoryOperandRecordError error);
 [[nodiscard]] std::string memory_address(const MemoryOperand& address);
 [[nodiscard]] std::string memory_error_message(PreparedMemoryOperandRecordError error);
+[[nodiscard]] std::string register_indirect_address(std::string_view base,
+                                                    std::size_t byte_offset);
+[[nodiscard]] bool fixed_slots_use_frame_pointer(
+    const module::FunctionLoweringContext& context);
+[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes,
+                                             std::string_view base_register = "sp");
+[[nodiscard]] std::string frame_slot_address(
+    const module::FunctionLoweringContext& context,
+    std::size_t offset_bytes);
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
+[[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(
+    bir::TypeKind type);
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
+    std::size_t width_bytes);
+[[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "alu.hpp"
+#include "memory.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -37,34 +38,11 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset);
 
-[[nodiscard]] std::string register_indirect_address(std::string_view base,
-                                                    std::size_t byte_offset);
-
-[[nodiscard]] bool fixed_slots_use_frame_pointer(
-    const module::FunctionLoweringContext& context);
-
-[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes,
-                                             std::string_view base_register = "sp");
-
-[[nodiscard]] std::string frame_slot_address(
-    const module::FunctionLoweringContext& context,
-    std::size_t offset_bytes);
-
 [[nodiscard]] std::optional<abi::RegisterView> scalar_view_for_type(
     bir::TypeKind type);
 
 [[nodiscard]] std::optional<std::string> gp_register_name(std::uint8_t index,
                                                           abi::RegisterView view);
-
-[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
-
-[[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(
-    bir::TypeKind type);
-
-[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
-    std::size_t width_bytes);
-
-[[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type);
 
 [[nodiscard]] std::optional<unsigned> scalar_integer_width_bits(bir::TypeKind type);
 
