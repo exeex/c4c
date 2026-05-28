@@ -22677,6 +22677,185 @@ int block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument()
   return 0;
 }
 
+prepare::PreparedBirModule prepared_with_local_slot_address_offset_probe(
+    bool include_frame_address_materialization) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.local.slot.offset.probe");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.local.slot.offset.probe.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.local.slot.offset.probe.entry");
+  const auto base_name = prepared.names.value_names.intern("%slot.base");
+  const auto result_name = prepared.names.value_names.intern("%slot.addr");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.local.slot.offset.probe",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.local.slot.offset.probe.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::Ptr, "%slot.base"),
+                       .operand_type = bir::TypeKind::Ptr,
+                       .lhs = bir::Value::named(bir::TypeKind::Ptr, "%slot.seed"),
+                       .rhs = bir::Value::immediate_i64(0),
+                   },
+                   bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::Ptr, "%slot.addr"),
+                       .operand_type = bir::TypeKind::Ptr,
+                       .lhs = bir::Value::named(bir::TypeKind::Ptr, "%slot.base"),
+                       .rhs = bir::Value::immediate_i64(16),
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_block_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{451},
+               .function_name = function_name,
+               .value_name = base_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{452},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x14"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{451}, base_name, "x13"),
+           register_storage(prepare::PreparedValueId{452}, result_name, "x14")},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{451},
+      .function_name = function_name,
+      .value_name = base_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{451},
+      .object_id = prepare::PreparedObjectId{451},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.frame_size_bytes = 96;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 96,
+      .frame_alignment_bytes = 16,
+  });
+  if (include_frame_address_materialization) {
+    prepared.addressing.functions.back().address_materializations.push_back(
+        prepare::PreparedAddressMaterialization{
+            .function_name = function_name,
+            .block_label = block_label,
+            .inst_index = 0,
+            .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+            .result_value_name = base_name,
+            .result_value_id = prepare::PreparedValueId{451},
+            .frame_slot_id = prepare::PreparedFrameSlotId{451},
+            .byte_offset = 64,
+        });
+  }
+  return prepared;
+}
+
+int local_slot_address_offset_probe_uses_prepared_frame_materialization() {
+  auto prepared = prepared_with_local_slot_address_offset_probe(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto dispatched =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || dispatched.visited_operations != 2 ||
+      block.instructions.size() != 3) {
+    return fail("expected local-slot offset probe to lower with prepared frame facts: ops=" +
+                std::to_string(dispatched.visited_operations) +
+                " emitted=" + std::to_string(dispatched.emitted_instructions) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("add x13, sp, #64") == std::string::npos ||
+      printed.assembly.find("add x14, sp, #80") == std::string::npos) {
+    return fail("expected local-slot offset probe to use prepared frame address facts: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  auto incomplete = prepared_with_local_slot_address_offset_probe(false);
+  const auto& incomplete_function_cf = incomplete.control_flow.functions.front();
+  const auto& incomplete_block_cf = incomplete_function_cf.blocks.front();
+  auto incomplete_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          incomplete, incomplete.target_profile, incomplete_function_cf);
+  const auto incomplete_lookups =
+      prepare::make_prepared_function_lookups(incomplete, incomplete_function_cf);
+  attach_prepared_function_lookups(incomplete_function_context, incomplete_lookups);
+  const auto incomplete_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          incomplete_function_context, incomplete_block_cf, 0);
+
+  aarch64_module::MachineBlock incomplete_block;
+  aarch64_module::ModuleLoweringDiagnostics incomplete_diagnostics;
+  const auto incomplete_dispatched =
+      aarch64_codegen::dispatch_prepared_block(
+          incomplete_block_context, incomplete_block, incomplete_diagnostics);
+  const auto incomplete_printed =
+      print_route_block(incomplete_function_cf.function_name, incomplete_block);
+  if (incomplete_dispatched.visited_operations != 2 ||
+      (incomplete_printed.ok &&
+       incomplete_printed.assembly.find("add x14, sp, #80") != std::string::npos)) {
+    return fail(
+        "expected incomplete local-slot offset probe not to rederive frame "
+        "address from local-slot identity");
+  }
+  return 0;
+}
+
 int block_dispatch_keeps_byval_aggregate_argument_out_of_local_address_fallback() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -32986,6 +33165,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_zero_offset_local_aggregate_address_call_argument();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          local_slot_address_offset_probe_uses_prepared_frame_materialization();
       status != 0) {
     return status;
   }

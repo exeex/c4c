@@ -1,113 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/67_aarch64_local_slot_address_offset_probe.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Caller And Condition Paths
+Current Step ID: Step 2
+Current Step Title: Build A Narrow Reachability Probe
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 completed: inventoried caller and condition paths around
-`local_slot_address_frame_offset` without implementation edits.
+Step 2 completed: added a narrow runtime reachability probe for the local-slot
+address offset path without deleting or implementing the null helper.
 
-Direct caller inventory:
-- `local_slot_address_frame_offset` is declared in
-  `dispatch_publication.hpp` and defined in `dispatch_publication.cpp`; `rg`
-  found no direct call sites in the repo outside that declaration/definition.
-- Adjacent `local_aggregate_address_frame_offset` is also declaration/definition
-  only; its implementation delegates to
-  `prepared_frame_address_offset_for_value(context, value_name, std::nullopt)`.
-- Current local-slot address publication callers do not call
-  `local_slot_address_frame_offset`:
-  `dispatch.cpp` calls `lower_local_slot_address_publication`, and
-  `dispatch_value_materialization.cpp` calls
-  `emit_local_slot_address_publication_to_register`.
+Probe added:
+- `local_slot_address_offset_probe_uses_prepared_frame_materialization` in
+  `backend_aarch64_instruction_dispatch_test.cpp`.
+- The positive case builds a local-slot pointer `Add` where `%slot.base` has a
+  prepared `FrameSlot` address materialization at instruction 0 and
+  `%slot.addr = %slot.base + 16` is lowered at instruction 1.
+- The test attaches prepared function lookups and dispatches the block through
+  the normal AArch64 route. It expects both the prepared base address and the
+  adjusted local-slot address to print: `add x13, sp, #64` and
+  `add x14, sp, #80`.
+- The negative case removes the prepared frame-address materialization facts
+  and verifies the route does not rederive `add x14, sp, #80` from local-slot
+  identity alone.
 
-Current local-slot publication paths and conditions:
-- `lower_local_slot_address_publication` accepts only a `bir::BinaryInst` with
-  a named result. It uses a prepared result register when available, otherwise
-  it requires the result home to be a stack slot with `offset_bytes` plus a
-  reserved GPR scratch, then stores the computed pointer back to that result
-  stack home.
-- `emit_local_slot_address_publication_to_register_impl` is the shared path
-  behind both public local-slot publication helpers. It requires pointer
-  `Add`/`Sub`, pointer operand type, named LHS, immediate RHS, a valid target
-  GPR, and a non-negative adjusted offset.
-- The base offset for that path comes from
-  `prepared_frame_address_offset_for_value(context, lhs_value_name,
-  instruction_index)`, not from `local_slot_address_frame_offset`.
-- `prepared_frame_address_offset_for_value` requires prepared module state,
-  address-materialization lookups, a control-flow block, valid value name, a
-  `PreparedAddressMaterializationKind::FrameSlot` in the current block at or
-  before the queried instruction, matching `result_value_name`, `frame_slot_id`,
-  non-negative `byte_offset`, an existing frame slot, and an addressable stack
-  object.
-
-Adjacent aggregate/frame-address comparison:
-- The dormant aggregate helper points at the same prepared frame-address offset
-  authority, but with no instruction-index bound.
-- Live local aggregate call-argument lowering does not use
-  `local_aggregate_address_frame_offset`; it requires
-  `allows_local_aggregate_address_publication`, pointer argument type, prepared
-  GPR result register, and complete
-  `LocalFrameAddressMaterialization` source selection. The selected source
-  supplies `address_materialization_frame_slot_id`/`source_slot_id` and
-  `address_materialization_byte_offset`/`source_stack_offset_bytes`, then
-  prints an `add` from `sp`/`x29`.
-- Existing tests cover explicit frame-slot address arguments, missing local
-  aggregate address fallback, direct and zero-offset local aggregate address
-  call arguments, incomplete local frame address selection fail-closed behavior,
-  and materialized pointer-addressed stores.
-
-Likely reachability classification:
-- Current static call evidence points to `local_slot_address_frame_offset`
-  being unreached by existing C++ callers, while nearby live behavior is routed
-  through prepared frame-address materialization facts and call source
-  selection. This is not yet a dead/live/disabled classification; Step 2 should
-  add a narrow runtime probe before any deletion, implementation, or contract
-  decision.
+Evidence gathered:
+- Current local-slot pointer Add callers can lower through prepared
+  frame-address materialization lookups and `lower_local_slot_address_publication`
+  without needing `local_slot_address_frame_offset`.
+- Incomplete prepared frame-address facts fail closed for the adjusted
+  local-slot address rather than falling back to local-slot-name offset
+  derivation.
+- A post-probe scan still finds `local_slot_address_frame_offset` only at its
+  declaration and null definition, plus the new probe names in the test file.
+  This is reachability evidence only; final classification remains Step 3.
 
 ## Suggested Next
 
-Step 2 - Build A Narrow Reachability Probe: add the smallest focused test that
-constructs a local-slot pointer `Add`/`Sub` with prepared frame-address
-materialization facts and proves the current caller path either lowers through
-`emit_local_slot_address_publication_to_register` /
-`lower_local_slot_address_publication` without using
-`local_slot_address_frame_offset`, or exposes a hidden runtime dependency on
-the null helper. Include an adjacent aggregate/frame-address assertion so the
-probe compares local-slot behavior with the already-live
-`LocalFrameAddressMaterialization` route.
+Step 3 - Classify The Path Outcome: classify `local_slot_address_frame_offset`
+using the Step 1 static caller inventory plus the Step 2 runtime evidence. The
+classification should decide whether the next route is deleting unreachable
+API surface, keeping the disabled/null helper documented, or implementing a
+missing prepared offset path. Do not make the classification by changing source
+behavior in Step 3 unless the supervisor delegates a narrow cleanup.
 
 ## Watchouts
 
-Do not classify `local_slot_address_frame_offset` as dead/live/disabled from
-static scan alone. Do not remove the null helper, mutate shared frame-address
-authority, weaken tests, or bundle unrelated dispatch-family contraction before
-Step 2/3 provides runtime evidence.
-
-Probe design notes:
-- Favor an evidence-oriented AArch64 backend test over implementation
-  instrumentation. The useful input shape is a binary pointer result whose LHS
-  has a prepared `FrameSlot` address materialization in the same block and
-  whose RHS immediate adjusts the offset.
-- Include failure/negative coverage by removing or incompleting the prepared
-  frame-address materialization facts and expecting fail-closed behavior, not
-  legacy rederivation from a local-slot name.
-- Keep the probe focused on reachability; capability implementation or helper
-  deletion belongs only after classification.
+Do not treat the Step 2 probe as capability implementation: it proves the
+current prepared-query route for local-slot pointer Add/Sub and the incomplete
+facts fail-closed behavior. Step 3 still needs to explicitly classify the null
+helper and choose the follow-up. Do not mutate shared frame-address authority,
+weaken tests, or bundle unrelated dispatch-family contraction.
 
 ## Proof
 
-Read-only inventory proof:
-- `rg -n "local_slot_address_frame_offset\\(" . -g '!review/**'`
-- `rg -n "local_aggregate_address_frame_offset\\(" . -g '!review/**'`
-- `rg -n "emit_local_slot_address_publication_to_register\\(" . -g '!review/**'`
-- `rg -n "lower_local_slot_address_publication\\(" . -g '!review/**'`
-- Targeted reads of `dispatch_publication.cpp`, `dispatch_value_materialization.cpp`,
-  `globals.cpp`, `calls.cpp`, prepared frame-address lookup code, and existing
-  AArch64 frame/local-address tests.
+Proof passed:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor)$') > test_after.log 2>&1`
 
-`git diff --check` passed. No build/test proof was required for this
-inventory-only packet.
+`test_after.log` reports 6/6 tests passed. `git diff --check` passed.
+
+Additional local check:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`
+passed before the full delegated proof.
+
+Route scan:
+`rg -n "local_slot_address_frame_offset\\(|local_slot_address_offset_probe_uses_prepared_frame_materialization|prepared_with_local_slot_address_offset_probe" tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp src/backend/mir/aarch64/codegen/dispatch_publication.cpp src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
+confirmed the helper remains declaration/definition only and the new hits are
+the probe helper/test names.
