@@ -121,3 +121,23 @@ dispatch/prepared-publication seam sequence. The focused proof is now `3/4`:
 `joe() && fred()` runtime mismatch. Resume this idea from the remaining
 `78730af2f` family; keep the closed idea 60 seams as context only unless the
 `00196` investigation proves a shared semantic owner.
+
+## Closure Note
+
+Closed on 2026-05-28 after Step 6 closure readiness review. The source idea's
+acceptance criteria are satisfied:
+
+- `c92708627` family: handled by the closed idea 60
+  dispatch/prepared-publication seam work.
+- `78730af2f` family: repaired by commit `57f1996c4` through AArch64
+  block-entry edge-publication clobber avoidance in
+  `dispatch_edge_copies.cpp`.
+- Focused proof: commit `b8aef7247` recorded the four target tests passing
+  together.
+- Broader guard: commit `d8e8e2a9` recorded the matching `^backend_`
+  regression guard passing with before `169/169`, after `169/169`, and no new
+  failures.
+
+No reject signal applies: the final repair is tied to prepared edge-publication
+source materialization and register-clobber avoidance, not testcase names,
+literal labels, exact temporaries, or fixed stack offsets.
