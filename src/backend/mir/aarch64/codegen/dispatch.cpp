@@ -81,14 +81,6 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
       inst);
 }
 
-[[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
-  if (alignment == 0) {
-    return value;
-  }
-  const std::size_t remainder = value % alignment;
-  return remainder == 0 ? value : value + (alignment - remainder);
-}
-
 [[nodiscard]] module::InstructionLoweringFamily classify_instruction(
     const bir::Inst& inst) {
   return std::visit(
@@ -192,18 +184,6 @@ void append_unsupported_instruction_diagnostic(
   return nullptr;
 }
 
-[[nodiscard]] bool binary_uses_named_value(const bir::Inst& inst,
-                                           std::string_view value_name) {
-  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-  if (binary == nullptr) {
-    return false;
-  }
-  const auto matches = [&](const bir::Value& value) {
-    return value.kind == bir::Value::Kind::Named && value.name == value_name;
-  };
-  return matches(binary->lhs) || matches(binary->rhs);
-}
-
 [[nodiscard]] bool instruction_result_has_stack_home(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
@@ -224,10 +204,6 @@ void append_unsupported_instruction_diagnostic(
                                                 *result_value_name);
   return result_home != nullptr &&
          result_home->kind == prepare::PreparedValueHomeKind::StackSlot;
-}
-
-[[nodiscard]] bool is_store_local_instruction(const bir::Inst& inst) {
-  return std::get_if<bir::StoreLocalInst>(&inst) != nullptr;
 }
 
 [[nodiscard]] bool before_return_publication_already_emitted(
@@ -265,10 +241,6 @@ void record_before_return_publication(BlockScalarLoweringState& scalar_state,
                                  *move_record->destination_register);
 }
 
-struct NarrowLocalStorePublication {
-  bir::Value stored_value;
-  std::size_t instruction_index = 0;
-};
 
 
 
@@ -296,33 +268,6 @@ struct NarrowLocalStorePublication {
 
 
 
-[[nodiscard]] std::optional<module::BlockLoweringContext> block_context_for_label(
-    const module::BlockLoweringContext& context,
-    c4c::BlockLabelId label) {
-  if (context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
-  for (std::size_t index = 0; index < context.function.control_flow->blocks.size(); ++index) {
-    const auto& block = context.function.control_flow->blocks[index];
-    if (block.block_label == label) {
-      return module::BlockLoweringContext{
-          .function = context.function,
-          .control_flow_block = &block,
-          .bir_block = find_bir_block(context.function, block),
-          .block_index = index,
-      };
-    }
-  }
-  return std::nullopt;
-}
-
-
-
-struct EdgeProducerContext {
-  module::BlockLoweringContext context;
-  const bir::Inst* producer = nullptr;
-  std::size_t instruction_index = 0;
-};
 
 
 
@@ -489,29 +434,6 @@ struct EdgeProducerContext {
   block.instructions.push_back(std::move(*lowered_scalar));
   return true;
 }
-
-[[nodiscard]] module::MachineInstruction make_bir_machine_instruction(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    InstructionRecord target) {
-  return module::MachineInstruction{
-      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
-      .operands = {},
-      .target = std::move(target),
-      .origin =
-          c4c::backend::mir::MachineOrigin{
-              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
-              .function_name = context.function.control_flow != nullptr
-                                   ? context.function.control_flow->function_name
-                                   : c4c::kInvalidFunctionName,
-              .block_label = context.control_flow_block != nullptr
-                                 ? context.control_flow_block->block_label
-                                 : c4c::kInvalidBlockLabel,
-              .instruction_index = instruction_index,
-          },
-  };
-}
-
 
 [[nodiscard]] DispatchBranchFusionHooks make_dispatch_branch_fusion_hooks() {
   return DispatchBranchFusionHooks{
