@@ -287,7 +287,7 @@ prepared_same_block_integer_constant(
   const auto* producer =
       producer_context.has_value() ? producer_context->instruction : nullptr;
   if (producer != nullptr &&
-      is_current_block_join_parallel_copy_source(context, *producer)) {
+      prepared_query_current_block_join_parallel_copy_source(context, *producer)) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
       return emit_prepared_value_home_publication_to_register(context,

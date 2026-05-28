@@ -40,28 +40,28 @@ using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
     const bir::LoadGlobalInst& load_global,
     const bir::Global* target_global);
 
-[[nodiscard]] bool is_current_block_join_parallel_copy_source(
+[[nodiscard]] bool prepared_query_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst);
 
-struct CurrentBlockJoinParallelCopyCache {
+struct CurrentBlockJoinPreparedQueryRouting {
   const module::BlockLoweringContext* context = nullptr;
   std::vector<bool> incoming_expressions;
   std::vector<bool> sources;
 };
 
-[[nodiscard]] CurrentBlockJoinParallelCopyCache
-build_current_block_join_parallel_copy_cache(
+[[nodiscard]] CurrentBlockJoinPreparedQueryRouting
+build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context);
 
-[[nodiscard]] bool cached_current_block_join_parallel_copy_incoming_expression(
-    const CurrentBlockJoinParallelCopyCache& cache,
+[[nodiscard]] bool current_block_join_prepared_query_incoming_expression(
+    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const bir::Inst& inst);
 
-[[nodiscard]] bool cached_current_block_join_parallel_copy_source(
-    const CurrentBlockJoinParallelCopyCache& cache,
+[[nodiscard]] bool current_block_join_prepared_query_source(
+    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const bir::Inst& inst);

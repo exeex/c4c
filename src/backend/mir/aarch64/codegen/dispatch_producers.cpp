@@ -353,7 +353,7 @@ prepared_select_chain_contains_direct_global_load(
   return nullptr;
 }
 
-[[nodiscard]] bool is_current_block_join_parallel_copy_source(
+[[nodiscard]] bool prepared_query_current_block_join_parallel_copy_source(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst) {
   const auto result_value_id = instruction_result_prepared_value_id(context, inst);
@@ -370,12 +370,12 @@ prepared_select_chain_contains_direct_global_load(
                    *result_value_id) != query.source_value_ids.end();
 }
 
-[[nodiscard]] CurrentBlockJoinParallelCopyCache
-build_current_block_join_parallel_copy_cache(
+[[nodiscard]] CurrentBlockJoinPreparedQueryRouting
+build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context) {
-  CurrentBlockJoinParallelCopyCache cache{.context = &context};
+  CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
   if (context.bir_block == nullptr) {
-    return cache;
+    return routing;
   }
   const auto query = prepare_current_block_join_parallel_copy_source_facts(context);
   const std::unordered_set<prepare::PreparedValueId> incoming_value_ids{
@@ -393,32 +393,32 @@ build_current_block_join_parallel_copy_cache(
     const bool source =
         result_value_id.has_value() &&
         source_value_ids.find(*result_value_id) != source_value_ids.end();
-    cache.incoming_expressions.push_back(incoming_expression);
-    cache.sources.push_back(source);
+    routing.incoming_expressions.push_back(incoming_expression);
+    routing.sources.push_back(source);
   }
-  return cache;
+  return routing;
 }
 
-[[nodiscard]] bool cached_current_block_join_parallel_copy_incoming_expression(
-    const CurrentBlockJoinParallelCopyCache& cache,
+[[nodiscard]] bool current_block_join_prepared_query_incoming_expression(
+    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const bir::Inst& inst) {
-  if (cache.context == &context &&
-      instruction_index < cache.incoming_expressions.size()) {
-    return cache.incoming_expressions[instruction_index];
+  if (routing.context == &context &&
+      instruction_index < routing.incoming_expressions.size()) {
+    return routing.incoming_expressions[instruction_index];
   }
   (void)inst;
   return false;
 }
 
-[[nodiscard]] bool cached_current_block_join_parallel_copy_source(
-    const CurrentBlockJoinParallelCopyCache& cache,
+[[nodiscard]] bool current_block_join_prepared_query_source(
+    const CurrentBlockJoinPreparedQueryRouting& routing,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const bir::Inst& inst) {
-  if (cache.context == &context && instruction_index < cache.sources.size()) {
-    return cache.sources[instruction_index];
+  if (routing.context == &context && instruction_index < routing.sources.size()) {
+    return routing.sources[instruction_index];
   }
   (void)inst;
   return false;
