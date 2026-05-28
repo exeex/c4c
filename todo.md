@@ -9,19 +9,19 @@ Current Step Title: Fold Thin Prepared Lookup Wrappers
 ## Just Finished
 
 Step 2 - Fold Thin Prepared Lookup Wrappers completed a narrow mechanical
-sub-slice in `dispatch.cpp`: replaced the remaining
-`find_value_home(context, <ValueNameId>)` use sites with direct
-`prepare::find_indexed_prepared_value_home` owner API calls using
+sub-slice in `alu.cpp`: replaced the single remaining
+`find_value_home(context, <ValueNameId>)` wrapper use there with a direct
+`prepare::find_indexed_prepared_value_home` owner API call using
 `context.function.value_home_lookups`, `context.function.regalloc`, and
 `context.function.value_locations`.
 
-`dispatch.cpp` now has no remaining `find_value_home(context, ...)`
+`alu.cpp` now has no remaining `find_value_home(context, ...)`
 wrapper call sites.
 
 ## Suggested Next
 
 Continue Step 2 with supervisor-selected acceptance review or the next bounded
-wrapper fold-back outside `dispatch.cpp` if assigned.
+wrapper fold-back outside `alu.cpp` if assigned.
 
 ## Watchouts
 

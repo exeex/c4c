@@ -3700,7 +3700,10 @@ std::optional<module::MachineInstruction> lower_scalar_mul_with_distinct_rhs_scr
     const auto value_name = prepared_named_value_id(context, binary->result);
     const auto* home =
         value_name.has_value() && context.function.value_locations != nullptr
-            ? find_value_home(context, *value_name)
+            ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                        context.function.regalloc,
+                                                        context.function.value_locations,
+                                                        *value_name)
             : nullptr;
     const auto scratches = abi::reserved_mir_scratch_gp_registers();
     if (home == nullptr ||
