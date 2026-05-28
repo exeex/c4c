@@ -338,7 +338,11 @@ prepared_select_chain_contains_direct_global_load(
   if (!result_value_name.has_value()) {
     return false;
   }
-  const auto* result_home = find_value_home(context, *result_value_name);
+  const auto* result_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_value_name);
   if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
     return false;
   }
@@ -502,7 +506,11 @@ prepared_select_chain_contains_direct_global_load(
   if (!result_value_name.has_value()) {
     return false;
   }
-  const auto* result_home = find_value_home(context, *result_value_name);
+  const auto* result_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *result_value_name);
   if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
     return false;
   }
@@ -670,7 +678,10 @@ build_current_block_join_parallel_copy_cache(
       const auto result_value_name = prepared_named_value_id(context, *result);
       const auto* result_home =
           result_value_name.has_value()
-              ? find_value_home(context, *result_value_name)
+              ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                          context.function.regalloc,
+                                                          context.function.value_locations,
+                                                          *result_value_name)
               : nullptr;
       if (result_home != nullptr && result_home->value_name != c4c::kInvalidValueName) {
         incoming_expression =
