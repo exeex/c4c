@@ -30,6 +30,11 @@ struct BlockAddressMaterializationIndex {
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
+[[nodiscard]] std::optional<bir::GlobalAddressMaterializationPolicy>
+prepared_load_global_address_policy(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const prepare::PreparedMemoryAccess& access);
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_load_global_got_materialization_instruction(
     const module::BlockLoweringContext& context,

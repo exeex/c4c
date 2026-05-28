@@ -100,8 +100,8 @@ prepared_same_block_scalar_producer(
     return false;
   }
 
-  const auto policy = prepare::prepared_global_symbol_address_policy(
-      access.address, context.function.target_profile);
+  const auto policy =
+      prepared_load_global_address_policy(context, load_global, access);
   if (!policy.has_value()) {
     return false;
   }

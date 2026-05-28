@@ -3,6 +3,7 @@
 #include "calls.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 
 #include <algorithm>
@@ -779,6 +780,28 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
   return true;
 }
 
+std::optional<bir::GlobalAddressMaterializationPolicy>
+prepared_load_global_address_policy(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const prepare::PreparedMemoryAccess& access) {
+  if (access.address.global_address_materialization_policy !=
+      bir::GlobalAddressMaterializationPolicy::Unspecified) {
+    return prepare::prepared_global_symbol_address_policy(
+        access.address, context.function.target_profile);
+  }
+
+  const auto* global = find_load_global_target(context, load_global);
+  if (global != nullptr &&
+      global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Unspecified) {
+    return global->address_materialization_policy;
+  }
+
+  return prepare::prepared_global_symbol_address_policy(
+      access.address, context.function.target_profile);
+}
+
 std::optional<module::MachineInstruction> make_load_global_got_materialization_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -793,8 +816,8 @@ std::optional<module::MachineInstruction> make_load_global_got_materialization_i
       !prepared_access->access->address.symbol_name.has_value()) {
     return std::nullopt;
   }
-  const auto address_policy = prepare::prepared_global_symbol_address_policy(
-      prepared_access->access->address, context.function.target_profile);
+  const auto address_policy =
+      prepared_load_global_address_policy(context, load_global, *prepared_access->access);
   if (!address_policy.has_value() ||
       *address_policy != bir::GlobalAddressMaterializationPolicy::GotRequired) {
     return std::nullopt;

@@ -109,6 +109,17 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 dispatch_value_materialization variadic aggregate_copy probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_got_load_global_prepared_memory
+  SRC "${BACKEND_CASE_ROOT}/aarch64_got_load_global_prepared_memory.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_got_load_global_prepared_memory.s"
+  REQUIRED_SNIPPETS ":got:external_data_symbol|:got_lo12:external_data_symbol|ldr w"
+  FORBIDDEN_SNIPPETS ":lo12:external_data_symbol"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 dispatch_value_materialization load_global got probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
