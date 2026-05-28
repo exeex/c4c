@@ -566,15 +566,6 @@ prepared_publication_source_register(
   if (!mnemonic.has_value() || !target.has_value()) {
     return false;
   }
-  if (prepared_publication != nullptr) {
-    if (const auto source =
-            prepared_publication_source_register(*prepared_publication,
-                                                 load.result)) {
-      const auto source_name = abi::register_name(*source);
-      lines.push_back("mov " + *target + ", " + source_name);
-      return true;
-    }
-  }
   if (emit_prepared_va_list_field_carrier_to_register(
           producer.context, load, target_index, lines)) {
     return true;
@@ -595,6 +586,15 @@ prepared_publication_source_register(
   if (access == nullptr) {
     if (require_prepared_source_memory) {
       return false;
+    }
+    if (prepared_publication != nullptr) {
+      if (const auto source =
+              prepared_publication_source_register(*prepared_publication,
+                                                   load.result)) {
+        const auto source_name = abi::register_name(*source);
+        lines.push_back("mov " + *target + ", " + source_name);
+        return true;
+      }
     }
     const auto* home = prepared_value_home_for_value(producer.context, load.result);
     return home != nullptr &&

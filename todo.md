@@ -1,36 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: Step 9
-Current Step Title: Prove Call And Outgoing Stack Argument Materialization
+Current Step ID: Step 10
+Current Step Title: Prove Direct Edge LoadLocal Prepared Memory Consumption
 
 # Current Packet
 
 ## Just Finished
 
-Step 9, call and outgoing stack argument materialization, now has focused
-coverage for the prepared call-plan and move-bundle lookup seams.
+Step 10, direct-edge `LoadLocal` prepared source-memory consumption, now has
+focused coverage and the code seam fails closed when the prepared publication
+does not carry matching source-memory authority.
 
-`calls.cpp` now falls back to the retained `PreparedCallPlan` argument list when
-immediate stack-argument binding lookup has no indexed call-plan result, and it
-scans the selected before-call move bundle when frame-slot argument move lookup
-has no indexed move result. The focused instruction dispatch test proves the
-immediate outgoing stack argument and frame-slot stack argument routes without
-binding assertions to exact scratch register names.
+`dispatch_edge_copies.cpp` now treats a matching direct-edge `LoadLocal`
+prepared publication as requiring the prepared source-memory record before it
+can materialize the edge load. The focused instruction dispatch probe consumes
+the prepared frame-slot source-memory address for the direct edge and verifies
+that removing the prepared source-memory access rejects the route without
+falling back to the source register/home.
 
 ## Suggested Next
 
-Next packet: isolate direct-edge `LoadLocal` publication separately, or leave it
-unaccepted if no focused proof can be made without broad dispatch-only evidence.
+Next packet: supervisor should decide whether the remaining active plan state is
+complete enough for review/closure or whether another isolated publication seam
+needs a bounded executor packet.
 
 ## Watchouts
 
-- This packet accepts only the call/outgoing stack argument materialization seam
-  in `calls.cpp`, plus focused instruction dispatch coverage in
-  `backend_aarch64_instruction_dispatch_test.cpp`.
-- Direct-edge `LoadLocal` publication remains dirty and unaccepted.
-- The focused stack-argument probes check prepared offsets, outgoing area base,
-  and store-before-call ordering instead of exact temporary register names.
+- This packet accepts only the direct-edge `LoadLocal` prepared source-memory
+  seam in `dispatch_edge_copies.cpp`; the implementation change remains limited
+  to that file.
+- The focused direct-edge probe checks prepared source-memory consumption and
+  fail-closed behavior without binding to exact temporary register names.
 - `c_testsuite_aarch64_backend_src_00196_c` still fails with the existing
   runtime mismatch (`joe() && fred()` cases print `1` instead of `0`).
 
