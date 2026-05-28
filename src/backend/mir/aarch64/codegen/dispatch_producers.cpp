@@ -92,12 +92,6 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
 
 }  // namespace
 
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  return mir::find_same_block_binary_producer(context.bir_block, value).binary;
-}
-
 [[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -116,18 +110,6 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   return prepared_same_block_select_producer(context, value, before_instruction_index);
-}
-
-[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    unsigned depth) {
-  const auto constant =
-      mir::evaluate_same_block_integer_constant(context.bir_block, value, depth);
-  if (!constant.has_value()) {
-    return std::nullopt;
-  }
-  return constant->value;
 }
 
 [[nodiscard]] static bool dependency_is_load_global(
@@ -226,14 +208,6 @@ prepared_select_chain_contains_direct_global_load(
   }
   return mir::select_chain_contains_dependency(
       context.bir_block, value, before_instruction_index, dependency_is_load_global, depth);
-}
-
-[[nodiscard]] const bir::Inst* find_same_block_named_producer(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index) {
-  return mir::find_same_block_named_producer(
-      context.bir_block, value_name, before_instruction_index);
 }
 
 [[nodiscard]] std::optional<std::size_t> producer_instruction_index(

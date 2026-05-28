@@ -46,6 +46,7 @@ namespace {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 constexpr std::size_t kStackPointerAlignmentBytes = 16;
@@ -488,7 +489,13 @@ struct EdgeProducerContext {
       .emit_value_publication_to_register = emit_value_publication_to_register,
       .current_block_entry_publication_register =
           current_block_entry_publication_register,
-      .find_same_block_named_producer = find_same_block_named_producer,
+      .find_same_block_named_producer =
+          [](const module::BlockLoweringContext& context,
+             std::string_view value_name,
+             std::size_t before_instruction_index) -> const bir::Inst* {
+        return mir::find_same_block_named_producer(
+            context.bir_block, value_name, before_instruction_index);
+      },
       .producer_instruction_index = producer_instruction_index,
       .prepared_value_home_for_value = prepared_value_home_for_value,
       .value_has_current_block_entry_publication =

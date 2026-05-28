@@ -28,6 +28,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 namespace {
@@ -191,7 +192,8 @@ prepared_same_block_scalar_producer(
     return false;
   }
   const auto* producer =
-      find_same_block_named_producer(context, value.name, before_instruction_index);
+      mir::find_same_block_named_producer(
+          context.bir_block, value.name, before_instruction_index);
   if (const auto* binary =
           producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
       binary != nullptr && is_prepared_scalar_float_alu_operation(*binary)) {

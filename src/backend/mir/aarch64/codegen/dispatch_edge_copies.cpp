@@ -270,7 +270,8 @@ struct EdgeSelectChainState {
       [&](const module::BlockLoweringContext& candidate,
           std::size_t before_instruction_index) -> std::optional<EdgeProducerContext> {
     const auto* producer =
-        find_same_block_named_producer(candidate, value_name, before_instruction_index);
+        mir::find_same_block_named_producer(
+            candidate.bir_block, value_name, before_instruction_index);
     const auto index = producer_instruction_index(candidate, producer);
     if (producer == nullptr || !index.has_value()) {
       return std::nullopt;

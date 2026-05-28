@@ -1,34 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/60_aarch64_dispatch_lookup_wrapper_fold_back.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Fold Thin Prepared Lookup Wrappers
+Current Step ID: Step 3
+Current Step Title: Fold Producer Query Wrappers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Fold Thin Prepared Lookup Wrappers completed the assigned
-`dispatch_lookup.hpp`/`.cpp` sub-slice: removed the public
-`find_value_home` declarations and definitions after confirming no AArch64
-codegen wrapper call sites remained.
+Step 3 - Fold Producer Query Wrappers completed the assigned
+`dispatch_producers.hpp`/`.cpp` sub-slice: removed the public
+`find_same_block_binary_producer`, `find_same_block_named_producer`, and
+`evaluate_same_block_integer_constant` declarations and definitions.
 
-`make_named_prepared_result_register` now calls
-`prepare::find_indexed_prepared_value_home` directly for its resolved
-`ValueNameId`, using `context.function.value_home_lookups`,
-`context.function.regalloc`, and `context.function.value_locations`.
+The remaining AArch64 same-block named producer call sites now call
+`mir::find_same_block_named_producer(context.bir_block, ...)` directly. The
+comparison hook table uses a private non-capturing adapter because its hook
+signature still accepts `BlockLoweringContext`; the adapter forwards only to
+the shared MIR query owner.
 
 ## Suggested Next
 
-Continue with supervisor-selected Step 2 acceptance review or lifecycle
-decision. No remaining `find_value_home(context, ...)` AArch64 wrapper fold-back
-sites were found in this packet.
+Continue with supervisor-selected Step 3 acceptance review or Step 4
+publication result-value helper fold-back.
 
 ## Watchouts
 
-Missing-name, missing-`value_locations`, missing-home, non-register-home, and
-register-parse behavior remains unchanged through the existing early returns.
-No raw BIR scans or new AArch64 semantic lookup policy were introduced.
+Same-block producer behavior remains owned by `mir::query`; no raw BIR scans
+or new AArch64 semantic lookup policy were introduced. The comparison hook
+field name still mentions `find_same_block_named_producer`, but it no longer
+depends on the removed public dispatch producer wrapper.
 
 ## Proof
 
