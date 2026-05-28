@@ -10842,6 +10842,17 @@ prepare::PreparedBirModule prepared_with_f64_select_global_call_argument() {
                   .destination_contiguous_width = 1,
                   .destination_occupied_register_names = {"d0"},
                   .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+                  .direct_global_select_chain_dependency =
+                      prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+                          .available = true,
+                          .source_value_name = selected_name,
+                          .direct_global_dependency =
+                              prepare::PreparedDirectGlobalSelectChainDependency{
+                                  .contains_direct_global_load = true,
+                                  .root_is_select = true,
+                                  .root_instruction_index = std::size_t{2},
+                              },
+                      },
               }},
       }},
   });
@@ -11116,6 +11127,17 @@ prepare::PreparedBirModule prepared_with_dual_i32_select_global_call_arguments()
                    .destination_contiguous_width = 1,
                    .destination_occupied_register_names = {"w0"},
                    .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .direct_global_select_chain_dependency =
+                       prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+                           .available = true,
+                           .source_value_name = selected0_name,
+                           .direct_global_dependency =
+                               prepare::PreparedDirectGlobalSelectChainDependency{
+                                   .contains_direct_global_load = true,
+                                   .root_is_select = true,
+                                   .root_instruction_index = std::size_t{4},
+                               },
+                       },
                },
                prepare::PreparedCallArgumentPlan{
                    .instruction_index = 6,
@@ -11129,6 +11151,17 @@ prepare::PreparedBirModule prepared_with_dual_i32_select_global_call_arguments()
                    .destination_contiguous_width = 1,
                    .destination_occupied_register_names = {"w1"},
                    .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .direct_global_select_chain_dependency =
+                       prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+                           .available = true,
+                           .source_value_name = selected1_name,
+                           .direct_global_dependency =
+                               prepare::PreparedDirectGlobalSelectChainDependency{
+                                   .contains_direct_global_load = true,
+                                   .root_is_select = true,
+                                   .root_instruction_index = std::size_t{5},
+                               },
+                       },
                }},
       }},
   });
@@ -11475,6 +11508,17 @@ prepare::PreparedBirModule prepared_with_dynamic_index_i32_select_global_call_ar
                    .destination_contiguous_width = 1,
                    .destination_occupied_register_names = {"w0"},
                    .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .direct_global_select_chain_dependency =
+                       prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+                           .available = true,
+                           .source_value_name = selected_name,
+                           .direct_global_dependency =
+                               prepare::PreparedDirectGlobalSelectChainDependency{
+                                   .contains_direct_global_load = true,
+                                   .root_is_select = true,
+                                   .root_instruction_index = std::size_t{4},
+                               },
+                       },
                },
                prepare::PreparedCallArgumentPlan{
                    .instruction_index = 6,

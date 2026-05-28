@@ -1632,37 +1632,15 @@ materialize_direct_global_select_chain_call_argument(
       value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
-  std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
-      fallback_source_producers;
-  const auto* source_producers =
-      context.function.prepared_lookups != nullptr
-          ? &context.function.prepared_lookups->edge_publication_source_producers
-          : nullptr;
-  if (source_producers == nullptr &&
-      context.function.prepared != nullptr &&
-      context.function.control_flow != nullptr) {
-    fallback_source_producers =
-        prepare::make_prepared_edge_publication_source_producer_lookups(
-            *context.function.prepared,
-            *context.function.control_flow);
-    source_producers = &*fallback_source_producers;
-  }
-  prepare::PreparedDirectGlobalSelectChainDependency direct_global_dependency;
-  if (context.function.prepared != nullptr &&
-      context.control_flow_block != nullptr) {
-    direct_global_dependency =
-        prepare::find_prepared_direct_global_select_chain_dependency(
-            context.function.prepared->names,
-            source_producers,
-            context.control_flow_block->block_label,
-            context.bir_block,
-            value,
-            before_instruction_index);
-  }
-  if (!direct_global_dependency.contains_direct_global_load ||
-      !direct_global_dependency.root_instruction_index.has_value()) {
+  const auto* call_argument_dependency =
+      prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
+          *argument_plan);
+  if (call_argument_dependency == nullptr ||
+      call_argument_dependency->source_value_name != *value_name) {
     return std::nullopt;
   }
+  const auto& direct_global_dependency =
+      call_argument_dependency->direct_global_dependency;
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   if (scratches.size() < 2U) {
     return std::nullopt;
