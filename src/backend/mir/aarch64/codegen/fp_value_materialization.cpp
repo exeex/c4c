@@ -5,7 +5,6 @@
 #include "comparison.hpp"
 #include "constant_materialization.hpp"
 #include "dispatch_edge_copies.hpp"
-#include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
@@ -32,6 +31,18 @@ namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 namespace {
+
+[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
+                                                 value.name);
+}
 
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
 prepared_same_block_scalar_producer(

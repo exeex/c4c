@@ -9,11 +9,7 @@
 namespace c4c::backend::aarch64::codegen {
 
 namespace bir = c4c::backend::bir;
-namespace prepare = c4c::backend::prepare;
 
-[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value);
 [[nodiscard]] std::optional<RegisterOperand> make_named_prepared_result_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value);

@@ -2,7 +2,6 @@
 
 #include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
-#include "dispatch_lookup.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
 
@@ -19,8 +18,21 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace mir = c4c::backend::mir;
 namespace abi = c4c::backend::aarch64::abi;
+namespace prepare = c4c::backend::prepare;
 
 namespace {
+
+[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
+                                                 value.name);
+}
 
 [[nodiscard]] std::optional<bir::Value> instruction_result_value(
     const bir::Inst& inst) {

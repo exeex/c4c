@@ -37,6 +37,22 @@ namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
+namespace {
+
+[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
+                                                 value.name);
+}
+
+}  // namespace
+
 [[nodiscard]] std::optional<MemoryOperand> make_selected_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
