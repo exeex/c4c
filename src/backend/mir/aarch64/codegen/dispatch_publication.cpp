@@ -610,8 +610,11 @@ lower_local_slot_address_publication(
   }
   const auto value_name = prepared_named_value_id(context, value);
   return value_name.has_value()
-             ? find_value_home(context,
-*value_name)
+             ? prepare::find_indexed_prepared_value_home(
+                   context.function.value_home_lookups,
+                   context.function.regalloc,
+                   context.function.value_locations,
+                   *value_name)
              : nullptr;
 }
 [[nodiscard]] std::vector<prepare::PreparedBlockEntryPublication>
@@ -901,7 +904,11 @@ lower_missing_fused_compare_operand_publication(
   }
   const auto* home =
       context.function.value_locations != nullptr
-          ? find_value_home(context, *value_name)
+          ? prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.regalloc,
+                context.function.value_locations,
+                *value_name)
           : nullptr;
   if (home == nullptr) {
     return std::nullopt;
@@ -1176,7 +1183,10 @@ void retarget_memory_result_to_prepared_home(
   }
 
   const auto* home =
-      find_value_home(context, *memory_record->result_value_id);
+      prepare::find_indexed_prepared_value_home(
+          context.function.value_home_lookups,
+          context.function.value_locations,
+          *memory_record->result_value_id);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::Register ||
       !home->register_name.has_value()) {
