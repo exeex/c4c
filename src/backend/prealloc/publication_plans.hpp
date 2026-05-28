@@ -231,12 +231,6 @@ struct PreparedRecoveredStoreSourcePublication {
   std::size_t instruction_index = 0;
 };
 
-struct PreparedDirectGlobalSelectChainDependency {
-  bool contains_direct_global_load = false;
-  bool root_is_select = false;
-  std::optional<std::size_t> root_instruction_index;
-};
-
 using PreparedStoreSourceDirectGlobalSelectChainDependency =
     PreparedDirectGlobalSelectChainDependency;
 

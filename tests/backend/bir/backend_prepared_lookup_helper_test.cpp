@@ -2354,6 +2354,31 @@ int verify_direct_global_select_chain_dependency_query() {
       select_dependency.root_instruction_index != std::size_t{1}) {
     return fail("direct-global select-chain query should expose select root facts");
   }
+  const prepare::PreparedCallArgumentPlan argument_plan{
+      .source_value_id = prepare::PreparedValueId{7},
+      .source_selection = std::nullopt,
+      .direct_global_select_chain_dependency =
+          prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+              .available = true,
+              .source_value_name = names.value_names.find(selected.name),
+              .direct_global_dependency = select_dependency,
+          },
+  };
+  const auto* argument_dependency =
+      prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
+          argument_plan);
+  if (argument_dependency == nullptr ||
+      argument_dependency->source_value_name != names.value_names.find(selected.name) ||
+      !argument_dependency->direct_global_dependency.root_is_select ||
+      argument_dependency->direct_global_dependency.root_instruction_index !=
+          std::size_t{1}) {
+    return fail("call-argument direct-global select-chain query should expose prepared facts");
+  }
+  const prepare::PreparedCallArgumentPlan missing_argument_plan;
+  if (prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
+          missing_argument_plan) != nullptr) {
+    return fail("call-argument direct-global select-chain query should fail closed");
+  }
   const auto select_materialization =
       prepare::find_prepared_scalar_select_chain_materialization(
           names, &source_producers, block_label, &block, selected, 3);

@@ -1302,6 +1302,36 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   return source;
 }
 
+[[nodiscard]] PreparedCallArgumentDirectGlobalSelectChainDependency
+plan_call_argument_direct_global_select_chain_dependency(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& argument,
+    std::size_t before_instruction_index,
+    std::optional<ValueNameId> source_value_name) {
+  PreparedCallArgumentDirectGlobalSelectChainDependency dependency;
+  if (!source_value_name.has_value() || *source_value_name == kInvalidValueName) {
+    return dependency;
+  }
+  auto direct_global_dependency =
+      find_prepared_direct_global_select_chain_dependency(names,
+                                                         source_producers,
+                                                         block_label,
+                                                         &block,
+                                                         argument,
+                                                         before_instruction_index);
+  if (!prepared_direct_global_select_chain_dependency_available(
+          direct_global_dependency)) {
+    return dependency;
+  }
+  dependency.available = true;
+  dependency.source_value_name = *source_value_name;
+  dependency.direct_global_dependency = direct_global_dependency;
+  return dependency;
+}
+
 void append_call_clobbered_register_spans(
     std::vector<PreparedClobberedRegister>& clobbers,
     const c4c::TargetProfile& target_profile,
@@ -2350,10 +2380,18 @@ void populate_call_plans(PreparedBirModule& prepared) {
         make_call_preservation_candidates(regalloc_function);
     const std::vector<PreparedClobberedRegister> call_clobbers =
         build_call_clobber_set(prepared.target_profile, regalloc_function);
+    std::optional<PreparedEdgePublicationSourceProducerLookups> source_producers;
+    if (control_flow_function != nullptr) {
+      source_producers =
+          make_prepared_edge_publication_source_producer_lookups(
+              prepared, *control_flow_function);
+    }
     PreparedCallPlanLookups prior_preserved_lookups;
 
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
       const auto& block = function.blocks[block_index];
+      const BlockLabelId block_label =
+          prepared_block_label_for_index(control_flow_function, function, block_index);
       for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
         const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
         if (call == nullptr) {
@@ -2437,6 +2475,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
               .source_selection = std::nullopt,
+              .direct_global_select_chain_dependency = {},
           };
           const CallArgumentDestinationPlan destination =
               plan_call_argument_destination(prepared.target_profile,
@@ -2473,6 +2512,15 @@ void populate_call_plans(PreparedBirModule& prepared) {
           arg_plan.source_base_value_name = source.base_value_name;
           arg_plan.source_pointer_byte_delta = source.pointer_byte_delta;
           arg_plan.source_register_placement = source.register_placement;
+          arg_plan.direct_global_select_chain_dependency =
+              plan_call_argument_direct_global_select_chain_dependency(
+                  prepared.names,
+                  source_producers.has_value() ? &*source_producers : nullptr,
+                  block_label,
+                  block,
+                  call->args[arg_index],
+                  instruction_index,
+                  source.value_name);
           const auto* source_home =
               source.value_id.has_value()
                   ? find_prepared_value_home(value_home_lookup, *source.value_id)

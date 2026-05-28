@@ -107,6 +107,24 @@ struct PreparedCallArgumentSourceSelection {
   std::optional<std::size_t> byval_lane_source_instruction_index;
 };
 
+struct PreparedDirectGlobalSelectChainDependency {
+  bool contains_direct_global_load = false;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+};
+
+[[nodiscard]] constexpr bool prepared_direct_global_select_chain_dependency_available(
+    const PreparedDirectGlobalSelectChainDependency& dependency) {
+  return dependency.contains_direct_global_load &&
+         dependency.root_instruction_index.has_value();
+}
+
+struct PreparedCallArgumentDirectGlobalSelectChainDependency {
+  bool available = false;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedDirectGlobalSelectChainDependency direct_global_dependency;
+};
+
 struct PreparedCallArgumentPlan {
   std::size_t instruction_index = 0;
   std::size_t arg_index = 0;
@@ -133,7 +151,20 @@ struct PreparedCallArgumentPlan {
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
   std::optional<PreparedCallArgumentSourceSelection> source_selection;
+  PreparedCallArgumentDirectGlobalSelectChainDependency
+      direct_global_select_chain_dependency;
 };
+
+[[nodiscard]] constexpr const PreparedCallArgumentDirectGlobalSelectChainDependency*
+find_prepared_call_argument_direct_global_select_chain_dependency(
+    const PreparedCallArgumentPlan& argument) {
+  return argument.direct_global_select_chain_dependency.available &&
+                 prepared_direct_global_select_chain_dependency_available(
+                     argument.direct_global_select_chain_dependency
+                         .direct_global_dependency)
+             ? &argument.direct_global_select_chain_dependency
+             : nullptr;
+}
 
 struct PreparedCallResultPlan {
   std::size_t instruction_index = 0;

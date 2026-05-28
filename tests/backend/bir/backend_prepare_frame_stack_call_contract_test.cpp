@@ -1895,6 +1895,78 @@ bir::Module make_call_argument_source_shape_module() {
   return module;
 }
 
+bir::Module make_direct_global_select_chain_call_argument_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const c4c::LinkNameId global_id = module.names.link_names.intern("extern_i32");
+  module.globals.push_back(bir::Global{
+      .name = "extern_i32",
+      .link_name_id = global_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function callee;
+  callee.name = "consume_i32";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "direct_global_select_chain_call_argument_contract";
+  caller.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.global"),
+      .global_name_id = global_id,
+  });
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "selected.global"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+      .true_value = bir::Value::named(bir::TypeKind::I32, "loaded.global"),
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "consume_i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "selected.global")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_call_argument_symbol_link_name_id_mismatch_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3540,6 +3612,36 @@ int check_call_argument_source_shape_contract() {
       computed_arg.source_pointer_byte_delta != std::optional<std::int64_t>{4}) {
     return fail(
         "call-argument source-shape contract: call_plans lost computed-address base identity authority");
+  }
+
+  return 0;
+}
+
+int check_direct_global_select_chain_call_argument_contract() {
+  const auto prepared =
+      prepare_module(make_direct_global_select_chain_call_argument_module());
+  const auto* call_plans = find_call_plans_function(
+      prepared, "direct_global_select_chain_call_argument_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1) {
+    return fail(
+        "direct-global select-chain call argument contract: missing prepared call argument plan");
+  }
+
+  const auto& argument = call_plans->calls.front().arguments.front();
+  const auto* dependency =
+      prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
+          argument);
+  if (dependency == nullptr ||
+      dependency->source_value_name == c4c::kInvalidValueName ||
+      prepare::prepared_value_name(prepared.names, dependency->source_value_name) !=
+          "selected.global" ||
+      !dependency->direct_global_dependency.contains_direct_global_load ||
+      !dependency->direct_global_dependency.root_is_select ||
+      dependency->direct_global_dependency.root_instruction_index !=
+          std::optional<std::size_t>{1}) {
+    return fail(
+        "direct-global select-chain call argument contract: call plan lost prepared dependency authority");
   }
 
   return 0;
@@ -6393,6 +6495,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_direct_global_select_chain_call_argument_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_call_argument_symbol_link_name_id_mismatch_contract(); rc != 0) {
