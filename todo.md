@@ -1,65 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/67_aarch64_local_slot_address_offset_probe.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Classify The Path Outcome
+Current Step ID: Step 4
+Current Step Title: Apply Only The Classification-Sized Follow-Up
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed: classified `local_slot_address_frame_offset` using the Step 1
-static caller inventory and Step 2 runtime probe evidence.
+Step 4 completed: applied the classification-sized follow-up by deleting only
+the unreachable `local_slot_address_frame_offset` API surface.
 
-Classification: dead/unreachable under current callers.
-- Step 1 static evidence found `local_slot_address_frame_offset` only at its
-  public declaration in `dispatch_publication.hpp` and null definition in
-  `dispatch_publication.cpp`; no production or test caller references it.
-- Step 1 also found the adjacent `local_aggregate_address_frame_offset` helper
-  is declaration/definition only; live aggregate address behavior is routed
-  through prepared `LocalFrameAddressMaterialization` call source selection.
-- Step 2 runtime evidence proved current local-slot pointer `Add` lowering can
-  publish the adjusted frame address through prepared frame-address
-  materialization lookups and `lower_local_slot_address_publication`, printing
-  both the base address and adjusted address without using the null helper.
-- Step 2 negative evidence removed prepared frame-address materialization facts
-  and confirmed the route does not rederive the adjusted address from
-  local-slot identity.
-- A fresh Step 3 scan again found `local_slot_address_frame_offset` only at its
-  declaration/definition; the only new related hits are the Step 2 probe names.
+Changes made:
+- Removed the `local_slot_address_frame_offset` declaration from
+  `dispatch_publication.hpp`.
+- Removed the null `local_slot_address_frame_offset` definition from
+  `dispatch_publication.cpp`.
+- Left `local_aggregate_address_frame_offset`, prepared frame-address
+  materialization, local aggregate address publication, call-source-selection
+  behavior, and tests unchanged.
 
-This is a classification result, not capability progress. The supported local
-slot pointer Add/Sub path already runs through prepared frame-address
-materialization authority; no missing prepared offset coverage was exposed by
-the probe.
+Post-delete evidence:
+- `rg` finds no remaining `local_slot_address_frame_offset(` references under
+  `src` or `tests`.
+- The Step 2 runtime probe remains in place to prove current local-slot pointer
+  Add/Sub callers use prepared frame-address materialization and fail closed
+  without those facts.
 
 ## Suggested Next
 
-Step 4 - Apply Only The Classification-Sized Follow-Up: delete the unreachable
-`local_slot_address_frame_offset` API surface if the supervisor delegates that
-cleanup. Suggested scope is only the declaration in `dispatch_publication.hpp`
-and the null definition in `dispatch_publication.cpp`, with route scans and
-focused AArch64 proof. Do not delete or reshape adjacent prepared
-frame-address materialization, local aggregate address publication, or
-call-source-selection behavior.
+Step 5 - Prove Local-Slot Offset Classification: run the delegated closure
+proof, confirm `local_slot_address_frame_offset` remains absent, confirm the
+Step 2 probe still covers local-slot pointer Add/Sub prepared frame-address
+materialization and incomplete-facts fail-closed behavior, and scan the diff
+for unrelated frame/address authority or test expectation changes.
 
 ## Watchouts
 
-Do not broaden the classification follow-up into shared frame/address
-authority. Keep the Step 2 runtime probe because it is the evidence that
-current callers use prepared frame-address materialization and fail closed
-without it. If Step 4 deletes the dead helper, preserve
-`local_aggregate_address_frame_offset` unless separately delegated and proven,
-even though it showed the same declaration/definition-only shape in this scan.
+Do not broaden closure into shared frame/address authority or adjacent
+aggregate helper cleanup. The only code deletion in this idea so far is the
+dead `local_slot_address_frame_offset` API surface. Keep the Step 2 runtime
+probe as classification evidence and avoid treating it as new capability
+implementation.
 
 ## Proof
 
-Read-only classification proof:
-- Re-read the Step 2 todo evidence and current source/test scan state.
-- `rg -n "local_slot_address_frame_offset\\(|local_aggregate_address_frame_offset\\(|local_slot_address_offset_probe_uses_prepared_frame_materialization|prepared_with_local_slot_address_offset_probe" src tests -g '!review/**'`
-  confirmed `local_slot_address_frame_offset` remains declaration/definition
-  only, `local_aggregate_address_frame_offset` remains declaration/definition
-  only, and the only runtime probe hits are the Step 2 test helper and call.
+Proof passed:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor)$') > test_after.log 2>&1`
 
-`git diff --check` passed. No build/test proof was required for this
-classification-only packet.
+`test_after.log` reports 6/6 tests passed. `git diff --check` passed.
+
+Route scan:
+`rg -n "local_slot_address_frame_offset\\(" src tests -g '!review/**'`
+found no remaining references.

@@ -69,10 +69,6 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     std::string_view slot_name);
 
-[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
-    const module::BlockLoweringContext& context,
-    std::string_view local_slot_name);
-
 [[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name);

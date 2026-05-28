@@ -258,11 +258,6 @@ namespace {
              ? std::optional<std::size_t>{resolved->stack_offset_bytes}
              : std::nullopt;
 }
-[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
-    const module::BlockLoweringContext&,
-    std::string_view) {
-  return std::nullopt;
-}
 [[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name) {
