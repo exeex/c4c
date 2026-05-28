@@ -58,3 +58,10 @@ comparison, and FP paths depend on target-local semantic recovery.
 - Expectations are weakened or supported paths are marked unsupported to hide
   missing shared facts.
 - The old local failure mode survives behind a new shared-looking helper name.
+
+## Closure Note
+
+Closed after the Step 1-6 runbook migrated same-block scalar/source-producer
+identity decisions to shared prepared/query authority, kept AArch64 recursion
+limited to target emission from prepared source facts, and proved focused
+backend coverage plus fail-closed behavior with the backend regression guard.
