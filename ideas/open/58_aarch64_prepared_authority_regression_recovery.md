@@ -94,3 +94,18 @@ register-save publication authority changes.
 - Reject a patch that makes only the four named tests pass while nearby
   same-feature AArch64 dynamic-stack, load-local, variadic register-save, or
   prepared-publication cases remain unexamined or newly red.
+
+## Paused Route Note
+
+The active Step 3 route was paused on 2026-05-28 after
+`backend_aarch64_instruction_dispatch` became the monolithic route driver. The
+dirty implementation stack had moved the first bad dispatch assertion through
+store-global publication ownership, fused compare materialization,
+call/outgoing stack arguments, direct edge `LoadLocal` publication, and then
+GOT-required `LoadGlobal` materialization while the focused proof remained
+`2/4` passing. Idea 58 remains open: `backend_aarch64_instruction_dispatch`
+and `c_testsuite_aarch64_backend_src_00196_c` are still failing, and the
+original four-test recovery criteria are not satisfied.
+
+Follow-up decomposition work now lives in
+`ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md`.

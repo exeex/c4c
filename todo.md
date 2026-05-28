@@ -1,69 +1,60 @@
 Status: Active
-Source Idea Path: ideas/open/58_aarch64_prepared_authority_regression_recovery.md
+Source Idea Path: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair The First Boundary Failure Family
+Current Step ID: Step 1
+Current Step Title: Establish The Blocked Failure-Family Baseline
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 repair for the first `c92708627` boundary family in
-`src/backend/mir/aarch64/codegen/alu.cpp`.
+Lifecycle switched from idea 58's stuck Step 3 recovery route to the
+decomposition idea in
+`ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md`.
 
-Repair:
+Preserved incomplete dirty implementation context:
 
-- Prepared scalar frame-slot load-source operands now carry the function
-  fixed-slot frame-pointer-base policy through `uses_frame_pointer_base`.
-- Scalar fallback and prepared scalar ALU operand override still consume the
-  prepared same-block load-local source lookup, but only after checking whether
-  a current emitted scalar register already exists for the value. This preserves
-  current scalar state without adding a duplicate BIR scan or testcase-shaped
-  match.
+- `src/backend/mir/aarch64/codegen/memory.cpp` and `memory.hpp`: store-global
+  pending publication ownership/accounting and selected local-store accounting
+  context.
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`: dispatch accounting context
+  for prepared publications.
+- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` and
+  `dispatch_publication.hpp`: selected fused-compare scratch preference.
+- `src/backend/mir/aarch64/codegen/calls.cpp`: call/outgoing stack argument
+  materialization fallbacks.
+- `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`: direct edge
+  `LoadLocal` prepared source-memory consumption.
 
-Focused proof result:
-
-- `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
-  passes. The generated reloads use `x29` after dynamic stack movement, and the
-  increment form is restored through current emitted scalar state.
-- `c_testsuite_aarch64_backend_src_00207_c` now passes in the focused subset.
-- `backend_aarch64_instruction_dispatch` still fails with unsupported prepared
-  BIR instruction family for the store-owned stack select before global store.
-- `c_testsuite_aarch64_backend_src_00196_c` still has the same runtime mismatch
-  and remains the later `78730af2f` boundary unless Step 4 proves otherwise.
+These edits are preserved as incomplete implementation context. They are not
+accepted recovery progress until the decomposed focused probes and supervisor
+validation make the relevant slices acceptance-ready.
 
 ## Suggested Next
 
-Delegate the next packet to compare the `78730af2f` boundary for `00196`, unless
-the supervisor chooses to split off the remaining instruction-dispatch selected
-store/global-store publication failure first.
+Execute Step 1 by recording the blocked baseline from `test_after.log` and
+`review/step3_dispatch_route_review.md`, then proceed to Step 2 seam inventory.
+Do not delegate more backend implementation until a focused probe and backend
+owner are selected.
 
 ## Watchouts
 
-- The remaining dispatch failure did not change after the ALU prepared-source
-  repair. Its owner still appears to be selected-value publication into the
-  store/global-store path, not dynamic-stack frame-slot addressing.
-- The `00196` mismatch did not change and should remain out of the Step 3
-  success criteria.
-- Do not weaken the dynamic-stack route test snippets: they caught both the
-  frame-pointer base policy gap and the redundant prepared-memory preference
-  over already emitted scalar state.
+- Idea 58 remains open and incomplete:
+  `backend_aarch64_instruction_dispatch` and
+  `c_testsuite_aarch64_backend_src_00196_c` still fail.
+- The focused proof was last reported as `2/4` passing:
+  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor` and
+  `c_testsuite_aarch64_backend_src_00207_c` passed.
+- The latest dispatch blocker is
+  `expected GOT-required global load to use GOT page/low12 materialization`.
+- The route drift evidence is that the first bad dispatch assertion moved
+  across store-global publication ownership, fused compare materialization,
+  call/outgoing stack arguments, direct edge `LoadLocal` publication, and now
+  GOT-required `LoadGlobal` materialization.
+- `review/step3_dispatch_route_review.md` is transient review context; keep it
+  read-only unless the supervisor delegates another review.
 
 ## Proof
 
-```sh
-bash -o pipefail -c "cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor|c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00207_c)$' | tee test_after.log"
-```
-
-Build succeeded. Focused ctest result was `2/4` passing:
-`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor` and
-`c_testsuite_aarch64_backend_src_00207_c` passed; `backend_aarch64_instruction_dispatch`
-and `c_testsuite_aarch64_backend_src_00196_c` failed as above. Proof log:
-`test_after.log`.
-
-Supervisor accepted the hook-produced full-suite baseline candidate with
-`scripts/plan_review_state.py accept-baseline` after checking for stale test
-processes. Accepted baseline: `test_baseline.log` at commit `a6058f648`, full
-suite `3413/3415` passing with only the known remaining failures
-`backend_aarch64_instruction_dispatch` and
-`c_testsuite_aarch64_backend_src_00196_c`.
+Lifecycle-only switch. No build or ctest proof was run for this plan-owner
+packet.

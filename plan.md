@@ -1,235 +1,211 @@
-# AArch64 Prepared Authority Regression Recovery Runbook
+# AArch64 Dispatch Prepared Publication Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/58_aarch64_prepared_authority_regression_recovery.md
+Source Idea: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
+Supersedes active runbook for: ideas/open/58_aarch64_prepared_authority_regression_recovery.md
 
 ## Purpose
 
-Recover the current AArch64 regression set introduced after the prepared
-authority repair sequence without abandoning the prepared-fact ownership model.
+Replace the stuck Step 3 assertion-chasing route with a decomposition-oriented
+runbook that splits AArch64 dispatch/prepared-publication behavior into focused
+probes and owned backend seams.
 
 ## Goal
 
-Make these four failing tests pass again and prove the repair does not add new
-failures in the chosen AArch64 backend scope:
-
-- `backend_aarch64_instruction_dispatch`
-- `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`
-- `c_testsuite_aarch64_backend_src_00196_c`
-- `c_testsuite_aarch64_backend_src_00207_c`
+Make the next implementation packet start from one focused seam and proof,
+instead of using `backend_aarch64_instruction_dispatch` as the only route
+driver.
 
 ## Core Rule
 
-Repair the semantic AArch64 lowering or prepared-fact consumption fault. Do not
-key behavior to testcase names, exact labels, temporary names, or fixed stack
-offsets, and do not weaken any failing test contract without explicit approval.
+Do not continue to chase the next monolithic dispatch assertion until the
+behavior is bound to a focused probe or a documented seam owner. Decomposition
+is route-quality work, not backend capability progress by itself.
 
 ## Read First
 
+- `ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md`
 - `ideas/open/58_aarch64_prepared_authority_regression_recovery.md`
-- `log/baseline_83d5470731cc32247c364d73ad03d8ddc478ec90.log`
-- `log/baseline_db1581b3833ae7d45fb379623428490cf60a4b36.log`
-- `log/baseline_c9270862701eed736e54a77234bd8060ec318e64.log`
-- `log/baseline_78730af2f15da3f272aaa7d138bffd886908cbd0.log`
+- `review/step3_dispatch_route_review.md`
+- `todo.md`
+- `test_after.log`
 
 ## Current Targets
 
-- AArch64 instruction dispatch expectations.
-- AArch64 dynamic stack fixed-slot FP anchoring.
-- AArch64 c-testsuite runtime behavior for `00196` and `00207`.
-- Prepared ALU/load-local and variadic register-save publication or consumption
-  paths only where they explain the failures.
+- AArch64 dispatch prepared-publication seams exposed by the dirty Step 3
+  implementation stack.
+- Focused backend probes under `tests/backend/case/` or existing equivalent
+  backend route tests.
+- The current focused four-test proof command used by the supervisor:
+  `backend_aarch64_instruction_dispatch`,
+  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`,
+  `c_testsuite_aarch64_backend_src_00196_c`, and
+  `c_testsuite_aarch64_backend_src_00207_c`.
 
 ## Non-Goals
 
-- Do not re-open unrelated architecture backends.
-- Do not broad-rewrite ALU, memory, dispatch, calls, comparison, or variadic
-  lowering unless regression evidence proves the shared prepared authority
-  contract is wrong.
-- Do not continue unrelated prepared-authority cleanup after the four
-  regressions are repaired.
-- Do not mark any target test unsupported or weaken its expected behavior.
+- Do not edit implementation files during decomposition packets unless the
+  supervisor explicitly delegates an implementation packet after a focused seam
+  is selected.
+- Do not close idea 58; its four-test recovery target remains open.
+- Do not weaken any dispatch, backend route, or c-testsuite contract.
+- Do not add testcase-name checks, exact temporary-name checks, literal label
+  checks, or fixed stack-offset checks.
+- Do not turn the decomposition idea into a broad AArch64 cleanup.
 
 ## Working Model
 
-The baseline history points to two likely regression boundaries:
+The dirty implementation stack contains partial semantic repairs that should
+not be reverted as part of lifecycle work:
 
-- `c92708627` first introduced persistent failures for instruction dispatch,
-  dynamic-stack fixed-slot FP anchoring, and `00207`.
-- `78730af2f` first introduced the persistent `00196` failure and produced the
-  same four-test failure shape that remains in the latest baseline.
+- store-global pending publication ownership/accounting
+- selected fused-compare scratch preference
+- call/outgoing stack argument materialization fallbacks
+- direct edge `LoadLocal` prepared source-memory consumption
 
-Treat these as behavior boundaries for investigation, not as proof that each
-commit is independently responsible.
+The same proof still reports `2/4` passing. The latest first bad dispatch
+assertion is GOT-required `LoadGlobal` materialization. The separate `00196`
+runtime mismatch remains the later `78730af2f` family from idea 58 unless a
+focused probe proves shared ownership.
 
 ## Execution Rules
 
-- Keep each implementation packet narrowly tied to one failure family or shared
-  prepared-fact contract.
-- Prefer shared prepared facts or a small semantic prepared lookup over
-  restoring duplicate local scans as permanent authority.
-- Add or adjust focused coverage only when it captures the repaired semantic
-  capability, not the exact failing testcase shape.
-- Record any unrelated full-suite failures in `todo.md`; do not expand this
-  plan to own them.
-- For code-changing steps, use the validation ladder selected by the
-  supervisor: build proof, focused failing tests, then broader AArch64 backend
-  or regression-guard proof when the slice is acceptance-ready.
+- Keep decomposition packets read-only or test/probe-oriented until a focused
+  owner is selected.
+- Prefer one probe per semantic contract.
+- Reuse existing backend cases when they already isolate a seam.
+- Record harness limitations in `todo.md` instead of forcing a weak probe.
+- When implementation resumes, the packet must name the selected focused probe,
+  backend owner surface, and proof command before code edits begin.
+- Preserve the dirty implementation summary in `todo.md`; do not revert or
+  reclassify those edits as accepted progress until proof is green enough for
+  supervisor acceptance.
 
 ## Steps
 
-### Step 1: Reproduce And Classify The Four Failures
+### Step 1: Establish The Blocked Failure-Family Baseline
 
-Goal: establish the current failing shape and group failures by semantic family.
+Goal: capture the current stuck route and dirty implementation context.
 
-Primary target: the four tests named in the goal.
-
-Actions:
-
-- Run the supervisor-selected focused proof command for the four failures.
-- Inspect current failure output and the latest baseline log.
-- Classify each failure as instruction dispatch, dynamic-stack fixed-slot FP
-  anchoring, c-testsuite runtime behavior, or shared prepared-fact consumption.
-- Identify the smallest nearby same-feature tests that should be checked to
-  guard against testcase overfit.
-
-Completion check:
-
-- `todo.md` records the focused command, observed failure shape, preliminary
-  family mapping, and nearby same-feature probes for the next repair packet.
-
-### Step 2: Compare The `c92708627` Boundary
-
-Goal: explain the regression family first visible at `c92708627`.
-
-Primary target: instruction dispatch, dynamic-stack fixed-slot FP anchoring,
-and `00207`.
+Primary target: `todo.md`, `test_after.log`, and
+`review/step3_dispatch_route_review.md`.
 
 Actions:
 
-- Compare behavior and relevant AArch64 lowering/prepared-fact diffs before
-  and after `c92708627`.
-- Identify which prepared fact, helper, or lowering path changed authority for
-  the affected family.
-- Avoid committing a reversal unless the semantic owner is understood.
+- Read the latest `todo.md` proof summary and `test_after.log`.
+- Record the current focused proof result and latest first bad dispatch
+  assertion.
+- Identify which dirty implementation surfaces are incomplete context, not yet
+  accepted recovery progress.
+- Confirm idea 58 remains open and incomplete.
 
 Completion check:
 
-- The responsible boundary behavior is documented in `todo.md`, including the
-  implementation surface that should own the repair.
+- `todo.md` records the blocked baseline, dirty context, current first bad
+  assertion, and the fact that decomposition is now the active route.
 
-### Step 3: Repair The First Boundary Failure Family
+### Step 2: Inventory The Separable Dispatch Seams
 
-Goal: fix the semantic fault responsible for the `c92708627` family.
+Goal: turn the monolithic dispatch route into a finite seam list.
 
-Primary target: the AArch64 lowering or prepared-fact consumption path
-identified in Step 2.
+Primary target: AArch64 dispatch, memory, publication, calls, edge-copy, and
+global-load materialization surfaces named by the dirty route.
 
 Actions:
 
-- Implement the smallest semantic repair that restores correct authority.
-- Prefer consuming existing prepared facts where they are already the intended
-  owner.
-- If a new lookup is needed, give it one semantic owner and consume it from the
-  relevant lowering path.
-- Run build proof and the focused target tests selected by the supervisor.
+- Inventory each seam named in the source idea.
+- For each seam, record the expected semantic owner and the evidence that made
+  it visible.
+- Mark which seams already have partial dirty implementation and which are only
+  next-blocker candidates.
+- Keep the `00196` runtime mismatch separate unless evidence shows it shares a
+  dispatch/prepared-publication seam.
 
 Completion check:
 
-- The affected focused tests pass or have a reduced, documented failure shape
-  that points to a separate remaining family.
-- The diff contains no testcase-name matching, expectation downgrade, or broad
-  duplicate local scan as the durable fix.
+- `todo.md` maps every visible seam to a likely owner surface and evidence
+  source.
 
-### Step 4: Compare The `78730af2f` Boundary
+### Step 3: Split The Monolithic Probe Into Focused Cases
 
-Goal: explain the `00196` failure first visible at `78730af2f`.
+Goal: choose or extract focused probes so each seam can be proven separately.
 
-Primary target: AArch64 prepared ALU/load-local or related c-testsuite runtime
-behavior for `00196`.
+Primary target: `tests/backend/case/` and existing backend route tests.
 
 Actions:
 
-- Compare behavior and relevant diffs before and after `78730af2f`.
-- Determine whether `00196` shares the repaired Step 3 root cause or exposes a
-  second prepared authority gap.
-- Check nearby same-feature behavior before treating `00196` as complete.
+- Search for existing focused backend cases that already isolate each seam.
+- For seams without coverage, propose one focused case file per contract using
+  the source idea candidate names as defaults.
+- Keep the monolithic dispatch test as integration coverage, not as the only
+  proof for a repair.
+- If a seam cannot be expressed in the backend case harness, record the exact
+  harness gap.
 
 Completion check:
 
-- `todo.md` records whether `00196` is fixed by the first repair or identifies
-  the remaining semantic owner and proof target for the next packet.
+- `todo.md` lists the selected or proposed focused probe for each seam, with
+  any harness gaps called out explicitly.
 
-### Step 5: Repair The Remaining `00196` Family
+### Step 4: Bind Each Focused Probe To One Backend Owner
 
-Goal: fix any remaining semantic fault responsible for `00196`.
+Goal: prevent future packets from touching unrelated surfaces.
 
-Primary target: the AArch64 lowering or prepared-fact consumption path
-identified in Step 4.
+Primary target: selected probes plus their corresponding owner files/helpers.
 
 Actions:
 
-- Implement the smallest semantic repair needed for the remaining family.
-- Preserve the prepared-authority direction.
-- Run build proof, the `00196` target, and any nearby same-feature checks
-  selected by the supervisor.
+- For each focused probe, name the backend file or helper family that should
+  own the repair.
+- Define the smallest acceptable proof command for that seam.
+- Flag dependencies between seams only when one helper boundary genuinely
+  requires another.
+- Identify the narrowest next implementation packet.
 
 Completion check:
 
-- `00196` and its selected nearby same-feature probes pass without weakening
-  contracts or adding testcase-shaped matching.
+- The next implementation packet has a selected probe, owner surface, proof
+  command, and explicit do-not-touch boundaries.
 
-### Step 6: Prove The Focused Regression Set
+### Step 5: Resume Implementation On The Narrowest Generic Seam
 
-Goal: prove all four original failures are repaired together.
+Goal: hand execution back to implementation only after decomposition creates a
+safe route.
 
-Primary target: the four-test focused failure set.
+Primary target: the seam selected in Step 4.
 
 Actions:
 
-- Run the matching focused command for all four target tests.
-- Inspect output for hidden expectation downgrades or unsupported-path drift.
-- Record proof in `test_after.log` if delegated as the executor proof log.
+- Implement only the selected generic seam.
+- Run build proof and the selected focused probe.
+- Run the four-test focused proof only as integration confirmation, not as the
+  only evidence.
+- Stop and decompose again if the first bad fact moves to another unrelated
+  surface.
 
 Completion check:
 
-- All four focused failures pass in the same proof run, and `todo.md` records
-  the command and result.
+- The selected focused probe passes without reject signals, and
+  `todo.md` records whether the integration dispatch failure family shrank or
+  exposed another separate seam.
 
-### Step 7: Run Broader AArch64 Regression Guard
+### Step 6: Return To Idea 58 Recovery Criteria
 
-Goal: show the repairs did not introduce new failures in the chosen AArch64
-backend scope.
+Goal: reconnect decomposition results to the original recovery target.
 
-Primary target: supervisor-selected regression guard or equivalent matching
-before/after proof for AArch64 backend coverage.
+Primary target: idea 58 focused four-test set.
 
 Actions:
 
-- Run the broader proof chosen by the supervisor, preferably a matching
-  before/after regression guard when acceptance is being evaluated.
-- Compare failures against the pre-repair baseline.
-- Record unrelated remaining failures separately in `todo.md`.
+- After focused seams are repaired, rerun the supervisor-selected four-test
+  command.
+- Confirm whether `backend_aarch64_instruction_dispatch` is no longer blocked
+  by the decomposed prepared-publication family.
+- Leave `c_testsuite_aarch64_backend_src_00196_c` to the idea 58
+  `78730af2f` path unless decomposition proved shared ownership.
 
 Completion check:
 
-- The broader proof shows no new failures in scope, or any remaining red tests
-  are explicitly classified as unrelated to this source idea.
-
-### Step 8: Closure Readiness Review
-
-Goal: prepare the source idea for closure only if its acceptance criteria are
-actually satisfied.
-
-Actions:
-
-- Confirm the four target tests pass.
-- Confirm the broader AArch64 proof is acceptable.
-- Confirm `todo.md` explains which boundary was responsible for each failing
-  family: `c92708627`, `78730af2f`, or a shared later interaction.
-- Confirm no reject signal from the source idea applies to the final diff.
-
-Completion check:
-
-- The supervisor can route to plan-owner close review with complete proof, or
-  `todo.md` clearly names the remaining blocker.
+- The supervisor can switch back to idea 58 with a narrower implementation
+  route, or close this decomposition idea only after each seam has a focused
+  owner/probe and the next recovery packet is no longer monolithic.
