@@ -1,92 +1,194 @@
 Status: Active
 Source Idea Path: ideas/open/59_aarch64_dispatch_family_contraction_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Classify Each Dispatch File Or Helper Group
+Current Step ID: Step 3
+Current Step Title: Split Coherent Follow-Up Work
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 classification for idea 59. This is classification
-only; no implementation capability progress is claimed.
+Completed `plan.md` Step 3 for idea 59 by grouping the Step 2 classification
+table into bounded follow-up idea drafts. This is audit-only grouping; no
+follow-up idea files were created and no implementation capability progress is
+claimed.
 
-Classification vocabulary:
+Proposed numbered follow-up drafts:
 
-- `fold-back`: standalone dispatch-family owner can disappear by merging into
-  an existing precise AArch64 owner.
-- `move-forward`: semantic authority belongs in shared BIR/prealloc/prepare
-  rather than an AArch64 dispatch helper.
-- `keep-local`: AArch64 target emission, scratch/clobber handling,
-  diagnostics, instruction spelling, or final sequencing justifies local
-  ownership.
-- `split-owner`: the current file mixes ownership classes and should be split
-  into smaller target/shared follow-up work.
-- `needs-more-evidence`: a narrow audit/proof is required before a durable
-  contraction recommendation.
+1. Mechanical prepared/BIR lookup wrapper fold-back.
+   Owned files/helper groups: `dispatch_lookup.hpp`,
+   `dispatch_lookup.cpp`, `dispatch_producers.hpp`,
+   `dispatch_producers.cpp`, thin prepared lookup wrappers
+   (`prepared_named_value_id`, `prepared_value_id`, `find_value_home`),
+   producer wrappers over `mir::query`
+   (`find_same_block_binary_producer`, `find_same_block_named_producer`,
+   `evaluate_same_block_integer_constant`), and publication BIR result-value
+   helpers (`instruction_result_value`, `instruction_result_value_ref`).
+   Ownership class: `fold-back`.
+   Expected validation scope: build plus focused AArch64 backend tests covering
+   comparison/FP materialization, dispatch hooks, publication result extraction,
+   and any existing tests that exercise prepared value-home lookups. Broader
+   regression guard is appropriate if wrapper removal changes public headers.
+   Concrete reject signals: new semantic lookup policy appears in AArch64 code;
+   call sites start reimplementing raw BIR scans; wrapper deletion requires
+   expectation downgrades; or folded helpers become target-specific instead of
+   shared/inlined convenience.
 
-Durable classification table:
+2. Shared scalar/source-producer authority for same-block materialization.
+   Owned files/helper groups: `dispatch_lookup.cpp` same-block scalar and
+   load-local availability helpers, `dispatch_value_materialization.cpp`
+   recursive same-block/source discovery, relevant `dispatch_producers.*`
+   wrapper consumers, and the shared prepared/query owner that replaces raw
+   same-block scans.
+   Ownership class: `move-forward`, with local AArch64 recursive emission kept
+   only after semantic source facts come from shared/prepared authority.
+   Expected validation scope: build plus focused backend tests for scalar
+   materialization, load-local reuse, integer constants, ALU/comparison/FP
+   recursive value publication, and nearby negative cases where missing
+   prepared facts should fail closed or report a durable diagnostic.
+   Concrete reject signals: a new named-case or same-block scan is added under
+   AArch64 dispatch; recursive materialization still decides semantic producer
+   identity locally; coverage proves only one narrow testcase while adjacent
+   scalar/load-local paths remain unaudited; or expectations are weakened to
+   hide missing shared facts.
 
-| File or helper group | Ownership class | Evidence note | Expected disposition | Proof gap |
-| --- | --- | --- | --- | --- |
-| `dispatch.hpp` / `dispatch.cpp` public block entry points | `keep-local` | AST shows only `make_block_lowering_context` and `dispatch_prepared_block` as public entry points; `traversal.cpp` calls them as the AArch64 prepared-block route. The code sequences block-entry copies, family dispatch, terminator handling, diagnostics, and post-block edge-copy publication. | Stay as the local block traversal/routing owner, possibly after narrower helpers leave the dispatch family. | None for classification. |
-| `dispatch.cpp` routing and diagnostics group | `keep-local` | `classify_instruction`, unsupported-instruction/terminator diagnostics, BIR block lookup, block-context lookup, and `make_bir_machine_instruction` are target route glue and diagnostic/reporting surfaces. | Keep local with `dispatch.cpp`; do not move to shared authority. | None. |
-| `dispatch.cpp` before-return publication bookkeeping and branch-fusion hook wiring | `split-owner` | `record_before_return_publication` and `make_dispatch_branch_fusion_hooks` wire publication/value-materialization/producers into dispatch. The decisions they call into are owned elsewhere, but sequencing is local. | Keep the sequencing in dispatch; let follow-up splits move producer/publication helper authority out of `dispatch_*` files first. | None; disposition depends on producer/publication follow-ups. |
-| `dispatch.cpp` address-materialization and store/scalar retry routing | `keep-local` | `lower_store_local_with_address_materialization` and `lower_scalar_with_address_materialization` route prepared address-materialization records into AArch64 instruction emission and diagnostics without being the semantic owner of address facts. | Stay local unless later folded into `memory.cpp`/`alu.cpp` by a mechanical target-owner split. | No semantic proof gap; layout destination can be decided in Step 3. |
-| `dispatch_edge_copies.hpp` / `dispatch_edge_copies.cpp` file owner | `split-owner` | Public surface mixes true edge-copy emission with `emit_select_chain_value_to_register` callers from `alu.cpp`/value materialization and `materialize_direct_global_select_chain_call_argument` from `calls.cpp`. Ideas 47/58 closed edge publication and clobber repairs here, so remaining file is not one ownership class. | Preserve edge-copy lowering locally; split select-chain/direct-global call-argument helpers into precise owners or shared authority follow-ups. | None for file-level split classification. |
-| Edge prepared-consumer group | `keep-local` | Prepared edge-publication source matching, prepared source producer context recovery, prepared memory access matching, source register/home extraction, and va-list carrier emission consume `PreparedEdgePublication`, `PreparedEdgePublicationSourceProducer`, `PreparedMemoryAccess`, and value homes after idea 47. | Stay in the AArch64 edge-copy owner as target emission over prepared facts. | None. |
-| Edge local-fallback producer group | `move-forward` | `find_edge_named_producer` still calls same-block producer lookup across successor/edge/predecessor contexts when prepared publication is absent; idea 47 explicitly rejected predecessor-depth scans as durable authority. | Follow-up should either fail closed behind prepared facts or add/consume a shared edge dependency query. | Need a narrow proof of current null-publication callers before deleting fallback behavior. |
-| Edge hazard/scratch group | `keep-local` | Recursive `edge_value_publication_may_read_register_index`, scratch/result register choice, and final move/load/store ordering are target-local clobber avoidance, and idea 47/58 closure notes preserve clobber behavior as local. | Stay local in edge-copy emission. | None. |
-| Edge select-chain materialization group | `split-owner` | AST/caller evidence shows `emit_select_chain_value_to_register` is public to edge copies, `alu.cpp`, and value materialization, while it also reaches producer lookup and direct-global dependency facts. | Split into a precise select/materialization owner; semantic dependency discovery should consume shared prepared select-chain authority. | Need follow-up proof that non-edge callers are covered by existing prepared dependencies. |
-| Direct-global select-chain call-argument group | `move-forward` | `materialize_direct_global_select_chain_call_argument` is called by `calls.cpp`; idea 47 called this a possible `PreparedCallPlan` or shared select-chain dependency responsibility. | Move semantic direct-global/select-chain argument authority to call plan or shared prepared query; keep final AArch64 emission in calls/select materialization. | Need narrow proof of current prepared call-argument coverage. |
-| `dispatch_lookup.hpp` / `dispatch_lookup.cpp` prepared lookup bridges | `fold-back` | `prepared_named_value_id`, `prepared_value_id`, and `find_value_home` are thin wrappers over `PreparedValueHomeLookups`/indexed prepared homes and have no AArch64-specific emission policy. | Fold into shared prepared lookup helpers or inline into precise target owners; this file should shrink or disappear once raw scan helpers move. | None. |
-| `dispatch_lookup.cpp` emitted scalar and prepared result-register helpers | `split-owner` | `emitted_scalar_value_available` consults local `BlockScalarLoweringState`; `make_named_prepared_result_register` converts prepared home facts to AArch64 register operands. | Move state-local availability to scalar/publication owner and register conversion to publication/register helper owner. | None. |
-| `dispatch_lookup.cpp` same-block scalar/load-local availability helpers | `move-forward` | `find_same_block_scalar_producer` and `has_same_block_load_local_producer` scan BIR same-block producers; Step 1 flagged raw producer scans as suspect and prior closures reject new same-block authority. | Replace call sites with shared `mir::query` only where it is a convenience, or shared prepared scalar/source facts where semantic authority is needed. | Need caller-by-caller audit before removal. |
-| `dispatch_producers.hpp` / `dispatch_producers.cpp` file owner | `split-owner` | AST shows one file combines `mir::query` wrappers, prepared select bridge, direct-global select-chain dependency traversal, global symbol helpers, and join parallel-copy cache helpers. | Split into shared/prealloc authority follow-ups and target-owner moves; standalone `dispatch_producers.*` should disappear. | None for file-level split classification. |
-| Producer wrappers over `mir::query` | `fold-back` | `find_same_block_binary_producer`, `find_same_block_named_producer`, and `evaluate_same_block_integer_constant` mostly delegate to `mir::query`; direct callers include comparison, FP materialization, edge copies, and dispatch hooks. | Fold thin wrappers into callers or `mir::query` consumers; do not create new target authority. | Need call-site audit to avoid changing semantics while removing wrappers. |
-| Prepared same-block select bridge | `keep-local` | `find_prepared_same_block_select_producer` first consumes prepared source-producer facts, then falls back to same-block select discovery for convenience. | Keep only as a target-local prepared consumer if fallback is proven non-authoritative; otherwise split the fallback into shared authority. | Need fallback-path proof. |
-| Direct-global select-chain dependency traversal | `move-forward` | `prepared_select_chain_contains_direct_global_load` mirrors shared `prealloc/publication_plans.cpp` logic and feeds select/call materialization. | Move to or consume the shared prepared select-chain dependency authority. | Need proof that shared prepared result has equivalent coverage. |
-| Load-global target/symbol helpers | `split-owner` | `find_load_global_target` and `load_global_symbol_label` are used by global-load materialization, while GOT/direct policy appears in value materialization. | Move to `globals.cpp` or a global materialization helper; keep only AArch64 symbol spelling local. | None. |
-| Current-block join parallel-copy cache helpers | `move-forward` | `build_current_block_join_parallel_copy_cache` reconstructs incoming expression/source relationships from prepared homes and move bundles; ideas 47/48 already moved similar move/publication authority into shared/prepared helpers. | Add/consume shared prepared join-copy query, then remove local cache authority. | Need narrow proof for current dispatch caller and nearby join-copy cases. |
-| `dispatch_publication.hpp` / `dispatch_publication.cpp` file owner | `split-owner` | Public helpers span register/address spelling, prepared publication consumption, local-slot/address materialization, branch/fused-compare publication, retargeting, fixed-formal stores, and clobber checks. Idea 48 closed semantic fallback repair but the file remains a mixed owner. | Keep target publication emission local, but split spelling utilities and any remaining shared semantic queries into precise owners. | None for file-level split classification. |
-| Publication target-spelling group | `keep-local` | Register alias/view selection, frame-slot address spelling, scalar load/store mnemonics, fixed-frame-pointer selection, and relocation/register-indirect operands are AArch64 instruction spelling. | Stay local, likely under a non-dispatch publication/address helper after contraction. | None. |
-| Publication prepared-consumer group | `keep-local` | Prepared local load offsets, block-entry/value-home checks, prepared branch/scalar facts, before-return ABI lookup, store-source planning, and retargeting now consume prepared/shared facts after idea 48. | Stay local as target publication emission over shared facts. | None. |
-| Publication local-slot/address offset group | `needs-more-evidence` | `local_slot_address_frame_offset` remains a null implementation while `local_aggregate_address_frame_offset` and frame-address materialization consume prepared frame-address offsets. Prior closures repaired the known fallback families but this exact null helper may be dead, incomplete, or intentionally disabled. | Do not contract yet; create a narrow evidence/proof idea if Step 3 needs to dispose of it. | Need caller/runtime proof for local-slot-address cases that would hit the null path. |
-| Publication value/register read hazard group | `keep-local` | `value_publication_may_read_register_index` and prepared-home register-read checks choose clobber-safe AArch64 publication sequencing, not semantic source ownership when they stay anchored in prepared facts. | Stay local. | None. |
-| Publication BIR result-value helpers | `fold-back` | `instruction_result_value` and `instruction_result_value_ref` are generic BIR result extraction utilities, not AArch64 emission policy. | Fold into shared BIR query or inline at call sites. | None. |
-| `dispatch_value_materialization.hpp` / `dispatch_value_materialization.cpp` file owner | `split-owner` | The public `emit_value_publication_to_register` is called across ALU, memory, calls, cast/comparison, FP materialization, publication, and edge paths; the file mixes prepared fact consumption with recursive local materialization. | Keep target value emission as a precise local owner; split semantic source discovery to shared/prepared authority. | None for file-level split classification. |
-| Value-materialization prepared global/load-local/local-slot consumers | `keep-local` | `emit_prepared_global_load_to_register`, prepared local load offset/recovered-source consumption, value-home publication, and local-slot address publication emit AArch64 instructions from prepared memory/address facts after idea 49. | Stay local as emission over prepared facts, potentially under a `value_materialization` owner. | None. |
-| Value-materialization recursive same-block/source discovery | `move-forward` | `prepared_same_block_scalar_producer` is a prepared consumer, but recursive operand materialization still relies on same-block producer records and direct `mir::evaluate_same_block_integer_constant` checks; idea 49 rejects deeper same-block producer recursion as authority. | Add/consume shared scalar materialization/source-producer facts; keep recursive emission mechanics local only after semantic source is shared. | Need caller coverage for non-edge/publication consumers. |
-| Value-materialization scratch/write hazard group | `keep-local` | `value_publication_may_write_scratch_register` protects target scratch usage and recursive emission order; scratch/clobber checks are explicitly preserved by idea 49 out-of-scope rules. | Stay local. | None. |
+3. Shared edge dependency authority and null-publication fallback disposal.
+   Owned files/helper groups: `dispatch_edge_copies.cpp` edge local-fallback
+   producer group (`find_edge_named_producer` and null-publication callers),
+   prepared edge-publication consumers, and whichever shared edge dependency or
+   prepared publication query owns successor/edge/predecessor source facts.
+   Ownership class: `move-forward` for fallback producer discovery, while edge
+   prepared-consumer emission and edge scratch/hazard ordering remain
+   `keep-local`.
+   Expected validation scope: build plus focused edge-copy/publication tests for
+   prepared edge sources, missing publication facts, va-list carrier emission,
+   predecessor/successor edge inputs, and clobber-sensitive copy ordering.
+   Concrete reject signals: predecessor-depth scans survive as durable
+   AArch64 authority; null-publication fallback deletion lacks caller proof;
+   clobber/scratch behavior regresses while moving semantic authority; or the
+   slice downgrades unsupported/error expectations instead of proving prepared
+   edge facts.
+
+4. Shared select-chain and direct-global dependency authority.
+   Owned files/helper groups: `dispatch_edge_copies.cpp`
+   `emit_select_chain_value_to_register`,
+   `materialize_direct_global_select_chain_call_argument`,
+   `dispatch_producers.cpp` `prepared_select_chain_contains_direct_global_load`
+   and prepared select bridge fallback behavior, `calls.cpp` call-argument
+   consumers, ALU/value-materialization select-chain callers, and the shared
+   prepared select-chain or call-plan owner.
+   Ownership class: `move-forward` for direct-global/select-chain dependency
+   discovery and `split-owner` for relocating target select materialization to a
+   precise local owner.
+   Expected validation scope: build plus focused tests for non-edge select
+   chains, direct-global select-chain call arguments, ALU select materialization,
+   value publication through select chains, and equivalence with shared
+   prealloc/publication-plan dependency coverage.
+   Concrete reject signals: duplicated direct-global traversal remains in
+   AArch64 dispatch; `PreparedCallPlan` or shared select-chain facts do not
+   cover existing call-argument cases; non-edge callers are not proven; or the
+   result works only by adding select-chain-shaped special cases.
+
+5. Join parallel-copy prepared query migration.
+   Owned files/helper groups: `dispatch_producers.cpp`
+   `build_current_block_join_parallel_copy_cache`, dispatch hook consumers of
+   current-block join copies, prepared move-bundle/value-home inputs, and the
+   shared prepared join-copy query owner.
+   Ownership class: `move-forward`.
+   Expected validation scope: build plus focused join/parallel-copy tests for
+   current-block joins, incoming expression/source relationships, prepared homes,
+   and nearby branch-fusion or before-return publication consumers.
+   Concrete reject signals: local AArch64 code continues reconstructing join
+   source relationships from raw prepared homes and move bundles; shared query
+   semantics diverge from existing prepared move authority; proof covers only a
+   single dispatch caller; or follow-up changes branch-fusion sequencing while
+   claiming only query migration.
+
+6. Target-owner relocation for globals, publication spelling, and value
+   emission.
+   Owned files/helper groups: `dispatch_publication.*` target-spelling and
+   prepared-consumer groups, `dispatch_value_materialization.*` prepared
+   global/load-local/local-slot consumers and scratch/write hazards,
+   `dispatch_producers.*` load-global target/symbol helpers, `dispatch.cpp`
+   address-materialization retry routing, and likely precise local owners such
+   as `globals.cpp`, `memory.cpp`, `alu.cpp`, publication/address helpers, or a
+   non-dispatch value-materialization owner.
+   Ownership class: mostly `split-owner` plus `keep-local`; this draft moves
+   AArch64 target emission out of broad dispatch-family files without moving
+   semantic authority to shared code.
+   Expected validation scope: build plus focused AArch64 backend tests for
+   global load spelling, GOT/direct symbol labels, frame-slot address spelling,
+   fixed-formal stores, scalar load/store mnemonics, local-slot/global value
+   materialization, scratch-register hazards, and address-materialization retry
+   paths. Escalate if public helper headers are deleted or target emission is
+   redistributed across multiple compilation units.
+   Concrete reject signals: route turns into a bulk merge into `dispatch.cpp`;
+   target-local clobber/register-spelling behavior moves to shared code; helper
+   relocation changes semantic producer discovery; or implementation claims
+   contraction while leaving public dispatch-family surfaces unchanged.
+
+7. Preserve and narrow the local dispatch block route.
+   Owned files/helper groups: `dispatch.hpp`, `dispatch.cpp` public block entry
+   points (`make_block_lowering_context`, `dispatch_prepared_block`), routing
+   and diagnostics group (`classify_instruction`, unsupported diagnostics, BIR
+   block/context lookup, `make_bir_machine_instruction`), before-return
+   publication sequencing, branch-fusion hook wiring, and final
+   machine-instruction sequencing.
+   Ownership class: `keep-local` with small `split-owner` cleanups only after
+   producer/publication/value-materialization authority has left broad
+   dispatch files.
+   Expected validation scope: build plus focused block traversal/routing tests,
+   unsupported instruction/terminator diagnostics, before-return publication,
+   branch-fusion hooks, and representative prepared-block lowering. This can be
+   a final contraction cleanup after drafts 1-6 land.
+   Concrete reject signals: block dispatch starts owning semantic producer or
+   publication decisions; diagnostics are weakened to pass moved helpers;
+   sequencing changes before dependent owner splits are complete; or the slice
+   attempts to solve all dispatch-family contraction at once.
+
+8. Evidence-only probe for local-slot address offset null path.
+   Owned files/helper groups: `dispatch_publication.cpp`
+   `local_slot_address_frame_offset`, adjacent
+   `local_aggregate_address_frame_offset`/frame-address materialization
+   consumers, local-slot address publication paths, and existing tests or new
+   narrow probes that can hit or prove dead the null implementation.
+   Ownership class: `needs-more-evidence`.
+   Expected validation scope: no contraction in the first packet; run a narrow
+   caller/runtime proof for local-slot address cases that would reach the null
+   path, then decide whether a later implementation idea should delete dead
+   code, implement missing prepared offset coverage, or keep the disabled path
+   documented.
+   Concrete reject signals: this is bundled with unrelated contraction; the null
+   path is removed without caller/runtime proof; a testcase is marked
+   unsupported to avoid the path; or the draft mutates shared frame-address
+   authority before proving the exact gap.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 3 by grouping the classifications above into bounded
-follow-up ideas: mechanical fold-back wrappers, shared-authority migrations,
-target-owner splits, and narrow evidence-only probes for the unresolved
-local-slot/fallback paths.
+Proceed to `plan.md` Step 4 by materializing selected follow-up drafts into
+`ideas/open/` files. Recommended first materialization order is draft 1
+(`fold-back`) or draft 8 (`needs-more-evidence`) if the supervisor wants the
+lowest implementation risk, then one shared-authority draft at a time.
 
 ## Watchouts
 
-- This plan remains audit-only until a follow-up idea is activated.
-- Follow-up implementation ideas should not merge every `dispatch*` file into
-  `dispatch.cpp`; several rows above are `split-owner`, not bulk fold-back.
-- Treat predecessor-depth scans, same-block producer recursion, direct-global
-  select-chain dependency discovery, and join parallel-copy cache rebuilding as
-  shared-authority candidates unless a narrow proof shows they are convenience
-  wrappers only.
-- Preserve target-local scratch/clobber handling, register spelling,
-  instruction spelling, frame-address rendering, diagnostics, and final
-  machine-instruction sequencing.
-- `needs-more-evidence` currently applies to the publication local-slot null
-  path and to fallback coverage under several `move-forward` rows; Step 3
-  should keep those as evidence/proof ideas rather than contraction promises.
+- Step 4 should create idea files only for selected drafts; this packet did not
+  materialize new source ideas.
+- Drafts 2-5 are intentionally separate shared-authority migrations. Combining
+  same-block scalar recursion, edge fallback, select-chain direct-global
+  discovery, and join-copy cache rebuilding would blur ownership and proof.
+- Draft 6 is target-owner relocation, not a semantic migration. Preserve
+  scratch/clobber handling, register spelling, instruction spelling,
+  frame-address rendering, diagnostics, and final machine-instruction
+  sequencing as local AArch64 behavior.
+- Draft 7 should wait until at least the major helper splits are decided; it is
+  a narrowing/preservation cleanup for the block route, not the first
+  contraction slice.
+- Draft 8 must stay evidence-only until the null local-slot address offset path
+  is proven dead, live, or intentionally disabled.
 
 ## Proof
 
-Audit-only packet. No build or test required; no `test_after.log` update made.
-Evidence gathered from Step 1 notes, source idea 59, closure notes for ideas
-47, 48, 49, and 58, `c4c-clang-tool-ccdb function-signatures` for all six
-dispatch-family `.cpp` files, and targeted caller/reference searches for the
-same-block producer, edge fallback, select-chain, direct-global call-argument,
-join parallel-copy, and value-publication helpers.
+Audit-only packet. No build or test required by the delegated proof; no
+`test_after.log` update made. Evidence used was the Step 2 classification table
+already recorded in this file.
