@@ -51,6 +51,25 @@ namespace prepare = c4c::backend::prepare;
 
 constexpr std::size_t kStackPointerAlignmentBytes = 16;
 
+[[nodiscard]] std::optional<bir::Value> instruction_result_value(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) -> std::optional<bir::Value> {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return typed_inst.result;
+        }
+        return std::nullopt;
+      },
+      inst);
+}
+
 [[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
   if (alignment == 0) {
     return value;

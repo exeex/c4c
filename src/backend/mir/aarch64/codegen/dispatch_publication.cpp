@@ -25,11 +25,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -1626,34 +1624,4 @@ lower_fixed_formal_store_local_publication(
   }
   return false;
 }
-[[nodiscard]] std::optional<bir::Value> instruction_result_value(
-    const bir::Inst& inst) {
-  const auto* result = instruction_result_value_ref(inst);
-  if (result == nullptr) {
-    return std::nullopt;
-  }
-  return *result;
-}
-[[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst) {
-  return std::visit(
-      [](const auto& typed_inst) -> const bir::Value* {
-        using T = std::decay_t<decltype(typed_inst)>;
-        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-          return &typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-          return &typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          return &typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
-          return &typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
-          return &typed_inst.result;
-        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
-          return typed_inst.result.has_value() ? &*typed_inst.result : nullptr;
-        }
-        return nullptr;
-      },
-      inst);
-}
-
 }  // namespace c4c::backend::aarch64::codegen

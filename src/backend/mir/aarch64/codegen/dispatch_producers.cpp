@@ -27,6 +27,33 @@ namespace prepare = c4c::backend::prepare;
 
 namespace {
 
+[[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) -> const bir::Value* {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return &typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return typed_inst.result.has_value() ? &*typed_inst.result : nullptr;
+        }
+        return nullptr;
+      },
+      inst);
+}
+
+[[nodiscard]] std::optional<bir::Value> instruction_result_value(
+    const bir::Inst& inst) {
+  const auto* result = instruction_result_value_ref(inst);
+  if (result == nullptr) {
+    return std::nullopt;
+  }
+  return *result;
+}
+
 [[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
 prepared_source_producer_for_value(const module::BlockLoweringContext& context,
                                    const bir::Value& value) {

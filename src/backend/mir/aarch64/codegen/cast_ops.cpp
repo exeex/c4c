@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -20,6 +21,25 @@ namespace mir = c4c::backend::mir;
 namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
+
+[[nodiscard]] std::optional<bir::Value> instruction_result_value(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) -> std::optional<bir::Value> {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return typed_inst.result;
+        }
+        return std::nullopt;
+      },
+      inst);
+}
 
 [[nodiscard]] mir::TargetInstructionPrintResult target_unsupported(std::string diagnostic) {
   return mir::target_instruction_unsupported(std::move(diagnostic));

@@ -212,9 +212,4 @@ lower_fixed_formal_store_local_publication(
     std::uint8_t register_index,
     unsigned depth = 0);
 
-[[nodiscard]] std::optional<bir::Value> instruction_result_value(
-    const bir::Inst& inst);
-
-[[nodiscard]] const bir::Value* instruction_result_value_ref(const bir::Inst& inst);
-
 }  // namespace c4c::backend::aarch64::codegen
