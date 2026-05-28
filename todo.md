@@ -60,3 +60,10 @@ Build succeeded. Focused ctest result was `2/4` passing:
 `c_testsuite_aarch64_backend_src_00207_c` passed; `backend_aarch64_instruction_dispatch`
 and `c_testsuite_aarch64_backend_src_00196_c` failed as above. Proof log:
 `test_after.log`.
+
+Supervisor accepted the hook-produced full-suite baseline candidate with
+`scripts/plan_review_state.py accept-baseline` after checking for stale test
+processes. Accepted baseline: `test_baseline.log` at commit `a6058f648`, full
+suite `3413/3415` passing with only the known remaining failures
+`backend_aarch64_instruction_dispatch` and
+`c_testsuite_aarch64_backend_src_00196_c`.
