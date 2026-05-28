@@ -1,4 +1,4 @@
-# AArch64 Dispatch Prepared Publication Decomposition Runbook
+# AArch64 Dispatch Prepared Publication Seam Runbook
 
 Status: Active
 Source Idea: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
@@ -6,206 +6,218 @@ Supersedes active runbook for: ideas/open/58_aarch64_prepared_authority_regressi
 
 ## Purpose
 
-Replace the stuck Step 3 assertion-chasing route with a decomposition-oriented
-runbook that splits AArch64 dispatch/prepared-publication behavior into focused
-probes and owned backend seams.
+Keep idea 60 in decomposition mode after the GOT `LoadGlobal` packet proved
+useful integration progress, but before the remaining dirty AArch64 stack is
+accepted as one bundle.
 
 ## Goal
 
-Make the next implementation packet start from one focused seam and proof,
-instead of using `backend_aarch64_instruction_dispatch` as the only route
-driver.
+Split the remaining dirty implementation stack into independently provable
+seam packets. Each packet must either extract/prove one focused seam or leave
+the related dirty code explicitly unaccepted.
 
 ## Core Rule
 
-Do not continue to chase the next monolithic dispatch assertion until the
-behavior is bound to a focused probe or a documented seam owner. Decomposition
-is route-quality work, not backend capability progress by itself.
+Do not commit the remaining dirty implementation stack as one coherent slice.
+`review/remaining_dirty_stack_acceptance_review.md` classifies it as a
+multi-seam bundle: useful context, not acceptance-ready progress.
 
 ## Read First
 
 - `ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md`
 - `ideas/open/58_aarch64_prepared_authority_regression_recovery.md`
+- `review/remaining_dirty_stack_acceptance_review.md`
 - `review/step3_dispatch_route_review.md`
 - `todo.md`
-- `test_after.log`
 
 ## Current Targets
 
-- AArch64 dispatch prepared-publication seams exposed by the dirty Step 3
-  implementation stack.
-- Focused backend probes under `tests/backend/case/` or existing equivalent
-  backend route tests.
-- The current focused four-test proof command used by the supervisor:
-  `backend_aarch64_instruction_dispatch`,
-  `backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`,
-  `c_testsuite_aarch64_backend_src_00196_c`, and
-  `c_testsuite_aarch64_backend_src_00207_c`.
+- Current integration shape reported by the supervisor: the focused four-test
+  proof is `3/4`; only `c_testsuite_aarch64_backend_src_00196_c` still fails.
+- Accepted checkpoint: the committed GOT-required prepared `LoadGlobal`
+  materialization packet.
+- Remaining dirty seams that still need independent ownership and proof:
+  store-local selected publication, store-global stack publication,
+  fused-compare selected operand order, call/outgoing stack argument
+  materialization, and direct edge `LoadLocal` prepared source-memory
+  consumption.
 
 ## Non-Goals
 
-- Do not edit implementation files during decomposition packets unless the
-  supervisor explicitly delegates an implementation packet after a focused seam
-  is selected.
-- Do not close idea 58; its four-test recovery target remains open.
+- Do not close idea 60 or idea 58 from this runbook rewrite.
+- Do not treat the `3/4` integration result as acceptance proof for the
+  remaining dirty stack.
 - Do not weaken any dispatch, backend route, or c-testsuite contract.
 - Do not add testcase-name checks, exact temporary-name checks, literal label
   checks, or fixed stack-offset checks.
-- Do not turn the decomposition idea into a broad AArch64 cleanup.
+- Do not touch unrelated AArch64 seams while proving the selected seam.
 
 ## Working Model
 
-The dirty implementation stack contains partial semantic repairs that should
-not be reverted as part of lifecycle work:
+The dirty implementation stack is not hard-rejected as testcase-overfit, but it
+spans several idea 60 seams. The next route must preserve the useful evidence
+without collapsing back into a monolithic
+`backend_aarch64_instruction_dispatch` assertion chase.
 
-- store-global pending publication ownership/accounting
-- selected fused-compare scratch preference
-- call/outgoing stack argument materialization fallbacks
-- direct edge `LoadLocal` prepared source-memory consumption
-
-The same proof still reports `2/4` passing. The latest first bad dispatch
-assertion is GOT-required `LoadGlobal` materialization. The separate `00196`
-runtime mismatch remains the later `78730af2f` family from idea 58 unless a
-focused probe proves shared ownership.
+`c_testsuite_aarch64_backend_src_00196_c` remains owned by the idea 58
+`78730af2f` family unless a focused idea 60 seam proves shared ownership.
 
 ## Execution Rules
 
-- Keep decomposition packets read-only or test/probe-oriented until a focused
-  owner is selected.
-- Prefer one probe per semantic contract.
-- Reuse existing backend cases when they already isolate a seam.
-- Record harness limitations in `todo.md` instead of forcing a weak probe.
-- When implementation resumes, the packet must name the selected focused probe,
-  backend owner surface, and proof command before code edits begin.
-- Preserve the dirty implementation summary in `todo.md`; do not revert or
-  reclassify those edits as accepted progress until proof is green enough for
-  supervisor acceptance.
+- Use one focused probe and one backend owner surface per implementation
+  packet.
+- Commit only a seam whose focused proof is fresh and whose integration result
+  is recorded in `todo.md`.
+- Keep unproven dirty code unaccepted; do not bundle it with a proven seam.
+- If a focused probe cannot be expressed in the backend case harness, record
+  the harness gap in `todo.md` and stop before accepting the dirty code.
+- Run build proof before any code-changing packet is considered
+  acceptance-ready.
+- Run the focused four-test proof as integration confirmation; `00196` may
+  remain red unless the selected seam claims to own it.
 
 ## Steps
 
 ### Step 1: Establish The Blocked Failure-Family Baseline
 
-Goal: capture the current stuck route and dirty implementation context.
-
-Primary target: `todo.md`, `test_after.log`, and
-`review/step3_dispatch_route_review.md`.
-
-Actions:
-
-- Read the latest `todo.md` proof summary and `test_after.log`.
-- Record the current focused proof result and latest first bad dispatch
-  assertion.
-- Identify which dirty implementation surfaces are incomplete context, not yet
-  accepted recovery progress.
-- Confirm idea 58 remains open and incomplete.
+Status: Complete.
 
 Completion check:
 
-- `todo.md` records the blocked baseline, dirty context, current first bad
-  assertion, and the fact that decomposition is now the active route.
+- `todo.md` recorded the blocked baseline, dirty context, current first bad
+  assertion, and decomposition as the active route.
 
 ### Step 2: Inventory The Separable Dispatch Seams
 
-Goal: turn the monolithic dispatch route into a finite seam list.
-
-Primary target: AArch64 dispatch, memory, publication, calls, edge-copy, and
-global-load materialization surfaces named by the dirty route.
-
-Actions:
-
-- Inventory each seam named in the source idea.
-- For each seam, record the expected semantic owner and the evidence that made
-  it visible.
-- Mark which seams already have partial dirty implementation and which are only
-  next-blocker candidates.
-- Keep the `00196` runtime mismatch separate unless evidence shows it shares a
-  dispatch/prepared-publication seam.
+Status: Complete.
 
 Completion check:
 
-- `todo.md` maps every visible seam to a likely owner surface and evidence
-  source.
+- `todo.md` mapped visible seams to likely owner surfaces and evidence sources.
 
 ### Step 3: Split The Monolithic Probe Into Focused Cases
 
-Goal: choose or extract focused probes so each seam can be proven separately.
-
-Primary target: `tests/backend/case/` and existing backend route tests.
-
-Actions:
-
-- Search for existing focused backend cases that already isolate each seam.
-- For seams without coverage, propose one focused case file per contract using
-  the source idea candidate names as defaults.
-- Keep the monolithic dispatch test as integration coverage, not as the only
-  proof for a repair.
-- If a seam cannot be expressed in the backend case harness, record the exact
-  harness gap.
+Status: Complete.
 
 Completion check:
 
-- `todo.md` lists the selected or proposed focused probe for each seam, with
-  any harness gaps called out explicitly.
+- `todo.md` listed selected or proposed focused probes for the visible seams.
 
-### Step 4: Bind Each Focused Probe To One Backend Owner
+### Step 4: Bind The GOT LoadGlobal Implementation Route
 
-Goal: prevent future packets from touching unrelated surfaces.
-
-Primary target: selected probes plus their corresponding owner files/helpers.
-
-Actions:
-
-- For each focused probe, name the backend file or helper family that should
-  own the repair.
-- Define the smallest acceptable proof command for that seam.
-- Flag dependencies between seams only when one helper boundary genuinely
-  requires another.
-- Identify the narrowest next implementation packet.
+Status: Complete.
 
 Completion check:
 
-- The next implementation packet has a selected probe, owner surface, proof
-  command, and explicit do-not-touch boundaries.
+- `todo.md` selected the GOT-required prepared `LoadGlobal` probe, owner
+  surface, proof command, and do-not-touch boundaries.
 
-### Step 5: Resume Implementation On The Narrowest Generic Seam
+### Step 5: Prove GOT-Required Prepared LoadGlobal Materialization
 
-Goal: hand execution back to implementation only after decomposition creates a
-safe route.
-
-Primary target: the seam selected in Step 4.
-
-Actions:
-
-- Implement only the selected generic seam.
-- Run build proof and the selected focused probe.
-- Run the four-test focused proof only as integration confirmation, not as the
-  only evidence.
-- Stop and decompose again if the first bad fact moves to another unrelated
-  surface.
+Status: Complete and committed.
 
 Completion check:
 
-- The selected focused probe passes without reject signals, and
-  `todo.md` records whether the integration dispatch failure family shrank or
-  exposed another separate seam.
+- The GOT-focused route probe passed.
+- `backend_aarch64_instruction_dispatch` no longer reports the
+  GOT-required `LoadGlobal` materialization assertion as first bad.
 
-### Step 6: Return To Idea 58 Recovery Criteria
+### Step 6: Prove Store-Local Selected Publication Ownership
 
-Goal: reconnect decomposition results to the original recovery target.
+Goal: decide whether the dirty store-local future-consumer suppression is a
+valid prepared-publication ownership rule.
 
-Primary target: idea 58 focused four-test set.
+Primary target: `memory.cpp` / `dispatch.cpp` store-local selected publication
+accounting, plus a focused backend probe such as
+`tests/backend/case/aarch64_store_local_selected_publication.c` if the harness
+can express it.
 
 Actions:
 
-- After focused seams are repaired, rerun the supervisor-selected four-test
-  command.
-- Confirm whether `backend_aarch64_instruction_dispatch` is no longer blocked
-  by the decomposed prepared-publication family.
-- Leave `c_testsuite_aarch64_backend_src_00196_c` to the idea 58
-  `78730af2f` path unless decomposition proved shared ownership.
+- Start from the dirty store-local future-consumer suppression called out in
+  `review/remaining_dirty_stack_acceptance_review.md`.
+- Extract or select one focused probe for selected local-store publication
+  ownership.
+- If implementation is delegated, keep code edits limited to the store-local
+  publication owner surface needed by that probe.
+- Do not modify calls, store-global publication, fused-compare materialization,
+  direct edge `LoadLocal`, or GOT `LoadGlobal` code in this packet.
+- If the probe cannot be expressed without reusing the broad dispatch case as
+  the only proof, record the harness gap and leave the dirty store-local code
+  unaccepted.
 
 Completion check:
 
-- The supervisor can switch back to idea 58 with a narrower implementation
-  route, or close this decomposition idea only after each seam has a focused
-  owner/probe and the next recovery packet is no longer monolithic.
+- The store-local focused probe passes with build proof, or `todo.md` records
+  why the seam remains unaccepted.
+- The focused four-test proof is rerun as integration confirmation, with any
+  remaining `00196` failure kept separate unless this seam proves ownership.
+
+### Step 7: Prove Store-Global Stack Publication Ownership
+
+Goal: prove or leave unaccepted the dirty store-global stack publication and
+republishing behavior.
+
+Primary target: `memory.cpp` store-global prepared publication accounting.
+
+Completion check:
+
+- A focused store-global probe passes, or `todo.md` records a harness gap and
+  the dirty store-global code remains unaccepted.
+
+### Step 8: Prove Fused-Compare Selected Operand Order
+
+Goal: prove or leave unaccepted the dirty fused-compare scratch preference for
+select-materialized operands.
+
+Primary target: `dispatch_publication.cpp` fused-compare operand
+materialization.
+
+Completion check:
+
+- A focused fused-compare selected-operand-order probe passes without binding
+  to temporary register names, or the dirty fused-compare code remains
+  unaccepted.
+
+### Step 9: Prove Call And Outgoing Stack Argument Materialization
+
+Goal: prove or leave unaccepted the dirty call/outgoing stack argument
+materialization fallbacks.
+
+Primary target: `calls.cpp` prepared call-plan and move-bundle lookup paths.
+
+Completion check:
+
+- A focused call stack-argument probe passes, or `todo.md` records why the
+  dirty call code remains unaccepted.
+
+### Step 10: Prove Direct Edge LoadLocal Prepared Memory Consumption
+
+Goal: prove or leave unaccepted the dirty direct edge `LoadLocal` prepared
+source-memory fail-closed behavior.
+
+Primary target: `dispatch_edge_copies.cpp` edge `LoadLocal` publication.
+
+Completion check:
+
+- A focused edge-load-local prepared-memory probe passes, or `todo.md` records
+  the harness gap and keeps the dirty edge code unaccepted.
+
+### Step 11: Reconnect To Idea 58 Recovery Criteria
+
+Goal: decide whether idea 60 decomposition has given idea 58 a narrow enough
+route to resume or close.
+
+Actions:
+
+- Rerun the supervisor-selected four-test proof after the accepted seam
+  packets.
+- Confirm whether only the idea 58 `00196` family remains.
+- Ask the supervisor to route closure, continuation, or switch decisions
+  through the lifecycle after the focused seams are independently owned.
+
+Completion check:
+
+- The supervisor can either resume idea 58 with a narrow remaining route or
+  close idea 60 because each dirty seam has focused ownership/proof or an
+  explicit unaccepted status.

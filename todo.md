@@ -1,49 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/60_aarch64_dispatch_prepared_publication_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Resume Implementation On The Narrowest Generic Seam
+Current Step ID: Step 6
+Current Step Title: Prove Store-Local Selected Publication Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 - Resume Implementation On The Narrowest Generic Seam.
+Completed the lifecycle rewrite after Step 5.
 
-Implemented the GOT-required prepared `LoadGlobal` materialization seam by
-using a shared `prepared_load_global_address_policy` helper for prepared
-global-load lowering. Explicit prepared address policies remain authoritative,
-but an unspecified prepared address now falls back to the BIR global's explicit
-address materialization policy before using the target-profile direct fallback.
+Step 5, GOT-required prepared `LoadGlobal` materialization, is already
+committed. The supervisor-reported focused four-test shape is now `3/4`:
+`backend_aarch64_instruction_dispatch`,
+`backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor`, and
+`c_testsuite_aarch64_backend_src_00207_c` pass; only
+`c_testsuite_aarch64_backend_src_00196_c` still fails.
 
-Added and registered
-`backend_codegen_route_aarch64_got_load_global_prepared_memory` with a focused
-external global load probe that requires GOT page/low12 materialization and
-forbids direct `:lo12:external_data_symbol` addressing.
+`review/remaining_dirty_stack_acceptance_review.md` remains the active warning:
+the remaining dirty implementation stack is useful context, but it is still a
+multi-seam bundle and must not be accepted as one commit.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 5 is acceptance-ready for commit or
-whether the next packet should extract one of the remaining monolithic
-dispatch assertions into a focused route probe before touching another owner.
+Next executor packet: Step 6 - Prove Store-Local Selected Publication
+Ownership.
+
+Packet boundary:
+
+- Select or extract one focused store-local selected publication probe, using
+  `tests/backend/case/aarch64_store_local_selected_publication.c` as the
+  default candidate if the backend case harness can express the contract.
+- Own only the store-local selected publication seam described in the reviewer
+  report: the future-consumer suppression path around `memory.cpp` /
+  `dispatch.cpp`.
+- If code edits are delegated, do not touch call/outgoing stack argument,
+  store-global, fused-compare, direct edge `LoadLocal`, or GOT `LoadGlobal`
+  surfaces in this packet.
+- If the seam cannot be proven without the broad dispatch integration test as
+  the only evidence, stop with the dirty store-local code explicitly
+  unaccepted and record the harness gap here.
 
 ## Watchouts
 
-- The focused route probe requires GOT page/low12 materialization and a generic
-  final word load signal (`ldr w`) without binding the test to temporary
-  register names.
-- The delegated proof no longer has the prior
-  `expected GOT-required global load to use GOT page/low12 materialization`
-  first-bad assertion in `backend_aarch64_instruction_dispatch`.
-- The pre-existing dirty stack in do-not-touch files and the untracked
-  `review/step3_dispatch_route_review.md` remain outside this packet.
+- The remaining dirty stack is not testcase-overfit by itself, but accepting it
+  as one bundle would violate idea 60's decomposition route.
+- Store-local future-consumer suppression is the highest drift-risk seam from
+  `review/remaining_dirty_stack_acceptance_review.md`; prove that seam first
+  or leave it unaccepted.
+- `00196` remains an idea 58 runtime mismatch unless the focused store-local
+  probe proves shared ownership.
+- Do not rely on the `3/4` four-test result as the sole proof for any remaining
+  dirty seam.
 
 ## Proof
 
-Passed:
+Plan-owner lifecycle rewrite only. No build or ctest proof was run for this
+rewrite.
+
+Expected next executor proof shape:
 
 ```sh
-(cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_got_load_global_prepared_memory|backend_aarch64_instruction_dispatch)$') > test_after.log 2>&1
+cmake --build build -j
+ctest --test-dir build -j --output-on-failure -R '<store-local-focused-probe>'
+ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor|c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00207_c)$'
 ```
-
-Proof log path: `test_after.log`.
