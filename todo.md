@@ -1,41 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/63_aarch64_shared_select_chain_dependency_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Migrate ALU And Value-Materialization Select Consumers
+Current Step ID: Step 5
+Current Step Title: Relocate AArch64 Select Materialization Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 non-call migration slice for ALU and generic value
-materialization select consumers.
-`PreparedScalarSelectChainMaterialization` now represents a generic prepared
-select-chain materialization root, with direct-global dependency facts retained
-inside the same record when present. The ALU direct-global fast path still
-requires the existing direct-global dependency fact and no longer rebuilds
-edge-publication source-producer lookups locally when prepared lookups are
-missing. Generic value publication now queries the prepared scalar select-chain
-materialization fact before calling the AArch64 select emitter; missing facts
-fail closed instead of falling back to semantic discovery in the value
-publication path. The old AArch64 producer wrapper no longer falls back to raw
-MIR dependency traversal when prepared select-chain facts are unavailable.
+Completed Step 5 ownership relocation for AArch64 select materialization.
+Moved `select_chain_label`, `emit_select_chain_value_to_register`,
+`make_select_chain_materialization_instruction`, and
+`materialize_direct_global_select_chain_call_argument` out of broad
+`dispatch_edge_copies` ownership into the precise
+`select_materialization` owner. Direct callers now include the focused owner
+for select-chain materialization APIs, while dispatch edge-copy code keeps only
+edge-copy routing and uses the focused owner for its remaining target-local
+label packaging. The moved code preserves target emission behavior and still
+consumes prepared select-chain/call-argument dependency facts from shared
+authority instead of rediscovering semantics locally.
 
 ## Suggested Next
 
-Supervisor should review whether Step 5 should move the remaining AArch64
-select materialization emitter out of broad dispatch edge-copy ownership into a
-more precise local owner.
+Supervisor should route Step 6 proof/review for the ownership split and select-
+chain coverage, including inspection for accidental semantic-discovery
+fallbacks or broad-header coupling.
 
 ## Watchouts
 
-This packet intentionally left indirect-callee select-chain handling untouched.
-`emit_select_chain_value_to_register` still owns AArch64 recursive select
-emission and still uses prepared same-block select producer lookup to spell the
-target-local branch/label sequence; the migrated callers now require prepared
-materialization/dependency facts before entering that emitter. The remaining
-`find_prepared_direct_global_select_chain_dependency` call in `calls.cpp` is
-still the indirect-callee path and remains outside this packet.
+This packet intentionally moved only target-local emission ownership. It did
+not migrate indirect-callee semantic dependency authority or add new
+select-chain discovery. The new owner still calls existing prepared
+same-block select producer and prepared call-argument dependency queries; those
+queries remain the semantic authority. The backend test that directly calls
+`select_chain_label` now includes the precise header.
 
 ## Proof
 

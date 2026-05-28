@@ -4,7 +4,6 @@
 #include "comparison.hpp"
 #include "comparison.hpp"
 #include "constant_materialization.hpp"
-#include "dispatch_edge_copies.hpp"
 #include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
@@ -12,6 +11,7 @@
 #include "globals.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
+#include "select_materialization.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstddef>

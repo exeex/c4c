@@ -15,6 +15,7 @@
 #include "memory.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
+#include "select_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 

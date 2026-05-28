@@ -80,41 +80,4 @@ lower_predecessor_select_parallel_copy_sources(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-[[nodiscard]] std::string select_chain_label(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    c4c::ValueNameId root_value_name,
-    std::uint8_t target_index,
-    std::size_t label_index,
-    std::string_view suffix);
-
-[[nodiscard]] bool emit_select_chain_value_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    std::uint8_t target_index,
-    std::uint8_t scratch_index,
-    std::size_t root_instruction_index,
-    c4c::ValueNameId root_value_name,
-    std::vector<std::string>& lines,
-    std::size_t& label_index,
-    std::vector<std::string_view>& active_values,
-    bool reload_current_memory_loads = false,
-    const prepare::PreparedDirectGlobalSelectChainDependency*
-        direct_global_dependency = nullptr);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_select_chain_materialization_instruction(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index,
-    std::vector<std::string> lines);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-materialize_direct_global_select_chain_call_argument(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    const prepare::PreparedCallArgumentPlan* argument_plan,
-    BlockScalarLoweringState& scalar_state);
-
 }  // namespace c4c::backend::aarch64::codegen

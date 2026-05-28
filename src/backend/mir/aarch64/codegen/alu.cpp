@@ -11,6 +11,7 @@
 #include "float_ops.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
+#include "select_materialization.hpp"
 
 #include "../../../prealloc/prepared_lookups.hpp"
 

@@ -16,6 +16,7 @@
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
 #include "memory_dynamic_stack.hpp"
+#include "select_materialization.hpp"
 
 #include <algorithm>
 #include <charconv>

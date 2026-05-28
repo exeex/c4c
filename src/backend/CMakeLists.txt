@@ -40,6 +40,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/peephole.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/prologue.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/returns.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/select_materialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/traversal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/variadic.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/module.cpp"

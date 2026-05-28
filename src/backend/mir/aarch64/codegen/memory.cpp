@@ -16,6 +16,7 @@
 #include "float_ops.hpp"
 #include "globals.hpp"
 #include "operands.hpp"
+#include "select_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 
