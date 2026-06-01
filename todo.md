@@ -8,41 +8,39 @@ Current Step Title: Continue owner-by-owner relocation
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: relocated the current-block
-join/publication hazard helper family out of dispatch publication and into the
-AArch64 producer owner. `block_entry_move_clobbers_current_join_publication`,
-`prepared_value_home_reads_register_index`, and
-`value_publication_may_read_register_index` are now declared from
-`dispatch_producers.hpp` and defined in `dispatch_producers.cpp`;
-`dispatch_publication.cpp` no longer defines them and `dispatch_publication.hpp`
-no longer declares them directly.
+Completed Step 3 from `plan.md`: relocated the address-materialization/local
+slot address publication helper family out of dispatch publication and into the
+AArch64 globals/address-materialization owner. `local_aggregate_address_frame_offset`,
+`emit_local_slot_address_publication_to_register`,
+`lower_local_slot_address_publication`, and
+`record_address_materialization_result` are now declared from `globals.hpp` and
+defined in `globals.cpp`; `prepared_frame_address_offset_for_value` moved with
+the family as the private lookup helper.
+`dispatch_publication.cpp` no longer defines them and
+`dispatch_publication.hpp` no longer declares them directly.
 
 Changed files:
 
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
+- `src/backend/mir/aarch64/codegen/globals.cpp`
+- `src/backend/mir/aarch64/codegen/globals.hpp`
 - `todo.md`
 
 ## Suggested Next
 
-Classify the remaining dispatch-publication helpers owner-by-owner, starting
-with `record_address_materialization_result` only if the supervisor keeps Step
-3 active and wants address-materialization ownership handled next.
+Continue Step 3 with the next dispatch-publication helper family, excluding
+the scalar, current-block entry, variadic, generic prepared-value-home, and
+address-materialization families already classified.
 
 ## Watchouts
 
-- Call sites that need the moved declarations now include the producer owner
-  directly; `dispatch_publication.hpp` does not indirectly export
-  `dispatch_producers.hpp`.
-- The moved current-block read hazard helper still consumes publication-owner
-  state through existing public helpers (`prepared_value_home_for_value` and
-  `value_has_current_block_entry_publication`); the producer owner now owns the
-  same-block source traversal and register-read classification.
-- `record_address_materialization_result` still lives in
-  `dispatch_publication.cpp`; do not move it without an address-materialization
-  ownership packet.
+- Call sites needing the moved declarations already include `globals.hpp`
+  directly; no compile-only test include updates were required.
+- `globals.cpp` still includes `dispatch_publication.hpp` for unrelated
+  publication-owner utilities such as `scalar_view_for_type` and
+  `prepared_value_home_for_value`; this packet did not broaden into those
+  unrelated helper families.
 - Root-level `test_before.log` and `test_baseline.log` were already present
   alongside the required `test_after.log`; this packet wrote only
   `test_after.log`.

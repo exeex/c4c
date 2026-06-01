@@ -11,7 +11,6 @@
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_value_materialization.hpp"
 #include "float_ops.hpp"
-#include "globals.hpp"
 #include "instruction.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
@@ -237,148 +236,6 @@ namespace {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::size_t> prepared_frame_address_offset_for_value(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name,
-    std::optional<std::size_t> before_or_at_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.address_materialization_lookups == nullptr ||
-      context.control_flow_block == nullptr ||
-      value_name == c4c::kInvalidValueName) {
-    return std::nullopt;
-  }
-  const auto resolved =
-      prepare::find_indexed_prepared_frame_address_offset_for_value(
-          context.function.prepared->stack_layout,
-          context.function.address_materialization_lookups,
-          context.control_flow_block->block_label,
-          value_name,
-          before_or_at_instruction_index);
-  return resolved.has_value()
-             ? std::optional<std::size_t>{resolved->stack_offset_bytes}
-             : std::nullopt;
-}
-[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
-  return prepared_frame_address_offset_for_value(context, value_name, std::nullopt);
-}
-[[nodiscard]] bool emit_local_slot_address_publication_to_register_impl(
-    const module::BlockLoweringContext& context,
-    const bir::BinaryInst& binary,
-    std::uint8_t target_index,
-    std::optional<std::size_t> instruction_index,
-    std::vector<std::string>& lines) {
-  if (binary.result.type != bir::TypeKind::Ptr ||
-      binary.operand_type != bir::TypeKind::Ptr ||
-      (binary.opcode != bir::BinaryOpcode::Add &&
-       binary.opcode != bir::BinaryOpcode::Sub) ||
-      binary.lhs.kind != bir::Value::Kind::Named ||
-      binary.rhs.kind != bir::Value::Kind::Immediate) {
-    return false;
-  }
-  const auto lhs_name = prepared_named_value_id(context, binary.lhs);
-  const auto base_offset =
-      lhs_name.has_value()
-          ? prepared_frame_address_offset_for_value(
-                context, *lhs_name, instruction_index)
-          : std::nullopt;
-  if (!base_offset.has_value()) {
-    return false;
-  }
-  const auto target_register = abi::gp_register(target_index, abi::RegisterView::X);
-  const auto target = target_register.has_value()
-                          ? std::optional<std::string>{
-                                std::string{abi::register_name(*target_register)}}
-                          : std::nullopt;
-  if (!target.has_value()) {
-    return false;
-  }
-  const std::int64_t signed_base =
-      static_cast<std::int64_t>(*base_offset);
-  const std::int64_t signed_delta =
-      binary.opcode == bir::BinaryOpcode::Add ? binary.rhs.immediate
-                                              : -binary.rhs.immediate;
-  const std::int64_t adjusted_offset = signed_base + signed_delta;
-  if (adjusted_offset < 0) {
-    return false;
-  }
-  const std::string_view base =
-      context.function.frame_plan != nullptr &&
-              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
-          ? "x29"
-          : "sp";
-  lines.push_back("add " + *target + ", " + std::string{base} + ", #" +
-                  std::to_string(adjusted_offset));
-  return true;
-}
-[[nodiscard]] bool emit_local_slot_address_publication_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::BinaryInst& binary,
-    std::uint8_t target_index,
-    std::optional<std::size_t> before_or_at_instruction_index,
-    std::vector<std::string>& lines) {
-  return emit_local_slot_address_publication_to_register_impl(
-      context, binary, target_index, before_or_at_instruction_index, lines);
-}
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_local_slot_address_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state) {
-  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-  if (binary == nullptr || binary->result.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-  auto result_register = make_named_prepared_result_register(context, binary->result);
-  std::optional<std::size_t> result_stack_offset_bytes;
-  if (!result_register.has_value()) {
-    const auto* home = prepared_value_home_for_value(context, binary->result);
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    if (home == nullptr ||
-        home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-        !home->offset_bytes.has_value() ||
-        scratches.empty()) {
-      return std::nullopt;
-    }
-    const auto scratch = abi::gp_register(scratches.front().index, abi::RegisterView::X);
-    if (!scratch.has_value()) {
-      return std::nullopt;
-    }
-    result_register = RegisterOperand{
-        .reg = *scratch,
-        .role = RegisterOperandRole::SpillAuthority,
-        .value_id = home->value_id,
-        .value_name = home->value_name,
-        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
-        .expected_view = abi::RegisterView::X,
-    };
-    result_stack_offset_bytes = *home->offset_bytes;
-  }
-  if (!abi::is_gp_register(result_register->reg)) {
-    return std::nullopt;
-  }
-
-  std::vector<std::string> lines;
-  if (!emit_local_slot_address_publication_to_register_impl(
-          context, *binary, result_register->reg.index, instruction_index, lines)) {
-    return std::nullopt;
-  }
-  if (result_stack_offset_bytes.has_value()) {
-    const auto result_name =
-        gp_register_name(result_register->reg.index, abi::RegisterView::X);
-    if (!result_name.has_value()) {
-      return std::nullopt;
-    }
-    lines.push_back("str " + *result_name + ", " +
-                    frame_slot_address(context.function, *result_stack_offset_bytes));
-  }
-  record_emitted_scalar_register(
-      scalar_state, result_register->value_name, *result_register);
-  return make_select_chain_materialization_instruction(
-      context, instruction_index, std::move(lines));
-}
 [[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
@@ -757,17 +614,5 @@ prepared_same_block_publication_source_producer(
       *value_name,
       value.type,
       before_instruction_index);
-}
-void record_address_materialization_result(
-    BlockScalarLoweringState& scalar_state,
-    const module::MachineInstruction& instruction) {
-  const auto* address_record =
-      std::get_if<AddressMaterializationRecord>(&instruction.target.payload);
-  if (address_record == nullptr || !address_record->result_register.has_value()) {
-    return;
-  }
-  record_emitted_scalar_register(scalar_state,
-                                 address_record->result_value_name,
-                                 *address_record->result_register);
 }
 }  // namespace c4c::backend::aarch64::codegen

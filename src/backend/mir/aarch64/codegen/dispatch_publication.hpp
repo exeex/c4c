@@ -69,24 +69,6 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     std::string_view slot_name);
 
-[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
-    const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name);
-
-[[nodiscard]] bool emit_local_slot_address_publication_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::BinaryInst& binary,
-    std::uint8_t target_index,
-    std::optional<std::size_t> before_or_at_instruction_index,
-    std::vector<std::string>& lines);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_local_slot_address_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    BlockScalarLoweringState& scalar_state);
-
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value);
@@ -118,9 +100,5 @@ prepared_publication_source_producer_for_value(
 [[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
     const module::BlockLoweringContext& context,
     const prepare::PreparedEdgePublicationSourceProducer& producer);
-
-void record_address_materialization_result(
-    BlockScalarLoweringState& scalar_state,
-    const module::MachineInstruction& instruction);
 
 }  // namespace c4c::backend::aarch64::codegen

@@ -49,6 +49,21 @@ prepared_load_global_address_policy(
     const module::BlockLoweringContext& context,
     const bir::LoadGlobalInst& load_global,
     const prepare::PreparedMemoryAccess& access);
+[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name);
+[[nodiscard]] bool emit_local_slot_address_publication_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::uint8_t target_index,
+    std::optional<std::size_t> before_or_at_instruction_index,
+    std::vector<std::string>& lines);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_local_slot_address_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_load_global_got_materialization_instruction(
     const module::BlockLoweringContext& context,
@@ -84,6 +99,9 @@ make_prepared_address_materialization_instruction_record(
     const BlockAddressMaterializationIndex& address_materializations,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+void record_address_materialization_result(
+    BlockScalarLoweringState& scalar_state,
+    const module::MachineInstruction& instruction);
 [[nodiscard]] mir::TargetInstructionPrintResult print_address_materialization_instruction(
     const InstructionRecord& instruction,
     const AddressMaterializationRecord& address);
