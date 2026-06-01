@@ -1172,6 +1172,54 @@ PreparedMemoryOperandRecordError resolve_pointer_value_base_register(
   return PreparedMemoryOperandRecordError::None;
 }
 
+struct PreparedLoadResultValueStorage {
+  const prepare::PreparedValueHome* home = nullptr;
+  const prepare::PreparedStoragePlanValue* storage = nullptr;
+  std::optional<std::int64_t> stack_offset_bytes;
+  PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
+};
+
+PreparedLoadResultValueStorage decode_prepared_load_result_value_storage(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const std::optional<prepare::PreparedValueId>& result_value_id,
+    const std::optional<c4c::ValueNameId>& result_value_name) {
+  if (!result_value_id.has_value() || !result_value_name.has_value()) {
+    return {.error = PreparedMemoryOperandRecordError::MissingResultValueHome};
+  }
+
+  const auto* result_home =
+      prepare::find_prepared_value_home(value_locations, *result_value_id);
+  if (result_home == nullptr || result_home->value_name != *result_value_name ||
+      (result_home->kind != prepare::PreparedValueHomeKind::Register &&
+       result_home->kind != prepare::PreparedValueHomeKind::StackSlot)) {
+    return {.error = PreparedMemoryOperandRecordError::MissingResultValueHome};
+  }
+
+  const auto* result_storage = find_storage_plan_value(storage_plan, *result_value_id);
+  if (result_storage == nullptr || result_storage->value_name != *result_value_name) {
+    return {.error = PreparedMemoryOperandRecordError::MissingResultStorage};
+  }
+
+  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register) {
+    return {.home = result_home, .storage = result_storage};
+  }
+
+  if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      result_storage->stack_offset_bytes.has_value()) {
+    return {
+        .home = result_home,
+        .storage = result_storage,
+        .stack_offset_bytes =
+            static_cast<std::int64_t>(*result_storage->stack_offset_bytes),
+    };
+  }
+
+  return {.error = PreparedMemoryOperandRecordError::UnsupportedResultStorage};
+}
+
 std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
     const prepare::PreparedValueHome& home,
     const prepare::PreparedStoragePlanValue& storage,
@@ -1634,49 +1682,35 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
     }
     operand.record->base_register = std::move(*base_register.reg);
   }
-  if (!operand.record->result_value_id.has_value() ||
-      !operand.record->result_value_name.has_value()) {
-    return memory_instruction_record_error(
-        PreparedMemoryOperandRecordError::MissingResultValueHome);
+  const auto result_storage = decode_prepared_load_result_value_storage(
+      value_locations,
+      storage_plan,
+      operand.record->result_value_id,
+      operand.record->result_value_name);
+  if (result_storage.error != PreparedMemoryOperandRecordError::None) {
+    return memory_instruction_record_error(result_storage.error);
   }
 
-  const auto* result_home =
-      prepare::find_prepared_value_home(value_locations, *operand.record->result_value_id);
-  if (result_home == nullptr ||
-      result_home->value_name != *operand.record->result_value_name ||
-      (result_home->kind != prepare::PreparedValueHomeKind::Register &&
-       result_home->kind != prepare::PreparedValueHomeKind::StackSlot)) {
-    return memory_instruction_record_error(
-        PreparedMemoryOperandRecordError::MissingResultValueHome);
-  }
-
-  const auto* result_storage =
-      find_storage_plan_value(storage_plan, *operand.record->result_value_id);
-  if (result_storage == nullptr ||
-      result_storage->value_name != *operand.record->result_value_name) {
-    return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingResultStorage);
-  }
   std::optional<RegisterOperand> result_register;
   std::optional<std::int64_t> result_stack_offset_bytes;
-  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
-      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register) {
+  if (result_storage.home->kind == prepare::PreparedValueHomeKind::Register) {
     result_register = make_prepared_register_operand(
-        *result_home, *result_storage, result_type, RegisterOperandRole::StoragePlan);
+        *result_storage.home,
+        *result_storage.storage,
+        result_type,
+        RegisterOperandRole::StoragePlan);
     if (!result_register.has_value()) {
       return memory_instruction_record_error(
           PreparedMemoryOperandRecordError::RegisterConversionFailed);
     }
-  } else if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
-             result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
-             result_storage->stack_offset_bytes.has_value()) {
+  } else if (result_storage.home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     result_register = make_load_result_stack_publication_scratch(
-        *result_home, *result_storage, result_type);
+        *result_storage.home, *result_storage.storage, result_type);
     if (!result_register.has_value()) {
       return memory_instruction_record_error(
           PreparedMemoryOperandRecordError::RegisterConversionFailed);
     }
-    result_stack_offset_bytes =
-        static_cast<std::int64_t>(*result_storage->stack_offset_bytes);
+    result_stack_offset_bytes = result_storage.stack_offset_bytes;
   } else {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::UnsupportedResultStorage);

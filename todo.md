@@ -8,39 +8,38 @@ Current Step Title: Fold Value-Home, Storage, And Frame-Offset Authority Into Me
 
 ## Just Finished
 
-Completed the first executable packet for `plan.md` Step 3 in
+Completed the next executable packet for `plan.md` Step 3 in
 `src/backend/mir/aarch64/codegen/memory.cpp`. Extracted
-`make_prepared_pointer_value_base_register(...)` as the shared prepared
-pointer-value base home/storage decoder, preserving the existing
-`PreparedMemoryOperandRecordError` mapping while requiring:
+`decode_prepared_load_result_value_storage(...)` as the shared prepared load
+result value home/storage decoder used by
+`make_load_memory_instruction_record(...)`, preserving the existing
+`PreparedMemoryOperandRecordError` mapping while centralizing:
 
-- a prepared pointer value id and name,
-- a matching prepared register home,
-- a matching register storage-plan encoding, and
-- successful AArch64 register conversion through the existing local register
-  view/class helper.
+- required result value id/name checks,
+- prepared value home lookup and register-or-stack-slot kind validation,
+- storage-plan value lookup and result-name validation, and
+- register-vs-frame-slot storage compatibility plus frame-slot offset decoding.
 
-`resolve_pointer_value_base_register(...)`,
-`make_load_memory_instruction_record(...)`, and
-`make_store_memory_instruction_record(...)` now all use the shared helper for
-pointer-value base register decoding.
+The load record builder still owns load target register materialization,
+stack-publication scratch selection, and result type/register-view policy.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: extract the shared prepared result value
-home/storage decoding for load results, keeping stack-publication scratch
-register selection and load opcode/register view policy local to
-`memory.cpp`.
+Next coherent Step 3 packet: extract shared prepared stored-value home/storage
+decoding for store values, without broadening into Step 4 stack-source
+publication planning or changing immediate-store behavior.
 
 ## Watchouts
 
-The new pointer-base helper intentionally preserves the prior missing-id/name
-behavior by returning `MissingPointerValueHome`; changing that to
-`MissingPointerValueName` would be a separate contract change. Keep Step 4
-stack-source publication planning out of the next Step 3 packet. Do not move
-AArch64 register view selection, scratch choice, opcode choice, or
+The new load-result helper intentionally keeps stack-publication scratch
+register selection in `make_load_memory_instruction_record(...)` through
+`make_load_result_stack_publication_scratch(...)`; do not move scratch choice,
+AArch64 register view selection, opcode choice, or
 `frame_slot_address(...)`/`register_indirect_address(...)` spelling into
-prepared helpers.
+prepared helpers. The store path has more variants than load results
+(immediates, stack reloads, register storage, and frame-slot stored values), so
+the next packet should preserve the existing immediate fast path and error
+mapping.
 
 ## Proof
 
