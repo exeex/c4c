@@ -8,31 +8,30 @@ Current Step Title: Consume Prepared Addressing And Materialization Facts
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 packet in
-`src/backend/mir/aarch64/codegen/memory.cpp`: pointer-base-plus-offset store
-local publication now resolves the prepared base symbol/base-home
-materialization in
-`find_prepared_pointer_base_plus_offset_materialization(...)` before the
-AArch64 emitter runs. `emit_pointer_base_plus_offset_to_register(...)` now
-consumes the prepared materialization and keeps only target-local register
-spelling, offset arithmetic, and frame-address emission.
+Completed the final in-scope `plan.md` Step 2 packet in
+`src/backend/mir/aarch64/codegen/memory.cpp`: published store-global stack
+value publication now resolves and validates the prepared stack home in
+`find_prepared_store_global_stack_publication_home(...)` before the AArch64
+emitter runs. `lower_published_store_global_stack_value_publication(...)` now
+consumes the prepared home and keeps only result filtering, scratch selection,
+value materialization, store mnemonic/view choice, and final frame-address
+emission.
 
 ## Suggested Next
 
-Continue Step 2 by checking the remaining store-global and local publication
-helpers for one more prepared addressing/materialization lookup that can move
-to a pre-rewrite prepared-boundary helper without changing mnemonic, scratch,
-base-register, or address spelling policy.
+Supervisor should review Step 2 for closure or handoff. After checking the
+remaining store-global and local publication helpers in `memory.cpp`, I do not
+see another concrete in-scope prepared addressing/materialization lookup to
+migrate without broadening into value-home/storage Step 3 or stack-source Step
+4 policy.
 
 ## Watchouts
 
-`find_prepared_pointer_base_plus_offset_materialization(...)` intentionally
-owns only lookup/validation of the prepared pointer materialization facts.
-Keep `emit_pointer_base_plus_offset_to_register(...)` as the AArch64 emission
-boundary for register names, add/sub choice, stack loads, and final
-frame-address spelling. The existing direct global-symbol path in
-`lower_pointer_base_plus_offset_store_local_publication(...)` was left in
-place.
+`find_prepared_store_global_stack_publication_home(...)` intentionally owns
+only lookup/validation of the prepared stack home. Remaining inline
+`find_indexed_prepared_value_home(...)` calls in this area are tied to future
+store-local coverage decisions or broader value-home/storage routing, so I left
+them out of this Step 2 packet.
 
 ## Proof
 

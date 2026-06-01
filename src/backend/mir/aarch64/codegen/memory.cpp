@@ -4192,6 +4192,23 @@ prepared_store_global_addressing(const module::BlockLoweringContext& context) {
              : nullptr;
 }
 
+[[nodiscard]] const prepare::PreparedValueHome*
+find_prepared_store_global_stack_publication_home(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId result_name) {
+  const auto* home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                result_name);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
+    return nullptr;
+  }
+  return home;
+}
+
 }  // namespace
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -4276,13 +4293,8 @@ lower_published_store_global_stack_value_publication(
     return std::nullopt;
   }
   const auto* home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *result_name);
-  if (home == nullptr ||
-      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      !home->offset_bytes.has_value()) {
+      find_prepared_store_global_stack_publication_home(context, *result_name);
+  if (home == nullptr) {
     return std::nullopt;
   }
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
