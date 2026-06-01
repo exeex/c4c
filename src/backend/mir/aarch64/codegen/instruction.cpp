@@ -3,7 +3,6 @@
 #include "cast_ops.hpp"
 #include "effects.hpp"
 #include "f128.hpp"
-#include "float_ops.hpp"
 #include "memory.hpp"
 
 #include <algorithm>
@@ -990,13 +989,6 @@ const prepare::PreparedStoragePlanValue* find_storage_plan_value(
     }
   }
   return nullptr;
-}
-
-std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type) {
-  if (const auto integer_view = scalar_register_view(type)) {
-    return integer_view;
-  }
-  return scalar_fp_register_view(type);
 }
 
 prepare::PreparedRegisterClass register_class_from_bank(

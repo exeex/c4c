@@ -8,36 +8,37 @@ Current Step Title: Fold Scalar Type And Register-View Helpers
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by folding the duplicated floating scalar
-type-to-FP/SIMD-register-view helpers in `instruction.cpp` and
-`machine_printer.cpp` back to the exported AArch64-local
-`scalar_fp_register_view` helper from `float_ops.hpp`.
+Completed `plan.md` Step 2 by folding the duplicated scalar storage
+type-to-register-view helper in `instruction.cpp` back to the exported
+AArch64-local ALU helper surface.
 
 Before inventory:
 
-- `instruction.cpp` had an unnamed-namespace `scalar_fp_register_view`, mapping
-  `F32` to `S`, `F64` to `D`, and rejecting integer, pointer, void, and `F128`
-  types.
-- `machine_printer.cpp` had `floating_register_view` with the same floating
-  scalar mapping, though it no longer had live call sites in the current tree.
-- `float_ops.cpp` already exported `scalar_fp_register_view` with the same
-  mapping through `float_ops.hpp`.
+- `instruction.cpp` had an unnamed-namespace `scalar_storage_register_view`
+  duplicate that first called `scalar_register_view` for integer and pointer
+  storage, then fell back to `scalar_fp_register_view` for floating scalar
+  storage.
+- `alu.cpp` had the same `scalar_storage_register_view` body in its local ALU
+  helper set, with live ALU and prepared scalar call sites already using it.
 
 After inventory:
 
-- Removed the local `instruction.cpp` FP view helper; scalar storage view
-  fallback now calls the exported `scalar_fp_register_view`.
-- Removed the unused local `machine_printer.cpp` floating view helper.
-- Left record construction, printer formatting, opcode decisions, shared
-  BIR/prealloc/ABI files, tests, and unrelated helper families unchanged.
+- `alu.hpp` now exposes `scalar_storage_register_view` as the minimal shared
+  AArch64-local ALU helper needed by `instruction.cpp`.
+- `alu.cpp` keeps the unchanged helper body as the single implementation, next
+  to the exported scalar register-view helper surface.
+- Removed the local `instruction.cpp` storage-view helper and its now-unused
+  `float_ops.hpp` include; instruction prepared-register code now uses the
+  shared ALU helper through `alu.hpp`.
+- Left `machine_printer.cpp`, record construction, opcode decisions, shared
+  BIR/prealloc/ABI files, tests, and unrelated storage-view duplicates
+  unchanged.
 
 ## Suggested Next
 
-Continue Step 2 with the scalar storage register-view fold-back family as a
-separate packet, after checking whether the remaining duplicates in
-`instruction.cpp`, `alu.cpp`, `globals.cpp`, `atomics.cpp`, and `cast_ops.cpp`
-can share one AArch64-local helper without widening beyond the supervisor-owned
-file set.
+Continue Step 2 with any remaining scalar type/register-view helper fold-back
+inside the active owned surface, or move to Step 3 compare predicate folding if
+the supervisor considers the Step 2 owned helper families complete.
 
 ## Watchouts
 
@@ -48,8 +49,8 @@ file set.
   this slice; folding it back should be a separate packet so type/view helper
   movement does not mix with branch/printer condition spelling.
 - `scalar_storage_register_view` still has same-shaped local duplicates outside
-  this packet; fold it only if the helper boundary stays AArch64-local and does
-  not move record schemas, storage-plan policy, or printer spelling.
+  this packet in non-owned files such as globals/atomics/cast/memory; leave
+  those for a supervisor-selected packet if they become in scope.
 - Keep BIR facts and `abi::convert_prepared_register` as inputs rather than
   re-deriving shared semantics, and do not move AArch64 record schemas, opcode
   decisions, register-name spelling, scratch selection, or printer formatting
@@ -59,7 +60,7 @@ file set.
 
 Ran the delegated proof command:
 
-`cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_aarch64_target_record_core_contract|backend_aarch64_instruction_dispatch)$' >> test_after.log`
+`cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_aarch64_target_record_core_contract|backend_aarch64_instruction_dispatch)$' >> test_after.log`
 
-Result: passed. `test_after.log` contains the successful build and 7/7 passing
+Result: passed. `test_after.log` contains the successful build and 6/6 passing
 selected tests.

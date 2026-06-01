@@ -26,6 +26,8 @@ struct ScalarAluPrintResult {
     const RegisterOperand& rhs);
 [[nodiscard]] std::optional<abi::RegisterView> scalar_register_view(
     bir::TypeKind type);
+[[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
+    bir::TypeKind type);
 [[nodiscard]] ScalarAluPrintResult make_scalar_alu_print_lines(
     const InstructionRecord& instruction,
     const ScalarInstructionRecord& scalar);

@@ -637,14 +637,6 @@ struct ScalarAluSemanticFacts {
   return true;
 }
 
-[[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
-    bir::TypeKind type) {
-  if (const auto integer_view = scalar_register_view(type)) {
-    return integer_view;
-  }
-  return scalar_fp_register_view(type);
-}
-
 [[nodiscard]] const prepare::PreparedValueHome* find_prepared_scalar_value_home(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
@@ -3282,6 +3274,13 @@ std::optional<abi::RegisterView> scalar_register_view(bir::TypeKind type) {
     default:
       return std::nullopt;
   }
+}
+
+std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type) {
+  if (const auto integer_view = scalar_register_view(type)) {
+    return integer_view;
+  }
+  return scalar_fp_register_view(type);
 }
 
 std::optional<RegisterOperand> find_emitted_scalar_register(
