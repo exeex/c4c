@@ -46,6 +46,11 @@ struct ImmediateKindSpelling {
   std::string_view spelling;
 };
 
+struct FrameInstructionKindSpelling {
+  FrameInstructionKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -177,6 +182,13 @@ constexpr std::array<ImmediateKindSpelling, 4> kImmediateKindSpellings{{
     {ImmediateKind::NullPointer, "null_pointer"},
 }};
 
+constexpr std::array<FrameInstructionKindSpelling, 4> kFrameInstructionKindSpellings{{
+    {FrameInstructionKind::PrologueSetup, "prologue_setup"},
+    {FrameInstructionKind::EpilogueTeardown, "epilogue_teardown"},
+    {FrameInstructionKind::CalleeSaveStore, "callee_save_store"},
+    {FrameInstructionKind::CalleeSaveLoad, "callee_save_load"},
+}};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -270,6 +282,19 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kImmediateKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view frame_instruction_kind_spelling(
+    FrameInstructionKind kind) {
+  const auto found = std::find_if(
+      kFrameInstructionKindSpellings.begin(), kFrameInstructionKindSpellings.end(),
+      [kind](const FrameInstructionKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kFrameInstructionKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -655,17 +680,7 @@ bool is_aggregate_register_lane_publication(
 }
 
 std::string_view frame_instruction_kind_name(FrameInstructionKind kind) {
-  switch (kind) {
-    case FrameInstructionKind::PrologueSetup:
-      return "prologue_setup";
-    case FrameInstructionKind::EpilogueTeardown:
-      return "epilogue_teardown";
-    case FrameInstructionKind::CalleeSaveStore:
-      return "callee_save_store";
-    case FrameInstructionKind::CalleeSaveLoad:
-      return "callee_save_load";
-  }
-  return "unknown";
+  return frame_instruction_kind_spelling(kind);
 }
 
 std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {

@@ -8,23 +8,24 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 immediate kind naming:
-`immediate_kind_name` now delegates through an internal
-`immediate_kind_spelling` lookup helper backed by an explicit target-local
-`kImmediateKindSpellings` table. All previous immediate kind spellings were
-preserved, and missing/unknown immediate kinds still return `unknown`.
+Step 2 bounded contraction completed for AArch64 frame instruction kind naming:
+`frame_instruction_kind_name` now delegates through an internal
+`frame_instruction_kind_spelling` lookup helper backed by an explicit
+target-local `kFrameInstructionKindSpellings` table. All previous frame
+instruction kind spellings were preserved, and missing/unknown frame instruction
+kinds still return `unknown`.
 
 ## Suggested Next
 
-Continue Step 2 with a separate bounded packet for another small local naming
-surface such as `frame_instruction_kind_name`, preserving all public strings and
-`unknown` fallbacks.
+Continue Step 2 with a separate bounded packet for another small local naming or
+status surface in `instruction.cpp`, preserving all public strings and fallback
+behavior.
 
 ## Watchouts
 
-The immediate kind spelling table intentionally includes every current
-`ImmediateKind` entry from the previous switch. This packet only changed the
-local naming helper shape; no diagnostics, tests, or downstream instruction
+The frame instruction kind spelling table intentionally includes every current
+`FrameInstructionKind` entry from the previous switch. This packet only changed
+the local naming helper shape; no diagnostics, tests, or downstream instruction
 selection behavior were changed.
 
 ## Proof
