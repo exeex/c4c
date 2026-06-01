@@ -71,6 +71,11 @@ struct BranchConditionFormSpelling {
   std::string_view spelling;
 };
 
+struct BranchCompareCandidateKindSpelling {
+  BranchCompareCandidateKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -252,6 +257,16 @@ constexpr std::array<BranchConditionFormSpelling, 3> kBranchConditionFormSpellin
     {BranchConditionForm::FusedCompare, "fused_compare"},
 }};
 
+constexpr std::array<BranchCompareCandidateKindSpelling, 4>
+    kBranchCompareCandidateKindSpellings{{
+        {BranchCompareCandidateKind::None, "none"},
+        {BranchCompareCandidateKind::MaterializedBoolCondition,
+         "materialized_bool_condition"},
+        {BranchCompareCandidateKind::FusedCompareAndBranch,
+         "fused_compare_and_branch"},
+        {BranchCompareCandidateKind::NonFusableCompare, "non_fusable_compare"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -413,6 +428,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.form == form;
       });
   if (found == kBranchConditionFormSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view branch_compare_candidate_kind_spelling(
+    BranchCompareCandidateKind kind) {
+  const auto found = std::find_if(
+      kBranchCompareCandidateKindSpellings.begin(),
+      kBranchCompareCandidateKindSpellings.end(),
+      [kind](const BranchCompareCandidateKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kBranchCompareCandidateKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -818,17 +847,7 @@ std::string_view branch_condition_form_name(BranchConditionForm form) {
 }
 
 std::string_view branch_compare_candidate_kind_name(BranchCompareCandidateKind kind) {
-  switch (kind) {
-    case BranchCompareCandidateKind::None:
-      return "none";
-    case BranchCompareCandidateKind::MaterializedBoolCondition:
-      return "materialized_bool_condition";
-    case BranchCompareCandidateKind::FusedCompareAndBranch:
-      return "fused_compare_and_branch";
-    case BranchCompareCandidateKind::NonFusableCompare:
-      return "non_fusable_compare";
-  }
-  return "unknown";
+  return branch_compare_candidate_kind_spelling(kind);
 }
 
 std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error) {
