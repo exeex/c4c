@@ -66,6 +66,11 @@ struct ScalarCastOperationKindSpelling {
   std::string_view spelling;
 };
 
+struct BranchConditionFormSpelling {
+  BranchConditionForm form;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -241,6 +246,12 @@ constexpr std::array<ScalarCastOperationKindSpelling, 10>
         {ScalarCastOperationKind::Deferred, "deferred"},
     }};
 
+constexpr std::array<BranchConditionFormSpelling, 3> kBranchConditionFormSpellings{{
+    {BranchConditionForm::Unconditional, "unconditional"},
+    {BranchConditionForm::MaterializedBool, "materialized_bool"},
+    {BranchConditionForm::FusedCompare, "fused_compare"},
+}};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -389,6 +400,19 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kScalarCastOperationKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view branch_condition_form_spelling(
+    BranchConditionForm form) {
+  const auto found = std::find_if(
+      kBranchConditionFormSpellings.begin(), kBranchConditionFormSpellings.end(),
+      [form](const BranchConditionFormSpelling& spelling) {
+        return spelling.form == form;
+      });
+  if (found == kBranchConditionFormSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -790,15 +814,7 @@ std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind) {
 }
 
 std::string_view branch_condition_form_name(BranchConditionForm form) {
-  switch (form) {
-    case BranchConditionForm::Unconditional:
-      return "unconditional";
-    case BranchConditionForm::MaterializedBool:
-      return "materialized_bool";
-    case BranchConditionForm::FusedCompare:
-      return "fused_compare";
-  }
-  return "unknown";
+  return branch_condition_form_spelling(form);
 }
 
 std::string_view branch_compare_candidate_kind_name(BranchCompareCandidateKind kind) {

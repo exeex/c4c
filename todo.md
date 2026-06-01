@@ -8,25 +8,25 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 scalar cast operation kind
-naming: `scalar_cast_operation_kind_name` now delegates through an internal
-`scalar_cast_operation_kind_spelling` lookup helper backed by an explicit
-target-local `kScalarCastOperationKindSpellings` table. All previous scalar
-cast operation spellings were preserved, and missing/unknown operation kinds
-still return `unknown`.
+Step 2 bounded contraction completed for AArch64 branch condition form naming:
+`branch_condition_form_name` now delegates through an internal
+`branch_condition_form_spelling` lookup helper backed by an explicit
+target-local `kBranchConditionFormSpellings` table. All previous branch
+condition form spellings were preserved, and missing/unknown forms still return
+`unknown`.
 
 ## Suggested Next
 
-Continue Step 2 with a separate bounded packet for another small local naming or
-status surface in `instruction.cpp`, preserving all public strings and fallback
-behavior.
+Continue Step 2 with a separate bounded packet for another same-shaped local
+naming or status surface in `instruction.cpp`, preserving all public strings
+and fallback behavior.
 
 ## Watchouts
 
-The scalar cast operation spelling table intentionally includes every current
-`ScalarCastOperationKind` entry from the previous switch. This packet only
-changed the local naming helper shape; no diagnostics, tests, or downstream
-instruction selection behavior were changed.
+The branch condition form spelling table intentionally includes every current
+`BranchConditionForm` entry from the previous switch. This packet only changed
+the local naming helper shape; no diagnostics, tests, or downstream instruction
+selection behavior were changed.
 
 ## Proof
 
