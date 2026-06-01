@@ -209,14 +209,14 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
                             bir::BinaryOpcode::Or,
                             bir::BinaryOpcode::Xor}) {
     auto fixture = make_i64_fixture();
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names, fixture.locations, fixture.storage, binary(opcode, bir::TypeKind::I64));
     if (!result.record.has_value() ||
         result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected supported scalar ALU prepared conversion to succeed");
     }
 
-    const auto& instruction = *result.record;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
     if (instruction.result_value_id != prepare::PreparedValueId{12} ||
         instruction.result_value_name != fixture.result_name ||
         instruction.result_type != bir::TypeKind::I64 ||
@@ -305,17 +305,17 @@ int shift_immediate_prepares_result_home_and_shift_operand() {
 
   for (const auto opcode :
        {bir::BinaryOpcode::Shl, bir::BinaryOpcode::LShr, bir::BinaryOpcode::AShr}) {
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
         binary_with_rhs(opcode, bir::TypeKind::I32, bir::Value::immediate_i32(1)));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected i32 shift immediate to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.source_binary_opcode != opcode ||
@@ -367,14 +367,14 @@ int supported_floating_scalar_alu_records_preserve_fpr_facts() {
        {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub, bir::BinaryOpcode::Mul,
         bir::BinaryOpcode::SDiv}) {
     auto fixture = make_f64_fixture();
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names, fixture.locations, fixture.storage, binary(opcode, bir::TypeKind::F64));
     if (!result.record.has_value() ||
         result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected supported F64 scalar ALU prepared conversion to succeed");
     }
 
-    const auto& instruction = *result.record;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
     const auto& alu = *instruction.scalar_alu;
     const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
     const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
@@ -469,18 +469,18 @@ int prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts() {
   fixture.storage.values[1] = frame_slot_storage(
       prepare::PreparedValueId{11}, fixture.rhs_name, prepare::PreparedFrameSlotId{44}, 88);
 
-  const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+  const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
       fixture.names,
       fixture.locations,
       fixture.storage,
       binary(bir::BinaryOpcode::Add, bir::TypeKind::I64));
   if (!result.record.has_value() ||
-      result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-      !result.record->scalar_alu.has_value()) {
+      result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
     return fail("expected stack-slot scalar operand to prepare as frame-slot memory");
   }
 
-  const auto& alu = *result.record->scalar_alu;
+  const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+  const auto& alu = *instruction.scalar_alu;
   const auto* rhs = std::get_if<aarch64_codegen::MemoryOperand>(&alu.rhs.payload);
   if (alu.rhs.kind != aarch64_codegen::OperandKind::Memory || rhs == nullptr ||
       rhs->support != aarch64_codegen::MemoryOperandSupportKind::Prepared ||
@@ -493,7 +493,7 @@ int prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts() {
     return fail("expected prepared stack-slot scalar operand to preserve frame-slot facts");
   }
 
-  const auto machine = aarch64_codegen::make_scalar_instruction(*result.record);
+  const auto machine = aarch64_codegen::make_scalar_instruction(instruction);
   if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       machine.operands.size() != 2 || machine.uses.size() != 2 ||
       machine.uses[1].kind != aarch64_codegen::MachineEffectResourceKind::Memory ||
@@ -699,26 +699,26 @@ int prepared_i32_scalar_alu_accepts_abi_x_register_parameter_spellings() {
   fixture.storage.values[2] =
       register_storage(prepare::PreparedValueId{12}, fixture.result_name, "x13");
 
-  const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+  const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
       fixture.names,
       fixture.locations,
       fixture.storage,
       binary(bir::BinaryOpcode::Sub, bir::TypeKind::I32));
   if (!result.record.has_value() ||
       result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-      !result.record->scalar_alu.has_value() ||
       !result.record->result_register.has_value()) {
     return fail("expected I32 ALU parameters with ABI X spellings to prepare");
   }
 
-  const auto& alu = *result.record->scalar_alu;
+  const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+  const auto& alu = *instruction.scalar_alu;
   const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
   const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
   if (lhs == nullptr || rhs == nullptr ||
-      result.record->result_register->reg != aarch64_abi::w_register(13) ||
+      instruction.result_register->reg != aarch64_abi::w_register(13) ||
       lhs->reg != aarch64_abi::w_register(0) ||
       rhs->reg != aarch64_abi::w_register(1) ||
-      result.record->result_register->expected_view != aarch64_abi::RegisterView::W ||
+      instruction.result_register->expected_view != aarch64_abi::RegisterView::W ||
       lhs->expected_view != aarch64_abi::RegisterView::W ||
       rhs->expected_view != aarch64_abi::RegisterView::W ||
       lhs->occupied_registers != std::vector<std::string_view>{"w0"} ||
@@ -726,7 +726,7 @@ int prepared_i32_scalar_alu_accepts_abi_x_register_parameter_spellings() {
     return fail("expected I32 ALU to select W views from ABI X parameter spellings");
   }
 
-  const auto machine = aarch64_codegen::make_scalar_instruction(*result.record);
+  const auto machine = aarch64_codegen::make_scalar_instruction(instruction);
   if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       machine.uses.size() != 2 || machine.defs.size() != 1 ||
       machine.uses[0].reg != aarch64_abi::w_register(0) ||
@@ -754,7 +754,7 @@ int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
                                  aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros,
                                  aarch64_codegen::ScalarUnaryOperationKind::CountTrailingZeros,
                                  aarch64_codegen::ScalarUnaryOperationKind::ByteSwap}) {
-      const auto result = aarch64_codegen::make_prepared_scalar_unary_instruction_record(
+      const auto result = aarch64_codegen::make_prepared_scalar_unary_record(
           fixture.names,
           fixture.locations,
           fixture.storage,
@@ -765,7 +765,7 @@ int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
           result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
         return fail("expected prepared scalar unary conversion to succeed");
       }
-      const auto& instruction = *result.record;
+      const auto instruction = aarch64_codegen::make_scalar_unary_instruction_record(*result.record);
       if (!instruction.scalar_unary.has_value() || instruction.scalar_alu.has_value() ||
           instruction.inputs.size() != 1 || instruction.result_type != type ||
           instruction.result_value_id != prepare::PreparedValueId{12} ||
@@ -814,7 +814,7 @@ int prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts() {
   fixture.storage.values[2] =
       register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
 
-  const auto result = aarch64_codegen::make_prepared_scalar_unary_instruction_record(
+  const auto result = aarch64_codegen::make_prepared_scalar_unary_record(
       fixture.names,
       fixture.locations,
       fixture.storage,
@@ -825,7 +825,8 @@ int prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts() {
       result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
     return fail("expected prepared I16 byte-swap unary conversion to succeed");
   }
-  const auto& unary = *result.record->scalar_unary;
+  const auto instruction = aarch64_codegen::make_scalar_unary_instruction_record(*result.record);
+  const auto& unary = *instruction.scalar_unary;
   const auto* operand = std::get_if<aarch64_codegen::RegisterOperand>(&unary.operand.payload);
   if (unary.operation != aarch64_codegen::ScalarUnaryOperationKind::ByteSwap ||
       unary.operand_type != bir::TypeKind::I16 || unary.result_type != bir::TypeKind::I16 ||
@@ -1015,7 +1016,7 @@ int named_rematerialized_immediate_operands_preserve_source_identity() {
 int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
   {
     auto fixture = make_i64_fixture();
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
@@ -1023,16 +1024,16 @@ int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
                         bir::TypeKind::I64,
                         bir::Value::immediate_i64(8)));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected unsigned division by immediate power-of-two to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
         alu.source_binary_opcode != bir::BinaryOpcode::UDiv ||
         !alu.supported_integer_operation ||
-        result.record->result_register->reg != aarch64_abi::x_register(0) ||
+        instruction.result_register->reg != aarch64_abi::x_register(0) ||
         rhs == nullptr || rhs->unsigned_value != 3 || rhs->type != bir::TypeKind::I64) {
       return fail("expected UDiv power-of-two to rewrite rhs as structured shift count");
     }
@@ -1044,17 +1045,17 @@ int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
         immediate_home(prepare::PreparedValueId{11}, fixture.function_name, fixture.rhs_name, 16);
     fixture.storage.values[1] =
         immediate_storage(prepare::PreparedValueId{11}, fixture.rhs_name, 16);
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
         binary(bir::BinaryOpcode::URem, bir::TypeKind::I64));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected unsigned remainder by rematerialized power-of-two to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::ScalarAluOperationKind::And ||
         alu.source_binary_opcode != bir::BinaryOpcode::URem ||
@@ -1085,17 +1086,17 @@ int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
 int non_power_unsigned_div_rem_prepare_as_scalar_publications() {
   for (const auto opcode : {bir::BinaryOpcode::UDiv, bir::BinaryOpcode::URem}) {
     auto fixture = make_i64_fixture();
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
         binary_with_rhs(opcode, bir::TypeKind::I64, bir::Value::immediate_i64(10)));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected non-power unsigned div/rem scalar publication to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::ScalarAluOperationKind::Div ||
         alu.source_binary_opcode != opcode ||
@@ -1105,8 +1106,8 @@ int non_power_unsigned_div_rem_prepare_as_scalar_publications() {
         rhs == nullptr ||
         rhs->unsigned_value != 10 ||
         alu.post_zero_extend_result_bits.has_value() ||
-        !result.record->result_register.has_value() ||
-        result.record->result_register->reg != aarch64_abi::x_register(0)) {
+        !instruction.result_register.has_value() ||
+        instruction.result_register->reg != aarch64_abi::x_register(0)) {
       return fail("expected non-power unsigned div/rem to publish an ordinary scalar result");
     }
   }
@@ -1123,7 +1124,7 @@ int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
         register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
     fixture.storage.values[2] =
         register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
@@ -1131,11 +1132,11 @@ int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
                         bir::TypeKind::I8,
                         bir::Value::immediate_i32(4)));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected I8 unsigned division by power-of-two to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
         alu.source_binary_opcode != bir::BinaryOpcode::UDiv ||
@@ -1144,8 +1145,8 @@ int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
         *alu.post_zero_extend_result_bits != 8U ||
         rhs == nullptr ||
         rhs->unsigned_value != 2 ||
-        !result.record->result_register.has_value() ||
-        result.record->result_register->expected_view != aarch64_abi::RegisterView::W) {
+        !instruction.result_register.has_value() ||
+        instruction.result_register->expected_view != aarch64_abi::RegisterView::W) {
       return fail("expected I8 UDiv reduction to require explicit post zero-extension");
     }
   }
@@ -1162,17 +1163,17 @@ int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
         immediate_home(prepare::PreparedValueId{11}, fixture.function_name, fixture.rhs_name, 16);
     fixture.storage.values[1] =
         immediate_storage(prepare::PreparedValueId{11}, fixture.rhs_name, 16);
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
         binary(bir::BinaryOpcode::URem, bir::TypeKind::I16));
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected I16 unsigned remainder by power-of-two to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::ScalarAluOperationKind::And ||
         alu.source_binary_opcode != bir::BinaryOpcode::URem ||
@@ -1242,14 +1243,14 @@ int signed_i32_alu_results_prepare_explicit_sign_extension() {
         .lhs = named_value(bir::TypeKind::I32, "%lhs"),
         .rhs = named_value(bir::TypeKind::I32, "%rhs"),
     };
-    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names, fixture.locations, fixture.storage, inst);
     if (!result.record.has_value() ||
-        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
-        !result.record->scalar_alu.has_value()) {
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
       return fail("expected signed I32 add/sub with I64 result to prepare");
     }
-    const auto& alu = *result.record->scalar_alu;
+    const auto instruction = aarch64_codegen::make_scalar_alu_instruction_record(*result.record);
+    const auto& alu = *instruction.scalar_alu;
     const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
     const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
     if (alu.operation != aarch64_codegen::scalar_alu_operation_from_binary_opcode(opcode) ||
@@ -1262,8 +1263,8 @@ int signed_i32_alu_results_prepare_explicit_sign_extension() {
         rhs == nullptr ||
         lhs->expected_view != aarch64_abi::RegisterView::W ||
         rhs->expected_view != aarch64_abi::RegisterView::W ||
-        !result.record->result_register.has_value() ||
-        result.record->result_register->expected_view != aarch64_abi::RegisterView::X) {
+        !instruction.result_register.has_value() ||
+        instruction.result_register->expected_view != aarch64_abi::RegisterView::X) {
       return fail("expected signed I32-to-I64 ALU route to carry post sign-extension facts");
     }
   }
