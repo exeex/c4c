@@ -64,3 +64,26 @@ mixed. This must be probed and specified before moving target code.
 - Tests are weakened or unsupported expectations are downgraded without
   explicit approval.
 - General memory cleanup is mixed into this missing-authority probe.
+
+## Closure Note
+
+Closed 2026-06-01 after the Step 1 inventory, Step 2 contract draft, and Step
+3 implementation established and consumed shared aggregate-transport authority
+for the lane-sensitive AArch64 byval register publication path. The accepted
+implementation publishes prepared aggregate transport facts from shared
+prealloc call planning and requires AArch64 lowering to consume those facts
+instead of re-deriving lane/source/chunk authority locally.
+
+Closure evidence:
+- Implementation commits: `042dd3b3a`, `b0ae0a27e`, and `5c28fb5a5`.
+- Reviewer report: `review/idea75_step3_aggregate_transport_review.md` found
+  no blocking route-quality issues.
+- Focused repair guard: 3/4 before with
+  `backend_aarch64_call_boundary_owner` failing, then 4/4 after repair.
+- Broader backend guard: `^backend_` passed 169/169 before and 169/169 after
+  with no new failures.
+
+Remaining target-local residue: the large indirect byval selected-source path
+continues to use the existing selected frame-slot address materialization. The
+reviewer accepted this as target-local residue for idea 75, not a blocker for
+the shared aggregate-transport authority completed here.
