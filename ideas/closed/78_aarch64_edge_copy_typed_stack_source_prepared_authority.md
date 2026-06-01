@@ -68,3 +68,11 @@ intent.
 - The route broadens into publication ordering, dispatch-family contraction, or
   unrelated edge-copy rewrites instead of the typed stack-source authority
   cleanup.
+
+## Closure Note
+
+Closed after acceptance review
+`review/idea78_edge_copy_typed_stack_source_review.md` found no blocking
+findings and judged the route closure-ready. The close gate passed with
+`test_before.log` and `test_after.log` both reporting 169/169 backend tests
+passed under the supervisor-selected backend regression scope.
