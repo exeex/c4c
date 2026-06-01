@@ -26,6 +26,11 @@ struct MachineOpcodePrinterMnemonic {
   MachinePrinterMnemonicKind kind;
 };
 
+struct MachinePseudoPrinterMnemonic {
+  MachinePseudoKind pseudo;
+  MachinePrinterMnemonicKind kind;
+};
+
 constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonicSpellings{{
     {MachinePrinterMnemonicKind::None, ""},
     {MachinePrinterMnemonicKind::Branch, "b"},
@@ -69,6 +74,11 @@ constexpr std::array<MachineOpcodePrinterMnemonic, 17> kMachineOpcodePrinterMnem
     {MachineOpcode::VariadicVaCopy, MachinePrinterMnemonicKind::VariadicVaCopy},
 }};
 
+constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemonics{{
+    {MachinePseudoKind::SpillToSlot, MachinePrinterMnemonicKind::Store},
+    {MachinePseudoKind::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
+}};
+
 [[nodiscard]] std::string_view machine_printer_mnemonic_spelling(
     MachinePrinterMnemonicKind kind) {
   const auto found = std::find_if(
@@ -90,6 +100,19 @@ constexpr std::array<MachineOpcodePrinterMnemonic, 17> kMachineOpcodePrinterMnem
         return mnemonic.opcode == opcode;
       });
   if (found == kMachineOpcodePrinterMnemonics.end()) {
+    return MachinePrinterMnemonicKind::None;
+  }
+  return found->kind;
+}
+
+[[nodiscard]] MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic(
+    MachinePseudoKind pseudo) {
+  const auto found = std::find_if(
+      kMachinePseudoPrinterMnemonics.begin(), kMachinePseudoPrinterMnemonics.end(),
+      [pseudo](const MachinePseudoPrinterMnemonic& mnemonic) {
+        return mnemonic.pseudo == pseudo;
+      });
+  if (found == kMachinePseudoPrinterMnemonics.end()) {
     return MachinePrinterMnemonicKind::None;
   }
   return found->kind;
@@ -367,15 +390,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
 }
 
 MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic_kind(MachinePseudoKind pseudo) {
-  switch (pseudo) {
-    case MachinePseudoKind::SpillToSlot:
-      return MachinePrinterMnemonicKind::Store;
-    case MachinePseudoKind::ReloadFromSlot:
-      return MachinePrinterMnemonicKind::Load;
-    case MachinePseudoKind::None:
-      return MachinePrinterMnemonicKind::None;
-  }
-  return MachinePrinterMnemonicKind::None;
+  return machine_pseudo_printer_mnemonic(pseudo);
 }
 
 MachinePrinterMnemonicKind machine_instruction_primary_printer_mnemonic_kind(

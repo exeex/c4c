@@ -8,18 +8,17 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for opcode-to-printer-mnemonic mapping:
-`machine_opcode_printer_mnemonic_kind` now delegates through an explicit local
-table and lookup helper for non-`None` opcode mappings. Unsupported and
-default opcode behavior remains `MachinePrinterMnemonicKind::None`, and public
-API symbols and strings were preserved.
+Step 2 bounded contraction completed for pseudo-to-printer-mnemonic mapping:
+`machine_pseudo_printer_mnemonic_kind` now delegates through an explicit local
+table and lookup helper for non-`None` pseudo mappings. `MachinePseudoKind::None`
+and unknown/default behavior remain `MachinePrinterMnemonicKind::None`, and
+public API symbols and strings were preserved.
 
 ## Suggested Next
 
 Continue Step 2 with a separate bounded packet for another instruction naming
-or status-helper contraction, such as table-driving pseudo mnemonic mapping or
-another small status helper while preserving currently used public diagnostics
-APIs.
+or status-helper contraction, such as table-driving a small status helper while
+preserving currently used public diagnostics APIs.
 
 ## Watchouts
 
@@ -30,8 +29,9 @@ not remove or rename `MachinePrinterMnemonicKind`,
 `machine_opcode_printer_mnemonic_kind`,
 `machine_pseudo_printer_mnemonic_kind`, or the
 `machine_instruction_*printer_mnemonic*` helpers until those public call sites
-are retired. The opcode mapping table intentionally lists only non-`None`
-mnemonic mappings; missing opcodes are still the unsupported/default path.
+are retired. The opcode and pseudo mapping tables intentionally list only
+non-`None` mnemonic mappings; missing entries are still the unsupported/default
+path.
 
 ## Proof
 
