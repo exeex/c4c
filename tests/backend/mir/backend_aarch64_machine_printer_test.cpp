@@ -4413,6 +4413,24 @@ int selected_f128_records_reject_incomplete_structured_fields() {
   return 0;
 }
 
+int selected_f128_helper_records_reject_source_policy_divergence() {
+  auto helper_fixture = printable_f128_arithmetic_helper();
+  helper_fixture.record.clobbered_registers.front().register_name = "q1";
+  helper_fixture.record.clobbered_registers.front().occupied_register_names = {"q1"};
+
+  const auto helper =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(helper_fixture.record);
+  const auto helper_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(helper);
+  if (helper_result.ok ||
+      helper_result.diagnostic.find(
+          "selected policy does not match prepared helper") == std::string::npos) {
+    return fail("expected divergent f128 helper selected-record policy to fail closed");
+  }
+
+  return 0;
+}
+
 int selected_i128_records_reject_incomplete_structured_fields() {
   const auto helper_record = incomplete_i128_helper_record();
   const auto helper =
@@ -7327,6 +7345,11 @@ int main() {
     return result;
   }
   if (const int result = selected_f128_records_reject_incomplete_structured_fields();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_f128_helper_records_reject_source_policy_divergence();
       result != 0) {
     return result;
   }

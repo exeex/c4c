@@ -8,32 +8,34 @@ Current Step Title: Acceptance Validation And Drift Check
 
 ## Just Finished
 
-Completed `plan.md` Step 6 fixture repair for the AArch64 machine-printer f128
-helper validation path in
-`tests/backend/mir/backend_aarch64_machine_printer_test.cpp`.
+Completed `plan.md` Step 6 review-blocker repair for AArch64 f128 runtime
+helper provenance validation.
 
-Printable f128 helper fixtures now keep a real
-`prepare::PreparedF128RuntimeHelper` beside each structured helper record and
-point `source_helper` at that live prepared object. The f128 transport fixtures
-exercised by the same printer subset now use live prepared f128 carrier
-provenance instead of sentinel carrier pointers, so strict provenance checks no
-longer segfault or fail the printable cases. The i128 negative fixture
-assertions were aligned with the current source-helper marshaling-policy
-diagnostic while still requiring fail-closed behavior.
+`src/backend/mir/aarch64/codegen/f128.cpp` now requires the selected f128
+helper record policy to match its prepared `source_helper` policy for
+resource, ABI, clobber, live-preservation, selected-call ownership,
+full-width carrier/ABI/marshal, scalar ownership/marshal, and comparison
+result-consumption facts that drive helper emission. Incomplete selected scalar
+move facts still fall through to the existing incomplete-structured-field
+diagnostics instead of being reclassified as source-policy drift.
+
+`tests/backend/mir/backend_aarch64_machine_printer_test.cpp` now has a focused
+negative fixture that mutates the selected record clobber policy after
+attaching an independent prepared source helper and verifies fail-closed
+behavior.
 
 ## Suggested Next
 
-Next coherent packet: supervisor should review the Step 6 fixture/provenance
-diff against the active source idea and decide whether this acceptance slice is
-ready for commit or needs reviewer/plan-owner handling.
+Next coherent packet: supervisor should review the Step 6 acceptance repair
+diff and decide whether to commit or request another reviewer pass.
 
 ## Watchouts
 
 `review/idea69_step2_prepared_effect_review.md` and
 `review/idea70_steps1_3_review.md` were already untracked and were not touched.
 `review/idea72_steps1_5_acceptance_review.md` is also untracked and was not
-touched. `src/backend/mir/aarch64/codegen/f128.cpp` was dirty before this
-packet and was not edited by this packet.
+touched. `review/idea72_step6_acceptance_repair_review.md` was also untracked
+and was not touched.
 
 ## Proof
 

@@ -651,6 +651,323 @@ bool f128_helper_source_matches_record(
          helper->result_ownership == record.result_ownership;
 }
 
+bool f128_resource_policy_matches(
+    const prepare::PreparedF128RuntimeHelper::ResourcePolicy& lhs,
+    const prepare::PreparedF128RuntimeHelper::ResourcePolicy& rhs) {
+  return lhs.call_boundary == rhs.call_boundary &&
+         lhs.runtime_helper_callee == rhs.runtime_helper_callee &&
+         lhs.caller_saved_clobbers == rhs.caller_saved_clobbers &&
+         lhs.preserves_source_operation_identity ==
+             rhs.preserves_source_operation_identity;
+}
+
+bool f128_abi_policy_matches(
+    const prepare::PreparedF128RuntimeHelper::AbiPolicy& lhs,
+    const prepare::PreparedF128RuntimeHelper::AbiPolicy& rhs) {
+  return lhs.transition == rhs.transition &&
+         lhs.argument_bank == rhs.argument_bank &&
+         lhs.result_bank == rhs.result_bank &&
+         lhs.argument_count == rhs.argument_count &&
+         lhs.result_count == rhs.result_count &&
+         lhs.width_bytes == rhs.width_bytes;
+}
+
+bool f128_call_endpoint_matches(const prepare::PreparedCallBoundaryEffectEndpoint& lhs,
+                                const prepare::PreparedCallBoundaryEffectEndpoint& rhs) {
+  return lhs.encoding == rhs.encoding &&
+         lhs.storage_kind == rhs.storage_kind &&
+         lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.register_name == rhs.register_name &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.contiguous_width == rhs.contiguous_width &&
+         lhs.occupied_register_names == rhs.occupied_register_names &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes &&
+         lhs.stack_size_bytes == rhs.stack_size_bytes &&
+         lhs.stack_align_bytes == rhs.stack_align_bytes &&
+         lhs.callee_saved_save_index == rhs.callee_saved_save_index &&
+         lhs.register_placement == rhs.register_placement &&
+         lhs.spill_slot_placement == rhs.spill_slot_placement;
+}
+
+bool f128_preserved_value_matches(const prepare::PreparedCallPreservedValue& lhs,
+                                  const prepare::PreparedCallPreservedValue& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.route == rhs.route &&
+         lhs.callee_saved_save_index == rhs.callee_saved_save_index &&
+         lhs.contiguous_width == rhs.contiguous_width &&
+         lhs.register_name == rhs.register_name &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.occupied_register_names == rhs.occupied_register_names &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes &&
+         lhs.stack_size_bytes == rhs.stack_size_bytes &&
+         lhs.stack_align_bytes == rhs.stack_align_bytes &&
+         lhs.register_placement == rhs.register_placement &&
+         lhs.spill_slot_placement == rhs.spill_slot_placement &&
+         f128_call_endpoint_matches(lhs.preservation_source,
+                                    rhs.preservation_source) &&
+         f128_call_endpoint_matches(lhs.preservation_destination,
+                                    rhs.preservation_destination) &&
+         lhs.preservation_reason == rhs.preservation_reason;
+}
+
+bool f128_live_preservation_policy_matches(
+    const prepare::PreparedF128RuntimeHelper::LivePreservationPolicy& lhs,
+    const prepare::PreparedF128RuntimeHelper::LivePreservationPolicy& rhs) {
+  if (lhs.evaluated != rhs.evaluated ||
+      lhs.caller_saved_clobbers_modeled != rhs.caller_saved_clobbers_modeled ||
+      lhs.no_additional_live_preservation_required !=
+          rhs.no_additional_live_preservation_required ||
+      lhs.preserved_values.size() != rhs.preserved_values.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.preserved_values.size(); ++index) {
+    if (!f128_preserved_value_matches(lhs.preserved_values[index],
+                                      rhs.preserved_values[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool f128_selected_call_ownership_matches(
+    const prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy& lhs,
+    const prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy& rhs) {
+  return lhs.owns_terminal_call == rhs.owns_terminal_call &&
+         lhs.has_callee_identity == rhs.has_callee_identity &&
+         lhs.has_resource_policy == rhs.has_resource_policy &&
+         lhs.has_clobber_policy == rhs.has_clobber_policy &&
+         lhs.has_abi_bindings == rhs.has_abi_bindings &&
+         lhs.has_marshaling == rhs.has_marshaling &&
+         lhs.has_live_preservation == rhs.has_live_preservation;
+}
+
+bool f128_clobbered_register_matches(const prepare::PreparedClobberedRegister& lhs,
+                                     const prepare::PreparedClobberedRegister& rhs) {
+  return lhs.bank == rhs.bank &&
+         lhs.register_name == rhs.register_name &&
+         lhs.contiguous_width == rhs.contiguous_width &&
+         lhs.occupied_register_names == rhs.occupied_register_names &&
+         lhs.placement == rhs.placement;
+}
+
+bool f128_clobbered_registers_match(
+    const std::vector<prepare::PreparedClobberedRegister>& lhs,
+    const std::vector<prepare::PreparedClobberedRegister>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (!f128_clobbered_register_matches(lhs[index], rhs[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool f128_carrier_binding_matches(
+    const prepare::PreparedF128RuntimeHelper::CarrierBinding& lhs,
+    const prepare::PreparedF128RuntimeHelper::CarrierBinding& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.carrier_kind == rhs.carrier_kind &&
+         lhs.width_bytes == rhs.width_bytes &&
+         lhs.align_bytes == rhs.align_bytes &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.register_class == rhs.register_class &&
+         lhs.register_name == rhs.register_name &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes;
+}
+
+bool f128_abi_binding_matches(
+    const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& lhs,
+    const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.helper_argument_index == rhs.helper_argument_index &&
+         lhs.abi_register_index == rhs.abi_register_index &&
+         lhs.width_bytes == rhs.width_bytes &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.register_class == rhs.register_class &&
+         lhs.register_name == rhs.register_name &&
+         lhs.contiguous_width == rhs.contiguous_width &&
+         lhs.occupied_register_names == rhs.occupied_register_names &&
+         lhs.register_placement == rhs.register_placement;
+}
+
+bool f128_marshaling_move_matches(
+    const prepare::PreparedF128RuntimeHelper::MarshalingMove& lhs,
+    const prepare::PreparedF128RuntimeHelper::MarshalingMove& rhs) {
+  return lhs.direction == rhs.direction &&
+         f128_carrier_binding_matches(lhs.carrier, rhs.carrier) &&
+         f128_abi_binding_matches(lhs.abi_register, rhs.abi_register);
+}
+
+bool f128_scalar_ownership_matches(
+    const prepare::PreparedF128RuntimeHelper::ScalarResultOwnership& lhs,
+    const prepare::PreparedF128RuntimeHelper::ScalarResultOwnership& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.type == rhs.type &&
+         lhs.width_bytes == rhs.width_bytes &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.home_kind == rhs.home_kind &&
+         lhs.register_name == rhs.register_name &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes;
+}
+
+bool f128_scalar_marshaling_move_matches(
+    const prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove& lhs,
+    const prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove& rhs) {
+  return lhs.direction == rhs.direction &&
+         f128_scalar_ownership_matches(lhs.scalar_result, rhs.scalar_result) &&
+         f128_abi_binding_matches(lhs.abi_register, rhs.abi_register);
+}
+
+bool f128_cmp_consumption_matches(
+    const prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption& lhs,
+    const prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption& rhs) {
+  return lhs.cmp_type == rhs.cmp_type &&
+         lhs.bir_result_type == rhs.bir_result_type &&
+         lhs.zero_test == rhs.zero_test &&
+         lhs.consumes_helper_cmp_result == rhs.consumes_helper_cmp_result &&
+         lhs.owns_bir_i1_result == rhs.owns_bir_i1_result;
+}
+
+bool f128_optional_carrier_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::CarrierBinding>& helper,
+    const prepare::PreparedF128RuntimeHelper::CarrierBinding& record) {
+  return helper.has_value() && f128_carrier_binding_matches(*helper, record);
+}
+
+bool f128_optional_abi_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::AbiRegisterBinding>& helper,
+    const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& record) {
+  return helper.has_value() && f128_abi_binding_matches(*helper, record);
+}
+
+bool f128_optional_move_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::MarshalingMove>& helper,
+    const prepare::PreparedF128RuntimeHelper::MarshalingMove& record) {
+  return helper.has_value() && f128_marshaling_move_matches(*helper, record);
+}
+
+bool f128_optional_scalar_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarResultOwnership>& helper,
+    const prepare::PreparedF128RuntimeHelper::ScalarResultOwnership& record) {
+  return helper.has_value() && f128_scalar_ownership_matches(*helper, record);
+}
+
+bool f128_optional_scalar_move_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove>& helper,
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove>& record) {
+  if (!record.has_value()) {
+    return true;
+  }
+  return helper.has_value() &&
+         f128_scalar_marshaling_move_matches(*helper, *record);
+}
+
+bool f128_optional_scalar_move_abi_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::AbiRegisterBinding>& helper,
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove>& record) {
+  if (!record.has_value()) {
+    return true;
+  }
+  return f128_optional_abi_matches(helper, record->abi_register);
+}
+
+bool f128_optional_cmp_consumption_matches(
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption>& helper,
+    const std::optional<prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption>& record) {
+  return helper.has_value() == record.has_value() &&
+         (!helper.has_value() || f128_cmp_consumption_matches(*helper, *record));
+}
+
+bool f128_helper_policies_match_record(
+    const F128RuntimeHelperBoundaryRecord& record,
+    const prepare::PreparedF128RuntimeHelper& helper) {
+  if (!f128_resource_policy_matches(helper.resource_policy, record.resource_policy) ||
+      !f128_abi_policy_matches(helper.abi_policy, record.abi_policy) ||
+      !f128_live_preservation_policy_matches(helper.live_preservation_policy,
+                                             record.live_preservation_policy) ||
+      !f128_selected_call_ownership_matches(helper.selected_call_ownership,
+                                            record.selected_call_ownership) ||
+      !f128_clobbered_registers_match(helper.clobbered_registers,
+                                      record.clobbered_registers)) {
+    return false;
+  }
+
+  if (record.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+    return f128_optional_carrier_matches(helper.lhs_carrier, record.lhs.carrier_binding) &&
+           f128_optional_carrier_matches(helper.rhs_carrier, record.rhs.carrier_binding) &&
+           f128_optional_abi_matches(helper.lhs_abi_argument, record.lhs.abi_binding) &&
+           f128_optional_abi_matches(helper.rhs_abi_argument, record.rhs.abi_binding) &&
+           f128_optional_scalar_move_abi_matches(helper.result_abi_result,
+                                                 record.scalar_result.marshaling_move) &&
+           f128_optional_move_matches(helper.lhs_argument_move,
+                                      record.lhs.marshaling_move) &&
+           f128_optional_move_matches(helper.rhs_argument_move,
+                                      record.rhs.marshaling_move) &&
+           f128_optional_scalar_matches(helper.scalar_result,
+                                        record.scalar_result.scalar_ownership) &&
+           f128_optional_scalar_move_matches(helper.scalar_result_unmarshal_move,
+                                             record.scalar_result.marshaling_move) &&
+           f128_optional_cmp_consumption_matches(
+               helper.scalar_cmp_result_consumption,
+               record.scalar_result.cmp_result_consumption);
+  }
+
+  const bool cast_helper =
+      record.helper_family == prepare::PreparedF128RuntimeHelperFamily::Cast;
+  if (cast_helper && record.result_type == bir::TypeKind::F128) {
+    return f128_optional_scalar_matches(helper.scalar_operand,
+                                        record.scalar_operand.scalar_ownership) &&
+           f128_optional_scalar_move_abi_matches(helper.scalar_operand_abi_argument,
+                                                 record.scalar_operand.marshaling_move) &&
+           f128_optional_scalar_move_matches(helper.scalar_operand_argument_move,
+                                             record.scalar_operand.marshaling_move) &&
+           f128_optional_carrier_matches(helper.result_carrier,
+                                         record.result.carrier_binding) &&
+           f128_optional_abi_matches(helper.result_abi_result,
+                                     record.result.abi_binding) &&
+           f128_optional_move_matches(helper.result_unmarshal_move,
+                                      record.result.marshaling_move);
+  }
+  if (cast_helper && record.source_type == bir::TypeKind::F128) {
+    return f128_optional_carrier_matches(helper.lhs_carrier, record.lhs.carrier_binding) &&
+           f128_optional_abi_matches(helper.lhs_abi_argument, record.lhs.abi_binding) &&
+           f128_optional_move_matches(helper.lhs_argument_move,
+                                      record.lhs.marshaling_move) &&
+           f128_optional_scalar_matches(helper.scalar_result,
+                                        record.scalar_result.scalar_ownership) &&
+           f128_optional_scalar_move_abi_matches(helper.result_abi_result,
+                                                 record.scalar_result.marshaling_move) &&
+           f128_optional_scalar_move_matches(helper.scalar_result_unmarshal_move,
+                                             record.scalar_result.marshaling_move);
+  }
+
+  return f128_optional_carrier_matches(helper.result_carrier,
+                                       record.result.carrier_binding) &&
+         f128_optional_abi_matches(helper.result_abi_result,
+                                   record.result.abi_binding) &&
+         f128_optional_move_matches(helper.result_unmarshal_move,
+                                    record.result.marshaling_move) &&
+         f128_optional_carrier_matches(helper.lhs_carrier, record.lhs.carrier_binding) &&
+         f128_optional_carrier_matches(helper.rhs_carrier, record.rhs.carrier_binding) &&
+         f128_optional_abi_matches(helper.lhs_abi_argument, record.lhs.abi_binding) &&
+         f128_optional_abi_matches(helper.rhs_abi_argument, record.rhs.abi_binding) &&
+         f128_optional_move_matches(helper.lhs_argument_move,
+                                    record.lhs.marshaling_move) &&
+         f128_optional_move_matches(helper.rhs_argument_move,
+                                    record.rhs.marshaling_move);
+}
+
 std::optional<std::string_view> validate_f128_runtime_helper_source_policy(
     const F128RuntimeHelperBoundaryRecord& record) {
   const auto* helper = record.source_helper;
@@ -684,6 +1001,9 @@ std::optional<std::string_view> validate_f128_runtime_helper_source_policy(
   if (!has_complete_f128_selected_call_ownership(record.selected_call_ownership) ||
       !has_complete_f128_selected_call_ownership(helper->selected_call_ownership)) {
     return "f128 helper boundary is missing prepared selected-call ownership";
+  }
+  if (!f128_helper_policies_match_record(record, *helper)) {
+    return "f128 helper boundary selected policy does not match prepared helper";
   }
   return std::nullopt;
 }
