@@ -24,9 +24,11 @@ continues to call the same resolver.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 3 is now exhausted and route lifecycle
-review or the next plan step. No further narrow pointer-value base-register
-resolution packet remains in the checked helper set.
+Advance to `plan.md` Step 4. Reviewer report
+`review/idea70_steps1_3_review.md` found the route on track and no overfit,
+expectation downgrade, or target-policy leakage. No further narrow
+pointer-value base-register resolution packet remains in the checked helper
+set.
 
 ## Watchouts
 
@@ -37,8 +39,9 @@ authority for value-home/storage validation and register conversion;
 
 ## Proof
 
-Passed. `test_after.log` contains the delegated proof output: build completed
-and the focused CTest subset passed 13/13.
+Passed. The focused proof was rerun after review and compared against the
+accepted `test_before.log`: 13/13 before, 13/13 after, no new failures. The
+accepted after log was rolled forward to `test_before.log`.
 
 Command:
 
