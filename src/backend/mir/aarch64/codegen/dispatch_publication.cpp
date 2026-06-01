@@ -674,6 +674,48 @@ prepared_publication_source_producer_for_value(
   }
   return &context.bir_block->insts[producer.instruction_index];
 }
+
+[[nodiscard]] DispatchBranchFusionHooks
+make_dispatch_publication_branch_fusion_hooks() {
+  return DispatchBranchFusionHooks{
+      .scalar_view_for_type = scalar_view_for_type,
+      .emit_value_publication_to_register = emit_value_publication_to_register,
+      .prepared_publication_source_producer_for_value =
+          prepared_publication_source_producer_for_value,
+      .prepared_source_producer_instruction =
+          prepared_source_producer_instruction,
+      .current_block_entry_publication_register =
+          current_block_entry_publication_register,
+      .find_same_block_named_producer =
+          [](const module::BlockLoweringContext& context,
+             std::string_view value_name,
+             std::size_t before_instruction_index) -> const bir::Inst* {
+        return mir::find_same_block_named_producer(
+            context.bir_block, value_name, before_instruction_index);
+      },
+      .producer_instruction_index = producer_instruction_index,
+      .prepared_value_home_for_value = prepared_value_home_for_value,
+      .value_has_current_block_entry_publication =
+          value_has_current_block_entry_publication,
+      .emit_prepared_value_home_to_register =
+          emit_prepared_value_home_to_register,
+      .emit_prepared_value_home_publication_to_register =
+          emit_prepared_value_home_publication_to_register,
+      .fixed_slots_use_frame_pointer = fixed_slots_use_frame_pointer,
+  };
+}
+
+std::optional<module::MachineInstruction>
+lower_missing_conditional_branch_condition_publication(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  return lower_missing_conditional_branch_condition_publication(
+      context,
+      scalar_state,
+      diagnostics,
+      make_dispatch_publication_branch_fusion_hooks());
+}
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
 prepared_same_block_publication_source_producer(
     const module::BlockLoweringContext& context,
@@ -716,297 +758,6 @@ prepared_same_block_publication_source_producer(
       value.type,
       before_instruction_index);
 }
-[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
-find_prepared_fused_compare_operand_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_fused_compare_operand_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        value,
-        before_instruction_index);
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  return prepare::find_prepared_fused_compare_operand_producer(
-      context.function.prepared->names,
-      &source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      value,
-      before_instruction_index);
-}
-[[nodiscard]] std::optional<std::uint8_t>
-preferred_fused_compare_operand_publication_target(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (scratches.size() <= 1U) {
-    return std::nullopt;
-  }
-  const auto producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   value,
-                                                   before_instruction_index);
-  if (!producer.has_value() ||
-      producer->kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
-      producer->select == nullptr) {
-    return std::nullopt;
-  }
-  return scratches[1].index;
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_missing_conditional_branch_condition_publication(
-    const module::BlockLoweringContext& context,
-    BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  if (context.bir_block == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch ||
-      context.bir_block->terminator.kind != bir::TerminatorKind::CondBranch) {
-    return std::nullopt;
-  }
-  const auto& condition = context.bir_block->terminator.condition;
-  const auto condition_name = prepared_named_value_id(context, condition);
-  if (!condition_name.has_value() ||
-      find_emitted_scalar_register(scalar_state, *condition_name).has_value()) {
-    return std::nullopt;
-  }
-  const auto* branch_condition =
-      context.function.control_flow != nullptr
-          ? prepare::find_prepared_branch_condition(
-                *context.function.control_flow,
-                context.control_flow_block->block_label)
-          : nullptr;
-  if (branch_condition == nullptr ||
-      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
-      branch_condition->condition_value.name != condition.name) {
-    return std::nullopt;
-  }
-  const auto producer =
-      prepared_publication_source_producer_for_value(context,
-                                                     branch_condition->condition_value);
-  const auto* producer_inst =
-      producer.has_value() ? prepared_source_producer_instruction(context, *producer)
-                           : nullptr;
-  if (!producer.has_value() || producer_inst == nullptr) {
-    return std::nullopt;
-  }
-  return lower_scalar_control_value_instruction(
-      context,
-      *producer_inst,
-      producer->instruction_index,
-      scalar_state,
-      diagnostics,
-      true);
-}
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_missing_fused_compare_operand_publication(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics,
-    std::optional<std::uint8_t> preferred_target_index) {
-  if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto* home =
-      context.function.value_locations != nullptr
-          ? prepare::find_indexed_prepared_value_home(
-                context.function.value_home_lookups,
-                context.function.regalloc,
-                context.function.value_locations,
-                *value_name)
-          : nullptr;
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-  if (find_emitted_scalar_register(scalar_state, *value_name).has_value() &&
-      home->kind != prepare::PreparedValueHomeKind::StackSlot) {
-    return std::nullopt;
-  }
-  auto resolved =
-      resolve_value_operand(home->value_id, context.function, diagnostics);
-  const auto expected_view = scalar_view_for_type(value.type);
-  if (!expected_view.has_value()) {
-    return std::nullopt;
-  }
-  if (auto published =
-          current_block_entry_publication_register(context, value, *expected_view)) {
-    record_emitted_scalar_register(scalar_state,
-                                   published->value_name,
-                                   *published);
-    return std::nullopt;
-  }
-
-  std::uint8_t target_index = 0;
-  std::uint8_t scratch_index = 0;
-  bool has_target = false;
-  if (resolved.has_value() && resolved->register_reference.has_value() &&
-      abi::is_gp_register(*resolved->register_reference)) {
-    target_index = resolved->register_reference->index;
-    has_target = true;
-  } else {
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    auto scratch_is_occupied = [&](const abi::RegisterReference& scratch) {
-      for (const auto& [_, emitted] : scalar_state.emitted_registers) {
-        if (emitted.reg.bank == scratch.bank && emitted.reg.index == scratch.index) {
-          return true;
-        }
-      }
-      return false;
-    };
-    if (preferred_target_index.has_value()) {
-      for (const auto scratch : scratches) {
-        if (scratch.index == *preferred_target_index &&
-            !scratch_is_occupied(scratch)) {
-          target_index = scratch.index;
-          has_target = true;
-          break;
-        }
-      }
-    }
-    for (const auto scratch : scratches) {
-      if (!has_target && !scratch_is_occupied(scratch)) {
-        target_index = scratch.index;
-        has_target = true;
-        break;
-      }
-    }
-  }
-  if (!has_target) {
-    return std::nullopt;
-  }
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  for (const auto scratch : scratches) {
-    if (scratch.index != target_index) {
-      scratch_index = scratch.index;
-      break;
-    }
-  }
-  if (scratch_index == target_index) {
-    return std::nullopt;
-  }
-  std::vector<std::string> lines;
-  const auto producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   value,
-                                                   context.bir_block->insts.size());
-  if (producer.has_value() && producer->instruction != nullptr) {
-    if (!emit_value_publication_to_register(context,
-                                            value,
-                                            context.bir_block->insts.size(),
-                                            target_index,
-                                            scratch_index,
-                                            lines,
-                                            true) ||
-        lines.empty()) {
-      return std::nullopt;
-    }
-  } else {
-    const auto plan = prepare::plan_prepared_scalar_publication(
-        prepare::PreparedScalarPublicationInputs{
-            .source_value = &value,
-            .destination_home = home,
-        });
-    if (!prepare::prepared_scalar_publication_available(plan) ||
-        (plan.hook_kind != prepare::PreparedScalarPublicationHookKind::RegisterHome &&
-         plan.hook_kind != prepare::PreparedScalarPublicationHookKind::StackSlotHome) ||
-        !emit_prepared_value_home_publication_to_register(context,
-                                                          value,
-                                                          *home,
-                                                          target_index,
-                                                          lines) ||
-        lines.empty()) {
-      return std::nullopt;
-    }
-  }
-  auto reg = abi::x_register(target_index);
-  if (resolved.has_value() && resolved->register_reference.has_value()) {
-    reg = *resolved->register_reference;
-  } else {
-    reg = abi::gp_register(target_index, *expected_view).value_or(reg);
-  }
-  reg.view = *expected_view;
-  RegisterOperand emitted{
-      .reg = reg,
-      .role = RegisterOperandRole::StoragePlan,
-      .value_id = home->value_id,
-      .value_name = home->value_name,
-      .expected_view = expected_view,
-  };
-  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
-  return make_select_chain_materialization_instruction(
-      context, context.bir_block->insts.size(), std::move(lines));
-}
-
-[[nodiscard]] std::vector<module::MachineInstruction>
-lower_missing_fused_compare_operand_publications(
-    const module::BlockLoweringContext& context,
-    BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  std::vector<module::MachineInstruction> lowered;
-  if (context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
-    return lowered;
-  }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch) {
-    return lowered;
-  }
-  if (branch_condition->lhs.has_value()) {
-    const auto preferred_target_index =
-        preferred_fused_compare_operand_publication_target(
-            context, *branch_condition->lhs, context.bir_block->insts.size());
-    if (auto lhs = lower_missing_fused_compare_operand_publication(
-            context,
-            *branch_condition->lhs,
-            scalar_state,
-            diagnostics,
-            preferred_target_index)) {
-      lowered.push_back(std::move(*lhs));
-    }
-  }
-  if (branch_condition->rhs.has_value()) {
-    const auto preferred_target_index =
-        preferred_fused_compare_operand_publication_target(
-            context, *branch_condition->rhs, context.bir_block->insts.size());
-    if (auto rhs = lower_missing_fused_compare_operand_publication(
-            context,
-            *branch_condition->rhs,
-            scalar_state,
-            diagnostics,
-            preferred_target_index)) {
-      lowered.push_back(std::move(*rhs));
-    }
-  }
-  return lowered;
-}
-
 void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction) {

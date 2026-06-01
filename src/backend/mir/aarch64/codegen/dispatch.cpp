@@ -419,6 +419,10 @@ void record_before_return_publication(BlockScalarLoweringState& scalar_state,
   return DispatchBranchFusionHooks{
       .scalar_view_for_type = scalar_view_for_type,
       .emit_value_publication_to_register = emit_value_publication_to_register,
+      .prepared_publication_source_producer_for_value =
+          prepared_publication_source_producer_for_value,
+      .prepared_source_producer_instruction =
+          prepared_source_producer_instruction,
       .current_block_entry_publication_register =
           current_block_entry_publication_register,
       .find_same_block_named_producer =
@@ -434,6 +438,8 @@ void record_before_return_publication(BlockScalarLoweringState& scalar_state,
           value_has_current_block_entry_publication,
       .emit_prepared_value_home_to_register =
           emit_prepared_value_home_to_register,
+      .emit_prepared_value_home_publication_to_register =
+          emit_prepared_value_home_publication_to_register,
       .fixed_slots_use_frame_pointer = fixed_slots_use_frame_pointer,
   };
 }
@@ -980,7 +986,7 @@ InstructionDispatchResult dispatch_prepared_block(
     if (fused_compare_uses_selected_operand(context, branch_fusion_hooks)) {
       for (auto& publication :
            lower_missing_fused_compare_operand_publications(
-               context, scalar_state, diagnostics)) {
+               context, scalar_state, diagnostics, branch_fusion_hooks)) {
         block.instructions.push_back(std::move(publication));
       }
     }
@@ -1007,12 +1013,12 @@ InstructionDispatchResult dispatch_prepared_block(
     } else {
       for (auto& publication :
            lower_missing_fused_compare_operand_publications(
-               context, scalar_state, diagnostics)) {
+               context, scalar_state, diagnostics, branch_fusion_hooks)) {
         block.instructions.push_back(std::move(publication));
       }
       if (auto publication =
               lower_missing_conditional_branch_condition_publication(
-                  context, scalar_state, diagnostics)) {
+                  context, scalar_state, diagnostics, branch_fusion_hooks)) {
         block.instructions.push_back(std::move(*publication));
       }
       if (auto lowered = lower_conditional_branch_from_emitted_condition(

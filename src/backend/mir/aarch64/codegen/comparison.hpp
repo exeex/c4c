@@ -74,6 +74,13 @@ struct DispatchBranchFusionHooks {
       std::uint8_t scratch_index,
       std::vector<std::string>& lines,
       bool reload_current_memory_loads);
+  std::optional<prepare::PreparedEdgePublicationSourceProducer> (*
+      prepared_publication_source_producer_for_value)(
+      const module::BlockLoweringContext& context,
+      const bir::Value& value);
+  const bir::Inst* (*prepared_source_producer_instruction)(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedEdgePublicationSourceProducer& producer);
   std::optional<RegisterOperand> (*current_block_entry_publication_register)(
       const module::BlockLoweringContext& context,
       const bir::Value& value,
@@ -98,6 +105,12 @@ struct DispatchBranchFusionHooks {
       std::uint8_t target_index,
       std::vector<std::string>& lines,
       bool use_frame_pointer_base);
+  bool (*emit_prepared_value_home_publication_to_register)(
+      const module::BlockLoweringContext& context,
+      const bir::Value& value,
+      const prepare::PreparedValueHome& home,
+      std::uint8_t target_index,
+      std::vector<std::string>& lines);
   bool (*fixed_slots_use_frame_pointer)(const module::FunctionLoweringContext& context);
 };
 
@@ -139,6 +152,26 @@ lower_stack_home_fused_compare_branch(
     const DispatchBranchFusionHooks& hooks);
 [[nodiscard]] bool fused_compare_uses_selected_operand(
     const module::BlockLoweringContext& context,
+    const DispatchBranchFusionHooks& hooks);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_missing_conditional_branch_condition_publication(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const DispatchBranchFusionHooks& hooks);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_missing_fused_compare_operand_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const DispatchBranchFusionHooks& hooks,
+    std::optional<std::uint8_t> preferred_target_index = std::nullopt);
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_missing_fused_compare_operand_publications(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics,
     const DispatchBranchFusionHooks& hooks);
 
 }  // namespace c4c::backend::aarch64::codegen

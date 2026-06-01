@@ -110,19 +110,14 @@ lower_missing_conditional_branch_condition_publication(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_missing_fused_compare_operand_publication(
+[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
+prepared_publication_source_producer_for_value(
     const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics,
-    std::optional<std::uint8_t> preferred_target_index = std::nullopt);
+    const bir::Value& value);
 
-[[nodiscard]] std::vector<module::MachineInstruction>
-lower_missing_fused_compare_operand_publications(
+[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
     const module::BlockLoweringContext& context,
-    BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics);
+    const prepare::PreparedEdgePublicationSourceProducer& producer);
 
 void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
