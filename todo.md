@@ -1,34 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/71_aarch64_scalar_control_flow_prepared_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Consume BIR Scalar And Cast Semantic Facts
+Current Step ID: 3
+Current Step Title: Consume Prepared Scalar Producer And Placement Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 first slice for AArch64 ALU/cast semantic fact
-consumption. `make_prepared_scalar_alu_record` now consumes a local
-`ScalarAluSemanticFacts` boundary derived from `bir::BinaryOpcode` and
-`bir::TypeKind` before AArch64-local operand, immediate, register, and record
-selection. `make_prepared_scalar_cast_record` now consumes a local
-`ScalarCastSemanticFacts` boundary derived from `bir::CastOpcode` and
-`bir::TypeKind` before AArch64-local storage, register spelling, and machine
-record construction.
+Completed `plan.md` Step 3 for AArch64 ALU control-value materialization. The
+raw same-block binary/cast BIR scans in `alu.cpp` now stay replaced by a local
+consumer of `prepare::find_prepared_same_block_scalar_producer`, preserving
+AArch64-local instruction selection/materialization.
+
+Unblocked the prepared same-block cast fixture by publishing prepared authority
+for `%compare` and its `%lhs` register source in
+`prepared_with_stack_published_i16_select_store(true)`. The fixture now exposes
+the `%compare` source producer through prepared names/home/storage instead of
+requiring an ALU-side raw BIR scan.
 
 ## Suggested Next
 
-Next coherent packet: continue `plan.md` Step 2 by applying the same
-semantic-fact-consumption pattern only where the supervisor scopes it, or move
-to the next planned control-flow packet if Step 2 is accepted as complete.
+Next coherent packet: supervisor review/acceptance for the Step 3 slice, then
+choose the next plan step or lifecycle action.
 
 ## Watchouts
 
-Immediate admissibility, fallback materialization, register spelling, scratch
-selection, and machine-record construction remain AArch64-local. This packet
-did not touch comparison/control-flow code, shared prealloc code, `plan.md`, or
-the source idea.
+The same-block-cast fixture now emits a standalone prepared scalar cast record
+plus the stack-homed select/store route, so the test expects four emitted
+instructions and no diagnostics for that variant.
 
 ## Proof
 

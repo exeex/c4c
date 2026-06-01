@@ -1572,42 +1572,34 @@ materialize_control_binary_result_source(
     std::vector<std::string>& lines,
     std::vector<const RegisterOperand*> occupied);
 
-[[nodiscard]] const bir::BinaryInst* find_same_block_binary_result(
+[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
+find_prepared_control_same_block_scalar_producer(
     const module::BlockLoweringContext& context,
-    std::string_view value_name,
+    const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || value_name.empty()) {
-    return nullptr;
+  if (context.function.prepared == nullptr ||
+      (context.function.prepared_lookups == nullptr &&
+       context.function.control_flow == nullptr) ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
   }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const auto* binary =
-        std::get_if<bir::BinaryInst>(&context.bir_block->insts[index - 1]);
-    if (binary != nullptr &&
-        binary->result.kind == bir::Value::Kind::Named &&
-        binary->result.name == value_name) {
-      return binary;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] const bir::CastInst* find_same_block_cast_result(
-    const module::BlockLoweringContext& context,
-    std::string_view value_name,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || value_name.empty()) {
-    return nullptr;
-  }
-  for (std::size_t index = before_instruction_index; index > 0; --index) {
-    const auto* cast =
-        std::get_if<bir::CastInst>(&context.bir_block->insts[index - 1]);
-    if (cast != nullptr &&
-        cast->result.kind == bir::Value::Kind::Named &&
-        cast->result.name == value_name) {
-      return cast;
-    }
-  }
-  return nullptr;
+  const auto generated_lookups =
+      context.function.prepared_lookups == nullptr
+          ? std::optional<prepare::PreparedFunctionLookups>{
+                prepare::make_prepared_function_lookups(
+                    *context.function.prepared, *context.function.control_flow)}
+          : std::nullopt;
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : &generated_lookups->edge_publication_source_producers;
+  return prepare::find_prepared_same_block_scalar_producer(
+      context.function.prepared->names,
+      source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
 }
 
 [[nodiscard]] bool append_move_control_value_to_register(
@@ -1874,11 +1866,15 @@ materialize_control_binary_result_source(
     return std::nullopt;
   }
   const std::string target = abi::register_name(scratch->reg);
-  if (const auto* binary =
-          find_same_block_binary_result(context, value.name, before_instruction_index);
-      binary != nullptr) {
+  const auto producer =
+      find_prepared_control_same_block_scalar_producer(
+          context, value, before_instruction_index);
+  if (producer.has_value() &&
+      producer->producer.kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+      producer->producer.binary != nullptr) {
     if (!append_control_binary_to_register(context,
-                                           *binary,
+                                           *producer->producer.binary,
                                            view,
                                            target,
                                            scalar_state,
@@ -1888,11 +1884,12 @@ materialize_control_binary_result_source(
     }
     return MaterializedControlSource{.name = target, .occupied_register = *scratch};
   }
-  if (const auto* cast =
-          find_same_block_cast_result(context, value.name, before_instruction_index);
-      cast != nullptr) {
+  if (producer.has_value() &&
+      producer->producer.kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
+      producer->producer.cast != nullptr) {
     if (!append_control_cast_to_register(context,
-                                         *cast,
+                                         *producer->producer.cast,
                                          before_instruction_index,
                                          view,
                                          *scratch,
@@ -1916,12 +1913,22 @@ materialize_control_binary_result_source(
     std::vector<std::string>& lines,
     std::vector<const RegisterOperand*> occupied) {
   if (value.kind == bir::Value::Kind::Named) {
-    if (const auto* producer =
-            find_same_block_binary_result(context, value.name, before_instruction_index);
-        producer != nullptr) {
+    const auto producer =
+        find_prepared_control_same_block_scalar_producer(
+            context, value, before_instruction_index);
+    if (producer.has_value() &&
+        producer->producer.kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+        producer->producer.binary != nullptr) {
       const auto original_line_count = lines.size();
       if (append_control_binary_to_register(
-              context, *producer, view, target, scalar_state, lines, occupied)) {
+              context,
+              *producer->producer.binary,
+              view,
+              target,
+              scalar_state,
+              lines,
+              occupied)) {
         return true;
       }
       lines.resize(original_line_count);
@@ -1935,9 +1942,10 @@ materialize_control_binary_result_source(
         }
       }
     }
-    if (const auto* producer =
-            find_same_block_cast_result(context, value.name, before_instruction_index);
-        producer != nullptr) {
+    if (producer.has_value() &&
+        producer->producer.kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Cast &&
+        producer->producer.cast != nullptr) {
       const auto target_register =
           abi::parse_aarch64_register_name(std::string{target});
       if (!target_register.has_value() || !abi::is_gp_register(*target_register)) {
@@ -1945,7 +1953,7 @@ materialize_control_binary_result_source(
       }
       const auto original_line_count = lines.size();
       if (append_control_cast_to_register(context,
-                                          *producer,
+                                          *producer->producer.cast,
                                           before_instruction_index,
                                           view,
                                           RegisterOperand{.reg = *target_register},

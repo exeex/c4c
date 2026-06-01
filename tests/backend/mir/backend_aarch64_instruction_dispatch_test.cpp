@@ -9019,6 +9019,10 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store(
   const auto true_name = prepared.names.value_names.intern("%true");
   const auto false_name = prepared.names.value_names.intern("%false");
   const auto select_name = prepared.names.value_names.intern("%selected");
+  const auto compare_name =
+      compare_from_same_block_cast
+          ? prepared.names.value_names.intern("%compare")
+          : c4c::kInvalidValueName;
 
   std::vector<bir::Inst> insts;
   if (compare_from_same_block_cast) {
@@ -9133,6 +9137,23 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store(
                .align_bytes = std::size_t{2},
            }},
   });
+  if (compare_from_same_block_cast) {
+    auto& lhs_home = prepared.value_locations.functions.back().value_homes.front();
+    lhs_home.kind = prepare::PreparedValueHomeKind::Register;
+    lhs_home.register_name = std::string{"w12"};
+    lhs_home.slot_id = std::nullopt;
+    lhs_home.offset_bytes = std::nullopt;
+    lhs_home.size_bytes = std::nullopt;
+    lhs_home.align_bytes = std::nullopt;
+    prepared.value_locations.functions.back().value_homes.push_back(
+        prepare::PreparedValueHome{
+            .value_id = prepare::PreparedValueId{45},
+            .function_name = function_name,
+            .value_name = compare_name,
+            .kind = prepare::PreparedValueHomeKind::Register,
+            .register_name = std::string{"x13"},
+        });
+  }
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
       .values =
@@ -9157,6 +9178,12 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store(
                               prepare::PreparedFrameSlotId{44},
                               16)},
   });
+  if (compare_from_same_block_cast) {
+    prepared.storage_plans.functions.back().values.front() =
+        register_storage(prepare::PreparedValueId{40}, lhs_name, "w12");
+    prepared.storage_plans.functions.back().values.push_back(
+        register_storage(prepare::PreparedValueId{45}, compare_name, "x13"));
+  }
   prepared.stack_layout = prepare::PreparedStackLayout{
       .frame_slots =
           {prepare::PreparedFrameSlot{
@@ -30880,7 +30907,7 @@ int block_dispatch_publishes_stack_homed_scalar_select_before_store_consumer() {
   return 0;
 }
 
-int block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_cast() {
+int block_dispatch_publishes_stack_homed_scalar_select_with_prepared_compare_cast() {
   auto prepared = prepared_with_stack_published_i16_select_store(true);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
@@ -30894,9 +30921,9 @@ int block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (diagnostics.entries.size() != 1 || result.visited_operations != 3 ||
-      result.emitted_instructions != 3 || block.instructions.size() != 3) {
-    return fail("expected unpublished compare producer, stack-homed select, store consumer, and return: visited=" +
+  if (!diagnostics.empty() || result.visited_operations != 3 ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4) {
+    return fail("expected prepared compare producer, stack-homed select, store consumer, and return: visited=" +
                 std::to_string(result.visited_operations) +
                 " emitted=" + std::to_string(result.emitted_instructions) +
                 " block_size=" + std::to_string(block.instructions.size()) +
@@ -30908,7 +30935,7 @@ int block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_
 
   const auto printed = print_route_block(function_cf.function_name, block);
   if (!printed.ok) {
-    return fail("expected unpublished-compare scalar select route to print: " +
+    return fail("expected prepared-compare scalar select route to print: " +
                 printed.diagnostic);
   }
   const auto compare = printed.assembly.find("sxtw ");
@@ -32657,7 +32684,7 @@ int main() {
     return status;
   }
   if (const int status =
-          block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_cast();
+          block_dispatch_publishes_stack_homed_scalar_select_with_prepared_compare_cast();
       status != 0) {
     return status;
   }
