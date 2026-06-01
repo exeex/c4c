@@ -139,26 +139,11 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 make_variadic_scalar_va_arg_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!homes.source_va_list.has_value() || !homes.scalar_result.has_value() ||
-      !homes.scalar_access_plan.has_value()) {
+  if (!prepare::has_complete_prepared_variadic_scalar_va_arg_access_plan(homes)) {
     return std::nullopt;
   }
   const auto& plan = *homes.scalar_access_plan;
-  if (plan.source_class == prepare::PreparedVariadicScalarVaArgSourceClass::Unknown ||
-      plan.value_type == bir::TypeKind::Void ||
-      plan.value_size_bytes == 0 ||
-      plan.value_align_bytes == 0 ||
-      !plan.result_home.has_value() ||
-      !plan.source_field.has_value() ||
-      !plan.source_field_offset_bytes.has_value() ||
-      !plan.source_slot_size_bytes.has_value() ||
-      !plan.progression_field.has_value() ||
-      !plan.progression_field_offset_bytes.has_value() ||
-      !plan.progression_stride_bytes.has_value() ||
-      !plan.overflow_source_field.has_value() ||
-      !plan.overflow_source_field_offset_bytes.has_value() ||
-      !plan.overflow_stride_bytes.has_value() ||
-      !entry.register_save_area.slot_id.has_value() ||
+  if (!entry.register_save_area.slot_id.has_value() ||
       !entry.register_save_area.stack_offset_bytes.has_value() ||
       !entry.register_save_area.size_bytes.has_value() ||
       !entry.register_save_area.align_bytes.has_value() ||
