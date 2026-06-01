@@ -8,39 +8,32 @@ Current Step Title: Fold Value-Home, Storage, And Frame-Offset Authority Into Me
 
 ## Just Finished
 
-Completed the next executable packet for `plan.md` Step 3 in
-`src/backend/mir/aarch64/codegen/memory.cpp`. Extracted
-`decode_prepared_stored_value_storage(...)` as the shared prepared store-value
-home/storage decoder used by `make_store_memory_instruction_record(...)`,
-preserving the existing
-`PreparedMemoryOperandRecordError` mapping while centralizing:
+Completed the pointer-value base-register resolution pass for `plan.md` Step 3
+in `src/backend/mir/aarch64/codegen/memory.cpp`. Used `c4c-clang-tools` to
+inspect the current helper relationships, confirmed that
+`make_load_memory_instruction_record(...)` and
+`make_store_memory_instruction_record(...)` still duplicated the same
+pointer-value base-register resolution already wrapped by
+`resolve_pointer_value_base_register(...)`, then migrated both builders onto
+that shared helper.
 
-- required stored value id/name checks,
-- prepared value home lookup and register/stack-slot/rematerializable-immediate
-  kind validation,
-- storage-plan value lookup and stored-name validation, and
-- register, rematerializable-immediate, frame-slot, and register-home/frame-slot
-  storage classification plus prepared stack offset decoding.
-
-The store record builder still owns immediate operand construction, stack-slot
-memory operand construction, destination-base policy for register-home
-frame-slot storage, and AArch64 register materialization.
+After the migration, the named helpers have no remaining concrete in-scope
+pointer-value base-register resolution duplication: load/store call the shared
+resolver, the resolver owns the record mutation, and the f128 transport path
+continues to call the same resolver.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: collapse the duplicated prepared pointer-value
-base-register resolution in the load/store memory instruction builders onto the
-existing shared helper, while keeping opcode/address spelling and stack-source
-publication planning out of scope.
+Supervisor should decide whether Step 3 is now exhausted and route lifecycle
+review or the next plan step. No further narrow pointer-value base-register
+resolution packet remains in the checked helper set.
 
 ## Watchouts
 
-The store path intentionally keeps the unprepared immediate fast path before the
-prepared stored-value decoder. `PreparedStoredValueStorageKind` classifies
-register-home/frame-slot storage, but `make_store_memory_instruction_record(...)`
-still decides whether the destination base permits the value-home register
-reload path. Preserve the current `UnsupportedStoredStorage` versus
-`RegisterConversionFailed` split for unusual home/storage combinations.
+This packet intentionally did not broaden into Step 4 stack-source publication
+planning. `make_prepared_pointer_value_base_register(...)` remains the
+authority for value-home/storage validation and register conversion;
+`resolve_pointer_value_base_register(...)` remains the record-mutating wrapper.
 
 ## Proof
 

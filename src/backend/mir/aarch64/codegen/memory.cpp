@@ -1758,15 +1758,11 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
-    auto base_register = make_prepared_pointer_value_base_register(
-        value_locations,
-        storage_plan,
-        operand.record->pointer_value_id,
-        operand.record->pointer_value_name);
-    if (base_register.error != PreparedMemoryOperandRecordError::None) {
-      return memory_instruction_record_error(base_register.error);
+    if (const auto error =
+            resolve_pointer_value_base_register(value_locations, storage_plan, *operand.record);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
     }
-    operand.record->base_register = std::move(*base_register.reg);
   }
   const auto result_storage = decode_prepared_load_result_value_storage(
       value_locations,
@@ -1871,15 +1867,11 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
-    auto base_register = make_prepared_pointer_value_base_register(
-        value_locations,
-        storage_plan,
-        operand.record->pointer_value_id,
-        operand.record->pointer_value_name);
-    if (base_register.error != PreparedMemoryOperandRecordError::None) {
-      return memory_instruction_record_error(base_register.error);
+    if (const auto error =
+            resolve_pointer_value_base_register(value_locations, storage_plan, *operand.record);
+        error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(error);
     }
-    operand.record->base_register = std::move(*base_register.reg);
   }
   if (!operand.record->stored_value_id.has_value() ||
       !operand.record->stored_value_name.has_value()) {
