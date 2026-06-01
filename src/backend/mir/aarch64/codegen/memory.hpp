@@ -47,6 +47,13 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+[[nodiscard]] bool prepared_memory_access_matches_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryAccess* access,
+    const bir::Inst& inst);
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_frame_slot_memory_operand(
     c4c::FunctionNameId function_name,
     c4c::BlockLabelId block_label,

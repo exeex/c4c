@@ -25,15 +25,6 @@ struct EdgeProducerContext {
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home);
 
-[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-
-[[nodiscard]] bool prepared_memory_access_matches_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMemoryAccess* access,
-    const bir::Inst& inst);
-
 [[nodiscard]] bool edge_value_publication_may_read_register_index(
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,

@@ -256,52 +256,6 @@ struct EdgeSelectChainState {
     const prepare::PreparedEdgePublication* prepared_publication,
     EdgeSelectChainState& select_chain_state);
 
-[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return nullptr;
-  }
-  const auto* addressing =
-      prepare::find_prepared_addressing(*context.function.prepared,
-                                        context.function.control_flow->function_name);
-  return addressing != nullptr
-             ? prepare::find_prepared_memory_access(
-                   *addressing, context.control_flow_block->block_label, instruction_index)
-             : nullptr;
-}
-[[nodiscard]] bool prepared_memory_access_matches_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedMemoryAccess* access,
-    const bir::Inst& inst) {
-  if (access == nullptr) {
-    return false;
-  }
-  return std::visit(
-      [&](const auto& op) {
-        using T = std::decay_t<decltype(op)>;
-        if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
-                      std::is_same_v<T, bir::LoadGlobalInst>) {
-          const auto result_name = prepared_named_value_id(context, op.result);
-          return result_name.has_value() &&
-                 access->result_value_name.has_value() &&
-                 *access->result_value_name == *result_name;
-        } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
-                             std::is_same_v<T, bir::StoreGlobalInst>) {
-          if (op.value.kind != bir::Value::Kind::Named) {
-            return !access->stored_value_name.has_value();
-          }
-          const auto stored_name = prepared_named_value_id(context, op.value);
-          return stored_name.has_value() &&
-                 access->stored_value_name.has_value() &&
-                 *access->stored_value_name == *stored_name;
-        }
-        return false;
-      },
-      inst);
-}
 [[nodiscard]] bool prepared_publication_source_home_matches_source(
     const prepare::PreparedEdgePublication& publication) {
   return publication.source_home != nullptr &&
