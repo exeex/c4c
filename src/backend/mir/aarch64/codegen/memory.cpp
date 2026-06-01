@@ -1117,6 +1117,42 @@ std::optional<RegisterOperand> make_value_home_register_operand(
   };
 }
 
+struct PreparedPointerValueBaseRegisterResult {
+  std::optional<RegisterOperand> reg;
+  PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
+};
+
+PreparedPointerValueBaseRegisterResult make_prepared_pointer_value_base_register(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const std::optional<prepare::PreparedValueId>& pointer_value_id,
+    const std::optional<c4c::ValueNameId>& pointer_value_name) {
+  if (!pointer_value_id.has_value() || !pointer_value_name.has_value()) {
+    return {.error = PreparedMemoryOperandRecordError::MissingPointerValueHome};
+  }
+  const auto* pointer_home =
+      prepare::find_prepared_value_home(value_locations, *pointer_value_id);
+  if (pointer_home == nullptr ||
+      pointer_home->value_name != *pointer_value_name ||
+      pointer_home->kind != prepare::PreparedValueHomeKind::Register) {
+    return {.error = PreparedMemoryOperandRecordError::MissingPointerValueHome};
+  }
+  const auto* pointer_storage = find_storage_plan_value(storage_plan, *pointer_value_id);
+  if (pointer_storage == nullptr ||
+      pointer_storage->value_name != *pointer_value_name) {
+    return {.error = PreparedMemoryOperandRecordError::MissingPointerValueStorage};
+  }
+  if (pointer_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return {.error = PreparedMemoryOperandRecordError::UnsupportedPointerValueStorage};
+  }
+  auto base_register = make_prepared_register_operand(
+      *pointer_home, *pointer_storage, bir::TypeKind::Ptr, RegisterOperandRole::StoragePlan);
+  if (!base_register.has_value()) {
+    return {.error = PreparedMemoryOperandRecordError::RegisterConversionFailed};
+  }
+  return {.reg = std::move(base_register), .error = PreparedMemoryOperandRecordError::None};
+}
+
 PreparedMemoryOperandRecordError resolve_pointer_value_base_register(
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
@@ -1124,31 +1160,15 @@ PreparedMemoryOperandRecordError resolve_pointer_value_base_register(
   if (operand.base_kind != MemoryBaseKind::PointerValue) {
     return PreparedMemoryOperandRecordError::None;
   }
-  if (!operand.pointer_value_id.has_value() || !operand.pointer_value_name.has_value()) {
-    return PreparedMemoryOperandRecordError::MissingPointerValueHome;
+  auto base_register = make_prepared_pointer_value_base_register(
+      value_locations,
+      storage_plan,
+      operand.pointer_value_id,
+      operand.pointer_value_name);
+  if (base_register.error != PreparedMemoryOperandRecordError::None) {
+    return base_register.error;
   }
-  const auto* pointer_home =
-      prepare::find_prepared_value_home(value_locations, *operand.pointer_value_id);
-  if (pointer_home == nullptr ||
-      pointer_home->value_name != *operand.pointer_value_name ||
-      pointer_home->kind != prepare::PreparedValueHomeKind::Register) {
-    return PreparedMemoryOperandRecordError::MissingPointerValueHome;
-  }
-  const auto* pointer_storage = find_storage_plan_value(storage_plan, *operand.pointer_value_id);
-  if (pointer_storage == nullptr ||
-      pointer_storage->value_name != *operand.pointer_value_name) {
-    return PreparedMemoryOperandRecordError::MissingPointerValueStorage;
-  }
-  if (pointer_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
-    return PreparedMemoryOperandRecordError::UnsupportedPointerValueStorage;
-  }
-  auto base_register =
-      make_prepared_register_operand(
-          *pointer_home, *pointer_storage, bir::TypeKind::Ptr, RegisterOperandRole::StoragePlan);
-  if (!base_register.has_value()) {
-    return PreparedMemoryOperandRecordError::RegisterConversionFailed;
-  }
-  operand.base_register = *base_register;
+  operand.base_register = std::move(*base_register.reg);
   return PreparedMemoryOperandRecordError::None;
 }
 
@@ -1604,37 +1624,15 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
-    if (!operand.record->pointer_value_id.has_value() ||
-        !operand.record->pointer_value_name.has_value()) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueHome);
+    auto base_register = make_prepared_pointer_value_base_register(
+        value_locations,
+        storage_plan,
+        operand.record->pointer_value_id,
+        operand.record->pointer_value_name);
+    if (base_register.error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(base_register.error);
     }
-    const auto* pointer_home =
-        prepare::find_prepared_value_home(value_locations, *operand.record->pointer_value_id);
-    if (pointer_home == nullptr ||
-        pointer_home->value_name != *operand.record->pointer_value_name ||
-        pointer_home->kind != prepare::PreparedValueHomeKind::Register) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueHome);
-    }
-    const auto* pointer_storage =
-        find_storage_plan_value(storage_plan, *operand.record->pointer_value_id);
-    if (pointer_storage == nullptr ||
-        pointer_storage->value_name != *operand.record->pointer_value_name) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueStorage);
-    }
-    if (pointer_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::UnsupportedPointerValueStorage);
-    }
-    auto base_register = make_prepared_register_operand(
-        *pointer_home, *pointer_storage, bir::TypeKind::Ptr, RegisterOperandRole::StoragePlan);
-    if (!base_register.has_value()) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::RegisterConversionFailed);
-    }
-    operand.record->base_register = *base_register;
+    operand.record->base_register = std::move(*base_register.reg);
   }
   if (!operand.record->result_value_id.has_value() ||
       !operand.record->result_value_name.has_value()) {
@@ -1753,38 +1751,15 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
-    if (!operand.record->pointer_value_id.has_value() ||
-        !operand.record->pointer_value_name.has_value()) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueHome);
+    auto base_register = make_prepared_pointer_value_base_register(
+        value_locations,
+        storage_plan,
+        operand.record->pointer_value_id,
+        operand.record->pointer_value_name);
+    if (base_register.error != PreparedMemoryOperandRecordError::None) {
+      return memory_instruction_record_error(base_register.error);
     }
-    const auto* pointer_home =
-        prepare::find_prepared_value_home(value_locations, *operand.record->pointer_value_id);
-    if (pointer_home == nullptr ||
-        pointer_home->value_name != *operand.record->pointer_value_name ||
-        pointer_home->kind != prepare::PreparedValueHomeKind::Register) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueHome);
-    }
-    const auto* pointer_storage =
-        find_storage_plan_value(storage_plan, *operand.record->pointer_value_id);
-    if (pointer_storage == nullptr ||
-        pointer_storage->value_name != *operand.record->pointer_value_name) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::MissingPointerValueStorage);
-    }
-    if (pointer_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::UnsupportedPointerValueStorage);
-    }
-    auto base_register =
-        make_prepared_register_operand(
-            *pointer_home, *pointer_storage, bir::TypeKind::Ptr, RegisterOperandRole::StoragePlan);
-    if (!base_register.has_value()) {
-      return memory_instruction_record_error(
-          PreparedMemoryOperandRecordError::RegisterConversionFailed);
-    }
-    operand.record->base_register = *base_register;
+    operand.record->base_register = std::move(*base_register.reg);
   }
   if (!operand.record->stored_value_id.has_value() ||
       !operand.record->stored_value_name.has_value()) {
