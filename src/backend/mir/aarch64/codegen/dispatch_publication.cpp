@@ -735,6 +735,59 @@ prepared_publication_source_producer_for_value(
   }
   return inst;
 }
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
+find_prepared_fused_compare_operand_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_fused_compare_operand_producer(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        value,
+        before_instruction_index);
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  return prepare::find_prepared_fused_compare_operand_producer(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
+}
+[[nodiscard]] std::optional<std::uint8_t>
+preferred_fused_compare_operand_publication_target(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() <= 1U) {
+    return std::nullopt;
+  }
+  const auto producer =
+      find_prepared_fused_compare_operand_producer(context,
+                                                   value,
+                                                   before_instruction_index);
+  if (!producer.has_value() ||
+      producer->kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
+      producer->select == nullptr) {
+    return std::nullopt;
+  }
+  return scratches[1].index;
+}
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_missing_conditional_branch_condition_publication(
@@ -874,11 +927,11 @@ lower_missing_fused_compare_operand_publication(
     return std::nullopt;
   }
   std::vector<std::string> lines;
-  const auto producer = prepared_publication_source_producer_for_value(context, value);
-  const auto* producer_inst =
-      producer.has_value() ? prepared_source_producer_instruction(context, *producer)
-                           : nullptr;
-  if (producer_inst != nullptr) {
+  const auto producer =
+      find_prepared_fused_compare_operand_producer(context,
+                                                   value,
+                                                   context.bir_block->insts.size());
+  if (producer.has_value() && producer->instruction != nullptr) {
     if (!emit_value_publication_to_register(context,
                                             value,
                                             context.bir_block->insts.size(),
@@ -945,16 +998,9 @@ lower_missing_fused_compare_operand_publications(
     return lowered;
   }
   if (branch_condition->lhs.has_value()) {
-    std::optional<std::uint8_t> preferred_target_index;
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    const auto producer =
-        prepared_publication_source_producer_for_value(context, *branch_condition->lhs);
-    if (producer.has_value() &&
-        producer->kind ==
-            prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
-        scratches.size() > 1U) {
-      preferred_target_index = scratches[1].index;
-    }
+    const auto preferred_target_index =
+        preferred_fused_compare_operand_publication_target(
+            context, *branch_condition->lhs, context.bir_block->insts.size());
     if (auto lhs = lower_missing_fused_compare_operand_publication(
             context,
             *branch_condition->lhs,
@@ -965,16 +1011,9 @@ lower_missing_fused_compare_operand_publications(
     }
   }
   if (branch_condition->rhs.has_value()) {
-    std::optional<std::uint8_t> preferred_target_index;
-    const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    const auto producer =
-        prepared_publication_source_producer_for_value(context, *branch_condition->rhs);
-    if (producer.has_value() &&
-        producer->kind ==
-            prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
-        scratches.size() > 1U) {
-      preferred_target_index = scratches[1].index;
-    }
+    const auto preferred_target_index =
+        preferred_fused_compare_operand_publication_target(
+            context, *branch_condition->rhs, context.bir_block->insts.size());
     if (auto rhs = lower_missing_fused_compare_operand_publication(
             context,
             *branch_condition->rhs,
