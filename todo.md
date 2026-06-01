@@ -1,56 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/74_aarch64_local_scalar_register_helper_fold_back.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fold Scalar Type And Register-View Helpers
+Current Step ID: 3
+Current Step Title: Fold Compare Predicate Helper Logic
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by folding the duplicated scalar storage
-type-to-register-view helper in `instruction.cpp` back to the exported
-AArch64-local ALU helper surface.
+Completed `plan.md` Step 3 by folding the duplicated compare
+predicate-to-condition-code mapping in `machine_printer.cpp` back to the
+existing AArch64-local comparison helper.
 
 Before inventory:
 
-- `instruction.cpp` had an unnamed-namespace `scalar_storage_register_view`
-  duplicate that first called `scalar_register_view` for integer and pointer
-  storage, then fell back to `scalar_fp_register_view` for floating scalar
-  storage.
-- `alu.cpp` had the same `scalar_storage_register_view` body in its local ALU
-  helper set, with live ALU and prepared scalar call sites already using it.
+- `machine_printer.cpp` had a local unnamed-namespace
+  `compare_branch_condition` duplicate mapping compare predicates to AArch64
+  branch condition suffixes for fused compare branch printing.
+- `comparison.cpp` already owned the same AArch64-local mapping through
+  `branch_condition_suffix`, exported by `comparison.hpp` and used by compare
+  lowering.
 
 After inventory:
 
-- `alu.hpp` now exposes `scalar_storage_register_view` as the minimal shared
-  AArch64-local ALU helper needed by `instruction.cpp`.
-- `alu.cpp` keeps the unchanged helper body as the single implementation, next
-  to the exported scalar register-view helper surface.
-- Removed the local `instruction.cpp` storage-view helper and its now-unused
-  `float_ops.hpp` include; instruction prepared-register code now uses the
-  shared ALU helper through `alu.hpp`.
-- Left `machine_printer.cpp`, record construction, opcode decisions, shared
-  BIR/prealloc/ABI files, tests, and unrelated storage-view duplicates
-  unchanged.
+- Removed the local `compare_branch_condition` duplicate from
+  `machine_printer.cpp`.
+- Fused compare branch printing now calls `branch_condition_suffix` directly
+  through the existing `comparison.hpp` include.
+- Condition-code spelling, unsupported handling, compare/branch formatting,
+  comparison lowering, shared BIR/prealloc/ABI files, and tests are unchanged.
 
 ## Suggested Next
 
-Continue Step 2 with any remaining scalar type/register-view helper fold-back
-inside the active owned surface, or move to Step 3 compare predicate folding if
-the supervisor considers the Step 2 owned helper families complete.
+Continue with the next supervisor-selected fold-back family. A likely remaining
+candidate is Step 4 local scalar record assembly helper cleanup if the Step 2
+and Step 3 helper families are considered complete.
 
 ## Watchouts
 
 - `integer_type_bit_width` in `machine_printer.cpp` is similar but not identical
   to `integer_scalar_bit_width` because it includes `I1 -> 1`; do not fold that
   into Step 2 unless the call sites are checked explicitly.
-- The compare predicate condition-code mapping remains duplicated by design for
-  this slice; folding it back should be a separate packet so type/view helper
-  movement does not mix with branch/printer condition spelling.
 - `scalar_storage_register_view` still has same-shaped local duplicates outside
   this packet in non-owned files such as globals/atomics/cast/memory; leave
   those for a supervisor-selected packet if they become in scope.
+- `swapped_compare_predicate` remains local printer logic for operand swapping;
+  it is not the same mapping as condition-code spelling and was intentionally
+  left in place.
 - Keep BIR facts and `abi::convert_prepared_register` as inputs rather than
   re-deriving shared semantics, and do not move AArch64 record schemas, opcode
   decisions, register-name spelling, scratch selection, or printer formatting
@@ -60,7 +56,7 @@ the supervisor considers the Step 2 owned helper families complete.
 
 Ran the delegated proof command:
 
-`cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_record_contract|backend_aarch64_target_record_core_contract|backend_aarch64_instruction_dispatch)$' >> test_after.log`
+`cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_branch_compare_records|backend_aarch64_compare_branch_candidate_records|backend_aarch64_branch_compare_contract|backend_aarch64_prepared_branch_records|backend_aarch64_branch_control_lowering|backend_aarch64_instruction_dispatch)$' >> test_after.log`
 
-Result: passed. `test_after.log` contains the successful build and 6/6 passing
+Result: passed. `test_after.log` contains the successful build and 7/7 passing
 selected tests.

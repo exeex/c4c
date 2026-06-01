@@ -101,33 +101,6 @@ std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
   return std::nullopt;
 }
 
-std::optional<std::string_view> compare_branch_condition(bir::BinaryOpcode predicate) {
-  switch (predicate) {
-    case bir::BinaryOpcode::Eq:
-      return std::string_view{"eq"};
-    case bir::BinaryOpcode::Ne:
-      return std::string_view{"ne"};
-    case bir::BinaryOpcode::Slt:
-      return std::string_view{"lt"};
-    case bir::BinaryOpcode::Sle:
-      return std::string_view{"le"};
-    case bir::BinaryOpcode::Sgt:
-      return std::string_view{"gt"};
-    case bir::BinaryOpcode::Sge:
-      return std::string_view{"ge"};
-    case bir::BinaryOpcode::Ult:
-      return std::string_view{"lo"};
-    case bir::BinaryOpcode::Ule:
-      return std::string_view{"ls"};
-    case bir::BinaryOpcode::Ugt:
-      return std::string_view{"hi"};
-    case bir::BinaryOpcode::Uge:
-      return std::string_view{"hs"};
-    default:
-      return std::nullopt;
-  }
-}
-
 std::optional<bir::BinaryOpcode> swapped_compare_predicate(
     bir::BinaryOpcode predicate) {
   switch (predicate) {
@@ -768,7 +741,7 @@ mir::TargetInstructionPrintResult print_fused_compare_branch(
                               "fused compare branch operands are not printable");
   }
 
-  const auto condition_code = compare_branch_condition(operands->predicate);
+  const auto condition_code = branch_condition_suffix(operands->predicate);
   if (!condition_code.has_value()) {
     return target_unsupported(bad_header(instruction) +
                               "fused compare branch predicate is not printable");
