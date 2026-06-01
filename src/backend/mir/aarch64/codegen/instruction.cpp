@@ -31,6 +31,11 @@ struct MachineOpcodeSpelling {
   std::string_view spelling;
 };
 
+struct MachineNodeSelectionStatusSpelling {
+  MachineNodeSelectionStatus status;
+  std::string_view spelling;
+};
+
 struct MachinePseudoPrinterMnemonic {
   MachinePseudoKind pseudo;
   MachinePrinterMnemonicKind kind;
@@ -135,6 +140,13 @@ constexpr std::array<MachineOpcodeSpelling, 53> kMachineOpcodeSpellings{{
     {MachineOpcode::VectorAddIntrinsic, "vector_add_intrinsic"},
 }};
 
+constexpr std::array<MachineNodeSelectionStatusSpelling, 3>
+    kMachineNodeSelectionStatusSpellings{{
+        {MachineNodeSelectionStatus::Selected, "selected"},
+        {MachineNodeSelectionStatus::DeferredUnsupported, "deferred_unsupported"},
+        {MachineNodeSelectionStatus::MissingRequiredFacts, "missing_required_facts"},
+    }};
+
 constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemonics{{
     {MachinePseudoKind::SpillToSlot, MachinePrinterMnemonicKind::Store},
     {MachinePseudoKind::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
@@ -189,6 +201,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
     return MachinePrinterMnemonicKind::None;
   }
   return found->kind;
+}
+
+[[nodiscard]] std::string_view machine_node_selection_status_spelling(
+    MachineNodeSelectionStatus status) {
+  const auto found = std::find_if(
+      kMachineNodeSelectionStatusSpellings.begin(),
+      kMachineNodeSelectionStatusSpellings.end(),
+      [status](const MachineNodeSelectionStatusSpelling& spelling) {
+        return spelling.status == status;
+      });
+  if (found == kMachineNodeSelectionStatusSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
 }
 
 [[nodiscard]] bool same_aggregate_gp_register_index(abi::RegisterReference lhs,
@@ -400,15 +426,7 @@ std::string_view machine_instruction_auxiliary_printer_mnemonic(
 }
 
 std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus status) {
-  switch (status) {
-    case MachineNodeSelectionStatus::Selected:
-      return "selected";
-    case MachineNodeSelectionStatus::DeferredUnsupported:
-      return "deferred_unsupported";
-    case MachineNodeSelectionStatus::MissingRequiredFacts:
-      return "missing_required_facts";
-  }
-  return "unknown";
+  return machine_node_selection_status_spelling(status);
 }
 
 [[nodiscard]] static MachineNodeStatusRecord machine_node_status_record(
