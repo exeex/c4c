@@ -61,3 +61,20 @@ ABI layout and instruction records, not prepared policy reconstruction.
   into shared code.
 - The implementation is a named-case shortcut for one variadic testcase.
 - Unrelated special-carrier, memory, or call cleanup is mixed into this route.
+
+## Completion Note
+
+Closed after reviewer follow-up confirmed the implementation matches the source
+idea: AArch64 variadic lowering consumes prepared entry/helper facts while
+retaining target-local va_list layout, save-area instruction selection, and
+va_arg/va_copy record emission.
+
+Close proof used canonical backend regression logs:
+
+```bash
+cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Regression guard result: passed with 169/169 tests before and 169/169 tests
+after, no new failures.
