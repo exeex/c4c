@@ -446,6 +446,27 @@ std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus s
   return "unknown";
 }
 
+[[nodiscard]] static MachineNodeStatusRecord machine_node_status_record(
+    MachineNodeSelectionStatus status, std::string_view diagnostic = {}) {
+  return MachineNodeStatusRecord{.status = status, .diagnostic = diagnostic};
+}
+
+[[nodiscard]] static MachineNodeStatusRecord selected_node_status() {
+  return machine_node_status_record(MachineNodeSelectionStatus::Selected);
+}
+
+[[nodiscard]] static MachineNodeStatusRecord deferred_unsupported_node_status(
+    std::string_view diagnostic) {
+  return machine_node_status_record(MachineNodeSelectionStatus::DeferredUnsupported,
+                                    diagnostic);
+}
+
+[[nodiscard]] static MachineNodeStatusRecord missing_required_facts_node_status(
+    std::string_view diagnostic) {
+  return machine_node_status_record(MachineNodeSelectionStatus::MissingRequiredFacts,
+                                    diagnostic);
+}
+
 std::string_view aggregate_stack_copy_load_mnemonic(std::size_t width_bytes) {
   switch (width_bytes) {
     case 1:
@@ -1311,12 +1332,11 @@ std::vector<MachineSideEffectKind> frame_side_effects(
 MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& instruction,
                                                 const std::vector<OperandRecord>& operands) {
   if (!instruction.conditional) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    return selected_node_status();
   }
   if (!instruction.target_pair.has_value() || !instruction.condition_record.has_value()) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "conditional branch is missing target pair or condition"};
+    return missing_required_facts_node_status(
+        "conditional branch is missing target pair or condition");
   }
   const auto& condition = *instruction.condition_record;
   const bool valid_condition_type =
@@ -1326,9 +1346,8 @@ MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& i
   if (!condition.condition_value_id.has_value() ||
       condition.condition_value_name == c4c::kInvalidValueName ||
       !valid_condition_type) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "conditional branch is missing condition value identity"};
+    return missing_required_facts_node_status(
+        "conditional branch is missing condition value identity");
   }
   if (condition.form == BranchConditionForm::FusedCompare) {
     const auto has_candidate = condition.compare_branch_candidate.has_value();
@@ -1338,22 +1357,18 @@ MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& i
                             condition.compare_branch_candidate->can_fuse_with_branch
                       : condition.can_fuse_with_branch;
     if (!condition.predicate.has_value() || !condition.compare_operands.has_value()) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                     .diagnostic =
-                                         "fused compare branch is missing compare facts"};
+      return missing_required_facts_node_status(
+          "fused compare branch is missing compare facts");
     }
     if (!condition.can_fuse_with_branch || !candidate_fusable) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                     .diagnostic =
-                                         "compare branch candidate is not fusable"};
+      return deferred_unsupported_node_status("compare branch candidate is not fusable");
     }
     if (operands.size() < 5U) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                     .diagnostic =
-                                         "fused compare branch is missing compare operands"};
+      return missing_required_facts_node_status(
+          "fused compare branch is missing compare operands");
     }
   }
-  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  return selected_node_status();
 }
 
 MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& instruction) {
@@ -1361,34 +1376,30 @@ MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& i
     if ((instruction.scalar_alu->supported_integer_operation ||
          instruction.scalar_alu->supported_floating_operation) &&
         instruction.scalar_alu->operation != ScalarAluOperationKind::Deferred) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+      return selected_node_status();
     }
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                   .diagnostic =
-                                       "scalar ALU operation is outside the selected subset"};
+    return deferred_unsupported_node_status(
+        "scalar ALU operation is outside the selected subset");
   }
   if (instruction.scalar_unary.has_value()) {
     if (instruction.scalar_unary->supported_integer_operation &&
         instruction.scalar_unary->operation != ScalarUnaryOperationKind::Deferred) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+      return selected_node_status();
     }
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::DeferredUnsupported,
-        .diagnostic = "scalar unary operation is outside the selected subset"};
+    return deferred_unsupported_node_status(
+        "scalar unary operation is outside the selected subset");
   }
   if (instruction.scalar_cast.has_value()) {
     if ((instruction.scalar_cast->supported_simple_integer_cast ||
          instruction.scalar_cast->supported_float_integer_conversion ||
          instruction.scalar_cast->supported_float_width_conversion) &&
         instruction.scalar_cast->operation != ScalarCastOperationKind::Deferred) {
-      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+      return selected_node_status();
     }
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                   .diagnostic =
-                                       "scalar cast operation is outside the selected subset"};
+    return deferred_unsupported_node_status(
+        "scalar cast operation is outside the selected subset");
   }
-  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                 .diagnostic = "scalar node is missing scalar ALU or cast record"};
+  return missing_required_facts_node_status("scalar node is missing scalar ALU or cast record");
 }
 
 MachineNodeStatusRecord address_materialization_selection_status(
@@ -1396,65 +1407,56 @@ MachineNodeStatusRecord address_materialization_selection_status(
   if (instruction.source_materialization == nullptr ||
       instruction.function_name == c4c::kInvalidFunctionName ||
       instruction.block_label == c4c::kInvalidBlockLabel) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "address materialization node is missing prepared provenance"};
+    return missing_required_facts_node_status(
+        "address materialization node is missing prepared provenance");
   }
   if (instruction.kind == AddressMaterializationKind::DeferredUnsupported) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::DeferredUnsupported,
-        .diagnostic = "address materialization kind is outside the selected subset"};
+    return deferred_unsupported_node_status(
+        "address materialization kind is outside the selected subset");
   }
   if (!instruction.result_value_id.has_value() ||
       instruction.result_value_name == c4c::kInvalidValueName ||
       !instruction.result_register.has_value() ||
       instruction.result_home_kind != prepare::PreparedValueHomeKind::Register) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "address materialization node is missing prepared result register"};
+    return missing_required_facts_node_status(
+        "address materialization node is missing prepared result register");
   }
   if (instruction.kind == AddressMaterializationKind::StringConstant) {
     if (!instruction.text_name.has_value()) {
-      return MachineNodeStatusRecord{
-          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-          .diagnostic = "string address materialization is missing text identity"};
+      return missing_required_facts_node_status(
+          "string address materialization is missing text identity");
     }
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    return selected_node_status();
   }
   if (instruction.kind == AddressMaterializationKind::LabelPageLow12) {
     if (!instruction.target_label.has_value()) {
-      return MachineNodeStatusRecord{
-          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-          .diagnostic = "label address materialization is missing target label identity"};
+      return missing_required_facts_node_status(
+          "label address materialization is missing target label identity");
     }
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    return selected_node_status();
   }
   if (instruction.kind == AddressMaterializationKind::FrameSlot) {
     if (!instruction.frame_slot_id.has_value()) {
-      return MachineNodeStatusRecord{
-          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-          .diagnostic = "frame-slot address materialization is missing frame slot identity"};
+      return missing_required_facts_node_status(
+          "frame-slot address materialization is missing frame slot identity");
     }
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    return selected_node_status();
   }
   if (!instruction.symbol_name.has_value()) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "global address materialization is missing symbol identity"};
+    return missing_required_facts_node_status(
+        "global address materialization is missing symbol identity");
   }
   if (instruction.kind == AddressMaterializationKind::GotPageLow12 &&
       instruction.address_materialization_policy !=
           bir::GlobalAddressMaterializationPolicy::GotRequired) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "GOT address materialization is missing GOT-required policy"};
+    return missing_required_facts_node_status(
+        "GOT address materialization is missing GOT-required policy");
   }
   if (instruction.kind == AddressMaterializationKind::TlsRelative &&
       (!instruction.is_thread_local || !instruction.has_tls_address_space ||
        instruction.address_space != bir::AddressSpace::Tls)) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "TLS address materialization is missing TLS facts"};
+    return missing_required_facts_node_status(
+        "TLS address materialization is missing TLS facts");
   }
   if (instruction.kind == AddressMaterializationKind::TlsRelative &&
       (instruction.tls_model !=
@@ -1464,60 +1466,52 @@ MachineNodeStatusRecord address_materialization_selection_status(
        instruction.tls_high_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
        instruction.tls_low_relocation !=
            prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc)) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic =
-            "TLS address materialization is missing thread-pointer-relative relocation facts"};
+    return missing_required_facts_node_status(
+        "TLS address materialization is missing thread-pointer-relative relocation facts");
   }
-  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  return selected_node_status();
 }
 
 MachineNodeStatusRecord spill_reload_selection_status(
     const SpillReloadInstructionRecord& instruction) {
   if (instruction.pseudo_kind == MachinePseudoKind::None ||
       instruction.op_kind == prepare::PreparedSpillReloadOpKind::Rematerialize) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                   .diagnostic =
-                                       "spill/reload op is outside the selected subset"};
+    return deferred_unsupported_node_status(
+        "spill/reload op is outside the selected subset");
   }
   if (!instruction.source_spill_reload || !instruction.slot_id.has_value() ||
       !instruction.stack_offset_bytes.has_value() || !instruction.scratch.has_value() ||
       instruction.occupied_scratch_register_references.empty() ||
       !instruction.scratch_register_authority.has_value()) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "spill/reload node is missing slot or scratch facts"};
+    return missing_required_facts_node_status(
+        "spill/reload node is missing slot or scratch facts");
   }
-  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  return selected_node_status();
 }
 
 MachineNodeStatusRecord frame_selection_status(const FrameInstructionRecord& instruction) {
   if (instruction.function_name == c4c::kInvalidFunctionName ||
       instruction.frame_alignment_bytes == 0) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "frame node is missing prepared frame facts"};
+    return missing_required_facts_node_status(
+        "frame node is missing prepared frame facts");
   }
   if (instruction.source_frame == nullptr && !instruction.preserves_link_register) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "frame node is missing prepared frame facts"};
+    return missing_required_facts_node_status(
+        "frame node is missing prepared frame facts");
   }
   if (instruction.preserves_link_register &&
       (!instruction.link_register_save_offset_bytes.has_value() ||
        instruction.frame_size_bytes == 0)) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "link-register frame node is missing save slot facts"};
+    return missing_required_facts_node_status(
+        "link-register frame node is missing save slot facts");
   }
   if ((instruction.frame_kind == FrameInstructionKind::CalleeSaveStore ||
        instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) &&
       !instruction.callee_save.has_value()) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
-                                   .diagnostic =
-                                       "callee-save frame node is missing prepared save facts"};
+    return missing_required_facts_node_status(
+        "callee-save frame node is missing prepared save facts");
   }
-  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  return selected_node_status();
 }
 
 }  // namespace
@@ -1740,8 +1734,7 @@ InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruct
       .family = InstructionFamily::Assembler,
       .surface = RecordSurfaceKind::ExternalAssemblerInput,
       .selection =
-          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                  .diagnostic = "external assembler input is not a selected node"},
+          deferred_unsupported_node_status("external assembler input is not a selected node"),
       .operands = instruction.operands,
       .uses = machine_effects_from_operands(instruction.operands),
       .side_effects = instruction.side_effects
@@ -1766,9 +1759,8 @@ InstructionRecord make_object_instruction(ObjectInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Object,
       .surface = RecordSurfaceKind::EncoderInput,
-      .selection =
-          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
-                                  .diagnostic = "object records are future encoder input"},
+      .selection = deferred_unsupported_node_status(
+          "object records are future encoder input"),
       .operands = operands,
       .uses = machine_effects_from_operands(operands),
       .side_effects = {MachineSideEffectKind::ObjectEmission},
@@ -1782,7 +1774,7 @@ InstructionRecord make_unsupported_machine_instruction(InstructionFamily family,
   return InstructionRecord{
       .family = family,
       .surface = RecordSurfaceKind::MachineInstructionNode,
-      .selection = MachineNodeStatusRecord{.status = status, .diagnostic = diagnostic},
+      .selection = machine_node_status_record(status, diagnostic),
   };
 }
 
