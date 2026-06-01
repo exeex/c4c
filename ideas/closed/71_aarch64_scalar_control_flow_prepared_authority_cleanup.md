@@ -71,3 +71,12 @@ instruction choice, condition-code selection, and record construction.
   approval.
 - The diff mixes unrelated memory, call, or printer cleanup into this scalar
   and control-flow authority route.
+
+## Closure Note
+
+Closed after Step 6 acceptance validation. The completed route consumed BIR
+scalar/cast semantics and prepared scalar/control-flow authority while keeping
+AArch64 immediate admissibility, materialization, condition-code spelling, and
+record construction target-local. Full-suite acceptance proof passed with
+3417/3417 tests, regression guard against the full-suite baseline reported no
+new failures, and route review recorded no blocking drift or testcase-overfit.
