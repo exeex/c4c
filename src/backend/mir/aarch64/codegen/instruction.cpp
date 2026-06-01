@@ -21,6 +21,11 @@ struct MachinePrinterMnemonicSpelling {
   std::string_view spelling;
 };
 
+struct MachineOpcodePrinterMnemonic {
+  MachineOpcode opcode;
+  MachinePrinterMnemonicKind kind;
+};
+
 constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonicSpellings{{
     {MachinePrinterMnemonicKind::None, ""},
     {MachinePrinterMnemonicKind::Branch, "b"},
@@ -41,6 +46,29 @@ constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonic
     {MachinePrinterMnemonicKind::VariadicVaCopy, "va.copy"},
 }};
 
+constexpr std::array<MachineOpcodePrinterMnemonic, 17> kMachineOpcodePrinterMnemonics{{
+    {MachineOpcode::Branch, MachinePrinterMnemonicKind::Branch},
+    {MachineOpcode::ConditionalBranch,
+     MachinePrinterMnemonicKind::ConditionalBranchNonZero},
+    {MachineOpcode::DirectCall, MachinePrinterMnemonicKind::DirectCall},
+    {MachineOpcode::IndirectCall, MachinePrinterMnemonicKind::IndirectCall},
+    {MachineOpcode::FrameSetup, MachinePrinterMnemonicKind::Sub},
+    {MachineOpcode::FrameTeardown, MachinePrinterMnemonicKind::Add},
+    {MachineOpcode::Add, MachinePrinterMnemonicKind::Add},
+    {MachineOpcode::Sub, MachinePrinterMnemonicKind::Sub},
+    {MachineOpcode::Load, MachinePrinterMnemonicKind::Load},
+    {MachineOpcode::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
+    {MachineOpcode::Store, MachinePrinterMnemonicKind::Store},
+    {MachineOpcode::SpillToSlot, MachinePrinterMnemonicKind::Store},
+    {MachineOpcode::CallBoundaryMove, MachinePrinterMnemonicKind::Move},
+    {MachineOpcode::VariadicVaStart, MachinePrinterMnemonicKind::VariadicVaStart},
+    {MachineOpcode::VariadicVaArgScalar,
+     MachinePrinterMnemonicKind::VariadicVaArgScalar},
+    {MachineOpcode::VariadicVaArgAggregate,
+     MachinePrinterMnemonicKind::VariadicVaArgAggregate},
+    {MachineOpcode::VariadicVaCopy, MachinePrinterMnemonicKind::VariadicVaCopy},
+}};
+
 [[nodiscard]] std::string_view machine_printer_mnemonic_spelling(
     MachinePrinterMnemonicKind kind) {
   const auto found = std::find_if(
@@ -52,6 +80,19 @@ constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonic
     return "";
   }
   return found->spelling;
+}
+
+[[nodiscard]] MachinePrinterMnemonicKind machine_opcode_printer_mnemonic(
+    MachineOpcode opcode) {
+  const auto found = std::find_if(
+      kMachineOpcodePrinterMnemonics.begin(), kMachineOpcodePrinterMnemonics.end(),
+      [opcode](const MachineOpcodePrinterMnemonic& mnemonic) {
+        return mnemonic.opcode == opcode;
+      });
+  if (found == kMachineOpcodePrinterMnemonics.end()) {
+    return MachinePrinterMnemonicKind::None;
+  }
+  return found->kind;
 }
 
 [[nodiscard]] bool same_aggregate_gp_register_index(abi::RegisterReference lhs,
@@ -322,78 +363,7 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
 }
 
 MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode opcode) {
-  switch (opcode) {
-    case MachineOpcode::Branch:
-      return MachinePrinterMnemonicKind::Branch;
-    case MachineOpcode::ConditionalBranch:
-      return MachinePrinterMnemonicKind::ConditionalBranchNonZero;
-    case MachineOpcode::DirectCall:
-      return MachinePrinterMnemonicKind::DirectCall;
-    case MachineOpcode::IndirectCall:
-      return MachinePrinterMnemonicKind::IndirectCall;
-    case MachineOpcode::FrameSetup:
-      return MachinePrinterMnemonicKind::Sub;
-    case MachineOpcode::FrameTeardown:
-      return MachinePrinterMnemonicKind::Add;
-    case MachineOpcode::Add:
-      return MachinePrinterMnemonicKind::Add;
-    case MachineOpcode::Sub:
-      return MachinePrinterMnemonicKind::Sub;
-    case MachineOpcode::Load:
-    case MachineOpcode::ReloadFromSlot:
-      return MachinePrinterMnemonicKind::Load;
-    case MachineOpcode::Store:
-    case MachineOpcode::SpillToSlot:
-      return MachinePrinterMnemonicKind::Store;
-    case MachineOpcode::CallBoundaryMove:
-      return MachinePrinterMnemonicKind::Move;
-    case MachineOpcode::VariadicVaStart:
-      return MachinePrinterMnemonicKind::VariadicVaStart;
-    case MachineOpcode::VariadicVaArgScalar:
-      return MachinePrinterMnemonicKind::VariadicVaArgScalar;
-    case MachineOpcode::VariadicVaArgAggregate:
-      return MachinePrinterMnemonicKind::VariadicVaArgAggregate;
-    case MachineOpcode::VariadicVaCopy:
-      return MachinePrinterMnemonicKind::VariadicVaCopy;
-    case MachineOpcode::Unspecified:
-    case MachineOpcode::CompareBranch:
-    case MachineOpcode::AddressMaterialization:
-    case MachineOpcode::CalleeSaveStore:
-    case MachineOpcode::CalleeSaveLoad:
-    case MachineOpcode::CallBoundaryAbiBinding:
-    case MachineOpcode::I128Transport:
-    case MachineOpcode::F128Transport:
-    case MachineOpcode::F128RuntimeHelper:
-    case MachineOpcode::I128Pair:
-    case MachineOpcode::I128Shift:
-    case MachineOpcode::I128Compare:
-    case MachineOpcode::I128RuntimeHelper:
-    case MachineOpcode::AtomicLoad:
-    case MachineOpcode::AtomicStore:
-    case MachineOpcode::AtomicFence:
-    case MachineOpcode::AtomicRmw:
-    case MachineOpcode::AtomicCompareExchange:
-    case MachineOpcode::And:
-    case MachineOpcode::LogicalShiftRight:
-    case MachineOpcode::Mul:
-    case MachineOpcode::Div:
-    case MachineOpcode::Or:
-    case MachineOpcode::Xor:
-    case MachineOpcode::Neg:
-    case MachineOpcode::BitNot:
-    case MachineOpcode::CountLeadingZeros:
-    case MachineOpcode::CountTrailingZeros:
-    case MachineOpcode::ByteSwap:
-    case MachineOpcode::SignExtend:
-    case MachineOpcode::ZeroExtend:
-    case MachineOpcode::Truncate:
-    case MachineOpcode::ScalarFpUnaryIntrinsic:
-    case MachineOpcode::Crc32WIntrinsic:
-    case MachineOpcode::VectorLoadIntrinsic:
-    case MachineOpcode::VectorAddIntrinsic:
-      return MachinePrinterMnemonicKind::None;
-  }
-  return MachinePrinterMnemonicKind::None;
+  return machine_opcode_printer_mnemonic(opcode);
 }
 
 MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic_kind(MachinePseudoKind pseudo) {
