@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/77_aarch64_machine_status_printer_validation_probe.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Validation Overlap
+Current Step ID: 3
+Current Step Title: Decide AArch64-Local Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 evidence classification for the paired AArch64
-machine status/printer record families from Step 1.
+Completed `plan.md` Step 3 helper-boundary decision for the paired AArch64
+machine status/printer record families recorded in Steps 1-2.
 
 Prior Step 1 paired-family inventory remains:
 
@@ -181,22 +181,68 @@ Step 2 overlap classification:
     `print_frame` currently rejects any `callee_save` as outside the printable
     subset. That is intentional owner divergence, not duplicate validation.
 
+Step 3 route decision:
+
+No-code evidence conclusion. Do not implement an AArch64-local semantic
+validation helper for this probe.
+
+Reason:
+
+- The repeated checks proven by Step 2 are real, but they do not form one
+  coherent helper boundary that both owners can consume without blurring
+  responsibilities. Branch, scalar, address materialization, spill/reload, and
+  frame each repeat different family-specific facts for different immediate
+  purposes.
+- `validate_selected_machine_node` already blocks non-selected machine nodes
+  before family printers run. That makes the status helpers the selectedness
+  authority for the semantic facts they classify.
+- The printer-side repeats are intentionally target-local print-safety guards:
+  they protect immediate operand indexing, optional dereference, relocation
+  selection, address rendering, register spelling, and final line emission at
+  the point where `machine_printer.cpp` needs those facts.
+- Centralizing the repeated checks would either duplicate the existing
+  selection status contract under a new name, or require moving printer safety
+  and final spelling decisions out of `machine_printer.cpp`, which the source
+  idea and runbook explicitly reject.
+
+Concrete duplicated semantic checks that remain separately target-local:
+
+- Branch: conditional `target_pair`/`condition_record` presence; fused compare
+  `predicate`/`compare_operands` presence; fused compare operand count before
+  reading `instruction.operands[3]` and `[4]`.
+- Scalar: scalar ALU/unary/cast supported-subset gates and non-`Deferred`
+  operation checks before entering printable scalar forms.
+- Address materialization: GOT-required policy for `GotPageLow12`; local-exec
+  TLS model/thread-pointer facts and AArch64 TPREL relocation facts for
+  `TlsRelative`.
+- Spill/reload: `slot_id`, `stack_offset_bytes`, and `scratch` presence before
+  rendering the prepared frame-slot pseudo.
+- Frame: `function_name`, `frame_alignment_bytes`, `source_frame` or
+  `preserves_link_register`, and link-register save offset presence for
+  link-register-preserving frame nodes.
+
+Final assembly text output and spelling checks stay in `machine_printer.cpp`.
+That includes branch target labels and mnemonics, scalar result/source register
+views and ALU/cast mnemonics, address labels and relocation operand spelling,
+spill/reload printable memory addresses and scratch register spelling, and
+frame mnemonics/register/address lines.
+
 ## Suggested Next
 
-Use Step 3 to decide whether the repeated semantic checks above justify an
-AArch64-local helper boundary, or whether the probe should end as a no-code
-evidence conclusion because many repeated checks are also local print-safety
-guards.
+Proceed to `plan.md` Step 5 acceptance review and lifecycle decision. Step 4
+implementation is not recommended for this probe because the selected route is
+the no-code evidence conclusion above.
 
 ## Watchouts
 
-- Do not change implementation files during the evidence-only inventory.
-- Do not fold printer checks until repeated semantic validation is proven.
+- Do not change implementation files for this probe unless the supervisor or
+  plan owner intentionally rewrites the route.
+- Do not fold printer checks for the Step 2 families; the accepted Step 3 route
+  treats them as intentionally separate printer-local safety/spelling guards.
 - Keep final assembly spelling validation in the printer.
 - `validate_selected_machine_node` already blocks non-selected machine nodes
-  before family printers run; any helper proposal should account for whether a
-  repeated check is still needed as a local print-safety guard before indexing
-  operands or spelling text.
+  before family printers run; the repeated printer checks remain local guards
+  before indexing operands or spelling text.
 - `MemoryInstructionRecord` has prepared-record builders in `instruction.hpp`,
   but no dedicated `*_selection_status` helper in `instruction.cpp`; the printer
   has substantial load/store validation in `print_memory` and
@@ -208,4 +254,4 @@ guards.
 ## Proof
 
 No build required by delegated proof; evidence-only `todo.md` update for
-`plan.md` Step 2. No `test_after.log` was produced.
+`plan.md` Step 3. No `test_after.log` was produced.
