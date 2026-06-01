@@ -588,44 +588,58 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
 
 }  // namespace
 
-bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
+namespace {
+
+struct ScalarCastOpcodeSemanticFacts {
+  bool simple_integer_cast = false;
+  bool scalar_conversion_cast = false;
+  ScalarCastOperationKind operation = ScalarCastOperationKind::Deferred;
+};
+
+[[nodiscard]] ScalarCastOpcodeSemanticFacts scalar_cast_opcode_semantic_facts(
+    bir::CastOpcode opcode) {
   switch (opcode) {
     case bir::CastOpcode::SExt:
     case bir::CastOpcode::ZExt:
     case bir::CastOpcode::Trunc:
-      return true;
+      return ScalarCastOpcodeSemanticFacts{
+          .simple_integer_cast = true,
+          .scalar_conversion_cast = false,
+          .operation = scalar_cast_operation_from_cast_opcode(opcode),
+      };
     case bir::CastOpcode::FPTrunc:
     case bir::CastOpcode::FPExt:
     case bir::CastOpcode::FPToSI:
     case bir::CastOpcode::FPToUI:
     case bir::CastOpcode::SIToFP:
     case bir::CastOpcode::UIToFP:
+      return ScalarCastOpcodeSemanticFacts{
+          .simple_integer_cast = false,
+          .scalar_conversion_cast = true,
+          .operation = scalar_cast_operation_from_cast_opcode(opcode),
+      };
     case bir::CastOpcode::PtrToInt:
     case bir::CastOpcode::IntToPtr:
     case bir::CastOpcode::Bitcast:
-      return false;
+      return ScalarCastOpcodeSemanticFacts{
+          .simple_integer_cast = false,
+          .scalar_conversion_cast = false,
+          .operation = ScalarCastOperationKind::Deferred,
+      };
   }
-  return false;
+  return ScalarCastOpcodeSemanticFacts{};
+}
+
+}  // namespace
+
+bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
+  const auto facts = scalar_cast_opcode_semantic_facts(opcode);
+  return facts.simple_integer_cast;
 }
 
 bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode) {
-  switch (opcode) {
-    case bir::CastOpcode::FPTrunc:
-    case bir::CastOpcode::FPExt:
-    case bir::CastOpcode::FPToSI:
-    case bir::CastOpcode::FPToUI:
-    case bir::CastOpcode::SIToFP:
-    case bir::CastOpcode::UIToFP:
-      return true;
-    case bir::CastOpcode::SExt:
-    case bir::CastOpcode::ZExt:
-    case bir::CastOpcode::Trunc:
-    case bir::CastOpcode::PtrToInt:
-    case bir::CastOpcode::IntToPtr:
-    case bir::CastOpcode::Bitcast:
-      return false;
-  }
-  return false;
+  const auto facts = scalar_cast_opcode_semantic_facts(opcode);
+  return facts.scalar_conversion_cast;
 }
 
 ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
@@ -656,6 +670,54 @@ ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
   }
   return ScalarCastOperationKind::Deferred;
 }
+
+namespace {
+
+struct ScalarCastSemanticFacts {
+  ScalarCastOpcodeSemanticFacts opcode;
+  bool source_is_integer = false;
+  bool result_is_integer = false;
+  bool source_is_float = false;
+  bool result_is_float = false;
+  bool supported_float_width_conversion = false;
+  bool supported_float_integer_conversion = false;
+  bool supported = false;
+};
+
+[[nodiscard]] ScalarCastSemanticFacts scalar_cast_semantic_facts(
+    const bir::CastInst& cast) {
+  const auto opcode = scalar_cast_opcode_semantic_facts(cast.opcode);
+  const bool source_is_integer = scalar_register_view(cast.operand.type).has_value();
+  const bool result_is_integer = scalar_register_view(cast.result.type).has_value();
+  const bool source_is_float = is_scalar_alu_floating_type(cast.operand.type);
+  const bool result_is_float = is_scalar_alu_floating_type(cast.result.type);
+  const bool supported_float_width_conversion =
+      (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
+       cast.result.type == bir::TypeKind::F64) ||
+      (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F64 &&
+       cast.result.type == bir::TypeKind::F32);
+  const bool supported_float_integer_conversion =
+      ((cast.opcode == bir::CastOpcode::SIToFP || cast.opcode == bir::CastOpcode::UIToFP) &&
+       source_is_integer && result_is_float) ||
+      ((cast.opcode == bir::CastOpcode::FPToSI || cast.opcode == bir::CastOpcode::FPToUI) &&
+       source_is_float && result_is_integer);
+  const bool supported =
+      (opcode.simple_integer_cast && source_is_integer && result_is_integer) ||
+      supported_float_width_conversion ||
+      supported_float_integer_conversion;
+  return ScalarCastSemanticFacts{
+      .opcode = opcode,
+      .source_is_integer = source_is_integer,
+      .result_is_integer = result_is_integer,
+      .source_is_float = source_is_float,
+      .result_is_float = result_is_float,
+      .supported_float_width_conversion = supported_float_width_conversion,
+      .supported_float_integer_conversion = supported_float_integer_conversion,
+      .supported = supported,
+  };
+}
+
+}  // namespace
 
 MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation) {
   switch (operation) {
@@ -698,30 +760,14 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
       storage_plan.function_name != value_locations.function_name) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::InvalidFunction);
   }
-  const bool is_simple_integer_cast = is_simple_integer_cast_opcode(cast.opcode);
-  const bool is_conversion_cast = is_supported_scalar_conversion_cast_opcode(cast.opcode);
-  if (!is_simple_integer_cast && !is_conversion_cast) {
+  const auto semantic = scalar_cast_semantic_facts(cast);
+  if (!semantic.opcode.simple_integer_cast && !semantic.opcode.scalar_conversion_cast) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOpcode);
   }
   if (cast.result.kind != bir::Value::Kind::Named || cast.result.name.empty()) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultValue);
   }
-  const bool source_is_integer = scalar_register_view(cast.operand.type).has_value();
-  const bool result_is_integer = scalar_register_view(cast.result.type).has_value();
-  const bool source_is_float = is_scalar_alu_floating_type(cast.operand.type);
-  const bool result_is_float = is_scalar_alu_floating_type(cast.result.type);
-  const bool supported_float_width_conversion =
-      (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
-       cast.result.type == bir::TypeKind::F64) ||
-      (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F64 &&
-       cast.result.type == bir::TypeKind::F32);
-  const bool supported_float_integer_conversion =
-      ((cast.opcode == bir::CastOpcode::SIToFP || cast.opcode == bir::CastOpcode::UIToFP) &&
-       source_is_integer && result_is_float) ||
-      ((cast.opcode == bir::CastOpcode::FPToSI || cast.opcode == bir::CastOpcode::FPToUI) &&
-       source_is_float && result_is_integer);
-  if ((!is_simple_integer_cast || !source_is_integer || !result_is_integer) &&
-      !supported_float_width_conversion && !supported_float_integer_conversion) {
+  if (!semantic.supported) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandType);
   }
 
@@ -765,7 +811,8 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
     }
   }
   const auto* source_register = std::get_if<RegisterOperand>(&source.payload);
-  if ((is_conversion_cast || supported_float_width_conversion) &&
+  if ((semantic.opcode.scalar_conversion_cast ||
+       semantic.supported_float_width_conversion) &&
       (source.kind != OperandKind::Register || source_register == nullptr)) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandStorage);
   }
@@ -778,7 +825,7 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
       .record =
           ScalarCastRecord{
               .surface = RecordSurfaceKind::RecordOnly,
-              .operation = scalar_cast_operation_from_cast_opcode(cast.opcode),
+              .operation = semantic.opcode.operation,
               .source_cast_opcode = cast.opcode,
               .source_type = cast.operand.type,
               .result_value_id = result_home->value_id,
@@ -791,9 +838,11 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
               .crosses_register_bank = source_bank != prepare::PreparedRegisterBank::None &&
                                        result_bank != prepare::PreparedRegisterBank::None &&
                                        source_bank != result_bank,
-              .supported_simple_integer_cast = is_simple_integer_cast,
-              .supported_float_integer_conversion = supported_float_integer_conversion,
-              .supported_float_width_conversion = supported_float_width_conversion,
+              .supported_simple_integer_cast = semantic.opcode.simple_integer_cast,
+              .supported_float_integer_conversion =
+                  semantic.supported_float_integer_conversion,
+              .supported_float_width_conversion =
+                  semantic.supported_float_width_conversion,
           },
       .error = PreparedScalarCastRecordError::None,
   };

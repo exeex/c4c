@@ -375,18 +375,88 @@ namespace prepare = c4c::backend::prepare;
   }
 }
 
+struct ScalarAluOpcodeSemanticFacts {
+  bool integer_alu_opcode = false;
+  bool division_opcode = false;
+  bool remainder_opcode = false;
+  bool publication_opcode = false;
+  ScalarAluOperationKind publication_operation = ScalarAluOperationKind::Deferred;
+};
+
+[[nodiscard]] ScalarAluOpcodeSemanticFacts scalar_alu_opcode_semantic_facts(
+    bir::BinaryOpcode opcode) {
+  const bool integer_alu_opcode = is_scalar_alu_integer_opcode(opcode);
+  const bool division_opcode =
+      opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::UDiv;
+  const bool remainder_opcode =
+      opcode == bir::BinaryOpcode::SRem || opcode == bir::BinaryOpcode::URem;
+  const bool publication_opcode = integer_alu_opcode ||
+                                  opcode == bir::BinaryOpcode::Mul ||
+                                  division_opcode ||
+                                  remainder_opcode;
+  return ScalarAluOpcodeSemanticFacts{
+      .integer_alu_opcode = integer_alu_opcode,
+      .division_opcode = division_opcode,
+      .remainder_opcode = remainder_opcode,
+      .publication_opcode = publication_opcode,
+      .publication_operation = remainder_opcode
+                                   ? ScalarAluOperationKind::Div
+                                   : scalar_alu_operation_from_binary_opcode(opcode),
+  };
+}
+
 [[nodiscard]] bool is_scalar_alu_publication_opcode(bir::BinaryOpcode opcode) {
-  return is_scalar_alu_integer_opcode(opcode) || opcode == bir::BinaryOpcode::Mul ||
-         opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::SRem ||
-         opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
+  const auto facts = scalar_alu_opcode_semantic_facts(opcode);
+  return facts.publication_opcode;
 }
 
 [[nodiscard]] ScalarAluOperationKind scalar_alu_publication_operation(
     bir::BinaryOpcode opcode) {
-  if (opcode == bir::BinaryOpcode::SRem || opcode == bir::BinaryOpcode::URem) {
-    return ScalarAluOperationKind::Div;
-  }
-  return scalar_alu_operation_from_binary_opcode(opcode);
+  const auto facts = scalar_alu_opcode_semantic_facts(opcode);
+  return facts.publication_operation;
+}
+
+[[nodiscard]] std::optional<unsigned> scalar_alu_post_sign_extend_bits(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind operand_type,
+    bir::TypeKind result_type);
+
+struct ScalarAluSemanticFacts {
+  ScalarAluOpcodeSemanticFacts opcode;
+  bool scalar_operand_type = false;
+  bool scalar_result_type = false;
+  bool same_scalar_integer_type = false;
+  bool integer_operation = false;
+  bool unsigned_reduction_candidate = false;
+  bool unsigned_div_rem_publication = false;
+  std::optional<unsigned> post_sign_extend_result_bits;
+};
+
+[[nodiscard]] ScalarAluSemanticFacts scalar_alu_semantic_facts(
+    const bir::BinaryInst& binary) {
+  const auto opcode = scalar_alu_opcode_semantic_facts(binary.opcode);
+  const bool scalar_operand_type = scalar_register_view(binary.operand_type).has_value();
+  const bool scalar_result_type = scalar_register_view(binary.result.type).has_value();
+  const bool same_scalar_integer_type =
+      scalar_operand_type && scalar_result_type &&
+      binary.operand_type == binary.result.type;
+  return ScalarAluSemanticFacts{
+      .opcode = opcode,
+      .scalar_operand_type = scalar_operand_type,
+      .scalar_result_type = scalar_result_type,
+      .same_scalar_integer_type = same_scalar_integer_type,
+      .integer_operation = scalar_operand_type && scalar_result_type &&
+                           opcode.integer_alu_opcode,
+      .unsigned_reduction_candidate =
+          same_scalar_integer_type &&
+          is_unsigned_power_of_two_reduction_opcode(binary.opcode),
+      .unsigned_div_rem_publication =
+          same_scalar_integer_type &&
+          (binary.opcode == bir::BinaryOpcode::UDiv ||
+           binary.opcode == bir::BinaryOpcode::URem),
+      .post_sign_extend_result_bits = scalar_alu_post_sign_extend_bits(
+          binary.opcode, binary.operand_type, binary.result.type),
+  };
 }
 
 [[nodiscard]] std::optional<unsigned> unsigned_reduction_post_zero_extend_bits(
@@ -3459,27 +3529,13 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       storage_plan.function_name != value_locations.function_name) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::InvalidFunction);
   }
-  const bool is_integer_operation =
-      scalar_register_view(binary.operand_type).has_value() &&
-      scalar_register_view(binary.result.type).has_value() &&
-      is_scalar_alu_integer_opcode(binary.opcode);
-  if (!is_integer_operation && is_prepared_scalar_float_alu_operation(binary)) {
+  const auto semantic = scalar_alu_semantic_facts(binary);
+  if (!semantic.integer_operation && is_prepared_scalar_float_alu_operation(binary)) {
     return make_prepared_scalar_float_alu_record(
         names, value_locations, storage_plan, binary);
   }
-  const bool may_be_unsigned_reduction =
-      is_unsigned_power_of_two_reduction_opcode(binary.opcode) &&
-      scalar_register_view(binary.operand_type).has_value() &&
-      scalar_register_view(binary.result.type).has_value() &&
-      binary.operand_type == binary.result.type;
-  const bool may_be_unsigned_div_rem_publication =
-      (binary.opcode == bir::BinaryOpcode::UDiv ||
-       binary.opcode == bir::BinaryOpcode::URem) &&
-      scalar_register_view(binary.operand_type).has_value() &&
-      scalar_register_view(binary.result.type).has_value() &&
-      binary.operand_type == binary.result.type;
-  if (!is_integer_operation && !may_be_unsigned_reduction &&
-      !may_be_unsigned_div_rem_publication) {
+  if (!semantic.integer_operation && !semantic.unsigned_reduction_candidate &&
+      !semantic.unsigned_div_rem_publication) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
   if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
@@ -3536,16 +3592,13 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     }
   }
 
-  ScalarAluOperationKind operation = scalar_alu_publication_operation(binary.opcode);
-  bool supported_integer_operation = is_integer_operation || may_be_unsigned_div_rem_publication;
+  ScalarAluOperationKind operation = semantic.opcode.publication_operation;
+  bool supported_integer_operation =
+      semantic.integer_operation || semantic.unsigned_div_rem_publication;
   std::optional<unsigned> post_zero_extend_result_bits;
   std::optional<unsigned> post_sign_extend_result_bits =
-      scalar_alu_post_sign_extend_bits(binary.opcode, binary.operand_type, binary.result.type);
-  if (may_be_unsigned_reduction &&
-      scalar_register_view(binary.operand_type).has_value() &&
-      scalar_register_view(binary.result.type).has_value() &&
-      binary.operand_type == binary.result.type &&
-      is_unsigned_power_of_two_reduction_opcode(binary.opcode)) {
+      semantic.post_sign_extend_result_bits;
+  if (semantic.unsigned_reduction_candidate) {
     const auto reduction_operation =
         unsigned_reduction_operation(binary.opcode, binary.operand_type, rhs);
     if (!supported_integer_operation && !reduction_operation.has_value()) {
