@@ -8,6 +8,7 @@
 #include "src/backend/mir/aarch64/codegen/dispatch_publication.hpp"
 #include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
+#include "src/backend/mir/aarch64/codegen/memory.hpp"
 #include "src/backend/mir/aarch64/codegen/select_materialization.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"

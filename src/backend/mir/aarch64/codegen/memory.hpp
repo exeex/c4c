@@ -53,6 +53,8 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
     std::size_t width_bytes);
 [[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type);
+[[nodiscard]] std::optional<std::string_view> fixed_formal_scalar_store_mnemonic(
+    bir::TypeKind type);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
@@ -86,6 +88,16 @@ void retarget_memory_result_to_prepared_home(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     const BlockScalarLoweringState& scalar_state);
+
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_store_local_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+
+[[nodiscard]] std::optional<prepare::PreparedFixedFormalStoreSourcePublication>
+plan_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index);
 
 [[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
     const module::BlockLoweringContext& context,
@@ -122,6 +134,13 @@ lower_pointer_base_plus_offset_store_local_publication(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
     std::size_t instruction_index);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state);
 
 void lower_pending_store_global_stack_value_publications(
     const module::BlockLoweringContext& context,

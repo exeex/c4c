@@ -213,6 +213,28 @@ namespace abi = c4c::backend::aarch64::abi;
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string_view> fixed_formal_scalar_store_mnemonic(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"strb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"strh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"str"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 namespace {
 
 [[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
@@ -3262,6 +3284,24 @@ MemoryInstructionLoweringResult lower_i128_transport_instruction(
   }
   return prepared;
 }
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_store_local_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return nullptr;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  return addressing != nullptr
+             ? prepare::find_prepared_memory_access(
+                   *addressing,
+                   context.control_flow_block->block_label,
+                   instruction_index)
+             : nullptr;
+}
 [[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,
@@ -3804,6 +3844,143 @@ plan_pointer_base_plus_offset_store_local_publication(
 }
 
 }  // namespace
+
+[[nodiscard]] std::optional<prepare::PreparedFixedFormalStoreSourcePublication>
+plan_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.bir_function == nullptr ||
+      context.function.value_locations == nullptr ||
+      store.value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto* access = prepared_store_local_access(context, instruction_index);
+  const auto* source_home = prepared_value_home_for_value(context, store.value);
+  const auto* destination_slot =
+      access != nullptr &&
+              access->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+              access->address.frame_slot_id.has_value()
+          ? find_frame_slot(context.function.prepared->stack_layout,
+                            *access->address.frame_slot_id)
+          : nullptr;
+  const auto* destination_object =
+      destination_slot != nullptr
+          ? find_stack_object(context.function.prepared->stack_layout,
+                              destination_slot->object_id)
+          : nullptr;
+  auto planned = prepare::plan_prepared_fixed_formal_store_source_publication(
+      prepare::PreparedFormalPublicationInputs{
+          .names = &context.function.prepared->names,
+          .function = context.function.bir_function,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = context.function.value_home_lookups,
+      },
+      prepare::PreparedStoreSourcePublicationInputs{
+          .source_value = &store.value,
+          .destination_access = access,
+          .source_home = source_home,
+          .destination_frame_slot = destination_slot,
+          .destination_stack_object = destination_object,
+          .intent =
+              prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      });
+  if (!planned.fixed_formal_source ||
+      !prepare::prepared_store_source_publication_available(planned.store_source)) {
+    return std::nullopt;
+  }
+  return planned;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto planned =
+      plan_fixed_formal_store_local_publication(context, *store, instruction_index);
+  if (!planned.has_value() ||
+      planned->store_source.destination_base_kind !=
+          prepare::PreparedAddressBaseKind::FrameSlot ||
+      !planned->store_source.destination_can_use_base_plus_offset ||
+      !planned->store_source.destination_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto emitted =
+      find_emitted_scalar_register(scalar_state,
+                                   planned->store_source.source_value_name);
+  const auto mnemonic = fixed_formal_scalar_store_mnemonic(store->value.type);
+  if (!emitted.has_value() || !mnemonic.has_value() ||
+      !abi::is_gp_register(emitted->reg)) {
+    return std::nullopt;
+  }
+  const std::int64_t signed_offset =
+      static_cast<std::int64_t>(
+          *planned->store_source.destination_stack_offset_bytes) +
+      planned->store_source.destination_byte_offset;
+  if (signed_offset < 0) {
+    return std::nullopt;
+  }
+  const auto address =
+      frame_slot_address(context.function, static_cast<std::size_t>(signed_offset));
+  auto store_reg = emitted->reg;
+  if (const auto expected_view = scalar_register_view(store->value.type);
+      expected_view.has_value()) {
+    const auto resized = abi::gp_register(emitted->reg.index, *expected_view);
+    if (!resized.has_value()) {
+      return std::nullopt;
+    }
+    store_reg = *resized;
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = std::string{*mnemonic} + " " +
+                                 std::string{abi::register_name(store_reg)} +
+                                 ", " + address,
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_local_value_publication(
