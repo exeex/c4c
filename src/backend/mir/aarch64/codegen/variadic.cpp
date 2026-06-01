@@ -36,99 +36,6 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
-void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
-                                        std::string_view fact) {
-  missing.push_back(std::string{fact});
-}
-
-[[nodiscard]] std::vector<std::string> missing_variadic_entry_facts(
-    const prepare::PreparedVariadicEntryPlanFunction& plan) {
-  std::vector<std::string> missing = plan.missing_required_facts;
-  if (!plan.named_register_counts.gp.has_value()) {
-    append_missing_variadic_entry_fact(missing, "named_register_counts.gp");
-  }
-  if (!plan.named_register_counts.fp.has_value()) {
-    append_missing_variadic_entry_fact(missing, "named_register_counts.fp");
-  }
-  if (plan.register_save_area.required) {
-    if (!plan.register_save_area.size_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.size_bytes");
-    }
-    if (!plan.register_save_area.align_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.align_bytes");
-    }
-    if (!plan.register_save_area.slot_id.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.slot_id");
-    }
-    if (!plan.register_save_area.stack_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.stack_offset_bytes");
-    }
-    if (!plan.register_save_area.gp_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.gp_offset_bytes");
-    }
-    if (!plan.register_save_area.fp_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.fp_offset_bytes");
-    }
-    if (!plan.register_save_area.gp_slot_size_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.gp_slot_size_bytes");
-    }
-    if (!plan.register_save_area.fp_slot_size_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "register_save_area.fp_slot_size_bytes");
-    }
-    if (!plan.register_save_area.saved_gp_register_count.has_value()) {
-      append_missing_variadic_entry_fact(missing,
-                                         "register_save_area.saved_gp_register_count");
-    }
-    if (!plan.register_save_area.saved_fp_register_count.has_value()) {
-      append_missing_variadic_entry_fact(missing,
-                                         "register_save_area.saved_fp_register_count");
-    }
-    if (!plan.register_save_area.initial_gp_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing,
-                                         "register_save_area.initial_gp_offset_bytes");
-    }
-    if (!plan.register_save_area.initial_fp_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing,
-                                         "register_save_area.initial_fp_offset_bytes");
-    }
-  }
-  if (plan.overflow_area.required) {
-    if (!plan.overflow_area.base_slot_id.has_value()) {
-      append_missing_variadic_entry_fact(missing, "overflow_area.base_slot_id");
-    }
-    if (!plan.overflow_area.base_stack_offset_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "overflow_area.base_stack_offset_bytes");
-    }
-    if (!plan.overflow_area.align_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "overflow_area.align_bytes");
-    }
-  }
-  if (plan.va_list_layout.required) {
-    if (!plan.va_list_layout.size_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "va_list_layout.size_bytes");
-    }
-    if (!plan.va_list_layout.align_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "va_list_layout.align_bytes");
-    }
-    if (plan.va_list_layout.fields.empty()) {
-      append_missing_variadic_entry_fact(missing, "va_list_layout.fields");
-    }
-  }
-  if (!plan.helper_resources.required_helpers.empty()) {
-    if (!plan.helper_resources.scratch_register_count.has_value()) {
-      append_missing_variadic_entry_fact(missing,
-                                         "helper_resources.scratch_register_count");
-    }
-    if (!plan.helper_resources.scratch_stack_bytes.has_value()) {
-      append_missing_variadic_entry_fact(missing, "helper_resources.scratch_stack_bytes");
-    }
-    if (plan.helper_operand_homes.empty()) {
-      append_missing_variadic_entry_fact(missing, "helper_operand_homes");
-    }
-  }
-  return missing;
-}
-
 [[nodiscard]] std::string variadic_entry_missing_fact_message(
     const std::vector<std::string>& missing) {
   std::string message =
@@ -138,6 +45,33 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
     message += missing.front();
   }
   return message;
+}
+
+[[nodiscard]] std::string variadic_entry_missing_fact_message(std::string_view missing) {
+  std::string message =
+      "AArch64 variadic entry helper lowering requires complete prepared variadic entry facts";
+  if (!missing.empty()) {
+    message += "; missing fact=";
+    message += missing;
+  }
+  return message;
+}
+
+[[nodiscard]] std::string_view missing_variadic_entry_helper_consumption_fact(
+    const prepare::PreparedVariadicEntryPlanFunction& entry) {
+  if (entry.helper_resources.required_helpers.empty()) {
+    return {};
+  }
+  if (!entry.helper_resources.scratch_register_count.has_value()) {
+    return "helper_resources.scratch_register_count";
+  }
+  if (!entry.helper_resources.scratch_stack_bytes.has_value()) {
+    return "helper_resources.scratch_stack_bytes";
+  }
+  if (entry.helper_operand_homes.empty()) {
+    return "helper_operand_homes";
+  }
+  return {};
 }
 
 [[nodiscard]] std::optional<VariadicVaStartRecord> make_variadic_va_start_record(
@@ -1155,7 +1089,7 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
         "AArch64 variadic entry helper lowering requires a PreparedVariadicEntryPlanFunction");
     return nullptr;
   }
-  const auto missing = missing_variadic_entry_facts(*entry_plan);
+  const auto& missing = entry_plan->missing_required_facts;
   if (!missing.empty()) {
     append_call_diagnostic(
         diagnostics,
@@ -1163,6 +1097,17 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
         context,
         instruction_index,
         variadic_entry_missing_fact_message(missing));
+    return nullptr;
+  }
+  if (const auto missing_consumption_fact =
+          missing_variadic_entry_helper_consumption_fact(*entry_plan);
+      !missing_consumption_fact.empty()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        variadic_entry_missing_fact_message(missing_consumption_fact));
     return nullptr;
   }
   return entry_plan;
