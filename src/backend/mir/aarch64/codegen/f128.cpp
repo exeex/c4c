@@ -511,6 +511,175 @@ std::optional<std::string> validate_f128_cmp_scalar_result(
   return std::nullopt;
 }
 
+bool complete_f128_preserved_value_route(
+    const prepare::PreparedCallPreservedValue& preserved) {
+  switch (preserved.route) {
+    case prepare::PreparedCallPreservationRoute::Unknown:
+      return false;
+    case prepare::PreparedCallPreservationRoute::CalleeSavedRegister:
+      return preserved.register_name.has_value() &&
+             preserved.register_bank.has_value() &&
+             !preserved.occupied_register_names.empty() &&
+             preserved.register_placement.has_value() &&
+             preserved.callee_saved_save_index.has_value();
+    case prepare::PreparedCallPreservationRoute::StackSlot:
+      return preserved.slot_id.has_value() &&
+             preserved.stack_offset_bytes.has_value() &&
+             preserved.stack_size_bytes.has_value() &&
+             *preserved.stack_size_bytes > 0 &&
+             preserved.stack_align_bytes.has_value() &&
+             *preserved.stack_align_bytes > 0 &&
+             preserved.spill_slot_placement.has_value();
+  }
+  return false;
+}
+
+bool has_complete_f128_live_preservation(
+    const prepare::PreparedF128RuntimeHelper::LivePreservationPolicy& policy) {
+  if (!policy.evaluated || !policy.caller_saved_clobbers_modeled ||
+      !policy.no_additional_live_preservation_required) {
+    return false;
+  }
+  for (const auto& preserved : policy.preserved_values) {
+    if (!complete_f128_preserved_value_route(preserved)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool has_complete_f128_selected_call_ownership(
+    const prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy& ownership) {
+  return ownership.owns_terminal_call &&
+         ownership.has_callee_identity &&
+         ownership.has_resource_policy &&
+         ownership.has_clobber_policy &&
+         ownership.has_abi_bindings &&
+         ownership.has_marshaling &&
+         ownership.has_live_preservation;
+}
+
+bool has_complete_f128_helper_resource_policy(
+    const prepare::PreparedF128RuntimeHelper::ResourcePolicy& policy) {
+  return policy.call_boundary &&
+         policy.runtime_helper_callee &&
+         policy.caller_saved_clobbers &&
+         policy.preserves_source_operation_identity;
+}
+
+bool has_complete_f128_helper_abi_policy(
+    prepare::PreparedF128RuntimeHelperFamily family,
+    bir::TypeKind source_type,
+    bir::TypeKind result_type,
+    const prepare::PreparedF128RuntimeHelper::AbiPolicy& policy) {
+  const bool scalar_to_f128_cast =
+      family == prepare::PreparedF128RuntimeHelperFamily::Cast &&
+      result_type == bir::TypeKind::F128;
+  const bool f128_to_scalar_cast =
+      family == prepare::PreparedF128RuntimeHelperFamily::Cast &&
+      source_type == bir::TypeKind::F128;
+  if (family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic) {
+    return policy.transition ==
+               prepare::PreparedF128RuntimeHelperAbiTransition::
+                   DirectF128ArgumentsAndResult &&
+           policy.argument_bank == prepare::PreparedRegisterBank::Vreg &&
+           policy.result_bank == prepare::PreparedRegisterBank::Vreg &&
+           policy.argument_count == 2 &&
+           policy.result_count == 1 &&
+           policy.width_bytes == 16;
+  }
+  if (family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+    return policy.transition ==
+               prepare::PreparedF128RuntimeHelperAbiTransition::
+                   DirectF128ArgumentsAndCmpResult &&
+           policy.argument_bank == prepare::PreparedRegisterBank::Vreg &&
+           policy.result_bank == prepare::PreparedRegisterBank::Gpr &&
+           policy.argument_count == 2 &&
+           policy.result_count == 1 &&
+           policy.width_bytes == 4;
+  }
+  if (scalar_to_f128_cast) {
+    return policy.transition ==
+               prepare::PreparedF128RuntimeHelperAbiTransition::
+                   DirectScalarArgumentAndF128Result &&
+           policy.argument_bank == prepare::PreparedRegisterBank::Fpr &&
+           policy.result_bank == prepare::PreparedRegisterBank::Vreg &&
+           policy.argument_count == 1 &&
+           policy.result_count == 1 &&
+           policy.width_bytes == 16;
+  }
+  if (f128_to_scalar_cast) {
+    return policy.transition ==
+               prepare::PreparedF128RuntimeHelperAbiTransition::
+                   DirectF128ArgumentAndScalarResult &&
+           policy.argument_bank == prepare::PreparedRegisterBank::Vreg &&
+           policy.result_bank == prepare::PreparedRegisterBank::Fpr &&
+           policy.argument_count == 1 &&
+           policy.result_count == 1 &&
+           (policy.width_bytes == 4 || policy.width_bytes == 8);
+  }
+  return false;
+}
+
+bool f128_helper_source_matches_record(
+    const F128RuntimeHelperBoundaryRecord& record) {
+  const auto* helper = record.source_helper;
+  if (helper == nullptr) {
+    return false;
+  }
+  return helper->helper_family == record.helper_family &&
+         helper->helper_kind == record.helper_kind &&
+         helper->callee_name == record.callee_name &&
+         helper->source_binary_opcode == record.source_binary_opcode &&
+         helper->source_cast_opcode == record.source_cast_opcode &&
+         helper->function_name == record.function_name &&
+         helper->block_index == record.block_index &&
+         helper->instruction_index == record.instruction_index &&
+         helper->source_type == record.source_type &&
+         helper->result_type == record.result_type &&
+         helper->result_value_id == record.result_value_id &&
+         helper->result_value_name == record.result_value_name &&
+         helper->operand_value_id == record.operand_value_id &&
+         helper->operand_value_name == record.operand_value_name &&
+         helper->lhs_value_id == record.lhs_value_id &&
+         helper->lhs_value_name == record.lhs_value_name &&
+         helper->rhs_value_id == record.rhs_value_id &&
+         helper->rhs_value_name == record.rhs_value_name &&
+         helper->result_ownership == record.result_ownership;
+}
+
+std::optional<std::string> validate_f128_runtime_helper_source_policy(
+    const F128RuntimeHelperBoundaryRecord& record) {
+  const auto* helper = record.source_helper;
+  if (helper == nullptr) {
+    return std::string{"f128 helper boundary is missing prepared helper provenance"};
+  }
+  if (!f128_helper_source_matches_record(record)) {
+    return std::string{"f128 helper boundary source helper facts do not match selected record"};
+  }
+  if (!has_complete_f128_helper_resource_policy(record.resource_policy) ||
+      !has_complete_f128_helper_resource_policy(helper->resource_policy) ||
+      record.clobbered_registers.empty() ||
+      helper->clobbered_registers.empty()) {
+    return std::string{"f128 helper boundary is missing prepared resource or clobber policy"};
+  }
+  if (!has_complete_f128_helper_abi_policy(
+          record.helper_family, record.source_type, record.result_type, record.abi_policy) ||
+      !has_complete_f128_helper_abi_policy(
+          helper->helper_family, helper->source_type, helper->result_type, helper->abi_policy)) {
+    return std::string{"f128 helper boundary is missing prepared ABI policy"};
+  }
+  if (!has_complete_f128_live_preservation(record.live_preservation_policy) ||
+      !has_complete_f128_live_preservation(helper->live_preservation_policy)) {
+    return std::string{"f128 helper boundary is missing prepared live-preservation policy"};
+  }
+  if (!has_complete_f128_selected_call_ownership(record.selected_call_ownership) ||
+      !has_complete_f128_selected_call_ownership(helper->selected_call_ownership)) {
+    return std::string{"f128 helper boundary is missing prepared selected-call ownership"};
+  }
+  return std::nullopt;
+}
+
 std::string_view f128_register_display_name(abi::RegisterReference reg) {
   static constexpr std::string_view x_names[] = {
       "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
@@ -799,70 +968,11 @@ MachineNodeStatusRecord validate_f128_runtime_helper_boundary_instruction(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary is missing full-width q-register carrier or ABI facts"};
   }
-  if (!instruction.resource_policy.call_boundary ||
-      !instruction.resource_policy.runtime_helper_callee ||
-      !instruction.resource_policy.caller_saved_clobbers ||
-      !instruction.resource_policy.preserves_source_operation_identity) {
+  if (const auto error = validate_f128_runtime_helper_source_policy(instruction);
+      error.has_value()) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 helper boundary is missing resource policy facts"};
-  }
-  if ((!comparison_helper && !cast_helper &&
-       instruction.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult) ||
-      (comparison_helper &&
-       instruction.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult) ||
-      (cast_helper && instruction.result_type == bir::TypeKind::F128 &&
-       instruction.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result) ||
-      (cast_helper && instruction.source_type == bir::TypeKind::F128 &&
-       instruction.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult) ||
-      (!cast_helper && instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg) ||
-      (cast_helper && instruction.result_type == bir::TypeKind::F128 &&
-       instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Fpr) ||
-      (cast_helper && instruction.source_type == bir::TypeKind::F128 &&
-       instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg) ||
-      (!comparison_helper && instruction.result_type == bir::TypeKind::F128
-           ? instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg
-           : (comparison_helper
-                  ? instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr
-                  : instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Fpr)) ||
-      (!cast_helper ? instruction.abi_policy.argument_count != 2
-                    : instruction.abi_policy.argument_count != 1) ||
-      instruction.abi_policy.result_count != 1 ||
-      (!comparison_helper && instruction.result_type == bir::TypeKind::F128
-           ? instruction.abi_policy.width_bytes != 16
-           : (comparison_helper ? instruction.abi_policy.width_bytes != 4
-                                : (instruction.abi_policy.width_bytes != 4 &&
-                                   instruction.abi_policy.width_bytes != 8)))) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 helper boundary is missing ABI/register-bank policy facts"};
-  }
-  if (instruction.clobbered_registers.empty()) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 helper boundary is missing caller-saved clobber policy"};
-  }
-  if (!instruction.live_preservation_policy.evaluated ||
-      !instruction.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !instruction.live_preservation_policy.no_additional_live_preservation_required) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 helper boundary is missing live-preservation policy"};
-  }
-  if (!instruction.selected_call_ownership.owns_terminal_call ||
-      !instruction.selected_call_ownership.has_callee_identity ||
-      !instruction.selected_call_ownership.has_resource_policy ||
-      !instruction.selected_call_ownership.has_clobber_policy ||
-      !instruction.selected_call_ownership.has_abi_bindings ||
-      !instruction.selected_call_ownership.has_marshaling ||
-      !instruction.selected_call_ownership.has_live_preservation) {
-    return MachineNodeStatusRecord{
-        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 helper boundary is missing selected-call ownership policy"};
+        .diagnostic = *error};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -1047,35 +1157,13 @@ mir::TargetInstructionPrintResult print_f128_transport(
 mir::TargetInstructionPrintResult print_f128_runtime_helper(
     const InstructionRecord& instruction,
     const F128RuntimeHelperBoundaryRecord& helper) {
-  if (helper.source_helper == nullptr) {
-    return target_unsupported(f128_bad_header(instruction) +
-                              "f128 helper boundary is missing prepared helper provenance");
-  }
   if (helper.callee_name.empty()) {
     return target_unsupported(f128_bad_header(instruction) +
                               "f128 helper boundary is missing callee identity");
   }
-  if (!helper.resource_policy.call_boundary ||
-      !helper.resource_policy.runtime_helper_callee ||
-      !helper.resource_policy.caller_saved_clobbers ||
-      !helper.resource_policy.preserves_source_operation_identity ||
-      helper.clobbered_registers.empty()) {
-    return target_unsupported(f128_bad_header(instruction) +
-                              "f128 helper boundary is missing resource or clobber policy");
-  }
-  if (!helper.live_preservation_policy.evaluated ||
-      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !helper.live_preservation_policy.no_additional_live_preservation_required ||
-      !helper.selected_call_ownership.owns_terminal_call ||
-      !helper.selected_call_ownership.has_callee_identity ||
-      !helper.selected_call_ownership.has_resource_policy ||
-      !helper.selected_call_ownership.has_clobber_policy ||
-      !helper.selected_call_ownership.has_abi_bindings ||
-      !helper.selected_call_ownership.has_marshaling ||
-      !helper.selected_call_ownership.has_live_preservation) {
-    return target_unsupported(
-        f128_bad_header(instruction) +
-        "f128 helper boundary printing requires complete selected-call ownership facts");
+  if (const auto error = validate_f128_runtime_helper_source_policy(helper);
+      error.has_value()) {
+    return target_unsupported(f128_bad_header(instruction) + *error);
   }
 
   std::vector<std::string> lines;
@@ -1675,48 +1763,12 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedResultOwnership);
   }
-  if (!helper.resource_policy.call_boundary ||
-      !helper.resource_policy.runtime_helper_callee ||
-      !helper.resource_policy.caller_saved_clobbers ||
-      !helper.resource_policy.preserves_source_operation_identity) {
+  if (!has_complete_f128_helper_resource_policy(helper.resource_policy)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
   }
-  if ((helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic &&
-       helper.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult) ||
-      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison &&
-       helper.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult) ||
-      (cast_helper && helper.result_type == bir::TypeKind::F128 &&
-       helper.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result) ||
-      (cast_helper && helper.source_type == bir::TypeKind::F128 &&
-       helper.abi_policy.transition !=
-           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult) ||
-      (!cast_helper && helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg) ||
-      (cast_helper && helper.result_type == bir::TypeKind::F128 &&
-       helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Fpr) ||
-      (cast_helper && helper.source_type == bir::TypeKind::F128 &&
-       helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg) ||
-      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic
-           ? helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg
-           : (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison
-                  ? helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr
-                  : (helper.result_type == bir::TypeKind::F128
-                         ? helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg
-                         : helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Fpr))) ||
-      (!cast_helper ? helper.abi_policy.argument_count != 2
-                    : helper.abi_policy.argument_count != 1) ||
-      helper.abi_policy.result_count != 1 ||
-      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic
-           ? helper.abi_policy.width_bytes != 16
-           : (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison
-                  ? helper.abi_policy.width_bytes != 4
-                  : (helper.result_type == bir::TypeKind::F128
-                         ? helper.abi_policy.width_bytes != 16
-                         : (helper.abi_policy.width_bytes != 4 &&
-                            helper.abi_policy.width_bytes != 8))))) {
+  if (!has_complete_f128_helper_abi_policy(
+          helper.helper_family, helper.source_type, helper.result_type, helper.abi_policy)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
   }
@@ -1724,16 +1776,8 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingClobberPolicy);
   }
-  if (!helper.live_preservation_policy.evaluated ||
-      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !helper.live_preservation_policy.no_additional_live_preservation_required ||
-      !helper.selected_call_ownership.owns_terminal_call ||
-      !helper.selected_call_ownership.has_callee_identity ||
-      !helper.selected_call_ownership.has_resource_policy ||
-      !helper.selected_call_ownership.has_clobber_policy ||
-      !helper.selected_call_ownership.has_abi_bindings ||
-      !helper.selected_call_ownership.has_marshaling ||
-      !helper.selected_call_ownership.has_live_preservation) {
+  if (!has_complete_f128_live_preservation(helper.live_preservation_policy) ||
+      !has_complete_f128_selected_call_ownership(helper.selected_call_ownership)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
   }

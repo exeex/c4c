@@ -1,37 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/72_aarch64_special_carrier_prepared_policy_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Consume Prepared F128 Carrier And Memory-Backed Facts
+Current Step ID: 5
+Current Step Title: Consume Prepared F128 Runtime Helper And Result Policy
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 for AArch64 f128 transport lowering in
+Completed `plan.md` Step 5 for AArch64 f128 helper-boundary lowering in
 `src/backend/mir/aarch64/codegen/f128.cpp`.
 
-Transport record construction now routes full-width q-register carriers and
-memory-backed carrier homes through local prepared-fact adapters before
-target-local record construction. Memory-backed carrier address recovery now
-cross-checks the record against the original prepared carrier and annotates the
-derived carrier frame-slot memory with the prepared value-home identity before
-the AArch64-local printer chooses `ldr`/`str` spelling.
+Helper-boundary record construction, machine-node selection, and printing now
+consume prepared f128 runtime-helper resource, ABI/result ownership, clobber,
+selected-call ownership, live-preservation, marshal/unmarshal, scalar result,
+and comparison-consumption facts as authority. The AArch64-local path still
+owns helper-boundary record construction, q/vector/scalar register rendering,
+comparison `cmp`/`cset` spelling, final `bl`, and machine-record emission.
 
 ## Suggested Next
 
-Next coherent packet: supervisor should decide whether the active plan is ready
-for review/plan-owner lifecycle handling or needs broader validation around
-AArch64 special-carrier transport/helper boundaries.
+Next coherent packet: supervisor should decide whether Step 5 completion is
+ready for reviewer/plan-owner lifecycle handling or needs broader validation
+around AArch64 special-carrier transport/helper boundaries.
 
 ## Watchouts
 
 `review/idea69_step2_prepared_effect_review.md` and
 `review/idea70_steps1_3_review.md` were already untracked and were not touched.
-The f128 transport printer still keeps q/vector register conversion, memory
-address spelling, `ldr`/`str` choice, and machine-record construction
-AArch64-local; the new adapters only validate and carry prepared authority into
-those local decisions.
+The f128 helper printer still keeps q/vector/scalar register conversion,
+compare `cmp`/`cset`, terminal `bl`, and machine-record construction
+AArch64-local. The new source-policy checks intentionally validate copied
+record facts against the prepared helper pointer before printing or selecting.
 
 ## Proof
 
