@@ -841,6 +841,57 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
   return true;
 }
 
+[[nodiscard]] bool emit_prepared_global_load_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const prepare::PreparedMemoryAccess& access,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto symbol_label =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *access.address.symbol_name);
+  const auto mnemonic = scalar_load_mnemonic(load_global.result.type);
+  const auto load_view = scalar_view_for_type(load_global.result.type);
+  const auto load_target =
+      load_view.has_value() ? gp_register_name(target_index, *load_view) : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (symbol_label.empty() || !mnemonic.has_value() || !load_target.has_value() ||
+      !address.has_value()) {
+    return false;
+  }
+
+  const auto policy =
+      prepared_load_global_address_policy(context, load_global, access);
+  if (!policy.has_value()) {
+    return false;
+  }
+
+  switch (*policy) {
+    case bir::GlobalAddressMaterializationPolicy::GotRequired:
+      lines.push_back("adrp " + *address + ", :got:" + std::string{symbol_label});
+      lines.push_back("ldr " + *address + ", [" + *address + ", :got_lo12:" +
+                      std::string{symbol_label} + "]");
+      lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
+                      register_indirect_address(*address, access.address.byte_offset));
+      return true;
+    case bir::GlobalAddressMaterializationPolicy::Direct: {
+      const auto symbol = relocation_operand(symbol_label, access.address.byte_offset);
+      lines.push_back("adrp " + *address + ", " + symbol);
+      lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
+      lines.push_back(std::string{*mnemonic} + " " + *load_target + ", [" + *address +
+                      "]");
+      return true;
+    }
+    case bir::GlobalAddressMaterializationPolicy::Unspecified:
+      return false;
+  }
+  return false;
+}
+
 std::optional<bir::GlobalAddressMaterializationPolicy>
 prepared_load_global_address_policy(
     const module::BlockLoweringContext& context,
