@@ -91,6 +91,11 @@ struct PreparedScalarFpUnaryIntrinsicRecordErrorSpelling {
   std::string_view spelling;
 };
 
+struct PreparedAddressMaterializationRecordErrorSpelling {
+  PreparedAddressMaterializationRecordError error;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -369,6 +374,43 @@ constexpr std::array<PreparedScalarFpUnaryIntrinsicRecordErrorSpelling, 15>
          "register_conversion_failed"},
     }};
 
+constexpr std::array<PreparedAddressMaterializationRecordErrorSpelling, 17>
+    kPreparedAddressMaterializationRecordErrorSpellings{{
+        {PreparedAddressMaterializationRecordError::None, "none"},
+        {PreparedAddressMaterializationRecordError::InvalidFunction,
+         "invalid_function"},
+        {PreparedAddressMaterializationRecordError::MissingPreparedAddressMaterialization,
+         "missing_prepared_address_materialization"},
+        {PreparedAddressMaterializationRecordError::UnsupportedAddressKind,
+         "unsupported_address_kind"},
+        {PreparedAddressMaterializationRecordError::MissingResultValueName,
+         "missing_result_value_name"},
+        {PreparedAddressMaterializationRecordError::MissingResultValueHome,
+         "missing_result_value_home"},
+        {PreparedAddressMaterializationRecordError::MissingResultStorage,
+         "missing_result_storage"},
+        {PreparedAddressMaterializationRecordError::UnsupportedResultStorage,
+         "unsupported_result_storage"},
+        {PreparedAddressMaterializationRecordError::RegisterConversionFailed,
+         "register_conversion_failed"},
+        {PreparedAddressMaterializationRecordError::MissingFrameSlotId,
+         "missing_frame_slot_id"},
+        {PreparedAddressMaterializationRecordError::MissingSymbolIdentity,
+         "missing_symbol_identity"},
+        {PreparedAddressMaterializationRecordError::MissingStringIdentity,
+         "missing_string_identity"},
+        {PreparedAddressMaterializationRecordError::MissingLabelIdentity,
+         "missing_label_identity"},
+        {PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy,
+         "missing_address_materialization_policy"},
+        {PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch,
+         "address_materialization_policy_mismatch"},
+        {PreparedAddressMaterializationRecordError::MissingTlsMaterializationFacts,
+         "missing_tls_materialization_facts"},
+        {PreparedAddressMaterializationRecordError::TlsFactMismatch,
+         "tls_fact_mismatch"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -586,6 +628,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.error == error;
       });
   if (found == kPreparedScalarFpUnaryIntrinsicRecordErrorSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view prepared_address_materialization_record_error_spelling(
+    PreparedAddressMaterializationRecordError error) {
+  const auto found = std::find_if(
+      kPreparedAddressMaterializationRecordErrorSpellings.begin(),
+      kPreparedAddressMaterializationRecordErrorSpellings.end(),
+      [error](const PreparedAddressMaterializationRecordErrorSpelling& spelling) {
+        return spelling.error == error;
+      });
+  if (found == kPreparedAddressMaterializationRecordErrorSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -1059,43 +1115,7 @@ std::string_view address_materialization_kind_name(AddressMaterializationKind ki
 
 std::string_view prepared_address_materialization_record_error_name(
     PreparedAddressMaterializationRecordError error) {
-  switch (error) {
-    case PreparedAddressMaterializationRecordError::None:
-      return "none";
-    case PreparedAddressMaterializationRecordError::InvalidFunction:
-      return "invalid_function";
-    case PreparedAddressMaterializationRecordError::MissingPreparedAddressMaterialization:
-      return "missing_prepared_address_materialization";
-    case PreparedAddressMaterializationRecordError::UnsupportedAddressKind:
-      return "unsupported_address_kind";
-    case PreparedAddressMaterializationRecordError::MissingResultValueName:
-      return "missing_result_value_name";
-    case PreparedAddressMaterializationRecordError::MissingResultValueHome:
-      return "missing_result_value_home";
-    case PreparedAddressMaterializationRecordError::MissingResultStorage:
-      return "missing_result_storage";
-    case PreparedAddressMaterializationRecordError::UnsupportedResultStorage:
-      return "unsupported_result_storage";
-    case PreparedAddressMaterializationRecordError::RegisterConversionFailed:
-      return "register_conversion_failed";
-    case PreparedAddressMaterializationRecordError::MissingFrameSlotId:
-      return "missing_frame_slot_id";
-    case PreparedAddressMaterializationRecordError::MissingSymbolIdentity:
-      return "missing_symbol_identity";
-    case PreparedAddressMaterializationRecordError::MissingStringIdentity:
-      return "missing_string_identity";
-    case PreparedAddressMaterializationRecordError::MissingLabelIdentity:
-      return "missing_label_identity";
-    case PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy:
-      return "missing_address_materialization_policy";
-    case PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch:
-      return "address_materialization_policy_mismatch";
-    case PreparedAddressMaterializationRecordError::MissingTlsMaterializationFacts:
-      return "missing_tls_materialization_facts";
-    case PreparedAddressMaterializationRecordError::TlsFactMismatch:
-      return "tls_fact_mismatch";
-  }
-  return "unknown";
+  return prepared_address_materialization_record_error_spelling(error);
 }
 
 bool is_compare_predicate(bir::BinaryOpcode opcode) {
