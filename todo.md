@@ -1,37 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/71_aarch64_scalar_control_flow_prepared_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Consume Prepared Compare Join And Fused Operand Facts
+Current Step ID: 6
+Current Step Title: Acceptance Validation And Drift Check
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5 for AArch64 comparison lowering. Conditional branch
-facts now consume prepared materialized-compare join continuation labels before
-local target rewriting, and fused compare branch record construction now
-threads prepared fused operand producer facts into compare operand records
-before AArch64-local operand printing/materialization.
+Completed `plan.md` Step 6 acceptance validation and drift check for idea 71.
+The supervisor acceptance proof passed the full build and test suite, the
+regression guard against `test_baseline.log` reported no new failures, and
+`review/idea71_acceptance_review.md` reported no blocking findings or
+testcase-overfit.
 
 ## Suggested Next
 
-Next coherent packet: run Step 6 acceptance validation and drift review for the
-idea 71 AArch64 scalar/control-flow prepared-authority route.
+Next coherent packet: supervisor can ask the plan owner whether idea 71 is
+ready to close.
 
 ## Watchouts
 
-The compare-join path intentionally consumes existing prepared join
-continuation labels and does not synthesize target-local substitutes. Fused
-operand producers are used only as provenance/constant facts; AArch64
-condition-code spelling, immediate admissibility, and final compare/branch
-emission remain local.
+Acceptance validation is recorded from existing supervisor proof; no new test
+run was required for this todo-only packet.
 
 ## Proof
 
-Ran the delegated proof exactly:
+No new proof command was run for this todo-only acceptance record. Recorded
+existing supervisor acceptance proof:
 
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains a successful build and 169/169
-matching backend tests passed.
+Result: passed. `test_after.log` contains a successful full-suite run with
+3417/3417 tests passed. Regression guard against `test_baseline.log` passed
+with no new failures. Route review in `review/idea71_acceptance_review.md`
+reported no blocking findings and no testcase-overfit.
