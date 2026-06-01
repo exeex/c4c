@@ -524,6 +524,24 @@ struct CompareBranchPrintOperands {
   bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
 };
 
+struct WidthMnemonic {
+  std::size_t width_bytes;
+  std::string_view mnemonic;
+};
+
+std::string_view width_mnemonic(
+    std::size_t width_bytes,
+    std::initializer_list<WidthMnemonic> mnemonics) {
+  const auto found = std::find_if(
+      mnemonics.begin(), mnemonics.end(), [width_bytes](const WidthMnemonic& mnemonic) {
+        return mnemonic.width_bytes == width_bytes;
+      });
+  if (found == mnemonics.end()) {
+    return {};
+  }
+  return found->mnemonic;
+}
+
 std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
     const OperandRecord& lhs_operand,
     const OperandRecord& rhs_operand,
@@ -800,81 +818,37 @@ std::optional<std::string> atomic_value_register_name(
 }
 
 std::string_view atomic_plain_load_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "ldrb";
-    case 2:
-      return "ldrh";
-    case 4:
-    case 8:
-      return "ldr";
-  }
-  return {};
+  return width_mnemonic(width_bytes, {{1, "ldrb"}, {2, "ldrh"}, {4, "ldr"}, {8, "ldr"}});
 }
 
 std::string_view atomic_acquire_load_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "ldarb";
-    case 2:
-      return "ldarh";
-    case 4:
-    case 8:
-      return "ldar";
-  }
-  return {};
+  return width_mnemonic(
+      width_bytes, {{1, "ldarb"}, {2, "ldarh"}, {4, "ldar"}, {8, "ldar"}});
 }
 
 std::string_view atomic_plain_store_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "strb";
-    case 2:
-      return "strh";
-    case 4:
-    case 8:
-      return "str";
-  }
-  return {};
+  return width_mnemonic(width_bytes, {{1, "strb"}, {2, "strh"}, {4, "str"}, {8, "str"}});
 }
 
 std::string_view atomic_release_store_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "stlrb";
-    case 2:
-      return "stlrh";
-    case 4:
-    case 8:
-      return "stlr";
-  }
-  return {};
+  return width_mnemonic(
+      width_bytes, {{1, "stlrb"}, {2, "stlrh"}, {4, "stlr"}, {8, "stlr"}});
 }
 
 std::string_view atomic_exclusive_load_mnemonic(std::size_t width_bytes, bool acquire) {
-  switch (width_bytes) {
-    case 1:
-      return acquire ? "ldaxrb" : "ldxrb";
-    case 2:
-      return acquire ? "ldaxrh" : "ldxrh";
-    case 4:
-    case 8:
-      return acquire ? "ldaxr" : "ldxr";
-  }
-  return {};
+  return acquire
+             ? width_mnemonic(width_bytes,
+                              {{1, "ldaxrb"}, {2, "ldaxrh"}, {4, "ldaxr"}, {8, "ldaxr"}})
+             : width_mnemonic(width_bytes,
+                              {{1, "ldxrb"}, {2, "ldxrh"}, {4, "ldxr"}, {8, "ldxr"}});
 }
 
 std::string_view atomic_exclusive_store_mnemonic(std::size_t width_bytes, bool release) {
-  switch (width_bytes) {
-    case 1:
-      return release ? "stlxrb" : "stxrb";
-    case 2:
-      return release ? "stlxrh" : "stxrh";
-    case 4:
-    case 8:
-      return release ? "stlxr" : "stxr";
-  }
-  return {};
+  return release
+             ? width_mnemonic(width_bytes,
+                              {{1, "stlxrb"}, {2, "stlxrh"}, {4, "stlxr"}, {8, "stlxr"}})
+             : width_mnemonic(width_bytes,
+                              {{1, "stxrb"}, {2, "stxrh"}, {4, "stxr"}, {8, "stxr"}});
 }
 
 std::string_view atomic_rmw_operation_mnemonic(bir::AtomicRmwOpcode opcode) {
