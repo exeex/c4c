@@ -1,10 +1,10 @@
 # Current Packet
 
-Status: Complete
+Status: Active
 Source Idea Path: ideas/open/81_aarch64_dispatch_edge_copy_owner_contraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Build the edge-copy helper classification table
+Current Step ID: Step 3
+Current Step Title: Relocate narrow target-local emission helpers
 
 ## Just Finished
 
@@ -45,7 +45,7 @@ Helper classification:
 
 ## Suggested Next
 
-First bounded contraction packet:
+Active bounded contraction packet for `plan.md` Step 3:
 
 - Objective: move only `prepared_memory_access` and
   `prepared_memory_access_matches_instruction` declarations/definitions from
