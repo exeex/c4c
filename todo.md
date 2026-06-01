@@ -1,41 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/70_aarch64_memory_prepared_address_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Align Memory-Backed f128 And Variadic Consumers
+Current Step ID: 6
+Current Step Title: Acceptance Validation And Drift Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 variadic inspection completed. The remaining variadic memory-backed
-paths in `variadic.cpp` format `va_list` fields, register-save-area stores,
-and aggregate `va_arg` payload copies from prepared variadic ABI facts. Those
-paths carry stack offsets and `PreparedValueHome` stack-slot homes, but not a
-frame-plan/base decision or a full prepared `MemoryOperand` authority comparable
-to the f128 carrier path. No remaining concrete in-scope helper-consumption
-packet was found for Step 5 without expanding record shape or moving ABI-local
-copy policy out of `variadic.cpp`.
+Completed `plan.md` Step 6 acceptance validation and drift check for idea 70.
+The final implementation diff is limited to AArch64 memory/f128 code plus
+planning state: `memory.cpp`, `memory.hpp`, and `f128.cpp` consume prepared
+addressing, value-home/storage, typed stack-source, and prepared frame-slot
+memory facts before target-local emission. No tests were weakened or rewritten.
+
+Drift check result: the route still matches the source idea. Target-local
+policy remains in AArch64 code: offset encodability, scratch/base-register
+choice, memory opcode selection, register view conversion, address spelling,
+f128 q-register transport, and variadic ABI transfer policy. Aggregate
+stack-source transport was explicitly deferred to
+`ideas/open/75_shared_aggregate_transport_plan_probe.md` instead of adding a
+local aggregate-source workaround under idea 70.
 
 ## Suggested Next
 
-Supervisor/plan-owner review: Step 5 appears exhausted after the f128 helper
-consumption and the variadic inspection. Decide whether to close, retire, or
-replace the runbook route for the remaining source-idea work.
+Ask the plan owner to decide whether idea 70 can close with aggregate transport
+authority deferred to idea 75, or whether another lifecycle action is required.
 
 ## Watchouts
 
-Variadic still has local register-indirect formatting and stack-offset
-materialization, but the inspected uses are ABI-local `va_list`/register-save
-area policy rather than duplicate prepared-memory authority. Consuming
-`materialize_frame_slot_memory_address_lines` there would require inventing or
-threading frame-slot base context not present in the current variadic records.
+Remaining visible local formatting in variadic is ABI-local `va_list` /
+register-save-area policy, not a concrete idea 70 prepared-memory authority
+packet. Do not reopen aggregate stack-source or aggregate copy transport here;
+that belongs to idea 75.
 
 ## Proof
 
-No code changed. Per the delegated exhaustion path, no `test_after.log` was
-created. Formatting check run:
+Full-suite acceptance guard passed against the accepted baseline:
+`test_baseline.log` was 3417/3417 and fresh `test_after.log` was 3417/3417,
+with no new failures. The accepted full-suite after log was rolled forward to
+`test_before.log`.
 
 ```sh
-git diff --check -- todo.md
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed
 ```
