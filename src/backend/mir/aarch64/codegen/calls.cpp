@@ -3059,9 +3059,7 @@ make_immediate_cast_call_argument_publication_instruction(
     move_record.destination_register = *destination;
   }
 
-  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+  if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       !is_aarch64_byval_register_lane_move(move) &&
       source_home != nullptr &&
@@ -3098,12 +3096,14 @@ make_immediate_cast_call_argument_publication_instruction(
     auto destination = make_register_operand_from_prepared_authority(
         destination_register_name,
         destination_register_placement,
-        argument->destination_register_bank,
+        effect.destination.register_bank.has_value()
+            ? effect.destination.register_bank
+            : argument->destination_register_bank,
         RegisterOperandRole::CallAbi,
         move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                               : argument->source_value_id,
         source_home->value_name,
-        binding->destination_contiguous_width,
+        effect.destination.contiguous_width,
         binding->destination_occupied_register_names,
         abi::RegisterView::Q,
         diagnostics,
