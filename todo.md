@@ -8,52 +8,55 @@ Current Step Title: Consolidate Proof And Residue Audit
 
 ## Just Finished
 
-Started Step 4 by mapping the typed stack-source and store-source publication
-decisions visible in `dispatch_publication.cpp` to existing prepared facts.
+Completed Step 5 by re-scanning the migrated AArch64 call/publication helpers
+and the idea 69 history from activation through `HEAD`.
 
-| `dispatch_publication.cpp` decision | Existing prepared fact or plan | Current use | Migration note |
-| --- | --- | --- | --- |
-| `lower_local_slot_address_publication` / `emit_local_slot_address_publication_to_register_impl` computes a local frame-slot address for a pointer add/sub publication. | `PreparedAddressMaterializationLookups` via `prepared_frame_address_offset_for_value`. | Already consumes prepared address-materialization facts for the source offset; target-local register selection, add/sub offset arithmetic, and store-back emission remain local. | Not a typed stack-source publication consumer; no Step 4 migration target here unless the source idea is widened into address-materialization cleanup. |
-| `lower_missing_fused_compare_operand_publication` falls back through `plan_prepared_scalar_publication` and `emit_prepared_value_home_publication_to_register` when a needed operand lives in a stack slot. | `PreparedScalarPublicationPlan` plus `PreparedValueHome`; not `PreparedTypedStackSourcePublication`. | Consumes scalar publication/home facts, then emits target-local stack-slot load syntax. | Possible narrow follow-up only if a matching `PreparedEdgePublication` is available at this call site; today this helper has producer/value-home facts but not the typed stack-source publication fact required by `prepare_same_width_i32_stack_source_publication`. |
-| `plan_fixed_formal_store_local_publication` gathers store-local source and destination inputs, then calls `plan_prepared_fixed_formal_store_source_publication`. | `PreparedStoreSourcePublicationPlan`, `PreparedFixedFormalStoreSourcePublication`, and `prepared_store_source_publication_available`. | Already consumes prepared store-source publication authority before `lower_fixed_formal_store_local_publication` emits the AArch64 fixed-formal `str*`. | No first migration target in this helper; residue is target-local mnemonic/register/address conversion. |
-| `lower_fixed_formal_store_local_publication` checks prepared destination frame-slot/base-plus-offset facts and uses `store_source.source_value_name`, `destination_stack_offset_bytes`, and `destination_byte_offset`. | The `store_source` member returned by `PreparedFixedFormalStoreSourcePublication`. | Already depends on the prepared plan for source identity and destination memory authority. | Keep as store-source plan reuse; broader store-source publication helpers live outside `dispatch_publication.cpp`. |
-| No `dispatch_publication.cpp` call to `prepare_same_width_i32_stack_source_publication` or direct `PreparedTypedStackSourcePublication` use exists. | Shared fact exists in `prepared_lookups.*`; AArch64 has no local consumer in this file. | Not consumed in `dispatch_publication.cpp`. | Blocker for an in-file typed stack-source migration: the only typed fact constructor takes a `PreparedEdgePublication*`, but the visible `dispatch_publication.cpp` candidates do not currently carry that publication fact. |
+The migrated call helper surface in `calls.cpp` now gates register-argument
+publication through `PreparedCallBoundaryEffectPlan`, keeps
+`plan_prepared_call_boundary_effects` as the call-boundary authority, and
+leaves AArch64 register rendering, instruction choice, and machine-record
+construction local. No broad call rewrite or renamed local re-derivation was
+found behind the prepared-effect helper names.
 
-Lifecycle decision: Step 4 is exhausted for the active source idea's owned
-files. There is no valid in-scope `dispatch_publication.cpp` implementation
-packet for `PreparedTypedStackSourcePublication` without expanding ownership
-to the edge-copy publication owner. The out-of-scope route is captured as
+The migrated publication helper surface in `dispatch_publication.cpp` routes
+same-block and fused-compare source decisions through prepared
+edge-publication source producer queries, and fixed-formal store-local
+publication still consumes `plan_prepared_fixed_formal_store_source_publication`
+before target-local `str*` emission. No missed store-source migration was found
+inside `dispatch_publication.cpp`.
+
+Step 4 residue remains limited to the typed stack-source edge-copy owner
+captured in
 `ideas/open/78_aarch64_edge_copy_typed_stack_source_prepared_authority.md`.
-Within `dispatch_publication.cpp`, the store-source path appears already
-migrated to prepared plan usage.
+That residue is not a missed `dispatch_publication.cpp` packet: this file still
+has no valid `PreparedEdgePublication` consumer to pass to
+`prepare_same_width_i32_stack_source_publication` without expanding the active
+idea into `dispatch_edge_copies.cpp`.
+
+Audit result: no weakened expectations, unsupported downgrades, broad dispatch
+rewrite, or testcase-shaped/publication-helper shortcut was found in the idea
+69 diff. The code diff is limited to `calls.cpp` and
+`dispatch_publication.cpp`; no tests were changed.
 
 ## Suggested Next
 
-Proceed with Step 5 consolidation for idea 69. The Step 5 packet should audit
-the migrated call/publication helpers, treat the typed stack-source edge-copy
-consumer as scheduled follow-up idea 78 rather than active-scope residue, and
-confirm no `dispatch_publication.cpp` authority migration was missed. Do not
-delegate `dispatch_edge_copies.cpp` implementation under the active idea 69
-runbook.
+Ask the plan owner to evaluate whether the active idea 69 runbook should close
+or be retired with follow-up idea 78 left open for the edge-copy typed
+stack-source owner.
 
 ## Watchouts
 
-- The current active step is Step 5; the Step 4 blocker is no longer an
-  implementation packet for idea 69.
-- `PreparedTypedStackSourcePublication` is a typed edge-publication fact, not a
-  generic `PreparedValueHome` stack-slot load plan; do not replace scalar
-  publication/home consumers with it unless the local decision has the
-  corresponding `PreparedEdgePublication`.
+- Keep idea 78 separate; do not thread `PreparedEdgePublication` into
+  `dispatch_publication.cpp` solely to create a typed stack-source consumer.
 - `lower_fixed_formal_store_local_publication` should remain target-local for
   `strb`/`strh`/`str` selection, register view resizing, and AArch64 address
-  rendering; those are not prepared authority decisions.
-- `memory.cpp` has additional prepared store-source publication consumers, but
-  this packet only mapped the Step 4 decisions visible in
-  `dispatch_publication.cpp`.
+  rendering.
+- The only pre-existing dirty tree item observed during this packet was
+  `review/idea69_step2_prepared_effect_review.md`; it was left untouched.
 
 ## Proof
 
-Command: `git diff --check -- plan.md todo.md ideas/open/78_aarch64_edge_copy_typed_stack_source_prepared_authority.md`
+Command: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
-Result: passed after lifecycle repair; no `test_after.log` was written for
-this documentation-only audit packet.
+Result: passed; build succeeded and 169/169 matching backend tests passed.
+Proof log: `test_after.log`.
