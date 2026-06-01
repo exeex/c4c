@@ -8,32 +8,27 @@ Current Step Title: Consume Prepared Edge Publication Sources
 
 ## Just Finished
 
-Completed Step 3's first narrow `dispatch_publication.cpp` migration:
-fused-compare operand publication now gates source-producer use through
-`find_prepared_fused_compare_operand_producer`, preserving same-block and
-before-instruction constraints from the prepared lookup helper. The
-select-materialization scratch preference also consumes that prepared fused
-operand helper instead of the local producer-kind probe.
+Completed Step 3's `value_publication_may_read_register_index` migration in
+`dispatch_publication.cpp`: the recursive register-read query now consumes the
+existing prepared same-block scalar producer helper instead of falling back to
+`mir::find_same_block_named_producer_record`. The local wrapper preserves the
+cached `prepared_lookups` path and the existing absent-lookup fallback that
+builds source-producer lookups from prepared control flow.
 
 ## Suggested Next
 
-Next narrow Step 3 packet: evaluate `value_publication_may_read_register_index`
-and replace its raw `mir::find_same_block_named_producer_record` fallback with
-a prepared same-block scalar producer lookup only if the existing helper
-preserves the current recursive register-read behavior when prepared lookups
-are available.
+Next narrow Step 3 packet: inspect the remaining `dispatch_publication.cpp`
+same-block/publication source-selection helpers for raw BIR producer discovery
+and migrate another one only where an existing prepared helper preserves the
+same source-selection contract.
 
 ## Watchouts
 
-- `find_prepared_materialized_condition_producer` was inspected but was not the
-  right helper for this fused-compare operand slice; the select scratch
-  preference needs the operand's `SelectMaterialization` producer, which is
-  exposed by `find_prepared_fused_compare_operand_producer`.
-- `value_publication_may_read_register_index` still has raw same-block producer
-  discovery after prepared producer lookup misses. That is the clearest
-  remaining local source-selection residue in this file.
-- The existing local fallback that builds source-producer lookups when
-  `prepared_lookups` is absent was preserved.
+- `value_publication_may_read_register_index` still falls back to the prepared
+  value home when no prepared same-block producer exists, matching the prior
+  no-producer behavior.
+- This slice did not edit `src/backend/prealloc/**`; the existing
+  `find_prepared_same_block_scalar_producer` helper was sufficient.
 
 ## Proof
 
