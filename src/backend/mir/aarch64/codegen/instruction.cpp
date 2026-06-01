@@ -26,6 +26,11 @@ struct MachineOpcodePrinterMnemonic {
   MachinePrinterMnemonicKind kind;
 };
 
+struct MachineOpcodeSpelling {
+  MachineOpcode opcode;
+  std::string_view spelling;
+};
+
 struct MachinePseudoPrinterMnemonic {
   MachinePseudoKind pseudo;
   MachinePrinterMnemonicKind kind;
@@ -74,6 +79,62 @@ constexpr std::array<MachineOpcodePrinterMnemonic, 17> kMachineOpcodePrinterMnem
     {MachineOpcode::VariadicVaCopy, MachinePrinterMnemonicKind::VariadicVaCopy},
 }};
 
+constexpr std::array<MachineOpcodeSpelling, 53> kMachineOpcodeSpellings{{
+    {MachineOpcode::Unspecified, "unspecified"},
+    {MachineOpcode::Branch, "branch"},
+    {MachineOpcode::ConditionalBranch, "conditional_branch"},
+    {MachineOpcode::CompareBranch, "compare_branch"},
+    {MachineOpcode::AddressMaterialization, "address_materialization"},
+    {MachineOpcode::DirectCall, "direct_call"},
+    {MachineOpcode::IndirectCall, "indirect_call"},
+    {MachineOpcode::FrameSetup, "frame_setup"},
+    {MachineOpcode::FrameTeardown, "frame_teardown"},
+    {MachineOpcode::CalleeSaveStore, "callee_save_store"},
+    {MachineOpcode::CalleeSaveLoad, "callee_save_load"},
+    {MachineOpcode::CallBoundaryMove, "call_boundary_move"},
+    {MachineOpcode::CallBoundaryAbiBinding, "call_boundary_abi_binding"},
+    {MachineOpcode::I128Transport, "i128_transport"},
+    {MachineOpcode::F128Transport, "f128_transport"},
+    {MachineOpcode::F128RuntimeHelper, "f128_runtime_helper"},
+    {MachineOpcode::I128Pair, "i128_pair"},
+    {MachineOpcode::I128Shift, "i128_shift"},
+    {MachineOpcode::I128Compare, "i128_compare"},
+    {MachineOpcode::I128RuntimeHelper, "i128_runtime_helper"},
+    {MachineOpcode::Add, "add"},
+    {MachineOpcode::Sub, "sub"},
+    {MachineOpcode::Mul, "mul"},
+    {MachineOpcode::Div, "div"},
+    {MachineOpcode::And, "and"},
+    {MachineOpcode::Or, "or"},
+    {MachineOpcode::Xor, "xor"},
+    {MachineOpcode::LogicalShiftRight, "logical_shift_right"},
+    {MachineOpcode::Neg, "neg"},
+    {MachineOpcode::BitNot, "bit_not"},
+    {MachineOpcode::CountLeadingZeros, "count_leading_zeros"},
+    {MachineOpcode::CountTrailingZeros, "count_trailing_zeros"},
+    {MachineOpcode::ByteSwap, "byte_swap"},
+    {MachineOpcode::SignExtend, "sign_extend"},
+    {MachineOpcode::ZeroExtend, "zero_extend"},
+    {MachineOpcode::Truncate, "truncate"},
+    {MachineOpcode::Load, "load"},
+    {MachineOpcode::Store, "store"},
+    {MachineOpcode::AtomicLoad, "atomic_load"},
+    {MachineOpcode::AtomicStore, "atomic_store"},
+    {MachineOpcode::AtomicFence, "atomic_fence"},
+    {MachineOpcode::AtomicRmw, "atomic_rmw"},
+    {MachineOpcode::AtomicCompareExchange, "atomic_compare_exchange"},
+    {MachineOpcode::SpillToSlot, "spill_to_slot"},
+    {MachineOpcode::ReloadFromSlot, "reload_from_slot"},
+    {MachineOpcode::VariadicVaStart, "variadic_va_start"},
+    {MachineOpcode::VariadicVaArgScalar, "variadic_va_arg_scalar"},
+    {MachineOpcode::VariadicVaArgAggregate, "variadic_va_arg_aggregate"},
+    {MachineOpcode::VariadicVaCopy, "variadic_va_copy"},
+    {MachineOpcode::ScalarFpUnaryIntrinsic, "scalar_fp_unary_intrinsic"},
+    {MachineOpcode::Crc32WIntrinsic, "crc32w_intrinsic"},
+    {MachineOpcode::VectorLoadIntrinsic, "vector_load_intrinsic"},
+    {MachineOpcode::VectorAddIntrinsic, "vector_add_intrinsic"},
+}};
+
 constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemonics{{
     {MachinePseudoKind::SpillToSlot, MachinePrinterMnemonicKind::Store},
     {MachinePseudoKind::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
@@ -103,6 +164,18 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
     return MachinePrinterMnemonicKind::None;
   }
   return found->kind;
+}
+
+[[nodiscard]] std::string_view machine_opcode_spelling(MachineOpcode opcode) {
+  const auto found = std::find_if(
+      kMachineOpcodeSpellings.begin(), kMachineOpcodeSpellings.end(),
+      [opcode](const MachineOpcodeSpelling& spelling) {
+        return spelling.opcode == opcode;
+      });
+  if (found == kMachineOpcodeSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
 }
 
 [[nodiscard]] MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic(
@@ -258,115 +331,7 @@ std::string_view instruction_family_name(InstructionFamily family) {
 }
 
 std::string_view machine_opcode_name(MachineOpcode opcode) {
-  switch (opcode) {
-    case MachineOpcode::Unspecified:
-      return "unspecified";
-    case MachineOpcode::Branch:
-      return "branch";
-    case MachineOpcode::ConditionalBranch:
-      return "conditional_branch";
-    case MachineOpcode::CompareBranch:
-      return "compare_branch";
-    case MachineOpcode::AddressMaterialization:
-      return "address_materialization";
-    case MachineOpcode::DirectCall:
-      return "direct_call";
-    case MachineOpcode::IndirectCall:
-      return "indirect_call";
-    case MachineOpcode::FrameSetup:
-      return "frame_setup";
-    case MachineOpcode::FrameTeardown:
-      return "frame_teardown";
-    case MachineOpcode::CalleeSaveStore:
-      return "callee_save_store";
-    case MachineOpcode::CalleeSaveLoad:
-      return "callee_save_load";
-    case MachineOpcode::CallBoundaryMove:
-      return "call_boundary_move";
-    case MachineOpcode::CallBoundaryAbiBinding:
-      return "call_boundary_abi_binding";
-    case MachineOpcode::I128Transport:
-      return "i128_transport";
-    case MachineOpcode::F128Transport:
-      return "f128_transport";
-    case MachineOpcode::F128RuntimeHelper:
-      return "f128_runtime_helper";
-    case MachineOpcode::I128Pair:
-      return "i128_pair";
-    case MachineOpcode::I128Shift:
-      return "i128_shift";
-    case MachineOpcode::I128Compare:
-      return "i128_compare";
-    case MachineOpcode::I128RuntimeHelper:
-      return "i128_runtime_helper";
-    case MachineOpcode::Add:
-      return "add";
-    case MachineOpcode::Sub:
-      return "sub";
-    case MachineOpcode::Mul:
-      return "mul";
-    case MachineOpcode::Div:
-      return "div";
-    case MachineOpcode::And:
-      return "and";
-    case MachineOpcode::Or:
-      return "or";
-    case MachineOpcode::Xor:
-      return "xor";
-    case MachineOpcode::LogicalShiftRight:
-      return "logical_shift_right";
-    case MachineOpcode::Neg:
-      return "neg";
-    case MachineOpcode::BitNot:
-      return "bit_not";
-    case MachineOpcode::CountLeadingZeros:
-      return "count_leading_zeros";
-    case MachineOpcode::CountTrailingZeros:
-      return "count_trailing_zeros";
-    case MachineOpcode::ByteSwap:
-      return "byte_swap";
-    case MachineOpcode::SignExtend:
-      return "sign_extend";
-    case MachineOpcode::ZeroExtend:
-      return "zero_extend";
-    case MachineOpcode::Truncate:
-      return "truncate";
-    case MachineOpcode::Load:
-      return "load";
-    case MachineOpcode::Store:
-      return "store";
-    case MachineOpcode::AtomicLoad:
-      return "atomic_load";
-    case MachineOpcode::AtomicStore:
-      return "atomic_store";
-    case MachineOpcode::AtomicFence:
-      return "atomic_fence";
-    case MachineOpcode::AtomicRmw:
-      return "atomic_rmw";
-    case MachineOpcode::AtomicCompareExchange:
-      return "atomic_compare_exchange";
-    case MachineOpcode::SpillToSlot:
-      return "spill_to_slot";
-    case MachineOpcode::ReloadFromSlot:
-      return "reload_from_slot";
-    case MachineOpcode::VariadicVaStart:
-      return "variadic_va_start";
-    case MachineOpcode::VariadicVaArgScalar:
-      return "variadic_va_arg_scalar";
-    case MachineOpcode::VariadicVaArgAggregate:
-      return "variadic_va_arg_aggregate";
-    case MachineOpcode::VariadicVaCopy:
-      return "variadic_va_copy";
-    case MachineOpcode::ScalarFpUnaryIntrinsic:
-      return "scalar_fp_unary_intrinsic";
-    case MachineOpcode::Crc32WIntrinsic:
-      return "crc32w_intrinsic";
-    case MachineOpcode::VectorLoadIntrinsic:
-      return "vector_load_intrinsic";
-    case MachineOpcode::VectorAddIntrinsic:
-      return "vector_add_intrinsic";
-  }
-  return "unknown";
+  return machine_opcode_spelling(opcode);
 }
 
 std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo) {

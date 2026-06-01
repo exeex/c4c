@@ -8,33 +8,23 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for instruction selection-status record
-construction: repeated `MachineNodeStatusRecord` initializers in
-`instruction.cpp` now delegate through local helper builders for selected,
-deferred-unsupported, missing-required-facts, and generic status records.
-Those helper builders have internal linkage; existing status enum values,
-public API functions, and diagnostic strings were preserved.
+Step 2 bounded contraction completed for AArch64 machine opcode record naming:
+the large `machine_opcode_name` switch in `instruction.cpp` now delegates
+through an internal `machine_opcode_spelling` lookup helper backed by an
+explicit target-local `kMachineOpcodeSpellings` table. All previous opcode
+spellings were preserved, and missing/unknown opcodes still return `unknown`.
 
 ## Suggested Next
 
-Continue Step 2 with a separate bounded packet for another instruction naming
-or printer-surface contraction that preserves currently used public diagnostics
-APIs and call sites.
+Continue Step 2 with a separate bounded packet for another local naming/status
+surface contraction that preserves public diagnostics APIs and call sites.
 
 ## Watchouts
 
-The originally suggested printer-local API move was deferred because supervisor
-call-site checking found public mnemonic helpers are still externally used. Do
-not remove or rename `MachinePrinterMnemonicKind`,
-`machine_printer_mnemonic_kind_name`,
-`machine_opcode_printer_mnemonic_kind`,
-`machine_pseudo_printer_mnemonic_kind`, or the
-`machine_instruction_*printer_mnemonic*` helpers until those public call sites
-are retired. The opcode and pseudo mapping tables intentionally list only
-non-`None` mnemonic mappings; missing entries are still the unsupported/default
-path. The new status helpers are internal to `instruction.cpp`; do not move
-them to the public header unless a future packet explicitly owns that API
-change.
+The opcode spelling table intentionally includes every current `MachineOpcode`
+entry from the previous switch. The helper keeps the default `unknown` path for
+out-of-range or unmapped enum values. Public APIs and printer mnemonic helpers
+remain untouched.
 
 ## Proof
 
