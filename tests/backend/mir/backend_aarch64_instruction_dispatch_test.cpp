@@ -5,6 +5,7 @@
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch_edge_copies.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch_producers.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch_publication.hpp"
 #include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"

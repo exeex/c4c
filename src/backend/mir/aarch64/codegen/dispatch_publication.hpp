@@ -123,19 +123,4 @@ void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction);
 
-[[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
-    const module::BlockLoweringContext& context,
-    const module::MachineInstruction& instruction);
-
-[[nodiscard]] bool prepared_value_home_reads_register_index(
-    const prepare::PreparedValueHome& home,
-    std::uint8_t register_index);
-
-[[nodiscard]] bool value_publication_may_read_register_index(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    std::uint8_t register_index,
-    unsigned depth = 0);
-
 }  // namespace c4c::backend::aarch64::codegen
