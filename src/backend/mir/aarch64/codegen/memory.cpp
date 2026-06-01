@@ -327,6 +327,11 @@ const prepare::PreparedStackObject* find_stack_object_by_object_id(
   return nullptr;
 }
 
+struct PreparedLocalAddressStoreValue {
+  bool has_frame_address = false;
+  OperandRecord operand{};
+};
+
 std::optional<FrameSlotOperand> make_frame_slot_operand_from_stack_slot(
     const prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedFrameSlot& slot) {
@@ -366,12 +371,13 @@ bool resolve_frame_slot_memory_offset(const prepare::PreparedStackLayout& stack_
   return true;
 }
 
-bool rewrite_local_address_store_value(
+bool find_prepared_local_address_store_value(
     const prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups,
     const prepare::PreparedValueHomeLookups* value_home_lookups,
     const bir::StoreLocalInst& store,
-    MemoryInstructionRecord& record) {
+    const MemoryInstructionRecord& record,
+    PreparedLocalAddressStoreValue& out) {
   if (record.memory_kind != MemoryInstructionKind::Store ||
       record.address.base_kind == MemoryBaseKind::Register ||
       store.value.kind != bir::Value::Kind::Named || store.value.type != bir::TypeKind::Ptr ||
@@ -401,7 +407,17 @@ bool rewrite_local_address_store_value(
   if (!operand.has_value()) {
     return false;
   }
-  record.value = make_frame_slot_operand(*operand);
+  out.has_frame_address = true;
+  out.operand = make_frame_slot_operand(*operand);
+  return true;
+}
+
+bool rewrite_local_address_store_value(const PreparedLocalAddressStoreValue& prepared,
+                                       MemoryInstructionRecord& record) {
+  if (!prepared.has_frame_address) {
+    return true;
+  }
+  record.value = prepared.operand;
   return true;
 }
 
@@ -411,14 +427,24 @@ bool apply_stack_layout_to_memory_record(
     const prepare::PreparedValueHomeLookups* value_home_lookups,
     const bir::StoreLocalInst* local_store,
     MemoryInstructionRecord& record) {
+  PreparedLocalAddressStoreValue prepared_local_address_store_value{};
+  if (local_store != nullptr &&
+      !find_prepared_local_address_store_value(
+          stack_layout,
+          address_materialization_lookups,
+          value_home_lookups,
+          *local_store,
+          record,
+          prepared_local_address_store_value)) {
+    return false;
+  }
   if (!resolve_frame_slot_memory_offset(stack_layout, record.address)) {
     return false;
   }
   if (local_store == nullptr) {
     return true;
   }
-  return rewrite_local_address_store_value(
-      stack_layout, address_materialization_lookups, value_home_lookups, *local_store, record);
+  return rewrite_local_address_store_value(prepared_local_address_store_value, record);
 }
 
 void apply_frame_pointer_base_policy(const module::FunctionLoweringContext& context,
