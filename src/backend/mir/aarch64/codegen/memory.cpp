@@ -695,9 +695,6 @@ void apply_frame_pointer_base_policy(const module::FunctionLoweringContext& cont
   }
 }
 
-std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type);
-std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type);
-
 std::optional<RegisterOperand> find_memory_return_abi_register(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id,
@@ -1129,38 +1126,11 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
   return make_memory_record_from_prepared_access(names, value_locations, addressing, *access);
 }
 
-std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::F32:
-      return abi::RegisterView::S;
-    case bir::TypeKind::F64:
-      return abi::RegisterView::D;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-    case bir::TypeKind::I64:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::Ptr:
-    case bir::TypeKind::F128:
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
 std::optional<abi::RegisterReference> scalar_fp_register_view(
     abi::RegisterReference reg,
     bir::TypeKind type) {
-  const auto view = scalar_fp_register_view(type);
+  const auto view = c4c::backend::aarch64::codegen::scalar_fp_register_view(type);
   return view.has_value() ? abi::fp_simd_register(reg.index, *view) : std::nullopt;
-}
-
-std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type) {
-  if (const auto integer_view = scalar_register_view(type)) {
-    return integer_view;
-  }
-  return scalar_fp_register_view(type);
 }
 
 prepare::PreparedRegisterClass register_class_from_bank(
