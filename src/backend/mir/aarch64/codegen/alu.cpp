@@ -3735,21 +3735,6 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   };
 }
 
-PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::BinaryInst& binary) {
-  const auto result = make_prepared_scalar_alu_record(names, value_locations, storage_plan, binary);
-  if (!result.record.has_value()) {
-    return scalar_instruction_record_error(result.error);
-  }
-  return PreparedScalarInstructionRecordResult{
-      .record = make_scalar_alu_instruction_record(*result.record),
-      .error = PreparedScalarAluRecordError::None,
-  };
-}
-
 ScalarInstructionRecord make_scalar_unary_instruction_record(ScalarUnaryRecord unary) {
   return ScalarInstructionRecord{
       .result_value_id = unary.result_value_id,
@@ -4141,13 +4126,14 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
     if (is_prepared_scalar_float_alu_operation(*binary)) {
       return std::nullopt;
     }
-    const auto prepared =
-        make_prepared_scalar_alu_instruction_record(
-            context.function.prepared->names,
-            *context.function.value_locations,
-            *context.function.storage_plan,
-            *binary);
-    scalar_record = prepared.record;
+    const auto prepared_record = make_prepared_scalar_alu_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *binary);
+    if (prepared_record.record.has_value()) {
+      scalar_record = make_scalar_alu_instruction_record(*prepared_record.record);
+    }
     if (scalar_record.has_value()) {
       if (scalar_record->scalar_alu.has_value() && scalar_record->inputs.size() == 2) {
         scalar_record->scalar_alu->result_uses_frame_pointer_base =

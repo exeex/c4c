@@ -84,12 +84,6 @@ using SameBlockScalarProducerLookup =
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const bir::BinaryInst& binary);
-[[nodiscard]] PreparedScalarInstructionRecordResult
-make_prepared_scalar_alu_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::BinaryInst& binary);
 [[nodiscard]] PreparedScalarUnaryRecordResult make_prepared_scalar_unary_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
