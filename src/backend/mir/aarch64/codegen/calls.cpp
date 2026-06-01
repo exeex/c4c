@@ -3122,9 +3122,7 @@ make_immediate_cast_call_argument_publication_instruction(
     move_record.destination_register = *destination;
   }
 
-  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+  if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       !is_aarch64_byval_register_lane_move(move) &&
       source_home != nullptr &&
@@ -3134,7 +3132,11 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
       (argument->source_register_bank == prepare::PreparedRegisterBank::Gpr ||
        argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress) &&
-      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      (effect.destination.register_bank.has_value()
+           ? effect.destination.register_bank
+           : std::optional<prepare::PreparedRegisterBank>{
+                 argument->destination_register_bank}) ==
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
     std::optional<MemoryOperand> address_source;
@@ -3229,15 +3231,16 @@ make_immediate_cast_call_argument_publication_instruction(
     auto destination = make_register_operand_from_prepared_authority(
         destination_register_name,
         destination_register_placement,
-        argument->destination_register_bank,
+        effect.destination.register_bank.has_value()
+            ? effect.destination.register_bank
+            : argument->destination_register_bank,
         RegisterOperandRole::CallAbi,
         move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                               : argument->source_value_id,
         source_home->value_name,
-        binding != nullptr ? binding->destination_contiguous_width
-                           : move.destination_contiguous_width,
+        effect.destination.contiguous_width,
         binding != nullptr ? binding->destination_occupied_register_names
-                           : move.destination_occupied_register_names,
+                           : effect.destination.occupied_register_names,
         address_source.has_value()
             ? std::optional<abi::RegisterView>{abi::RegisterView::X}
             : source.has_value()

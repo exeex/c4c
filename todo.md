@@ -9,19 +9,18 @@ Current Step Title: Consume Prepared Call Plans And Boundary Move Facts
 ## Just Finished
 
 Completed another narrow `plan.md` Step 2 migration in `calls.cpp`. The
-before-call `CallArgumentAbi` binary128 frame-slot-to-q-register path now uses
-the already-threaded `PreparedCallBoundaryEffectPlan` explicit-move effect as
-its phase, destination, storage, and order authority. `PreparedMoveBundle` and
-`PreparedMoveResolution` remain available on the machine record for provenance,
-while AArch64 source memory conversion, q-register view selection, and concrete
-register spelling stay local.
+before-call `CallArgumentAbi` GPR frame-slot-source/register-destination path
+now uses the already-threaded `PreparedCallBoundaryEffectPlan` explicit-move
+effect as its phase, destination, storage, and order authority. The
+`PreparedMoveBundle` and `PreparedMoveResolution` still remain on the machine
+record for provenance, while AArch64 source memory selection, register view
+selection, and concrete register spelling stay local.
 
 ## Suggested Next
 
-Continue Step 2 by migrating the remaining before-call `CallArgumentAbi`
-register-destination GPR frame-slot source path in `calls.cpp` to consume the
-`PreparedCallBoundaryEffectPlan` authority without widening into stack-slot
-destination copies.
+Continue Step 2 with a supervisor-selected review or the next remaining
+prepared call-boundary publication path; keep stack-slot destination copies out
+of scope unless explicitly delegated.
 
 ## Watchouts
 
@@ -35,6 +34,10 @@ destination copies.
 - The newly migrated binary128 frame-slot path uses the effect destination bank
   and contiguous width while retaining binding data for destination name,
   placement, occupied names, and the local q-register view.
+- The newly migrated GPR frame-slot path uses the effect destination bank and
+  contiguous width while retaining binding/move data for destination name,
+  placement, and instruction spelling; binding occupied names remain preferred
+  when available.
 - Do not require `classification_status == Available` for every register
   argument effect yet: existing f128 HFA lowering can validly proceed without
   an ABI binding while still using the effect's phase/destination/storage
