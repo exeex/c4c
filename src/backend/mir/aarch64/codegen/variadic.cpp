@@ -1115,34 +1115,13 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
 
 bool variadic_helper_operand_homes_complete(
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  const auto scalar_access_plan_complete = [&homes]() {
-    if (!homes.scalar_access_plan.has_value()) {
-      return false;
-    }
-    const auto& plan = *homes.scalar_access_plan;
-    return plan.source_class !=
-               prepare::PreparedVariadicScalarVaArgSourceClass::Unknown &&
-           plan.value_type != bir::TypeKind::Void &&
-           plan.value_size_bytes != 0 &&
-           plan.value_align_bytes != 0 &&
-           plan.result_home.has_value() &&
-           plan.source_field.has_value() &&
-           plan.source_field_offset_bytes.has_value() &&
-           plan.source_slot_size_bytes.has_value() &&
-           plan.progression_field.has_value() &&
-           plan.progression_field_offset_bytes.has_value() &&
-           plan.progression_stride_bytes.has_value() &&
-           plan.overflow_source_field.has_value() &&
-           plan.overflow_source_field_offset_bytes.has_value() &&
-           plan.overflow_stride_bytes.has_value();
-  };
   switch (homes.helper) {
     case prepare::PreparedVariadicEntryHelperKind::VaStart:
       return homes.destination_va_list.has_value() &&
              homes.destination_va_list_address.has_value();
     case prepare::PreparedVariadicEntryHelperKind::VaArg:
-      return homes.scalar_result.has_value() && homes.source_va_list.has_value() &&
-             scalar_access_plan_complete();
+      return prepare::has_complete_prepared_variadic_scalar_va_arg_access_plan(
+          homes);
     case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
       return prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(
           homes);

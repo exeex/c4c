@@ -153,6 +153,24 @@ struct PreparedVariadicScalarVaArgAccessPlan {
   std::optional<std::size_t> overflow_stride_bytes;
 };
 
+[[nodiscard]] inline bool is_complete_prepared_variadic_scalar_va_arg_access_plan(
+    const PreparedVariadicScalarVaArgAccessPlan& plan) {
+  return plan.source_class != PreparedVariadicScalarVaArgSourceClass::Unknown &&
+         plan.value_type != bir::TypeKind::Void &&
+         plan.value_size_bytes > 0 &&
+         plan.value_align_bytes > 0 &&
+         plan.result_home.has_value() &&
+         plan.source_field.has_value() &&
+         plan.source_field_offset_bytes.has_value() &&
+         plan.source_slot_size_bytes.has_value() &&
+         plan.progression_field.has_value() &&
+         plan.progression_field_offset_bytes.has_value() &&
+         plan.progression_stride_bytes.has_value() &&
+         plan.overflow_source_field.has_value() &&
+         plan.overflow_source_field_offset_bytes.has_value() &&
+         plan.overflow_stride_bytes.has_value();
+}
+
 enum class PreparedVariadicAggregateVaArgSourceClass {
   Unknown,
   RegisterSaveArea,
@@ -233,6 +251,16 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedVariadicScalarVaArgAccessPlan> scalar_access_plan;
   std::optional<PreparedVariadicAggregateVaArgAccessPlan> aggregate_access_plan;
 };
+
+[[nodiscard]] inline bool has_complete_prepared_variadic_scalar_va_arg_access_plan(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  return homes.helper == PreparedVariadicEntryHelperKind::VaArg &&
+         homes.source_va_list.has_value() &&
+         homes.scalar_result.has_value() &&
+         homes.scalar_access_plan.has_value() &&
+         is_complete_prepared_variadic_scalar_va_arg_access_plan(
+             *homes.scalar_access_plan);
+}
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_aggregate_va_arg_access_plan(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
