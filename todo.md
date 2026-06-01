@@ -8,12 +8,12 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 frame instruction kind naming:
-`frame_instruction_kind_name` now delegates through an internal
-`frame_instruction_kind_spelling` lookup helper backed by an explicit
-target-local `kFrameInstructionKindSpellings` table. All previous frame
-instruction kind spellings were preserved, and missing/unknown frame instruction
-kinds still return `unknown`.
+Step 2 bounded contraction completed for AArch64 scalar ALU operation kind
+naming: `scalar_alu_operation_kind_name` now delegates through an internal
+`scalar_alu_operation_kind_spelling` lookup helper backed by an explicit
+target-local `kScalarAluOperationKindSpellings` table. All previous scalar ALU
+operation spellings were preserved, and missing/unknown operation kinds still
+return `unknown`.
 
 ## Suggested Next
 
@@ -23,10 +23,10 @@ behavior.
 
 ## Watchouts
 
-The frame instruction kind spelling table intentionally includes every current
-`FrameInstructionKind` entry from the previous switch. This packet only changed
-the local naming helper shape; no diagnostics, tests, or downstream instruction
-selection behavior were changed.
+The scalar ALU operation spelling table intentionally includes every current
+`ScalarAluOperationKind` entry from the previous switch. This packet only
+changed the local naming helper shape; no diagnostics, tests, or downstream
+instruction selection behavior were changed.
 
 ## Proof
 

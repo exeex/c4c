@@ -51,6 +51,11 @@ struct FrameInstructionKindSpelling {
   std::string_view spelling;
 };
 
+struct ScalarAluOperationKindSpelling {
+  ScalarAluOperationKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -189,6 +194,19 @@ constexpr std::array<FrameInstructionKindSpelling, 4> kFrameInstructionKindSpell
     {FrameInstructionKind::CalleeSaveLoad, "callee_save_load"},
 }};
 
+constexpr std::array<ScalarAluOperationKindSpelling, 9>
+    kScalarAluOperationKindSpellings{{
+        {ScalarAluOperationKind::Add, "add"},
+        {ScalarAluOperationKind::Sub, "sub"},
+        {ScalarAluOperationKind::Mul, "mul"},
+        {ScalarAluOperationKind::Div, "div"},
+        {ScalarAluOperationKind::And, "and"},
+        {ScalarAluOperationKind::Or, "or"},
+        {ScalarAluOperationKind::Xor, "xor"},
+        {ScalarAluOperationKind::LogicalShiftRight, "logical_shift_right"},
+        {ScalarAluOperationKind::Deferred, "deferred"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -295,6 +313,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kFrameInstructionKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view scalar_alu_operation_kind_spelling(
+    ScalarAluOperationKind kind) {
+  const auto found = std::find_if(
+      kScalarAluOperationKindSpellings.begin(),
+      kScalarAluOperationKindSpellings.end(),
+      [kind](const ScalarAluOperationKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kScalarAluOperationKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -684,27 +716,7 @@ std::string_view frame_instruction_kind_name(FrameInstructionKind kind) {
 }
 
 std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
-  switch (kind) {
-    case ScalarAluOperationKind::Add:
-      return "add";
-    case ScalarAluOperationKind::Sub:
-      return "sub";
-    case ScalarAluOperationKind::Mul:
-      return "mul";
-    case ScalarAluOperationKind::Div:
-      return "div";
-    case ScalarAluOperationKind::And:
-      return "and";
-    case ScalarAluOperationKind::Or:
-      return "or";
-    case ScalarAluOperationKind::Xor:
-      return "xor";
-    case ScalarAluOperationKind::LogicalShiftRight:
-      return "logical_shift_right";
-    case ScalarAluOperationKind::Deferred:
-      return "deferred";
-  }
-  return "unknown";
+  return scalar_alu_operation_kind_spelling(kind);
 }
 
 std::string_view scalar_unary_operation_kind_name(ScalarUnaryOperationKind kind) {
