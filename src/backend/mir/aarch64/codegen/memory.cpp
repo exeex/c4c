@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -75,6 +76,62 @@ namespace abi = c4c::backend::aarch64::abi;
     std::size_t offset_bytes) {
   return frame_slot_address(offset_bytes,
                             fixed_slots_use_frame_pointer(context) ? "x29" : "sp");
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_prepared_frame_slot_memory_operand(
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t stack_offset_bytes,
+    std::size_t size_bytes,
+    std::size_t align_bytes,
+    bool uses_frame_pointer_base) {
+  if (stack_offset_bytes >
+      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = instruction_index,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = slot_id,
+      .byte_offset = static_cast<std::int64_t>(stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .address_space = bir::AddressSpace::Default,
+      .can_use_base_plus_offset = true,
+      .uses_frame_pointer_base = uses_frame_pointer_base,
+  };
+}
+
+[[nodiscard]] std::vector<std::string> materialize_frame_slot_memory_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot) {
+    return {};
+  }
+  const auto offset =
+      address.byte_offset < 0
+          ? static_cast<std::uint64_t>(-address.byte_offset)
+          : static_cast<std::uint64_t>(address.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  const std::string_view base = address.uses_frame_pointer_base ? "x29" : "sp";
+  if (offset <= 4095U) {
+    return {(address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
+            ", " + std::string{base} + ", #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back((address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
+                  ", " + std::string{base} + ", " + scratch_name);
+  return lines;
 }
 
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type) {

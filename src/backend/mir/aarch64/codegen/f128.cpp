@@ -1,14 +1,12 @@
 #include "f128.hpp"
 #include "calls.hpp"
 #include "comparison.hpp"
-#include "constant_materialization.hpp"
 #include "effects.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -201,30 +199,6 @@ bool f128_frame_slot_direct_offset_is_encodable(const MemoryOperand& address) {
   return offset % address.size_bytes == 0 && offset / address.size_bytes <= 4095U;
 }
 
-std::vector<std::string> f128_materialize_frame_slot_address_lines(
-    abi::RegisterReference scratch,
-    const MemoryOperand& address) {
-  if (address.base_kind != MemoryBaseKind::FrameSlot) {
-    return {};
-  }
-  const auto offset =
-      address.byte_offset < 0
-          ? static_cast<std::uint64_t>(-address.byte_offset)
-          : static_cast<std::uint64_t>(address.byte_offset);
-  const std::string scratch_name = abi::register_name(scratch);
-  if (offset <= 4095U) {
-    return {(address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
-            ", sp, #" + std::to_string(offset)};
-  }
-  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
-  if (lines.empty()) {
-    return {};
-  }
-  lines.push_back((address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
-                  ", sp, " + scratch_name);
-  return lines;
-}
-
 std::string f128_relocation_operand(std::string_view label, std::int64_t byte_offset) {
   std::string operand{label};
   if (byte_offset > 0) {
@@ -269,7 +243,7 @@ std::optional<F128PrintableAddress> f128_printable_memory_address(
     if (!scratch.has_value()) {
       return std::nullopt;
     }
-    auto lines = f128_materialize_frame_slot_address_lines(*scratch, memory);
+    auto lines = materialize_frame_slot_memory_address_lines(*scratch, memory);
     if (lines.empty()) {
       return std::nullopt;
     }
@@ -300,26 +274,16 @@ std::optional<F128PrintableAddress> f128_printable_memory_address(
 
 std::optional<MemoryOperand> f128_memory_backed_carrier_memory(
     const F128TransportRecord& transport) {
-  if (!transport.slot_id.has_value() || !transport.stack_offset_bytes.has_value() ||
-      *transport.stack_offset_bytes >
-          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+  if (!transport.slot_id.has_value() || !transport.stack_offset_bytes.has_value()) {
     return std::nullopt;
   }
-  return MemoryOperand{
-      .surface = RecordSurfaceKind::RecordOnly,
-      .support = MemoryOperandSupportKind::Prepared,
-      .function_name = transport.function_name,
-      .block_label = transport.block_label,
-      .instruction_index = transport.instruction_index,
-      .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = transport.slot_id,
-      .byte_offset = static_cast<std::int64_t>(*transport.stack_offset_bytes),
-      .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = 16,
-      .align_bytes = 16,
-      .address_space = bir::AddressSpace::Default,
-      .can_use_base_plus_offset = true,
-  };
+  return make_prepared_frame_slot_memory_operand(transport.function_name,
+                                                 transport.block_label,
+                                                 transport.instruction_index,
+                                                 *transport.slot_id,
+                                                 *transport.stack_offset_bytes,
+                                                 16,
+                                                 16);
 }
 
 std::optional<std::string> f128_scalar_fp_register_name(

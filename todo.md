@@ -8,58 +8,34 @@ Current Step Title: Align Memory-Backed f128 And Variadic Consumers
 
 ## Just Finished
 
-Step 5 mapping packet completed. `memory.cpp` remains the prepared memory
-authority boundary: `apply_stack_layout_to_memory_record` consumes prepared
-stack layout and address materialization facts to resolve frame-slot offsets
-and mark prepared snapshots, while
-`lower_store_global_value_publication_from_plan` accepts only an already
-prepared frame-slot `MemoryOperand` for stack-home publication and then emits
-the target store.
-
-`f128.cpp` has the first concrete duplicated authority candidate.
-`f128_memory_backed_carrier_memory` rebuilds a prepared frame-slot
-`MemoryOperand` from the f128 carrier's slot and stack offset, and
-`f128_printable_memory_address` carries a local f128 address materialization
-path for frame slots and symbols. The f128 ABI-local policy is the q-register
-transport and helper marshal validation; the prepared memory ownership should
-not live in the f128 printer.
-
-`variadic.cpp` is mostly ABI-local transfer policy rather than the first
-prepared-memory authority target. The va-list field accessors consume prepared
-variadic homes and field offsets; aggregate `va_arg` lowering owns AArch64
-copy chunking, progression, register-save-area selection, and stack-slot
-destination stores. Those paths duplicate address formatting helpers, but the
-inspected code does not expose a prepared `MemoryOperand` authority boundary
-equivalent to the f128 memory-backed carrier path.
+Step 5 first implementation packet completed. `memory.cpp` now exposes shared
+prepared frame-slot helpers for constructing a prepared `MemoryOperand` from
+carrier stack-slot facts and for materializing non-direct frame-slot addresses
+with the correct stack/frame-pointer base. `f128.cpp` consumes those helpers
+for memory-backed f128 carrier transport, so it no longer locally rebuilds the
+prepared frame-slot `MemoryOperand` or owns frame-slot address materialization
+for carrier memory. The f128-local policy remains the 16-byte/q-register
+transport, symbol address handling, helper marshal validation, and diagnostics.
 
 ## Suggested Next
 
-First concrete Step 5 implementation packet: align memory-backed f128 carrier
-transport with the shared prepared memory consumer boundary. Keep the packet
-limited to replacing the f128-local prepared frame-slot `MemoryOperand`
-construction/materialization with a shared prepared-memory helper or existing
-`memory.cpp` callable path, while preserving f128-specific q-register load/store
-and helper marshal policy in `f128.cpp`.
+Next Step 5 packet: inspect whether any remaining variadic address formatting
+can consume the shared frame-slot materialization helper without moving ABI
+copy policy out of `variadic.cpp`. Keep the packet helper-consumption-only
+unless a real prepared-memory authority duplication is found.
 
 ## Watchouts
 
-Do not start with variadic aggregate copies unless the supervisor explicitly
-chooses a helper-only cleanup packet. The variadic transfer logic is currently
-prepared variadic ABI consumption, not a clear prepared-memory ownership
-violation. A Step 5 implementation should distinguish reusable address helper
-factoring from authority movement: helper factoring alone is not idea 70
-progress unless it removes a duplicated prepared memory decision.
-
-For f128, avoid inventing a new f128-only frame-slot contract. The useful
-boundary is consumption of prepared memory facts already established by the
-memory path; f128 should retain only ABI-local decisions such as q-register
-selection, f128 load/store width, helper marshal directions, and diagnostics.
+The shared helper is intentionally generic and not tied to f128. It defaults to
+`sp` unless a caller passes `uses_frame_pointer_base`; current f128 carrier
+records still do not carry frame-plan context. Do not expand the next packet by
+changing call-boundary record shape unless the supervisor explicitly delegates
+that broader carrier-context work.
 
 ## Proof
 
-Mapping-only packet; no implementation files changed and no root-level proof
-log was produced. Checked:
+Supervisor-selected proof passed and wrote `test_after.log`:
 
 ```sh
-git diff --check -- todo.md
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract|instruction_dispatch|mir_carrier)|codegen_route_aarch64_(variadic_aggregate_overflow_byte_copy|local_aggregate_address_pointer_copy_publishes_frame_address|pointer_select_aggregate_byte_copy|store_global_stack_publication|dynamic_stack_fixed_slot_uses_fp_anchor)|cli_dump_prepared_bir_(vla_goto_stackrestore_cfg|00204_stdarg_prepared_handoff_aarch64_publication))$'; } > test_after.log 2>&1
 ```

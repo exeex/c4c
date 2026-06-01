@@ -35,6 +35,18 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::string frame_slot_address(
     const module::FunctionLoweringContext& context,
     std::size_t offset_bytes);
+[[nodiscard]] std::optional<MemoryOperand> make_prepared_frame_slot_memory_operand(
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t stack_offset_bytes,
+    std::size_t size_bytes,
+    std::size_t align_bytes,
+    bool uses_frame_pointer_base = false);
+[[nodiscard]] std::vector<std::string> materialize_frame_slot_memory_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address);
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
 [[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(
     bir::TypeKind type);
