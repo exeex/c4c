@@ -77,3 +77,51 @@ that residue before any further implementation cleanup.
 - A patch creates vague follow-up ideas that do not name file families.
 - A patch proposes one monolithic cleanup that mixes calls, memory, ALU,
   instruction records, and printer changes.
+
+## Close Note
+
+Closed: 2026-06-01
+
+The audit route is complete. The classification separated the large AArch64
+owner residue into target-local emission that should stay in AArch64 codegen,
+existing shared/prepared authority that cleanup routes should consume directly,
+one missing shared-authority family for aggregate transport planning, local
+helper duplication that can fold back into narrower AArch64 owners, and
+evidence probes where the audit found overlap but not enough authority to
+start implementation cleanup.
+
+Follow-up ideas created from the classification:
+
+- `ideas/open/69_aarch64_call_publication_prepared_authority_cleanup.md`:
+  shared-authority migration for call/publication prepared facts.
+- `ideas/open/70_aarch64_memory_prepared_address_authority_cleanup.md`:
+  shared-authority migration for memory address, value-home, storage, and
+  stack-source facts.
+- `ideas/open/71_aarch64_scalar_control_flow_prepared_authority_cleanup.md`:
+  shared-authority migration for scalar/control-flow prepared authority.
+- `ideas/open/72_aarch64_special_carrier_prepared_policy_cleanup.md`:
+  shared-authority migration for i128/f128 carrier and runtime-helper policy.
+- `ideas/open/73_aarch64_variadic_prepared_entry_plan_cleanup.md`:
+  shared-authority migration for variadic entry-plan and operand-home facts.
+- `ideas/open/74_aarch64_local_scalar_register_helper_fold_back.md`:
+  mechanical target cleanup for scalar type, register-view, and compare
+  predicate helper duplication.
+- `ideas/open/75_shared_aggregate_transport_plan_probe.md`: evidence probe and
+  missing shared-authority route for aggregate transport planning.
+- `ideas/open/76_aarch64_publication_ordering_evidence_probe.md`: evidence
+  probe for publication materialization ordering across dispatch, calls, and
+  memory sources.
+- `ideas/open/77_aarch64_machine_status_printer_validation_probe.md`: evidence
+  probe for machine status derivation and printer validation overlap.
+
+Dispatch-family cleanup is not being reopened as the primary next route. The
+audit found adjacent publication-ordering questions, but they are now captured
+as evidence probe idea 76 rather than a reason to resume the closed dispatch
+contraction route. The next implementation work should choose from the scoped
+follow-up ideas above instead of expanding this audit into another broad
+dispatch-family pass.
+
+No implementation files changed as part of the audit closure. The audited
+AArch64 implementation owners remained untouched, and the active lifecycle
+state was closed by moving this source idea to `ideas/closed/` and removing
+`plan.md` and `todo.md`.
