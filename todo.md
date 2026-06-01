@@ -8,24 +8,23 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 machine pseudo kind naming:
-`machine_pseudo_kind_name` now delegates through an internal
-`machine_pseudo_kind_spelling` lookup helper backed by an explicit target-local
-`kMachinePseudoKindSpellings` table. All previous pseudo kind spellings were
-preserved, and missing/unknown pseudo kinds still return `unknown`.
+Step 2 bounded contraction completed for AArch64 record surface kind naming:
+`record_surface_kind_name` now delegates through an internal
+`record_surface_kind_spelling` lookup helper backed by an explicit target-local
+`kRecordSurfaceKindSpellings` table. All previous record surface spellings were
+preserved, and missing/unknown record surface kinds still return `unknown`.
 
 ## Suggested Next
 
 Continue Step 2 with a separate bounded packet for another small local naming
-or status surface contraction that preserves public diagnostics APIs and call
-sites.
+surface such as `immediate_kind_name` or `frame_instruction_kind_name`, preserving
+all public strings and `unknown` fallbacks.
 
 ## Watchouts
 
-The pseudo kind spelling table intentionally includes every current
-`MachinePseudoKind` entry from the previous switch. The existing
-`kMachinePseudoPrinterMnemonics` table and pseudo mnemonic fallback remain
-unchanged.
+The record surface spelling table intentionally includes every current
+`RecordSurfaceKind` entry from the previous switch. The existing record surface
+classification predicates remain unchanged.
 
 ## Proof
 

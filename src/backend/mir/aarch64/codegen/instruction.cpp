@@ -36,6 +36,11 @@ struct MachineNodeSelectionStatusSpelling {
   std::string_view spelling;
 };
 
+struct RecordSurfaceKindSpelling {
+  RecordSurfaceKind surface;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -152,6 +157,14 @@ constexpr std::array<MachineNodeSelectionStatusSpelling, 3>
         {MachineNodeSelectionStatus::MissingRequiredFacts, "missing_required_facts"},
     }};
 
+constexpr std::array<RecordSurfaceKindSpelling, 5> kRecordSurfaceKindSpellings{{
+    {RecordSurfaceKind::TargetMirRecord, "target_mir_record"},
+    {RecordSurfaceKind::MachineInstructionNode, "machine_instruction_node"},
+    {RecordSurfaceKind::PrinterOutput, "printer_output"},
+    {RecordSurfaceKind::EncoderInput, "encoder_input"},
+    {RecordSurfaceKind::ExternalAssemblerInput, "external_assembler_input"},
+}};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -226,6 +239,18 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
   return found->spelling;
 }
 
+[[nodiscard]] std::string_view record_surface_kind_spelling(RecordSurfaceKind surface) {
+  const auto found = std::find_if(
+      kRecordSurfaceKindSpellings.begin(), kRecordSurfaceKindSpellings.end(),
+      [surface](const RecordSurfaceKindSpelling& spelling) {
+        return spelling.surface == surface;
+      });
+  if (found == kRecordSurfaceKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
 [[nodiscard]] std::string_view machine_node_selection_status_spelling(
     MachineNodeSelectionStatus status) {
   const auto found = std::find_if(
@@ -283,19 +308,7 @@ std::string_view operand_kind_name(OperandKind kind) {
 }
 
 std::string_view record_surface_kind_name(RecordSurfaceKind kind) {
-  switch (kind) {
-    case RecordSurfaceKind::TargetMirRecord:
-      return "target_mir_record";
-    case RecordSurfaceKind::MachineInstructionNode:
-      return "machine_instruction_node";
-    case RecordSurfaceKind::PrinterOutput:
-      return "printer_output";
-    case RecordSurfaceKind::EncoderInput:
-      return "encoder_input";
-    case RecordSurfaceKind::ExternalAssemblerInput:
-      return "external_assembler_input";
-  }
-  return "unknown";
+  return record_surface_kind_spelling(kind);
 }
 
 bool is_target_mir_record_surface(RecordSurfaceKind kind) {
