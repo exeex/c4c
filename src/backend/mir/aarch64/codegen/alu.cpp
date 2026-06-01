@@ -37,6 +37,95 @@ namespace c4c::backend::aarch64::codegen {
   return registers_alias(lhs, rhs);
 }
 
+[[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
+    const bir::Value& value,
+    std::optional<std::int64_t> same_block_integer_constant) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    if (value.immediate < 0) {
+      return std::nullopt;
+    }
+    return power_of_two_shift(static_cast<std::uint64_t>(value.immediate));
+  }
+  if (!same_block_integer_constant.has_value() ||
+      *same_block_integer_constant < 0) {
+    return std::nullopt;
+  }
+  return power_of_two_shift(
+      static_cast<std::uint64_t>(*same_block_integer_constant));
+}
+
+[[nodiscard]] bool value_publication_may_write_scratch_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    SameBlockIntegerConstantLookup same_block_integer_constant,
+    SameBlockScalarProducerLookup same_block_scalar_producer,
+    unsigned depth) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  if (same_block_integer_constant == nullptr ||
+      same_block_scalar_producer == nullptr) {
+    return false;
+  }
+  if (same_block_integer_constant(context, value, before_instruction_index)
+          .has_value()) {
+    return false;
+  }
+  if (const auto value_view = scalar_view_for_type(value.type);
+      value_view.has_value()) {
+    if (current_block_entry_publication_register(context, value, *value_view)) {
+      return false;
+    }
+  }
+
+  const auto producer_context =
+      same_block_scalar_producer(context, value, before_instruction_index);
+  if (!producer_context.has_value() || producer_context->instruction == nullptr) {
+    return false;
+  }
+  const auto* producer = producer_context->instruction;
+  const auto producer_index = producer_context->instruction_index;
+
+  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    auto operand = cast->operand;
+    operand.type = cast->operand.type;
+    return value_publication_may_write_scratch_register(
+        context,
+        operand,
+        producer_index,
+        same_block_integer_constant,
+        same_block_scalar_producer,
+        depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer); binary != nullptr) {
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    if (binary->opcode == bir::BinaryOpcode::Mul &&
+        value_power_of_two_shift(
+            rhs,
+            same_block_integer_constant(context, rhs, producer_index))
+            .has_value()) {
+      return value_publication_may_write_scratch_register(
+          context,
+          lhs,
+          producer_index,
+          same_block_integer_constant,
+          same_block_scalar_producer,
+          depth + 1);
+    }
+    return true;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr ||
+      std::get_if<bir::LoadLocalInst>(producer) != nullptr ||
+      std::get_if<bir::SelectInst>(producer) != nullptr) {
+    return true;
+  }
+  return false;
+}
+
 namespace {
 
 namespace mir = c4c::backend::mir;

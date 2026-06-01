@@ -3,6 +3,7 @@
 #include "../module/module.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -19,11 +20,31 @@ struct ScalarAluPrintResult {
   std::string diagnostic;
 };
 
+using SameBlockIntegerConstantLookup = std::optional<std::int64_t> (*)(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+using SameBlockScalarProducerLookup =
+    std::optional<prepare::PreparedSameBlockScalarProducer> (*)(
+        const module::BlockLoweringContext& context,
+        const bir::Value& value,
+        std::size_t before_instruction_index);
+
 [[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
                                    const RegisterOperand& rhs);
 [[nodiscard]] bool register_operands_share_physical_register(
     const RegisterOperand& lhs,
     const RegisterOperand& rhs);
+[[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
+    const bir::Value& value,
+    std::optional<std::int64_t> same_block_integer_constant);
+[[nodiscard]] bool value_publication_may_write_scratch_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    SameBlockIntegerConstantLookup same_block_integer_constant,
+    SameBlockScalarProducerLookup same_block_scalar_producer,
+    unsigned depth = 0);
 [[nodiscard]] std::optional<abi::RegisterView> scalar_register_view(
     bir::TypeKind type);
 [[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(

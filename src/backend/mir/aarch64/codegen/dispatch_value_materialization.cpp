@@ -119,77 +119,6 @@ prepared_same_block_integer_constant(
 
 }  // namespace
 
-[[nodiscard]] std::optional<unsigned> value_power_of_two_shift(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    if (value.immediate < 0) {
-      return std::nullopt;
-    }
-    return power_of_two_shift(static_cast<std::uint64_t>(value.immediate));
-  }
-  const auto constant =
-      prepared_same_block_integer_constant(context, value, before_instruction_index);
-  if (!constant.has_value() || *constant < 0) {
-    return std::nullopt;
-  }
-  return power_of_two_shift(static_cast<std::uint64_t>(*constant));
-}
-
-[[nodiscard]] bool value_publication_may_write_scratch_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    unsigned depth = 0) {
-  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return false;
-  }
-  if (prepared_same_block_integer_constant(
-          context, value, before_instruction_index).has_value()) {
-    return false;
-  }
-  if (const auto value_view = scalar_view_for_type(value.type);
-      value_view.has_value()) {
-    if (current_block_entry_publication_register(context, value, *value_view)) {
-      return false;
-    }
-  }
-
-  const auto producer_context =
-      prepared_same_block_scalar_producer(context, value, before_instruction_index);
-  if (!producer_context.has_value() || producer_context->instruction == nullptr) {
-    return false;
-  }
-  const auto* producer = producer_context->instruction;
-  const auto producer_index = producer_context->instruction_index;
-
-  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
-    auto operand = cast->operand;
-    operand.type = cast->operand.type;
-    return value_publication_may_write_scratch_register(
-        context, operand, producer_index, depth + 1);
-  }
-  if (const auto* binary = std::get_if<bir::BinaryInst>(producer); binary != nullptr) {
-    auto lhs = binary->lhs;
-    lhs.type = binary->operand_type;
-    auto rhs = binary->rhs;
-    rhs.type = binary->operand_type;
-    if (binary->opcode == bir::BinaryOpcode::Mul &&
-        value_power_of_two_shift(context, rhs, producer_index).has_value()) {
-      return value_publication_may_write_scratch_register(
-          context, lhs, producer_index, depth + 1);
-    }
-    return true;
-  }
-  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr ||
-      std::get_if<bir::LoadLocalInst>(producer) != nullptr ||
-      std::get_if<bir::SelectInst>(producer) != nullptr) {
-    return true;
-  }
-  return false;
-}
-
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -649,7 +578,9 @@ prepared_same_block_integer_constant(
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
-    if (const auto shift = value_power_of_two_shift(context, rhs, binary_index)) {
+    if (const auto shift = value_power_of_two_shift(
+            rhs,
+            prepared_same_block_integer_constant(context, rhs, binary_index))) {
       if (!emit_value_publication_to_register(context,
                                               lhs,
                                               binary_index,
@@ -672,9 +603,19 @@ prepared_same_block_integer_constant(
         context, lhs, binary_index, scratch_index);
     const bool rhs_writes_target =
         nested_scratch_index == target_index &&
-        value_publication_may_write_scratch_register(context, rhs, binary_index);
+        value_publication_may_write_scratch_register(
+            context,
+            rhs,
+            binary_index,
+            prepared_same_block_integer_constant,
+            prepared_same_block_scalar_producer);
     const bool lhs_writes_scratch =
-        value_publication_may_write_scratch_register(context, lhs, binary_index);
+        value_publication_may_write_scratch_register(
+            context,
+            lhs,
+            binary_index,
+            prepared_same_block_integer_constant,
+            prepared_same_block_scalar_producer);
     if ((rhs_reads_target || rhs_writes_target) &&
         !lhs_reads_scratch && !lhs_writes_scratch) {
       if (!emit_value_publication_to_register(context,
@@ -732,9 +673,19 @@ prepared_same_block_integer_constant(
       context, lhs, binary_index, scratch_index);
   const bool rhs_writes_target =
       nested_scratch_index == target_index &&
-      value_publication_may_write_scratch_register(context, rhs, binary_index);
+      value_publication_may_write_scratch_register(
+          context,
+          rhs,
+          binary_index,
+          prepared_same_block_integer_constant,
+          prepared_same_block_scalar_producer);
   const bool lhs_writes_scratch =
-      value_publication_may_write_scratch_register(context, lhs, binary_index);
+      value_publication_may_write_scratch_register(
+          context,
+          lhs,
+          binary_index,
+          prepared_same_block_integer_constant,
+          prepared_same_block_scalar_producer);
   if ((rhs_reads_target || rhs_writes_target) &&
       !lhs_reads_scratch && !lhs_writes_scratch) {
     if (!emit_value_publication_to_register(context,
