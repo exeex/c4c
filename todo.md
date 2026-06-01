@@ -1,44 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/70_aarch64_memory_prepared_address_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Consume Prepared Addressing And Materialization Facts
+Current Step ID: 3
+Current Step Title: Fold Value-Home, Storage, And Frame-Offset Authority Into Memory
 
 # Current Packet
 
 ## Just Finished
 
-Completed the final in-scope `plan.md` Step 2 packet in
-`src/backend/mir/aarch64/codegen/memory.cpp`: published store-global stack
-value publication now resolves and validates the prepared stack home in
-`find_prepared_store_global_stack_publication_home(...)` before the AArch64
-emitter runs. `lower_published_store_global_stack_value_publication(...)` now
-consumes the prepared home and keeps only result filtering, scratch selection,
-value materialization, store mnemonic/view choice, and final frame-address
-emission.
+Completed the initial mapping packet for `plan.md` Step 3 in
+`src/backend/mir/aarch64/codegen/memory.cpp` without touching implementation
+files. AST-backed inventory shows the remaining value-home/storage/frame-offset
+authority clusters are:
+
+- Prepared home lookup authority: inline
+  `prepare::find_indexed_prepared_value_home(...)` consumers remain in pointer
+  value load publication, stack-homed pointer load/store writeback,
+  pointer-base-plus-offset store-local publication, pointer materialization,
+  store-global stack publication, and future store-local coverage checks.
+- Storage-plan authority: `find_storage_plan_value(...)` is consumed by
+  `resolve_pointer_value_base_register(...)`,
+  `make_load_memory_instruction_record(...)`,
+  `make_store_memory_instruction_record(...)`, and
+  `find_va_list_field_address(...)`; the load/store record builders still
+  directly pair prepared homes with storage encodings for pointer bases,
+  load results, and stored values.
+- Decoded home-storage authority: load/store record creation currently decides
+  register vs stack vs immediate storage combinations inline, including stack
+  result publication scratch selection and store-from-stack memory operands.
+- Frame-offset authority: `resolve_frame_slot_memory_offset(...)` applies
+  prepared stack-layout offsets inside `apply_stack_layout_to_memory_record(...)`,
+  while `find_prepared_local_address_store_value(...)` uses
+  `find_indexed_prepared_frame_address_offset_for_value_id(...)` to rewrite
+  local address stores to prepared frame-slot operands.
+
+Prepared facts should continue to decide the authoritative home, storage
+encoding, stack slot, and frame offset. AArch64-local policy should stay limited
+to register view/class conversion, scratch register selection, load/store
+mnemonics, immediate legality, and final address spelling.
 
 ## Suggested Next
 
-Supervisor should review Step 2 for closure or handoff. After checking the
-remaining store-global and local publication helpers in `memory.cpp`, I do not
-see another concrete in-scope prepared addressing/materialization lookup to
-migrate without broadening into value-home/storage Step 3 or stack-source Step
-4 policy.
+First executable Step 3 packet: extract a small prepared storage/home decoding
+helper for pointer-value base registers and use it from both
+`resolve_pointer_value_base_register(...)` and the duplicated pointer-base
+branches in `make_load_memory_instruction_record(...)` and
+`make_store_memory_instruction_record(...)`. The helper should validate the
+prepared value id/name, require a prepared register home plus register storage
+encoding for pointer bases, and return the prepared base register or the
+existing `PreparedMemoryOperandRecordError`.
 
 ## Watchouts
 
-`find_prepared_store_global_stack_publication_home(...)` intentionally owns
-only lookup/validation of the prepared stack home. Remaining inline
-`find_indexed_prepared_value_home(...)` calls in this area are tied to future
-store-local coverage decisions or broader value-home/storage routing, so I left
-them out of this Step 2 packet.
+Keep the first Step 3 implementation packet away from Step 4 stack-source
+publication planning: `plan_stack_homed_pointer_store_writeback(...)` and
+`plan_pointer_base_plus_offset_store_local_publication(...)` consume publication
+plans and should not be broadened while folding pointer-base home/storage
+decoding. Do not move AArch64 register view selection, scratch choice, opcode
+choice, or `frame_slot_address(...)`/`register_indirect_address(...)` spelling
+into prepared helpers.
 
 ## Proof
 
-Passed. Proof log: `test_after.log`.
+Passed. Logless documentation check; no `test_after.log` was produced.
 
 Command:
 
 ```sh
-{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract|instruction_dispatch)|codegen_route_aarch64_(got_load_global_prepared_memory|store_global_stack_publication|local_aggregate_address_pointer_copy_publishes_frame_address|dynamic_stack_fixed_slot_uses_fp_anchor|pointer_value_named_scalar_writeback_uses_computed_store_value)|cli_dump_prepared_bir_(is_prepared|exposes_contract_sections|local_arg_call_contract|00204_stdarg_prepared_handoff_aarch64_publication))$'; } > test_after.log 2>&1
+git diff --check -- todo.md
 ```
