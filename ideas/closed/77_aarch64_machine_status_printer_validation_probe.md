@@ -61,3 +61,13 @@ fold-back route is attempted.
   without focused proof.
 - Tests are weakened or unsupported expectations are downgraded without
   explicit approval.
+
+## Closure Note
+
+Closed after the Step 1-3 evidence-only route. The probe compared Branch,
+Scalar, Address materialization, Spill/reload, and Frame status/printer record
+families, separated repeated semantic checks from printer-owned final spelling
+checks, and concluded that no AArch64-local helper should be implemented. The
+review in `review/idea77_status_printer_validation_review.md` found no
+blockers; closure used the no-code evidence scope with no implementation or
+test changes.
