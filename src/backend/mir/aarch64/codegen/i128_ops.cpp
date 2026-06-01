@@ -1102,6 +1102,74 @@ PreparedI128PairRecordResult i128_pair_record_error(
   };
 }
 
+namespace {
+
+struct PreparedI128PairCarrierLaneAdapter {
+  const prepare::PreparedI128Carrier* carrier = nullptr;
+  const prepare::PreparedI128LaneCarrier* low_lane = nullptr;
+  const prepare::PreparedI128LaneCarrier* high_lane = nullptr;
+  std::optional<RegisterOperand> low_register;
+  std::optional<RegisterOperand> high_register;
+};
+
+struct PreparedI128PairCarrierLaneAdapterResult {
+  std::optional<PreparedI128PairCarrierLaneAdapter> adapter;
+  PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
+};
+
+PreparedI128PairCarrierLaneAdapterResult i128_pair_carrier_lane_adapter_error(
+    PreparedI128PairRecordError error) {
+  return PreparedI128PairCarrierLaneAdapterResult{
+      .adapter = std::nullopt,
+      .error = error,
+  };
+}
+
+PreparedI128PairCarrierLaneAdapterResult make_i128_pair_carrier_lane_adapter(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    c4c::ValueNameId value_name) {
+  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_name);
+  if (carrier == nullptr) {
+    return i128_pair_carrier_lane_adapter_error(
+        PreparedI128PairRecordError::MissingPreparedI128Carrier);
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
+      carrier->total_size_bytes != 16 ||
+      carrier->lane_width_bytes != 8 ||
+      carrier->low_lane.role != prepare::PreparedI128LaneRole::Low ||
+      carrier->high_lane.role != prepare::PreparedI128LaneRole::High ||
+      carrier->low_lane.lane_index != 0 ||
+      carrier->high_lane.lane_index != 1 ||
+      carrier->low_lane.width_bytes != carrier->lane_width_bytes ||
+      carrier->high_lane.width_bytes != carrier->lane_width_bytes) {
+    return i128_pair_carrier_lane_adapter_error(
+        PreparedI128PairRecordError::IncompletePreparedI128Carrier);
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
+    return i128_pair_carrier_lane_adapter_error(
+        PreparedI128PairRecordError::UnsupportedCarrierKind);
+  }
+
+  PreparedI128PairCarrierLaneAdapter adapter{
+      .carrier = carrier,
+      .low_lane = &carrier->low_lane,
+      .high_lane = &carrier->high_lane,
+      .low_register = make_i128_lane_register_operand(*carrier, carrier->low_lane),
+      .high_register = make_i128_lane_register_operand(*carrier, carrier->high_lane),
+  };
+  if (!adapter.low_register.has_value() || !adapter.high_register.has_value()) {
+    return i128_pair_carrier_lane_adapter_error(
+        PreparedI128PairRecordError::RegisterConversionFailed);
+  }
+  return PreparedI128PairCarrierLaneAdapterResult{
+      .adapter = std::move(adapter),
+      .error = PreparedI128PairRecordError::None,
+  };
+}
+
+}  // namespace
+
 bool is_supported_i128_pair_opcode(bir::BinaryOpcode opcode) {
   switch (opcode) {
     case bir::BinaryOpcode::Add:
@@ -1207,42 +1275,35 @@ PreparedI128PairRecordError make_i128_pair_operand_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     c4c::ValueNameId value_name,
     I128PairOperandRecord& operand) {
-  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_name);
-  if (carrier == nullptr) {
-    return PreparedI128PairRecordError::MissingPreparedI128Carrier;
+  auto adapted = make_i128_pair_carrier_lane_adapter(i128_carriers, value_name);
+  if (!adapted.adapter.has_value()) {
+    return adapted.error;
   }
-  if (!carrier->missing_required_facts.empty() ||
-      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
-      carrier->total_size_bytes != 16 || carrier->lane_width_bytes != 8) {
-    return PreparedI128PairRecordError::IncompletePreparedI128Carrier;
-  }
-  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
-    return PreparedI128PairRecordError::UnsupportedCarrierKind;
-  }
+  const auto& adapter = *adapted.adapter;
+  const auto& carrier = *adapter.carrier;
+  const auto& low_lane = *adapter.low_lane;
+  const auto& high_lane = *adapter.high_lane;
 
   operand = I128PairOperandRecord{
-      .value_id = carrier->value_id,
-      .value_name = carrier->value_name,
-      .carrier_kind = carrier->kind,
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
       .low_lane =
           I128LaneTransportRecord{
-              .role = carrier->low_lane.role,
-              .lane_index = carrier->low_lane.lane_index,
-              .width_bytes = carrier->low_lane.width_bytes,
+              .role = low_lane.role,
+              .lane_index = low_lane.lane_index,
+              .width_bytes = low_lane.width_bytes,
           },
       .high_lane =
           I128LaneTransportRecord{
-              .role = carrier->high_lane.role,
-              .lane_index = carrier->high_lane.lane_index,
-              .width_bytes = carrier->high_lane.width_bytes,
+              .role = high_lane.role,
+              .lane_index = high_lane.lane_index,
+              .width_bytes = high_lane.width_bytes,
           },
-      .source_carrier = carrier,
+      .source_carrier = adapter.carrier,
   };
-  operand.low_lane.reg = make_i128_lane_register_operand(*carrier, carrier->low_lane);
-  operand.high_lane.reg = make_i128_lane_register_operand(*carrier, carrier->high_lane);
-  if (!operand.low_lane.reg.has_value() || !operand.high_lane.reg.has_value()) {
-    return PreparedI128PairRecordError::RegisterConversionFailed;
-  }
+  operand.low_lane.reg = std::move(adapter.low_register);
+  operand.high_lane.reg = std::move(adapter.high_register);
   return PreparedI128PairRecordError::None;
 }
 
