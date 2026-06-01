@@ -9,29 +9,30 @@ Current Step Title: Consume Prepared Call Plans And Boundary Move Facts
 ## Just Finished
 
 Completed another narrow `plan.md` Step 2 migration in `calls.cpp`. The
-before-call `CallArgumentAbi` register-destination path for local-frame-address
-materialization and register byval lane sources now uses the already-threaded
-`PreparedCallBoundaryEffectPlan` explicit-move effect as its phase,
-destination, storage, and order authority. `PreparedMoveBundle` and
-`PreparedMoveResolution` remain available on the machine record for provenance,
-while AArch64 register/address conversion and instruction spelling stay local.
+before-call `CallArgumentAbi` register-destination scalar FPR frame-slot source
+path now uses the already-threaded `PreparedCallBoundaryEffectPlan`
+explicit-move effect as its phase, destination, storage, and order authority.
+`PreparedMoveBundle` and `PreparedMoveResolution` remain available on the
+machine record for provenance, while AArch64 source memory conversion and
+register spelling stay local.
 
 ## Suggested Next
 
 Continue Step 2 by migrating the next before-call `CallArgumentAbi`
-register-destination stack-source subset in `calls.cpp`, likely the scalar FPR
-or binary128 frame-slot-to-register path, to consume the
-`PreparedCallBoundaryEffectPlan` authority without widening into stack-slot
-destination copies.
+register-destination stack-source subset in `calls.cpp`, likely the binary128
+frame-slot-to-register path or the remaining GPR frame-slot source path, to
+consume the `PreparedCallBoundaryEffectPlan` authority without widening into
+stack-slot destination copies.
 
 ## Watchouts
 
 - The effect endpoint still does not carry all AArch64 spelling details; the
   proven paths still need move/binding/argument facts for register names,
-  placements, occupied names, selected source memory, and f128 HFA details.
-- The newly migrated local-frame-address/register-byval path uses the effect
-  destination bank and no-binding contiguous width; keep any further width
-  authority changes local to one branch at a time.
+  placements, occupied names, selected source memory, scalar FP views, and f128
+  HFA details.
+- The newly migrated scalar FPR frame-slot path uses the effect destination
+  bank and contiguous width while retaining binding data for destination name,
+  placement, occupied names, and scalar FP view.
 - Do not require `classification_status == Available` for every register
   argument effect yet: existing f128 HFA lowering can validly proceed without
   an ABI binding while still using the effect's phase/destination/storage
