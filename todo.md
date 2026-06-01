@@ -1,39 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/72_aarch64_special_carrier_prepared_policy_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume Prepared I128 Runtime Helper And ABI Policy
+Current Step ID: 4
+Current Step Title: Consume Prepared F128 Carrier And Memory-Backed Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for the AArch64 i128 div/rem runtime-helper boundary
-in `src/backend/mir/aarch64/codegen/i128_ops.cpp`.
+Completed `plan.md` Step 4 for AArch64 f128 transport lowering in
+`src/backend/mir/aarch64/codegen/f128.cpp`.
 
-Helper-boundary operand construction now routes through a local prepared
-helper carrier/lane adapter that consumes the prepared runtime-helper lane
-bindings as authority, cross-checks them against prepared i128 carriers, and
-hands target-local record construction converted AArch64 register operands.
-Runtime-helper record construction, selection validation, and printable
-emission now share checks for prepared resource policy, ABI policy,
-live-preservation, selected-call ownership, clobber policy, and the structured
-marshal/unmarshal move plan. Final helper-boundary record construction and
-`bl` emission remain AArch64-local.
+Transport record construction now routes full-width q-register carriers and
+memory-backed carrier homes through local prepared-fact adapters before
+target-local record construction. Memory-backed carrier address recovery now
+cross-checks the record against the original prepared carrier and annotates the
+derived carrier frame-slot memory with the prepared value-home identity before
+the AArch64-local printer chooses `ldr`/`str` spelling.
 
 ## Suggested Next
 
-Next coherent packet: supervisor should decide whether Step 4 should broaden
-validation around AArch64 special-carrier helper boundaries or hand the active
-plan to review/plan-owner for the next lifecycle decision.
+Next coherent packet: supervisor should decide whether the active plan is ready
+for review/plan-owner lifecycle handling or needs broader validation around
+AArch64 special-carrier transport/helper boundaries.
 
 ## Watchouts
 
 `review/idea69_step2_prepared_effect_review.md` and
 `review/idea70_steps1_3_review.md` were already untracked and were not touched.
-The marshal-plan validator intentionally rejects missing or mismatched
-structured prepared ABI move facts instead of reconstructing a fallback call
-sequence.
+The f128 transport printer still keeps q/vector register conversion, memory
+address spelling, `ldr`/`str` choice, and machine-record construction
+AArch64-local; the new adapters only validate and carry prepared authority into
+those local decisions.
 
 ## Proof
 

@@ -229,6 +229,91 @@ struct F128PrintableAddress {
   std::string address;
 };
 
+struct PreparedF128FullWidthCarrierFacts {
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterClass register_class = prepare::PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+  std::string_view register_name;
+};
+
+struct PreparedF128MemoryBackedCarrierFacts {
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  prepare::PreparedFrameSlotId slot_id = 0;
+  std::size_t stack_offset_bytes = 0;
+  std::size_t size_bytes = 16;
+  std::size_t align_bytes = 16;
+};
+
+std::optional<PreparedF128FullWidthCarrierFacts> prepared_f128_full_width_carrier_facts(
+    const prepare::PreparedF128Carrier& carrier) {
+  if (!carrier.missing_required_facts.empty() ||
+      carrier.kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      carrier.source_type != bir::TypeKind::F128 ||
+      carrier.total_size_bytes != 16 ||
+      carrier.total_align_bytes != 16 ||
+      carrier.register_bank != prepare::PreparedRegisterBank::Vreg ||
+      carrier.register_class != prepare::PreparedRegisterClass::Vector ||
+      carrier.contiguous_width != 1 ||
+      !carrier.register_name.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedF128FullWidthCarrierFacts{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .register_bank = carrier.register_bank,
+      .register_class = carrier.register_class,
+      .contiguous_width = carrier.contiguous_width,
+      .register_name = *carrier.register_name,
+  };
+}
+
+std::optional<PreparedF128MemoryBackedCarrierFacts>
+prepared_f128_memory_backed_carrier_facts(
+    const prepare::PreparedF128Carrier& carrier) {
+  if (!carrier.missing_required_facts.empty() ||
+      carrier.kind != prepare::PreparedF128CarrierKind::MemoryBacked ||
+      carrier.source_type != bir::TypeKind::F128 ||
+      carrier.total_size_bytes != 16 ||
+      carrier.total_align_bytes != 16 ||
+      !carrier.slot_id.has_value() ||
+      !carrier.stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedF128MemoryBackedCarrierFacts{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .slot_id = *carrier.slot_id,
+      .stack_offset_bytes = *carrier.stack_offset_bytes,
+      .size_bytes = carrier.total_size_bytes,
+      .align_bytes = carrier.total_align_bytes,
+  };
+}
+
+std::optional<PreparedF128MemoryBackedCarrierFacts>
+prepared_f128_memory_backed_carrier_facts(
+    const F128TransportRecord& transport) {
+  if (transport.source_carrier == nullptr ||
+      transport.carrier_kind != prepare::PreparedF128CarrierKind::MemoryBacked ||
+      transport.value_id != transport.source_carrier->value_id ||
+      transport.value_name != transport.source_carrier->value_name ||
+      transport.total_size_bytes != transport.source_carrier->total_size_bytes ||
+      transport.total_align_bytes != transport.source_carrier->total_align_bytes) {
+    return std::nullopt;
+  }
+  auto facts = prepared_f128_memory_backed_carrier_facts(*transport.source_carrier);
+  if (!facts.has_value()) {
+    return std::nullopt;
+  }
+  if (transport.slot_id != std::optional<prepare::PreparedFrameSlotId>{facts->slot_id} ||
+      transport.stack_offset_bytes != std::optional<std::size_t>{facts->stack_offset_bytes}) {
+    return std::nullopt;
+  }
+  return facts;
+}
+
 std::optional<F128PrintableAddress> f128_printable_memory_address(
     const MemoryOperand& memory) {
   if (memory.base_kind == MemoryBaseKind::FrameSlot) {
@@ -274,16 +359,28 @@ std::optional<F128PrintableAddress> f128_printable_memory_address(
 
 std::optional<MemoryOperand> f128_memory_backed_carrier_memory(
     const F128TransportRecord& transport) {
-  if (!transport.slot_id.has_value() || !transport.stack_offset_bytes.has_value()) {
+  const auto facts = prepared_f128_memory_backed_carrier_facts(transport);
+  if (!facts.has_value()) {
     return std::nullopt;
   }
-  return make_prepared_frame_slot_memory_operand(transport.function_name,
-                                                 transport.block_label,
-                                                 transport.instruction_index,
-                                                 *transport.slot_id,
-                                                 *transport.stack_offset_bytes,
-                                                 16,
-                                                 16);
+  auto memory = make_prepared_frame_slot_memory_operand(transport.function_name,
+                                                       transport.block_label,
+                                                       transport.instruction_index,
+                                                       facts->slot_id,
+                                                       facts->stack_offset_bytes,
+                                                       facts->size_bytes,
+                                                       facts->align_bytes);
+  if (!memory.has_value()) {
+    return std::nullopt;
+  }
+  if (transport.transport_kind == F128TransportKind::LoadFromMemory) {
+    memory->stored_value_id = facts->value_id;
+    memory->stored_value_name = facts->value_name;
+  } else if (transport.transport_kind == F128TransportKind::StoreToMemory) {
+    memory->result_value_id = facts->value_id;
+    memory->result_value_name = facts->value_name;
+  }
+  return memory;
 }
 
 std::optional<std::string> f128_scalar_fp_register_name(
@@ -1141,10 +1238,11 @@ PreparedF128RuntimeHelperRecordResult f128_runtime_helper_record_error(
 
 std::optional<RegisterOperand> make_f128_register_operand(
     const prepare::PreparedF128Carrier& carrier) {
-  if (!carrier.register_name.has_value()) {
+  const auto facts = prepared_f128_full_width_carrier_facts(carrier);
+  if (!facts.has_value()) {
     return std::nullopt;
   }
-  const auto parsed = abi::parse_aarch64_register_name(*carrier.register_name);
+  const auto parsed = abi::parse_aarch64_register_name(facts->register_name);
   if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
     return std::nullopt;
   }
@@ -1155,12 +1253,12 @@ std::optional<RegisterOperand> make_f128_register_operand(
   return RegisterOperand{
       .reg = *viewed,
       .role = RegisterOperandRole::StoragePlan,
-      .value_id = carrier.value_id,
-      .value_name = carrier.value_name,
-      .prepared_class = carrier.register_class,
-      .prepared_bank = carrier.register_bank,
+      .value_id = facts->value_id,
+      .value_name = facts->value_name,
+      .prepared_class = facts->register_class,
+      .prepared_bank = facts->register_bank,
       .expected_view = abi::RegisterView::Q,
-      .contiguous_width = carrier.contiguous_width,
+      .contiguous_width = facts->contiguous_width,
       .occupied_register_references = f128_occupied_register_references(*viewed),
       .occupied_registers = f128_occupied_register_views(*viewed),
   };
@@ -1318,6 +1416,10 @@ PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
 
   switch (carrier->kind) {
     case prepare::PreparedF128CarrierKind::FullWidthRegister:
+      if (!prepared_f128_full_width_carrier_facts(*carrier).has_value()) {
+        return f128_transport_record_error(
+            PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
+      }
       record.reg = make_f128_register_operand(*carrier);
       if (!record.reg.has_value()) {
         return f128_transport_record_error(
@@ -1325,7 +1427,7 @@ PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
       }
       break;
     case prepare::PreparedF128CarrierKind::MemoryBacked:
-      if (!record.slot_id.has_value() || !record.stack_offset_bytes.has_value()) {
+      if (!prepared_f128_memory_backed_carrier_facts(record).has_value()) {
         return f128_transport_record_error(
             PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
       }
