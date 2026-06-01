@@ -19,18 +19,6 @@ namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] std::optional<unsigned> power_of_two_shift(std::uint64_t value);
 
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedFrameSlotId slot_id);
-
-[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedObjectId object_id);
-
-[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
-
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset);
 
@@ -56,10 +44,6 @@ namespace prepare = c4c::backend::prepare;
 [[nodiscard]] bool is_byval_formal_value_name(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name);
-
-[[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index);
 
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,

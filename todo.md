@@ -8,41 +8,38 @@ Current Step Title: Continue owner-by-owner relocation
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: relocated the dispatch publication
-source-producer helper group into the AArch64 producer owner. The public
-`prepared_publication_source_producer_for_value` and
-`prepared_source_producer_instruction` declarations now live in
-`dispatch_producers.hpp`, their definitions live in `dispatch_producers.cpp`,
-and `dispatch_publication.hpp` no longer declares them. Removed the duplicate
-private same-block publication source-producer support from
-`dispatch_publication.cpp`; the remaining implementation is the existing
-producer-owned helper in `dispatch_producers.cpp`.
+Completed Step 3 from `plan.md`: classified the prepared local load/frame-slot
+lookup family and relocated it to the AArch64 memory owner. The public
+`find_frame_slot`, `find_stack_object`, `prepared_frame_slot_load_address`, and
+`prepared_local_load_offset` declarations now live in `memory.hpp`, their
+definitions live in `memory.cpp`, and `dispatch_publication.hpp` no longer
+declares them. Removed memory's duplicate private stack-layout lookup helpers
+and routed existing memory users through the newly public memory-owned helpers.
 
 Changed files:
 
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/memory.hpp`
 - `todo.md`
 
 ## Suggested Next
 
-Continue Step 3 with the next dispatch-publication helper family, excluding the
-scalar, current-block entry, variadic, generic prepared-value-home, and
-address-materialization, and dispatch producer/source-producer families already
-classified. A likely remaining family is the prepared local load/frame-slot
-lookup support, if the supervisor wants to continue owner-by-owner relocation.
+Continue Step 3 with the next still-unclassified dispatch-publication helper
+family, excluding scalar/register helpers, current-block entry publication,
+variadic support, generic prepared-value-home helpers, address materialization,
+dispatch producer/source-producer support, and the prepared local
+load/frame-slot lookup family now classified into memory.
 
 ## Watchouts
 
-- The relocated public producer helper keeps the publication-owned fallback path
-  that builds local edge publication source-producer lookups when indexed
-  prepared lookups are unavailable.
-- `dispatch_producers.cpp` still includes `dispatch_publication.hpp` for
-  unrelated current-block entry publication and prepared-value-home queries used
-  by producer collision checks; this packet did not broaden into those helper
-  families.
+- `memory.cpp` still includes `dispatch_publication.hpp` for unrelated helper
+  families used elsewhere in memory lowering; this packet only moved the
+  stack-layout lookup/prepared load-address family.
+- `comparison.cpp` has a private branch-fusion-specific frame-slot lookup and
+  prepared frame-slot load-address helper with similar names; it was outside
+  this packet and remains untouched.
 - Root-level `test_before.log` and `test_baseline.log` were already present
   alongside the required `test_after.log`; this packet wrote only
   `test_after.log`.

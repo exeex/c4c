@@ -35,6 +35,18 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::string frame_slot_address(
     const module::FunctionLoweringContext& context,
     std::size_t offset_bytes);
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id);
+[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id);
+[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+[[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_frame_slot_memory_operand(
     c4c::FunctionNameId function_name,
     c4c::BlockLabelId block_label,

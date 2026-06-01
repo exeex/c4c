@@ -85,67 +85,6 @@ namespace {
   }
   return shift;
 }
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedFrameSlotId slot_id) {
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.slot_id == slot_id) {
-      return &slot;
-    }
-  }
-  return nullptr;
-}
-[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
-    const prepare::PreparedStackLayout& stack_layout,
-    prepare::PreparedObjectId object_id) {
-  for (const auto& object : stack_layout.objects) {
-    if (object.object_id == object_id) {
-      return &object;
-    }
-  }
-  return nullptr;
-}
-[[nodiscard]] std::optional<std::string> prepared_frame_slot_load_address(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto* addressing =
-      prepare::find_prepared_addressing(*context.function.prepared,
-                                        context.function.control_flow->function_name);
-  const auto* access =
-      addressing != nullptr
-          ? prepare::find_prepared_memory_access(
-                *addressing, context.control_flow_block->block_label, instruction_index)
-          : nullptr;
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value() ||
-      !access->address.can_use_base_plus_offset) {
-    return std::nullopt;
-  }
-  const auto* slot =
-      find_frame_slot(context.function.prepared->stack_layout, *access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-  const auto offset =
-      static_cast<std::int64_t>(slot->offset_bytes) + access->address.byte_offset;
-  std::string address =
-      context.function.frame_plan != nullptr &&
-              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
-          ? "[x29"
-          : "[sp";
-  if (offset != 0) {
-    address += ", #";
-    address += std::to_string(offset);
-  }
-  address += "]";
-  return address;
-}
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset) {
   std::string operand{label};
@@ -236,36 +175,6 @@ namespace {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::size_t> prepared_local_load_offset(
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return std::nullopt;
-  }
-  const auto* addressing =
-      prepare::find_prepared_addressing(*context.function.prepared,
-                                        context.function.control_flow->function_name);
-  const auto* access =
-      addressing != nullptr
-          ? prepare::find_prepared_memory_access(
-                *addressing, context.control_flow_block->block_label, instruction_index)
-          : nullptr;
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value() ||
-      !access->address.can_use_base_plus_offset) {
-    return std::nullopt;
-  }
-  const auto* slot =
-      find_frame_slot(context.function.prepared->stack_layout,
-                      *access->address.frame_slot_id);
-  if (slot == nullptr) {
-    return std::nullopt;
-  }
-  return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
-}
 [[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
                                                    unsigned width_bits) {
   if (value.immediate_bits != 0U) {
