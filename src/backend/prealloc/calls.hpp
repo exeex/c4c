@@ -107,6 +107,126 @@ struct PreparedCallArgumentSourceSelection {
   std::optional<std::size_t> byval_lane_source_instruction_index;
 };
 
+enum class PreparedAggregateTransportKind {
+  None,
+  StackCopy,
+  ByvalRegisterLanes,
+  PreservedRegisterLanes,
+  Mixed,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_aggregate_transport_kind_name(
+    PreparedAggregateTransportKind kind) {
+  switch (kind) {
+    case PreparedAggregateTransportKind::None:
+      return "none";
+    case PreparedAggregateTransportKind::StackCopy:
+      return "stack_copy";
+    case PreparedAggregateTransportKind::ByvalRegisterLanes:
+      return "byval_register_lanes";
+    case PreparedAggregateTransportKind::PreservedRegisterLanes:
+      return "preserved_register_lanes";
+    case PreparedAggregateTransportKind::Mixed:
+      return "mixed";
+  }
+  return "unknown";
+}
+
+enum class PreparedAggregateTransportChunkKind {
+  RequiredPayload,
+  Padding,
+  FallbackOnly,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_aggregate_transport_chunk_kind_name(
+    PreparedAggregateTransportChunkKind kind) {
+  switch (kind) {
+    case PreparedAggregateTransportChunkKind::RequiredPayload:
+      return "required_payload";
+    case PreparedAggregateTransportChunkKind::Padding:
+      return "padding";
+    case PreparedAggregateTransportChunkKind::FallbackOnly:
+      return "fallback_only";
+  }
+  return "unknown";
+}
+
+enum class PreparedAggregateTransportScratchKind {
+  None,
+  GeneralPurpose,
+  FloatingOrSimd,
+  Address,
+  LaneMaterialization,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_aggregate_transport_scratch_kind_name(
+    PreparedAggregateTransportScratchKind kind) {
+  switch (kind) {
+    case PreparedAggregateTransportScratchKind::None:
+      return "none";
+    case PreparedAggregateTransportScratchKind::GeneralPurpose:
+      return "general_purpose";
+    case PreparedAggregateTransportScratchKind::FloatingOrSimd:
+      return "floating_or_simd";
+    case PreparedAggregateTransportScratchKind::Address:
+      return "address";
+    case PreparedAggregateTransportScratchKind::LaneMaterialization:
+      return "lane_materialization";
+  }
+  return "unknown";
+}
+
+struct PreparedAggregateTransportScratchRequirement {
+  PreparedAggregateTransportScratchKind kind =
+      PreparedAggregateTransportScratchKind::None;
+  std::size_t width_bytes = 0;
+  bool may_overlap_source = false;
+  bool may_overlap_destination = false;
+};
+
+struct PreparedAggregateTransportChunk {
+  std::size_t chunk_index = 0;
+  PreparedAggregateTransportChunkKind kind =
+      PreparedAggregateTransportChunkKind::RequiredPayload;
+  std::size_t payload_offset_bytes = 0;
+  std::size_t source_offset_bytes = 0;
+  std::size_t destination_offset_bytes = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 1;
+  std::optional<std::size_t> preferred_width_bytes;
+  std::vector<std::size_t> fallback_width_bytes;
+};
+
+struct PreparedAggregateTransportLane {
+  std::size_t lane_index = 0;
+  std::size_t chunk_index = 0;
+  std::size_t lane_payload_offset_bytes = 0;
+  std::size_t source_offset_bytes = 0;
+  std::size_t destination_offset_bytes = 0;
+  std::size_t lane_size_bytes = 0;
+  std::optional<std::string> destination_register_name;
+  std::optional<PreparedRegisterBank> destination_register_bank;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string> destination_occupied_register_names;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
+  bool whole_register = true;
+};
+
+struct PreparedAggregateTransportPlan {
+  PreparedAggregateTransportKind kind = PreparedAggregateTransportKind::None;
+  std::size_t payload_size_bytes = 0;
+  std::size_t payload_align_bytes = 1;
+  std::size_t copy_size_bytes = 0;
+  std::size_t copy_align_bytes = 1;
+  std::optional<PreparedFrameSlotId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<std::size_t> destination_stack_size_bytes;
+  std::vector<PreparedAggregateTransportChunk> chunks;
+  std::vector<PreparedAggregateTransportLane> lanes;
+  std::vector<PreparedAggregateTransportScratchRequirement> scratch_requirements;
+};
+
 struct PreparedDirectGlobalSelectChainDependency {
   bool contains_direct_global_load = false;
   bool root_is_select = false;
@@ -151,6 +271,7 @@ struct PreparedCallArgumentPlan {
   std::optional<PreparedRegisterPlacement> source_register_placement;
   std::optional<PreparedRegisterPlacement> destination_register_placement;
   std::optional<PreparedCallArgumentSourceSelection> source_selection;
+  std::optional<PreparedAggregateTransportPlan> aggregate_transport;
   PreparedCallArgumentDirectGlobalSelectChainDependency
       direct_global_select_chain_dependency;
 };

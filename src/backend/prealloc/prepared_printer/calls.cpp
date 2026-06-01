@@ -312,6 +312,84 @@ void append_call_argument_source_selection(
   }
 }
 
+void append_aggregate_transport_plan(
+    std::ostringstream& out,
+    const PreparedAggregateTransportPlan& plan) {
+  out << " arg.aggregate_transport="
+      << prepared_aggregate_transport_kind_name(plan.kind)
+      << " payload_size=" << plan.payload_size_bytes
+      << " payload_align=" << plan.payload_align_bytes
+      << " copy_size=" << plan.copy_size_bytes
+      << " copy_align=" << plan.copy_align_bytes;
+  if (plan.source_slot_id.has_value()) {
+    out << " transport_source_slot=#" << *plan.source_slot_id;
+  }
+  if (plan.source_stack_offset_bytes.has_value()) {
+    out << " transport_source_stack_offset="
+        << *plan.source_stack_offset_bytes;
+  }
+  if (plan.destination_stack_offset_bytes.has_value()) {
+    out << " transport_dest_stack_offset="
+        << *plan.destination_stack_offset_bytes;
+  }
+  if (plan.destination_stack_size_bytes.has_value()) {
+    out << " transport_dest_stack_size="
+        << *plan.destination_stack_size_bytes;
+  }
+  for (const auto& chunk : plan.chunks) {
+    out << " chunk index=" << chunk.chunk_index
+        << " kind=" << prepared_aggregate_transport_chunk_kind_name(chunk.kind)
+        << " payload_offset=" << chunk.payload_offset_bytes
+        << " source_offset=" << chunk.source_offset_bytes
+        << " dest_offset=" << chunk.destination_offset_bytes
+        << " size=" << chunk.size_bytes
+        << " align=" << chunk.align_bytes;
+    if (chunk.preferred_width_bytes.has_value()) {
+      out << " preferred_width=" << *chunk.preferred_width_bytes;
+    }
+    if (!chunk.fallback_width_bytes.empty()) {
+      out << " fallback_widths=";
+      for (std::size_t index = 0; index < chunk.fallback_width_bytes.size(); ++index) {
+        if (index != 0) {
+          out << ",";
+        }
+        out << chunk.fallback_width_bytes[index];
+      }
+    }
+  }
+  for (const auto& lane : plan.lanes) {
+    out << " lane index=" << lane.lane_index
+        << " chunk=" << lane.chunk_index
+        << " payload_offset=" << lane.lane_payload_offset_bytes
+        << " source_offset=" << lane.source_offset_bytes
+        << " dest_offset=" << lane.destination_offset_bytes
+        << " size=" << lane.lane_size_bytes;
+    if (lane.destination_register_name.has_value()) {
+      out << " dest_reg=" << *lane.destination_register_name;
+    }
+    out << " dest_bank=" << maybe_register_bank(lane.destination_register_bank);
+    if (lane.destination_contiguous_width > 1 ||
+        lane.destination_occupied_register_names.size() > 1) {
+      append_register_occupancy(out,
+                                lane.destination_contiguous_width,
+                                lane.destination_occupied_register_names);
+    }
+    append_register_placement(out,
+                              "lane_dest_placement",
+                              lane.destination_register_placement);
+    out << " whole_register=" << (lane.whole_register ? "yes" : "no");
+  }
+  for (const auto& scratch : plan.scratch_requirements) {
+    out << " scratch="
+        << prepared_aggregate_transport_scratch_kind_name(scratch.kind)
+        << " scratch_width=" << scratch.width_bytes
+        << " scratch_overlap_source="
+        << (scratch.may_overlap_source ? "yes" : "no")
+        << " scratch_overlap_dest="
+        << (scratch.may_overlap_destination ? "yes" : "no");
+  }
+}
+
 }  // namespace
 
 void append_call_plans(std::ostringstream& out, const PreparedBirModule& module) {
@@ -392,6 +470,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         }
         if (arg.source_selection.has_value()) {
           append_call_argument_source_selection(out, module.names, *arg.source_selection);
+        }
+        if (arg.aggregate_transport.has_value()) {
+          append_aggregate_transport_plan(out, *arg.aggregate_transport);
         }
         out << "\n";
       }

@@ -3980,6 +3980,212 @@ int check_derived_local_frame_address_source_selection_contract() {
   return 0;
 }
 
+prepare::PreparedBirModule make_byval_register_lane_aggregate_transport_contract_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("byval_register_lane_transport_contract");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("aggregate.byval");
+  constexpr auto source_value_id = prepare::PreparedValueId{8101};
+  constexpr auto source_slot_id = prepare::PreparedFrameSlotId{8102};
+  constexpr auto source_object_id = prepare::PreparedObjectId{8103};
+
+  bir::Function callee;
+  callee.name = "extern_take_byval_register_lanes";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate",
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 16,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+  prepared.module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "byval_register_lane_transport_contract";
+  caller.return_type = bir::TypeKind::Void;
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_take_byval_register_lanes",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "aggregate.byval")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 16,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+          .byval_copy = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(caller));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = source_slot_id,
+              .offset_bytes = std::size_t{96},
+              .size_bytes = std::size_t{16},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 2,
+                      .destination_occupied_register_names = {"x0", "x1"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_byval_aggregate_register_lanes",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 2,
+                      .destination_occupied_register_names = {"x0", "x1"},
+                  }},
+          }},
+  });
+  prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedRegallocValue{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .type = bir::TypeKind::Ptr,
+              .register_class = prepare::PreparedRegisterClass::General,
+              .allocation_status = prepare::PreparedAllocationStatus::Spilled,
+          }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = source_object_id,
+      .function_name = function_name,
+      .value_name = source_name,
+      .source_kind = "byval",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = source_slot_id,
+      .object_id = source_object_id,
+      .function_name = function_name,
+      .offset_bytes = 96,
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  prepare::populate_call_plans(prepared);
+  return prepared;
+}
+
+int check_byval_register_lane_aggregate_transport_contract() {
+  const auto prepared = make_byval_register_lane_aggregate_transport_contract_module();
+  const auto* call_plans =
+      find_call_plans_function(prepared, "byval_register_lane_transport_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1) {
+    return fail(
+        "byval register-lane transport contract: missing prepared call plan");
+  }
+  const auto& arg = call_plans->calls.front().arguments.front();
+  if (!arg.source_selection.has_value() ||
+      arg.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+    return fail(
+        "byval register-lane transport contract: missing prepared byval source selection");
+  }
+  if (!arg.aggregate_transport.has_value()) {
+    return fail(
+        "byval register-lane transport contract: missing aggregate transport publication");
+  }
+  const auto& transport = *arg.aggregate_transport;
+  if (transport.kind !=
+          prepare::PreparedAggregateTransportKind::ByvalRegisterLanes ||
+      transport.payload_size_bytes != 16 || transport.copy_size_bytes != 16 ||
+      transport.payload_align_bytes != 8 || transport.copy_align_bytes != 8 ||
+      transport.source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{8102}} ||
+      transport.source_stack_offset_bytes != std::optional<std::size_t>{96} ||
+      transport.chunks.size() != 2 || transport.lanes.size() != 2) {
+    return fail(
+        "byval register-lane transport contract: aggregate transport lost size, source, or lane facts");
+  }
+  if (transport.chunks[0].payload_offset_bytes != 0 ||
+      transport.chunks[0].source_offset_bytes != 96 ||
+      transport.chunks[0].size_bytes != 8 ||
+      transport.lanes[0].destination_register_name != std::optional<std::string>{"x0"} ||
+      transport.lanes[1].lane_payload_offset_bytes != 8 ||
+      transport.lanes[1].source_offset_bytes != 104 ||
+      transport.lanes[1].destination_register_name != std::optional<std::string>{"x1"} ||
+      transport.lanes[1].destination_occupied_register_names !=
+          std::vector<std::string>{"x0", "x1"}) {
+    return fail(
+        "byval register-lane transport contract: aggregate transport lost chunk/lane binding facts");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("arg.aggregate_transport=byval_register_lanes") ==
+          std::string::npos ||
+      prepared_dump.find("payload_size=16") == std::string::npos ||
+      prepared_dump.find("copy_size=16") == std::string::npos ||
+      prepared_dump.find("lane index=1") == std::string::npos ||
+      prepared_dump.find("chunk index=1") == std::string::npos ||
+      prepared_dump.find("dest_reg=x1") == std::string::npos) {
+    return fail(
+        "byval register-lane transport contract: prepared dump no longer exposes aggregate transport facts");
+  }
+
+  return 0;
+}
+
 int check_missing_local_aggregate_frame_slot_address_source_selection_contract() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -6521,6 +6727,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_derived_local_frame_address_source_selection_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_byval_register_lane_aggregate_transport_contract();
       rc != 0) {
     return rc;
   }

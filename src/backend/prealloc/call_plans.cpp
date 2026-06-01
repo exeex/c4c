@@ -2275,6 +2275,109 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<PreparedAggregateTransportPlan>
+plan_prepared_aggregate_transport(const bir::CallInst& call,
+                                  const PreparedCallArgumentPlan& argument) {
+  if (argument.arg_index >= call.arg_abi.size() ||
+      !argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+    return std::nullopt;
+  }
+  const auto& abi = call.arg_abi[argument.arg_index];
+  const auto& selection = *argument.source_selection;
+  if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
+      !abi.passed_in_register || abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes == 0 ||
+      !selection.byval_lane_extent_bytes.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value() ||
+      !argument.destination_register_name.has_value() ||
+      !argument.destination_register_bank.has_value() ||
+      argument.destination_occupied_register_names.empty()) {
+    return std::nullopt;
+  }
+
+  const std::size_t payload_size = *selection.byval_lane_extent_bytes;
+  if (payload_size == 0) {
+    return std::nullopt;
+  }
+  const std::size_t lane_count = std::max<std::size_t>(
+      std::size_t{1},
+      std::min(argument.destination_contiguous_width,
+               argument.destination_occupied_register_names.size()));
+  constexpr std::size_t max_lane_size = 8;
+
+  PreparedAggregateTransportPlan plan{
+      .kind = PreparedAggregateTransportKind::ByvalRegisterLanes,
+      .payload_size_bytes = payload_size,
+      .payload_align_bytes = *selection.source_align_bytes,
+      .copy_size_bytes = abi.size_bytes,
+      .copy_align_bytes = abi.align_bytes == 0 ? *selection.source_align_bytes
+                                               : abi.align_bytes,
+      .source_slot_id = selection.source_slot_id,
+      .source_stack_offset_bytes = selection.source_stack_offset_bytes,
+      .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+      .destination_stack_size_bytes = argument.destination_stack_size_bytes,
+      .chunks = {},
+      .lanes = {},
+      .scratch_requirements = {},
+  };
+
+  std::size_t payload_offset = 0;
+  for (std::size_t lane_index = 0;
+       lane_index < lane_count && payload_offset < payload_size;
+       ++lane_index) {
+    const std::size_t lane_size =
+        std::min(max_lane_size, payload_size - payload_offset);
+    plan.chunks.push_back(PreparedAggregateTransportChunk{
+        .chunk_index = lane_index,
+        .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
+        .payload_offset_bytes = payload_offset,
+        .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .size_bytes = lane_size,
+        .align_bytes = std::min<std::size_t>(*selection.source_align_bytes, lane_size),
+        .preferred_width_bytes = lane_size,
+        .fallback_width_bytes = {},
+    });
+    plan.lanes.push_back(PreparedAggregateTransportLane{
+        .lane_index = lane_index,
+        .chunk_index = lane_index,
+        .lane_payload_offset_bytes = payload_offset,
+        .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .lane_size_bytes = lane_size,
+        .destination_register_name =
+            lane_index == 0
+                ? argument.destination_register_name
+                : std::optional<std::string>{
+                      argument.destination_occupied_register_names[lane_index]},
+        .destination_register_bank = argument.destination_register_bank,
+        .destination_contiguous_width = argument.destination_contiguous_width,
+        .destination_occupied_register_names =
+            argument.destination_occupied_register_names,
+        .destination_register_placement = argument.destination_register_placement,
+        .whole_register = lane_size == max_lane_size,
+    });
+    payload_offset += lane_size;
+  }
+
+  if (payload_offset < payload_size) {
+    return std::nullopt;
+  }
+  plan.scratch_requirements.push_back(
+      PreparedAggregateTransportScratchRequirement{
+          .kind = PreparedAggregateTransportScratchKind::GeneralPurpose,
+          .width_bytes = max_lane_size,
+          .may_overlap_source = false,
+          .may_overlap_destination = false,
+      });
+  return plan;
+}
+
 }  // namespace
 
 [[nodiscard]] const PreparedCallArgumentPlan* find_call_boundary_argument_plan(
@@ -2475,6 +2578,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
               .source_selection = std::nullopt,
+              .aggregate_transport = std::nullopt,
               .direct_global_select_chain_dependency = {},
           };
           const CallArgumentDestinationPlan destination =
@@ -2539,6 +2643,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                    before_call_bundle,
                                                    arg_plan,
                                                    source_home);
+          arg_plan.aggregate_transport =
+              plan_prepared_aggregate_transport(*call, arg_plan);
           arg_plan.allows_local_aggregate_address_publication =
               arg_plan.source_selection.has_value() &&
               arg_plan.source_selection->kind ==
