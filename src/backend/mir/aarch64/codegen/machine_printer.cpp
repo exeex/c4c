@@ -791,26 +791,6 @@ mir::TargetInstructionPrintResult print_fused_compare_branch(
   return target_printed(std::move(lines));
 }
 
-std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::F32:
-      return abi::RegisterView::S;
-    case bir::TypeKind::F64:
-      return abi::RegisterView::D;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-    case bir::TypeKind::I64:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::Ptr:
-    case bir::TypeKind::F128:
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
 std::string atomic_loop_label(const AtomicMemoryInstructionRecord& atomic,
                               std::string_view suffix) {
   std::ostringstream out;
