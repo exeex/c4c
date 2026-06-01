@@ -131,6 +131,11 @@ struct MachinePseudoPrinterMnemonic {
   MachinePrinterMnemonicKind kind;
 };
 
+struct AggregateWidthMnemonic {
+  std::size_t width_bytes;
+  std::string_view mnemonic;
+};
+
 constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonicSpellings{{
     {MachinePrinterMnemonicKind::None, ""},
     {MachinePrinterMnemonicKind::Branch, "b"},
@@ -519,6 +524,40 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
     {MachinePseudoKind::SpillToSlot, MachinePrinterMnemonicKind::Store},
     {MachinePseudoKind::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
 }};
+
+constexpr std::array<AggregateWidthMnemonic, 3> kAggregateStackCopyLoadMnemonics{{
+    {1, "ldrb"},
+    {4, "ldr"},
+    {8, "ldr"},
+}};
+
+constexpr std::array<AggregateWidthMnemonic, 3> kAggregateStackCopyStoreMnemonics{{
+    {1, "strb"},
+    {4, "str"},
+    {8, "str"},
+}};
+
+constexpr std::array<AggregateWidthMnemonic, 4> kAggregateRegisterLaneLoadMnemonics{{
+    {1, "ldrb"},
+    {2, "ldrh"},
+    {4, "ldr"},
+    {8, "ldr"},
+}};
+
+template <std::size_t N>
+[[nodiscard]] std::string_view aggregate_width_mnemonic(
+    const std::array<AggregateWidthMnemonic, N>& mnemonics,
+    std::size_t width_bytes) {
+  const auto found = std::find_if(
+      mnemonics.begin(), mnemonics.end(),
+      [width_bytes](const AggregateWidthMnemonic& mnemonic) {
+        return mnemonic.width_bytes == width_bytes;
+      });
+  if (found == mnemonics.end()) {
+    return {};
+  }
+  return found->mnemonic;
+}
 
 [[nodiscard]] std::string_view machine_printer_mnemonic_spelling(
     MachinePrinterMnemonicKind kind) {
@@ -967,25 +1006,11 @@ std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus s
 }
 
 std::string_view aggregate_stack_copy_load_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "ldrb";
-    case 4:
-    case 8:
-      return "ldr";
-  }
-  return {};
+  return aggregate_width_mnemonic(kAggregateStackCopyLoadMnemonics, width_bytes);
 }
 
 std::string_view aggregate_stack_copy_store_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "strb";
-    case 4:
-    case 8:
-      return "str";
-  }
-  return {};
+  return aggregate_width_mnemonic(kAggregateStackCopyStoreMnemonics, width_bytes);
 }
 
 std::optional<abi::RegisterReference> aggregate_stack_copy_scratch(
@@ -1019,16 +1044,7 @@ std::vector<std::size_t> aggregate_stack_copy_chunks(std::size_t size_bytes) {
 }
 
 std::string_view aggregate_register_lane_load_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "ldrb";
-    case 2:
-      return "ldrh";
-    case 4:
-    case 8:
-      return "ldr";
-  }
-  return {};
+  return aggregate_width_mnemonic(kAggregateRegisterLaneLoadMnemonics, width_bytes);
 }
 
 abi::RegisterReference aggregate_register_lane_load_register(

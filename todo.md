@@ -8,11 +8,12 @@ Current Step Title: Table-Drive Local Printer Mnemonics Where Clear
 
 ## Just Finished
 
-Step 4 bounded contraction continued for the remaining clear AArch64-local
-memory width mnemonic helpers. `machine_printer.cpp` now table-drives
-`stack_publication_store_mnemonic`, `stack_source_load_mnemonic`, and
-`scalar_memory_mnemonic` through explicit `width_mnemonic` mappings while
-preserving unsupported-width empty spelling behavior and emitted assembly.
+Step 4 bounded contraction continued for the remaining clear aggregate
+width-to-mnemonic helpers in `instruction.cpp`. `aggregate_stack_copy_load_mnemonic`,
+`aggregate_stack_copy_store_mnemonic`, and
+`aggregate_register_lane_load_mnemonic` now table-drive their explicit
+AArch64-local width mappings while preserving unsupported-width empty spelling
+behavior and emitted assembly.
 
 ## Suggested Next
 
@@ -25,8 +26,9 @@ review if Step 4 is exhausted.
 
 This packet intentionally did not change public instruction/printer headers,
 instruction records, tests, unsupported-path contracts, or emitted assembly.
-The `width_mnemonic` helper moved earlier in `machine_printer.cpp` so the stack
-publication/source helpers can share it; the mapping body itself is unchanged.
+The new aggregate mnemonic tables are file-local to `instruction.cpp` and keep
+the prior supported width sets exactly: stack copy load/store support 1, 4, and
+8 bytes; register-lane loads support 1, 2, 4, and 8 bytes.
 
 ## Proof
 
