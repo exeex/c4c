@@ -252,6 +252,13 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedVariadicAggregateVaArgAccessPlan> aggregate_access_plan;
 };
 
+[[nodiscard]] inline bool has_complete_prepared_variadic_va_start_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  return homes.helper == PreparedVariadicEntryHelperKind::VaStart &&
+         homes.destination_va_list.has_value() &&
+         homes.destination_va_list_address.has_value();
+}
+
 [[nodiscard]] inline bool has_complete_prepared_variadic_scalar_va_arg_access_plan(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return homes.helper == PreparedVariadicEntryHelperKind::VaArg &&
@@ -270,6 +277,28 @@ struct PreparedVariadicEntryHelperOperandHomes {
          homes.aggregate_access_plan.has_value() &&
          is_complete_prepared_variadic_aggregate_va_arg_access_plan(
              *homes.aggregate_access_plan);
+}
+
+[[nodiscard]] inline bool has_complete_prepared_variadic_va_copy_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  return homes.helper == PreparedVariadicEntryHelperKind::VaCopy &&
+         homes.destination_va_list.has_value() &&
+         homes.source_va_list.has_value();
+}
+
+[[nodiscard]] inline bool has_complete_prepared_variadic_entry_helper_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  switch (homes.helper) {
+    case PreparedVariadicEntryHelperKind::VaStart:
+      return has_complete_prepared_variadic_va_start_operand_homes(homes);
+    case PreparedVariadicEntryHelperKind::VaArg:
+      return has_complete_prepared_variadic_scalar_va_arg_access_plan(homes);
+    case PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes);
+    case PreparedVariadicEntryHelperKind::VaCopy:
+      return has_complete_prepared_variadic_va_copy_operand_homes(homes);
+  }
+  return false;
 }
 
 struct PreparedVariadicEntryPlanFunction {

@@ -77,8 +77,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 [[nodiscard]] std::optional<VariadicVaStartRecord> make_variadic_va_start_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!homes.destination_va_list.has_value() ||
-      !homes.destination_va_list_address.has_value() ||
+  if (!prepare::has_complete_prepared_variadic_va_start_operand_homes(homes) ||
       !entry.named_register_counts.gp.has_value() ||
       !entry.named_register_counts.fp.has_value() ||
       !entry.va_list_layout.size_bytes.has_value() ||
@@ -286,8 +285,7 @@ make_variadic_aggregate_va_arg_record(
 [[nodiscard]] std::optional<VariadicVaCopyRecord> make_variadic_va_copy_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!homes.destination_va_list.has_value() ||
-      !homes.source_va_list.has_value() ||
+  if (!prepare::has_complete_prepared_variadic_va_copy_operand_homes(homes) ||
       !entry.va_list_layout.size_bytes.has_value() ||
       !entry.va_list_layout.align_bytes.has_value() ||
       entry.va_list_layout.fields.empty() ||
@@ -1115,20 +1113,7 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
 
 bool variadic_helper_operand_homes_complete(
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  switch (homes.helper) {
-    case prepare::PreparedVariadicEntryHelperKind::VaStart:
-      return homes.destination_va_list.has_value() &&
-             homes.destination_va_list_address.has_value();
-    case prepare::PreparedVariadicEntryHelperKind::VaArg:
-      return prepare::has_complete_prepared_variadic_scalar_va_arg_access_plan(
-          homes);
-    case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
-      return prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(
-          homes);
-    case prepare::PreparedVariadicEntryHelperKind::VaCopy:
-      return homes.destination_va_list.has_value() && homes.source_va_list.has_value();
-  }
-  return false;
+  return prepare::has_complete_prepared_variadic_entry_helper_operand_homes(homes);
 }
 
 std::string variadic_helper_missing_consumption_fact_message(

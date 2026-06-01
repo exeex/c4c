@@ -8,19 +8,19 @@ Current Step Title: Consume Prepared Helper Operand Homes
 
 ## Just Finished
 
-Step 3 completed for `src/backend/prealloc/variadic.hpp` and `src/backend/mir/aarch64/codegen/variadic.cpp`: scalar `va_arg` access-plan completeness now has shared prepared authority through `is_complete_prepared_variadic_scalar_va_arg_access_plan` and `has_complete_prepared_variadic_scalar_va_arg_access_plan`.
+Step 3 completed for `src/backend/prealloc/variadic.hpp` and `src/backend/mir/aarch64/codegen/variadic.cpp`: `va_start` and `va_copy` helper operand-home completeness now has shared prepared authority through `has_complete_prepared_variadic_va_start_operand_homes` and `has_complete_prepared_variadic_va_copy_operand_homes`.
 
-`variadic_helper_operand_homes_complete` now consumes the shared scalar prepared helper instead of locally reconstructing scalar access-plan completeness. Target-local record-builder guards and AArch64 ABI emission remain local.
+`has_complete_prepared_variadic_entry_helper_operand_homes` now owns the shared completeness dispatch for all `PreparedVariadicEntryHelperOperandHomes` helper kinds. AArch64 `variadic_helper_operand_homes_complete` delegates to that prepared authority, and the va_start/va_copy record builders consume the shared helper-home predicates while target-local entry-layout guards and ABI emission remain local.
 
 ## Suggested Next
 
-Supervisor should review and select the next Step 3 cleanup packet, likely another helper operand-home consumer that can move to prepared authority without moving target-local record construction or ABI emission.
+Supervisor should review whether Step 3 is now exhausted or whether another prepared-helper consumer remains before selecting the next packet.
 
 ## Watchouts
 
 - Do not move AArch64 va_list layout spelling, save-area instruction selection, concrete stack/register addressing, aggregate copy chunking, or va_arg/va_copy record schemas into shared prealloc code.
 - The reduced helper-consumption guard exists because `lower_call_instruction` rejects missing/incomplete helper operand homes before `CallInstructionRecord` machine-node selection can report local record-builder status.
-- The scalar record builder still keeps target-local entry/register-save/overflow/scratch guards by design.
+- The va_start/va_copy record builders still keep target-local entry layout, field-size, scratch, register-save, overflow, and field-copy guards by design.
 - Do not weaken variadic expectations or add named-case shortcuts.
 
 ## Proof
