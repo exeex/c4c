@@ -8,25 +8,25 @@ Current Step Title: Table-Drive Local Printer Mnemonics Where Clear
 
 ## Just Finished
 
-Step 4 bounded contraction completed for one AArch64-local printer mnemonic
-dispatch cluster. `machine_printer.cpp` now table-drives the repeated atomic
-width-to-mnemonic helpers through a local `width_mnemonic` lookup while keeping
-the same unsupported-width empty spelling behavior and emitted assembly.
+Step 4 bounded contraction continued for the remaining clear AArch64-local
+memory width mnemonic helpers. `machine_printer.cpp` now table-drives
+`stack_publication_store_mnemonic`, `stack_source_load_mnemonic`, and
+`scalar_memory_mnemonic` through explicit `width_mnemonic` mappings while
+preserving unsupported-width empty spelling behavior and emitted assembly.
 
 ## Suggested Next
 
-Supervisor review of the Step 4 atomic mnemonic table contraction against the
-source idea and active plan. If accepted, the next coherent packet is the next
-bounded contraction selected by the supervisor, or plan-owner review if Step 4
-exhausts the current runbook.
+Supervisor review of the Step 4 memory mnemonic table contraction against the
+source idea and active plan. If accepted, the next coherent packet is either
+another supervisor-selected clear local printer contraction or plan-owner
+review if Step 4 is exhausted.
 
 ## Watchouts
 
 This packet intentionally did not change public instruction/printer headers,
 instruction records, tests, unsupported-path contracts, or emitted assembly.
-The contraction was kept to the atomic width mnemonic helpers because that
-cluster had identical width dispatch shapes and the resulting table was more
-auditable than the repeated branches.
+The `width_mnemonic` helper moved earlier in `machine_printer.cpp` so the stack
+publication/source helpers can share it; the mapping body itself is unchanged.
 
 ## Proof
 

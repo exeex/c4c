@@ -177,30 +177,32 @@ std::optional<abi::RegisterReference> symbol_stack_source_store_scratch_register
   return std::nullopt;
 }
 
-std::string_view stack_publication_store_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "strb";
-    case 2:
-      return "strh";
-    case 4:
-    case 8:
-      return "str";
+struct WidthMnemonic {
+  std::size_t width_bytes;
+  std::string_view mnemonic;
+};
+
+std::string_view width_mnemonic(
+    std::size_t width_bytes,
+    std::initializer_list<WidthMnemonic> mnemonics) {
+  const auto found = std::find_if(
+      mnemonics.begin(), mnemonics.end(), [width_bytes](const WidthMnemonic& mnemonic) {
+        return mnemonic.width_bytes == width_bytes;
+      });
+  if (found == mnemonics.end()) {
+    return {};
   }
-  return {};
+  return found->mnemonic;
+}
+
+std::string_view stack_publication_store_mnemonic(std::size_t width_bytes) {
+  return width_mnemonic(
+      width_bytes, {{1, "strb"}, {2, "strh"}, {4, "str"}, {8, "str"}});
 }
 
 std::string_view stack_source_load_mnemonic(std::size_t width_bytes) {
-  switch (width_bytes) {
-    case 1:
-      return "ldrb";
-    case 2:
-      return "ldrh";
-    case 4:
-    case 8:
-      return "ldr";
-  }
-  return {};
+  return width_mnemonic(
+      width_bytes, {{1, "ldrb"}, {2, "ldrh"}, {4, "ldr"}, {8, "ldr"}});
 }
 
 std::optional<abi::RegisterReference> stack_publication_address_scratch(
@@ -523,24 +525,6 @@ struct CompareBranchPrintOperands {
   std::string rhs;
   bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
 };
-
-struct WidthMnemonic {
-  std::size_t width_bytes;
-  std::string_view mnemonic;
-};
-
-std::string_view width_mnemonic(
-    std::size_t width_bytes,
-    std::initializer_list<WidthMnemonic> mnemonics) {
-  const auto found = std::find_if(
-      mnemonics.begin(), mnemonics.end(), [width_bytes](const WidthMnemonic& mnemonic) {
-        return mnemonic.width_bytes == width_bytes;
-      });
-  if (found == mnemonics.end()) {
-    return {};
-  }
-  return found->mnemonic;
-}
 
 std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
     const OperandRecord& lhs_operand,
@@ -889,16 +873,11 @@ std::string_view required_primary_mnemonic(const InstructionRecord& instruction)
 
 std::string_view scalar_memory_mnemonic(const MemoryInstructionRecord& memory,
                                         std::string_view fallback) {
-  switch (memory.address.size_bytes) {
-    case 1:
-      return memory.memory_kind == MemoryInstructionKind::Load ? "ldrb" : "strb";
-    case 2:
-      return memory.memory_kind == MemoryInstructionKind::Load ? "ldrh" : "strh";
-    case 4:
-    case 8:
-      return fallback;
-  }
-  return {};
+  return memory.memory_kind == MemoryInstructionKind::Load
+             ? width_mnemonic(memory.address.size_bytes,
+                              {{1, "ldrb"}, {2, "ldrh"}, {4, fallback}, {8, fallback}})
+             : width_mnemonic(memory.address.size_bytes,
+                              {{1, "strb"}, {2, "strh"}, {4, fallback}, {8, fallback}});
 }
 
 std::string_view required_auxiliary_mnemonic(const InstructionRecord& instruction) {
