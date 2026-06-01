@@ -70,33 +70,6 @@ const prepare::PreparedStoragePlanValue* find_storage_plan_value(
   return nullptr;
 }
 
-std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::F32:
-      return abi::RegisterView::S;
-    case bir::TypeKind::F64:
-      return abi::RegisterView::D;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-    case bir::TypeKind::I64:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::Ptr:
-    case bir::TypeKind::F128:
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type) {
-  if (const auto integer_view = scalar_register_view(type)) {
-    return integer_view;
-  }
-  return scalar_fp_register_view(type);
-}
-
 prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
