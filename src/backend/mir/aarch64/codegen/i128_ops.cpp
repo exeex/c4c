@@ -164,6 +164,27 @@ bool has_complete_selected_call_ownership(
          ownership.has_live_preservation;
 }
 
+bool has_complete_i128_helper_resource_policy(
+    const prepare::PreparedI128RuntimeHelper::ResourcePolicy& policy) {
+  return policy.call_boundary &&
+         policy.runtime_helper_callee &&
+         policy.caller_saved_clobbers &&
+         policy.preserves_source_operation_identity;
+}
+
+bool has_complete_i128_div_rem_abi_policy(
+    const prepare::PreparedI128RuntimeHelper::AbiPolicy& policy) {
+  return policy.transition ==
+             prepare::PreparedI128RuntimeHelperAbiTransition::
+                 DirectRegisterPairArgumentsAndResult &&
+         policy.argument_bank == prepare::PreparedRegisterBank::Gpr &&
+         policy.result_bank == prepare::PreparedRegisterBank::Gpr &&
+         policy.argument_count == 2 &&
+         policy.lanes_per_argument == 2 &&
+         policy.result_lane_count == 2 &&
+         policy.lane_width_bytes == 8;
+}
+
 bool is_decimal_digit(char ch) {
   return ch >= '0' && ch <= '9';
 }
@@ -207,6 +228,121 @@ std::optional<std::string> validate_i128_helper_move(
       move.carrier_lane.lane_index != move.abi_register.lane_index ||
       move.carrier_lane.width_bytes != move.abi_register.width_bytes) {
     return std::string{"i128 helper boundary marshal/unmarshal lane facts mismatch"};
+  }
+  return std::nullopt;
+}
+
+bool same_i128_helper_lane_binding(
+    const prepare::PreparedI128RuntimeHelper::LaneBinding& lhs,
+    const prepare::PreparedI128RuntimeHelper::LaneBinding& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.carrier_kind == rhs.carrier_kind &&
+         lhs.role == rhs.role &&
+         lhs.lane_index == rhs.lane_index &&
+         lhs.width_bytes == rhs.width_bytes &&
+         lhs.register_name == rhs.register_name &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes;
+}
+
+bool same_i128_helper_abi_binding(
+    const prepare::PreparedI128RuntimeHelper::AbiRegisterBinding& lhs,
+    const prepare::PreparedI128RuntimeHelper::AbiRegisterBinding& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.value_name == rhs.value_name &&
+         lhs.role == rhs.role &&
+         lhs.lane_index == rhs.lane_index &&
+         lhs.width_bytes == rhs.width_bytes &&
+         lhs.helper_argument_index == rhs.helper_argument_index &&
+         lhs.abi_register_index == rhs.abi_register_index &&
+         lhs.register_bank == rhs.register_bank &&
+         lhs.register_class == rhs.register_class &&
+         lhs.register_name == rhs.register_name &&
+         lhs.contiguous_width == rhs.contiguous_width &&
+         lhs.occupied_register_names == rhs.occupied_register_names &&
+         lhs.register_placement == rhs.register_placement;
+}
+
+std::optional<std::string> validate_i128_helper_bound_move(
+    const std::optional<prepare::PreparedI128RuntimeHelper::MarshalingMove>& move,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+    prepare::PreparedMovePhase phase,
+    const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& lane,
+    const std::optional<prepare::PreparedI128RuntimeHelper::AbiRegisterBinding>& abi) {
+  if (!move.has_value() || !lane.has_value() || !abi.has_value()) {
+    return std::string{"i128 helper boundary is missing structured ABI marshal facts"};
+  }
+  if (const auto invalid = validate_i128_helper_move(*move, direction, phase);
+      invalid.has_value()) {
+    return invalid;
+  }
+  if (!same_i128_helper_lane_binding(move->carrier_lane, *lane) ||
+      !same_i128_helper_abi_binding(move->abi_register, *abi)) {
+    return std::string{"i128 helper boundary marshal facts do not match ABI bindings"};
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> validate_i128_div_rem_helper_marshaling_plan(
+    const prepare::PreparedI128RuntimeHelper& helper) {
+  const auto before_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument;
+  const auto after_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane;
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.lhs_low_argument_move,
+                                          before_call,
+                                          prepare::PreparedMovePhase::BeforeCall,
+                                          helper.lhs_low_lane,
+                                          helper.lhs_low_abi_argument);
+      error.has_value()) {
+    return error;
+  }
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.lhs_high_argument_move,
+                                          before_call,
+                                          prepare::PreparedMovePhase::BeforeCall,
+                                          helper.lhs_high_lane,
+                                          helper.lhs_high_abi_argument);
+      error.has_value()) {
+    return error;
+  }
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.rhs_low_argument_move,
+                                          before_call,
+                                          prepare::PreparedMovePhase::BeforeCall,
+                                          helper.rhs_low_lane,
+                                          helper.rhs_low_abi_argument);
+      error.has_value()) {
+    return error;
+  }
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.rhs_high_argument_move,
+                                          before_call,
+                                          prepare::PreparedMovePhase::BeforeCall,
+                                          helper.rhs_high_lane,
+                                          helper.rhs_high_abi_argument);
+      error.has_value()) {
+    return error;
+  }
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.result_low_unmarshal_move,
+                                          after_call,
+                                          prepare::PreparedMovePhase::AfterCall,
+                                          helper.result_low_lane,
+                                          helper.result_low_abi_result);
+      error.has_value()) {
+    return error;
+  }
+  if (const auto error =
+          validate_i128_helper_bound_move(helper.result_high_unmarshal_move,
+                                          after_call,
+                                          prepare::PreparedMovePhase::AfterCall,
+                                          helper.result_high_lane,
+                                          helper.result_high_abi_result);
+      error.has_value()) {
+    return error;
   }
   return std::nullopt;
 }
@@ -789,23 +925,12 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary requires direct low/high result ownership");
   }
-  if (!helper.resource_policy.call_boundary ||
-      !helper.resource_policy.runtime_helper_callee ||
-      !helper.resource_policy.caller_saved_clobbers ||
-      !helper.resource_policy.preserves_source_operation_identity ||
+  if (!has_complete_i128_helper_resource_policy(helper.resource_policy) ||
       helper.clobbered_registers.empty()) {
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing resource or clobber policy");
   }
-  if (helper.abi_policy.transition !=
-          prepare::PreparedI128RuntimeHelperAbiTransition::
-              DirectRegisterPairArgumentsAndResult ||
-      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
-      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
-      helper.abi_policy.argument_count != 2 ||
-      helper.abi_policy.lanes_per_argument != 2 ||
-      helper.abi_policy.result_lane_count != 2 ||
-      helper.abi_policy.lane_width_bytes != 8) {
+  if (!has_complete_i128_div_rem_abi_policy(helper.abi_policy)) {
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing ABI/register-bank policy");
   }
@@ -829,6 +954,11 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
     return target_unsupported(
         bad_header(instruction) +
         "i128 helper boundary source helper facts do not match selected record");
+  }
+  if (const auto error =
+          validate_i128_div_rem_helper_marshaling_plan(*helper.source_helper);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
   }
 
   std::vector<std::string> lines;
@@ -1396,6 +1526,100 @@ PreparedI128RuntimeHelperRecordResult i128_runtime_helper_record_error(
   };
 }
 
+namespace {
+
+struct PreparedI128HelperCarrierLaneAdapter {
+  const prepare::PreparedI128Carrier* carrier = nullptr;
+  const prepare::PreparedI128RuntimeHelper::LaneBinding* low_lane = nullptr;
+  const prepare::PreparedI128RuntimeHelper::LaneBinding* high_lane = nullptr;
+  std::optional<RegisterOperand> low_register;
+  std::optional<RegisterOperand> high_register;
+};
+
+struct PreparedI128HelperCarrierLaneAdapterResult {
+  std::optional<PreparedI128HelperCarrierLaneAdapter> adapter;
+  PreparedI128RuntimeHelperRecordError error =
+      PreparedI128RuntimeHelperRecordError::None;
+};
+
+PreparedI128HelperCarrierLaneAdapterResult i128_helper_carrier_lane_adapter_error(
+    PreparedI128RuntimeHelperRecordError error) {
+  return PreparedI128HelperCarrierLaneAdapterResult{
+      .adapter = std::nullopt,
+      .error = error,
+  };
+}
+
+PreparedI128HelperCarrierLaneAdapterResult make_i128_helper_carrier_lane_adapter(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& low,
+    const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& high) {
+  if (!low.has_value() || !high.has_value()) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper);
+  }
+  if (low->value_id != value_id || high->value_id != value_id ||
+      low->value_name != value_name || high->value_name != value_name ||
+      low->carrier_kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+      high->carrier_kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+      low->role != prepare::PreparedI128LaneRole::Low ||
+      high->role != prepare::PreparedI128LaneRole::High ||
+      low->lane_index != 0 ||
+      high->lane_index != 1 ||
+      low->width_bytes != 8 ||
+      high->width_bytes != 8 ||
+      !low->register_name.has_value() ||
+      !high->register_name.has_value()) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper);
+  }
+
+  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_id);
+  if (carrier == nullptr || carrier->value_name != value_name) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::MissingPreparedI128Carrier);
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
+      carrier->total_size_bytes != 16 ||
+      carrier->lane_width_bytes != 8 ||
+      carrier->low_lane.role != low->role ||
+      carrier->high_lane.role != high->role ||
+      carrier->low_lane.lane_index != low->lane_index ||
+      carrier->high_lane.lane_index != high->lane_index ||
+      carrier->low_lane.width_bytes != low->width_bytes ||
+      carrier->high_lane.width_bytes != high->width_bytes ||
+      carrier->low_lane.register_name != low->register_name ||
+      carrier->high_lane.register_name != high->register_name) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::IncompletePreparedI128Carrier);
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::UnsupportedCarrierKind);
+  }
+
+  PreparedI128HelperCarrierLaneAdapter adapter{
+      .carrier = carrier,
+      .low_lane = &*low,
+      .high_lane = &*high,
+      .low_register = make_i128_lane_register_operand(*carrier, carrier->low_lane),
+      .high_register = make_i128_lane_register_operand(*carrier, carrier->high_lane),
+  };
+  if (!adapter.low_register.has_value() || !adapter.high_register.has_value()) {
+    return i128_helper_carrier_lane_adapter_error(
+        PreparedI128RuntimeHelperRecordError::RegisterConversionFailed);
+  }
+  return PreparedI128HelperCarrierLaneAdapterResult{
+      .adapter = std::move(adapter),
+      .error = PreparedI128RuntimeHelperRecordError::None,
+  };
+}
+
+}  // namespace
+
 bool is_i128_shift_opcode(bir::BinaryOpcode opcode) {
   return opcode == bir::BinaryOpcode::Shl || opcode == bir::BinaryOpcode::LShr ||
          opcode == bir::BinaryOpcode::AShr;
@@ -1707,58 +1931,36 @@ PreparedI128RuntimeHelperRecordError make_i128_helper_operand_record(
     const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& low,
     const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& high,
     I128PairOperandRecord& operand) {
-  if (!low.has_value() || !high.has_value()) {
-    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
+  auto adapted = make_i128_helper_carrier_lane_adapter(
+      i128_carriers, value_id, value_name, low, high);
+  if (!adapted.adapter.has_value()) {
+    return adapted.error;
   }
-  if (low->value_id != value_id || high->value_id != value_id ||
-      low->value_name != value_name || high->value_name != value_name ||
-      low->role != prepare::PreparedI128LaneRole::Low ||
-      high->role != prepare::PreparedI128LaneRole::High ||
-      low->lane_index != 0 || high->lane_index != 1 ||
-      low->width_bytes != 8 || high->width_bytes != 8) {
-    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
-  }
-
-  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_id);
-  if (carrier == nullptr || carrier->value_name != value_name) {
-    return PreparedI128RuntimeHelperRecordError::MissingPreparedI128Carrier;
-  }
-  if (!carrier->missing_required_facts.empty() ||
-      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
-      carrier->total_size_bytes != 16 || carrier->lane_width_bytes != 8) {
-    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128Carrier;
-  }
-  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
-    return PreparedI128RuntimeHelperRecordError::UnsupportedCarrierKind;
-  }
-  if (carrier->low_lane.register_name != low->register_name ||
-      carrier->high_lane.register_name != high->register_name) {
-    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
-  }
+  const auto& adapter = *adapted.adapter;
+  const auto& carrier = *adapter.carrier;
+  const auto& low_lane = *adapter.low_lane;
+  const auto& high_lane = *adapter.high_lane;
 
   operand = I128PairOperandRecord{
-      .value_id = carrier->value_id,
-      .value_name = carrier->value_name,
-      .carrier_kind = carrier->kind,
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = low_lane.carrier_kind,
       .low_lane =
           I128LaneTransportRecord{
-              .role = low->role,
-              .lane_index = low->lane_index,
-              .width_bytes = low->width_bytes,
+              .role = low_lane.role,
+              .lane_index = low_lane.lane_index,
+              .width_bytes = low_lane.width_bytes,
           },
       .high_lane =
           I128LaneTransportRecord{
-              .role = high->role,
-              .lane_index = high->lane_index,
-              .width_bytes = high->width_bytes,
+              .role = high_lane.role,
+              .lane_index = high_lane.lane_index,
+              .width_bytes = high_lane.width_bytes,
           },
-      .source_carrier = carrier,
+      .source_carrier = adapter.carrier,
   };
-  operand.low_lane.reg = make_i128_lane_register_operand(*carrier, carrier->low_lane);
-  operand.high_lane.reg = make_i128_lane_register_operand(*carrier, carrier->high_lane);
-  if (!operand.low_lane.reg.has_value() || !operand.high_lane.reg.has_value()) {
-    return PreparedI128RuntimeHelperRecordError::RegisterConversionFailed;
-  }
+  operand.low_lane.reg = std::move(adapter.low_register);
+  operand.high_lane.reg = std::move(adapter.high_register);
   return PreparedI128RuntimeHelperRecordError::None;
 }
 
@@ -1790,22 +1992,11 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::UnsupportedResultOwnership);
   }
-  if (!helper.resource_policy.call_boundary ||
-      !helper.resource_policy.runtime_helper_callee ||
-      !helper.resource_policy.caller_saved_clobbers ||
-      !helper.resource_policy.preserves_source_operation_identity) {
+  if (!has_complete_i128_helper_resource_policy(helper.resource_policy)) {
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
   }
-  if (helper.abi_policy.transition !=
-          prepare::PreparedI128RuntimeHelperAbiTransition::
-              DirectRegisterPairArgumentsAndResult ||
-      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
-      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
-      helper.abi_policy.argument_count != 2 ||
-      helper.abi_policy.lanes_per_argument != 2 ||
-      helper.abi_policy.result_lane_count != 2 ||
-      helper.abi_policy.lane_width_bytes != 8) {
+  if (!has_complete_i128_div_rem_abi_policy(helper.abi_policy)) {
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
   }
@@ -1813,16 +2004,9 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingClobberPolicy);
   }
-  if (!helper.live_preservation_policy.evaluated ||
-      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !helper.live_preservation_policy.no_additional_live_preservation_required ||
-      !helper.selected_call_ownership.owns_terminal_call ||
-      !helper.selected_call_ownership.has_callee_identity ||
-      !helper.selected_call_ownership.has_resource_policy ||
-      !helper.selected_call_ownership.has_clobber_policy ||
-      !helper.selected_call_ownership.has_abi_bindings ||
-      !helper.selected_call_ownership.has_marshaling ||
-      !helper.selected_call_ownership.has_live_preservation) {
+  if (!has_complete_live_preservation(helper.live_preservation_policy) ||
+      !has_complete_selected_call_ownership(helper.selected_call_ownership) ||
+      validate_i128_div_rem_helper_marshaling_plan(helper).has_value()) {
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper);
   }
@@ -2272,23 +2456,12 @@ MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing low/high register-pair lanes"};
   }
-  if (!instruction.resource_policy.call_boundary ||
-      !instruction.resource_policy.runtime_helper_callee ||
-      !instruction.resource_policy.caller_saved_clobbers ||
-      !instruction.resource_policy.preserves_source_operation_identity) {
+  if (!has_complete_i128_helper_resource_policy(instruction.resource_policy)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing resource policy facts"};
   }
-  if (instruction.abi_policy.transition !=
-          prepare::PreparedI128RuntimeHelperAbiTransition::
-              DirectRegisterPairArgumentsAndResult ||
-      instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
-      instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
-      instruction.abi_policy.argument_count != 2 ||
-      instruction.abi_policy.lanes_per_argument != 2 ||
-      instruction.abi_policy.result_lane_count != 2 ||
-      instruction.abi_policy.lane_width_bytes != 8) {
+  if (!has_complete_i128_div_rem_abi_policy(instruction.abi_policy)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing ABI/register-bank policy facts"};
@@ -2298,23 +2471,20 @@ MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing caller-saved clobber policy"};
   }
-  if (!instruction.live_preservation_policy.evaluated ||
-      !instruction.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !instruction.live_preservation_policy.no_additional_live_preservation_required) {
+  if (!has_complete_live_preservation(instruction.live_preservation_policy)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing live-preservation policy"};
   }
-  if (!instruction.selected_call_ownership.owns_terminal_call ||
-      !instruction.selected_call_ownership.has_callee_identity ||
-      !instruction.selected_call_ownership.has_resource_policy ||
-      !instruction.selected_call_ownership.has_clobber_policy ||
-      !instruction.selected_call_ownership.has_abi_bindings ||
-      !instruction.selected_call_ownership.has_marshaling ||
-      !instruction.selected_call_ownership.has_live_preservation) {
+  if (!has_complete_selected_call_ownership(instruction.selected_call_ownership)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing selected-call ownership policy"};
+  }
+  if (validate_i128_div_rem_helper_marshaling_plan(*instruction.source_helper).has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing marshaling policy"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }

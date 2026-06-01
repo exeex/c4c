@@ -1,38 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/72_aarch64_special_carrier_prepared_policy_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Consume Prepared I128 Carrier And Lane Facts
+Current Step ID: 3
+Current Step Title: Consume Prepared I128 Runtime Helper And ABI Policy
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the non-helper AArch64 i128 pair/shift/compare
-path in `src/backend/mir/aarch64/codegen/i128_ops.cpp`.
+Completed `plan.md` Step 3 for the AArch64 i128 div/rem runtime-helper boundary
+in `src/backend/mir/aarch64/codegen/i128_ops.cpp`.
 
-The non-helper result/lhs/rhs operand construction now routes through one local
-`PreparedI128PairCarrierLaneAdapter` before building pair operand records. The
-adapter consumes the prepared carrier pointer plus prepared low/high lane
-roles, indexes, widths, and register names, then hands target-local record
-construction converted AArch64 register operands. Opcode selection, shift-count
-handling, compare sequence policy, and final pair/shift/compare machine-record
-emission stayed AArch64-local.
+Helper-boundary operand construction now routes through a local prepared
+helper carrier/lane adapter that consumes the prepared runtime-helper lane
+bindings as authority, cross-checks them against prepared i128 carriers, and
+hands target-local record construction converted AArch64 register operands.
+Runtime-helper record construction, selection validation, and printable
+emission now share checks for prepared resource policy, ABI policy,
+live-preservation, selected-call ownership, clobber policy, and the structured
+marshal/unmarshal move plan. Final helper-boundary record construction and
+`bl` emission remain AArch64-local.
 
 ## Suggested Next
 
-Next coherent packet: Step 3 should narrow to the i128 div/rem helper boundary
-in `src/backend/mir/aarch64/codegen/i128_ops.cpp` and consume prepared
-runtime-helper, ABI, preservation, clobber, selected-call ownership, and
-marshaling facts without moving AArch64 helper-boundary record construction or
-final `bl` emission out of target-local code.
+Next coherent packet: supervisor should decide whether Step 4 should broaden
+validation around AArch64 special-carrier helper boundaries or hand the active
+plan to review/plan-owner for the next lifecycle decision.
 
 ## Watchouts
 
-`clang-format` was not available in this environment, so the touched code was
-left in the surrounding manual style. The helper-boundary path still has its
-own operand reconstruction and policy checks; that was intentionally left for
-Step 3.
+`review/idea69_step2_prepared_effect_review.md` and
+`review/idea70_steps1_3_review.md` were already untracked and were not touched.
+The marshal-plan validator intentionally rejects missing or mismatched
+structured prepared ABI move facts instead of reconstructing a fallback call
+sequence.
 
 ## Proof
 
