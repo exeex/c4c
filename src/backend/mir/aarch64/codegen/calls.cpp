@@ -2370,6 +2370,7 @@ make_immediate_cast_call_argument_publication_instruction(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedCallBoundaryEffectPlan& effect,
     const prepare::PreparedMoveResolution& move,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
@@ -2382,6 +2383,14 @@ make_immediate_cast_call_argument_publication_instruction(
                 move.from_value_id);
   const auto classification =
       prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const bool selected_prepared_register_argument_effect =
+      effect.effect_kind == prepare::PreparedCallBoundaryEffectKind::ExplicitMove &&
+      effect.phase == prepare::PreparedMovePhase::BeforeCall &&
+      effect.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      effect.storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      effect.order_index < bundle.moves.size() &&
+      &bundle.moves[effect.order_index] == &move;
   const auto* argument = classification.argument_plan;
   const auto* binding = classification.abi_binding;
   const auto* f128_carriers =
@@ -2620,9 +2629,7 @@ make_immediate_cast_call_argument_publication_instruction(
     return std::nullopt;
   }
 
-  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+  if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
@@ -2674,7 +2681,9 @@ make_immediate_cast_call_argument_publication_instruction(
             : (move.destination_register_placement.has_value()
                    ? move.destination_register_placement
                    : argument->destination_register_placement),
-        argument->destination_register_bank,
+        effect.destination.register_bank.has_value()
+            ? effect.destination.register_bank
+            : argument->destination_register_bank,
         RegisterOperandRole::CallAbi,
         move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                               : std::nullopt,
@@ -4579,7 +4588,8 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
     }
     const auto& move = bundle->moves[effect.order_index];
     if (auto instruction =
-            lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+            lower_before_call_move(
+                context, call_plan, *bundle, effect, move, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));
     }
   }
