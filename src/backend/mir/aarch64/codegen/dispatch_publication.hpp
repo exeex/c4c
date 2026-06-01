@@ -123,13 +123,6 @@ void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction);
 
-void record_memory_result(BlockScalarLoweringState& scalar_state,
-                          const module::MachineInstruction& instruction);
-
-void retarget_memory_result_to_prepared_home(
-    const module::BlockLoweringContext& context,
-    module::MachineInstruction& instruction);
-
 void retarget_pointer_store_value_to_materialized_address(
     module::MachineInstruction& instruction,
     const RegisterOperand& materialized_address);

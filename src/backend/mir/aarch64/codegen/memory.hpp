@@ -72,6 +72,12 @@ struct MemoryInstructionLoweringResult {
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 
+void record_memory_result(BlockScalarLoweringState& scalar_state,
+                          const module::MachineInstruction& instruction);
+
+void retarget_memory_result_to_prepared_home(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction);
 
 [[nodiscard]] bool store_local_uses_pointer_value_address(
     const bir::StoreLocalInst& store);

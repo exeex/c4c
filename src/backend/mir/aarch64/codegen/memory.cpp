@@ -362,6 +362,38 @@ const prepare::PreparedStoragePlanValue* find_storage_plan_value(
   return nullptr;
 }
 
+bool memory_load_result_feeds_before_return_fpr_abi(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedValueId value_id) {
+  return prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+             context.function.move_bundle_lookups,
+             context.function.value_locations,
+             context.block_index,
+             value_id,
+             prepare::PreparedRegisterBank::Fpr) != nullptr;
+}
+
+[[nodiscard]] bool symbol_fp_load_has_explicit_storage_placement(
+    const module::BlockLoweringContext& context,
+    const MemoryInstructionRecord& memory_record) {
+  if (memory_record.address.base_kind != MemoryBaseKind::Symbol ||
+      (memory_record.value_type != bir::TypeKind::F32 &&
+       memory_record.value_type != bir::TypeKind::F64) ||
+      !memory_record.result_value_id.has_value() ||
+      !memory_record.result_register.has_value() ||
+      !abi::is_fp_simd_register(memory_record.result_register->reg) ||
+      context.function.storage_plan == nullptr) {
+    return false;
+  }
+  const auto* storage =
+      find_storage_plan_value(*context.function.storage_plan,
+                              *memory_record.result_value_id);
+  return storage != nullptr &&
+         storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+         storage->bank == prepare::PreparedRegisterBank::Fpr &&
+         storage->register_placement.has_value();
+}
+
 const prepare::PreparedFrameSlot* find_frame_slot_by_slot_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
@@ -1752,6 +1784,72 @@ std::string memory_error_message(PreparedMemoryOperandRecordError error) {
   message += "; error=";
   message += prepared_i128_transport_record_error_name(error);
   return message;
+}
+
+void record_memory_result(BlockScalarLoweringState& scalar_state,
+                          const module::MachineInstruction& instruction) {
+  const auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->result_stack_offset_bytes.has_value() ||
+      !memory_record->result_register.has_value()) {
+    return;
+  }
+  record_emitted_scalar_register(scalar_state,
+                                 memory_record->result_value_name,
+                                 *memory_record->result_register);
+}
+
+void retarget_memory_result_to_prepared_home(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction) {
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  const bool frame_slot_return_publication =
+      memory_record != nullptr &&
+      memory_record->address.base_kind == MemoryBaseKind::FrameSlot &&
+      memory_record->result_value_id.has_value() &&
+      memory_load_result_feeds_before_return_fpr_abi(
+          context, *memory_record->result_value_id);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Load ||
+      (memory_record->address.base_kind != MemoryBaseKind::Symbol &&
+       !frame_slot_return_publication) ||
+      !memory_record->result_value_id.has_value() ||
+      !memory_record->result_register.has_value() ||
+      context.function.value_locations == nullptr) {
+    return;
+  }
+  if (symbol_fp_load_has_explicit_storage_placement(context, *memory_record)) {
+    return;
+  }
+
+  const auto* home =
+      prepare::find_indexed_prepared_value_home(
+          context.function.value_home_lookups,
+          context.function.value_locations,
+          *memory_record->result_value_id);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return;
+  }
+
+  const auto expected_view = memory_record->result_register->expected_view;
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() ||
+      parsed->bank != memory_record->result_register->reg.bank) {
+    return;
+  }
+  auto viewed = *parsed;
+  if (expected_view.has_value()) {
+    viewed.view = *expected_view;
+  }
+  memory_record->result_register->reg = viewed;
+  memory_record->result_register->value_id = home->value_id;
+  memory_record->result_register->value_name = home->value_name;
+  memory_record->result_register->occupied_register_references = {viewed};
+  memory_record->result_register->occupied_registers = {abi::register_name(viewed)};
 }
 
 OperandRecord make_memory_operand(MemoryOperand operand) {

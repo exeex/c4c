@@ -8,48 +8,43 @@ Current Step Title: Relocate one narrow owner-local publication family
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: relocated the comparison-owned missing
-branch/fused-compare publication helpers into the AArch64 comparison owner.
-`lower_missing_conditional_branch_condition_publication`,
-`lower_missing_fused_compare_operand_publication`, and
-`lower_missing_fused_compare_operand_publications` now live in
-`comparison.cpp`/`comparison.hpp`.
+Completed Step 2 from `plan.md`: relocated the memory-owned result recording
+and prepared-home retarget helpers out of dispatch publication and into the
+AArch64 memory owner. `record_memory_result` and
+`retarget_memory_result_to_prepared_home` are now declared from `memory.hpp`
+and defined in `memory.cpp`; dispatch call sites keep the same semantics via
+the memory owner surface.
 
 Changed files:
 
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
-- `src/backend/mir/aarch64/codegen/comparison.cpp`
-- `src/backend/mir/aarch64/codegen/comparison.hpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/memory.hpp`
 - `todo.md`
 
-Comparison consumes dispatch/prepared publication facts through explicit
-`DispatchBranchFusionHooks` entries. The generic
-`prepared_publication_source_producer_for_value`,
-`prepared_source_producer_instruction`, and prepared value-home publication
-authority remain dispatch-owned; `dispatch_publication.cpp` keeps only a thin
-legacy wrapper for the existing three-argument conditional publication API.
+The retarget path still consumes existing prepared value-location,
+value-home, ABI-move, and storage-plan facts. It does not re-derive prepared
+storage or value facts locally, and no store-publication or current-block join
+helpers were pulled into memory.
 
 ## Suggested Next
 
-Execute the next Step 2 relocation packet against a narrow memory-owned
-publication branch, or have the supervisor decide whether the remaining
-dispatch-publication helper surface is ready for route review before another
-owner relocation.
+Execute the next Step 2/Step 3 relocation packet for a narrow remaining
+owner-local publication helper family, with supervisor selection based on the
+remaining `dispatch_publication.*` surface.
 
 ## Watchouts
 
-- Keep `emit_value_publication_to_register` in place until more owner-local
-  helper branches are extracted.
-- Do not move the prepared producer lookup helpers unless the packet creates a
-  shared prepared-authority surface; they are still consumed across scalar,
-  globals, select, comparison, and memory paths.
-- `lower_missing_conditional_branch_condition_publication` still has a
-  compatibility declaration in `dispatch_publication.hpp` because an existing
-  backend dispatch test calls the old three-argument entrypoint directly. The
-  wrapper delegates to comparison through the same hook surface used by
-  dispatch.
+- `record_address_materialization_result` still lives in
+  `dispatch_publication.cpp`; do not fold it into memory unless a later packet
+  explicitly classifies address materialization ownership.
+- Store retarget/publication helpers still remain on the dispatch publication
+  surface and may have memory-adjacent names, but this packet intentionally did
+  not move them.
+- Root-level `test_before.log` and `test_baseline.log` were already present
+  alongside the required `test_after.log`; this packet wrote only
+  `test_after.log`.
 
 ## Proof
 
