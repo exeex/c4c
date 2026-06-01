@@ -6,6 +6,7 @@
 #include "memory.hpp"
 #include "select_materialization.hpp"
 
+#include <array>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -273,38 +274,42 @@ namespace {
 }
 
 [[nodiscard]] std::string_view register_display_name(abi::RegisterReference reg) {
-  static constexpr std::string_view x_names[] = {
-      "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
-      "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
-      "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
-      "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31"};
-  static constexpr std::string_view w_names[] = {
-      "w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
-      "w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
-      "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
-      "w24", "w25", "w26", "w27", "w28", "w29", "w30", "w31"};
-  static constexpr std::string_view s_names[] = {
-      "s0",  "s1",  "s2",  "s3",  "s4",  "s5",  "s6",  "s7",
-      "s8",  "s9",  "s10", "s11", "s12", "s13", "s14", "s15",
-      "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
-      "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31"};
-  static constexpr std::string_view d_names[] = {
-      "d0",  "d1",  "d2",  "d3",  "d4",  "d5",  "d6",  "d7",
-      "d8",  "d9",  "d10", "d11", "d12", "d13", "d14", "d15",
-      "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
-      "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"};
   if (reg.index >= 32U) {
     return {};
   }
+
+  static const auto names = [] {
+    std::array<std::array<std::string, 32>, 4> result{};
+    for (std::uint8_t index = 0; index < 32U; ++index) {
+      result[0][index] =
+          abi::register_name(abi::RegisterReference{abi::RegisterBank::GeneralPurpose,
+                                                    abi::RegisterView::X,
+                                                    index});
+      result[1][index] =
+          abi::register_name(abi::RegisterReference{abi::RegisterBank::GeneralPurpose,
+                                                    abi::RegisterView::W,
+                                                    index});
+      result[2][index] =
+          abi::register_name(abi::RegisterReference{abi::RegisterBank::FpSimd,
+                                                    abi::RegisterView::S,
+                                                    index});
+      result[3][index] =
+          abi::register_name(abi::RegisterReference{abi::RegisterBank::FpSimd,
+                                                    abi::RegisterView::D,
+                                                    index});
+    }
+    return result;
+  }();
+
   switch (reg.view) {
     case abi::RegisterView::X:
-      return x_names[reg.index];
+      return names[0][reg.index];
     case abi::RegisterView::W:
-      return w_names[reg.index];
+      return names[1][reg.index];
     case abi::RegisterView::S:
-      return s_names[reg.index];
+      return names[2][reg.index];
     case abi::RegisterView::D:
-      return d_names[reg.index];
+      return names[3][reg.index];
     case abi::RegisterView::V:
     case abi::RegisterView::Q:
     case abi::RegisterView::Sp:
