@@ -54,3 +54,18 @@ contract.
 - Instruction record names are changed without corresponding proof.
 - The route tries to solve calls, memory, and dispatch layout at the same time.
 
+## Completion Note
+
+Closed after Steps 1-4 contracted AArch64-local instruction/printer naming,
+status, validation, and clear mnemonic table surfaces while keeping record
+schema policy and concrete assembly spelling target-local. Step 4 was
+exhausted for clear table-driving candidates; remaining adjacent cleanup should
+start from a separate source idea rather than extending this route.
+
+Close proof: supervisor broader backend validation passed with
+`cmake --build build --target c4c_backend backend_aarch64_machine_printer_test backend_aarch64_target_instruction_records_test backend_aarch64_instruction_dispatch_test c4cll -- -j2`
+followed by `ctest --test-dir build -R '^backend_' --output-on-failure`
+for 169/169 backend tests. Plan-owner close gate regenerated the matching
+`test_before.log` scope and `c4c-regression-guard` passed against
+`test_after.log` with non-decreasing pass count allowed for this refactor
+closure.
