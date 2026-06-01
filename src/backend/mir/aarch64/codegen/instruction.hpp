@@ -1848,11 +1848,12 @@ struct InstructionRecord {
     std::size_t instruction_index,
     const bir::LoadLocalInst& load);
 [[nodiscard]] PreparedMemoryInstructionRecordResult
-make_prepared_frame_slot_load_memory_instruction_record(
+make_prepared_load_memory_instruction_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedEdgePublicationLookups* edge_publications,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::LoadLocalInst& load);

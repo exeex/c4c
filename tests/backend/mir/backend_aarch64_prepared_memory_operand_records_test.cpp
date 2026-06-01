@@ -439,11 +439,12 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
   }
 
   const auto selected =
-      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+      aarch64_codegen::make_prepared_load_memory_instruction_record(
           fixture.names,
           fixture.locations,
           fixture.storage,
           fixture.addressing,
+          nullptr,
           fixture.block_label,
           2,
           load);
@@ -477,11 +478,12 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
 
   fixture.storage.values.clear();
   const auto missing_storage =
-      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+      aarch64_codegen::make_prepared_load_memory_instruction_record(
           fixture.names,
           fixture.locations,
           fixture.storage,
           fixture.addressing,
+          nullptr,
           fixture.block_label,
           2,
           load);
@@ -707,8 +709,15 @@ int pointer_value_load_combines_selected_address_and_member_offsets() {
   };
 
   const auto selected =
-      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
-      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 9, load);
+      aarch64_codegen::make_prepared_load_memory_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          nullptr,
+          fixture.block_label,
+          9,
+          load);
   if (!selected.record.has_value() ||
       selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
     return fail("expected pointer-value load with selected member offset to select");
@@ -942,11 +951,12 @@ int volatile_memory_does_not_fabricate_atomic_authority() {
   };
 
   const auto selected =
-      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+      aarch64_codegen::make_prepared_load_memory_instruction_record(
           fixture.names,
           fixture.locations,
           fixture.storage,
           fixture.addressing,
+          nullptr,
           fixture.block_label,
           2,
           load);

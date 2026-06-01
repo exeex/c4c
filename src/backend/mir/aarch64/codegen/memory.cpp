@@ -2196,26 +2196,6 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
       &typed_stack_source);
 }
 
-PreparedMemoryInstructionRecordResult
-make_prepared_frame_slot_load_memory_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const prepare::PreparedAddressingFunction& addressing,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index,
-    const bir::LoadLocalInst& load) {
-  return make_prepared_load_memory_instruction_record(
-      names,
-      value_locations,
-      storage_plan,
-      addressing,
-      nullptr,
-      block_label,
-      instruction_index,
-      load);
-}
-
 PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
     PreparedMemoryOperandRecordResult operand,
     const prepare::PreparedValueLocationFunction& value_locations,
