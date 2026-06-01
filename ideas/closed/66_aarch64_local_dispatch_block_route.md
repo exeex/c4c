@@ -58,3 +58,21 @@ left broad dispatch files.
 - The slice attempts to solve all dispatch-family contraction at once.
 - The implementation claims narrowing while leaving the same broad public block
   route and helper authority unchanged.
+
+## Closure Note
+
+Closed after the local prepared-block dispatch route was kept as an explicit
+AArch64 owner while unused dispatch scaffolding was removed and stack-home
+lookup routing was narrowed through the publication owner.
+
+Evidence from the landed slice:
+
+- Unused AArch64 dispatch scaffolding was deleted.
+- Remaining stack-home lookup routing uses the publication owner instead of
+  broadening `dispatch.cpp`.
+- The local block route remains limited to traversal, routing, diagnostics,
+  hook wiring, before-return publication sequencing, and final instruction
+  ordering.
+- No semantic producer, publication, or value-materialization authority was
+  moved back into the local dispatch route.
+- The remaining evidence-only local-slot offset question was split to idea 67.

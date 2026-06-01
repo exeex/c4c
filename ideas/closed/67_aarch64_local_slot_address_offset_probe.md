@@ -53,3 +53,20 @@ disabled path.
   proven.
 - The outcome is claimed as capability progress while only recording
   classification evidence.
+
+## Closure Note
+
+Closed after the evidence packet proved the null local-slot address offset
+helper was dead in the current AArch64 dispatch-publication route and deleted
+the dead helper without bundling unrelated contraction or shared-authority
+migration.
+
+Evidence from the landed slice:
+
+- `local_slot_address_frame_offset` was classified as dead rather than a live
+  missing prepared-offset feature.
+- The dead local-slot offset helper was removed.
+- No shared frame-address authority was changed for this probe.
+- No testcase was weakened or marked unsupported.
+- The dispatch-family contraction sequence has no further follow-up parked in
+  this idea.

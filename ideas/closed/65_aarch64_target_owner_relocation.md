@@ -64,3 +64,20 @@ not a shared semantic migration.
   surfaces unchanged.
 - The same broad dispatch ownership remains hidden behind newly named files or
   forwarding helpers.
+
+## Closure Note
+
+Closed after the target-owner relocation sequence moved dispatch-adjacent
+target emission helpers into more precise AArch64 owners without changing
+semantic prepared authority.
+
+Evidence from the landed slice:
+
+- Global symbol helpers were relocated out of broad dispatch ownership.
+- Memory spelling helpers and register alias helpers moved to precise local
+  owners.
+- Transitive dispatch-publication includes were retired.
+- The route did not move target-local register spelling, clobber handling, or
+  instruction spelling into shared code.
+- The dispatch-family contraction continued with idea 66 for the remaining
+  local prepared-block route.
