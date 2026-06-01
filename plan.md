@@ -144,26 +144,30 @@ Completion check:
 - Focused proof covers edge-copy publication and current-block join sources,
   and the diff does not introduce named-case publication shortcuts.
 
-### Step 4: Consume Prepared Typed Stack And Store-Source Publication Facts
+### Step 4: Exhaust In-Scope Typed Stack And Store-Source Publication Facts
 
-Goal: make stack-source and store-source publication use prepared source
-authority before local AArch64 load/store or copy emission.
+Goal: finish the active source idea's owned Step 4 surface without expanding
+the runbook into out-of-scope edge-copy ownership.
 
 Primary targets:
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - call or shared prepared lookup sites only where needed
 
 Concrete actions:
-- Consume `PreparedTypedStackSourcePublication` and prepared store-source
-  publication plans for the relevant AArch64 publication paths.
+- Treat the `dispatch_publication.cpp` Step 4 audit as the in-scope packet:
+  store-source publication already consumes prepared store-source plans there.
+- Do not thread `PreparedEdgePublication` into
+  `dispatch_publication.cpp` solely to create a typed stack-source consumer.
+- Record the typed stack-source edge-publication owner as separate follow-up
+  work when the viable consumer is in
+  `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp`.
 - Keep target-local address/register conversion and instruction selection in
   AArch64 code.
-- Add or adjust focused tests for typed stack-source and store-source
-  publication paths touched by the migration.
 
 Completion check:
-- Focused proof covers typed stack-source publication and store-source
-  publication, and source authority is no longer locally re-derived.
+- `todo.md` records that Step 4 is exhausted for active owned files, names the
+  follow-up idea for `dispatch_edge_copies.cpp`, and execution advances to
+  Step 5 consolidation.
 
 ### Step 5: Consolidate Proof And Residue Audit
 
@@ -177,6 +181,9 @@ Primary targets:
 Concrete actions:
 - Re-scan the touched AArch64 helpers for remaining local call/publication
   authority duplication.
+- Confirm Step 4 residue is limited to the out-of-scope typed stack-source
+  edge-copy owner recorded in the follow-up idea, not a missed
+  `dispatch_publication.cpp` migration.
 - Confirm any shared prealloc edits expose existing facts rather than moving
   AArch64 policy into shared code.
 - Run the supervisor-selected broader or regression guard proof when the slice

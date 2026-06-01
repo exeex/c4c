@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/69_aarch64_call_publication_prepared_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Consume Prepared Typed Stack And Store-Source Publication Facts
+Current Step ID: Step 5
+Current Step Title: Consolidate Proof And Residue Audit
 
 # Current Packet
 
@@ -19,27 +19,27 @@ decisions visible in `dispatch_publication.cpp` to existing prepared facts.
 | `lower_fixed_formal_store_local_publication` checks prepared destination frame-slot/base-plus-offset facts and uses `store_source.source_value_name`, `destination_stack_offset_bytes`, and `destination_byte_offset`. | The `store_source` member returned by `PreparedFixedFormalStoreSourcePublication`. | Already depends on the prepared plan for source identity and destination memory authority. | Keep as store-source plan reuse; broader store-source publication helpers live outside `dispatch_publication.cpp`. |
 | No `dispatch_publication.cpp` call to `prepare_same_width_i32_stack_source_publication` or direct `PreparedTypedStackSourcePublication` use exists. | Shared fact exists in `prepared_lookups.*`; AArch64 has no local consumer in this file. | Not consumed in `dispatch_publication.cpp`. | Blocker for an in-file typed stack-source migration: the only typed fact constructor takes a `PreparedEdgePublication*`, but the visible `dispatch_publication.cpp` candidates do not currently carry that publication fact. |
 
-First narrow migration target/blocker: there is no concrete typed stack-source
-publication migration inside `dispatch_publication.cpp` without first threading
-or locating the relevant `PreparedEdgePublication` at the AArch64 publication
-emission site. The first actionable target is therefore to audit the edge
-publication emission owner that already has `PreparedEdgePublication` in hand
-and decide whether an AArch64 same-width I32 stack-source load should consume
-`prepare_same_width_i32_stack_source_publication` there, mirroring the existing
-shared fact contract. Within `dispatch_publication.cpp`, the store-source path
-appears already migrated to prepared plan usage.
+Lifecycle decision: Step 4 is exhausted for the active source idea's owned
+files. There is no valid in-scope `dispatch_publication.cpp` implementation
+packet for `PreparedTypedStackSourcePublication` without expanding ownership
+to the edge-copy publication owner. The out-of-scope route is captured as
+`ideas/open/78_aarch64_edge_copy_typed_stack_source_prepared_authority.md`.
+Within `dispatch_publication.cpp`, the store-source path appears already
+migrated to prepared plan usage.
 
 ## Suggested Next
 
-Delegate the first Step 4 implementation packet to the edge publication owner
-that has `PreparedEdgePublication` available, or have the supervisor/plan owner
-confirm that `dispatch_publication.cpp` should be extended to receive that fact
-before adding an in-file typed stack-source consumer. Keep the fixed-formal
-store-local publication helper as a proof point for existing prepared
-store-source plan reuse unless a narrower missing store-source case is named.
+Proceed with Step 5 consolidation for idea 69. The Step 5 packet should audit
+the migrated call/publication helpers, treat the typed stack-source edge-copy
+consumer as scheduled follow-up idea 78 rather than active-scope residue, and
+confirm no `dispatch_publication.cpp` authority migration was missed. Do not
+delegate `dispatch_edge_copies.cpp` implementation under the active idea 69
+runbook.
 
 ## Watchouts
 
+- The current active step is Step 5; the Step 4 blocker is no longer an
+  implementation packet for idea 69.
 - `PreparedTypedStackSourcePublication` is a typed edge-publication fact, not a
   generic `PreparedValueHome` stack-slot load plan; do not replace scalar
   publication/home consumers with it unless the local decision has the
@@ -53,7 +53,7 @@ store-source plan reuse unless a narrower missing store-source case is named.
 
 ## Proof
 
-Command: `git diff --check -- todo.md`
+Command: `git diff --check -- plan.md todo.md ideas/open/78_aarch64_edge_copy_typed_stack_source_prepared_authority.md`
 
-Result: passed; no `test_after.log` was written for this documentation-only
-audit packet.
+Result: passed after lifecycle repair; no `test_after.log` was written for
+this documentation-only audit packet.
