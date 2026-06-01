@@ -59,3 +59,24 @@ The cleanup question is owner layout, not another immediate BIR migration.
 - The route weakens edge-copy or block-entry publication expectations.
 - New testcase-shaped shortcuts are added for one edge-copy form.
 
+## Completion Note
+
+Closed after the active runbook contracted the remaining public edge-copy owner
+surface:
+
+- edge-copy helper classification was recorded in `todo.md` before movement
+- narrow prepared-memory and typed stack-source emission helpers were relocated
+  to their natural AArch64 owners
+- variadic carrier edge-source handling moved to the variadic owner
+- stale public declarations and unused private helper surface were removed
+- retained `dispatch_edge_copies.*` entry points remain externally used
+  edge-copy hooks for publication-to-register emission, read-clobber checks,
+  block-entry move filtering, and select parallel-copy source lowering
+
+Closure proof used matching broad backend logs:
+
+`bash -o pipefail -c "(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_before.log"`
+
+and the same command to refresh `test_after.log`; both runs passed 169/169
+backend tests, and `c4c-regression-guard` accepted the close with no new
+failures.
