@@ -26235,6 +26235,213 @@ int predecessor_join_load_source_publication_uses_prepared_source_memory() {
   return 0;
 }
 
+int same_width_i32_stack_source_edge_copy_uses_prepared_typed_stack_source() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.join.edge.typed.stack.source");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.typed.stack.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.typed.stack.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.typed.stack.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.typed.stack.join");
+  const auto source_name = prepared.names.value_names.intern("%edge.stack.i32");
+  const auto destination_name = prepared.names.value_names.intern("%join.stack.i32");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.join.edge.typed.stack.source",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.join.edge.typed.stack.pred",
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.join.edge.typed.stack.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.typed.stack.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I32, "%edge.stack.i32"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::immediate_i32(5),
+                       .rhs = bir::Value::immediate_i32(6),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result = bir::Value::named(bir::TypeKind::I32, "%join.stack.i32"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I32, "%edge.stack.i32"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%join.stack.i32"),
+                  }},
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{801},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{801},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{802},
+               .function_name = function_name,
+               .value_name = destination_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w13"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{801},
+                      .to_value_id = prepare::PreparedValueId{802},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w13"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w13"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_same_width_i32_stack_source_edge_copy",
+                      .destination_register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Gpr,
+                              .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                              .slot_index = 0,
+                              .contiguous_width = 1,
+                          },
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{801},
+                              source_name,
+                              prepare::PreparedFrameSlotId{801},
+                              64),
+           register_storage(prepare::PreparedValueId{802}, destination_name, "w13")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{801},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 80;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  const auto* publication =
+      prepare::find_unique_indexed_prepared_edge_publication(
+          &prepared_lookups.edge_publications,
+          pred_label,
+          join_label,
+          prepare::PreparedValueId{802});
+  const auto typed_stack_source =
+      prepare::prepare_same_width_i32_stack_source_publication(publication);
+  if (typed_stack_source.status !=
+          prepare::PreparedTypedStackSourcePublicationStatus::Available ||
+      typed_stack_source.source_stack_offset_bytes != std::optional<std::size_t>{64} ||
+      !typed_stack_source.destination_register_placement.has_value()) {
+    return fail("expected prepared same-width I32 stack-source publication authority");
+  }
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(pred_context, block, diagnostics);
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected same-width I32 stack-source edge copy to publish before branch: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected same-width I32 stack-source edge-copy route to print: " +
+                printed.diagnostic);
+  }
+  const auto load = printed.assembly.find("ldr w13, [sp, #64]");
+  const auto branch = printed.assembly.find("b .LBB");
+  if (load == std::string::npos ||
+      branch == std::string::npos ||
+      !(load < branch) ||
+      printed.assembly.find("add w13") != std::string::npos ||
+      printed.assembly.find("mov w13") != std::string::npos ||
+      printed.assembly.find("mov x13") != std::string::npos) {
+    return fail("expected same-width I32 edge copy to load prepared stack source into prepared destination GPR: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_entry_edge_copy_redundancy_uses_prepared_publication_authority() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -33302,6 +33509,11 @@ int main() {
   }
   if (const int status =
           predecessor_join_load_source_publication_uses_prepared_source_memory();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          same_width_i32_stack_source_edge_copy_uses_prepared_typed_stack_source();
       status != 0) {
     return status;
   }
