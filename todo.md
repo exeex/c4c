@@ -8,23 +8,24 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 record surface kind naming:
-`record_surface_kind_name` now delegates through an internal
-`record_surface_kind_spelling` lookup helper backed by an explicit target-local
-`kRecordSurfaceKindSpellings` table. All previous record surface spellings were
-preserved, and missing/unknown record surface kinds still return `unknown`.
+Step 2 bounded contraction completed for AArch64 immediate kind naming:
+`immediate_kind_name` now delegates through an internal
+`immediate_kind_spelling` lookup helper backed by an explicit target-local
+`kImmediateKindSpellings` table. All previous immediate kind spellings were
+preserved, and missing/unknown immediate kinds still return `unknown`.
 
 ## Suggested Next
 
 Continue Step 2 with a separate bounded packet for another small local naming
-surface such as `immediate_kind_name` or `frame_instruction_kind_name`, preserving
-all public strings and `unknown` fallbacks.
+surface such as `frame_instruction_kind_name`, preserving all public strings and
+`unknown` fallbacks.
 
 ## Watchouts
 
-The record surface spelling table intentionally includes every current
-`RecordSurfaceKind` entry from the previous switch. The existing record surface
-classification predicates remain unchanged.
+The immediate kind spelling table intentionally includes every current
+`ImmediateKind` entry from the previous switch. This packet only changed the
+local naming helper shape; no diagnostics, tests, or downstream instruction
+selection behavior were changed.
 
 ## Proof
 

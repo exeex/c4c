@@ -41,6 +41,11 @@ struct RecordSurfaceKindSpelling {
   std::string_view spelling;
 };
 
+struct ImmediateKindSpelling {
+  ImmediateKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -165,6 +170,13 @@ constexpr std::array<RecordSurfaceKindSpelling, 5> kRecordSurfaceKindSpellings{{
     {RecordSurfaceKind::ExternalAssemblerInput, "external_assembler_input"},
 }};
 
+constexpr std::array<ImmediateKindSpelling, 4> kImmediateKindSpellings{{
+    {ImmediateKind::SignedInteger, "signed_integer"},
+    {ImmediateKind::UnsignedInteger, "unsigned_integer"},
+    {ImmediateKind::Boolean, "boolean"},
+    {ImmediateKind::NullPointer, "null_pointer"},
+}};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -246,6 +258,18 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.surface == surface;
       });
   if (found == kRecordSurfaceKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view immediate_kind_spelling(ImmediateKind kind) {
+  const auto found = std::find_if(
+      kImmediateKindSpellings.begin(), kImmediateKindSpellings.end(),
+      [kind](const ImmediateKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kImmediateKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -347,17 +371,7 @@ std::string_view register_operand_role_name(RegisterOperandRole role) {
 }
 
 std::string_view immediate_kind_name(ImmediateKind kind) {
-  switch (kind) {
-    case ImmediateKind::SignedInteger:
-      return "signed_integer";
-    case ImmediateKind::UnsignedInteger:
-      return "unsigned_integer";
-    case ImmediateKind::Boolean:
-      return "boolean";
-    case ImmediateKind::NullPointer:
-      return "null_pointer";
-  }
-  return "unknown";
+  return immediate_kind_spelling(kind);
 }
 
 std::string_view instruction_family_name(InstructionFamily family) {
