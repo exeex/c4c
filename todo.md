@@ -8,36 +8,46 @@ Current Step Title: Consume Prepared Stack-Source Authorities
 
 ## Just Finished
 
-Completed the first executable `plan.md` Step 4 typed stack-source packet in
-`src/backend/mir/aarch64/codegen/memory.cpp`. The load-result stack-publication
-path now looks up a unique prepared edge publication for local/global load
-results from `context.function.prepared_lookups->edge_publications`, calls
-`prepare::prepare_same_width_i32_stack_source_publication(...)`, and lets an
-available `PreparedTypedStackSourcePublication` supply the destination register
-placement before falling back to reserved AArch64 scratch selection.
+Completed the Step 4 aggregate stack-source inspection packet. Checked the
+existing `memory.cpp` prepared edge-publication consumers around
+`find_unique_load_result_stack_source_publication(...)`,
+`make_prepared_load_memory_instruction_record(...)` for local/global loads,
+`plan_store_local_source_publication(...)`,
+`lower_store_local_value_publication(...)`,
+`lower_store_global_value_publication_from_plan(...)`, and
+`lower_store_global_value_publication(...)`. No in-scope consumer was wired:
+`PreparedAggregateStackSourceAuthority` is populated on
+`PreparedEdgePublication`, but `memory.cpp` does not reference that type, and
+the store-source publication plan/source-producer path does not expose the
+originating `PreparedEdgePublication` or its aggregate authority.
 
 ## Suggested Next
 
-Next Step 4 packet: inspect whether aggregate stack-source publication should
-consume `prepare::PreparedAggregateStackSourceAuthority` through an existing
-prepared edge-publication boundary in `memory.cpp`, keeping aggregate copy
-transport separate from the same-width i32 typed path.
+Next packet: supervisor/plan-owner route decision. Either add a narrowly scoped
+prepared lookup/fact boundary that exposes the originating edge publication or
+aggregate stack-source authority to the store-source publication lowering path,
+or defer aggregate stack-source transport to the later aggregate-copy planning
+step.
 
 ## Watchouts
 
-The typed packet uses only a unique prepared publication whose predecessor is
-the current block and whose source producer pointer matches the load being
-lowered; ambiguous or absent publications intentionally fall back to the prior
-scratch-register path. Public `make_prepared_frame_slot_load_memory_instruction_record(...)`
-callers still have no edge-publication parameter and therefore retain the old
-fallback behavior.
+Exact blocker: the only existing `memory.cpp` prepared edge-publication lookup
+boundary is the local/global load-result typed helper, which calls
+`prepare::prepare_same_width_i32_stack_source_publication(...)` from a unique
+load-result `PreparedEdgePublication`. Aggregate authority lives on
+`PreparedEdgePublication::aggregate_stack_source_authority`, but the
+store-local/store-global publication helpers consume only
+`PreparedStoreSourcePublicationPlan` and source-producer facts. Consuming
+`PreparedAggregateStackSourceAuthority` here would require adding a new
+edge-publication lookup/fact boundary or aggregate-copy authority transport,
+which is outside this Step 4 packet.
 
 ## Proof
 
-Passed. Log: `test_after.log`.
-
-Command:
+Blocked before code changes. Per packet instructions, did not run the delegated
+build/CTest proof and did not create a new `test_after.log` for this blocked
+inspection. Ran:
 
 ```sh
-{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract|instruction_dispatch)|codegen_route_aarch64_(store_global_stack_publication|local_aggregate_address_pointer_copy_publishes_frame_address|pointer_select_aggregate_byte_copy|variadic_aggregate_overflow_byte_copy|dynamic_stack_fixed_slot_uses_fp_anchor)|prepared_lookup_helper|riscv_prepared_edge_publication|cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'; } > test_after.log 2>&1
+git diff --check -- todo.md
 ```
