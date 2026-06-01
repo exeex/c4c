@@ -2439,9 +2439,7 @@ make_immediate_cast_call_argument_publication_instruction(
       .source_bundle = &bundle,
       .source_move = &move,
   };
-  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+  if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       argument != nullptr) {
     const auto* source_selection = argument->source_selection.has_value()
@@ -2521,7 +2519,9 @@ make_immediate_cast_call_argument_publication_instruction(
                   ? binding->destination_register_placement
                   : (move.destination_register_placement.has_value()
                          ? move.destination_register_placement
-                         : argument->destination_register_placement);
+                         : (effect.destination.register_placement.has_value()
+                                ? effect.destination.register_placement
+                                : argument->destination_register_placement));
           const auto destination_register_name =
               destination_register_placement.has_value()
                   ? std::optional<std::string>{}
@@ -2529,20 +2529,25 @@ make_immediate_cast_call_argument_publication_instruction(
                          ? binding->destination_register_name
                          : (argument->destination_register_name.has_value()
                                 ? argument->destination_register_name
-                                : move.destination_register_name));
+                                : (move.destination_register_name.has_value()
+                                       ? move.destination_register_name
+                                       : effect.destination.register_name)));
           auto destination = make_register_operand_from_prepared_authority(
               destination_register_name,
               destination_register_placement,
-              argument->destination_register_bank,
+              effect.destination.register_bank.has_value()
+                  ? effect.destination.register_bank
+                  : argument->destination_register_bank,
               RegisterOperandRole::CallAbi,
               move.to_value_id != 0
                   ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                   : argument->source_value_id,
               preserved_source_value_name.value_or(c4c::kInvalidValueName),
-              binding != nullptr ? binding->destination_contiguous_width
-                                 : argument->destination_contiguous_width,
-              binding != nullptr ? binding->destination_occupied_register_names
-                                 : argument->destination_occupied_register_names,
+              effect.destination.contiguous_width,
+              !effect.destination.occupied_register_names.empty()
+                  ? effect.destination.occupied_register_names
+                  : (binding != nullptr ? binding->destination_occupied_register_names
+                                        : argument->destination_occupied_register_names),
               preserved_source->source_memory.has_value()
                   ? scalar_integer_register_view_from_size(
                         preserved_source->source_memory->size_bytes)

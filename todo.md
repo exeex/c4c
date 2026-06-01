@@ -9,18 +9,18 @@ Current Step Title: Consume Prepared Call Plans And Boundary Move Facts
 ## Just Finished
 
 Completed another narrow `plan.md` Step 2 migration in `calls.cpp`. The
-before-call `CallArgumentAbi` GPR frame-slot-source/register-destination path
-now uses the already-threaded `PreparedCallBoundaryEffectPlan` explicit-move
+before-call `CallArgumentAbi` prior-preserved register-destination path now
+uses the already-threaded `PreparedCallBoundaryEffectPlan` explicit-move
 effect as its phase, destination, storage, and order authority. The
-`PreparedMoveBundle` and `PreparedMoveResolution` still remain on the machine
-record for provenance, while AArch64 source memory selection, register view
-selection, and concrete register spelling stay local.
+`PreparedMoveBundle`, `PreparedMoveResolution`, binding, and argument facts
+still remain on the machine record or local lowering path for provenance,
+source selection, and AArch64 spelling.
 
 ## Suggested Next
 
 Continue Step 2 with a supervisor-selected review or the next remaining
-prepared call-boundary publication path; keep stack-slot destination copies out
-of scope unless explicitly delegated.
+prepared call-boundary publication path; keep stack-slot destination copies and
+publication ordering out of scope unless explicitly delegated.
 
 ## Watchouts
 
@@ -38,6 +38,10 @@ of scope unless explicitly delegated.
   contiguous width while retaining binding/move data for destination name,
   placement, and instruction spelling; binding occupied names remain preferred
   when available.
+- The newly migrated prior-preservation path now gates on the selected explicit
+  move effect and uses the effect destination endpoint for bank, width, and
+  occupied-register authority while retaining binding/move/argument facts for
+  concrete register spelling and preserved source selection.
 - Do not require `classification_status == Available` for every register
   argument effect yet: existing f128 HFA lowering can validly proceed without
   an ABI binding while still using the effect's phase/destination/storage
