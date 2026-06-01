@@ -19,6 +19,9 @@ namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
+[[nodiscard]] std::string machine_block_label(c4c::FunctionNameId function_name,
+                                              c4c::BlockLabelId block_label);
+
 [[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
@@ -29,6 +32,168 @@ namespace prepare = c4c::backend::prepare;
   }
   return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
                                                  value.name);
+}
+
+struct PreparedConditionalBranchFacts {
+  const prepare::PreparedBranchCondition* branch_condition = nullptr;
+  prepare::PreparedBranchTargetLabels targets;
+  std::optional<prepare::PreparedShortCircuitBranchPlan> short_circuit_plan;
+};
+
+struct PreparedFusedCompareBranchFacts {
+  const prepare::PreparedBranchCondition* branch_condition = nullptr;
+  prepare::PreparedBranchTargetLabels targets;
+  std::optional<prepare::PreparedShortCircuitBranchPlan> short_circuit_plan;
+  bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
+  bir::TypeKind compare_type = bir::TypeKind::Void;
+  bir::Value lhs;
+  bir::Value rhs;
+  std::string_view condition_suffix;
+  abi::RegisterView operand_view = abi::RegisterView::W;
+};
+
+[[nodiscard]] std::optional<PreparedConditionalBranchFacts>
+find_prepared_conditional_branch_facts(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->true_label == c4c::kInvalidBlockLabel ||
+      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  PreparedConditionalBranchFacts facts{
+      .branch_condition = branch_condition,
+      .targets =
+          prepare::PreparedBranchTargetLabels{
+              .true_label = branch_condition->true_label,
+              .false_label = branch_condition->false_label,
+          },
+  };
+
+  if (context.function.prepared == nullptr || context.function.bir_function == nullptr ||
+      context.bir_block == nullptr) {
+    return facts;
+  }
+
+  const bool has_compare_branch_facts =
+      branch_condition->predicate.has_value() &&
+      branch_condition->compare_type.has_value() &&
+      branch_condition->lhs.has_value() &&
+      branch_condition->rhs.has_value();
+  if (!has_compare_branch_facts) {
+    if (const auto control_flow_targets =
+            prepare::find_prepared_control_flow_branch_target_labels(
+                *context.function.control_flow, context.control_flow_block->block_label);
+        control_flow_targets.has_value()) {
+      facts.targets = *control_flow_targets;
+    }
+    return facts;
+  }
+
+  const auto direct_targets = prepare::resolve_prepared_compare_branch_target_labels(
+      context.function.prepared->names,
+      context.function.control_flow,
+      *context.bir_block,
+      *branch_condition);
+  if (!direct_targets.has_value()) {
+    return std::nullopt;
+  }
+  facts.targets = *direct_targets;
+
+  const auto join_context = prepare::find_prepared_short_circuit_join_context(
+      context.function.prepared->names,
+      *context.function.control_flow,
+      *context.function.bir_function,
+      context.control_flow_block->block_label);
+  if (!join_context.has_value()) {
+    return facts;
+  }
+
+  const auto branch_plan = prepare::find_prepared_short_circuit_branch_plan(
+      context.function.prepared->names, *join_context, *direct_targets);
+  if (!branch_plan.has_value()) {
+    return std::nullopt;
+  }
+  facts.short_circuit_plan = *branch_plan;
+  facts.targets = prepare::PreparedBranchTargetLabels{
+      .true_label = branch_plan->on_compare_true.block_label,
+      .false_label = branch_plan->on_compare_false.block_label,
+  };
+  return facts;
+}
+
+[[nodiscard]] std::optional<PreparedFusedCompareBranchFacts>
+find_prepared_fused_compare_branch_facts(
+    const module::BlockLoweringContext& context,
+    const DispatchBranchFusionHooks& hooks) {
+  const auto branch_facts = find_prepared_conditional_branch_facts(context);
+  if (!branch_facts.has_value() || branch_facts->branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto& branch_condition = *branch_facts->branch_condition;
+  if (branch_condition.kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.can_fuse_with_branch ||
+      !branch_condition.predicate.has_value() ||
+      !branch_condition.compare_type.has_value() ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto condition = branch_condition_suffix(*branch_condition.predicate);
+  const auto operand_view = hooks.scalar_view_for_type(*branch_condition.compare_type);
+  if (!condition.has_value() || !operand_view.has_value() ||
+      branch_facts->targets.true_label == c4c::kInvalidBlockLabel ||
+      branch_facts->targets.false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  return PreparedFusedCompareBranchFacts{
+      .branch_condition = branch_facts->branch_condition,
+      .targets = branch_facts->targets,
+      .short_circuit_plan = branch_facts->short_circuit_plan,
+      .predicate = *branch_condition.predicate,
+      .compare_type = *branch_condition.compare_type,
+      .lhs = *branch_condition.lhs,
+      .rhs = *branch_condition.rhs,
+      .condition_suffix = *condition,
+      .operand_view = *operand_view,
+  };
+}
+
+void append_prepared_compare_branch_lines(
+    std::vector<std::string>& lines,
+    const PreparedFusedCompareBranchFacts& facts) {
+  lines.push_back("b." + std::string{facts.condition_suffix} + " " +
+                  machine_block_label(facts.branch_condition->function_name,
+                                      facts.targets.true_label));
+  lines.push_back("b " + machine_block_label(facts.branch_condition->function_name,
+                                             facts.targets.false_label));
+}
+
+void apply_prepared_conditional_branch_targets(
+    BranchInstructionRecord& record,
+    const PreparedConditionalBranchFacts& facts) {
+  if (!record.target_pair.has_value()) {
+    return;
+  }
+  record.target_pair->true_target.block_label = facts.targets.true_label;
+  record.target_pair->false_target.block_label = facts.targets.false_label;
+  record.target = record.target_pair->true_target;
+  if (record.condition_record.has_value() &&
+      record.condition_record->compare_branch_candidate.has_value() &&
+      record.condition_record->compare_branch_candidate->target_pair.has_value()) {
+    record.condition_record->compare_branch_candidate->target_pair = record.target_pair;
+  }
 }
 
 void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
@@ -802,17 +967,17 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
 
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr) {
+  const auto branch_facts = find_prepared_conditional_branch_facts(context);
+  if (!branch_facts.has_value() || branch_facts->branch_condition == nullptr) {
     append_branch_diagnostic(
         diagnostics,
         context,
         "AArch64 conditional branch lowering requires prepared branch condition authority");
     return std::nullopt;
   }
-  if (branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare &&
-      !branch_condition->can_fuse_with_branch) {
+  const auto& branch_condition = *branch_facts->branch_condition;
+  if (branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare &&
+      !branch_condition.can_fuse_with_branch) {
     append_branch_diagnostic(
         diagnostics,
         context,
@@ -824,7 +989,7 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
       context.function.prepared->names,
       *context.function.value_locations,
       *context.control_flow_block,
-      *branch_condition);
+      branch_condition);
   if (!prepared_record.record.has_value()) {
     append_branch_diagnostic(
         diagnostics,
@@ -836,7 +1001,7 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
   const auto terminator_validation = validate_prepared_conditional_branch_terminator(
       context.function.prepared->names,
       *context.control_flow_block,
-      *branch_condition,
+      branch_condition,
       context.bir_block->terminator);
   if (terminator_validation != PreparedBranchRecordError::None) {
     append_branch_diagnostic(
@@ -848,7 +1013,8 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
   }
 
   auto& record = *prepared_record.record;
-  if (branch_condition->kind == prepare::PreparedBranchConditionKind::MaterializedBool) {
+  apply_prepared_conditional_branch_targets(record, *branch_facts);
+  if (branch_condition.kind == prepare::PreparedBranchConditionKind::MaterializedBool) {
     if (!record.condition_record.has_value() ||
         !record.condition_record->condition_value_id.has_value()) {
       append_branch_diagnostic(
@@ -879,7 +1045,7 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
   const auto expected_opcode =
-      branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare
+      branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare
           ? MachineOpcode::CompareBranch
           : MachineOpcode::ConditionalBranch;
   if (instruction.target.selection.status != MachineNodeSelectionStatus::Selected ||
@@ -1416,33 +1582,23 @@ lower_fused_compare_branch_from_emitted_cast(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  if (!condition.has_value()) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value()) {
     return std::nullopt;
   }
 
   const auto before_instruction_index =
       context.bir_block != nullptr ? context.bir_block->insts.size() : std::size_t{0};
-  const bir::Value* cast_value = &*branch_condition->lhs;
-  const bir::Value* other_value = &*branch_condition->rhs;
+  const bir::Value* cast_value = &branch_facts->lhs;
+  const bir::Value* other_value = &branch_facts->rhs;
   auto cast_producer =
       find_prepared_fused_compare_operand_producer(context,
                                                    *cast_value,
                                                    before_instruction_index);
   if (!cast_producer.has_value() || cast_producer->cast == nullptr) {
-    cast_value = &*branch_condition->rhs;
-    other_value = &*branch_condition->lhs;
+    cast_value = &branch_facts->rhs;
+    other_value = &branch_facts->lhs;
     cast_producer =
         find_prepared_fused_compare_operand_producer(context,
                                                      *cast_value,
@@ -1543,11 +1699,7 @@ lower_fused_compare_branch_from_emitted_cast(
     return std::nullopt;
   }
   lines.push_back("cmp " + scratch_name + ", " + *rhs_name);
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+  append_prepared_compare_branch_lines(lines, *branch_facts);
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -1564,15 +1716,15 @@ lower_materialized_compare_condition_branch(
       context.bir_block->terminator.kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
-      branch_condition->condition_value != context.bir_block->terminator.condition) {
+  const auto branch_facts = find_prepared_conditional_branch_facts(context);
+  if (!branch_facts.has_value() || branch_facts->branch_condition == nullptr ||
+      branch_facts->branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      branch_facts->branch_condition->condition_value != context.bir_block->terminator.condition) {
     return std::nullopt;
   }
+  const auto& branch_condition = *branch_facts->branch_condition;
   const auto condition_name =
-      prepared_named_value_id(context, branch_condition->condition_value);
+      prepared_named_value_id(context, branch_condition.condition_value);
   const auto* condition_home =
       condition_name.has_value() && context.function.value_locations != nullptr
           ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
@@ -1585,7 +1737,7 @@ lower_materialized_compare_condition_branch(
   }
   const auto producer =
       find_prepared_materialized_condition_producer(
-          context, branch_condition->condition_value, context.bir_block->insts.size());
+          context, branch_condition.condition_value, context.bir_block->insts.size());
   const auto* binary = producer.has_value() ? producer->binary : nullptr;
   if (binary == nullptr) {
     return std::nullopt;
@@ -1605,8 +1757,8 @@ lower_materialized_compare_condition_branch(
       rhs_reg.has_value() ? std::optional<std::string>{abi::register_name(*rhs_reg)}
                           : std::nullopt;
   if (!lhs_scratch_name.has_value() || !rhs_scratch_name.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+      branch_facts->targets.true_label == c4c::kInvalidBlockLabel ||
+      branch_facts->targets.false_label == c4c::kInvalidBlockLabel) {
     return std::nullopt;
   }
 
@@ -1692,10 +1844,10 @@ lower_materialized_compare_condition_branch(
 
   lines.push_back("cmp " + *lhs_name + ", " + rhs);
   lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+                  machine_block_label(branch_condition.function_name,
+                                      branch_facts->targets.true_label));
+  lines.push_back("b " + machine_block_label(branch_condition.function_name,
+                                             branch_facts->targets.false_label));
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -1708,46 +1860,29 @@ lower_current_block_entry_fused_compare_branch(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value()) {
     return std::nullopt;
   }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = hooks.scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
+  auto lhs = branch_facts->lhs;
+  lhs.type = branch_facts->compare_type;
   const auto published_lhs =
-      prepared_current_block_entry_publication_register(context, lhs, *operand_view);
+      prepared_current_block_entry_publication_register(context, lhs, branch_facts->operand_view);
   if (!published_lhs.has_value() ||
       published_lhs->reg.bank != abi::RegisterBank::GeneralPurpose ||
-      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
-      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
+      branch_facts->rhs.kind != bir::Value::Kind::Immediate ||
+      !is_cmp_immediate_encodable(branch_facts->rhs.immediate)) {
     return std::nullopt;
   }
-  const auto lhs_reg = abi::gp_register(published_lhs->reg.index, *operand_view);
+  const auto lhs_reg = abi::gp_register(published_lhs->reg.index, branch_facts->operand_view);
   if (!lhs_reg.has_value()) {
     return std::nullopt;
   }
   std::vector<std::string> lines;
   lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
-                  std::to_string(branch_condition->rhs->immediate));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+                  std::to_string(branch_facts->rhs.immediate));
+  append_prepared_compare_branch_lines(lines, *branch_facts);
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -1762,31 +1897,18 @@ lower_constant_rhs_fused_compare_branch(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
-    return std::nullopt;
-  }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = hooks.scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value()) {
     return std::nullopt;
   }
 
-  if (branch_condition->rhs->kind != bir::Value::Kind::Named ||
-      branch_condition->rhs->name.empty()) {
+  if (branch_facts->rhs.kind != bir::Value::Kind::Named ||
+      branch_facts->rhs.name.empty()) {
     return std::nullopt;
   }
-  auto rhs = *branch_condition->rhs;
-  rhs.type = *branch_condition->compare_type;
+  auto rhs = branch_facts->rhs;
+  rhs.type = branch_facts->compare_type;
   const auto rhs_producer =
       find_prepared_fused_compare_operand_producer(context,
                                                    rhs,
@@ -1816,12 +1938,12 @@ lower_constant_rhs_fused_compare_branch(
   if (scratches.size() < 2U) {
     return std::nullopt;
   }
-  const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
+  const auto lhs_reg = abi::gp_register(scratches[0].index, branch_facts->operand_view);
   if (!lhs_reg.has_value()) {
     return std::nullopt;
   }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
+  auto lhs = branch_facts->lhs;
+  lhs.type = branch_facts->compare_type;
   std::vector<std::string> lines;
   if (!hooks.emit_value_publication_to_register(context,
                                                 lhs,
@@ -1834,11 +1956,7 @@ lower_constant_rhs_fused_compare_branch(
   }
   lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
                   std::to_string(*rhs_producer->integer_constant));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+  append_prepared_compare_branch_lines(lines, *branch_facts);
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -1852,14 +1970,14 @@ lower_conditional_branch_from_emitted_condition(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->condition_value.kind != bir::Value::Kind::Named) {
+  const auto branch_facts = find_prepared_conditional_branch_facts(context);
+  if (!branch_facts.has_value() || branch_facts->branch_condition == nullptr ||
+      branch_facts->branch_condition->condition_value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
+  const auto& branch_condition = *branch_facts->branch_condition;
   const auto condition_name =
-      prepared_named_value_id(context, branch_condition->condition_value);
+      prepared_named_value_id(context, branch_condition.condition_value);
   if (!condition_name.has_value()) {
     return std::nullopt;
   }
@@ -1872,10 +1990,10 @@ lower_conditional_branch_from_emitted_condition(
       return std::nullopt;
     }
     const auto expected_view =
-        hooks.scalar_view_for_type(branch_condition->condition_value.type)
+        hooks.scalar_view_for_type(branch_condition.condition_value.type)
             .value_or(abi::RegisterView::W);
     if (!hooks.emit_value_publication_to_register(context,
-                                                  branch_condition->condition_value,
+                                                  branch_condition.condition_value,
                                                   context.bir_block != nullptr
                                                       ? context.bir_block->insts.size()
                                                       : 0U,
@@ -1910,15 +2028,15 @@ lower_conditional_branch_from_emitted_condition(
       condition_register->expected_view.value_or(abi::RegisterView::W);
   const auto condition = std::string{abi::register_name(condition_register->reg)};
   if (condition.empty() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+      branch_facts->targets.true_label == c4c::kInvalidBlockLabel ||
+      branch_facts->targets.false_label == c4c::kInvalidBlockLabel) {
     return std::nullopt;
   }
   lines.push_back("cbnz " + condition + ", " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+                  machine_block_label(branch_condition.function_name,
+                                      branch_facts->targets.true_label));
+  lines.push_back("b " + machine_block_label(branch_condition.function_name,
+                                             branch_facts->targets.false_label));
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -1931,11 +2049,9 @@ bool is_fused_compare_branch_support_instruction(
       context.control_flow_block == nullptr) {
     return false;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value()) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value()) {
     return false;
   }
   if (const auto* cast = std::get_if<bir::CastInst>(&inst);
@@ -1949,21 +2065,21 @@ bool is_fused_compare_branch_support_instruction(
       return value.kind == bir::Value::Kind::Named &&
              value.name == cast->result.name;
     };
-    return matches(*branch_condition->lhs) || matches(*branch_condition->rhs);
+    return matches(branch_facts->lhs) || matches(branch_facts->rhs);
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
       binary != nullptr &&
       binary->result.kind == bir::Value::Kind::Named &&
-      branch_condition->condition_value.kind == bir::Value::Kind::Named) {
-    if (binary->result.name == branch_condition->condition_value.name) {
+      branch_facts->branch_condition->condition_value.kind == bir::Value::Kind::Named) {
+    if (binary->result.name == branch_facts->branch_condition->condition_value.name) {
       return true;
     }
     const auto matches_binary_result = [&](const bir::Value& value) {
       return value.kind == bir::Value::Kind::Named &&
              value.name == binary->result.name;
     };
-    if ((matches_binary_result(*branch_condition->lhs) ||
-         matches_binary_result(*branch_condition->rhs)) &&
+    if ((matches_binary_result(branch_facts->lhs) ||
+         matches_binary_result(branch_facts->rhs)) &&
         mir::evaluate_same_block_integer_constant(context.bir_block, binary->result).has_value()) {
       return true;
     }
@@ -1981,28 +2097,15 @@ lower_stack_home_fused_compare_branch(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch ||
-      !branch_condition->predicate.has_value() ||
-      !branch_condition->compare_type.has_value() ||
-      !branch_condition->lhs.has_value() ||
-      !branch_condition->rhs.has_value() ||
-      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
-      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value() ||
+      branch_facts->rhs.kind != bir::Value::Kind::Immediate ||
+      !is_cmp_immediate_encodable(branch_facts->rhs.immediate)) {
     return std::nullopt;
   }
-  const auto condition = branch_condition_suffix(*branch_condition->predicate);
-  const auto operand_view = hooks.scalar_view_for_type(*branch_condition->compare_type);
-  if (!condition.has_value() || !operand_view.has_value() ||
-      branch_condition->true_label == c4c::kInvalidBlockLabel ||
-      branch_condition->false_label == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  auto lhs = *branch_condition->lhs;
-  lhs.type = *branch_condition->compare_type;
+  auto lhs = branch_facts->lhs;
+  lhs.type = branch_facts->compare_type;
   if (lhs.kind == bir::Value::Kind::Named && context.bir_block != nullptr) {
     const auto producer =
         find_prepared_fused_compare_operand_producer(context,
@@ -2030,7 +2133,7 @@ lower_stack_home_fused_compare_branch(
   if (scratches.empty()) {
     return std::nullopt;
   }
-  const auto compare_reg = abi::gp_register(scratches.front().index, *operand_view);
+  const auto compare_reg = abi::gp_register(scratches.front().index, branch_facts->operand_view);
   if (!compare_reg.has_value()) {
     return std::nullopt;
   }
@@ -2038,19 +2141,15 @@ lower_stack_home_fused_compare_branch(
   if (!hooks.emit_prepared_value_home_to_register(
           &context.function.prepared->stack_layout,
           *home,
-          *branch_condition->compare_type,
+          branch_facts->compare_type,
           scratches.front().index,
           lines,
           hooks.fixed_slots_use_frame_pointer(context.function))) {
     return std::nullopt;
   }
   lines.push_back("cmp " + std::string{abi::register_name(*compare_reg)} + ", #" +
-                  std::to_string(branch_condition->rhs->immediate));
-  lines.push_back("b." + std::string{*condition} + " " +
-                  machine_block_label(branch_condition->function_name,
-                                      branch_condition->true_label));
-  lines.push_back("b " + machine_block_label(branch_condition->function_name,
-                                             branch_condition->false_label));
+                  std::to_string(branch_facts->rhs.immediate));
+  append_prepared_compare_branch_lines(lines, *branch_facts);
   return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
@@ -2062,17 +2161,13 @@ bool fused_compare_uses_selected_operand(
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return false;
   }
-  const auto* branch_condition = prepare::find_prepared_branch_condition(
-      *context.function.control_flow, context.control_flow_block->block_label);
-  if (branch_condition == nullptr ||
-      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
-      !branch_condition->can_fuse_with_branch) {
+  const auto branch_facts =
+      find_prepared_fused_compare_branch_facts(context, hooks);
+  if (!branch_facts.has_value()) {
     return false;
   }
-  return (branch_condition->lhs.has_value() &&
-          fused_compare_operand_has_select_producer(context, *branch_condition->lhs, hooks)) ||
-         (branch_condition->rhs.has_value() &&
-          fused_compare_operand_has_select_producer(context, *branch_condition->rhs, hooks));
+  return fused_compare_operand_has_select_producer(context, branch_facts->lhs, hooks) ||
+         fused_compare_operand_has_select_producer(context, branch_facts->rhs, hooks);
 }
 
 

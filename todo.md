@@ -1,34 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/71_aarch64_scalar_control_flow_prepared_authority_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume Prepared Scalar Producer And Placement Facts
+Current Step ID: 4
+Current Step Title: Consume Prepared Branch And Short-Circuit Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for AArch64 ALU control-value materialization. The
-raw same-block binary/cast BIR scans in `alu.cpp` now stay replaced by a local
-consumer of `prepare::find_prepared_same_block_scalar_producer`, preserving
-AArch64-local instruction selection/materialization.
-
-Unblocked the prepared same-block cast fixture by publishing prepared authority
-for `%compare` and its `%lhs` register source in
-`prepared_with_stack_published_i16_select_store(true)`. The fixture now exposes
-the `%compare` source producer through prepared names/home/storage instead of
-requiring an ALU-side raw BIR scan.
+Completed `plan.md` Step 4 for AArch64 comparison/branch lowering. Conditional
+branch helper paths now consume prepared branch-condition facts, prepared
+control-flow labels, and available short-circuit branch plans through a local
+prepared-fact boundary before AArch64-local condition spelling, operand
+selection, branch record updates, and assembler-line construction.
 
 ## Suggested Next
 
-Next coherent packet: supervisor review/acceptance for the Step 3 slice, then
-choose the next plan step or lifecycle action.
+Next coherent packet: implement `plan.md` Step 5 by consuming prepared
+materialized-compare join and fused-operand producer facts before local compare
+operand materialization and compare record construction in `comparison.cpp`.
 
 ## Watchouts
 
-The same-block-cast fixture now emits a standalone prepared scalar cast record
-plus the stack-homed select/store route, so the test expects four emitted
-instructions and no diagnostics for that variant.
+The new local branch-fact boundary keeps materialized-bool branches on prepared
+control-flow labels and only resolves compare/short-circuit branch plans when
+prepared compare operands and predicates exist. Do not widen the next packet
+into shared prealloc or expectation rewrites.
 
 ## Proof
 
