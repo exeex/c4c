@@ -76,6 +76,16 @@ struct BranchCompareCandidateKindSpelling {
   std::string_view spelling;
 };
 
+struct PreparedScalarAluRecordErrorSpelling {
+  PreparedScalarAluRecordError error;
+  std::string_view spelling;
+};
+
+struct PreparedScalarCastRecordErrorSpelling {
+  PreparedScalarCastRecordError error;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -267,6 +277,60 @@ constexpr std::array<BranchCompareCandidateKindSpelling, 4>
         {BranchCompareCandidateKind::NonFusableCompare, "non_fusable_compare"},
     }};
 
+constexpr std::array<PreparedScalarAluRecordErrorSpelling, 13>
+    kPreparedScalarAluRecordErrorSpellings{{
+        {PreparedScalarAluRecordError::None, "none"},
+        {PreparedScalarAluRecordError::InvalidFunction, "invalid_function"},
+        {PreparedScalarAluRecordError::UnsupportedOpcode, "unsupported_opcode"},
+        {PreparedScalarAluRecordError::UnsupportedResultValue,
+         "unsupported_result_value"},
+        {PreparedScalarAluRecordError::MissingResultValueHome,
+         "missing_result_value_home"},
+        {PreparedScalarAluRecordError::MissingResultStorage,
+         "missing_result_storage"},
+        {PreparedScalarAluRecordError::UnsupportedResultStorage,
+         "unsupported_result_storage"},
+        {PreparedScalarAluRecordError::UnsupportedOperandValue,
+         "unsupported_operand_value"},
+        {PreparedScalarAluRecordError::MissingOperandValueHome,
+         "missing_operand_value_home"},
+        {PreparedScalarAluRecordError::MissingOperandStorage,
+         "missing_operand_storage"},
+        {PreparedScalarAluRecordError::UnsupportedOperandStorage,
+         "unsupported_operand_storage"},
+        {PreparedScalarAluRecordError::UnsupportedOperandType,
+         "unsupported_operand_type"},
+        {PreparedScalarAluRecordError::RegisterConversionFailed,
+         "register_conversion_failed"},
+    }};
+
+constexpr std::array<PreparedScalarCastRecordErrorSpelling, 13>
+    kPreparedScalarCastRecordErrorSpellings{{
+        {PreparedScalarCastRecordError::None, "none"},
+        {PreparedScalarCastRecordError::InvalidFunction, "invalid_function"},
+        {PreparedScalarCastRecordError::UnsupportedOpcode, "unsupported_opcode"},
+        {PreparedScalarCastRecordError::UnsupportedResultValue,
+         "unsupported_result_value"},
+        {PreparedScalarCastRecordError::MissingResultValueHome,
+         "missing_result_value_home"},
+        {PreparedScalarCastRecordError::MissingResultStorage,
+         "missing_result_storage"},
+        {PreparedScalarCastRecordError::UnsupportedResultStorage,
+         "unsupported_result_storage"},
+        {PreparedScalarCastRecordError::UnsupportedOperandValue,
+         "unsupported_operand_value"},
+        {PreparedScalarCastRecordError::MissingOperandValueHome,
+         "missing_operand_value_home"},
+        {PreparedScalarCastRecordError::MissingOperandStorage,
+         "missing_operand_storage"},
+        {PreparedScalarCastRecordError::UnsupportedOperandStorage,
+         "unsupported_operand_storage"},
+        {PreparedScalarCastRecordError::UnsupportedOperandType,
+         "unsupported_operand_type"},
+        {PreparedScalarCastRecordError::RegisterConversionFailed,
+         "register_conversion_failed"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -442,6 +506,34 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kBranchCompareCandidateKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view prepared_scalar_alu_record_error_spelling(
+    PreparedScalarAluRecordError error) {
+  const auto found = std::find_if(
+      kPreparedScalarAluRecordErrorSpellings.begin(),
+      kPreparedScalarAluRecordErrorSpellings.end(),
+      [error](const PreparedScalarAluRecordErrorSpelling& spelling) {
+        return spelling.error == error;
+      });
+  if (found == kPreparedScalarAluRecordErrorSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view prepared_scalar_cast_record_error_spelling(
+    PreparedScalarCastRecordError error) {
+  const auto found = std::find_if(
+      kPreparedScalarCastRecordErrorSpellings.begin(),
+      kPreparedScalarCastRecordErrorSpellings.end(),
+      [error](const PreparedScalarCastRecordErrorSpelling& spelling) {
+        return spelling.error == error;
+      });
+  if (found == kPreparedScalarCastRecordErrorSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -881,67 +973,11 @@ std::string_view prepared_branch_record_error_name(PreparedBranchRecordError err
 }
 
 std::string_view prepared_scalar_alu_record_error_name(PreparedScalarAluRecordError error) {
-  switch (error) {
-    case PreparedScalarAluRecordError::None:
-      return "none";
-    case PreparedScalarAluRecordError::InvalidFunction:
-      return "invalid_function";
-    case PreparedScalarAluRecordError::UnsupportedOpcode:
-      return "unsupported_opcode";
-    case PreparedScalarAluRecordError::UnsupportedResultValue:
-      return "unsupported_result_value";
-    case PreparedScalarAluRecordError::MissingResultValueHome:
-      return "missing_result_value_home";
-    case PreparedScalarAluRecordError::MissingResultStorage:
-      return "missing_result_storage";
-    case PreparedScalarAluRecordError::UnsupportedResultStorage:
-      return "unsupported_result_storage";
-    case PreparedScalarAluRecordError::UnsupportedOperandValue:
-      return "unsupported_operand_value";
-    case PreparedScalarAluRecordError::MissingOperandValueHome:
-      return "missing_operand_value_home";
-    case PreparedScalarAluRecordError::MissingOperandStorage:
-      return "missing_operand_storage";
-    case PreparedScalarAluRecordError::UnsupportedOperandStorage:
-      return "unsupported_operand_storage";
-    case PreparedScalarAluRecordError::UnsupportedOperandType:
-      return "unsupported_operand_type";
-    case PreparedScalarAluRecordError::RegisterConversionFailed:
-      return "register_conversion_failed";
-  }
-  return "unknown";
+  return prepared_scalar_alu_record_error_spelling(error);
 }
 
 std::string_view prepared_scalar_cast_record_error_name(PreparedScalarCastRecordError error) {
-  switch (error) {
-    case PreparedScalarCastRecordError::None:
-      return "none";
-    case PreparedScalarCastRecordError::InvalidFunction:
-      return "invalid_function";
-    case PreparedScalarCastRecordError::UnsupportedOpcode:
-      return "unsupported_opcode";
-    case PreparedScalarCastRecordError::UnsupportedResultValue:
-      return "unsupported_result_value";
-    case PreparedScalarCastRecordError::MissingResultValueHome:
-      return "missing_result_value_home";
-    case PreparedScalarCastRecordError::MissingResultStorage:
-      return "missing_result_storage";
-    case PreparedScalarCastRecordError::UnsupportedResultStorage:
-      return "unsupported_result_storage";
-    case PreparedScalarCastRecordError::UnsupportedOperandValue:
-      return "unsupported_operand_value";
-    case PreparedScalarCastRecordError::MissingOperandValueHome:
-      return "missing_operand_value_home";
-    case PreparedScalarCastRecordError::MissingOperandStorage:
-      return "missing_operand_storage";
-    case PreparedScalarCastRecordError::UnsupportedOperandStorage:
-      return "unsupported_operand_storage";
-    case PreparedScalarCastRecordError::UnsupportedOperandType:
-      return "unsupported_operand_type";
-    case PreparedScalarCastRecordError::RegisterConversionFailed:
-      return "register_conversion_failed";
-  }
-  return "unknown";
+  return prepared_scalar_cast_record_error_spelling(error);
 }
 
 std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
