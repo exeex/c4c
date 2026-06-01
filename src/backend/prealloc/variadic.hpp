@@ -104,6 +104,24 @@ enum class PreparedVariadicEntryHelperKind {
   return "unknown";
 }
 
+[[nodiscard]] inline std::optional<PreparedVariadicEntryHelperKind>
+prepared_variadic_entry_helper_kind_for_callee(std::string_view callee) {
+  if (callee == "llvm.va_start.p0") {
+    return PreparedVariadicEntryHelperKind::VaStart;
+  }
+  if (callee == "llvm.va_copy.p0.p0") {
+    return PreparedVariadicEntryHelperKind::VaCopy;
+  }
+  constexpr std::string_view va_arg_prefix = "llvm.va_arg.";
+  if (callee.substr(0, va_arg_prefix.size()) == va_arg_prefix) {
+    if (callee == "llvm.va_arg.aggregate") {
+      return PreparedVariadicEntryHelperKind::VaArgAggregate;
+    }
+    return PreparedVariadicEntryHelperKind::VaArg;
+  }
+  return std::nullopt;
+}
+
 struct PreparedVariadicEntryHelperResources {
   std::vector<PreparedVariadicEntryHelperKind> required_helpers;
   // Maximum simultaneous reserved MIR scratch resources required by any

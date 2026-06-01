@@ -1035,20 +1035,7 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
 
 std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(
     std::string_view callee) {
-  if (callee == "llvm.va_start.p0") {
-    return prepare::PreparedVariadicEntryHelperKind::VaStart;
-  }
-  if (callee == "llvm.va_copy.p0.p0") {
-    return prepare::PreparedVariadicEntryHelperKind::VaCopy;
-  }
-  constexpr std::string_view va_arg_prefix = "llvm.va_arg.";
-  if (callee.substr(0, va_arg_prefix.size()) == va_arg_prefix) {
-    if (callee == "llvm.va_arg.aggregate") {
-      return prepare::PreparedVariadicEntryHelperKind::VaArgAggregate;
-    }
-    return prepare::PreparedVariadicEntryHelperKind::VaArg;
-  }
-  return std::nullopt;
+  return prepare::prepared_variadic_entry_helper_kind_for_callee(callee);
 }
 
 const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entry_plan(

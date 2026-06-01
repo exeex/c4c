@@ -13,23 +13,6 @@ namespace c4c::backend::prepare {
 
 namespace {
 
-[[nodiscard]] std::optional<PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(
-    std::string_view callee) {
-  if (callee == "llvm.va_start.p0") {
-    return PreparedVariadicEntryHelperKind::VaStart;
-  }
-  if (callee.substr(0, std::string_view("llvm.va_arg.").size()) == "llvm.va_arg.") {
-    if (callee == "llvm.va_arg.aggregate") {
-      return PreparedVariadicEntryHelperKind::VaArgAggregate;
-    }
-    return PreparedVariadicEntryHelperKind::VaArg;
-  }
-  if (callee == "llvm.va_copy.p0.p0") {
-    return PreparedVariadicEntryHelperKind::VaCopy;
-  }
-  return std::nullopt;
-}
-
 void append_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& function_plan,
                                         std::string fact) {
   auto& facts = function_plan.missing_required_facts;
@@ -696,7 +679,8 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
       if (call == nullptr) {
         continue;
       }
-      const auto helper_kind = variadic_entry_helper_kind(call->callee);
+      const auto helper_kind =
+          prepared_variadic_entry_helper_kind_for_callee(call->callee);
       if (!helper_kind.has_value()) {
         continue;
       }
@@ -917,7 +901,8 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
         if (call == nullptr) {
           continue;
         }
-        const auto helper_kind = variadic_entry_helper_kind(call->callee);
+        const auto helper_kind =
+            prepared_variadic_entry_helper_kind_for_callee(call->callee);
         if (!helper_kind.has_value()) {
           continue;
         }
