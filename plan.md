@@ -81,6 +81,20 @@ Read these consumers before touching them:
   regression-guard proof is required when a packet changes shared prepared
   lookup behavior or multiple AArch64 consumers.
 
+## Current Route Decision
+
+Step 4 stays complete for typed stack-source publication consumption in
+`memory.cpp`. The aggregate half is deferred to
+`ideas/open/75_shared_aggregate_transport_plan_probe.md`: the available
+`PreparedAggregateStackSourceAuthority` is attached to
+`PreparedEdgePublication`, while the in-scope store-local/store-global
+publication helpers consume `PreparedStoreSourcePublicationPlan` and
+source-producer facts without exposing the originating edge publication or
+aggregate authority. Do not add an ad hoc edge-publication thread or
+target-local aggregate source re-derivation under this runbook. Advance this
+runbook to Step 5 and leave aggregate transport authority for the aggregate
+transport follow-up.
+
 ## Ordered Steps
 
 ### Step 1: Map Memory Authority Duplication
@@ -154,8 +168,9 @@ Completion check:
 
 ### Step 4: Consume Prepared Stack-Source Authorities
 
-Goal: make aggregate and typed stack-source memory paths consume prepared
-stack-source publication facts instead of reconstructing source authority.
+Goal: make typed stack-source memory paths consume prepared stack-source
+publication facts, and classify aggregate stack-source authority without
+inventing aggregate transport planning inside this runbook.
 
 Primary targets:
 
@@ -165,19 +180,22 @@ Primary targets:
 
 Actions:
 
-- Route aggregate stack-source decisions through
-  `PreparedAggregateStackSourceAuthority`.
 - Route typed stack-source decisions through
   `PreparedTypedStackSourcePublication`.
-- Keep aggregate transport planning out of this runbook; only consume existing
-  stack-source facts.
-- Prove nearby aggregate and typed stack-source memory cases, not just one
-  named testcase.
+- Inspect whether aggregate stack-source decisions can consume an existing
+  in-scope `PreparedAggregateStackSourceAuthority` boundary.
+- If aggregate authority requires exposing the originating
+  `PreparedEdgePublication` or creating aggregate-copy transport authority,
+  defer it to `ideas/open/75_shared_aggregate_transport_plan_probe.md`.
+- Keep aggregate transport planning out of this runbook; do not add local
+  aggregate source re-derivation under a new helper name.
+- Prove nearby typed stack-source memory cases, not just one named testcase.
 
 Completion check:
 
-- Stack-source memory lowering no longer locally re-derives prepared source
-  authority, and focused stack-source tests are green.
+- Typed stack-source memory lowering no longer locally re-derives prepared
+  source authority, the aggregate boundary decision is recorded, and focused
+  stack-source tests are green.
 
 ### Step 5: Align Memory-Backed f128 And Variadic Consumers
 
