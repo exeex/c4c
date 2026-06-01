@@ -39,11 +39,69 @@ bir::CallArgAbiInfo byval_gpr_abi(std::size_t size_bytes, std::size_t align_byte
   return abi;
 }
 
+prepare::PreparedAggregateTransportPlan byval_register_lanes_transport(
+    prepare::PreparedFrameSlotId source_slot_id,
+    std::size_t source_offset_bytes,
+    std::size_t size_bytes,
+    std::size_t align_bytes,
+    std::vector<std::string> destination_register_names,
+    std::size_t destination_contiguous_width) {
+  prepare::PreparedAggregateTransportPlan transport{
+      .kind = prepare::PreparedAggregateTransportKind::ByvalRegisterLanes,
+      .payload_size_bytes = size_bytes,
+      .payload_align_bytes = align_bytes,
+      .copy_size_bytes = size_bytes,
+      .copy_align_bytes = align_bytes,
+      .source_slot_id = source_slot_id,
+      .source_stack_offset_bytes = source_offset_bytes,
+      .chunks = {},
+      .lanes = {},
+      .scratch_requirements =
+          {prepare::PreparedAggregateTransportScratchRequirement{
+              .kind = prepare::PreparedAggregateTransportScratchKind::GeneralPurpose,
+              .width_bytes = 8,
+          }},
+  };
+  std::size_t payload_offset = 0;
+  for (std::size_t lane_index = 0;
+       lane_index < destination_register_names.size() && payload_offset < size_bytes;
+       ++lane_index) {
+    const std::size_t remaining_bytes = size_bytes - payload_offset;
+    const std::size_t lane_size = remaining_bytes < 8 ? remaining_bytes : 8;
+    transport.chunks.push_back(prepare::PreparedAggregateTransportChunk{
+        .chunk_index = lane_index,
+        .kind = prepare::PreparedAggregateTransportChunkKind::RequiredPayload,
+        .payload_offset_bytes = payload_offset,
+        .source_offset_bytes = source_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .size_bytes = lane_size,
+        .align_bytes = align_bytes < lane_size ? align_bytes : lane_size,
+        .preferred_width_bytes = lane_size,
+    });
+    transport.lanes.push_back(prepare::PreparedAggregateTransportLane{
+        .lane_index = lane_index,
+        .chunk_index = lane_index,
+        .lane_payload_offset_bytes = payload_offset,
+        .source_offset_bytes = source_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .lane_size_bytes = lane_size,
+        .destination_register_name = destination_register_names[lane_index],
+        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+        .destination_contiguous_width = destination_contiguous_width,
+        .destination_occupied_register_names = destination_register_names,
+        .whole_register = lane_size == 8,
+    });
+    payload_offset += lane_size;
+  }
+  return transport;
+}
+
 int byval_caller_publishes_composite_gpr_lanes_not_object_pointer() {
   constexpr auto function_name = c4c::FunctionNameId{4101};
   constexpr auto block_label = c4c::BlockLabelId{4102};
   constexpr auto aggregate_value_id = prepare::PreparedValueId{4103};
   constexpr auto aggregate_value_name = c4c::ValueNameId{4104};
+  constexpr auto aggregate_slot_id = prepare::PreparedFrameSlotId{4105};
 
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -106,12 +164,19 @@ int byval_caller_publishes_composite_gpr_lanes_not_object_pointer() {
                   .source_value_id = aggregate_value_id,
                   .source_value_name = aggregate_value_name,
                   .source_home_kind = prepare::PreparedValueHomeKind::Register,
-                  .source_slot_id = prepare::PreparedFrameSlotId{4105},
+                  .source_slot_id = aggregate_slot_id,
                   .source_stack_offset_bytes = std::size_t{128},
                   .source_size_bytes = std::size_t{16},
                   .source_align_bytes = std::size_t{8},
                   .byval_lane_extent_bytes = std::size_t{16},
               },
+          .aggregate_transport = byval_register_lanes_transport(
+              aggregate_slot_id,
+              std::size_t{128},
+              std::size_t{16},
+              std::size_t{8},
+              {"x0", "x1"},
+              2),
       }},
   };
   const aarch64_module::FunctionLoweringContext function_context{

@@ -8,43 +8,38 @@ Current Step Title: Implement Shared Transport Authority If Required
 
 ## Just Finished
 
-Step 3 of `plan.md` migrated the AArch64 byval register-lane call-argument
-publication source path to consume `PreparedCallArgumentPlan::aggregate_transport`.
+Step 3 of `plan.md` repaired the AArch64 call-boundary owner byval
+register-lane test after the lowering migration to
+`PreparedCallArgumentPlan::aggregate_transport`.
 
-- `calls.cpp` now requires a `ByvalRegisterLanes` aggregate transport plan for
-  byval register-lane payload size, source frame slot/offset, required chunks,
-  and lane coverage before constructing the prepared source memory operand.
-- The small register-lane and stack-lane publication paths no longer use
-  `source_selection` as lane/source/chunk authority; complete legacy
-  `ByvalRegisterLane` source-selection facts without aggregate transport fail
-  closed.
-- The large indirect byval address path remains on its existing selected-source
-  authority for payloads larger than the register-lane publication limit.
-- Focused AArch64 MIR dispatch coverage now publishes aggregate transport for
-  preserved-output success cases and checks that a complete old selection
-  without aggregate transport does not lower the register-lane publication.
+- `backend_aarch64_call_boundary_owner_test.cpp` now publishes a
+  `ByvalRegisterLanes` `PreparedAggregateTransportPlan` for the byval caller
+  publication case, including the shared payload size/alignment, source frame
+  slot/offset, required chunks, and destination lane bindings for `x0`/`x1`.
+- The existing byval lane output contract remains intact: the test still
+  expects one call-boundary move that materializes payload lanes from prepared
+  source memory instead of forwarding the object pointer in `x20`.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: review whether any remaining AArch64 aggregate
-consumer path should also read shared aggregate transport before moving Step 3
-to broader review/closure.
+Next coherent Step 3 packet: supervisor review of the aggregate-transport
+consumer migration and proof logs before deciding whether Step 3 is ready for
+broader review or closure.
 
 ## Watchouts
 
-- The migrated helper validates contiguous required chunk and lane coverage for
-  up to 16-byte register-lane payloads; larger byval aggregates still use the
-  existing indirect-address path.
+- The owner test now mirrors the shared transport facts required by lowering;
+  keep this as a data contract repair, not a fallback relaxation.
 - Keep variadic aggregate `va_arg` plans separate.
 - Do not weaken aggregate testcase expectations or add named-case shortcuts if
-  further consumer migration is needed.
+  any remaining consumer migration is needed.
 
 ## Proof
 
 Command:
 
 ```bash
-cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$' >> test_after.log
+cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_instruction_dispatch|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$' >> test_after.log
 ```
 
-Result: passed, 3/3 selected tests. Proof log: `test_after.log`.
+Result: passed, 4/4 selected tests. Proof log: `test_after.log`.
