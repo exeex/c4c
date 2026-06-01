@@ -8,38 +8,58 @@ Current Step Title: Align Memory-Backed f128 And Variadic Consumers
 
 ## Just Finished
 
-Plan-owner route decision for Step 4: keep the completed typed stack-source
-publication work in this runbook, defer aggregate stack-source authority to
-`ideas/open/75_shared_aggregate_transport_plan_probe.md`, and advance execution
-to Step 5. The aggregate inspection found no existing in-scope `memory.cpp`
-consumer boundary: `PreparedAggregateStackSourceAuthority` is populated on
-`PreparedEdgePublication`, while the store-source publication plan and
-source-producer path expose only `PreparedStoreSourcePublicationPlan` and
-source-producer facts. Adding an ad hoc edge-publication thread or target-local
-aggregate source derivation under idea 70 would drift into aggregate transport
-authority rather than consume an existing memory boundary.
+Step 5 mapping packet completed. `memory.cpp` remains the prepared memory
+authority boundary: `apply_stack_layout_to_memory_record` consumes prepared
+stack layout and address materialization facts to resolve frame-slot offsets
+and mark prepared snapshots, while
+`lower_store_global_value_publication_from_plan` accepts only an already
+prepared frame-slot `MemoryOperand` for stack-home publication and then emits
+the target store.
+
+`f128.cpp` has the first concrete duplicated authority candidate.
+`f128_memory_backed_carrier_memory` rebuilds a prepared frame-slot
+`MemoryOperand` from the f128 carrier's slot and stack offset, and
+`f128_printable_memory_address` carries a local f128 address materialization
+path for frame slots and symbols. The f128 ABI-local policy is the q-register
+transport and helper marshal validation; the prepared memory ownership should
+not live in the f128 printer.
+
+`variadic.cpp` is mostly ABI-local transfer policy rather than the first
+prepared-memory authority target. The va-list field accessors consume prepared
+variadic homes and field offsets; aggregate `va_arg` lowering owns AArch64
+copy chunking, progression, register-save-area selection, and stack-slot
+destination stores. Those paths duplicate address formatting helpers, but the
+inspected code does not expose a prepared `MemoryOperand` authority boundary
+equivalent to the f128 memory-backed carrier path.
 
 ## Suggested Next
 
-Next packet: execute Step 5, "Align Memory-Backed f128 And Variadic Consumers".
-Inspect only memory-backed f128 and variadic transfer paths and replace
-duplicated memory authority decisions with calls into the prepared fact
-consumption path established by earlier steps.
+First concrete Step 5 implementation packet: align memory-backed f128 carrier
+transport with the shared prepared memory consumer boundary. Keep the packet
+limited to replacing the f128-local prepared frame-slot `MemoryOperand`
+construction/materialization with a shared prepared-memory helper or existing
+`memory.cpp` callable path, while preserving f128-specific q-register load/store
+and helper marshal policy in `f128.cpp`.
 
 ## Watchouts
 
-Do not resume aggregate stack-source work under idea 70 unless the supervisor
-explicitly reopens the route. The deferred blocker belongs with aggregate
-transport planning in idea 75: concrete reject signals are an AArch64 named-case
-shortcut for one aggregate copy shape, helper-only refactors claimed as
-aggregate authority progress, expectation or unsupported-marker downgrades, or
-threading `PreparedEdgePublication` through memory store publication solely to
-avoid designing the missing aggregate transport contract.
+Do not start with variadic aggregate copies unless the supervisor explicitly
+chooses a helper-only cleanup packet. The variadic transfer logic is currently
+prepared variadic ABI consumption, not a clear prepared-memory ownership
+violation. A Step 5 implementation should distinguish reusable address helper
+factoring from authority movement: helper factoring alone is not idea 70
+progress unless it removes a duplicated prepared memory decision.
+
+For f128, avoid inventing a new f128-only frame-slot contract. The useful
+boundary is consumption of prepared memory facts already established by the
+memory path; f128 should retain only ABI-local decisions such as q-register
+selection, f128 load/store width, helper marshal directions, and diagnostics.
 
 ## Proof
 
-Lifecycle-only plan-owner update; no implementation proof required. Checked:
+Mapping-only packet; no implementation files changed and no root-level proof
+log was produced. Checked:
 
 ```sh
-git diff --check -- plan.md todo.md
+git diff --check -- todo.md
 ```
