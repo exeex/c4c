@@ -322,30 +322,6 @@ prepared_publication_source_register(
   }
   return abi::gp_register(parsed->index, *expected_view);
 }
-[[nodiscard]] bool emit_prepared_va_list_field_carrier_to_register(
-    const module::BlockLoweringContext& context,
-    const bir::LoadLocalInst& load,
-    std::uint8_t target_index,
-    std::vector<std::string>& lines) {
-  if (!prepared_va_list_field_address(context, load.slot_name).has_value()) {
-    return false;
-  }
-  const auto* home = prepared_value_home_for_value(context, load.result);
-  if (home == nullptr ||
-      home->kind != prepare::PreparedValueHomeKind::Register ||
-      !home->register_name.has_value()) {
-    return false;
-  }
-  return emit_prepared_value_home_to_register(
-      context.function.prepared != nullptr
-          ? &context.function.prepared->stack_layout
-          : nullptr,
-      *home,
-      load.result.type,
-      target_index,
-      lines,
-      fixed_slots_use_frame_pointer(context.function));
-}
 [[nodiscard]] bool edge_value_publication_may_read_register_index(
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,

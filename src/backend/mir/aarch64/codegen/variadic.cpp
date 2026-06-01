@@ -3,6 +3,7 @@
 #include "dispatch_publication.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
+#include "prepared_value_home_materialization.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -1097,6 +1098,31 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
   }
   lines.push_back(std::string{*mnemonic} + " " + *target + ", " + *address);
   return true;
+}
+
+[[nodiscard]] bool emit_prepared_va_list_field_carrier_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  if (!prepared_va_list_field_address(context, load.slot_name).has_value()) {
+    return false;
+  }
+  const auto* home = prepared_value_home_for_value(context, load.result);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return false;
+  }
+  return emit_prepared_value_home_to_register(
+      context.function.prepared != nullptr
+          ? &context.function.prepared->stack_layout
+          : nullptr,
+      *home,
+      load.result.type,
+      target_index,
+      lines,
+      fixed_slots_use_frame_pointer(context.function));
 }
 
 std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(

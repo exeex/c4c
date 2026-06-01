@@ -13,6 +13,12 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+[[nodiscard]] bool emit_prepared_va_list_field_carrier_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines);
+
 [[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,
