@@ -59,3 +59,16 @@ merged, simplified, or moved to narrower local utilities.
   records.
 - The route becomes a broad line-count cleanup with no owner-specific proof.
 
+## Closure Note
+
+Closed on 2026-06-01 after the prepared consumer audit and wrapper contraction
+runbook completed. The accepted route removed redundant ALU and memory prepared
+wrapper surfaces while retaining call-boundary, store-publication, memory
+adapter, and scalar compare/select helpers that own AArch64 ABI, addressing,
+diagnostics, scratch choices, or machine-record construction. Reviewer handoff
+found no testcase overfit, no expectation downgrade, and no prepared-authority
+reconstruction under renamed helpers.
+
+Closure proof used matching AArch64/backend-route before/after logs with 40/40
+tests passing in both logs and `c4c-regression-guard` passing with
+`--allow-non-decreasing-passed`.
