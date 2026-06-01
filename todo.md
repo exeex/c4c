@@ -8,39 +8,36 @@ Current Step Title: Continue owner-by-owner relocation
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: relocated the address-materialization/local
-slot address publication helper family out of dispatch publication and into the
-AArch64 globals/address-materialization owner. `local_aggregate_address_frame_offset`,
-`emit_local_slot_address_publication_to_register`,
-`lower_local_slot_address_publication`, and
-`record_address_materialization_result` are now declared from `globals.hpp` and
-defined in `globals.cpp`; `prepared_frame_address_offset_for_value` moved with
-the family as the private lookup helper.
-`dispatch_publication.cpp` no longer defines them and
-`dispatch_publication.hpp` no longer declares them directly.
+Completed Step 3 from `plan.md`: relocated the variadic `va_list` field address
+publication helper family out of dispatch publication and into the AArch64
+variadic owner. `prepared_va_list_field_address` is now declared from
+`variadic.hpp` and defined in `variadic.cpp`; the suffix parser moved with it as
+the private `parse_va_list_field_suffix` helper. `dispatch_publication.cpp` no
+longer defines the family and `dispatch_publication.hpp` no longer declares it.
 
 Changed files:
 
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
-- `src/backend/mir/aarch64/codegen/globals.cpp`
-- `src/backend/mir/aarch64/codegen/globals.hpp`
+- `src/backend/mir/aarch64/codegen/variadic.cpp`
+- `src/backend/mir/aarch64/codegen/variadic.hpp`
 - `todo.md`
 
 ## Suggested Next
 
-Continue Step 3 with the next dispatch-publication helper family, excluding
-the scalar, current-block entry, variadic, generic prepared-value-home, and
-address-materialization families already classified.
+Continue Step 3 with the next dispatch-publication helper family, excluding the
+scalar, current-block entry, variadic, generic prepared-value-home, and
+address-materialization families already classified. A likely remaining family
+is the dispatch producer/source-producer helper group.
 
 ## Watchouts
 
-- Call sites needing the moved declarations already include `globals.hpp`
-  directly; no compile-only test include updates were required.
-- `globals.cpp` still includes `dispatch_publication.hpp` for unrelated
-  publication-owner utilities such as `scalar_view_for_type` and
-  `prepared_value_home_for_value`; this packet did not broaden into those
-  unrelated helper families.
+- `dispatch_edge_copies.cpp` also uses `prepared_va_list_field_address`, so the
+  helper remains a public `variadic.hpp` API. That file already included
+  `variadic.hpp`, so no non-owned include edit was required.
+- `variadic.cpp` still includes `dispatch_publication.hpp` for unrelated scalar
+  helper declarations such as `scalar_view_for_type` and `gp_register_name`;
+  this packet did not broaden into those helper families.
 - Root-level `test_before.log` and `test_baseline.log` were already present
   alongside the required `test_after.log`; this packet wrote only
   `test_after.log`.

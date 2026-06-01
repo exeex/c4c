@@ -570,6 +570,30 @@ void append_va_start_register_save_area_lines(std::vector<std::string>& lines,
   return out.str();
 }
 
+[[nodiscard]] std::optional<std::size_t> parse_va_list_field_suffix(
+    std::string_view base,
+    std::string_view slot_name) {
+  if (slot_name.size() <= base.size() + 1 ||
+      slot_name.substr(0, base.size()) != base ||
+      slot_name[base.size()] != '.') {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = base.size() + 1; index < slot_name.size(); ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10U + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] std::string va_list_field_address_operand(std::string_view base,
+                                                        std::size_t offset_bytes) {
+  return register_indirect_address(base, offset_bytes);
+}
+
 [[nodiscard]] bool unsigned_scaled_offset_is_encodable(std::size_t offset_bytes,
                                                        std::size_t width_bytes) {
   if (width_bytes == 0) {
@@ -1012,6 +1036,48 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
 }
 
 }  // namespace
+
+[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
+    const module::BlockLoweringContext& context,
+    std::string_view slot_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(
+          *context.function.prepared,
+          context.function.control_flow->function_name);
+  if (entry_plan == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& homes : entry_plan->helper_operand_homes) {
+    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+        !homes.destination_va_list.has_value()) {
+      continue;
+    }
+    const auto& va_list_home = *homes.destination_va_list;
+    const auto base_name =
+        prepare::prepared_value_name(context.function.prepared->names,
+                                     va_list_home.value_name);
+    const auto field_offset = parse_va_list_field_suffix(base_name, slot_name);
+    if (!field_offset.has_value() ||
+        va_list_home.kind != prepare::PreparedValueHomeKind::Register ||
+        !va_list_home.register_name.has_value()) {
+      continue;
+    }
+    const auto parsed = abi::parse_aarch64_register_name(*va_list_home.register_name);
+    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      continue;
+    }
+    const auto base = abi::gp_register(parsed->index, abi::RegisterView::X);
+    if (!base.has_value()) {
+      continue;
+    }
+    return va_list_field_address_operand(abi::register_name(*base), *field_offset);
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
     const module::BlockLoweringContext& context,

@@ -19,6 +19,10 @@ namespace c4c::backend::aarch64::codegen {
     std::uint8_t target_index,
     std::vector<std::string>& lines);
 
+[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
+    const module::BlockLoweringContext& context,
+    std::string_view slot_name);
+
 [[nodiscard]] std::optional<prepare::PreparedVariadicEntryHelperKind>
 variadic_entry_helper_kind(std::string_view callee);
 

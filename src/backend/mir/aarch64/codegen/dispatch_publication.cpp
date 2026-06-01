@@ -266,65 +266,6 @@ namespace {
   }
   return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
 }
-[[nodiscard]] std::optional<std::size_t> publication_parse_va_list_field_suffix(
-    std::string_view base,
-    std::string_view slot_name) {
-  if (slot_name.size() <= base.size() + 1 ||
-      slot_name.substr(0, base.size()) != base ||
-      slot_name[base.size()] != '.') {
-    return std::nullopt;
-  }
-  std::size_t value = 0;
-  for (std::size_t index = base.size() + 1; index < slot_name.size(); ++index) {
-    const char ch = slot_name[index];
-    if (ch < '0' || ch > '9') {
-      return std::nullopt;
-    }
-    value = value * 10U + static_cast<std::size_t>(ch - '0');
-  }
-  return value;
-}
-[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
-    const module::BlockLoweringContext& context,
-    std::string_view slot_name) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
-  const auto* entry_plan =
-      prepare::find_prepared_variadic_entry_plan(
-          *context.function.prepared,
-          context.function.control_flow->function_name);
-  if (entry_plan == nullptr) {
-    return std::nullopt;
-  }
-  for (const auto& homes : entry_plan->helper_operand_homes) {
-    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
-        !homes.destination_va_list.has_value()) {
-      continue;
-    }
-    const auto& va_list_home = *homes.destination_va_list;
-    const auto base_name =
-        prepare::prepared_value_name(context.function.prepared->names,
-                                     va_list_home.value_name);
-    const auto field_offset = publication_parse_va_list_field_suffix(base_name, slot_name);
-    if (!field_offset.has_value() ||
-        va_list_home.kind != prepare::PreparedValueHomeKind::Register ||
-        !va_list_home.register_name.has_value()) {
-      continue;
-    }
-    const auto parsed = abi::parse_aarch64_register_name(*va_list_home.register_name);
-    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
-      continue;
-    }
-    const auto base = abi::gp_register(parsed->index, abi::RegisterView::X);
-    if (!base.has_value()) {
-      continue;
-    }
-    return register_indirect_address(abi::register_name(*base), *field_offset);
-  }
-  return std::nullopt;
-}
 [[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
                                                    unsigned width_bits) {
   if (value.immediate_bits != 0U) {

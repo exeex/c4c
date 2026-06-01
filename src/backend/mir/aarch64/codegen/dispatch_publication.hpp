@@ -61,14 +61,6 @@ namespace prepare = c4c::backend::prepare;
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
 
-[[nodiscard]] std::optional<std::size_t> publication_parse_va_list_field_suffix(
-    std::string_view base,
-    std::string_view slot_name);
-
-[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
-    const module::BlockLoweringContext& context,
-    std::string_view slot_name);
-
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value);
