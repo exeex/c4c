@@ -61,6 +61,18 @@ address spelling.
   truth before AArch64 instruction selection.
 - Regression guard logs for acceptance-sized slices.
 
+## Closure Note
+
+Closed on 2026-06-01 after Step 6 acceptance validation. AArch64 memory,
+prepared frame-slot memory access, typed stack-source publication, and
+memory-backed f128 consumers now consume prepared authority before local
+instruction emission. Aggregate stack-source transport authority remains
+outside this idea and is tracked by
+`ideas/open/75_shared_aggregate_transport_plan_probe.md`.
+
+Close gate: full-suite regression guard passed with `test_before.log` and fresh
+`test_after.log` both at 3417/3417, with no new failures.
+
 ## Reviewer Reject Signals
 
 - The route locally re-derives value homes, storage, stack-source authority, or
