@@ -36,13 +36,28 @@ struct MachineNodeSelectionStatusSpelling {
   std::string_view spelling;
 };
 
+struct OperandKindSpelling {
+  OperandKind kind;
+  std::string_view spelling;
+};
+
 struct RecordSurfaceKindSpelling {
   RecordSurfaceKind surface;
   std::string_view spelling;
 };
 
+struct RegisterOperandRoleSpelling {
+  RegisterOperandRole role;
+  std::string_view spelling;
+};
+
 struct ImmediateKindSpelling {
   ImmediateKind kind;
+  std::string_view spelling;
+};
+
+struct InstructionFamilySpelling {
+  InstructionFamily family;
   std::string_view spelling;
 };
 
@@ -93,6 +108,11 @@ struct PreparedScalarCastRecordErrorSpelling {
 
 struct PreparedScalarFpUnaryIntrinsicRecordErrorSpelling {
   PreparedScalarFpUnaryIntrinsicRecordError error;
+  std::string_view spelling;
+};
+
+struct AddressMaterializationKindSpelling {
+  AddressMaterializationKind kind;
   std::string_view spelling;
 };
 
@@ -217,6 +237,16 @@ constexpr std::array<MachineNodeSelectionStatusSpelling, 3>
         {MachineNodeSelectionStatus::MissingRequiredFacts, "missing_required_facts"},
     }};
 
+constexpr std::array<OperandKindSpelling, 7> kOperandKindSpellings{{
+    {OperandKind::Register, "register"},
+    {OperandKind::Immediate, "immediate"},
+    {OperandKind::PreparedValue, "prepared_value"},
+    {OperandKind::FrameSlot, "frame_slot"},
+    {OperandKind::Symbol, "symbol"},
+    {OperandKind::BranchTarget, "branch_target"},
+    {OperandKind::Memory, "memory"},
+}};
+
 constexpr std::array<RecordSurfaceKindSpelling, 5> kRecordSurfaceKindSpellings{{
     {RecordSurfaceKind::TargetMirRecord, "target_mir_record"},
     {RecordSurfaceKind::MachineInstructionNode, "machine_instruction_node"},
@@ -225,11 +255,39 @@ constexpr std::array<RecordSurfaceKindSpelling, 5> kRecordSurfaceKindSpellings{{
     {RecordSurfaceKind::ExternalAssemblerInput, "external_assembler_input"},
 }};
 
+constexpr std::array<RegisterOperandRoleSpelling, 8>
+    kRegisterOperandRoleSpellings{{
+        {RegisterOperandRole::Physical, "physical"},
+        {RegisterOperandRole::PreparedAssignment, "prepared_assignment"},
+        {RegisterOperandRole::AllocationResult, "allocation_result"},
+        {RegisterOperandRole::ReservedMirScratch, "reserved_mir_scratch"},
+        {RegisterOperandRole::ValueHome, "value_home"},
+        {RegisterOperandRole::SpillAuthority, "spill_authority"},
+        {RegisterOperandRole::StoragePlan, "storage_plan"},
+        {RegisterOperandRole::CallAbi, "call_abi"},
+    }};
+
 constexpr std::array<ImmediateKindSpelling, 4> kImmediateKindSpellings{{
     {ImmediateKind::SignedInteger, "signed_integer"},
     {ImmediateKind::UnsignedInteger, "unsigned_integer"},
     {ImmediateKind::Boolean, "boolean"},
     {ImmediateKind::NullPointer, "null_pointer"},
+}};
+
+constexpr std::array<InstructionFamilySpelling, 13> kInstructionFamilySpellings{{
+    {InstructionFamily::Branch, "branch"},
+    {InstructionFamily::Scalar, "scalar"},
+    {InstructionFamily::I128Transport, "i128_transport"},
+    {InstructionFamily::F128Transport, "f128_transport"},
+    {InstructionFamily::I128Pair, "i128_pair"},
+    {InstructionFamily::Memory, "memory"},
+    {InstructionFamily::Frame, "frame"},
+    {InstructionFamily::Call, "call"},
+    {InstructionFamily::CallBoundary, "call_boundary"},
+    {InstructionFamily::Intrinsic, "intrinsic"},
+    {InstructionFamily::Return, "return"},
+    {InstructionFamily::Assembler, "assembler"},
+    {InstructionFamily::Object, "object"},
 }};
 
 constexpr std::array<FrameInstructionKindSpelling, 4> kFrameInstructionKindSpellings{{
@@ -403,6 +461,17 @@ constexpr std::array<PreparedScalarFpUnaryIntrinsicRecordErrorSpelling, 15>
          "register_conversion_failed"},
     }};
 
+constexpr std::array<AddressMaterializationKindSpelling, 7>
+    kAddressMaterializationKindSpellings{{
+        {AddressMaterializationKind::FrameSlot, "frame_slot"},
+        {AddressMaterializationKind::DirectPageLow12, "direct_page_low12"},
+        {AddressMaterializationKind::GotPageLow12, "got_page_low12"},
+        {AddressMaterializationKind::TlsRelative, "tls_relative"},
+        {AddressMaterializationKind::StringConstant, "string_constant"},
+        {AddressMaterializationKind::LabelPageLow12, "label_page_low12"},
+        {AddressMaterializationKind::DeferredUnsupported, "deferred_unsupported"},
+    }};
+
 constexpr std::array<PreparedAddressMaterializationRecordErrorSpelling, 17>
     kPreparedAddressMaterializationRecordErrorSpellings{{
         {PreparedAddressMaterializationRecordError::None, "none"},
@@ -489,6 +558,18 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
   return found->spelling;
 }
 
+[[nodiscard]] std::string_view operand_kind_spelling(OperandKind kind) {
+  const auto found = std::find_if(
+      kOperandKindSpellings.begin(), kOperandKindSpellings.end(),
+      [kind](const OperandKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kOperandKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
 [[nodiscard]] MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic(
     MachinePseudoKind pseudo) {
   const auto found = std::find_if(
@@ -526,6 +607,19 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
   return found->spelling;
 }
 
+[[nodiscard]] std::string_view register_operand_role_spelling(
+    RegisterOperandRole role) {
+  const auto found = std::find_if(
+      kRegisterOperandRoleSpellings.begin(), kRegisterOperandRoleSpellings.end(),
+      [role](const RegisterOperandRoleSpelling& spelling) {
+        return spelling.role == role;
+      });
+  if (found == kRegisterOperandRoleSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
 [[nodiscard]] std::string_view immediate_kind_spelling(ImmediateKind kind) {
   const auto found = std::find_if(
       kImmediateKindSpellings.begin(), kImmediateKindSpellings.end(),
@@ -533,6 +627,19 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kImmediateKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view instruction_family_spelling(
+    InstructionFamily family) {
+  const auto found = std::find_if(
+      kInstructionFamilySpellings.begin(), kInstructionFamilySpellings.end(),
+      [family](const InstructionFamilySpelling& spelling) {
+        return spelling.family == family;
+      });
+  if (found == kInstructionFamilySpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -676,6 +783,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
   return found->spelling;
 }
 
+[[nodiscard]] std::string_view address_materialization_kind_spelling(
+    AddressMaterializationKind kind) {
+  const auto found = std::find_if(
+      kAddressMaterializationKindSpellings.begin(),
+      kAddressMaterializationKindSpellings.end(),
+      [kind](const AddressMaterializationKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kAddressMaterializationKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
 [[nodiscard]] std::string_view prepared_address_materialization_record_error_spelling(
     PreparedAddressMaterializationRecordError error) {
   const auto found = std::find_if(
@@ -727,23 +848,7 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
 }  // namespace
 
 std::string_view operand_kind_name(OperandKind kind) {
-  switch (kind) {
-    case OperandKind::Register:
-      return "register";
-    case OperandKind::Immediate:
-      return "immediate";
-    case OperandKind::PreparedValue:
-      return "prepared_value";
-    case OperandKind::FrameSlot:
-      return "frame_slot";
-    case OperandKind::Symbol:
-      return "symbol";
-    case OperandKind::BranchTarget:
-      return "branch_target";
-    case OperandKind::Memory:
-      return "memory";
-  }
-  return "unknown";
+  return operand_kind_spelling(kind);
 }
 
 std::string_view record_surface_kind_name(RecordSurfaceKind kind) {
@@ -764,25 +869,7 @@ bool is_text_first_external_input_surface(RecordSurfaceKind kind) {
 }
 
 std::string_view register_operand_role_name(RegisterOperandRole role) {
-  switch (role) {
-    case RegisterOperandRole::Physical:
-      return "physical";
-    case RegisterOperandRole::PreparedAssignment:
-      return "prepared_assignment";
-    case RegisterOperandRole::AllocationResult:
-      return "allocation_result";
-    case RegisterOperandRole::ReservedMirScratch:
-      return "reserved_mir_scratch";
-    case RegisterOperandRole::ValueHome:
-      return "value_home";
-    case RegisterOperandRole::SpillAuthority:
-      return "spill_authority";
-    case RegisterOperandRole::StoragePlan:
-      return "storage_plan";
-    case RegisterOperandRole::CallAbi:
-      return "call_abi";
-  }
-  return "unknown";
+  return register_operand_role_spelling(role);
 }
 
 std::string_view immediate_kind_name(ImmediateKind kind) {
@@ -790,35 +877,7 @@ std::string_view immediate_kind_name(ImmediateKind kind) {
 }
 
 std::string_view instruction_family_name(InstructionFamily family) {
-  switch (family) {
-    case InstructionFamily::Branch:
-      return "branch";
-    case InstructionFamily::Scalar:
-      return "scalar";
-    case InstructionFamily::I128Transport:
-      return "i128_transport";
-    case InstructionFamily::F128Transport:
-      return "f128_transport";
-    case InstructionFamily::I128Pair:
-      return "i128_pair";
-    case InstructionFamily::Memory:
-      return "memory";
-    case InstructionFamily::Frame:
-      return "frame";
-    case InstructionFamily::Call:
-      return "call";
-    case InstructionFamily::CallBoundary:
-      return "call_boundary";
-    case InstructionFamily::Intrinsic:
-      return "intrinsic";
-    case InstructionFamily::Return:
-      return "return";
-    case InstructionFamily::Assembler:
-      return "assembler";
-    case InstructionFamily::Object:
-      return "object";
-  }
-  return "unknown";
+  return instruction_family_spelling(family);
 }
 
 std::string_view machine_opcode_name(MachineOpcode opcode) {
@@ -1111,23 +1170,7 @@ std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
 }
 
 std::string_view address_materialization_kind_name(AddressMaterializationKind kind) {
-  switch (kind) {
-    case AddressMaterializationKind::FrameSlot:
-      return "frame_slot";
-    case AddressMaterializationKind::DirectPageLow12:
-      return "direct_page_low12";
-    case AddressMaterializationKind::GotPageLow12:
-      return "got_page_low12";
-    case AddressMaterializationKind::TlsRelative:
-      return "tls_relative";
-    case AddressMaterializationKind::StringConstant:
-      return "string_constant";
-    case AddressMaterializationKind::LabelPageLow12:
-      return "label_page_low12";
-    case AddressMaterializationKind::DeferredUnsupported:
-      return "deferred_unsupported";
-  }
-  return "unknown";
+  return address_materialization_kind_spelling(kind);
 }
 
 std::string_view prepared_address_materialization_record_error_name(
