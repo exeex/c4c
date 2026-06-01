@@ -123,27 +123,6 @@ void record_address_materialization_result(
     BlockScalarLoweringState& scalar_state,
     const module::MachineInstruction& instruction);
 
-void retarget_pointer_store_value_to_materialized_address(
-    module::MachineInstruction& instruction,
-    const RegisterOperand& materialized_address);
-
-void retarget_store_address_to_materialized_pointer(
-    const bir::StoreLocalInst& store,
-    module::MachineInstruction& instruction,
-    const RegisterOperand& materialized_address);
-
-void retarget_pointer_store_value_to_emitted_scalar(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    const BlockScalarLoweringState& scalar_state,
-    module::MachineInstruction& instruction);
-
-void retarget_store_local_value_to_emitted_scalar(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    const BlockScalarLoweringState& scalar_state,
-    module::MachineInstruction& instruction);
-
 [[nodiscard]] bool block_entry_move_clobbers_current_join_publication(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction);

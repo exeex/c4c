@@ -89,6 +89,27 @@ void retarget_memory_result_to_prepared_home(
     const bir::Value& value,
     const BlockScalarLoweringState& scalar_state);
 
+void retarget_pointer_store_value_to_materialized_address(
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address);
+
+void retarget_store_address_to_materialized_pointer(
+    const bir::StoreLocalInst& store,
+    module::MachineInstruction& instruction,
+    const RegisterOperand& materialized_address);
+
+void retarget_pointer_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction);
+
+void retarget_store_local_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction);
+
 [[nodiscard]] const prepare::PreparedMemoryAccess* prepared_store_local_access(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
