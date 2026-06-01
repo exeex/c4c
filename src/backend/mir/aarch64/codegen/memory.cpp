@@ -1309,7 +1309,8 @@ PreparedStoredValueStorage decode_prepared_stored_value_storage(
 std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
     const prepare::PreparedValueHome& home,
     const prepare::PreparedStoragePlanValue& storage,
-    bir::TypeKind type) {
+    bir::TypeKind type,
+    const prepare::PreparedTypedStackSourcePublication* typed_stack_source) {
   if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
       storage.encoding != prepare::PreparedStorageEncodingKind::FrameSlot) {
     return std::nullopt;
@@ -1319,7 +1320,19 @@ std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
     return std::nullopt;
   }
   std::optional<abi::RegisterReference> scratch;
-  if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
+  if (typed_stack_source != nullptr &&
+      typed_stack_source->status ==
+          prepare::PreparedTypedStackSourcePublicationStatus::Available &&
+      typed_stack_source->destination_register_placement.has_value()) {
+    const auto converted = abi::convert_prepared_register(
+        *typed_stack_source->destination_register_placement,
+        std::nullopt,
+        expected_view);
+    if (!converted.reg.has_value()) {
+      return std::nullopt;
+    }
+    scratch = converted.reg;
+  } else if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
     const auto scratches = abi::reserved_mir_scratch_fp_simd_registers();
     if (scratches.empty()) {
       return std::nullopt;
@@ -1347,6 +1360,32 @@ std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
       .occupied_register_references = occupied_register_references(*scratch),
       .occupied_registers = occupied_register_views(*scratch),
   };
+}
+
+const prepare::PreparedEdgePublication* find_unique_load_result_stack_source_publication(
+    const prepare::PreparedEdgePublicationLookups* edge_publications,
+    c4c::BlockLabelId predecessor_label,
+    const bir::LoadLocalInst* load_local,
+    const bir::LoadGlobalInst* load_global) {
+  if (edge_publications == nullptr ||
+      predecessor_label == c4c::kInvalidBlockLabel ||
+      (load_local == nullptr && load_global == nullptr)) {
+    return nullptr;
+  }
+  const prepare::PreparedEdgePublication* matched = nullptr;
+  for (const auto& publication : edge_publications->publications) {
+    const bool matches_load =
+        (load_local != nullptr && publication.source_load_local == load_local) ||
+        (load_global != nullptr && publication.source_load_global == load_global);
+    if (publication.predecessor_label != predecessor_label || !matches_load) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &publication;
+  }
+  return matched;
 }
 
 MachineOpcode machine_opcode_from_memory_instruction(const MemoryInstructionRecord& instruction) {
@@ -1747,7 +1786,8 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
     PreparedMemoryOperandRecordResult operand,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
-    bir::TypeKind result_type) {
+    bir::TypeKind result_type,
+    const prepare::PreparedTypedStackSourcePublication* typed_stack_source = nullptr) {
   if (!operand.record.has_value()) {
     return memory_instruction_record_error(operand.error);
   }
@@ -1787,7 +1827,10 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
     }
   } else if (result_storage.home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     result_register = make_load_result_stack_publication_scratch(
-        *result_storage.home, *result_storage.storage, result_type);
+        *result_storage.home,
+        *result_storage.storage,
+        result_type,
+        typed_stack_source);
     if (!result_register.has_value()) {
       return memory_instruction_record_error(
           PreparedMemoryOperandRecordError::RegisterConversionFailed);
@@ -1818,6 +1861,7 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedEdgePublicationLookups* edge_publications,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::LoadLocalInst& load) {
@@ -1825,12 +1869,17 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
       storage_plan.function_name != addressing.function_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
   }
+  const auto typed_stack_source =
+      prepare::prepare_same_width_i32_stack_source_publication(
+          find_unique_load_result_stack_source_publication(
+              edge_publications, block_label, &load, nullptr));
   return make_load_memory_instruction_record(
       make_prepared_memory_operand_record(
           names, value_locations, addressing, block_label, instruction_index, load),
       value_locations,
       storage_plan,
-      load.result.type);
+      load.result.type,
+      &typed_stack_source);
 }
 
 PreparedMemoryInstructionRecordResult
@@ -1847,6 +1896,7 @@ make_prepared_frame_slot_load_memory_instruction_record(
       value_locations,
       storage_plan,
       addressing,
+      nullptr,
       block_label,
       instruction_index,
       load);
@@ -2480,6 +2530,7 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedEdgePublicationLookups* edge_publications,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::LoadGlobalInst& load) {
@@ -2487,12 +2538,17 @@ PreparedMemoryInstructionRecordResult make_prepared_load_memory_instruction_reco
       storage_plan.function_name != addressing.function_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
   }
+  const auto typed_stack_source =
+      prepare::prepare_same_width_i32_stack_source_publication(
+          find_unique_load_result_stack_source_publication(
+              edge_publications, block_label, nullptr, &load));
   return make_load_memory_instruction_record(
       make_prepared_memory_operand_record(
           names, value_locations, addressing, block_label, instruction_index, load),
       value_locations,
       storage_plan,
-      load.result.type);
+      load.result.type,
+      &typed_stack_source);
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
@@ -2609,6 +2665,10 @@ MemoryInstructionLoweringResult lower_memory_instruction(
   const auto& storage_plan =
       context.function.storage_plan != nullptr ? *context.function.storage_plan
                                                : empty_storage_plan;
+  const auto* edge_publications =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publications
+          : nullptr;
 
   PreparedMemoryInstructionRecordResult prepared;
   if (load != nullptr) {
@@ -2620,6 +2680,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
           *context.function.value_locations,
           storage_plan,
           *addressing,
+          edge_publications,
           context.control_flow_block->block_label,
           instruction_index,
           *load);
@@ -2630,6 +2691,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         *context.function.value_locations,
         storage_plan,
         *addressing,
+        edge_publications,
         context.control_flow_block->block_label,
         instruction_index,
         *global_load);
