@@ -624,7 +624,10 @@ bool has_complete_f128_helper_abi_policy(
 bool f128_helper_source_matches_record(
     const F128RuntimeHelperBoundaryRecord& record) {
   const auto* helper = record.source_helper;
-  if (helper == nullptr) {
+  if (helper == nullptr ||
+      reinterpret_cast<std::uintptr_t>(helper) %
+              alignof(prepare::PreparedF128RuntimeHelper) !=
+          0) {
     return false;
   }
   return helper->helper_family == record.helper_family &&
@@ -648,34 +651,39 @@ bool f128_helper_source_matches_record(
          helper->result_ownership == record.result_ownership;
 }
 
-std::optional<std::string> validate_f128_runtime_helper_source_policy(
+std::optional<std::string_view> validate_f128_runtime_helper_source_policy(
     const F128RuntimeHelperBoundaryRecord& record) {
   const auto* helper = record.source_helper;
   if (helper == nullptr) {
-    return std::string{"f128 helper boundary is missing prepared helper provenance"};
+    return "f128 helper boundary is missing prepared helper provenance";
+  }
+  if (reinterpret_cast<std::uintptr_t>(helper) %
+          alignof(prepare::PreparedF128RuntimeHelper) !=
+      0) {
+    return "f128 helper boundary has invalid prepared helper provenance";
   }
   if (!f128_helper_source_matches_record(record)) {
-    return std::string{"f128 helper boundary source helper facts do not match selected record"};
+    return "f128 helper boundary source helper facts do not match selected record";
   }
   if (!has_complete_f128_helper_resource_policy(record.resource_policy) ||
       !has_complete_f128_helper_resource_policy(helper->resource_policy) ||
       record.clobbered_registers.empty() ||
       helper->clobbered_registers.empty()) {
-    return std::string{"f128 helper boundary is missing prepared resource or clobber policy"};
+    return "f128 helper boundary is missing prepared resource or clobber policy";
   }
   if (!has_complete_f128_helper_abi_policy(
           record.helper_family, record.source_type, record.result_type, record.abi_policy) ||
       !has_complete_f128_helper_abi_policy(
           helper->helper_family, helper->source_type, helper->result_type, helper->abi_policy)) {
-    return std::string{"f128 helper boundary is missing prepared ABI policy"};
+    return "f128 helper boundary is missing prepared ABI policy";
   }
   if (!has_complete_f128_live_preservation(record.live_preservation_policy) ||
       !has_complete_f128_live_preservation(helper->live_preservation_policy)) {
-    return std::string{"f128 helper boundary is missing prepared live-preservation policy"};
+    return "f128 helper boundary is missing prepared live-preservation policy";
   }
   if (!has_complete_f128_selected_call_ownership(record.selected_call_ownership) ||
       !has_complete_f128_selected_call_ownership(helper->selected_call_ownership)) {
-    return std::string{"f128 helper boundary is missing prepared selected-call ownership"};
+    return "f128 helper boundary is missing prepared selected-call ownership";
   }
   return std::nullopt;
 }
@@ -1163,7 +1171,9 @@ mir::TargetInstructionPrintResult print_f128_runtime_helper(
   }
   if (const auto error = validate_f128_runtime_helper_source_policy(helper);
       error.has_value()) {
-    return target_unsupported(f128_bad_header(instruction) + *error);
+    std::string diagnostic = f128_bad_header(instruction);
+    diagnostic += *error;
+    return target_unsupported(std::move(diagnostic));
   }
 
   std::vector<std::string> lines;

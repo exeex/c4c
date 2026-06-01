@@ -615,6 +615,35 @@ aarch64_codegen::MemoryOperand f128_frame_slot(std::int64_t offset) {
   return memory;
 }
 
+prepare::PreparedF128Carrier prepared_f128_carrier_from_transport(
+    const aarch64_codegen::F128TransportRecord& record) {
+  prepare::PreparedF128Carrier carrier{
+      .function_name = record.function_name,
+      .value_id = record.value_id,
+      .value_name = record.value_name,
+      .source_type = record.value_type,
+      .kind = record.carrier_kind,
+      .total_size_bytes = record.total_size_bytes,
+      .total_align_bytes = record.total_align_bytes,
+      .register_bank = record.register_bank,
+      .register_class = record.register_class,
+      .contiguous_width = record.contiguous_width,
+      .occupied_register_names = record.occupied_register_names,
+      .slot_id = record.slot_id,
+      .stack_offset_bytes = record.stack_offset_bytes,
+  };
+  if (!record.occupied_register_names.empty()) {
+    carrier.register_name = record.occupied_register_names.front();
+  }
+  return carrier;
+}
+
+void attach_prepared_f128_carrier(aarch64_codegen::F128TransportRecord& record,
+                                  prepare::PreparedF128Carrier& carrier) {
+  carrier = prepared_f128_carrier_from_transport(record);
+  record.source_carrier = &carrier;
+}
+
 aarch64_codegen::I128PairOperandRecord i128_pair_operand(
     prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
@@ -792,7 +821,95 @@ aarch64_codegen::F128RuntimeHelperScalarResultRecord f128_helper_scalar_record(
   };
 }
 
-aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_arithmetic_helper() {
+prepare::PreparedF128RuntimeHelper prepared_f128_helper_from_record(
+    const aarch64_codegen::F128RuntimeHelperBoundaryRecord& record) {
+  auto helper = prepare::PreparedF128RuntimeHelper{
+      .function_name = record.function_name,
+      .block_index = record.block_index,
+      .instruction_index = record.instruction_index,
+      .source_binary_opcode = record.source_binary_opcode,
+      .source_cast_opcode = record.source_cast_opcode,
+      .source_type = record.source_type,
+      .result_type = record.result_type,
+      .result_value_id = record.result_value_id,
+      .result_value_name = record.result_value_name,
+      .operand_value_id = record.operand_value_id,
+      .operand_value_name = record.operand_value_name,
+      .lhs_value_id = record.lhs_value_id,
+      .lhs_value_name = record.lhs_value_name,
+      .rhs_value_id = record.rhs_value_id,
+      .rhs_value_name = record.rhs_value_name,
+      .helper_family = record.helper_family,
+      .helper_kind = record.helper_kind,
+      .callee_name = record.callee_name,
+      .result_ownership = record.result_ownership,
+      .resource_policy = record.resource_policy,
+      .abi_policy = record.abi_policy,
+      .live_preservation_policy = record.live_preservation_policy,
+      .selected_call_ownership = record.selected_call_ownership,
+      .clobbered_registers = record.clobbered_registers,
+  };
+
+  if (record.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+    helper.lhs_carrier = record.lhs.carrier_binding;
+    helper.rhs_carrier = record.rhs.carrier_binding;
+    helper.lhs_abi_argument = record.lhs.abi_binding;
+    helper.rhs_abi_argument = record.rhs.abi_binding;
+    helper.result_abi_result = record.scalar_result.marshaling_move->abi_register;
+    helper.lhs_argument_move = record.lhs.marshaling_move;
+    helper.rhs_argument_move = record.rhs.marshaling_move;
+    helper.scalar_result = record.scalar_result.scalar_ownership;
+    helper.scalar_result_unmarshal_move = record.scalar_result.marshaling_move;
+    helper.scalar_cmp_result_consumption = record.scalar_result.cmp_result_consumption;
+    return helper;
+  }
+
+  const bool cast_helper =
+      record.helper_family == prepare::PreparedF128RuntimeHelperFamily::Cast;
+  if (cast_helper && record.result_type == bir::TypeKind::F128) {
+    helper.scalar_operand = record.scalar_operand.scalar_ownership;
+    helper.scalar_operand_abi_argument = record.scalar_operand.marshaling_move->abi_register;
+    helper.scalar_operand_argument_move = record.scalar_operand.marshaling_move;
+    helper.result_carrier = record.result.carrier_binding;
+    helper.result_abi_result = record.result.abi_binding;
+    helper.result_unmarshal_move = record.result.marshaling_move;
+    return helper;
+  }
+  if (cast_helper && record.source_type == bir::TypeKind::F128) {
+    helper.lhs_carrier = record.lhs.carrier_binding;
+    helper.lhs_abi_argument = record.lhs.abi_binding;
+    helper.lhs_argument_move = record.lhs.marshaling_move;
+    helper.scalar_result = record.scalar_result.scalar_ownership;
+    helper.result_abi_result = record.scalar_result.marshaling_move->abi_register;
+    helper.scalar_result_unmarshal_move = record.scalar_result.marshaling_move;
+    return helper;
+  }
+
+  helper.result_carrier = record.result.carrier_binding;
+  helper.result_abi_result = record.result.abi_binding;
+  helper.result_unmarshal_move = record.result.marshaling_move;
+  helper.lhs_carrier = record.lhs.carrier_binding;
+  helper.rhs_carrier = record.rhs.carrier_binding;
+  helper.lhs_abi_argument = record.lhs.abi_binding;
+  helper.rhs_abi_argument = record.rhs.abi_binding;
+  helper.lhs_argument_move = record.lhs.marshaling_move;
+  helper.rhs_argument_move = record.rhs.marshaling_move;
+  return helper;
+}
+
+struct PrintableF128HelperFixture {
+  prepare::PreparedF128RuntimeHelper source_helper;
+  aarch64_codegen::F128RuntimeHelperBoundaryRecord record;
+
+  explicit PrintableF128HelperFixture(
+      aarch64_codegen::F128RuntimeHelperBoundaryRecord record)
+      : source_helper(prepared_f128_helper_from_record(record)),
+        record(std::move(record)) {
+    this->record.source_helper = &source_helper;
+  }
+};
+
+aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_arithmetic_helper_record() {
   return aarch64_codegen::F128RuntimeHelperBoundaryRecord{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
       .boundary_kind = aarch64_codegen::F128RuntimeHelperBoundaryKind::Add,
@@ -879,12 +996,15 @@ aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_arithmetic_helpe
               .contiguous_width = 1,
               .occupied_register_names = {"q0"},
           }},
-      .source_helper = reinterpret_cast<const prepare::PreparedF128RuntimeHelper*>(0x1),
   };
 }
 
-aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_comparison_helper() {
-  auto helper = printable_f128_arithmetic_helper();
+PrintableF128HelperFixture printable_f128_arithmetic_helper() {
+  return PrintableF128HelperFixture{printable_f128_arithmetic_helper_record()};
+}
+
+PrintableF128HelperFixture printable_f128_comparison_helper() {
+  auto helper = printable_f128_arithmetic_helper_record();
   helper.boundary_kind = aarch64_codegen::F128RuntimeHelperBoundaryKind::Eq;
   helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Comparison;
   helper.helper_kind = prepare::PreparedF128RuntimeHelperKind::Eq;
@@ -911,11 +1031,11 @@ aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_comparison_helpe
   helper.abi_policy.result_bank = prepare::PreparedRegisterBank::Gpr;
   helper.abi_policy.result_count = 1;
   helper.abi_policy.width_bytes = 4;
-  return helper;
+  return PrintableF128HelperFixture{std::move(helper)};
 }
 
-aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f64_to_f128_cast_helper() {
-  auto helper = printable_f128_arithmetic_helper();
+PrintableF128HelperFixture printable_f64_to_f128_cast_helper() {
+  auto helper = printable_f128_arithmetic_helper_record();
   helper.boundary_kind = aarch64_codegen::F128RuntimeHelperBoundaryKind::F64ToF128;
   helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Cast;
   helper.helper_kind = prepare::PreparedF128RuntimeHelperKind::F64ToF128;
@@ -953,11 +1073,11 @@ aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f64_to_f128_cast_help
   helper.abi_policy.argument_count = 1;
   helper.abi_policy.result_count = 1;
   helper.abi_policy.width_bytes = 16;
-  return helper;
+  return PrintableF128HelperFixture{std::move(helper)};
 }
 
-aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_to_f32_cast_helper() {
-  auto helper = printable_f128_arithmetic_helper();
+PrintableF128HelperFixture printable_f128_to_f32_cast_helper() {
+  auto helper = printable_f128_arithmetic_helper_record();
   helper.boundary_kind = aarch64_codegen::F128RuntimeHelperBoundaryKind::F128ToF32;
   helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Cast;
   helper.helper_kind = prepare::PreparedF128RuntimeHelperKind::F128ToF32;
@@ -995,7 +1115,7 @@ aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_to_f32_cast_help
   helper.abi_policy.argument_count = 1;
   helper.abi_policy.result_count = 1;
   helper.abi_policy.width_bytes = 4;
-  return helper;
+  return PrintableF128HelperFixture{std::move(helper)};
 }
 
 prepare::PreparedI128RuntimeHelper::LaneBinding i128_helper_lane(
@@ -3993,8 +4113,9 @@ int selected_f128_transport_and_helper_nodes_print_from_structured_fields() {
       .reg = qreg(4),
       .occupied_register_names = {"q4"},
       .memory = f128_frame_slot(32),
-      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
   };
+  prepare::PreparedF128Carrier load_source_carrier;
+  attach_prepared_f128_carrier(load_record, load_source_carrier);
   auto store_record = load_record;
   store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
   store_record.instruction_index = 2;
@@ -4003,11 +4124,14 @@ int selected_f128_transport_and_helper_nodes_print_from_structured_fields() {
   store_record.reg = qreg(5);
   store_record.occupied_register_names = {"q5"};
   store_record.memory = f128_frame_slot(48);
+  prepare::PreparedF128Carrier store_source_carrier;
+  attach_prepared_f128_carrier(store_record, store_source_carrier);
 
   const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
   const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
+  const auto helper_fixture = printable_f128_arithmetic_helper();
   const auto helper = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
-      printable_f128_arithmetic_helper());
+      helper_fixture.record);
   const auto result = print_common_instruction_nodes({load, store, helper});
   if (!result.ok) {
     return fail("expected selected f128 nodes to print from structured fields: " +
@@ -4042,14 +4166,17 @@ int selected_f128_memory_backed_transport_prints_through_reserved_scratch() {
       .slot_id = prepare::PreparedFrameSlotId{7},
       .stack_offset_bytes = std::size_t{64},
       .memory = f128_frame_slot(32),
-      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
   };
+  prepare::PreparedF128Carrier load_source_carrier;
+  attach_prepared_f128_carrier(load_record, load_source_carrier);
   auto store_record = load_record;
   store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
   store_record.instruction_index = 4;
   store_record.value_id = prepare::PreparedValueId{94};
   store_record.value_name = c4c::ValueNameId{94};
   store_record.memory = f128_frame_slot(96);
+  prepare::PreparedF128Carrier store_source_carrier;
+  attach_prepared_f128_carrier(store_record, store_source_carrier);
 
   const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
   const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
@@ -4085,14 +4212,17 @@ int selected_large_f128_memory_backed_transport_materializes_frame_slot_addresse
       .slot_id = prepare::PreparedFrameSlotId{8},
       .stack_offset_bytes = std::size_t{80000},
       .memory = f128_frame_slot(70000),
-      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
   };
+  prepare::PreparedF128Carrier load_source_carrier;
+  attach_prepared_f128_carrier(load_record, load_source_carrier);
   auto store_record = load_record;
   store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
   store_record.instruction_index = 6;
   store_record.value_id = prepare::PreparedValueId{96};
   store_record.value_name = c4c::ValueNameId{96};
   store_record.memory = f128_frame_slot(70016);
+  prepare::PreparedF128Carrier store_source_carrier;
+  attach_prepared_f128_carrier(store_record, store_source_carrier);
 
   const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
   const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
@@ -4147,8 +4277,9 @@ int selected_f128_symbol_memory_backed_transport_materializes_symbol_address() {
       .slot_id = prepare::PreparedFrameSlotId{9},
       .stack_offset_bytes = std::size_t{64},
       .memory = symbol_memory,
-      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
   };
+  prepare::PreparedF128Carrier load_source_carrier;
+  attach_prepared_f128_carrier(load_record, load_source_carrier);
 
   const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
   const auto result = print_common_instruction_nodes({load});
@@ -4168,12 +4299,15 @@ int selected_f128_symbol_memory_backed_transport_materializes_symbol_address() {
 }
 
 int selected_f128_compare_and_cast_helpers_print_from_structured_records() {
+  const auto compare_fixture = printable_f128_comparison_helper();
+  const auto f64_to_f128_fixture = printable_f64_to_f128_cast_helper();
+  const auto f128_to_f32_fixture = printable_f128_to_f32_cast_helper();
   const auto compare = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
-      printable_f128_comparison_helper());
+      compare_fixture.record);
   const auto f64_to_f128 = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
-      printable_f64_to_f128_cast_helper());
+      f64_to_f128_fixture.record);
   const auto f128_to_f32 = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
-      printable_f128_to_f32_cast_helper());
+      f128_to_f32_fixture.record);
   const auto result = print_common_instruction_nodes({compare, f64_to_f128, f128_to_f32});
   if (!result.ok) {
     return fail("expected f128 compare/cast helpers to print from structured records: " +
@@ -4198,23 +4332,26 @@ int selected_f128_compare_and_cast_helpers_print_from_structured_records() {
 }
 
 int selected_f128_records_reject_incomplete_structured_fields() {
+  auto memory_backed_without_slot_record = aarch64_codegen::F128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 3,
+      .value_id = prepare::PreparedValueId{93},
+      .value_name = c4c::ValueNameId{93},
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .memory = f128_frame_slot(64),
+  };
+  prepare::PreparedF128Carrier memory_backed_without_slot_source_carrier;
+  attach_prepared_f128_carrier(memory_backed_without_slot_record,
+                               memory_backed_without_slot_source_carrier);
   const auto memory_backed_without_slot =
       aarch64_codegen::make_f128_transport_instruction(
-      aarch64_codegen::F128TransportRecord{
-          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
-          .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
-          .function_name = c4c::FunctionNameId{2},
-          .block_label = c4c::BlockLabelId{3},
-          .instruction_index = 3,
-          .value_id = prepare::PreparedValueId{93},
-          .value_name = c4c::ValueNameId{93},
-          .value_type = bir::TypeKind::F128,
-          .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
-          .total_size_bytes = 16,
-          .total_align_bytes = 16,
-          .memory = f128_frame_slot(64),
-          .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
-      });
+          memory_backed_without_slot_record);
   const auto memory_backed_result =
       aarch64_codegen::print_machine_instruction_line_payloads(memory_backed_without_slot);
   if (memory_backed_result.ok ||
@@ -4223,10 +4360,10 @@ int selected_f128_records_reject_incomplete_structured_fields() {
     return fail("expected incomplete f128 memory-backed transport to fail closed");
   }
 
-  auto helper_record = printable_f128_arithmetic_helper();
-  helper_record.lhs.carrier_register.reset();
+  auto helper_fixture = printable_f128_arithmetic_helper();
+  helper_fixture.record.lhs.carrier_register.reset();
   const auto helper =
-      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(helper_record);
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(helper_fixture.record);
   const auto helper_result =
       aarch64_codegen::print_machine_instruction_line_payloads(helper);
   if (helper_result.ok ||
@@ -4235,10 +4372,10 @@ int selected_f128_records_reject_incomplete_structured_fields() {
     return fail("expected incomplete f128 helper boundary to fail closed before printing");
   }
 
-  auto compare_record = printable_f128_comparison_helper();
-  compare_record.scalar_result.marshaling_move.reset();
+  auto compare_fixture = printable_f128_comparison_helper();
+  compare_fixture.record.scalar_result.marshaling_move.reset();
   const auto compare =
-      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(compare_record);
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(compare_fixture.record);
   const auto compare_result =
       aarch64_codegen::print_machine_instruction_line_payloads(compare);
   if (compare_result.ok ||
@@ -4247,10 +4384,11 @@ int selected_f128_records_reject_incomplete_structured_fields() {
     return fail("expected incomplete f128 comparison helper boundary to fail closed");
   }
 
-  auto f64_to_f128_record = printable_f64_to_f128_cast_helper();
-  f64_to_f128_record.scalar_operand.marshaling_move.reset();
+  auto f64_to_f128_fixture = printable_f64_to_f128_cast_helper();
+  f64_to_f128_fixture.record.scalar_operand.marshaling_move.reset();
   const auto f64_to_f128 =
-      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(f64_to_f128_record);
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          f64_to_f128_fixture.record);
   const auto f64_to_f128_result =
       aarch64_codegen::print_machine_instruction_line_payloads(f64_to_f128);
   if (f64_to_f128_result.ok ||
@@ -4259,10 +4397,11 @@ int selected_f128_records_reject_incomplete_structured_fields() {
     return fail("expected incomplete f64->f128 cast helper boundary to fail closed");
   }
 
-  auto f128_to_f32_record = printable_f128_to_f32_cast_helper();
-  f128_to_f32_record.scalar_result.marshaling_move.reset();
+  auto f128_to_f32_fixture = printable_f128_to_f32_cast_helper();
+  f128_to_f32_fixture.record.scalar_result.marshaling_move.reset();
   const auto f128_to_f32 =
-      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(f128_to_f32_record);
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          f128_to_f32_fixture.record);
   const auto f128_to_f32_result =
       aarch64_codegen::print_machine_instruction_line_payloads(f128_to_f32);
   if (f128_to_f32_result.ok ||
@@ -4315,7 +4454,7 @@ int selected_i128_records_reject_incomplete_structured_fields() {
   const auto missing_move_result =
       aarch64_codegen::print_machine_instruction_line_payloads(missing_move_helper);
   if (missing_move_result.ok ||
-      missing_move_result.diagnostic.find("marshal/unmarshal moves") ==
+      missing_move_result.diagnostic.find("marshaling policy") ==
           std::string::npos) {
     return fail("expected i128 helper boundary without marshal move facts to fail closed");
   }
@@ -4353,7 +4492,7 @@ int selected_i128_records_reject_incomplete_structured_fields() {
   const auto missing_abi_result =
       aarch64_codegen::print_machine_instruction_line_payloads(missing_abi_helper);
   if (missing_abi_result.ok ||
-      missing_abi_result.diagnostic.find("GPR ABI register bindings") ==
+      missing_abi_result.diagnostic.find("marshaling policy") ==
           std::string::npos) {
     return fail("expected i128 helper boundary without ABI move facts to fail closed");
   }
