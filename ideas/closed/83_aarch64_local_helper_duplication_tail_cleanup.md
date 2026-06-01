@@ -60,3 +60,21 @@ authority.
   easier.
 - Multiple owner families are rewritten at once without an intermediate proof.
 
+## Closure Note
+
+Closed after the inventory and owner-family cleanup slices for globals,
+atomics, memory, and casts. The accepted cleanup removed duplicated
+occupied-register-name and scalar type-to-register-view helper shapes where an
+existing AArch64-local owner was already present or an owner-local helper was
+the right boundary.
+
+Residual repeated private helper families such as `register_class_from_bank`,
+`find_storage_plan_value`, and owner-specific
+`make_prepared_register_operand` forms are intentionally not promoted by this
+idea. No existing public AArch64-local owner clearly owns those abstractions,
+and publishing them would risk expanding storage/register authority beyond the
+target-local cleanup boundary this idea set.
+
+Close proof used a same-scope backend regression guard:
+`cmake --build build --target c4c_backend c4cll -- -j2 && ctest --test-dir build -R '^backend_' --output-on-failure`.
+The guard passed with 169/169 tests before and after.
