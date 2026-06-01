@@ -10,36 +10,37 @@ Current Step Title: Fold Value-Home, Storage, And Frame-Offset Authority Into Me
 
 Completed the next executable packet for `plan.md` Step 3 in
 `src/backend/mir/aarch64/codegen/memory.cpp`. Extracted
-`decode_prepared_load_result_value_storage(...)` as the shared prepared load
-result value home/storage decoder used by
-`make_load_memory_instruction_record(...)`, preserving the existing
+`decode_prepared_stored_value_storage(...)` as the shared prepared store-value
+home/storage decoder used by `make_store_memory_instruction_record(...)`,
+preserving the existing
 `PreparedMemoryOperandRecordError` mapping while centralizing:
 
-- required result value id/name checks,
-- prepared value home lookup and register-or-stack-slot kind validation,
-- storage-plan value lookup and result-name validation, and
-- register-vs-frame-slot storage compatibility plus frame-slot offset decoding.
+- required stored value id/name checks,
+- prepared value home lookup and register/stack-slot/rematerializable-immediate
+  kind validation,
+- storage-plan value lookup and stored-name validation, and
+- register, rematerializable-immediate, frame-slot, and register-home/frame-slot
+  storage classification plus prepared stack offset decoding.
 
-The load record builder still owns load target register materialization,
-stack-publication scratch selection, and result type/register-view policy.
+The store record builder still owns immediate operand construction, stack-slot
+memory operand construction, destination-base policy for register-home
+frame-slot storage, and AArch64 register materialization.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: extract shared prepared stored-value home/storage
-decoding for store values, without broadening into Step 4 stack-source
-publication planning or changing immediate-store behavior.
+Next coherent Step 3 packet: collapse the duplicated prepared pointer-value
+base-register resolution in the load/store memory instruction builders onto the
+existing shared helper, while keeping opcode/address spelling and stack-source
+publication planning out of scope.
 
 ## Watchouts
 
-The new load-result helper intentionally keeps stack-publication scratch
-register selection in `make_load_memory_instruction_record(...)` through
-`make_load_result_stack_publication_scratch(...)`; do not move scratch choice,
-AArch64 register view selection, opcode choice, or
-`frame_slot_address(...)`/`register_indirect_address(...)` spelling into
-prepared helpers. The store path has more variants than load results
-(immediates, stack reloads, register storage, and frame-slot stored values), so
-the next packet should preserve the existing immediate fast path and error
-mapping.
+The store path intentionally keeps the unprepared immediate fast path before the
+prepared stored-value decoder. `PreparedStoredValueStorageKind` classifies
+register-home/frame-slot storage, but `make_store_memory_instruction_record(...)`
+still decides whether the destination base permits the value-home register
+reload path. Preserve the current `UnsupportedStoredStorage` versus
+`RegisterConversionFailed` split for unusual home/storage combinations.
 
 ## Proof
 
