@@ -8,30 +8,30 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 prepared scalar ALU and scalar
-cast record error naming: `prepared_scalar_alu_record_error_name` and
-`prepared_scalar_cast_record_error_name` now delegate through internal lookup
-helpers backed by explicit target-local spelling tables. All previous public
-spellings were preserved, and missing/unknown enum values still return
-`unknown`.
+Step 2 bounded contraction completed for AArch64 prepared scalar FP unary
+intrinsic record error naming:
+`prepared_scalar_fp_unary_intrinsic_record_error_name` now delegates through an
+internal lookup helper backed by an explicit target-local spelling table. All
+previous public spellings were preserved, and missing/unknown enum values still
+return `unknown`.
 
 ## Suggested Next
 
-Continue Step 2 with a separate bounded packet for another same-shaped
-prepared-record error naming surface in `instruction.cpp`, such as the scalar
-FP unary intrinsic or address materialization record error naming helper,
-preserving all public strings and fallback behavior.
+Continue Step 2 with a separate bounded packet for address materialization
+record error naming in `instruction.cpp`, preserving all public strings and
+fallback behavior while moving the switch surface behind an explicit local
+lookup helper/table.
 
 ## Watchouts
 
-The ALU and cast spelling tables intentionally mirror the previous switch arms
-one-for-one, including the shared scalar operand/result error spelling set and
-the `register_conversion_failed` tail entry. This packet only changed the local
-naming helper shape; no diagnostics, tests, or downstream instruction selection
-behavior were changed.
+The FP unary intrinsic spelling table intentionally mirrors the previous switch
+arms one-for-one, including the prepared intrinsic carrier errors, operand and
+result storage errors, and the `register_conversion_failed` tail entry. This
+packet only changed the local naming helper shape; no diagnostics, tests, or
+downstream instruction selection behavior were changed.
 
 ## Proof
 
 Passed. Ran the supervisor-selected proof command:
-`bash -o pipefail -c "(cmake --build build --target c4c_backend backend_aarch64_prepared_scalar_alu_records_test backend_aarch64_prepared_scalar_cast_records_test backend_aarch64_target_instruction_records_test c4cll -- -j2 && ctest --test-dir build -R 'backend_aarch64_(prepared_scalar_alu_records|prepared_scalar_cast_records|target_instruction_records)' --output-on-failure) 2>&1 | tee test_after.log"`.
+`bash -o pipefail -c "(cmake --build build --target c4c_backend backend_aarch64_instruction_dispatch_test backend_aarch64_machine_printer_test backend_aarch64_target_instruction_records_test c4cll -- -j2 && ctest --test-dir build -R 'backend_aarch64_(instruction_dispatch|machine_printer|target_instruction_records)' --output-on-failure) 2>&1 | tee test_after.log"`.
 Proof log: `test_after.log`.

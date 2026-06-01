@@ -86,6 +86,11 @@ struct PreparedScalarCastRecordErrorSpelling {
   std::string_view spelling;
 };
 
+struct PreparedScalarFpUnaryIntrinsicRecordErrorSpelling {
+  PreparedScalarFpUnaryIntrinsicRecordError error;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -331,6 +336,39 @@ constexpr std::array<PreparedScalarCastRecordErrorSpelling, 13>
          "register_conversion_failed"},
     }};
 
+constexpr std::array<PreparedScalarFpUnaryIntrinsicRecordErrorSpelling, 15>
+    kPreparedScalarFpUnaryIntrinsicRecordErrorSpellings{{
+        {PreparedScalarFpUnaryIntrinsicRecordError::None, "none"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::InvalidFunction,
+         "invalid_function"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedIntrinsicCarrier,
+         "missing_prepared_intrinsic_carrier"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::IncompletePreparedIntrinsicCarrier,
+         "incomplete_prepared_intrinsic_carrier"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicFamily,
+         "unsupported_intrinsic_family"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicOperation,
+         "unsupported_intrinsic_operation"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType,
+         "unsupported_operand_type"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedCallPlan,
+         "missing_prepared_call_plan"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandValueHome,
+         "missing_operand_value_home"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandStorage,
+         "missing_operand_storage"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandStorage,
+         "unsupported_operand_storage"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingResultValueHome,
+         "missing_result_value_home"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::MissingResultStorage,
+         "missing_result_storage"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedResultStorage,
+         "unsupported_result_storage"},
+        {PreparedScalarFpUnaryIntrinsicRecordError::RegisterConversionFailed,
+         "register_conversion_failed"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -534,6 +572,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.error == error;
       });
   if (found == kPreparedScalarCastRecordErrorSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view prepared_scalar_fp_unary_intrinsic_record_error_spelling(
+    PreparedScalarFpUnaryIntrinsicRecordError error) {
+  const auto found = std::find_if(
+      kPreparedScalarFpUnaryIntrinsicRecordErrorSpellings.begin(),
+      kPreparedScalarFpUnaryIntrinsicRecordErrorSpellings.end(),
+      [error](const PreparedScalarFpUnaryIntrinsicRecordErrorSpelling& spelling) {
+        return spelling.error == error;
+      });
+  if (found == kPreparedScalarFpUnaryIntrinsicRecordErrorSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -982,39 +1034,7 @@ std::string_view prepared_scalar_cast_record_error_name(PreparedScalarCastRecord
 
 std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
     PreparedScalarFpUnaryIntrinsicRecordError error) {
-  switch (error) {
-    case PreparedScalarFpUnaryIntrinsicRecordError::None:
-      return "none";
-    case PreparedScalarFpUnaryIntrinsicRecordError::InvalidFunction:
-      return "invalid_function";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedIntrinsicCarrier:
-      return "missing_prepared_intrinsic_carrier";
-    case PreparedScalarFpUnaryIntrinsicRecordError::IncompletePreparedIntrinsicCarrier:
-      return "incomplete_prepared_intrinsic_carrier";
-    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicFamily:
-      return "unsupported_intrinsic_family";
-    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicOperation:
-      return "unsupported_intrinsic_operation";
-    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType:
-      return "unsupported_operand_type";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedCallPlan:
-      return "missing_prepared_call_plan";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandValueHome:
-      return "missing_operand_value_home";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandStorage:
-      return "missing_operand_storage";
-    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandStorage:
-      return "unsupported_operand_storage";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingResultValueHome:
-      return "missing_result_value_home";
-    case PreparedScalarFpUnaryIntrinsicRecordError::MissingResultStorage:
-      return "missing_result_storage";
-    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedResultStorage:
-      return "unsupported_result_storage";
-    case PreparedScalarFpUnaryIntrinsicRecordError::RegisterConversionFailed:
-      return "register_conversion_failed";
-  }
-  return "unknown";
+  return prepared_scalar_fp_unary_intrinsic_record_error_spelling(error);
 }
 
 std::string_view address_materialization_kind_name(AddressMaterializationKind kind) {
