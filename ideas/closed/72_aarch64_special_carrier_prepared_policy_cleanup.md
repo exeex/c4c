@@ -67,3 +67,18 @@ target-specific instruction sequences.
 - Tests or expectations are weakened to hide unchanged policy duplication.
 - The route drags unrelated ALU, memory, call, or variadic cleanup into this
   special-carrier policy slice.
+
+## Closure Notes
+
+Closed after Step 6 final acceptance. The final reviewer report at
+`review/idea72_final_acceptance_review.md` found no blocking issues, no
+testcase-overfit, no expectation weakening, and no movement of target-local
+AArch64 pair/lane/vector/address/helper-boundary/machine-record emission into
+shared prepared authority.
+
+Close validation used the supervisor backend acceptance proof in
+`test_after.log`: backend CTest passed 169/169 tests for the `^backend_`
+selector. The accepted full-suite baseline candidate in `test_baseline.log`
+passed 3417/3417 tests. The plan-owner close gate ran the canonical regression
+guard checker against `test_before.log` and `test_after.log`; it reported no
+new failures and `result: PASS`.
