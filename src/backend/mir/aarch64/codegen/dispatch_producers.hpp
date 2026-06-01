@@ -2,6 +2,7 @@
 
 #include "../module/module.hpp"
 #include "../../query.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,15 @@ using SameBlockSelectProducer = c4c::backend::mir::SameBlockSelectProducer;
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
+prepared_publication_source_producer_for_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value);
+
+[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducer& producer);
 
 [[nodiscard]] bool select_chain_contains_direct_global_load(
     const module::BlockLoweringContext& context,

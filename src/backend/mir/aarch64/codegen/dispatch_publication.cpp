@@ -424,55 +424,6 @@ void record_current_block_entry_publication_registers(
   }
 }
 
-[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
-prepared_publication_source_producer_for_value(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  if (context.function.prepared_lookups != nullptr) {
-    const auto* producer =
-        prepare::find_indexed_prepared_edge_publication_source_producer(
-            &context.function.prepared_lookups->edge_publication_source_producers,
-            *value_name);
-    return producer != nullptr
-               ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
-                     *producer}
-               : std::nullopt;
-  }
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  const auto* producer =
-      prepare::find_indexed_prepared_edge_publication_source_producer(
-          &source_producers,
-          *value_name);
-  return producer != nullptr
-             ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
-                   *producer}
-             : std::nullopt;
-}
-
-[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedEdgePublicationSourceProducer& producer) {
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      producer.block_label != context.control_flow_block->block_label ||
-      producer.instruction_index >= context.bir_block->insts.size() ||
-      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
-      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
-    return nullptr;
-  }
-  return &context.bir_block->insts[producer.instruction_index];
-}
-
 [[nodiscard]] DispatchBranchFusionHooks
 make_dispatch_publication_branch_fusion_hooks() {
   return DispatchBranchFusionHooks{
@@ -513,47 +464,5 @@ lower_missing_conditional_branch_condition_publication(
       scalar_state,
       diagnostics,
       make_dispatch_publication_branch_fusion_hooks());
-}
-[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
-prepared_same_block_publication_source_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return std::nullopt;
-  }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_same_block_scalar_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        *value_name,
-        value.type,
-        before_instruction_index);
-  }
-  if (context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  return prepare::find_prepared_same_block_scalar_producer(
-      context.function.prepared->names,
-      &source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      *value_name,
-      value.type,
-      before_instruction_index);
 }
 }  // namespace c4c::backend::aarch64::codegen

@@ -121,26 +121,6 @@ prepare_current_block_join_parallel_copy_source_facts(
       });
 }
 
-[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
-prepared_source_producer_for_value(const module::BlockLoweringContext& context,
-                                   const bir::Value& value) {
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  if (context.function.prepared_lookups == nullptr) {
-    return std::nullopt;
-  }
-  const auto* producer =
-      prepare::find_indexed_prepared_edge_publication_source_producer(
-          &context.function.prepared_lookups->edge_publication_source_producers,
-          *value_name);
-  return producer != nullptr
-             ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
-                   *producer}
-             : std::nullopt;
-}
-
 [[nodiscard]] SameBlockSelectProducer prepared_same_block_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -149,7 +129,8 @@ prepared_source_producer_for_value(const module::BlockLoweringContext& context,
       value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return {};
   }
-  const auto producer = prepared_source_producer_for_value(context, value);
+  const auto producer =
+      prepared_publication_source_producer_for_value(context, value);
   if (!producer.has_value() ||
       producer->kind !=
           prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
@@ -222,6 +203,55 @@ prepared_same_block_publication_source_producer(
   return prepared_same_block_select_producer(context, value, before_instruction_index);
 }
 
+[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
+prepared_publication_source_producer_for_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    const auto* producer =
+        prepare::find_indexed_prepared_edge_publication_source_producer(
+            &context.function.prepared_lookups->edge_publication_source_producers,
+            *value_name);
+    return producer != nullptr
+               ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
+                     *producer}
+               : std::nullopt;
+  }
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return std::nullopt;
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  const auto* producer =
+      prepare::find_indexed_prepared_edge_publication_source_producer(
+          &source_producers,
+          *value_name);
+  return producer != nullptr
+             ? std::optional<prepare::PreparedEdgePublicationSourceProducer>{
+                   *producer}
+             : std::nullopt;
+}
+
+[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducer& producer) {
+  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
+      producer.block_label != context.control_flow_block->block_label ||
+      producer.instruction_index >= context.bir_block->insts.size() ||
+      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+      producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::Immediate) {
+    return nullptr;
+  }
+  return &context.bir_block->insts[producer.instruction_index];
+}
+
 [[nodiscard]] std::optional<bool>
 prepared_select_chain_contains_direct_global_load(
     const module::BlockLoweringContext& context,
@@ -240,7 +270,8 @@ prepared_select_chain_contains_direct_global_load(
       value.name.empty()) {
     return std::nullopt;
   }
-  const auto producer = prepared_source_producer_for_value(context, value);
+  const auto producer =
+      prepared_publication_source_producer_for_value(context, value);
   if (!producer.has_value() ||
       producer->block_label != context.control_flow_block->block_label ||
       producer->instruction_index >= before_instruction_index ||

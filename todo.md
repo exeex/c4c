@@ -8,36 +8,41 @@ Current Step Title: Continue owner-by-owner relocation
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: relocated the variadic `va_list` field address
-publication helper family out of dispatch publication and into the AArch64
-variadic owner. `prepared_va_list_field_address` is now declared from
-`variadic.hpp` and defined in `variadic.cpp`; the suffix parser moved with it as
-the private `parse_va_list_field_suffix` helper. `dispatch_publication.cpp` no
-longer defines the family and `dispatch_publication.hpp` no longer declares it.
+Completed Step 3 from `plan.md`: relocated the dispatch publication
+source-producer helper group into the AArch64 producer owner. The public
+`prepared_publication_source_producer_for_value` and
+`prepared_source_producer_instruction` declarations now live in
+`dispatch_producers.hpp`, their definitions live in `dispatch_producers.cpp`,
+and `dispatch_publication.hpp` no longer declares them. Removed the duplicate
+private same-block publication source-producer support from
+`dispatch_publication.cpp`; the remaining implementation is the existing
+producer-owned helper in `dispatch_producers.cpp`.
 
 Changed files:
 
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch_producers.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
-- `src/backend/mir/aarch64/codegen/variadic.cpp`
-- `src/backend/mir/aarch64/codegen/variadic.hpp`
 - `todo.md`
 
 ## Suggested Next
 
 Continue Step 3 with the next dispatch-publication helper family, excluding the
 scalar, current-block entry, variadic, generic prepared-value-home, and
-address-materialization families already classified. A likely remaining family
-is the dispatch producer/source-producer helper group.
+address-materialization, and dispatch producer/source-producer families already
+classified. A likely remaining family is the prepared local load/frame-slot
+lookup support, if the supervisor wants to continue owner-by-owner relocation.
 
 ## Watchouts
 
-- `dispatch_edge_copies.cpp` also uses `prepared_va_list_field_address`, so the
-  helper remains a public `variadic.hpp` API. That file already included
-  `variadic.hpp`, so no non-owned include edit was required.
-- `variadic.cpp` still includes `dispatch_publication.hpp` for unrelated scalar
-  helper declarations such as `scalar_view_for_type` and `gp_register_name`;
-  this packet did not broaden into those helper families.
+- The relocated public producer helper keeps the publication-owned fallback path
+  that builds local edge publication source-producer lookups when indexed
+  prepared lookups are unavailable.
+- `dispatch_producers.cpp` still includes `dispatch_publication.hpp` for
+  unrelated current-block entry publication and prepared-value-home queries used
+  by producer collision checks; this packet did not broaden into those helper
+  families.
 - Root-level `test_before.log` and `test_baseline.log` were already present
   alongside the required `test_after.log`; this packet wrote only
   `test_after.log`.

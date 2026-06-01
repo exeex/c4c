@@ -84,13 +84,4 @@ lower_missing_conditional_branch_condition_publication(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);
 
-[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducer>
-prepared_publication_source_producer_for_value(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value);
-
-[[nodiscard]] const bir::Inst* prepared_source_producer_instruction(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedEdgePublicationSourceProducer& producer);
-
 }  // namespace c4c::backend::aarch64::codegen
