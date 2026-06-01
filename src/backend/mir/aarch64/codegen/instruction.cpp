@@ -56,6 +56,11 @@ struct ScalarAluOperationKindSpelling {
   std::string_view spelling;
 };
 
+struct ScalarUnaryOperationKindSpelling {
+  ScalarUnaryOperationKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -207,6 +212,16 @@ constexpr std::array<ScalarAluOperationKindSpelling, 9>
         {ScalarAluOperationKind::Deferred, "deferred"},
     }};
 
+constexpr std::array<ScalarUnaryOperationKindSpelling, 6>
+    kScalarUnaryOperationKindSpellings{{
+        {ScalarUnaryOperationKind::Neg, "neg"},
+        {ScalarUnaryOperationKind::BitNot, "bit_not"},
+        {ScalarUnaryOperationKind::CountLeadingZeros, "count_leading_zeros"},
+        {ScalarUnaryOperationKind::CountTrailingZeros, "count_trailing_zeros"},
+        {ScalarUnaryOperationKind::ByteSwap, "byte_swap"},
+        {ScalarUnaryOperationKind::Deferred, "deferred"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -327,6 +342,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kScalarAluOperationKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view scalar_unary_operation_kind_spelling(
+    ScalarUnaryOperationKind kind) {
+  const auto found = std::find_if(
+      kScalarUnaryOperationKindSpellings.begin(),
+      kScalarUnaryOperationKindSpellings.end(),
+      [kind](const ScalarUnaryOperationKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kScalarUnaryOperationKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -720,21 +749,7 @@ std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
 }
 
 std::string_view scalar_unary_operation_kind_name(ScalarUnaryOperationKind kind) {
-  switch (kind) {
-    case ScalarUnaryOperationKind::Neg:
-      return "neg";
-    case ScalarUnaryOperationKind::BitNot:
-      return "bit_not";
-    case ScalarUnaryOperationKind::CountLeadingZeros:
-      return "count_leading_zeros";
-    case ScalarUnaryOperationKind::CountTrailingZeros:
-      return "count_trailing_zeros";
-    case ScalarUnaryOperationKind::ByteSwap:
-      return "byte_swap";
-    case ScalarUnaryOperationKind::Deferred:
-      return "deferred";
-  }
-  return "unknown";
+  return scalar_unary_operation_kind_spelling(kind);
 }
 
 std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind) {
