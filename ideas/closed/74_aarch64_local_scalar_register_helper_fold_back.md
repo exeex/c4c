@@ -63,3 +63,23 @@ ABI/register-profile helpers, with BIR type facts and
 - Broad instruction schema or printer rewrites are mixed into this local
   fold-back.
 - The exact old duplication survives behind a new abstraction name.
+
+## Closure Notes
+
+Closed 2026-06-01 after the active runbook removed the owned duplicate
+AArch64-local scalar register-view, scalar FP/register storage view, and compare
+branch condition helper logic without moving shared BIR, prealloc, ABI,
+record-schema, opcode, condition-code, or printer-format authority.
+
+Acceptance evidence:
+
+- Per-slice commits: `044ae1e28`, `cd4a40c47`, `409a6131b`, and `3a6d4e6fb`.
+- Acceptance review: `review/idea74_acceptance_review.md`, no blocking
+  findings.
+- Supervisor broad backend regression guard: compared `^backend_` from
+  pre-implementation inventory commit `c256d0548` to `HEAD`; before 155/169
+  with 14 existing CLI dump failures, after 169/169, no new failures.
+
+Remaining same-shaped helper duplication outside the owned files, such as
+globals, atomics, cast, and memory owners, is intentionally outside this idea
+and should be handled by a separate source idea if pursued.
