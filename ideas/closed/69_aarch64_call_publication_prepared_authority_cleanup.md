@@ -1,5 +1,23 @@
 # AArch64 Call And Publication Prepared Authority Cleanup
 
+## Completion Notes
+
+Closed after Step 5 consolidation. AArch64 call lowering now consumes prepared
+call-boundary effect authority before target-local register rendering,
+instruction spelling, and machine-record construction. The migrated
+publication surface consumes prepared same-block and fused-compare publication
+source producers, and fixed-formal store-local publication consumes the
+prepared store-source plan before target-local store emission.
+
+The only remaining typed stack-source publication residue is outside this
+idea's owned files and is tracked separately in
+`ideas/open/78_aarch64_edge_copy_typed_stack_source_prepared_authority.md` for
+the `dispatch_edge_copies.cpp` owner.
+
+Close proof: backend regression guard over `^backend_` passed with
+`test_before.log` and `test_after.log` both at 169/169 passing tests, using
+the documented non-decreasing mode for lifecycle-only closure.
+
 ## Goal
 
 Make AArch64 call and publication lowering consume the prepared call,
