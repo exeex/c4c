@@ -8,26 +8,21 @@ Current Step Title: Contract ALU And Scalar Control Wrappers
 
 ## Just Finished
 
-Step 4 - Contract ALU And Scalar Control Wrappers completed the first bounded
-ALU wrapper contraction from the Step 1 audit. Removed
-`make_prepared_scalar_alu_instruction_record` from `alu.cpp`, `alu.hpp`, and
-the stale aggregate declaration in `instruction.hpp`, then changed
-`lower_scalar_instruction` to consume `make_prepared_scalar_alu_record`
-directly before constructing the existing `ScalarInstructionRecord` with
-`make_scalar_alu_instruction_record(*record)`.
+Step 4 - Contract ALU And Scalar Control Wrappers completed the redundant unary
+prepared scalar instruction wrapper contraction. Removed
+`make_prepared_scalar_unary_instruction_record` from `alu.cpp`, `alu.hpp`, and
+the aggregate declaration in `instruction.hpp`.
 
-The prepared-record nullopt path is preserved: failed prepared scalar ALU
-record construction still leaves `scalar_record` unset so the existing
-fallback lowering paths can run. The scalar unary prepared instruction wrapper
-was intentionally left unchanged.
+`make_prepared_scalar_unary_record` and
+`make_scalar_unary_instruction_record` remain in place as the prepared-record
+and instruction-record builders. No live unary wrapper call site existed, so no
+lowering fallback path needed a call-site fold.
 
 ## Suggested Next
 
-For the next bounded ALU packet, contract
-`make_prepared_scalar_unary_instruction_record` in the same style if the
-supervisor wants to continue the small redundant-wrapper path. Keep ownership
-to `alu.cpp`, `alu.hpp`, `todo.md`, and `test_after.log`, and use the same ALU
-record proof plus any unary-specific test name the supervisor selects.
+For the next bounded packet, either continue with another Step 4 ALU/control
+wrapper candidate after supervisor review, or move to Step 5 consistency proof
+if the supervisor considers the ALU redundant-wrapper path sufficient.
 
 ## Watchouts
 
@@ -36,6 +31,8 @@ record proof plus any unary-specific test name the supervisor selects.
 - `lower_scalar_control_value_instruction` still has the previously noted
   apparent unreachable scalar ALU fallback branch after the first binary branch.
   That remains a separate ALU/control-flow packet.
+- Confirmed no remaining `make_prepared_scalar_unary_instruction_record`
+  references outside this `todo.md` handoff.
 - This packet did not touch call, memory, test, plan, source idea, or transient
   `review/` files.
 

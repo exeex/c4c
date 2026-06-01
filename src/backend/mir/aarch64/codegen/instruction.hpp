@@ -1840,14 +1840,6 @@ struct InstructionRecord {
     ScalarUnaryOperationKind operation,
     const bir::Value& result,
     const bir::Value& operand);
-[[nodiscard]] PreparedScalarInstructionRecordResult
-make_prepared_scalar_unary_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    ScalarUnaryOperationKind operation,
-    const bir::Value& result,
-    const bir::Value& operand);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,

@@ -3812,24 +3812,6 @@ PreparedScalarUnaryRecordResult make_prepared_scalar_unary_record(
   };
 }
 
-PreparedScalarInstructionRecordResult make_prepared_scalar_unary_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    ScalarUnaryOperationKind operation,
-    const bir::Value& result,
-    const bir::Value& operand) {
-  const auto prepared =
-      make_prepared_scalar_unary_record(names, value_locations, storage_plan, operation, result, operand);
-  if (!prepared.record.has_value()) {
-    return scalar_instruction_record_error(prepared.error);
-  }
-  return PreparedScalarInstructionRecordResult{
-      .record = make_scalar_unary_instruction_record(*prepared.record),
-      .error = PreparedScalarAluRecordError::None,
-  };
-}
-
 std::optional<module::MachineInstruction> lower_scalar_mul_with_distinct_rhs_scratch(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
