@@ -64,6 +64,62 @@ void attach_prepared_function_lookups(
   function_context.value_home_lookups = &prepared_lookups.value_homes;
 }
 
+prepare::PreparedAggregateTransportPlan byval_register_lanes_transport(
+    prepare::PreparedFrameSlotId source_slot_id,
+    std::size_t source_offset_bytes,
+    std::size_t size_bytes,
+    std::size_t align_bytes,
+    std::vector<std::string> destination_register_names,
+    std::size_t destination_contiguous_width = 1) {
+  prepare::PreparedAggregateTransportPlan transport{
+      .kind = prepare::PreparedAggregateTransportKind::ByvalRegisterLanes,
+      .payload_size_bytes = size_bytes,
+      .payload_align_bytes = align_bytes,
+      .copy_size_bytes = size_bytes,
+      .copy_align_bytes = align_bytes,
+      .source_slot_id = source_slot_id,
+      .source_stack_offset_bytes = source_offset_bytes,
+      .chunks = {},
+      .lanes = {},
+      .scratch_requirements =
+          {prepare::PreparedAggregateTransportScratchRequirement{
+              .kind = prepare::PreparedAggregateTransportScratchKind::GeneralPurpose,
+              .width_bytes = 8,
+          }},
+  };
+  std::size_t payload_offset = 0;
+  for (std::size_t lane_index = 0;
+       lane_index < destination_register_names.size() && payload_offset < size_bytes;
+       ++lane_index) {
+    const std::size_t lane_size = std::min<std::size_t>(8, size_bytes - payload_offset);
+    transport.chunks.push_back(prepare::PreparedAggregateTransportChunk{
+        .chunk_index = lane_index,
+        .kind = prepare::PreparedAggregateTransportChunkKind::RequiredPayload,
+        .payload_offset_bytes = payload_offset,
+        .source_offset_bytes = source_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .size_bytes = lane_size,
+        .align_bytes = std::min<std::size_t>(align_bytes, lane_size),
+        .preferred_width_bytes = lane_size,
+    });
+    transport.lanes.push_back(prepare::PreparedAggregateTransportLane{
+        .lane_index = lane_index,
+        .chunk_index = lane_index,
+        .lane_payload_offset_bytes = payload_offset,
+        .source_offset_bytes = source_offset_bytes + payload_offset,
+        .destination_offset_bytes = payload_offset,
+        .lane_size_bytes = lane_size,
+        .destination_register_name = destination_register_names[lane_index],
+        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+        .destination_contiguous_width = destination_contiguous_width,
+        .destination_occupied_register_names = destination_register_names,
+        .whole_register = lane_size == 8,
+    });
+    payload_offset += lane_size;
+  }
+  return transport;
+}
+
 prepare::PreparedF128Carrier dispatch_f128_register_carrier(
     c4c::FunctionNameId function_name,
     prepare::PreparedValueId value_id,
@@ -16933,6 +16989,8 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
                   .source_align_bytes = std::size_t{1},
                   .byval_lane_extent_bytes = std::size_t{1},
               },
+          .aggregate_transport = byval_register_lanes_transport(
+              prepare::PreparedFrameSlotId{19}, 40, 1, 1, {"x0"}),
       },
       prepare::PreparedMoveResolution{
           .from_value_id = register_value_id,
@@ -16989,6 +17047,8 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
                   .source_align_bytes = std::size_t{1},
                   .byval_lane_extent_bytes = std::size_t{2},
               },
+          .aggregate_transport = byval_register_lanes_transport(
+              prepare::PreparedFrameSlotId{17}, 32, 2, 1, {"x0"}),
       },
       prepare::PreparedMoveResolution{
           .from_value_id = frame_value_id,
@@ -17395,6 +17455,8 @@ int prepared_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
                       .source_align_bytes = std::size_t{1},
                       .byval_lane_extent_bytes = std::size_t{1},
                   },
+              .aggregate_transport = byval_register_lanes_transport(
+                  prepare::PreparedFrameSlotId{13203}, 128, 1, 1, {"x0"}),
           }},
   };
 
@@ -17605,6 +17667,8 @@ int register_home_small_byval_aggregate_call_argument_loads_payload_slots() {
                       .source_align_bytes = std::size_t{1},
                       .byval_lane_extent_bytes = std::size_t{1},
                   },
+              .aggregate_transport = byval_register_lanes_transport(
+                  prepare::PreparedFrameSlotId{13213}, 128, 1, 1, {"x0"}),
           }},
   };
 
@@ -17850,6 +17914,8 @@ int stack_home_two_byte_byval_aggregate_call_argument_loads_payload_slots() {
                       .source_align_bytes = std::size_t{1},
                       .byval_lane_extent_bytes = std::size_t{2},
                   },
+              .aggregate_transport = byval_register_lanes_transport(
+                  prepare::PreparedFrameSlotId{13222}, 128, 2, 1, {"x0"}),
           }},
   };
 
@@ -17982,6 +18048,43 @@ int incomplete_byval_register_lane_selection_does_not_rederive_register_home() {
         "register home: lowered=" +
         std::to_string(selected_lowered.size()) +
         " diagnostics=" + std::to_string(selected_diagnostics.entries.size()));
+  }
+
+  auto complete_old_selection_argument = argument;
+  complete_old_selection_argument.source_selection =
+      prepare::PreparedCallArgumentSourceSelection{
+          .kind = prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane,
+          .source_value_id = value_id,
+          .source_value_name = value_name,
+          .source_home_kind = prepare::PreparedValueHomeKind::Register,
+          .source_slot_id = prepare::PreparedFrameSlotId{902},
+          .source_stack_offset_bytes = std::size_t{48},
+          .source_size_bytes = std::size_t{1},
+          .source_align_bytes = std::size_t{1},
+          .byval_lane_extent_bytes = std::size_t{1},
+      };
+  const prepare::PreparedCallPlan complete_old_selection_call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments = {complete_old_selection_argument},
+  };
+  aarch64_module::ModuleLoweringDiagnostics complete_old_selection_diagnostics;
+  const auto complete_old_selection_lowered =
+      aarch64_codegen::lower_before_call_moves(
+          block_context,
+          complete_old_selection_call_plan,
+          4,
+          complete_old_selection_diagnostics);
+  if (!complete_old_selection_lowered.empty() ||
+      complete_old_selection_diagnostics.entries.size() != 1 ||
+      complete_old_selection_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority) {
+    return fail(
+        "expected complete legacy byval lane selection without aggregate "
+        "transport not to lower register lane publication: lowered=" +
+        std::to_string(complete_old_selection_lowered.size()) +
+        " diagnostics=" +
+        std::to_string(complete_old_selection_diagnostics.entries.size()));
   }
 
   auto wrong_kind_argument = argument;
@@ -18559,6 +18662,8 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
                       .source_align_bytes = std::size_t{8},
                       .byval_lane_extent_bytes = std::size_t{16},
                   },
+              .aggregate_transport = byval_register_lanes_transport(
+                  prepare::PreparedFrameSlotId{13003}, 96, 16, 8, {"x7", "x8"}, 2),
           }},
   };
   const auto& function_cf = prepared.control_flow.functions.front();

@@ -19,6 +19,7 @@
 #include "select_materialization.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -1084,45 +1085,118 @@ make_byval_register_lane_prepared_source(
     const prepare::PreparedValueHome& source_home,
     std::size_t size_bytes,
     std::size_t instruction_index) {
-  if (size_bytes == 0) {
+  if (size_bytes == 0 || size_bytes > 16) {
     return std::nullopt;
   }
-  if (argument.source_selection.has_value() &&
-      argument.source_selection->kind ==
-          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
-      argument.source_selection->byval_lane_extent_bytes ==
-          std::optional<std::size_t>{size_bytes} &&
-      argument.source_selection->source_slot_id.has_value() &&
-      argument.source_selection->source_stack_offset_bytes.has_value() &&
-      argument.source_selection->source_size_bytes.has_value() &&
-      argument.source_selection->source_align_bytes.has_value() &&
-      *argument.source_selection->source_size_bytes >= size_bytes) {
-    return MemoryOperand{
-        .surface = RecordSurfaceKind::MachineInstructionNode,
-        .support = MemoryOperandSupportKind::Prepared,
-        .function_name = context.function.control_flow != nullptr
-                             ? context.function.control_flow->function_name
-                             : c4c::kInvalidFunctionName,
-        .block_label = context.control_flow_block != nullptr
-                           ? context.control_flow_block->block_label
-                           : c4c::kInvalidBlockLabel,
-        .instruction_index = instruction_index,
-        .result_value_id = argument.source_value_id.has_value()
-                               ? argument.source_value_id
-                               : std::optional<prepare::PreparedValueId>{
-                                     source_home.value_id},
-        .result_value_name = std::nullopt,
-        .base_kind = MemoryBaseKind::FrameSlot,
-        .frame_slot_id = argument.source_selection->source_slot_id,
-        .byte_offset = static_cast<std::int64_t>(
-            *argument.source_selection->source_stack_offset_bytes),
-        .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = size_bytes,
-        .align_bytes = *argument.source_selection->source_align_bytes,
-        .can_use_base_plus_offset = true,
-    };
+  const auto* transport = argument.aggregate_transport.has_value()
+                              ? &*argument.aggregate_transport
+                              : nullptr;
+  if (transport == nullptr ||
+      transport->kind != prepare::PreparedAggregateTransportKind::ByvalRegisterLanes ||
+      transport->payload_size_bytes != size_bytes ||
+      transport->payload_align_bytes == 0 ||
+      !transport->source_slot_id.has_value() ||
+      transport->chunks.empty() ||
+      transport->lanes.empty()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+
+  std::optional<std::size_t> source_base_offset;
+  std::size_t covered_chunk_bytes = 0;
+  std::array<bool, 16> chunk_coverage{};
+  std::array<bool, 16> lane_coverage{};
+  for (const auto& chunk : transport->chunks) {
+    if (chunk.kind != prepare::PreparedAggregateTransportChunkKind::RequiredPayload ||
+        chunk.size_bytes == 0 ||
+        chunk.payload_offset_bytes + chunk.size_bytes > size_bytes ||
+        chunk.source_offset_bytes < chunk.payload_offset_bytes ||
+        chunk.align_bytes == 0) {
+      return std::nullopt;
+    }
+    const auto expected_base = chunk.source_offset_bytes - chunk.payload_offset_bytes;
+    if (!source_base_offset.has_value()) {
+      source_base_offset = expected_base;
+    } else if (*source_base_offset != expected_base) {
+      return std::nullopt;
+    }
+    for (std::size_t offset = chunk.payload_offset_bytes;
+         offset < chunk.payload_offset_bytes + chunk.size_bytes;
+         ++offset) {
+      if (chunk_coverage[offset]) {
+        return std::nullopt;
+      }
+      chunk_coverage[offset] = true;
+      ++covered_chunk_bytes;
+    }
+  }
+  if (!source_base_offset.has_value() || covered_chunk_bytes != size_bytes) {
+    return std::nullopt;
+  }
+  for (std::size_t offset = 0; offset < size_bytes; ++offset) {
+    if (!chunk_coverage[offset]) {
+      return std::nullopt;
+    }
+  }
+
+  std::size_t covered_lane_bytes = 0;
+  for (const auto& lane : transport->lanes) {
+    if (lane.lane_size_bytes == 0 ||
+        lane.lane_payload_offset_bytes + lane.lane_size_bytes > size_bytes ||
+        lane.source_offset_bytes != *source_base_offset + lane.lane_payload_offset_bytes) {
+      return std::nullopt;
+    }
+    const auto chunk_matches_lane =
+        std::any_of(transport->chunks.begin(),
+                    transport->chunks.end(),
+                    [&](const prepare::PreparedAggregateTransportChunk& chunk) {
+                      return chunk.chunk_index == lane.chunk_index &&
+                             chunk.payload_offset_bytes == lane.lane_payload_offset_bytes &&
+                             chunk.size_bytes == lane.lane_size_bytes;
+                    });
+    if (!chunk_matches_lane) {
+      return std::nullopt;
+    }
+    for (std::size_t offset = lane.lane_payload_offset_bytes;
+         offset < lane.lane_payload_offset_bytes + lane.lane_size_bytes;
+         ++offset) {
+      if (lane_coverage[offset]) {
+        return std::nullopt;
+      }
+      lane_coverage[offset] = true;
+      ++covered_lane_bytes;
+    }
+  }
+  if (covered_lane_bytes != size_bytes) {
+    return std::nullopt;
+  }
+  for (std::size_t offset = 0; offset < size_bytes; ++offset) {
+    if (!lane_coverage[offset]) {
+      return std::nullopt;
+    }
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
+      .result_value_name = std::nullopt,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = transport->source_slot_id,
+      .byte_offset = static_cast<std::int64_t>(*source_base_offset),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = transport->payload_align_bytes,
+      .can_use_base_plus_offset = true,
+  };
 }
 
 MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
@@ -2083,19 +2157,20 @@ make_byval_register_lane_stack_publication_instruction(
 
 [[nodiscard]] std::optional<std::size_t> selected_byval_lane_extent_bytes(
     const prepare::PreparedCallArgumentPlan& argument) {
-  if (!argument.source_selection.has_value() ||
-      argument.source_selection->kind !=
-          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+  if (!argument.aggregate_transport.has_value() ||
+      argument.aggregate_transport->kind !=
+          prepare::PreparedAggregateTransportKind::ByvalRegisterLanes ||
+      argument.aggregate_transport->payload_size_bytes == 0) {
     return std::nullopt;
   }
-  return argument.source_selection->byval_lane_extent_bytes;
+  return argument.aggregate_transport->payload_size_bytes;
 }
 
-[[nodiscard]] bool has_selected_byval_register_lane_source(
+[[nodiscard]] bool has_byval_register_lane_transport(
     const prepare::PreparedCallArgumentPlan& argument) {
-  return argument.source_selection.has_value() &&
-         argument.source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane;
+  return argument.aggregate_transport.has_value() &&
+         argument.aggregate_transport->kind ==
+             prepare::PreparedAggregateTransportKind::ByvalRegisterLanes;
 }
 
 [[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
@@ -3008,7 +3083,7 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
+    if (!source.has_value() && has_byval_register_lane_transport(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
@@ -3204,8 +3279,18 @@ make_immediate_cast_call_argument_publication_instruction(
               instruction_index);
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
-          if (const auto byval_size = selected_byval_lane_extent_bytes(*argument);
-              byval_size.has_value()) {
+          if (argument->source_selection->byval_lane_extent_bytes.has_value() &&
+              *argument->source_selection->byval_lane_extent_bytes > 16) {
+            address_source = make_selected_frame_slot_source(
+                context,
+                *argument,
+                source_home,
+                *argument->source_selection,
+                prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane,
+                true,
+                instruction_index);
+          } else if (const auto byval_size = selected_byval_lane_extent_bytes(*argument);
+                     byval_size.has_value()) {
             address_source = make_byval_register_lane_prepared_source(
                 context, *argument, *source_home, *byval_size, call_plan.instruction_index);
           }
@@ -3329,7 +3414,7 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && has_selected_byval_register_lane_source(*argument)) {
+    if (!source.has_value() && has_byval_register_lane_transport(*argument)) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,

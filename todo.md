@@ -8,52 +8,43 @@ Current Step Title: Implement Shared Transport Authority If Required
 
 ## Just Finished
 
-Step 3 of `plan.md` implemented the first shared prepared aggregate-transport
-authority slice without migrating AArch64 consumers.
+Step 3 of `plan.md` migrated the AArch64 byval register-lane call-argument
+publication source path to consume `PreparedCallArgumentPlan::aggregate_transport`.
 
-- Added `PreparedAggregateTransportKind`,
-  `PreparedAggregateTransportChunkKind`,
-  `PreparedAggregateTransportScratchKind`,
-  `PreparedAggregateTransportScratchRequirement`,
-  `PreparedAggregateTransportChunk`, `PreparedAggregateTransportLane`, and
-  `PreparedAggregateTransportPlan` adjacent to `PreparedCallArgumentPlan`.
-- Added `PreparedCallArgumentPlan::aggregate_transport`.
-- Published a conservative `byval_register_lanes` aggregate transport plan from
-  `call_plans.cpp` only when the prepared source selection is already
-  `ByvalRegisterLane` and required source, destination, size, alignment, lane,
-  and occupied-register facts are present.
-- Added prepared-printer visibility for aggregate transport kind, payload/copy
-  size and alignment, source offsets, chunk facts, lane facts, destination
-  register facts, occupied registers, and abstract scratch requirement.
-- Added a focused prepared call-plan contract test for an AArch64 byval
-  register-lane aggregate argument, including prepared dump visibility.
-- No AArch64 lowering/printer consumer migration occurred in this packet.
+- `calls.cpp` now requires a `ByvalRegisterLanes` aggregate transport plan for
+  byval register-lane payload size, source frame slot/offset, required chunks,
+  and lane coverage before constructing the prepared source memory operand.
+- The small register-lane and stack-lane publication paths no longer use
+  `source_selection` as lane/source/chunk authority; complete legacy
+  `ByvalRegisterLane` source-selection facts without aggregate transport fail
+  closed.
+- The large indirect byval address path remains on its existing selected-source
+  authority for payloads larger than the register-lane publication limit.
+- Focused AArch64 MIR dispatch coverage now publishes aggregate transport for
+  preserved-output success cases and checks that a complete old selection
+  without aggregate transport does not lower the register-lane publication.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: migrate the smallest AArch64 byval register-lane
-aggregate consumer path to read `PreparedCallArgumentPlan::aggregate_transport`
-for chunk/lane/source facts, keeping opcode choice, concrete scratch register
-identity, address spelling, target records, and final printer formatting
-AArch64-local.
+Next coherent Step 3 packet: review whether any remaining AArch64 aggregate
+consumer path should also read shared aggregate transport before moving Step 3
+to broader review/closure.
 
 ## Watchouts
 
-- The new contract currently publishes only the already-identified AArch64
-  `ByvalRegisterLane` prepared source-selection case.
-- Missing required facts intentionally leave `aggregate_transport` absent
-  rather than re-deriving or guessing target-local details.
+- The migrated helper validates contiguous required chunk and lane coverage for
+  up to 16-byte register-lane payloads; larger byval aggregates still use the
+  existing indirect-address path.
 - Keep variadic aggregate `va_arg` plans separate.
-- Do not combine the next migration with general memory cleanup, i128/f128
-  carrier cleanup, or unrelated helper consolidation.
-- Do not weaken aggregate testcase expectations or add named-case shortcuts.
+- Do not weaken aggregate testcase expectations or add named-case shortcuts if
+  further consumer migration is needed.
 
 ## Proof
 
 Command:
 
 ```bash
-cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_prealloc_call_boundary_classification)$' >> test_after.log
+cmake --build --preset default > test_after.log && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$' >> test_after.log
 ```
 
 Result: passed, 3/3 selected tests. Proof log: `test_after.log`.
