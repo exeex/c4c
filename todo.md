@@ -8,26 +8,30 @@ Current Step Title: Consume Prepared Call Plans And Boundary Move Facts
 
 ## Just Finished
 
-Completed `plan.md` Step 2 first narrow migration in `calls.cpp`.
-`lower_before_call_moves` now threads each explicit
-`PreparedCallBoundaryEffectPlan` into `lower_before_call_move`, and the
-before-call `CallArgumentAbi` register-destination, register-source move branch
-uses that effect as the authority gate while keeping `PreparedMoveBundle` and
-`PreparedMoveResolution` provenance on the machine record. AArch64 register
-conversion and instruction spelling remain local.
+Completed another narrow `plan.md` Step 2 migration in `calls.cpp`. The
+before-call `CallArgumentAbi` register-destination path for local-frame-address
+materialization and register byval lane sources now uses the already-threaded
+`PreparedCallBoundaryEffectPlan` explicit-move effect as its phase,
+destination, storage, and order authority. `PreparedMoveBundle` and
+`PreparedMoveResolution` remain available on the machine record for provenance,
+while AArch64 register/address conversion and instruction spelling stay local.
 
 ## Suggested Next
 
 Continue Step 2 by migrating the next before-call `CallArgumentAbi`
-register-destination subset in `calls.cpp` to consume the already-threaded
-`PreparedCallBoundaryEffectPlan`, likely one stack-source or byval lane
-register destination path, without widening into stack-slot destination copies.
+register-destination stack-source subset in `calls.cpp`, likely the scalar FPR
+or binary128 frame-slot-to-register path, to consume the
+`PreparedCallBoundaryEffectPlan` authority without widening into stack-slot
+destination copies.
 
 ## Watchouts
 
-- The effect endpoint does not carry all AArch64 spelling details; the proven
-  path still needs the move/binding/argument facts for register names,
-  placements, occupied names, and f128 HFA width details.
+- The effect endpoint still does not carry all AArch64 spelling details; the
+  proven paths still need move/binding/argument facts for register names,
+  placements, occupied names, selected source memory, and f128 HFA details.
+- The newly migrated local-frame-address/register-byval path uses the effect
+  destination bank and no-binding contiguous width; keep any further width
+  authority changes local to one branch at a time.
 - Do not require `classification_status == Available` for every register
   argument effect yet: existing f128 HFA lowering can validly proceed without
   an ABI binding while still using the effect's phase/destination/storage
