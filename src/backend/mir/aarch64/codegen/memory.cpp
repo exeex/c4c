@@ -3965,13 +3965,51 @@ namespace {
                   std::to_string(-delta));
   return true;
 }
+struct PreparedPointerBasePlusOffsetMaterialization {
+  const prepare::PreparedValueHome* value_home = nullptr;
+  std::optional<std::string> base_symbol{};
+  const prepare::PreparedValueHome* base_home = nullptr;
+};
+[[nodiscard]] std::optional<PreparedPointerBasePlusOffsetMaterialization>
+find_prepared_pointer_base_plus_offset_materialization(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome* value_home) {
+  if (value_home == nullptr ||
+      value_home->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !value_home->pointer_base_value_name.has_value()) {
+    return std::nullopt;
+  }
+  PreparedPointerBasePlusOffsetMaterialization materialization{
+      .value_home = value_home,
+  };
+  materialization.base_symbol =
+      prepared_global_symbol_from_link_name(context,
+                                            value_home->pointer_base_symbol_name);
+  if (materialization.base_symbol.has_value()) {
+    return materialization;
+  }
+  if (context.function.value_locations == nullptr) {
+    return std::nullopt;
+  }
+  materialization.base_home =
+      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                context.function.regalloc,
+                                                context.function.value_locations,
+                                                *value_home->pointer_base_value_name);
+  if (materialization.base_home == nullptr) {
+    return std::nullopt;
+  }
+  return materialization;
+}
 [[nodiscard]] bool emit_pointer_base_plus_offset_to_register(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& value_home,
+    const PreparedPointerBasePlusOffsetMaterialization& materialization,
     std::uint8_t target_index,
     std::vector<std::string>& lines) {
-  if (value_home.kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
-      !value_home.pointer_base_value_name.has_value()) {
+  const auto* value_home = materialization.value_home;
+  if (value_home == nullptr ||
+      value_home->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !value_home->pointer_base_value_name.has_value()) {
     return false;
   }
   const auto target = gp_register_name(target_index, abi::RegisterView::X);
@@ -3979,21 +4017,13 @@ namespace {
     return false;
   }
 
-  const auto delta = value_home.pointer_byte_delta.value_or(0);
-  if (auto symbol = prepared_global_symbol_from_link_name(
-          context, value_home.pointer_base_symbol_name)) {
+  const auto delta = value_home->pointer_byte_delta.value_or(0);
+  if (materialization.base_symbol.has_value()) {
     return emit_global_symbol_address_to_register(
-        *symbol, delta, target_index, lines);
+        *materialization.base_symbol, delta, target_index, lines);
   }
 
-  if (context.function.value_locations == nullptr) {
-    return false;
-  }
-  const auto* base_home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *value_home.pointer_base_value_name);
+  const auto* base_home = materialization.base_home;
   if (base_home == nullptr) {
     return false;
   }
@@ -4087,12 +4117,14 @@ lower_pointer_base_plus_offset_store_local_publication(
         lines);
   } else {
     const auto* value_home = store_source_plan.source_home;
-    emitted = context.function.value_locations != nullptr &&
-              value_home != nullptr &&
+    const auto materialization =
+        find_prepared_pointer_base_plus_offset_materialization(context, value_home);
+    emitted = value_home != nullptr &&
               store_source_plan.source_home_kind ==
                   prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+              materialization.has_value() &&
               emit_pointer_base_plus_offset_to_register(
-                  context, *value_home, scratches.front().index, lines);
+                  context, *materialization, scratches.front().index, lines);
   }
   if (!emitted) {
     return std::nullopt;

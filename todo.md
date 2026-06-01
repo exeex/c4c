@@ -8,28 +8,31 @@ Current Step Title: Consume Prepared Addressing And Materialization Facts
 
 ## Just Finished
 
-Completed the first executable `plan.md` Step 2 packet in
-`src/backend/mir/aarch64/codegen/memory.cpp`: local address store publication
-now consumes the prepared frame-address/materialization lookup once in
-`find_prepared_local_address_store_value(...)` before
-`apply_stack_layout_to_memory_record(...)` resolves frame-slot offsets or
-rewrites the store value operand. `rewrite_local_address_store_value(...)` now
-only applies the already-selected prepared operand.
+Completed another `plan.md` Step 2 packet in
+`src/backend/mir/aarch64/codegen/memory.cpp`: pointer-base-plus-offset store
+local publication now resolves the prepared base symbol/base-home
+materialization in
+`find_prepared_pointer_base_plus_offset_materialization(...)` before the
+AArch64 emitter runs. `emit_pointer_base_plus_offset_to_register(...)` now
+consumes the prepared materialization and keeps only target-local register
+spelling, offset arithmetic, and frame-address emission.
 
 ## Suggested Next
 
-Continue Step 2 by looking for the next prepared addressing/materialization
-fact that is still consumed inside an AArch64 rewrite or validation helper, and
-move that fact lookup to the same pre-rewrite boundary without changing
-target-local address spelling, scratch selection, or mnemonic policy.
+Continue Step 2 by checking the remaining store-global and local publication
+helpers for one more prepared addressing/materialization lookup that can move
+to a pre-rewrite prepared-boundary helper without changing mnemonic, scratch,
+base-register, or address spelling policy.
 
 ## Watchouts
 
-Keep `resolve_frame_slot_memory_offset(...)` as target-local frame-slot offset
-application, and keep base-register policy, scratch-register selection,
-mnemonic selection, and final memory-address spelling in AArch64 codegen. This
-packet intentionally did not broaden into Step 3/4 aggregate or typed
-stack-source publication authority.
+`find_prepared_pointer_base_plus_offset_materialization(...)` intentionally
+owns only lookup/validation of the prepared pointer materialization facts.
+Keep `emit_pointer_base_plus_offset_to_register(...)` as the AArch64 emission
+boundary for register names, add/sub choice, stack loads, and final
+frame-address spelling. The existing direct global-symbol path in
+`lower_pointer_base_plus_offset_store_local_publication(...)` was left in
+place.
 
 ## Proof
 
