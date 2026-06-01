@@ -19,6 +19,11 @@ struct MemoryInstructionLoweringResult {
   std::optional<module::MachineInstruction> instruction;
 };
 
+struct PreparedTypedStackSourcePublicationEmission {
+  abi::RegisterReference destination_register;
+  std::vector<std::string> lines;
+};
+
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);
 [[nodiscard]] std::string_view memory_operand_support_kind_name(MemoryOperandSupportKind kind);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
@@ -74,6 +79,10 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type);
 [[nodiscard]] std::optional<std::string_view> fixed_formal_scalar_store_mnemonic(
     bir::TypeKind type);
+[[nodiscard]] std::optional<PreparedTypedStackSourcePublicationEmission>
+emit_same_width_i32_stack_source_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedTypedStackSourcePublication& typed_stack_source);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);

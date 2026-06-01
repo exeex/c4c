@@ -284,6 +284,48 @@ namespace abi = c4c::backend::aarch64::abi;
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<PreparedTypedStackSourcePublicationEmission>
+emit_same_width_i32_stack_source_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedTypedStackSourcePublication& typed_stack_source) {
+  if (typed_stack_source.status !=
+          prepare::PreparedTypedStackSourcePublicationStatus::Available ||
+      typed_stack_source.source_type != bir::TypeKind::I32 ||
+      typed_stack_source.destination_type != bir::TypeKind::I32 ||
+      typed_stack_source.extension_policy !=
+          prepare::PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension ||
+      !typed_stack_source.source_stack_offset_bytes.has_value() ||
+      !typed_stack_source.source_stack_size_bytes.has_value() ||
+      *typed_stack_source.source_stack_size_bytes != 4 ||
+      !typed_stack_source.destination_register_placement.has_value()) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_register_view(typed_stack_source.destination_type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto converted = abi::convert_prepared_register(
+      *typed_stack_source.destination_register_placement,
+      prepare::PreparedRegisterClass::General,
+      *expected_view);
+  if (!converted.reg.has_value() ||
+      converted.reg->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto mnemonic =
+      scalar_load_mnemonic_for_width(*typed_stack_source.source_stack_size_bytes);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedTypedStackSourcePublicationEmission{
+      .destination_register = *converted.reg,
+      .lines = {std::string{*mnemonic} + " " +
+                abi::register_name(*converted.reg) + ", " +
+                frame_slot_address(context.function,
+                                   *typed_stack_source.source_stack_offset_bytes)},
+  };
+}
+
 [[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
