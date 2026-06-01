@@ -7,7 +7,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 

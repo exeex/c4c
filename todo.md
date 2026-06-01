@@ -3,46 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/80_aarch64_dispatch_publication_owner_relocation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Continue owner-by-owner relocation
+Current Step ID: Step 4
+Current Step Title: Contract obsolete dispatch publication surfaces
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: classified the prepared local load/frame-slot
-lookup family and relocated it to the AArch64 memory owner. The public
-`find_frame_slot`, `find_stack_object`, `prepared_frame_slot_load_address`, and
-`prepared_local_load_offset` declarations now live in `memory.hpp`, their
-definitions live in `memory.cpp`, and `dispatch_publication.hpp` no longer
-declares them. Removed memory's duplicate private stack-layout lookup helpers
-and routed existing memory users through the newly public memory-owned helpers.
+Completed Step 4 from `plan.md`: contracted obsolete
+`dispatch_publication.*` surface dependencies without moving or deleting the
+remaining shared helpers. The file pair now remains focused on shared scalar
+helper declarations plus current-block publication authority: prepared value
+home lookup, current-block entry publication detection/register publication,
+recording current-block entry publication registers, and the branch-condition
+publication wrapper that wires those helpers into comparison lowering.
+
+Removed stale includes from `dispatch_publication.cpp` that were made obsolete
+by prior owner relocations, and removed the unused `<vector>` include from
+`dispatch_publication.hpp`. No declarations were removed because the remaining
+public surface still has live users across dispatch, ALU/cast/memory/global,
+value-materialization, producer, and comparison paths.
 
 Changed files:
 
 - `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
 - `src/backend/mir/aarch64/codegen/dispatch_publication.hpp`
-- `src/backend/mir/aarch64/codegen/memory.cpp`
-- `src/backend/mir/aarch64/codegen/memory.hpp`
 - `todo.md`
 
 ## Suggested Next
 
-Continue Step 3 with the next still-unclassified dispatch-publication helper
-family, excluding scalar/register helpers, current-block entry publication,
-variadic support, generic prepared-value-home helpers, address materialization,
-dispatch producer/source-producer support, and the prepared local
-load/frame-slot lookup family now classified into memory.
+Proceed to Step 5 with supervisor-selected validation of the contracted
+dispatch-publication owner-relocation slice.
 
 ## Watchouts
 
-- `memory.cpp` still includes `dispatch_publication.hpp` for unrelated helper
-  families used elsewhere in memory lowering; this packet only moved the
-  stack-layout lookup/prepared load-address family.
-- `comparison.cpp` has a private branch-fusion-specific frame-slot lookup and
-  prepared frame-slot load-address helper with similar names; it was outside
-  this packet and remains untouched.
-- Root-level `test_before.log` and `test_baseline.log` were already present
-  alongside the required `test_after.log`; this packet wrote only
-  `test_after.log`.
+- `dispatch_publication.hpp` still intentionally exposes generic
+  scalar/register helpers because they remain shared by multiple existing
+  lowering owners and the packet explicitly excluded moving that family.
+- `dispatch_publication.cpp` still depends on comparison, dispatch producer,
+  value-publication, prepared-home materialization, memory frame-pointer policy,
+  MIR query, prepared lookup, ABI, and ALU headers for the retained
+  current-block publication/branch-fusion authority.
+- The untracked `review/` artifact remains ignored for implementation state.
 
 ## Proof
 

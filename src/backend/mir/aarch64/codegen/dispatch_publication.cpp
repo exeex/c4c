@@ -4,30 +4,17 @@
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../abi/abi.hpp"
 #include "alu.hpp"
-#include "cast_ops.hpp"
 #include "comparison.hpp"
-#include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
-#include "dispatch_edge_copies.hpp"
 #include "dispatch_value_materialization.hpp"
-#include "float_ops.hpp"
-#include "instruction.hpp"
-#include "machine_printer.hpp"
 #include "memory.hpp"
-#include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
-#include "select_materialization.hpp"
-#include "variadic.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
