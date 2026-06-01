@@ -1163,6 +1163,54 @@ prepared_publication_source_register(
                                             scratch_index,
                                             lines);
 }
+
+struct PreparedTypedStackSourceEdgeEmission {
+  abi::RegisterReference destination_register;
+  std::vector<std::string> lines;
+};
+
+[[nodiscard]] std::optional<PreparedTypedStackSourceEdgeEmission>
+emit_same_width_i32_stack_source_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedTypedStackSourcePublication& typed_stack_source) {
+  if (typed_stack_source.status !=
+          prepare::PreparedTypedStackSourcePublicationStatus::Available ||
+      typed_stack_source.source_type != bir::TypeKind::I32 ||
+      typed_stack_source.destination_type != bir::TypeKind::I32 ||
+      typed_stack_source.extension_policy !=
+          prepare::PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension ||
+      !typed_stack_source.source_stack_offset_bytes.has_value() ||
+      !typed_stack_source.source_stack_size_bytes.has_value() ||
+      *typed_stack_source.source_stack_size_bytes != 4 ||
+      !typed_stack_source.destination_register_placement.has_value()) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_register_view(typed_stack_source.destination_type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto converted = abi::convert_prepared_register(
+      *typed_stack_source.destination_register_placement,
+      prepare::PreparedRegisterClass::General,
+      *expected_view);
+  if (!converted.reg.has_value() ||
+      converted.reg->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto mnemonic =
+      scalar_load_mnemonic_for_width(*typed_stack_source.source_stack_size_bytes);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedTypedStackSourceEdgeEmission{
+      .destination_register = *converted.reg,
+      .lines = {std::string{*mnemonic} + " " +
+                abi::register_name(*converted.reg) + ", " +
+                frame_slot_address(context.function,
+                                   *typed_stack_source.source_stack_offset_bytes)},
+  };
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
     const module::BlockLoweringContext& context,
@@ -1199,26 +1247,36 @@ lower_predecessor_join_source_publication(
   if (scratch_index == parsed->index) {
     return std::nullopt;
   }
-  auto producer = prepared_edge_publication_producer_context(context, publication);
-  if (!producer.has_value() || producer->context.bir_block == nullptr) {
-    return std::nullopt;
-  }
-  auto successor_context = producer->context;
+  const auto typed_stack_source =
+      prepare::prepare_same_width_i32_stack_source_publication(&publication);
   std::vector<std::string> lines;
-  if (!emit_edge_value_publication_to_register(context,
-                                               successor_context,
-                                               publication.source_value,
-                                               producer->instruction_index + 1,
-                                               parsed->index,
-                                               scratch_index,
-                                               lines,
-                                               &publication) ||
-      lines.empty()) {
-    return std::nullopt;
+  std::optional<abi::RegisterReference> loaded_register;
+  if (auto typed_emission =
+          emit_same_width_i32_stack_source_publication(context, typed_stack_source)) {
+    loaded_register = typed_emission->destination_register;
+    lines = std::move(typed_emission->lines);
+  } else {
+    auto producer = prepared_edge_publication_producer_context(context, publication);
+    if (!producer.has_value() || producer->context.bir_block == nullptr) {
+      return std::nullopt;
+    }
+    auto successor_context = producer->context;
+    if (!emit_edge_value_publication_to_register(context,
+                                                 successor_context,
+                                                 publication.source_value,
+                                                 producer->instruction_index + 1,
+                                                 parsed->index,
+                                                 scratch_index,
+                                                 lines,
+                                                 &publication) ||
+        lines.empty()) {
+      return std::nullopt;
+    }
   }
   const auto expected_view =
       scalar_view_for_type(publication.source_value.type).value_or(parsed->view);
-  auto source_reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
+  auto source_reg = loaded_register.value_or(
+      abi::gp_register(parsed->index, expected_view).value_or(*parsed));
   RegisterOperand emitted{
       .reg = source_reg,
       .role = RegisterOperandRole::StoragePlan,
