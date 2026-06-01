@@ -8,11 +8,11 @@ Current Step Title: Contract Instruction Record Naming And Status Helpers
 
 ## Just Finished
 
-Step 2 bounded contraction completed for AArch64 scalar unary operation kind
-naming: `scalar_unary_operation_kind_name` now delegates through an internal
-`scalar_unary_operation_kind_spelling` lookup helper backed by an explicit
-target-local `kScalarUnaryOperationKindSpellings` table. All previous scalar
-unary operation spellings were preserved, and missing/unknown operation kinds
+Step 2 bounded contraction completed for AArch64 scalar cast operation kind
+naming: `scalar_cast_operation_kind_name` now delegates through an internal
+`scalar_cast_operation_kind_spelling` lookup helper backed by an explicit
+target-local `kScalarCastOperationKindSpellings` table. All previous scalar
+cast operation spellings were preserved, and missing/unknown operation kinds
 still return `unknown`.
 
 ## Suggested Next
@@ -23,8 +23,8 @@ behavior.
 
 ## Watchouts
 
-The scalar unary operation spelling table intentionally includes every current
-`ScalarUnaryOperationKind` entry from the previous switch. This packet only
+The scalar cast operation spelling table intentionally includes every current
+`ScalarCastOperationKind` entry from the previous switch. This packet only
 changed the local naming helper shape; no diagnostics, tests, or downstream
 instruction selection behavior were changed.
 

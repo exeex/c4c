@@ -61,6 +61,11 @@ struct ScalarUnaryOperationKindSpelling {
   std::string_view spelling;
 };
 
+struct ScalarCastOperationKindSpelling {
+  ScalarCastOperationKind kind;
+  std::string_view spelling;
+};
+
 struct MachinePseudoKindSpelling {
   MachinePseudoKind pseudo;
   std::string_view spelling;
@@ -222,6 +227,20 @@ constexpr std::array<ScalarUnaryOperationKindSpelling, 6>
         {ScalarUnaryOperationKind::Deferred, "deferred"},
     }};
 
+constexpr std::array<ScalarCastOperationKindSpelling, 10>
+    kScalarCastOperationKindSpellings{{
+        {ScalarCastOperationKind::SignExtend, "sign_extend"},
+        {ScalarCastOperationKind::ZeroExtend, "zero_extend"},
+        {ScalarCastOperationKind::Truncate, "truncate"},
+        {ScalarCastOperationKind::FloatExtend, "float_extend"},
+        {ScalarCastOperationKind::FloatTruncate, "float_truncate"},
+        {ScalarCastOperationKind::SignedIntToFloat, "signed_int_to_float"},
+        {ScalarCastOperationKind::UnsignedIntToFloat, "unsigned_int_to_float"},
+        {ScalarCastOperationKind::FloatToSignedInt, "float_to_signed_int"},
+        {ScalarCastOperationKind::FloatToUnsignedInt, "float_to_unsigned_int"},
+        {ScalarCastOperationKind::Deferred, "deferred"},
+    }};
+
 constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
     {MachinePseudoKind::None, "none"},
     {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
@@ -356,6 +375,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kScalarUnaryOperationKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view scalar_cast_operation_kind_spelling(
+    ScalarCastOperationKind kind) {
+  const auto found = std::find_if(
+      kScalarCastOperationKindSpellings.begin(),
+      kScalarCastOperationKindSpellings.end(),
+      [kind](const ScalarCastOperationKindSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kScalarCastOperationKindSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -753,29 +786,7 @@ std::string_view scalar_unary_operation_kind_name(ScalarUnaryOperationKind kind)
 }
 
 std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind) {
-  switch (kind) {
-    case ScalarCastOperationKind::SignExtend:
-      return "sign_extend";
-    case ScalarCastOperationKind::ZeroExtend:
-      return "zero_extend";
-    case ScalarCastOperationKind::Truncate:
-      return "truncate";
-    case ScalarCastOperationKind::FloatExtend:
-      return "float_extend";
-    case ScalarCastOperationKind::FloatTruncate:
-      return "float_truncate";
-    case ScalarCastOperationKind::SignedIntToFloat:
-      return "signed_int_to_float";
-    case ScalarCastOperationKind::UnsignedIntToFloat:
-      return "unsigned_int_to_float";
-    case ScalarCastOperationKind::FloatToSignedInt:
-      return "float_to_signed_int";
-    case ScalarCastOperationKind::FloatToUnsignedInt:
-      return "float_to_unsigned_int";
-    case ScalarCastOperationKind::Deferred:
-      return "deferred";
-  }
-  return "unknown";
+  return scalar_cast_operation_kind_spelling(kind);
 }
 
 std::string_view branch_condition_form_name(BranchConditionForm form) {
