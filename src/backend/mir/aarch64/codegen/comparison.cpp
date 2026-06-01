@@ -52,6 +52,69 @@ struct PreparedFusedCompareBranchFacts {
   abi::RegisterView operand_view = abi::RegisterView::W;
 };
 
+struct PreparedFusedCompareOperandProducerFacts {
+  std::optional<prepare::PreparedFusedCompareOperandProducer> lhs;
+  std::optional<prepare::PreparedFusedCompareOperandProducer> rhs;
+};
+
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
+find_prepared_fused_compare_operand_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<prepare::PreparedBranchTargetLabels>
+find_prepared_materialized_compare_join_targets(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedBranchTargetLabels& direct_targets) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.function.bir_function == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      direct_targets.true_label == c4c::kInvalidBlockLabel ||
+      direct_targets.false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  const auto authoritative_join_transfer =
+      prepare::find_authoritative_branch_owned_join_transfer(
+          context.function.prepared->names,
+          *context.function.control_flow,
+          context.control_flow_block->block_label);
+  if (!authoritative_join_transfer.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::NameTables bir_names;
+  bir_names.import_link_names(context.function.prepared->names.texts,
+                              context.function.prepared->names.link_names);
+  const auto compare_join_context = prepare::find_materialized_compare_join_context(
+      context.function.prepared->names,
+      bir_names,
+      *authoritative_join_transfer,
+      *context.function.bir_function,
+      *context.bir_block,
+      direct_targets.true_label,
+      direct_targets.false_label);
+  if (!compare_join_context.has_value() ||
+      compare_join_context->join_transfer == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto continuation_targets =
+      prepare::published_prepared_compare_join_continuation_targets(
+          *compare_join_context->join_transfer);
+  if (!continuation_targets.has_value()) {
+    return std::nullopt;
+  }
+
+  return prepare::PreparedBranchTargetLabels{
+      .true_label = continuation_targets->true_label,
+      .false_label = continuation_targets->false_label,
+  };
+}
+
 [[nodiscard]] std::optional<PreparedConditionalBranchFacts>
 find_prepared_conditional_branch_facts(
     const module::BlockLoweringContext& context) {
@@ -107,6 +170,11 @@ find_prepared_conditional_branch_facts(
     return std::nullopt;
   }
   facts.targets = *direct_targets;
+  if (const auto compare_join_targets =
+          find_prepared_materialized_compare_join_targets(context, *direct_targets);
+      compare_join_targets.has_value()) {
+    facts.targets = *compare_join_targets;
+  }
 
   const auto join_context = prepare::find_prepared_short_circuit_join_context(
       context.function.prepared->names,
@@ -168,6 +236,37 @@ find_prepared_fused_compare_branch_facts(
       .condition_suffix = *condition,
       .operand_view = *operand_view,
   };
+}
+
+[[nodiscard]] std::optional<PreparedFusedCompareOperandProducerFacts>
+find_prepared_fused_compare_operand_producer_facts(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedBranchCondition& branch_condition) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      branch_condition.kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto before_instruction_index = context.bir_block->insts.size();
+  PreparedFusedCompareOperandProducerFacts facts{
+      .lhs =
+          find_prepared_fused_compare_operand_producer(context,
+                                                       *branch_condition.lhs,
+                                                       before_instruction_index),
+      .rhs =
+          find_prepared_fused_compare_operand_producer(context,
+                                                       *branch_condition.rhs,
+                                                       before_instruction_index),
+  };
+  if (!facts.lhs.has_value() && !facts.rhs.has_value()) {
+    return std::nullopt;
+  }
+  return facts;
 }
 
 void append_prepared_compare_branch_lines(
@@ -737,11 +836,12 @@ PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
   };
 }
 
-PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
+[[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record_impl(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedControlFlowBlock& block,
-    const prepare::PreparedBranchCondition& branch_condition) {
+    const prepare::PreparedBranchCondition& branch_condition,
+    const PreparedFusedCompareOperandProducerFacts* operand_producers) {
   if (branch_condition.function_name == c4c::kInvalidFunctionName ||
       value_locations.function_name != branch_condition.function_name) {
     return branch_record_error(PreparedBranchRecordError::InvalidFunction);
@@ -804,7 +904,10 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
     }
 
     const auto make_record = [&names, &value_locations](
-                                 const bir::Value& value)
+                                 const bir::Value& value,
+                                 const std::optional<
+                                     prepare::PreparedFusedCompareOperandProducer>* producer,
+                                 bool allow_immediate_operand)
         -> std::optional<CompareValueRecord> {
       CompareValueRecord record{
           .surface = RecordSurfaceKind::RecordOnly,
@@ -819,8 +922,25 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       if (value.kind != bir::Value::Kind::Named) {
         return std::nullopt;
       }
+
+      if (allow_immediate_operand &&
+          producer != nullptr && producer->has_value() &&
+          (*producer)->integer_constant.has_value() &&
+          is_cmp_immediate_encodable(*(*producer)->integer_constant)) {
+        record.source_value = bir::Value{
+            .kind = bir::Value::Kind::Immediate,
+            .type = value.type,
+            .immediate = *(*producer)->integer_constant,
+        };
+        return record;
+      }
+
       const auto* home =
-          prepare::find_prepared_value_home(names, value_locations, value.name);
+          producer != nullptr && producer->has_value() &&
+                  (*producer)->value_name != c4c::kInvalidValueName
+              ? prepare::find_prepared_value_home(value_locations,
+                                                  (*producer)->value_name)
+              : prepare::find_prepared_value_home(names, value_locations, value.name);
       if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
         return std::nullopt;
       }
@@ -829,8 +949,14 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       return record;
     };
 
-    const auto lhs = make_record(*branch_condition.lhs);
-    const auto rhs = make_record(*branch_condition.rhs);
+    const auto lhs = make_record(
+        *branch_condition.lhs,
+        operand_producers != nullptr ? &operand_producers->lhs : nullptr,
+        false);
+    const auto rhs = make_record(
+        *branch_condition.rhs,
+        operand_producers != nullptr ? &operand_producers->rhs : nullptr,
+        true);
     if (!lhs.has_value() || !rhs.has_value()) {
       return branch_record_error(PreparedBranchRecordError::MissingCompareValueHome);
     }
@@ -893,6 +1019,15 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
           },
       .error = PreparedBranchRecordError::None,
   };
+}
+
+PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedControlFlowBlock& block,
+    const prepare::PreparedBranchCondition& branch_condition) {
+  return make_prepared_conditional_branch_record_impl(
+      names, value_locations, block, branch_condition, nullptr);
 }
 
 std::optional<module::MachineInstruction> lower_prepared_branch_terminator(
@@ -985,11 +1120,14 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
 
-  auto prepared_record = make_prepared_conditional_branch_record(
+  const auto operand_producers =
+      find_prepared_fused_compare_operand_producer_facts(context, branch_condition);
+  auto prepared_record = make_prepared_conditional_branch_record_impl(
       context.function.prepared->names,
       *context.function.value_locations,
       *context.control_flow_block,
-      branch_condition);
+      branch_condition,
+      operand_producers.has_value() ? &*operand_producers : nullptr);
   if (!prepared_record.record.has_value()) {
     append_branch_diagnostic(
         diagnostics,
