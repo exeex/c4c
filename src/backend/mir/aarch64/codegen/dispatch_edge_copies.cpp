@@ -22,7 +22,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -54,11 +53,6 @@ namespace {
     const module::FunctionLoweringContext& function,
     const prepare::PreparedControlFlowBlock& block);
 
-[[nodiscard]] bool prepared_edge_select_source_is_destination_register(
-    const prepare::PreparedValueHome& source_home,
-    const prepare::PreparedValueHome& destination_home) {
-  return prepare::prepared_value_homes_share_register_name(source_home, destination_home);
-}
 [[nodiscard]] std::optional<module::BlockLoweringContext>
 prepared_edge_publication_producer_block_context(
     const module::BlockLoweringContext& context,
@@ -1094,6 +1088,8 @@ prepared_publication_source_register(
                                             lines);
 }
 
+namespace {
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
     const module::BlockLoweringContext& context,
@@ -1176,6 +1172,9 @@ lower_predecessor_join_source_publication(
       context, context.bir_block != nullptr ? context.bir_block->insts.size() : 0U,
       std::move(lines));
 }
+
+}  // namespace
+
 [[nodiscard]] bool should_emit_block_entry_edge_copy_move(
     const module::BlockLoweringContext& context,
     const module::MachineInstruction& instruction) {

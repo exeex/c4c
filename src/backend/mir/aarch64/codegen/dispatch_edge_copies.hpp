@@ -5,9 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -20,10 +18,6 @@ struct EdgeProducerContext {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;
 };
-
-[[nodiscard]] bool prepared_edge_select_source_is_destination_register(
-    const prepare::PreparedValueHome& source_home,
-    const prepare::PreparedValueHome& destination_home);
 
 [[nodiscard]] bool edge_value_publication_may_read_register_index(
     const module::BlockLoweringContext& edge_context,
@@ -52,14 +46,6 @@ struct EdgeProducerContext {
     std::uint8_t scratch_index,
     std::vector<std::string>& lines,
     const prepare::PreparedEdgePublication* prepared_publication = nullptr);
-
-[[nodiscard]] std::optional<module::MachineInstruction>
-lower_predecessor_join_source_publication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedEdgePublication& publication,
-    const prepare::PreparedValueHome& source_home,
-    const prepare::PreparedValueHome& destination_home,
-    BlockScalarLoweringState& scalar_state);
 
 [[nodiscard]] bool should_emit_block_entry_edge_copy_move(
     const module::BlockLoweringContext& context,
