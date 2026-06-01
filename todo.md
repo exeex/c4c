@@ -9,21 +9,19 @@ Current Step Title: Consume Prepared Call Plans And Boundary Move Facts
 ## Just Finished
 
 Completed another narrow `plan.md` Step 2 migration in `calls.cpp`. The
-before-call byval aggregate register-lane `CallArgumentAbi` stack-slot-source
+before-call byval aggregate register-lane `CallArgumentAbi` register-source
 to register-destination path now uses the already-threaded
 `PreparedCallBoundaryEffectPlan` explicit-move effect as its phase,
 destination, storage, and order authority. The effect endpoint supplies the
-destination bank and contiguous width; local move/binding/argument facts still
-provide concrete register spelling, fallback occupied-register names, and the
-prepared byval-lane source memory conversion.
+destination bank, contiguous width, and occupied-register authority; local
+move/binding/argument facts still provide concrete register spelling,
+placement fallback, and the prepared byval-lane source memory conversion.
 
 ## Suggested Next
 
-Continue Step 2 with the remaining byval aggregate register-lane
-`CallArgumentAbi` register-source to register-destination branch, or with a
-supervisor-selected review before migrating more destination construction.
-Keep stack-slot destination copies and publication ordering out of scope unless
-explicitly delegated.
+Continue Step 2 with a supervisor-selected review or the next remaining
+prepared-effect destination-construction branch. Keep stack-slot destination
+copies and publication ordering out of scope unless explicitly delegated.
 
 ## Watchouts
 
@@ -53,6 +51,10 @@ explicitly delegated.
   selected explicit move effect and uses the effect destination endpoint for
   bank and contiguous width while retaining local byval source-memory
   conversion plus binding/move/effect spelling fallbacks.
+- The newly migrated register-source byval lane path now gates on the selected
+  explicit move effect and uses the effect destination endpoint for bank,
+  contiguous width, and occupied-register authority while retaining local
+  byval source-memory conversion plus binding/move/effect spelling fallbacks.
 - Do not require `classification_status == Available` for every register
   argument effect yet: existing f128 HFA lowering can validly proceed without
   an ABI binding while still using the effect's phase/destination/storage
