@@ -6,6 +6,7 @@
 #include "memory.hpp"
 
 #include <algorithm>
+#include <array>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -14,6 +15,44 @@ namespace bir = c4c::backend::bir;
 namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
+
+struct MachinePrinterMnemonicSpelling {
+  MachinePrinterMnemonicKind kind;
+  std::string_view spelling;
+};
+
+constexpr std::array<MachinePrinterMnemonicSpelling, 17> kMachinePrinterMnemonicSpellings{{
+    {MachinePrinterMnemonicKind::None, ""},
+    {MachinePrinterMnemonicKind::Branch, "b"},
+    {MachinePrinterMnemonicKind::ConditionalBranchNonZero, "cbnz"},
+    {MachinePrinterMnemonicKind::DirectCall, "bl"},
+    {MachinePrinterMnemonicKind::IndirectCall, "blr"},
+    {MachinePrinterMnemonicKind::Add, "add"},
+    {MachinePrinterMnemonicKind::Sub, "sub"},
+    {MachinePrinterMnemonicKind::Load, "ldr"},
+    {MachinePrinterMnemonicKind::LoadByte, "ldrb"},
+    {MachinePrinterMnemonicKind::Store, "str"},
+    {MachinePrinterMnemonicKind::StoreByte, "strb"},
+    {MachinePrinterMnemonicKind::Move, "mov"},
+    {MachinePrinterMnemonicKind::Return, "ret"},
+    {MachinePrinterMnemonicKind::VariadicVaStart, "va.start"},
+    {MachinePrinterMnemonicKind::VariadicVaArgScalar, "va.arg.scalar"},
+    {MachinePrinterMnemonicKind::VariadicVaArgAggregate, "va.arg.aggregate"},
+    {MachinePrinterMnemonicKind::VariadicVaCopy, "va.copy"},
+}};
+
+[[nodiscard]] std::string_view machine_printer_mnemonic_spelling(
+    MachinePrinterMnemonicKind kind) {
+  const auto found = std::find_if(
+      kMachinePrinterMnemonicSpellings.begin(), kMachinePrinterMnemonicSpellings.end(),
+      [kind](const MachinePrinterMnemonicSpelling& spelling) {
+        return spelling.kind == kind;
+      });
+  if (found == kMachinePrinterMnemonicSpellings.end()) {
+    return "";
+  }
+  return found->spelling;
+}
 
 [[nodiscard]] bool same_aggregate_gp_register_index(abi::RegisterReference lhs,
                                                     abi::RegisterReference rhs) {
@@ -279,43 +318,7 @@ std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo) {
 }
 
 std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind kind) {
-  switch (kind) {
-    case MachinePrinterMnemonicKind::None:
-      return "";
-    case MachinePrinterMnemonicKind::Branch:
-      return "b";
-    case MachinePrinterMnemonicKind::ConditionalBranchNonZero:
-      return "cbnz";
-    case MachinePrinterMnemonicKind::DirectCall:
-      return "bl";
-    case MachinePrinterMnemonicKind::IndirectCall:
-      return "blr";
-    case MachinePrinterMnemonicKind::Add:
-      return "add";
-    case MachinePrinterMnemonicKind::Sub:
-      return "sub";
-    case MachinePrinterMnemonicKind::Load:
-      return "ldr";
-    case MachinePrinterMnemonicKind::LoadByte:
-      return "ldrb";
-    case MachinePrinterMnemonicKind::Store:
-      return "str";
-    case MachinePrinterMnemonicKind::StoreByte:
-      return "strb";
-    case MachinePrinterMnemonicKind::Move:
-      return "mov";
-    case MachinePrinterMnemonicKind::Return:
-      return "ret";
-    case MachinePrinterMnemonicKind::VariadicVaStart:
-      return "va.start";
-    case MachinePrinterMnemonicKind::VariadicVaArgScalar:
-      return "va.arg.scalar";
-    case MachinePrinterMnemonicKind::VariadicVaArgAggregate:
-      return "va.arg.aggregate";
-    case MachinePrinterMnemonicKind::VariadicVaCopy:
-      return "va.copy";
-  }
-  return "";
+  return machine_printer_mnemonic_spelling(kind);
 }
 
 MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode opcode) {
