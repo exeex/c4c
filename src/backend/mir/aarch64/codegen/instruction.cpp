@@ -36,6 +36,11 @@ struct MachineNodeSelectionStatusSpelling {
   std::string_view spelling;
 };
 
+struct MachinePseudoKindSpelling {
+  MachinePseudoKind pseudo;
+  std::string_view spelling;
+};
+
 struct MachinePseudoPrinterMnemonic {
   MachinePseudoKind pseudo;
   MachinePrinterMnemonicKind kind;
@@ -147,6 +152,12 @@ constexpr std::array<MachineNodeSelectionStatusSpelling, 3>
         {MachineNodeSelectionStatus::MissingRequiredFacts, "missing_required_facts"},
     }};
 
+constexpr std::array<MachinePseudoKindSpelling, 3> kMachinePseudoKindSpellings{{
+    {MachinePseudoKind::None, "none"},
+    {MachinePseudoKind::SpillToSlot, "spill_to_slot"},
+    {MachinePseudoKind::ReloadFromSlot, "reload_from_slot"},
+}};
+
 constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemonics{{
     {MachinePseudoKind::SpillToSlot, MachinePrinterMnemonicKind::Store},
     {MachinePseudoKind::ReloadFromSlot, MachinePrinterMnemonicKind::Load},
@@ -201,6 +212,18 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
     return MachinePrinterMnemonicKind::None;
   }
   return found->kind;
+}
+
+[[nodiscard]] std::string_view machine_pseudo_kind_spelling(MachinePseudoKind pseudo) {
+  const auto found = std::find_if(
+      kMachinePseudoKindSpellings.begin(), kMachinePseudoKindSpellings.end(),
+      [pseudo](const MachinePseudoKindSpelling& spelling) {
+        return spelling.pseudo == pseudo;
+      });
+  if (found == kMachinePseudoKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
 }
 
 [[nodiscard]] std::string_view machine_node_selection_status_spelling(
@@ -361,15 +384,7 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
 }
 
 std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo) {
-  switch (pseudo) {
-    case MachinePseudoKind::None:
-      return "none";
-    case MachinePseudoKind::SpillToSlot:
-      return "spill_to_slot";
-    case MachinePseudoKind::ReloadFromSlot:
-      return "reload_from_slot";
-  }
-  return "unknown";
+  return machine_pseudo_kind_spelling(pseudo);
 }
 
 std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind kind) {
