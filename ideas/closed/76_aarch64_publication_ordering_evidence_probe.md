@@ -59,3 +59,13 @@ AArch64 records, then determine whether ordering is locally re-derived.
   authority.
 - Tests are weakened or unsupported expectations are downgraded without
   explicit approval.
+
+## Closure Note
+
+Closed after evidence-only Steps 1 through 4 and reviewer acceptance. The
+three required traces found that edge-copy publication ordering is carried by
+existing prepared edge-publication/source-fact surfaces, call-boundary ordering
+is carried by prepared call-boundary effect plans, and the representative typed
+stack-source publication is selected through existing edge-publication identity
+and stack-source preparation. No new prepared publication-order query is
+required for the reviewed paths.
