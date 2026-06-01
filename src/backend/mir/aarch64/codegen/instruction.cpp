@@ -76,6 +76,11 @@ struct BranchCompareCandidateKindSpelling {
   std::string_view spelling;
 };
 
+struct PreparedBranchRecordErrorSpelling {
+  PreparedBranchRecordError error;
+  std::string_view spelling;
+};
+
 struct PreparedScalarAluRecordErrorSpelling {
   PreparedScalarAluRecordError error;
   std::string_view spelling;
@@ -285,6 +290,30 @@ constexpr std::array<BranchCompareCandidateKindSpelling, 4>
         {BranchCompareCandidateKind::FusedCompareAndBranch,
          "fused_compare_and_branch"},
         {BranchCompareCandidateKind::NonFusableCompare, "non_fusable_compare"},
+    }};
+
+constexpr std::array<PreparedBranchRecordErrorSpelling, 12>
+    kPreparedBranchRecordErrorSpellings{{
+        {PreparedBranchRecordError::None, "none"},
+        {PreparedBranchRecordError::InvalidFunction, "invalid_function"},
+        {PreparedBranchRecordError::InvalidSourceBlock, "invalid_source_block"},
+        {PreparedBranchRecordError::TerminatorKindMismatch,
+         "terminator_kind_mismatch"},
+        {PreparedBranchRecordError::MissingBranchTarget,
+         "missing_branch_target"},
+        {PreparedBranchRecordError::TerminatorTargetMismatch,
+         "terminator_target_mismatch"},
+        {PreparedBranchRecordError::MissingBranchCondition,
+         "missing_branch_condition"},
+        {PreparedBranchRecordError::ConditionValueMismatch,
+         "condition_value_mismatch"},
+        {PreparedBranchRecordError::MissingConditionValueHome,
+         "missing_condition_value_home"},
+        {PreparedBranchRecordError::MissingCompareFacts, "missing_compare_facts"},
+        {PreparedBranchRecordError::UnsupportedComparePredicate,
+         "unsupported_compare_predicate"},
+        {PreparedBranchRecordError::MissingCompareValueHome,
+         "missing_compare_value_home"},
     }};
 
 constexpr std::array<PreparedScalarAluRecordErrorSpelling, 13>
@@ -586,6 +615,20 @@ constexpr std::array<MachinePseudoPrinterMnemonic, 2> kMachinePseudoPrinterMnemo
         return spelling.kind == kind;
       });
   if (found == kBranchCompareCandidateKindSpellings.end()) {
+    return "unknown";
+  }
+  return found->spelling;
+}
+
+[[nodiscard]] std::string_view prepared_branch_record_error_spelling(
+    PreparedBranchRecordError error) {
+  const auto found = std::find_if(
+      kPreparedBranchRecordErrorSpellings.begin(),
+      kPreparedBranchRecordErrorSpellings.end(),
+      [error](const PreparedBranchRecordErrorSpelling& spelling) {
+        return spelling.error == error;
+      });
+  if (found == kPreparedBranchRecordErrorSpellings.end()) {
     return "unknown";
   }
   return found->spelling;
@@ -1051,33 +1094,7 @@ std::string_view branch_compare_candidate_kind_name(BranchCompareCandidateKind k
 }
 
 std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error) {
-  switch (error) {
-    case PreparedBranchRecordError::None:
-      return "none";
-    case PreparedBranchRecordError::InvalidFunction:
-      return "invalid_function";
-    case PreparedBranchRecordError::InvalidSourceBlock:
-      return "invalid_source_block";
-    case PreparedBranchRecordError::TerminatorKindMismatch:
-      return "terminator_kind_mismatch";
-    case PreparedBranchRecordError::MissingBranchTarget:
-      return "missing_branch_target";
-    case PreparedBranchRecordError::TerminatorTargetMismatch:
-      return "terminator_target_mismatch";
-    case PreparedBranchRecordError::MissingBranchCondition:
-      return "missing_branch_condition";
-    case PreparedBranchRecordError::ConditionValueMismatch:
-      return "condition_value_mismatch";
-    case PreparedBranchRecordError::MissingConditionValueHome:
-      return "missing_condition_value_home";
-    case PreparedBranchRecordError::MissingCompareFacts:
-      return "missing_compare_facts";
-    case PreparedBranchRecordError::UnsupportedComparePredicate:
-      return "unsupported_compare_predicate";
-    case PreparedBranchRecordError::MissingCompareValueHome:
-      return "missing_compare_value_home";
-  }
-  return "unknown";
+  return prepared_branch_record_error_spelling(error);
 }
 
 std::string_view prepared_scalar_alu_record_error_name(PreparedScalarAluRecordError error) {
