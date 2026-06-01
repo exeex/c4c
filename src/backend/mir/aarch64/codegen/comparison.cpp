@@ -311,21 +311,6 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
-[[nodiscard]] std::optional<abi::RegisterView> comparison_scalar_register_view(bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-      return abi::RegisterView::W;
-    case bir::TypeKind::I64:
-    case bir::TypeKind::Ptr:
-      return abi::RegisterView::X;
-    default:
-      return std::nullopt;
-  }
-}
-
 void append_i128_compare_diagnostic(
     module::ModuleLoweringDiagnostics& diagnostics,
     module::ModuleLoweringDiagnosticKind kind,
@@ -381,7 +366,7 @@ void append_i128_compare_diagnostic(
             find_emitted_scalar_register(*scalar_state, condition_value_name);
         emitted.has_value()) {
       auto reg = *emitted;
-      if (const auto expected_view = comparison_scalar_register_view(condition_type);
+      if (const auto expected_view = scalar_register_view(condition_type);
           expected_view.has_value()) {
         reg.reg.view = *expected_view;
         reg.expected_view = expected_view;
@@ -415,7 +400,7 @@ void append_i128_compare_diagnostic(
       .role = register_role_from_authority(resolved->authority),
       .value_id = condition_value_id,
       .value_name = condition_value_name,
-      .expected_view = comparison_scalar_register_view(condition_type),
+      .expected_view = scalar_register_view(condition_type),
   });
 }
 
@@ -462,7 +447,7 @@ void append_i128_compare_diagnostic(
     return std::nullopt;
   }
 
-  const auto expected_view = comparison_scalar_register_view(value.type);
+  const auto expected_view = scalar_register_view(value.type);
   if (!expected_view.has_value()) {
     diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
         .kind = module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,

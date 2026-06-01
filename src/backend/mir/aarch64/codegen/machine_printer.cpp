@@ -101,21 +101,6 @@ std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
   return std::nullopt;
 }
 
-std::optional<abi::RegisterView> compare_register_view(bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-      return abi::RegisterView::W;
-    case bir::TypeKind::I64:
-    case bir::TypeKind::Ptr:
-      return abi::RegisterView::X;
-    default:
-      return std::nullopt;
-  }
-}
-
 std::optional<std::string_view> compare_branch_condition(bir::BinaryOpcode predicate) {
   switch (predicate) {
     case bir::BinaryOpcode::Eq:
@@ -478,7 +463,7 @@ std::optional<std::string> compare_operand_spelling(const OperandRecord& operand
     if (reg == nullptr) {
       return std::nullopt;
     }
-    const auto view = compare_register_view(compare_type);
+    const auto view = scalar_register_view(compare_type);
     if (!view.has_value()) {
       return std::nullopt;
     }
@@ -586,7 +571,7 @@ std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
     };
   }
 
-  const auto view = compare_register_view(compare_type);
+  const auto view = scalar_register_view(compare_type);
   const auto width = integer_type_bit_width(compare_type);
   if (!view.has_value() || !width.has_value()) {
     return std::nullopt;
