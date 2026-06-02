@@ -77,3 +77,61 @@ transport authority or moving ordinary call-boundary record construction.
 - The route keeps the exact old failure mode behind a new abstraction name,
   especially missing or incompatible carrier facts surfacing at the same late
   point with no clearer owner boundary.
+
+## Closure Note
+
+Closed after implementation in:
+
+- `4da5d3cb3` (`Introduce AArch64 f128 carrier operand owner`)
+- `28ca89deb` (`Route f128 result carrier operand rendering`)
+
+The route introduced the local `F128CarrierCallOperandOwner` in
+`src/backend/mir/aarch64/codegen/calls.cpp`. The owner consumes existing
+prepared f128 carrier facts and owns only calls-side f128 carrier completion,
+module fallback lookup, and q-register operand rendering for call-boundary
+uses. It does not select or create prepared f128 carriers, own shared transport
+authority, construct ordinary call-boundary records, or absorb scalar FP helper
+authority.
+
+Routed in-scope f128 calls-side uses through the owner, including:
+
+- full-width f128 carrier completion
+- f128 constant carrier completion
+- module fallback prepared-carrier lookup
+- source q-register operand rendering
+- after-call result destination q-register operand rendering
+
+Intentionally outside this route:
+
+- prepared carrier selection and creation
+- ABI result source operand binding
+- f128 stack argument transport records and transport instruction construction
+- constant argument destination register rendering and record construction
+- shared scalar FP helpers and ordinary scalar FP moves
+- aggregate byval transport, immediate scalar publication, and generic
+  call-boundary record ownership
+
+Separate open follow-up remains:
+
+- `ideas/open/95_aarch64_calls_immediate_scalar_argument_publication_owner.md`
+
+That follow-up was not absorbed into this route.
+
+Proof:
+
+- Focused before/after scope passed 5/5 before and 5/5 after.
+- Close-time regression guard passed with non-decreasing pass-count mode:
+
+```bash
+cmake --build --preset default
+ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_instruction_dispatch|backend_prepared_printer|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result)$' --output-on-failure > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+The supervisor also reported broader validation on June 2, 2026:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+That broader backend scope passed 169/169.
