@@ -6,6 +6,12 @@
 
 #include <optional>
 
+namespace c4c::backend::prepare {
+struct PreparedAddressMaterializationLookups;
+struct PreparedStackLayout;
+struct PreparedValueHomeLookups;
+}  // namespace c4c::backend::prepare
+
 namespace c4c::backend::aarch64::codegen {
 
 namespace bir = c4c::backend::bir;
@@ -17,6 +23,17 @@ namespace bir = c4c::backend::bir;
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     const BlockScalarLoweringState& scalar_state);
+
+[[nodiscard]] bool resolve_frame_slot_memory_offset(
+    const prepare::PreparedStackLayout& stack_layout,
+    MemoryOperand& address);
+
+[[nodiscard]] bool apply_stack_layout_to_memory_record(
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedAddressMaterializationLookups* address_materialization_lookups,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
+    const bir::StoreLocalInst* local_store,
+    MemoryInstructionRecord& record);
 
 void retarget_pointer_store_value_to_materialized_address(
     module::MachineInstruction& instruction,
