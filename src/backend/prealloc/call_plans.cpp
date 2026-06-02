@@ -1585,7 +1585,7 @@ void copy_access_source_selection_fields(PreparedCallArgumentSourceSelection& se
   selection.source_align_bytes = access.address.align_bytes;
 }
 
-[[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
+[[nodiscard]] const PreparedFrameSlot* find_call_plan_frame_slot_by_id(
     const PreparedStackLayout& stack_layout,
     PreparedFrameSlotId slot_id) {
   for (const auto& frame_slot : stack_layout.frame_slots) {
@@ -1657,7 +1657,8 @@ struct ByvalPayloadLaneStore {
       access.address.size_bytes == 0) {
     return std::nullopt;
   }
-  const auto* slot = find_frame_slot_by_id(stack_layout, *access.address.frame_slot_id);
+  const auto* slot =
+      find_call_plan_frame_slot_by_id(stack_layout, *access.address.frame_slot_id);
   if (slot == nullptr) {
     return std::nullopt;
   }

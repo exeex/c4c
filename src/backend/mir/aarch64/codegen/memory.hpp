@@ -2,7 +2,6 @@
 
 #include "instruction.hpp"
 #include "alu.hpp"
-#include "memory_store_retargeting.hpp"
 #include "../module/module.hpp"
 
 #include <cstddef>

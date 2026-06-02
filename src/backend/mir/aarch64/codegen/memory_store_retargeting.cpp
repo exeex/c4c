@@ -2,7 +2,6 @@
 
 #include "../abi/abi.hpp"
 #include "dispatch_lookup.hpp"
-#include "memory.hpp"
 #include "../../../prealloc/control_flow.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 
@@ -36,7 +35,7 @@ struct PreparedLocalAddressStoreValue {
 std::optional<FrameSlotOperand> make_frame_slot_operand_from_stack_slot(
     const prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedFrameSlot& slot) {
-  const auto* object = find_stack_object(stack_layout, slot.object_id);
+  const auto* object = prepare::find_stack_object_by_id(stack_layout, slot.object_id);
   if (object == nullptr) {
     return std::nullopt;
   }
@@ -83,7 +82,8 @@ bool find_prepared_local_address_store_value(
   if (!prepared_address.has_value()) {
     return true;
   }
-  const auto* slot = find_frame_slot(stack_layout, prepared_address->frame_slot_id);
+  const auto* slot =
+      prepare::find_frame_slot_by_id(stack_layout, prepared_address->frame_slot_id);
   if (slot == nullptr) {
     return false;
   }
@@ -141,7 +141,8 @@ bool rewrite_local_address_store_value(const PreparedLocalAddressStoreValue& pre
   if (!address.frame_slot_id.has_value()) {
     return false;
   }
-  const auto* slot = find_frame_slot(stack_layout, *address.frame_slot_id);
+  const auto* slot =
+      prepare::find_frame_slot_by_id(stack_layout, *address.frame_slot_id);
   if (slot == nullptr) {
     return false;
   }

@@ -21,6 +21,7 @@
 #include "machine_printer.hpp"
 #include "memory.hpp"
 #include "memory_dynamic_stack.hpp"
+#include "memory_store_retargeting.hpp"
 #include "operands.hpp"
 #include "prepared_value_home_materialization.hpp"
 #include "prologue.hpp"

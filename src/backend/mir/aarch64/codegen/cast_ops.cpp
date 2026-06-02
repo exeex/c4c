@@ -176,7 +176,7 @@ namespace {
   return nullptr;
 }
 
-[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+[[nodiscard]] const prepare::PreparedFrameSlot* find_cast_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
   for (const auto& slot : stack_layout.frame_slots) {
@@ -218,7 +218,7 @@ namespace {
     return std::nullopt;
   }
 
-  const auto* slot = find_frame_slot_by_id(
+  const auto* slot = find_cast_frame_slot_by_id(
       context.function.prepared->stack_layout, *source_access->address.frame_slot_id);
   if (slot == nullptr) {
     return std::nullopt;
