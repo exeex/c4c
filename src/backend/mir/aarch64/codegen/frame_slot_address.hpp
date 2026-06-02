@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -18,6 +19,9 @@ namespace c4c::backend::aarch64::codegen {
 [[nodiscard]] std::string frame_slot_address(
     const module::FunctionLoweringContext& context,
     std::size_t offset_bytes);
+[[nodiscard]] std::vector<std::string> materialize_frame_slot_memory_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address);
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id);

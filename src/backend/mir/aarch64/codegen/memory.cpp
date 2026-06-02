@@ -55,31 +55,6 @@ namespace abi = c4c::backend::aarch64::abi;
   return address;
 }
 
-[[nodiscard]] std::vector<std::string> materialize_frame_slot_memory_address_lines(
-    abi::RegisterReference scratch,
-    const MemoryOperand& address) {
-  if (address.base_kind != MemoryBaseKind::FrameSlot) {
-    return {};
-  }
-  const auto offset =
-      address.byte_offset < 0
-          ? static_cast<std::uint64_t>(-address.byte_offset)
-          : static_cast<std::uint64_t>(address.byte_offset);
-  const std::string scratch_name = abi::register_name(scratch);
-  const std::string_view base = address.uses_frame_pointer_base ? "x29" : "sp";
-  if (offset <= 4095U) {
-    return {(address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
-            ", " + std::string{base} + ", #" + std::to_string(offset)};
-  }
-  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
-  if (lines.empty()) {
-    return {};
-  }
-  lines.push_back((address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
-                  ", " + std::string{base} + ", " + scratch_name);
-  return lines;
-}
-
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:

@@ -1,61 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Address Text and Prepared Frame-Slot Operand Helpers
+Current Step ID: 3
+Current Step Title: Extract Frame-Slot Address Materialization Lines
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 extracted the AArch64 frame-slot address text, fixed-slot base policy,
-prepared frame-slot lookup wrappers, prepared local load offset/address helpers,
-and prepared frame-slot `MemoryOperand` construction into
+Step 3 moved `materialize_frame_slot_memory_address_lines` out of
+`src/backend/mir/aarch64/codegen/memory.hpp` and
+`src/backend/mir/aarch64/codegen/memory.cpp` into the existing frame-slot
+address owner,
 `src/backend/mir/aarch64/codegen/frame_slot_address.hpp` and
 `src/backend/mir/aarch64/codegen/frame_slot_address.cpp`.
 
-The new source is listed in `src/backend/CMakeLists.txt`. The moved declarations
-no longer live in `memory.hpp`, and the moved definitions no longer live in
-`memory.cpp`. Direct AArch64 consumers now include `frame_slot_address.hpp`
-explicitly where they use the extracted helpers. `find_frame_slot` and
-`find_stack_object` remain as AArch64-local wrapper spellings, but now forward
-to `prepare::find_frame_slot_by_id` and `prepare::find_stack_object_by_id`
-instead of carrying independent scan loops.
-
-Kept out of this step per packet scope: `register_indirect_address`,
-`memory_address`, `materialize_frame_slot_memory_address_lines`, f128 transport
-ownership, variadic `va_list` field addressing, scratch selection, opcode
-selection, and generic memory operand ownership.
+The extracted helper preserves the existing non-frame-slot no-op, immediate
+`add`/`sub` form for offsets up to 4095, large-offset
+`materialize_integer_constant_lines` route, negative-offset `sub` behavior,
+base selection from `uses_frame_pointer_base`, and caller-owned scratch
+selection. `f128.cpp` continues to call the helper through its existing
+`frame_slot_address.hpp` include; generic `memory_address`, f128 transport
+ownership, variadic `va_list` field addressing, and register-indirect formatting
+were not moved.
 
 ## Suggested Next
 
-Delegate Step 3, `Extract Frame-Slot Address Materialization Lines`, as the next
-ordered packet. Move `materialize_frame_slot_memory_address_lines` into the
-frame-slot owner while preserving scratch choice and opcode-selection
-boundaries; `f128.cpp` is the main direct touchpoint because it currently uses
-both the extracted prepared operand constructor and the still-memory-owned
-frame-slot materializer.
+Delegate Step 4, `Check Memory-Backed f128 and Variadic Consumers`, as the next
+ordered packet. Audit the memory-backed f128 and variadic consumers touched or
+affected by the extraction while keeping f128 transport policy, ABI logic,
+scratch selection, storage-plan decisions, and `va_list` field addressing at
+their current owners.
 
 ## Watchouts
 
-- `materialize_frame_slot_memory_address_lines` intentionally remains in
-  `memory.cpp`/`memory.hpp`; it still depends on scratch materialization and was
-  explicitly out of scope for Step 2.
-- `f128.cpp` includes both `frame_slot_address.hpp` and `memory.hpp` because it
-  uses the extracted prepared operand constructor and the still-memory-owned
-  frame-slot materializer.
-- `comparison.cpp` still has a branch-fusion-specific local
-  `find_frame_slot` wrapper, but it now forwards to `prepare::find_frame_slot_by_id`.
-- `alu.cpp` and `cast_ops.cpp` still contain differently named local frame-slot
-  lookup/base helpers outside the exact Step 2 target; do not treat this packet
-  as having generalized every local frame-slot helper in AArch64 codegen.
+- Step 3 intentionally did not move `memory_address`, generic memory operand
+  ownership, register-indirect formatting, f128 transport ownership, variadic
+  `va_list` field addressing, scratch choice, or opcode selection.
+- `f128.cpp` still includes both `frame_slot_address.hpp` and `memory.hpp`: it
+  uses the moved frame-slot materializer through the frame-slot owner and still
+  uses generic memory helpers such as `memory_address`.
+- Step 4 should verify nearby memory-backed f128 and variadic paths consume the
+  same prepared frame-slot facts after the owner move, without treating this as
+  permission to absorb ABI or transport responsibilities into
+  `frame_slot_address.*`.
 
 ## Proof
 
-Ran the supervisor-selected proof exactly:
+Ran the supervisor-selected Step 3 proof exactly:
 
 ```sh
-cmake --build build --target backend_aarch64_memory_operand_records_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_memory_operand_contract_test backend_prepared_lookup_helper_test c4cll && ctest --test-dir build -R '^(backend_aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract)|backend_codegen_route_aarch64_(variadic_aggregate_overflow_byte_copy|dynamic_stack_fixed_slot_uses_fp_anchor)|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log
+cmake --build build --target backend_aarch64_memory_operand_records_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_aarch64_(memory_operand_records|prepared_memory_operand_records|machine_printer|instruction_dispatch))$' --output-on-failure > test_after.log
 ```
 
-Result: build passed and CTest passed 6/6. Proof log: `test_after.log`.
+Result: build passed and CTest passed 4/4. Proof log: `test_after.log`.

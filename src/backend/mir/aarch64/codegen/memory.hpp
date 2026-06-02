@@ -40,9 +40,6 @@ struct PreparedTypedStackSourcePublicationEmission {
     const module::BlockLoweringContext& context,
     const prepare::PreparedMemoryAccess* access,
     const bir::Inst& inst);
-[[nodiscard]] std::vector<std::string> materialize_frame_slot_memory_address_lines(
-    abi::RegisterReference scratch,
-    const MemoryOperand& address);
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
 [[nodiscard]] std::optional<std::size_t> dispatch_publication_scalar_type_size_bytes(
     bir::TypeKind type);
