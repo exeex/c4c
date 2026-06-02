@@ -1146,22 +1146,36 @@ std::optional<abi::RegisterReference> aggregate_register_lane_destination(
   return abi::x_register(static_cast<std::uint8_t>(destination.reg.index + lane_index));
 }
 
+std::optional<AggregateRegisterLanePublicationView>
+aggregate_register_lane_publication_view(
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (move.phase != prepare::PreparedMovePhase::BeforeCall ||
+      move.move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move.move.destination_storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      move.move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      move.move.reason != "call_arg_byval_aggregate_register_lanes" ||
+      !move.source_memory.has_value() || move.source_memory_materializes_address ||
+      move.source_memory->support != MemoryOperandSupportKind::Prepared ||
+      move.source_memory->size_bytes == 0 || move.source_memory->size_bytes > 16 ||
+      !move.destination_register.has_value() ||
+      move.destination_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      move.destination_register->expected_view != abi::RegisterView::X ||
+      !abi::is_gp_register(move.destination_register->reg)) {
+    return std::nullopt;
+  }
+  return AggregateRegisterLanePublicationView{
+      .move = &move,
+      .source_memory = &*move.source_memory,
+      .destination_register = &*move.destination_register,
+      .size_bytes = move.source_memory->size_bytes,
+  };
+}
+
 bool is_aggregate_register_lane_publication(
     const CallBoundaryMoveInstructionRecord& move) {
-  return move.phase == prepare::PreparedMovePhase::BeforeCall &&
-         move.move.destination_kind ==
-             prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-         move.move.destination_storage_kind ==
-             prepare::PreparedMoveStorageKind::Register &&
-         move.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-         move.move.reason == "call_arg_byval_aggregate_register_lanes" &&
-         move.source_memory.has_value() && !move.source_memory_materializes_address &&
-         move.source_memory->support == MemoryOperandSupportKind::Prepared &&
-         move.source_memory->size_bytes > 0 && move.source_memory->size_bytes <= 16 &&
-         move.destination_register.has_value() &&
-         move.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
-         move.destination_register->expected_view == abi::RegisterView::X &&
-         abi::is_gp_register(move.destination_register->reg);
+  return aggregate_register_lane_publication_view(move).has_value();
 }
 
 std::string_view frame_instruction_kind_name(FrameInstructionKind kind) {

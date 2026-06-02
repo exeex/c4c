@@ -1730,6 +1730,13 @@ struct AggregateRegisterLanePrintableChunk {
   abi::RegisterReference load_register;
 };
 
+struct AggregateRegisterLanePublicationView {
+  const CallBoundaryMoveInstructionRecord* move = nullptr;
+  const MemoryOperand* source_memory = nullptr;
+  const RegisterOperand* destination_register = nullptr;
+  std::size_t size_bytes = 0;
+};
+
 [[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
     const RegisterOperand& destination);
 [[nodiscard]] MemoryOperand aggregate_register_lane_memory(MemoryOperand memory,
@@ -1747,6 +1754,8 @@ aggregate_register_lane_printable_chunk_descriptor(
 [[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_destination(
     const RegisterOperand& destination,
     std::size_t lane_index);
+[[nodiscard]] std::optional<AggregateRegisterLanePublicationView>
+aggregate_register_lane_publication_view(const CallBoundaryMoveInstructionRecord& move);
 [[nodiscard]] bool is_aggregate_register_lane_publication(
     const CallBoundaryMoveInstructionRecord& move);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
