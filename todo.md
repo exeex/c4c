@@ -3,7 +3,7 @@
 Status: Active
 Source Idea Path: ideas/open/86_aarch64_memory_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
+Current Step ID: 1
 Current Step Title: Build The Memory Function Inventory
 
 ## Just Finished
