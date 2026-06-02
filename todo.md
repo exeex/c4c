@@ -3,18 +3,19 @@
 Status: Active
 Source Idea Path: ideas/open/86_aarch64_memory_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Compare Against Closed-Idea Boundaries
+Current Step ID: 4
+Current Step Title: Create Narrow Follow-Up Ideas Where Justified
 
 ## Just Finished
 
-Completed Step 3, "Compare Against Closed-Idea Boundaries", by comparing the
-Step 2 candidate local subowners against ideas 70, 80, 81, 83, and 84. The
-publication and prepared-wrapper shaped candidates are rejected as follow-up
-implementation routes because they would reopen recent contraction decisions;
-only tightly memory-local frame-slot/address materialization and
-store-retargeting subowners remain potentially viable. No `memory.cpp`,
-`memory.hpp`, `plan.md`, or source-idea edits were made.
+Completed Step 4, "Create Narrow Follow-Up Ideas Where Justified", by creating
+follow-up source ideas only for the two Step 3 survivors with concrete
+memory-local boundaries and proof routes:
+`ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md` and
+`ideas/open/89_aarch64_memory_store_retargeting_owner.md`. No idea was created
+for publication, prepared-wrapper, identity-validation, prepared-access
+matching, or `va_list` routes because Step 3 rejected those boundaries.
+No `memory.cpp`, `memory.hpp`, `plan.md`, or active source-idea edits were made.
 
 ### Step 2 Classification Clusters
 
@@ -337,13 +338,41 @@ store-retargeting subowners remain potentially viable. No `memory.cpp`,
   all require concrete missing target-neutral facts before shared relocation;
   Step 2 found none.
 
+### Step 4 Follow-Up Ideas Created
+
+- Created:
+  `ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md`.
+  Scope: a narrow AArch64 memory-local owner for frame-slot lookup/address
+  formatting, fixed-slot base policy, offset folding, and materialization
+  lines. Proof route: focused frame-slot local load/store, prepared frame-slot
+  operand, materialized address emission, and fixed-slot frame-pointer policy
+  coverage plus affected backend build proof.
+- Created:
+  `ideas/open/89_aarch64_memory_store_retargeting_owner.md`. Scope: a narrow
+  AArch64 memory-local owner for pointer store-value/address retargeting,
+  emitted-scalar retargeting, local-address store-value rewrites, and
+  stack-layout application to memory records. Proof route: focused
+  pointer-address store, materialized-address, emitted-scalar, local-address,
+  and stack-layout rewrite coverage plus affected backend build proof.
+- No idea created for the local AArch64 memory publication owner. Step 3 found
+  that such a route would reopen ideas 80 and 81 unless separately reframed as
+  an internal organization-only cleanup; current evidence treats the helpers as
+  intentional owner-local memory lowering.
+- No idea created for the prepared-record builder candidate. Step 3 found that
+  a standalone owner would recreate the prepared-wrapper surface contracted by
+  idea 84; current evidence treats record construction as justified memory
+  ownership.
+- No idea created for identity validation, prepared memory access matching, or
+  `va_list` memory handling. Step 3 found no missing target-neutral fact or
+  stable non-memory owner boundary.
+
 ## Suggested Next
 
-Proceed to Step 4 by creating narrow follow-up ideas only for the surviving
-frame-slot/address materialization and store-retargeting candidates if the
-supervisor accepts their boundaries and proof routes as concrete. Do not create
-ideas for publication, prepared-wrapper, identity-validation, prepared-access
-matching, or `va_list` clusters from the current evidence.
+Proceed to Step 5 by preparing the audit close summary. Name the two created
+follow-up ideas, summarize the intentionally target-local clusters, preserve
+the Step 3 rejected-route rationale, and state that no backend tests were
+required for the audit-only lifecycle slice because implementation files were
+not touched.
 
 ## Watchouts
 
@@ -363,9 +392,14 @@ matching, or `va_list` clusters from the current evidence.
 
 ## Proof
 
-Ran the delegated audit-only proof command:
-`printf 'Audit-only Step 3; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$|^plan\.md$|^ideas/'; then printf 'ERROR: non-todo file changed during audit-only closed-idea comparison packet.\n' >> test_after.log; exit 1; fi`
+Step 4 proof note: lifecycle-only source-idea creation plus `todo.md` update;
+no implementation files were touched, so no backend tests were required.
 
-Result: passed. `test_after.log` contains the audit-only note and only
-`todo.md` in the diff list, confirming `memory.cpp`, `memory.hpp`, `plan.md`,
-and `ideas/` were not modified.
+Lifecycle-only proof: created follow-up source ideas
+`ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md` and
+`ideas/open/89_aarch64_memory_store_retargeting_owner.md`, then updated this
+`todo.md` packet summary. No implementation files were touched, so backend
+tests were not required for this slice.
+
+Result: `git diff --check` passed for the lifecycle-only idea creation and
+`todo.md` update.
