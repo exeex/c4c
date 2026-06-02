@@ -1,21 +1,19 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/86_aarch64_memory_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Create Narrow Follow-Up Ideas Where Justified
+Current Step ID: 5
+Current Step Title: Prepare Audit Close Summary
 
 ## Just Finished
 
-Completed Step 4, "Create Narrow Follow-Up Ideas Where Justified", by creating
-follow-up source ideas only for the two Step 3 survivors with concrete
-memory-local boundaries and proof routes:
-`ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md` and
-`ideas/open/89_aarch64_memory_store_retargeting_owner.md`. No idea was created
-for publication, prepared-wrapper, identity-validation, prepared-access
-matching, or `va_list` routes because Step 3 rejected those boundaries.
-No `memory.cpp`, `memory.hpp`, `plan.md`, or active source-idea edits were made.
+Completed Step 5, "Prepare Audit Close Summary", by recording a close-ready
+audit summary for the memory owner subresponsibility audit. The summary names
+the two created follow-up ideas, preserves the intentionally target-local
+memory clusters, records rejected candidates with Step 2/Step 3 evidence, and
+states that no backend tests were required because this packet changed only
+`todo.md`.
 
 ### Step 2 Classification Clusters
 
@@ -366,17 +364,91 @@ No `memory.cpp`, `memory.hpp`, `plan.md`, or active source-idea edits were made.
   `va_list` memory handling. Step 3 found no missing target-neutral fact or
   stable non-memory owner boundary.
 
+### Step 5 Audit Close Summary
+
+Close-ready outcome: the audit satisfied the source idea by producing a
+function-level inventory, classifying the major `memory.cpp`/`memory.hpp`
+responsibility clusters, comparing candidates against recent closed owner
+boundaries, and creating follow-up ideas only for concrete memory-local
+subowners with bounded proof routes.
+
+Follow-up ideas created:
+
+- `ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md`:
+  created for the surviving frame-slot/address materialization boundary. It
+  owns only AArch64 memory-local frame-slot lookup/address formatting,
+  fixed-slot base policy, offset folding, and scratch materialization lines
+  while continuing to consume prepared address/value-home/storage authority.
+- `ideas/open/89_aarch64_memory_store_retargeting_owner.md`: created for the
+  surviving store-retargeting boundary. It owns only memory-record rewrites
+  around pointer store-value/address retargeting, emitted-scalar reuse,
+  local-address store-value rewrites, and stack-layout application without
+  publishing shared dispatch, BIR, storage, or register authority.
+
+Clusters intentionally staying target-local in memory:
+
+- Scalar and wide memory emission stays in `memory.cpp` because it owns AArch64
+  load/store opcode and mnemonic selection, selected memory effects,
+  immediate-store support, ABI-sensitive result retargeting, and MIR
+  machine-record emission.
+- Frame-slot/addressing broadly stays target-local because AArch64 base policy,
+  encodable-offset legality, scratch materialization, and register/address
+  spelling are target facts. Only the narrow memory-local materialization owner
+  was split into a follow-up idea; shared BIR/prealloc relocation was rejected.
+- Stack-source, store-local, and store-global publication helpers stay
+  target-local because the evidence is AArch64 scratch choice, scalar
+  conversion emission, pointer-base materialization, global-symbol address
+  spelling, and memory record emission. Ideas 80 and 81 make this current
+  memory ownership intentional rather than a regression.
+- Store-retargeting stays memory-local; the follow-up idea is only a private
+  AArch64 memory subowner for record rewrites and does not create shared
+  storage/register/dispatch authority.
+- Identity validation and prepared memory access matching stay in memory
+  because the audit found no missing target-neutral identity fact or stable
+  non-memory owner boundary.
+- Prepared-record construction stays in memory because it constructs selected
+  memory operands/instructions, diagnostics, identity attachments, and machine
+  records from already-prepared facts; extracting a standalone prepared-record
+  builder would recreate the wrapper surface contracted by idea 84.
+- Diagnostics and error spelling stay in memory because the spellings are tied
+  to memory operand support kinds, prepared-memory errors, and diagnostics
+  emitted by memory lowering entry points.
+- Variadic `va_list` memory handling stays in memory because it combines ABI
+  field decoding, field address construction, cursor update emission, and
+  memory-record construction with no stable separate owner.
+
+Rejected candidates and evidence:
+
+- Local AArch64 memory publication owner was rejected as a Step 4 follow-up
+  because it would reopen dispatch publication and edge-copy owner decisions
+  from ideas 80 and 81 unless later reframed as internal organization-only
+  cleanup. Current evidence says the helpers are consumer-owned memory
+  lowering.
+- Prepared-record builder extraction was rejected because idea 84 already
+  contracted redundant prepared wrapper surfaces; remaining prepared record
+  construction owns selected memory records and diagnostics at the memory
+  boundary.
+- Shared identity-validation and prepared-memory-access matching routes were
+  rejected because Step 2 found no missing target-neutral fact to move into a
+  shared owner.
+- `va_list` field handling was rejected because the cluster mixes ABI layout,
+  address construction, cursor updates, and memory-record emission.
+- Generic storage/register/diagnostic helper publication was rejected by idea
+  83 because the audit found target-local helper shapes, not target-neutral
+  authority.
+
+Backend tests: none required. Step 5 was audit-only and changed no
+implementation files; this packet changed only `todo.md`.
+
 ## Suggested Next
 
-Proceed to Step 5 by preparing the audit close summary. Name the two created
-follow-up ideas, summarize the intentionally target-local clusters, preserve
-the Step 3 rejected-route rationale, and state that no backend tests were
-required for the audit-only lifecycle slice because implementation files were
-not touched.
+Supervisor should route this complete audit state to the plan owner for
+lifecycle close/deactivation decision. No implementation packet is pending
+under this runbook.
 
 ## Watchouts
 
-- This is audit-only; do not edit implementation files.
+- This was audit-only; implementation files remain untouched.
 - Ideas 80 and 81 make publication growth in `memory.cpp` intentional
   owner-local memory lowering, not a regression by itself.
 - Idea 84 blocks prepared-record-builder extraction when the route recreates
@@ -386,20 +458,14 @@ not touched.
 - Idea 83 allows memory-local helper organization but blocks publishing generic
   storage/register/diagnostic helper authority without target-neutral proof.
 - Do not turn line-count reduction or vague shared-authority speculation into
-  implementation scope.
-- Step 3 found no new shared-owner candidate; surviving candidates remain
-  target-local and memory-local.
+  implementation scope when routing the follow-up ideas.
+- Step 3 found no new shared-owner candidate; surviving candidates are
+  target-local and memory-local follow-up ideas.
 
 ## Proof
 
-Step 4 proof note: lifecycle-only source-idea creation plus `todo.md` update;
-no implementation files were touched, so no backend tests were required.
+Step 5 proof command:
+`printf 'Audit-only Step 5; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$|^plan\.md$|^ideas/'; then printf 'ERROR: non-todo file changed during audit close-summary packet.\n' >> test_after.log; exit 1; fi`
 
-Lifecycle-only proof: created follow-up source ideas
-`ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md` and
-`ideas/open/89_aarch64_memory_store_retargeting_owner.md`, then updated this
-`todo.md` packet summary. No implementation files were touched, so backend
-tests were not required for this slice.
-
-Result: `git diff --check` passed for the lifecycle-only idea creation and
-`todo.md` update.
+Expected proof scope: audit-only `todo.md` update. No backend tests were
+required because no implementation files changed.
