@@ -1,56 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/88_aarch64_memory_frame_slot_address_materialization_owner.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Check Memory-Backed f128 and Variadic Consumers
+Current Step ID: 5
+Current Step Title: Tighten Surface and Validate Acceptance
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 audited the memory-backed f128 and variadic consumers after the
-frame-slot address owner extraction, without implementation edits.
+Step 5 audited the final AArch64 frame-slot address owner surface and validated
+acceptance, without implementation edits.
 
-`src/backend/mir/aarch64/codegen/f128.cpp` consumes
-`make_prepared_frame_slot_memory_operand` and
-`materialize_frame_slot_memory_address_lines` through
-`frame_slot_address.hpp`. The audit found the f128 transport policy, ABI
-validation, memory-backed carrier checks, q-register scratch choice, reserved
-address scratch choice, and non-frame-slot `memory_address` formatting still
-owned by `f128.cpp`/generic memory helpers.
+`src/backend/mir/aarch64/codegen/memory.hpp` no longer exposes frame-slot
+lookup, prepared frame-slot operand construction, frame-slot address spelling,
+fixed-slot base selection, or frame-slot address materialization helpers. Its
+remaining `register_indirect_address` declaration is generic register-offset
+formatting used by non-frame-slot memory consumers.
 
-`src/backend/mir/aarch64/codegen/variadic.cpp` consumes only
-`fixed_slots_use_frame_pointer` from `frame_slot_address.hpp`. The audit found
-`va_list` field discovery/addressing, cursor/progression updates, aggregate
-field-copy lowering, stack-address materialization, and register-indirect
-formatting still owned by the variadic lowering path.
+`src/backend/mir/aarch64/codegen/frame_slot_address.hpp` exposes the narrow
+AArch64 memory-local owner surface for frame-slot address spelling, fixed-slot
+frame-pointer base policy, prepared frame-slot/stack-object fact consumption,
+prepared local/frame-slot access helpers, prepared frame-slot `MemoryOperand`
+construction, and frame-slot address materialization lines. The audit found no
+temporary public declaration or boundary leak requiring code edits.
+
+`src/backend/CMakeLists.txt` registers
+`mir/aarch64/codegen/frame_slot_address.cpp`. Direct consumers include memory
+lowering, f128 transport, variadic lowering, dispatch/publication/value
+materialization paths, calls/globals/cast/fp/ALU helpers, and edge-copy paths.
+Generic memory formatting remains in `memory.*`; f128 transport policy and
+variadic `va_list`/aggregate-copy responsibilities remain outside the owner.
 
 ## Suggested Next
 
-Delegate Step 5 as the next ordered packet. Validate the broader owner boundary
-or route closure criteria the supervisor selects, using the Step 4 audit as the
-handoff that the touched f128 and variadic consumers do not need implementation
-changes.
+Lifecycle close is ready for supervisor/plan-owner review if the supervisor
+accepts this Step 5 audit and the passing proof in `test_after.log`.
 
 ## Watchouts
 
-- Do not move f128 transport policy, memory-backed carrier validation, ABI
-  register selection, scratch choice, generic `memory_address`, variadic
-  `va_list` field addressing, cursor/progression updates, aggregate copy
-  lowering, or register-indirect formatting into `frame_slot_address.*`.
-- `f128.cpp` intentionally still includes both `frame_slot_address.hpp` and
-  `memory.hpp`: the former owns prepared frame-slot helpers and the latter owns
-  generic memory operand formatting.
-- `variadic.cpp` intentionally uses the new owner only for
-  `fixed_slots_use_frame_pointer`; its local stack-address helper still
-  materializes `sp`-relative helper addresses for variadic lowering.
+- `find_stack_object` remains public in the owner because memory lowering uses
+  it to consume prepared stack-object facts next to frame-slot destinations; it
+  does not move stack-object planning or source-authority decisions into the
+  owner.
+- `memory.hpp` still intentionally exposes generic memory helper declarations
+  such as `memory_address`, selected memory record construction/lowering, and
+  `register_indirect_address`.
 
 ## Proof
 
-Ran the supervisor-selected Step 4 proof exactly:
+Ran the supervisor-selected Step 5 proof exactly:
 
 ```sh
-cmake --build build --target backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test c4cll && ctest --test-dir build -R '^(backend_aarch64_(machine_printer|instruction_dispatch)|backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy)$' --output-on-failure > test_after.log
+cmake --build build --target backend_aarch64_memory_operand_records_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_memory_operand_contract_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test c4cll && ctest --test-dir build -R '^(backend_aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract|machine_printer|instruction_dispatch)|backend_codegen_route_aarch64_(variadic_aggregate_overflow_byte_copy|dynamic_stack_fixed_slot_uses_fp_anchor)|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log
 ```
 
-Result: build passed and CTest passed 3/3. Proof log: `test_after.log`.
+Result: build passed and CTest passed 8/8. Proof log: `test_after.log`.
