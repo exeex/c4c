@@ -1,5 +1,12 @@
 # AArch64 Call-Boundary Aggregate-Lane Record Schema Cleanup
 
+Closed: The active runbook completed Steps 1-5. The implementation exposes the
+aggregate-lane publication shape through `AggregateRegisterLanePublicationView`,
+routes construction and printer consumption through that view, preserves
+`calls.cpp` ABI/prepared-source ownership and `machine_printer.cpp` final
+printing validation, and retains unchanged call-boundary behavior. Close guard
+proof compared matching focused 7/7 before and after logs with no new failures.
+
 ## Goal
 
 Make the aggregate-lane shape carried by `CallBoundaryMoveInstructionRecord`
