@@ -3,16 +3,178 @@
 Status: Active
 Source Idea Path: ideas/open/86_aarch64_memory_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Build The Memory Function Inventory
+Current Step ID: 2
+Current Step Title: Classify Responsibility Clusters
 
 ## Just Finished
 
-Completed Step 1, "Build The Memory Function Inventory", by using
-`c4c-clang-tool-ccdb function-signatures` / `list-symbols` on
-`src/backend/mir/aarch64/codegen/memory.cpp`, cross-checking
-`src/backend/mir/aarch64/codegen/memory.hpp`, and targeted text reads for
-helper responsibilities the AST cannot summarize.
+Completed Step 2, "Classify Responsibility Clusters", by grouping the Step 1
+inventory into the plan categories and separating intentionally target-local
+memory ownership from candidate local subowners. No `memory.cpp`,
+`memory.hpp`, `plan.md`, or source-idea edits were made.
+
+### Step 2 Classification Clusters
+
+- `target-local-memory-emission`: `lower_memory_instruction`,
+  `lower_f128_transport_instruction`, `lower_i128_transport_instruction`,
+  `make_byte_immediate_store_machine_instruction`,
+  `make_load_memory_instruction_record`, `make_store_memory_instruction_record`,
+  `machine_opcode_from_memory_instruction`, `effect_from_memory_operand`,
+  `memory_effects_from_operands`, `memory_side_effects`,
+  `memory_selection_status`, `is_supported_memory_base`,
+  `is_supported_immediate_store_width`, `is_immediate_store_value`,
+  `symbol_memory_has_identity`, `record_memory_result`,
+  `retarget_memory_result_to_prepared_home`, `make_bir_machine_instruction`,
+  `scalar_load_mnemonic`, `scalar_load_mnemonic_for_width`,
+  `scalar_store_mnemonic`, and `fixed_formal_scalar_store_mnemonic`. Stays in
+  memory because these helpers choose AArch64 load/store opcodes, mnemonics,
+  address support, selected effects, ABI-sensitive result retargeting, and MIR
+  machine-record emission.
+- `frame-slot-addressing`: `register_indirect_address`,
+  `fixed_slots_use_frame_pointer`, `frame_slot_address` overloads,
+  `find_frame_slot`, `find_stack_object`, `prepared_frame_slot_load_address`,
+  `prepared_local_load_offset`, `make_prepared_frame_slot_memory_operand`,
+  `materialize_frame_slot_memory_address_lines`,
+  `make_frame_slot_operand_from_stack_slot`,
+  `resolve_frame_slot_memory_offset`, `apply_frame_pointer_base_policy`,
+  `memory_address`, and `PreparedLocalAddressStoreValue`-related stack-layout
+  rewrite helpers. Mostly stays in memory because the boundary includes AArch64
+  base-register policy, immediate-offset legality, scratch materialization, and
+  textual register spelling. The stable candidate-local-subowner subset is a
+  local memory frame-slot/address materialization owner, but only inside the
+  AArch64 memory codegen area, not shared BIR/prealloc authority.
+- `stack-source-publication`: `emit_same_width_i32_stack_source_publication`,
+  `make_load_result_stack_publication_scratch`,
+  `find_unique_load_result_stack_source_publication`,
+  `dispatch_publication_scalar_type_size_bytes`,
+  `prepared_or_emitted_store_value_register`,
+  `prepared_store_local_access`, `emit_prepared_pointer_value_load_to_register`,
+  `lower_stack_homed_pointer_value_load_publication`,
+  `prepared_recovered_narrow_store_source`,
+  `prepared_store_source_producer` and its completeness helpers,
+  `emit_scalar_conversion_cast_to_register`,
+  `plan_store_local_source_publication`,
+  `plan_stack_homed_pointer_store_writeback`,
+  `plan_pointer_base_plus_offset_store_local_publication`,
+  `plan_fixed_formal_store_local_publication`,
+  `lower_fixed_formal_store_local_publication`,
+  `lower_store_local_value_publication`,
+  `lower_stack_homed_pointer_store_writeback`,
+  `prepared_global_symbol_from_link_name`,
+  `emit_global_symbol_address_to_register`,
+  `find_prepared_pointer_base_plus_offset_materialization`,
+  `emit_pointer_base_plus_offset_to_register`,
+  `lower_pointer_base_plus_offset_store_local_publication`,
+  `prepared_store_global_addressing`,
+  `find_prepared_store_global_stack_publication_home`,
+  `lower_store_global_value_publication_from_plan`,
+  `lower_pending_store_global_stack_value_publications`,
+  `lower_published_store_global_stack_value_publication`,
+  `future_store_local_stack_value_publication_covers_instruction`, and
+  `lower_store_global_value_publication`. Intentionally target-local for now:
+  evidence is AArch64 scratch choice, scalar conversion emission,
+  pointer-base materialization, global-symbol address spelling, and recent
+  dispatch/edge-copy contraction history. Candidate-local-subowner boundary:
+  a local memory publication planner/emitter could own store-local/store-global
+  publication planning plus emission while remaining under AArch64 memory
+  codegen; Step 3 must check this against closed ideas 80 and 81 before any
+  follow-up idea.
+- `store-retargeting`: `store_local_uses_pointer_value_address`,
+  `retarget_pointer_store_value_to_materialized_address`,
+  `retarget_store_address_to_materialized_pointer`,
+  `retarget_pointer_store_value_to_emitted_scalar`,
+  `retarget_store_local_value_to_emitted_scalar`,
+  `find_prepared_local_address_store_value`,
+  `rewrite_local_address_store_value`, and
+  `apply_stack_layout_to_memory_record`. Stays in memory unless split as a
+  local subowner because the helpers rewrite memory operands around prepared
+  frame-slot addresses, pointer-value materialization, and emitted scalar
+  registers. Candidate-local-subowner boundary: local store-retargeting helpers
+  with no public authority beyond memory-owned record rewrites.
+- `identity-validation`: `prepared_named_value_id`,
+  `find_storage_plan_value`, `indexed_value_home_id`,
+  `indexed_value_home_id_is_ambiguous`, `require_indexed_value_home_id`,
+  `named_value_id`, `validate_structured_memory_address_facts`,
+  `validate_unstructured_memory_instruction_facts`,
+  `validate_memory_instruction_facts`,
+  `global_symbol_id_from_address_or_inst`,
+  `validate_memory_base_identity`, `apply_load_identity`, and
+  `apply_store_identity`. Stays in memory because it compares prepared facts
+  against selected memory operands and memory instruction identity. Shared
+  relocation is `needs-shared-authority-evidence` until a missing
+  target-neutral identity fact is named.
+- `prepared-record-construction`: `memory_operand_record_error`,
+  `memory_instruction_record_error`,
+  `make_memory_record_from_prepared_access` overloads,
+  `scalar_fp_register_view`, `register_class_from_bank`,
+  `occupied_register_views`, `occupied_register_references`,
+  `make_prepared_register_operand`, `make_value_home_register_operand`,
+  `make_prepared_pointer_value_base_register`,
+  `resolve_pointer_value_base_register`,
+  `decode_prepared_load_result_value_storage`,
+  `decode_prepared_stored_value_storage`, `prepared_memory_access`,
+  `prepared_memory_access_matches_instruction`, `make_memory_operand`,
+  `make_memory_instruction`, all `make_prepared_memory_operand_record`
+  overloads, all `make_prepared_load_memory_instruction_record` overloads, all
+  `make_prepared_store_memory_instruction_record` overloads, and local storage
+  structs `PreparedPointerValueBaseRegisterResult`,
+  `PreparedLoadResultValueStorage`, `PreparedStoredValueStorageKind`, and
+  `PreparedStoredValueStorage`. Stays in memory because these helpers construct
+  memory-specific MIR records from prepared AArch64 storage facts and preserve
+  the prepared-wrapper contraction boundary from idea 84. Candidate-local
+  subowner would need to be an AArch64 memory prepared-record builder, not a
+  shared prepared-wrapper resurrection.
+- `diagnostics-and-error-spelling`: `append_memory_diagnostic`,
+  `memory_base_kind_name`, `memory_operand_support_kind_name`,
+  `memory_instruction_kind_name`, `prepared_memory_operand_record_error_name`,
+  `memory_error_message`, `f128_transport_error_message`, and
+  `i128_transport_error_message`. Stays in memory because spellings are tied to
+  memory operand support kinds, prepared-memory errors, and diagnostics emitted
+  by the memory lowering entry points.
+- `target-local-memory-emission` plus `frame-slot-addressing` special case:
+  `parse_va_list_field_suffix`, `scalar_type_size_bytes`,
+  `find_va_list_field_address`, `make_va_list_field_memory_operand`,
+  `make_va_list_field_load_memory_instruction_record`,
+  `make_va_list_field_store_memory_instruction_record`,
+  `va_list_field_cursor_update_producer`,
+  `make_va_list_field_cursor_update_machine_instruction`, and
+  `VaListFieldAddress`. Stays in memory because the cluster combines ABI
+  layout knowledge, field-specific address formation, cursor update emission,
+  and memory-record construction; no stable non-memory owner boundary is visible.
+
+### Candidate Local Subowners
+
+- Local AArch64 frame-slot/address materialization owner: stable boundary would
+  own frame-slot lookup/address formatting, base policy, offset folding, and
+  materialization lines for memory operands. It must stay target-local because
+  it depends on `sp`/`x29`, AArch64 immediate-offset legality, and scratch
+  materialization.
+- Local AArch64 memory publication owner: stable boundary would own
+  stack-source/store-local/store-global publication planning and emission,
+  including pointer-base-plus-offset materialization. It must be checked against
+  ideas 80 and 81 before promotion because the visible evidence also supports
+  intentional stay-in-memory treatment.
+- Local AArch64 store-retargeting owner: stable boundary would own pointer
+  store-value/address retargeting and local-address store rewrites. It should
+  remain local to memory records and not claim shared dispatch or BIR authority.
+- Local AArch64 prepared-record builder owner: possible boundary around
+  prepared operand/instruction record construction and prepared storage decode.
+  Step 3 must verify this does not undo idea 84's prepared-wrapper contraction.
+
+### Needs Shared Authority Evidence
+
+- Identity validation has no current shared-owner route: moving it out of
+  memory would require a named target-neutral identity fact that memory lacks
+  today.
+- Prepared memory access matching has no current shared-owner route: it is tied
+  to BIR memory instructions only after AArch64 memory access selection is
+  being prepared.
+- Variadic `va_list` memory handling has no separate owner boundary: it mixes
+  ABI field decoding, address construction, cursor updates, and memory record
+  emission.
+- Dispatch/publication helpers must not be moved out solely to reduce
+  `memory.cpp`; current evidence says any follow-up must stay under an
+  AArch64-memory-local subowner and survive Step 3 closed-idea comparison.
 
 ### Public Surface Inventory From `memory.hpp`
 
@@ -100,9 +262,10 @@ helper responsibilities the AST cannot summarize.
 
 ## Suggested Next
 
-Proceed to Step 2 by grouping the inventoried functions into the plan's
-responsibility categories and deciding which clusters are intentionally
-target-local versus candidate local subowners.
+Proceed to Step 3 by comparing the candidate local subowners above against
+closed ideas 70, 80, 81, 83, and 84. Reject candidates that merely reopen prior
+dispatch publication, edge-copy, local-helper, prepared-address, or
+prepared-wrapper contraction decisions.
 
 ## Watchouts
 
@@ -111,18 +274,17 @@ target-local versus candidate local subowners.
   81.
 - Do not turn line-count reduction or vague shared-authority speculation into
   implementation scope.
-- Obvious later comparison markers are present above as `[dispatch publication]`,
-  `[edge-copy]`, `[prepared address]`, `[local-helper]`, and
-  `[prepared-wrapper history]`.
-- The header AST query produced useful declarations but hit an include-path
-  error on `ast.hpp`, so the public surface was cross-checked by targeted
-  `memory.hpp` text read.
+- Step 2 found only local-subowner candidates, not shared-owner candidates; any
+  proposed split should remain target-local unless Step 3 uncovers stronger
+  evidence.
+- Identity validation, prepared memory access matching, and variadic `va_list`
+  handling are explicitly marked `needs-shared-authority-evidence`.
 
 ## Proof
 
 Ran the delegated audit-only proof command:
-`printf 'Audit-only Step 1; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$'; then printf 'ERROR: implementation memory files changed during audit-only packet.\n' >> test_after.log; exit 1; fi`
+`printf 'Audit-only Step 2; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$|^plan\.md$|^ideas/'; then printf 'ERROR: non-todo file changed during audit-only classification packet.\n' >> test_after.log; exit 1; fi`
 
 Result: passed. `test_after.log` contains the audit-only note and only
-`todo.md` in the diff list, confirming `memory.cpp` and `memory.hpp` were not
-modified.
+`todo.md` in the diff list, confirming `memory.cpp`, `memory.hpp`, `plan.md`,
+and `ideas/` were not modified.
