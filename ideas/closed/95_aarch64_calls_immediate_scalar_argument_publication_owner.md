@@ -74,3 +74,58 @@ not a new source-publication authority.
   unexamined.
 - The route weakens or bypasses `lower_before_call_immediate_binding` checks
   instead of keeping it as the consumer of prepared immediate argument facts.
+
+## Closure Note
+
+Closed after implementation in:
+
+- `bb3d889d7` (`Introduce AArch64 immediate scalar publication owner`)
+- `42b97485f` (`Document immediate publication routing boundary`)
+
+The route introduced the local
+`ImmediateScalarCallArgumentPublicationOwner` in
+`src/backend/mir/aarch64/codegen/calls.cpp`. The owner consumes prepared
+destination and source-home facts for same-block immediate cast call arguments
+and owns the calls-side immediate-publication rendering boundary: same-block
+cast lookup, immediate integer bit extraction, GP and FP destination register
+views, FP immediate scratch materialization, inline-asm line construction, and
+immediate-publication instruction construction.
+
+Intentionally outside this route:
+
+- `lower_before_call_immediate_binding` remains the prepared immediate consumer
+  and keeps authority for scalar literal lookup, destination facts, ordinary
+  register immediate moves, synthetic `CallBoundaryMove` construction, and
+  stack-slot immediate stores.
+- `make_scalar_call_argument_immediate` remains the generic immediate operand
+  adapter used by ordinary call-boundary and value moves.
+- `make_call_boundary_move_instruction` remains generic record construction
+  for all call-boundary move source kinds.
+- Aggregate byval transport, f128 carriers, ordinary before-call moves,
+  generic scalar materialization, indirect callee materialization, and edge
+  publication remain outside this immediate-publication owner.
+
+No remaining open ideas from the calls subowner audit chain remain. The prior
+follow-ups were completed and closed as:
+
+- `ideas/closed/93_aarch64_calls_stack_frame_slot_operand_owner.md`
+- `ideas/closed/94_aarch64_calls_f128_carrier_operand_owner.md`
+
+Proof:
+
+- Focused before/after scope passed 7/7 before and 7/7 after.
+- Close-time regression guard passed with non-decreasing pass-count mode:
+
+```bash
+cmake --build --preset default
+ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result)$' --output-on-failure > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+The supervisor also reported broader validation on June 2, 2026:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+That broader backend scope passed 169/169.
