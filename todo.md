@@ -1,17 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/92_aarch64_calls_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Responsibility Clusters
+Current Step ID: 4
+Current Step Title: Close Audit Route
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by classifying the Step 1 calls-owner inventory
-into responsibility clusters and route outcomes. The Step 1 inventory is
-retained below so Step 3 can draft scoped follow-up ideas without rereading the
-full owner.
+Completed `plan.md` Step 3 by drafting scoped follow-up ideas for the three
+accepted AArch64-local calls subowner candidates from Step 2.
+
+Generated follow-up ideas:
+
+- `ideas/open/93_aarch64_calls_stack_frame_slot_operand_owner.md` for the
+  stack/frame-slot memory-source operand owner.
+- `ideas/open/94_aarch64_calls_f128_carrier_operand_owner.md` for the f128
+  carrier and q-register operand owner.
+- `ideas/open/95_aarch64_calls_immediate_scalar_argument_publication_owner.md`
+  for immediate scalar call-argument publication.
+
+Rejected or deferred clusters:
+
+- Prepared call authority consumption: intentionally target-local prepared
+  consumer/diagnostic code unless a separate idea names a missing shared fact.
+- Direct and indirect call record emission: intentionally target-local AArch64
+  ABI call spelling and machine-record construction.
+- Call-boundary move and ABI-binding records: intentionally target-local record
+  owner constrained by ideas 84, 87, and 91.
+- Before-call move bundle lowering: deferred; it mixes prepared move-bundle and
+  source facts with AArch64 emission and needs shared-authority evidence before
+  any broad extraction.
+- After-call, return, value, and preservation lowering: deferred; prepared
+  result/preservation facts and dispatch state mutation need a traced proof
+  route before extraction.
+- Aggregate byval lane publication: intentionally target-local under ideas 75,
+  90, and 91 unless a future evidence idea proves a new boundary.
+- Indirect callee materialization: intentionally target-local; scratch choice
+  and concrete `csel`/materialization spelling belong in calls while source
+  facts remain prepared.
+- Scalar producer dispatch bridge: deferred; it crosses dispatch scalar state,
+  prepared publication producers, and AArch64 address/materialization emission.
+- Result recording and late publication: deferred; result/preservation facts
+  and scalar-state repair need shared-authority evidence before extraction.
+- Incoming, variadic, and fixed-frame call metadata: intentionally target-local
+  AArch64 call metadata and frame policy.
+
+The Step 1 inventory and Step 2 classifications are retained below so Step 4
+can close the audit route without rereading the full owner.
+
+### Retained Step 1/2 Audit Record
 
 ### calls.hpp public surface
 
@@ -367,16 +405,16 @@ full owner.
 
 ## Suggested Next
 
-Execute Step 3 by drafting scoped follow-up ideas only for the three accepted
-candidate local subowners:
-`stack-and-frame-slot memory/source operands`, `f128 carrier handling`, and
-`immediate scalar argument publication`. Leave evidence-first or target-local
-clusters in `todo.md` unless a follow-up idea can name concrete scope, proof,
-and reject signals.
+Execute Step 4 by closing the audit route: confirm only lifecycle/audit files
+changed, summarize the three generated follow-up ideas, and close
+`ideas/open/92_aarch64_calls_owner_subresponsibility_audit.md` only if the
+supervisor accepts the audit proof and lifecycle close criteria.
 
 ## Watchouts
 
 - This route is audit-only; do not edit implementation files.
+- The generated follow-up ideas are implementation ideas for later activation;
+  do not implement them in this audit route.
 - The obvious boundaries are not line-count boundaries: before-call lowering,
   aggregate byval lane publication, indirect callee materialization, and
   result/preservation republication all mix prepared-source consumption with
@@ -394,6 +432,5 @@ and reject signals.
 
 ## Proof
 
-Audit-only packet; no build or tests required by the delegated proof because no
-implementation files were touched. `git diff --name-only` was run before
-handoff and returned only `todo.md`.
+Audit-only lifecycle packet; no build or tests required because no
+implementation files were touched.
