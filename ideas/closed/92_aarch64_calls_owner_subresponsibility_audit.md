@@ -106,3 +106,50 @@ retargeting, or ABI binding records.
   after-call result, preservation, aggregate transport, or publication facts
   locally under new names.
 
+## Closure Note
+
+Closed after an audit-only route. No implementation files were edited.
+
+Generated follow-up ideas:
+
+- `ideas/open/93_aarch64_calls_stack_frame_slot_operand_owner.md` for a local
+  stack/frame-slot memory-source operand owner.
+- `ideas/open/94_aarch64_calls_f128_carrier_operand_owner.md` for local f128
+  carrier and q-register operand construction.
+- `ideas/open/95_aarch64_calls_immediate_scalar_argument_publication_owner.md`
+  for local immediate scalar call-argument publication.
+
+Intentionally target-local clusters:
+
+- Prepared call authority consumption and diagnostics remain in `calls.cpp`
+  unless a future idea names a missing shared target-neutral fact.
+- Direct and indirect call record emission remains the AArch64 ABI call
+  spelling and machine-record construction owner.
+- Call-boundary move and ABI-binding record construction remains local under
+  the constraints from ideas 84, 87, and 91.
+- Aggregate byval lane publication remains local under ideas 75, 90, and 91
+  unless a future evidence idea proves a new boundary.
+- Indirect callee materialization remains local because scratch choice and
+  concrete `csel`/materialization spelling are AArch64 emission details.
+- Incoming, variadic, and fixed-frame call metadata remains local AArch64 call
+  metadata and frame policy.
+
+Deferred clusters that need shared-authority evidence before implementation:
+
+- Before-call move bundle lowering, because it mixes prepared move-bundle and
+  source facts with AArch64 emission.
+- After-call, return, value, and preservation lowering, because prepared
+  result/preservation facts and dispatch state mutation need a traced proof
+  route.
+- Scalar producer dispatch bridge, because it crosses dispatch scalar state,
+  prepared publication producers, and AArch64 address/materialization emission.
+- Result recording and late publication, because result/preservation facts and
+  scalar-state repair need shared-authority evidence before extraction.
+
+Close proof:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_prepare_frame_stack_call_contract|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor)$' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+The regression guard passed with 7 passed, 0 failed before and after.
