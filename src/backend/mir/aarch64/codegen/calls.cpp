@@ -945,7 +945,7 @@ F128CarrierCallOperandOwner::q_register_operand(
         module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
         context,
         instruction_index,
-        "AArch64 binary128 call-boundary source carrier is not an FP/SIMD register");
+        "AArch64 binary128 call-boundary carrier is not an FP/SIMD register");
     return std::nullopt;
   }
   const auto viewed = abi::fp_simd_register(parsed->index, abi::RegisterView::Q);
@@ -955,7 +955,7 @@ F128CarrierCallOperandOwner::q_register_operand(
         module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
         context,
         instruction_index,
-        "AArch64 binary128 call-boundary source carrier could not be re-viewed as q-register");
+        "AArch64 binary128 call-boundary carrier could not be re-viewed as q-register");
     return std::nullopt;
   }
   return RegisterOperand{
@@ -4259,22 +4259,32 @@ find_immediate_argument_in_call_plan(
         diagnostics,
         context,
         instruction_index);
-    auto destination = make_register_operand_from_prepared_authority(
-        selected_scalar_fpr_result_move &&
-                result_plan->destination_register_placement.has_value()
-            ? std::optional<std::string>{}
-            : destination_home->register_name,
-        result_plan->destination_register_placement,
-        result_plan->destination_register_bank,
-        RegisterOperandRole::CallAbi,
-        destination_home->value_id,
-        destination_home->value_name,
-        result_plan->destination_contiguous_width,
-        result_plan->destination_occupied_register_names,
-        expected_view,
-        diagnostics,
-        context,
-        instruction_index);
+    auto destination =
+        selected_f128_result_move
+            ? F128CarrierCallOperandOwner::q_register_operand(
+                  *destination_f128_carrier,
+                  RegisterOperandRole::CallAbi,
+                  destination_home->value_id,
+                  destination_home->value_name,
+                  diagnostics,
+                  context,
+                  instruction_index)
+            : make_register_operand_from_prepared_authority(
+                  selected_scalar_fpr_result_move &&
+                          result_plan->destination_register_placement.has_value()
+                      ? std::optional<std::string>{}
+                      : destination_home->register_name,
+                  result_plan->destination_register_placement,
+                  result_plan->destination_register_bank,
+                  RegisterOperandRole::CallAbi,
+                  destination_home->value_id,
+                  destination_home->value_name,
+                  result_plan->destination_contiguous_width,
+                  result_plan->destination_occupied_register_names,
+                  expected_view,
+                  diagnostics,
+                  context,
+                  instruction_index);
     if (!source.has_value() || !destination.has_value()) {
       return std::nullopt;
     }

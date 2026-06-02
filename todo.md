@@ -1,39 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/94_aarch64_calls_f128_carrier_operand_owner.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce The F128 Carrier Operand Owner
+Current Step ID: 3
+Current Step Title: Route F128 Call-Boundary Uses Through The Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2: `Introduce The F128 Carrier Operand Owner`.
+Completed plan Step 3: `Route F128 Call-Boundary Uses Through The Owner`.
 
-Implemented a local `F128CarrierCallOperandOwner` in
-`src/backend/mir/aarch64/codegen/calls.cpp` and grouped only the f128-specific
-calls-side carrier operand helpers behind it:
+Audited the remaining f128 call-boundary references in
+`src/backend/mir/aarch64/codegen/calls.cpp` with clang-backed callees plus a
+focused text pass. Routed the remaining in-scope after-call f128 result
+destination q-register rendering through
+`F128CarrierCallOperandOwner::q_register_operand`, and made the owner diagnostic
+text neutral because it now covers both source and destination carriers.
 
-- `is_complete_full_width` now owns the previous full-width f128 carrier
-  completion predicate.
-- `is_complete_constant` now owns the previous f128 constant carrier completion
-  predicate.
-- `find_in_module` now owns the module fallback lookup for a prepared f128
-  carrier by `PreparedValueId`.
-- `q_register_operand` now owns prepared f128 carrier to AArch64 q-register
-  operand rendering and preserves the existing diagnostics.
+The remaining f128 references intentionally stay outside the owner:
 
-Updated the in-scope call sites in `lower_before_call_move` and
-`lower_after_call_move` to consume the owner. Shared scalar FP helpers,
-generic register operand rendering, prepared carrier selection, and
-call-boundary record construction remain outside the owner.
+- Prepared carrier selection through `find_prepared_f128_carriers` and
+  function-local `find_prepared_f128_carrier` stays outside because the owner
+  consumes selected carrier facts rather than choosing or creating them. Only
+  the module fallback lookup remains owner-mediated.
+- The ABI result source operand in `lower_after_call_move` stays outside
+  because it is an ABI binding/result-plan operand, not a prepared f128 carrier
+  operand.
+- F128 stack argument transport stays outside because
+  `make_prepared_f128_carrier_transport_record` and
+  `make_f128_transport_instruction` are f128 transport authority, not calls-side
+  q-register operand rendering.
+- F128 constant argument publication keeps its destination register rendering
+  and `CallBoundaryMoveInstructionRecord` fields outside because the source is
+  a constant payload carrier and the destination is ABI call-argument
+  publication/record construction, not a prepared carrier q-register operand.
+- Shared scalar FP helpers, ordinary scalar FP moves, immediate scalar
+  publication, byval/aggregate transport, and call-boundary record construction
+  remain outside this owner.
 
 ## Suggested Next
 
-Execute Step 3 by checking whether any remaining f128 call-boundary uses should
-be routed through `F128CarrierCallOperandOwner`, or documenting why they stay
-outside. Keep the next packet limited to calls-side f128 carrier completion,
-module lookup consumption, and q-register operand rendering.
+Proceed to Step 5 close-readiness review if the supervisor accepts the focused
+proof as satisfying Step 4 for this narrow routing packet. Confirm no shared
+scalar FP helpers, record schema, CMake wiring, public declarations, prealloc
+files, tests, or unrelated call clusters were swept into this owner.
 
 ## Watchouts
 
@@ -56,10 +66,13 @@ module lookup consumption, and q-register operand rendering.
   record fields, and assembly output.
 - Keep idea `95` separate unless a supervisor-approved lifecycle switch
   happens.
+- The owner's q-register diagnostic text changed from source-specific to
+  carrier-neutral only because after-call destination carriers now use the same
+  operand renderer.
 
 ## Proof
 
-Ran the supervisor-selected proof command exactly:
+Ran the supervisor-selected proof command exactly for the code-changing packet:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_instruction_dispatch|backend_prepared_printer|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result)$' --output-on-failure > test_after.log
