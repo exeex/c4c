@@ -1776,24 +1776,20 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
 }
 
 std::optional<std::vector<std::string>> print_aggregate_register_lane_publication_lines(
-    const CallBoundaryMoveInstructionRecord& move) {
-  const auto view = aggregate_register_lane_publication_view(move);
-  if (!view.has_value()) {
-    return std::nullopt;
-  }
+    const AggregateRegisterLanePublicationView& view) {
   std::vector<std::string> lines;
-  const auto scratch = aggregate_register_lane_scratch(*view->destination_register);
+  const auto scratch = aggregate_register_lane_scratch(*view.destination_register);
   if (!scratch.has_value()) {
     return std::nullopt;
   }
   const std::string scratch_x = abi::register_name(*scratch);
-  std::size_t remaining = view->size_bytes;
+  std::size_t remaining = view.size_bytes;
   std::size_t lane_index = 0;
   std::size_t source_offset = 0;
   while (remaining > 0) {
     const std::size_t lane_bytes = std::min<std::size_t>(remaining, 8);
     const auto lane_register =
-        aggregate_register_lane_destination(*view->destination_register, lane_index);
+        aggregate_register_lane_destination(*view.destination_register, lane_index);
     if (!lane_register.has_value()) {
       return std::nullopt;
     }
@@ -1802,7 +1798,7 @@ std::optional<std::vector<std::string>> print_aggregate_register_lane_publicatio
       const bool first_chunk = lane_offset == 0;
       const auto load_base_register = first_chunk ? *lane_register : *scratch;
       const auto chunk =
-          aggregate_register_lane_printable_chunk_descriptor(*view->source_memory,
+          aggregate_register_lane_printable_chunk_descriptor(*view.source_memory,
                                                             source_offset + lane_offset,
                                                             lane_bytes - lane_offset,
                                                             load_base_register);
@@ -1933,9 +1929,12 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
         bad_header(instruction) +
         "call-boundary move node requires prepared register source and destination");
   }
-  if (const auto lines = print_aggregate_register_lane_publication_lines(move);
-      lines.has_value()) {
-    return target_printed(*lines);
+  if (const auto view = aggregate_register_lane_publication_view(move);
+      view.has_value()) {
+    if (const auto lines = print_aggregate_register_lane_publication_lines(*view);
+        lines.has_value()) {
+      return target_printed(*lines);
+    }
   }
   if (move.source_memory.has_value()) {
     if (move.source_memory->support != MemoryOperandSupportKind::Prepared ||
