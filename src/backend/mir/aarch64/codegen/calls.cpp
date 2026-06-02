@@ -2316,7 +2316,39 @@ make_byval_register_lane_stack_publication_instruction(
              prepare::PreparedAggregateTransportKind::ByvalRegisterLanes;
 }
 
-[[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
+struct ImmediateScalarCallArgumentPublicationOwner {
+  [[nodiscard]] static std::optional<module::MachineInstruction> instruction(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedValueHome& source_home,
+      const RegisterOperand& destination,
+      std::size_t instruction_index);
+
+ private:
+  [[nodiscard]] static const bir::CastInst* find_same_block_cast_producer(
+      const module::BlockLoweringContext& context,
+      c4c::ValueNameId value_name,
+      std::size_t before_instruction_index);
+  [[nodiscard]] static std::optional<unsigned> integer_width_bits_for_type(
+      bir::TypeKind type);
+  [[nodiscard]] static std::uint64_t immediate_integer_bits(const bir::Value& value,
+                                                            unsigned width_bits);
+  [[nodiscard]] static std::optional<abi::RegisterReference> scalar_fp_register_view(
+      abi::RegisterReference reg,
+      bir::TypeKind type);
+  [[nodiscard]] static std::optional<abi::RegisterReference> scalar_gp_register_view(
+      abi::RegisterReference reg,
+      unsigned width_bits);
+  static bool append_materialize_fp_immediate(std::vector<std::string>& lines,
+                                              const bir::Value& value,
+                                              abi::RegisterReference gp_scratch_base,
+                                              abi::RegisterReference fp_scratch_base,
+                                              abi::RegisterReference& fp_scratch);
+  [[nodiscard]] static std::optional<std::vector<std::string>>
+  make_publication_lines(const bir::CastInst& cast,
+                         const RegisterOperand& destination);
+};
+
+const bir::CastInst* ImmediateScalarCallArgumentPublicationOwner::find_same_block_cast_producer(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
     std::size_t before_instruction_index) {
@@ -2339,7 +2371,8 @@ make_byval_register_lane_stack_publication_instruction(
   return nullptr;
 }
 
-[[nodiscard]] std::optional<unsigned> integer_width_bits_for_type(bir::TypeKind type) {
+std::optional<unsigned> ImmediateScalarCallArgumentPublicationOwner::integer_width_bits_for_type(
+    bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
@@ -2354,8 +2387,9 @@ make_byval_register_lane_stack_publication_instruction(
   }
 }
 
-[[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
-                                                   unsigned width_bits) {
+std::uint64_t ImmediateScalarCallArgumentPublicationOwner::immediate_integer_bits(
+    const bir::Value& value,
+    unsigned width_bits) {
   if (value.immediate_bits != 0U) {
     return width_bits == 32U ? static_cast<std::uint32_t>(value.immediate_bits)
                              : value.immediate_bits;
@@ -2376,7 +2410,8 @@ make_byval_register_lane_stack_publication_instruction(
   }
 }
 
-[[nodiscard]] std::optional<abi::RegisterReference> scalar_fp_register_view(
+std::optional<abi::RegisterReference>
+ImmediateScalarCallArgumentPublicationOwner::scalar_fp_register_view(
     abi::RegisterReference reg,
     bir::TypeKind type) {
   switch (type) {
@@ -2389,7 +2424,8 @@ make_byval_register_lane_stack_publication_instruction(
   }
 }
 
-[[nodiscard]] std::optional<abi::RegisterReference> scalar_gp_register_view(
+std::optional<abi::RegisterReference>
+ImmediateScalarCallArgumentPublicationOwner::scalar_gp_register_view(
     abi::RegisterReference reg,
     unsigned width_bits) {
   if (width_bits == 32U) {
@@ -2401,11 +2437,12 @@ make_byval_register_lane_stack_publication_instruction(
   return std::nullopt;
 }
 
-bool append_materialize_fp_immediate(std::vector<std::string>& lines,
-                                     const bir::Value& value,
-                                     abi::RegisterReference gp_scratch_base,
-                                     abi::RegisterReference fp_scratch_base,
-                                     abi::RegisterReference& fp_scratch) {
+bool ImmediateScalarCallArgumentPublicationOwner::append_materialize_fp_immediate(
+    std::vector<std::string>& lines,
+    const bir::Value& value,
+    abi::RegisterReference gp_scratch_base,
+    abi::RegisterReference fp_scratch_base,
+    abi::RegisterReference& fp_scratch) {
   const auto fp_view = scalar_fp_register_view(fp_scratch_base, value.type);
   if (!fp_view.has_value() || value.kind != bir::Value::Kind::Immediate) {
     return false;
@@ -2444,8 +2481,8 @@ bool append_materialize_fp_immediate(std::vector<std::string>& lines,
   return false;
 }
 
-[[nodiscard]] std::optional<std::vector<std::string>>
-make_immediate_cast_call_argument_publication_lines(
+std::optional<std::vector<std::string>>
+ImmediateScalarCallArgumentPublicationOwner::make_publication_lines(
     const bir::CastInst& cast,
     const RegisterOperand& destination) {
   if (cast.operand.kind != bir::Value::Kind::Immediate) {
@@ -2528,8 +2565,8 @@ make_immediate_cast_call_argument_publication_lines(
   }
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_immediate_cast_call_argument_publication_instruction(
+std::optional<module::MachineInstruction>
+ImmediateScalarCallArgumentPublicationOwner::instruction(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& source_home,
     const RegisterOperand& destination,
@@ -2539,8 +2576,7 @@ make_immediate_cast_call_argument_publication_instruction(
   if (cast == nullptr) {
     return std::nullopt;
   }
-  const auto lines =
-      make_immediate_cast_call_argument_publication_lines(*cast, destination);
+  const auto lines = make_publication_lines(*cast, destination);
   if (!lines.has_value() || lines->empty()) {
     return std::nullopt;
   }
@@ -3061,7 +3097,7 @@ make_immediate_cast_call_argument_publication_instruction(
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
       move_record.destination_register.has_value()) {
     if (auto cast_publication =
-            make_immediate_cast_call_argument_publication_instruction(
+            ImmediateScalarCallArgumentPublicationOwner::instruction(
                 context, *source_home, *move_record.destination_register, instruction_index)) {
       return cast_publication;
     }
