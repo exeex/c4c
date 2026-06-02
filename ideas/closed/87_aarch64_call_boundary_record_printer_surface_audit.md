@@ -67,3 +67,19 @@ but those surfaces may also be correct target-local ABI and printer ownership.
 - It ignores idea 82's conclusion that obvious table-driving candidates are
   already exhausted.
 
+## Close Note
+
+Closed after completing the audit-only runbook. The audit traced
+call-boundary move records and aggregate-lane publication records from
+construction through instruction records into machine-printer output, then
+classified repeated validation, spelling, schema, and helper surfaces.
+
+The durable implementation follow-ups are:
+
+- `ideas/open/90_aarch64_aggregate_lane_helper_table_contraction.md`
+- `ideas/open/91_aarch64_call_boundary_aggregate_lane_record_schema_cleanup.md`
+
+The audit did not justify deleting printer validation, moving AArch64 ABI
+construction into shared authority, or broad calls/printer rewrites. Surfaces
+without a traced no-semantics cleanup boundary remain `missing-evidence`.
+No implementation files changed for this idea.
