@@ -3,14 +3,17 @@
 Status: Active
 Source Idea Path: ideas/open/86_aarch64_memory_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Responsibility Clusters
+Current Step ID: 3
+Current Step Title: Compare Against Closed-Idea Boundaries
 
 ## Just Finished
 
-Completed Step 2, "Classify Responsibility Clusters", by grouping the Step 1
-inventory into the plan categories and separating intentionally target-local
-memory ownership from candidate local subowners. No `memory.cpp`,
+Completed Step 3, "Compare Against Closed-Idea Boundaries", by comparing the
+Step 2 candidate local subowners against ideas 70, 80, 81, 83, and 84. The
+publication and prepared-wrapper shaped candidates are rejected as follow-up
+implementation routes because they would reopen recent contraction decisions;
+only tightly memory-local frame-slot/address materialization and
+store-retargeting subowners remain potentially viable. No `memory.cpp`,
 `memory.hpp`, `plan.md`, or source-idea edits were made.
 
 ### Step 2 Classification Clusters
@@ -260,30 +263,108 @@ memory ownership from candidate local subowners. No `memory.cpp`,
 - `prepared_store_global_addressing` (4877), `find_prepared_store_global_stack_publication_home` (4886): store-global publication lookup helpers. [dispatch publication]
 - `lower_store_global_value_publication_from_plan` declaration/definition (4905, 5119), `lower_pending_store_global_stack_value_publications` (4911), `lower_published_store_global_stack_value_publication` (4969), `future_store_local_stack_value_publication_covers_instruction` (5065), `lower_store_global_value_publication` (5259): store-global value/stack-home publication planning and emission path. [dispatch publication]
 
+### Step 3 Closed-Idea Boundary Comparison
+
+- Idea 70, `aarch64_memory_prepared_address_authority_cleanup`, rejects any
+  frame-slot/address route that recreates local source-authority, value-home,
+  storage-plan, stack-source, or frame-offset decisions. It explicitly keeps
+  AArch64 encodable offset checks, base/scratch selection, opcode selection,
+  address spelling, and `va_list` field addressing local. Result: the
+  frame-slot/address materialization candidate survives only as a
+  memory-local AArch64 owner for base policy, offset folding,
+  materialization lines, and memory operand address spelling while continuing
+  to consume prepared authority. A shared BIR/prealloc relocation is rejected.
+- Idea 80, `aarch64_dispatch_publication_owner_relocation`, rejects a
+  publication follow-up whose purpose is to move store-local/store-global
+  publication helpers back into dispatch publication, value materialization,
+  or producer owners. The closure says owner-local helpers were intentionally
+  relocated into narrower AArch64 owners and the remaining dispatch
+  publication surface is retained only for shared scalar utility and
+  current-block publication authority. Result: the Step 2 local AArch64 memory
+  publication owner is rejected as an implementation candidate if it would
+  reopen dispatch-publication files or publish new dispatch-facing authority.
+- Idea 81, `aarch64_dispatch_edge_copy_owner_contraction`, rejects a
+  publication follow-up whose purpose is to move typed stack-source or
+  prepared-memory edge emission back into `dispatch_edge_copies.*`. The closure
+  says narrow prepared-memory and typed stack-source emission helpers were
+  relocated to their natural AArch64 owners and retained edge-copy entry points
+  remain external edge-copy hooks. Result: same-width stack-source publication
+  and load-result stack-source publication helpers should stay in memory; a
+  split that recreates an edge-copy owner is rejected.
+- Idea 83, `aarch64_local_helper_duplication_tail_cleanup`, rejects promoting
+  residual repeated private helper shapes such as storage-plan lookup,
+  register-class decoding, prepared register operands, diagnostics, or scratch
+  selection to a new public utility without target-neutral proof. Result:
+  store-retargeting survives as a possible memory-local private subowner
+  because it rewrites memory records around prepared frame-slot/pointer facts;
+  any route that extracts generic register/storage/diagnostic utility from
+  this audit is rejected.
+- Idea 84, `aarch64_prepared_consumer_wrapper_contraction`, rejects
+  resurrecting redundant prepared-memory wrapper surfaces or deleting wrappers
+  without proving equivalent diagnostics and machine records. Its closure
+  retained memory adapters and store-publication helpers that own AArch64
+  ABI, addressing, diagnostics, scratch choices, or machine-record
+  construction. Result: the prepared-record builder candidate is rejected as a
+  follow-up when framed as a standalone prepared-wrapper owner. It remains only
+  as a justified memory-local responsibility cluster for constructing
+  prepared memory operand and instruction records from already-prepared facts.
+
+### Step 3 Surviving Candidates
+
+- Survives: local AArch64 frame-slot/address materialization owner. Boundary:
+  memory-local frame-slot lookup/address formatting, fixed-slot base policy,
+  offset folding, and scratch materialization lines. Constraints: must consume
+  prepared address/value-home/storage facts, must not move AArch64 legality or
+  spelling into shared prealloc, and must not include `va_list` handling.
+- Survives: local AArch64 store-retargeting owner. Boundary:
+  pointer store-value/address retargeting, local-address store-value rewrites,
+  and stack-layout application to memory records. Constraints: private to
+  memory lowering, no shared dispatch/BIR authority, no generic helper
+  publication for storage or register facts.
+- Rejected as Step 4 follow-up: local AArch64 memory publication owner, unless
+  the supervisor/plan owner later asks for an internal organization-only
+  refactor that does not reopen ideas 80 or 81. Current evidence says the
+  growth is intentional owner-local memory lowering: AArch64 scratch choice,
+  scalar conversion emission, pointer-base materialization, global-symbol
+  address spelling, and memory record emission are all consumer-owned.
+- Rejected as Step 4 follow-up: local AArch64 prepared-record builder owner
+  when it means recreating the prepared wrapper surface contracted by idea 84.
+  Current evidence says the remaining size is justified because memory owns the
+  selected memory operand/instruction records, diagnostics, identity
+  validation at the selected operand boundary, and machine-record construction.
+- Rejected as shared-owner candidates: identity validation, prepared memory
+  access matching, and `va_list` memory handling. Closed ideas 70, 83, and 84
+  all require concrete missing target-neutral facts before shared relocation;
+  Step 2 found none.
+
 ## Suggested Next
 
-Proceed to Step 3 by comparing the candidate local subowners above against
-closed ideas 70, 80, 81, 83, and 84. Reject candidates that merely reopen prior
-dispatch publication, edge-copy, local-helper, prepared-address, or
-prepared-wrapper contraction decisions.
+Proceed to Step 4 by creating narrow follow-up ideas only for the surviving
+frame-slot/address materialization and store-retargeting candidates if the
+supervisor accepts their boundaries and proof routes as concrete. Do not create
+ideas for publication, prepared-wrapper, identity-validation, prepared-access
+matching, or `va_list` clusters from the current evidence.
 
 ## Watchouts
 
 - This is audit-only; do not edit implementation files.
-- Do not reopen dispatch publication or edge-copy relocation from ideas 80 and
-  81.
+- Ideas 80 and 81 make publication growth in `memory.cpp` intentional
+  owner-local memory lowering, not a regression by itself.
+- Idea 84 blocks prepared-record-builder extraction when the route recreates
+  redundant prepared wrapper layers.
+- Idea 70 allows a frame-slot/address materialization split only if it keeps
+  consuming prepared authority and keeps AArch64 legality/spelling local.
+- Idea 83 allows memory-local helper organization but blocks publishing generic
+  storage/register/diagnostic helper authority without target-neutral proof.
 - Do not turn line-count reduction or vague shared-authority speculation into
   implementation scope.
-- Step 2 found only local-subowner candidates, not shared-owner candidates; any
-  proposed split should remain target-local unless Step 3 uncovers stronger
-  evidence.
-- Identity validation, prepared memory access matching, and variadic `va_list`
-  handling are explicitly marked `needs-shared-authority-evidence`.
+- Step 3 found no new shared-owner candidate; surviving candidates remain
+  target-local and memory-local.
 
 ## Proof
 
 Ran the delegated audit-only proof command:
-`printf 'Audit-only Step 2; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$|^plan\.md$|^ideas/'; then printf 'ERROR: non-todo file changed during audit-only classification packet.\n' >> test_after.log; exit 1; fi`
+`printf 'Audit-only Step 3; no backend tests required.\n' > test_after.log && git diff --name-only >> test_after.log && if git diff --name-only | rg -q '^src/backend/mir/aarch64/codegen/memory\.(cpp|hpp)$|^plan\.md$|^ideas/'; then printf 'ERROR: non-todo file changed during audit-only closed-idea comparison packet.\n' >> test_after.log; exit 1; fi`
 
 Result: passed. `test_after.log` contains the audit-only note and only
 `todo.md` in the diff list, confirming `memory.cpp`, `memory.hpp`, `plan.md`,
