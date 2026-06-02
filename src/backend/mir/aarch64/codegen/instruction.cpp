@@ -1043,11 +1043,12 @@ std::vector<std::size_t> aggregate_stack_copy_chunks(std::size_t size_bytes) {
   return chunks;
 }
 
-std::string_view aggregate_register_lane_load_mnemonic(std::size_t width_bytes) {
+[[nodiscard]] static std::string_view aggregate_register_lane_load_mnemonic(
+    std::size_t width_bytes) {
   return aggregate_width_mnemonic(kAggregateRegisterLaneLoadMnemonics, width_bytes);
 }
 
-abi::RegisterReference aggregate_register_lane_load_register(
+[[nodiscard]] static abi::RegisterReference aggregate_register_lane_load_register(
     abi::RegisterReference reg,
     std::size_t width_bytes) {
   return width_bytes == 8 ? abi::x_register(reg.index) : abi::w_register(reg.index);
@@ -1095,7 +1096,7 @@ bool aggregate_register_lane_memory_is_printable(const MemoryOperand& memory,
          !memory_address(memory).empty();
 }
 
-std::optional<std::size_t> aggregate_register_lane_printable_chunk(
+[[nodiscard]] static std::optional<std::size_t> aggregate_register_lane_printable_chunk(
     const MemoryOperand& memory,
     std::size_t source_offset,
     std::size_t remaining) {

@@ -3,47 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/90_aarch64_aggregate_lane_helper_table_contraction.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Contract Private Helper/Table Spelling
+Current Step ID: 3
+Current Step Title: Tighten Public Aggregate-Lane Helper Surface If Justified
 
 ## Just Finished
 
-Completed Step 2, "Contract Private Helper/Table Spelling", as a
-behavior-preserving code packet aligned to the `instruction.cpp` helper/table
-surface. `instruction.cpp` now owns the
-`aggregate_register_lane_printable_chunk_descriptor(...)` helper, which
-contracts printable chunk width selection, chunk memory derivation, load
-mnemonic selection, and load-register view selection into one aggregate
-register-lane descriptor.
+Completed Step 3, "Tighten Public Aggregate-Lane Helper Surface If
+Justified", as a behavior-preserving public-surface packet. `rg` confirmed
+that `aggregate_register_lane_load_mnemonic(...)`,
+`aggregate_register_lane_load_register(...)`, and
+`aggregate_register_lane_printable_chunk(...)` have no current consumers
+outside `instruction.cpp`, so their declarations were removed from
+`instruction.hpp` and their definitions now have internal linkage.
 
-Because `machine_printer.cpp` is the external consumer that emits the final
-assembly, the descriptor type and helper require a narrow declaration in
-`instruction.hpp`; keeping that declaration avoids the hidden cross-translation
-unit API mismatch that caused the previous route problem. Printer-owned
-behavior remains unchanged: missing scratch, destination lane, or printable
-chunk still returns `std::nullopt`, and OR assembly, byte-shifted lane
-placement, emitted line shape, and scratch use are still owned by
-`machine_printer.cpp`.
+Declarations intentionally kept public with current consumer reasons:
 
-Unchanged consumers and boundaries:
-
-- `calls.cpp` construction-owned validation and stack-lane inline-asm
-  construction consumers were not edited.
+- `AggregateRegisterLanePrintableChunk` and
+  `aggregate_register_lane_printable_chunk_descriptor(...)` remain public
+  because `machine_printer.cpp` consumes the descriptor across a translation
+  unit boundary while emitting aggregate register-lane publication.
+- `aggregate_register_lane_scratch(...)`,
+  `aggregate_register_lane_destination(...)`, and
+  `is_aggregate_register_lane_publication(...)` remain public for the
+  `machine_printer.cpp` aggregate register-lane path.
 - `aggregate_register_lane_memory(...)` and
-  `aggregate_register_lane_memory_is_printable(...)` still serve the stack-lane
-  construction path.
-- `aggregate_register_lane_printable_chunk(...)` remains public as the
-  compatibility width-only helper until Step 3 decides whether the public
-  surface can be narrowed further.
-- `calls.cpp` remains untouched.
+  `aggregate_register_lane_memory_is_printable(...)` remain public because
+  `calls.cpp` still uses them to construct and validate stack-lane inline-asm
+  publication chunks.
+
+No record-shape logic, printer rejection checks, stack-lane inline-asm
+publication, or broad call-boundary record handling was changed.
 
 ## Suggested Next
 
-Begin Step 3, "Tighten Public Aggregate-Lane Helper Surface If Justified", by
-reviewing whether the now-compatibility-only aggregate register-lane width,
-memory, mnemonic, and load-register declarations in `instruction.hpp` can be
-narrowed around the descriptor without disrupting `calls.cpp` construction
-consumers, stack-lane construction, or `machine_printer.cpp` printer consumers.
+Begin Step 4, "Prove Equivalence And Prepare Closure Evidence", by comparing
+or summarizing behavior evidence for register-sourced and frame-slot-sourced
+byval lane publication, including chunk-width load selection, destination-lane
+derivation, scratch exclusion, and printer rejection paths.
 
 ## Watchouts
 
@@ -54,11 +50,10 @@ consumers, stack-lane construction, or `machine_printer.cpp` printer consumers.
 - Do not fold stack-lane inline-asm publication or broad call-boundary record
   cleanup into this plan.
 - The descriptor helper is intentionally declared in `instruction.hpp` because
-  `machine_printer.cpp` consumes it across a translation-unit boundary; Step 3
-  should decide whether any older aggregate register-lane helper declarations
-  can then be narrowed.
-- Retain public declarations unless Step 3 proves a helper has no external
-  construction/printer or stack-lane construction consumer.
+  `machine_printer.cpp` consumes it across a translation-unit boundary.
+- The only public aggregate register-lane helpers narrowed in Step 3 were the
+  three helpers proven instruction-local by `rg`; avoid narrowing the
+  memory/printability helpers unless `calls.cpp` stops consuming them.
 
 ## Proof
 

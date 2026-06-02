@@ -1730,11 +1730,6 @@ struct AggregateRegisterLanePrintableChunk {
   abi::RegisterReference load_register;
 };
 
-[[nodiscard]] std::string_view aggregate_register_lane_load_mnemonic(
-    std::size_t width_bytes);
-[[nodiscard]] abi::RegisterReference aggregate_register_lane_load_register(
-    abi::RegisterReference reg,
-    std::size_t width_bytes);
 [[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
     const RegisterOperand& destination);
 [[nodiscard]] MemoryOperand aggregate_register_lane_memory(MemoryOperand memory,
@@ -1743,10 +1738,6 @@ struct AggregateRegisterLanePrintableChunk {
 [[nodiscard]] bool aggregate_register_lane_memory_is_printable(
     const MemoryOperand& memory,
     std::size_t width_bytes);
-[[nodiscard]] std::optional<std::size_t> aggregate_register_lane_printable_chunk(
-    const MemoryOperand& memory,
-    std::size_t source_offset,
-    std::size_t remaining);
 [[nodiscard]] std::optional<AggregateRegisterLanePrintableChunk>
 aggregate_register_lane_printable_chunk_descriptor(
     const MemoryOperand& memory,
