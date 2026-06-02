@@ -1079,6 +1079,23 @@ make_f128_q_register_operand_from_carrier(
          move.reason == "call_arg_byval_aggregate_register_lanes";
 }
 
+[[nodiscard]] bool validate_aggregate_register_lane_publication(
+    const module::BlockLoweringContext& context,
+    const CallBoundaryMoveInstructionRecord& move,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (aggregate_register_lane_publication_view(move).has_value()) {
+    return true;
+  }
+  append_call_diagnostic(
+      diagnostics,
+      module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+      context,
+      instruction_index,
+      "AArch64 aggregate register-lane call-argument publication requires prepared source bytes and destination register");
+  return false;
+}
+
 [[nodiscard]] std::optional<MemoryOperand>
 make_byval_register_lane_prepared_source(
     const module::BlockLoweringContext& context,
@@ -2900,6 +2917,10 @@ make_immediate_cast_call_argument_publication_instruction(
       if (register_byval_size.has_value()) {
         move_record.source_memory_materializes_address = false;
         move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+        if (!validate_aggregate_register_lane_publication(
+                context, move_record, instruction_index, diagnostics)) {
+          return std::nullopt;
+        }
       }
     }
   }
@@ -3013,6 +3034,10 @@ make_immediate_cast_call_argument_publication_instruction(
     move_record.source_memory = *source;
     move_record.destination_register = *destination;
     move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+    if (!validate_aggregate_register_lane_publication(
+            context, move_record, instruction_index, diagnostics)) {
+      return std::nullopt;
+    }
   }
 
   if (selected_prepared_register_argument_effect &&
@@ -3106,6 +3131,10 @@ make_immediate_cast_call_argument_publication_instruction(
     move_record.source_memory = *source;
     move_record.destination_register = *destination;
     move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+    if (!validate_aggregate_register_lane_publication(
+            context, move_record, instruction_index, diagnostics)) {
+      return std::nullopt;
+    }
   }
 
   if (selected_prepared_register_argument_effect &&
