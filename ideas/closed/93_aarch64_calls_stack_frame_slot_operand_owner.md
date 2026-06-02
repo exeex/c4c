@@ -93,3 +93,63 @@ publication producers, result facts, or preservation facts.
 - Proof covers only one named stack-argument case while frame-slot sources,
   sret/local-frame sources, aggregate sources, prior stack-preserved values,
   and non-encodable/rejection behavior remain unexamined.
+
+## Closure Note
+
+Closed after implementation in:
+
+- `c6876e26a` (`Introduce AArch64 stack frame-slot operand owner`)
+- `9f917bc5a` (`Route stack frame-slot memory return storage`)
+
+The route introduced the local `StackFrameSlotCallOperandOwner` in
+`src/backend/mir/aarch64/codegen/calls.cpp`. The owner consumes prepared facts
+and renders stack/frame-slot memory operands or existing call-boundary operand
+records without selecting or rederiving prepared call plans, move bundles,
+publication producers, result facts, preservation facts, or aggregate transport
+facts.
+
+Routed in-scope stack/frame-slot operand helpers through the owner, including:
+
+- selected frame-slot sources
+- sret and selected local-frame address sources
+- stack call argument destinations
+- aggregate stack-copy sources
+- endpoint stack storage
+- prior stack-preserved sources
+- memory-return frame-slot storage
+
+Intentionally outside this route:
+
+- aggregate byval lane publication and transport chunk/lane validation
+- immediate scalar stack argument publication
+- after-call result publication
+- generic prepared value and return moves
+- after-call preserved-value publication and republication
+- source-selection, call-plan presence checks, and call-record construction
+  decisions
+
+Separate open follow-ups remain:
+
+- `ideas/open/94_aarch64_calls_f128_carrier_operand_owner.md`
+- `ideas/open/95_aarch64_calls_immediate_scalar_argument_publication_owner.md`
+
+Those follow-ups were not absorbed into this route.
+
+Proof:
+
+- Focused before/after scope passed 8/8 before and 8/8 after.
+- Close-time regression guard passed with non-decreasing pass-count mode:
+
+```bash
+cmake --build --preset default
+ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_memory_operand_contract|backend_aarch64_prepared_memory_operand_records|backend_prepare_frame_stack_call_contract|backend_codegen_route_aarch64_prepared_call_boundary_scalability|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor)$' --output-on-failure > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+The supervisor also reported broader validation on June 2, 2026:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+That broader backend scope passed 169/169.
