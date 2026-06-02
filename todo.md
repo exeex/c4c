@@ -1,15 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/92_aarch64_calls_owner_subresponsibility_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Build Calls Owner Inventory
+Current Step ID: 2
+Current Step Title: Classify Responsibility Clusters
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by building a function-level inventory of
-`src/backend/mir/aarch64/codegen/calls.cpp` and `calls.hpp`.
+Completed `plan.md` Step 2 by classifying the Step 1 calls-owner inventory
+into responsibility clusters and route outcomes. The Step 1 inventory is
+retained below so Step 3 can draft scoped follow-up ideas without rereading the
+full owner.
 
 ### calls.hpp public surface
 
@@ -243,11 +245,134 @@ Completed `plan.md` Step 1 by building a function-level inventory of
   prepared frame-slot memory, and aggregate-lane publication still share the
   calls-side construction owner.
 
+### Step 2 responsibility clusters
+
+- Prepared call authority consumption:
+  labels `prepared-call-plan-consumption`,
+  `diagnostics-and-selection-status`.
+  Functions: prepared lookup and require helpers plus scalar/indirect/result
+  lookup bridges that read prepared call plans, move bundles, source producers,
+  result facts, preservation facts, and stack-source facts. Outcome:
+  intentionally target-local. These helpers should stay in `calls.cpp` unless
+  new shared-authority evidence names a missing target-neutral fact; they must
+  not rederive idea 69 authority.
+- Direct and indirect call record emission:
+  labels `direct-indirect-call-emission`,
+  `call-boundary-record-construction`,
+  `diagnostics-and-selection-status`.
+  Functions: call selection status helpers, outgoing stack byte/base helpers,
+  memory-return storage, indirect callee register creation,
+  `make_call_instruction`, and `lower_prepared_call_instruction`. Outcome:
+  intentionally target-local. This cluster owns AArch64 ABI call spelling,
+  variadic call record fields, and machine-record construction.
+- Call-boundary move and ABI-binding records:
+  labels `call-boundary-record-construction`,
+  `call-boundary-abi-binding-records`,
+  `diagnostics-and-selection-status`.
+  Functions: call-boundary move/ABI-binding selection status and record builders
+  plus register/immediate operand view helpers used by those records. Outcome:
+  intentionally target-local. Ideas 84/87/91 make this a local record owner,
+  not a shared-printer or wrapper-removal route.
+- Before-call move bundle lowering:
+  labels `before-after-call-move-bundles`,
+  `stack-argument-marshalling`,
+  `callee-saved-preservation`,
+  `immediate-argument-publication`,
+  `f128-carrier-handling`,
+  `aggregate-byval-lane-transport`.
+  Functions: `lower_before_call_move`, source selection, move ordering,
+  outgoing stack base, preservation-home population, immediate binding, byval
+  lane, aggregate copy, and the public `lower_before_call_moves`. Outcome:
+  needs shared-authority/evidence before any broad implementation route. This
+  is the densest mixed owner: prepared move-bundle/source facts are consumed
+  next to AArch64 register, scratch, memory, and record construction.
+- After-call, return, value, and preservation lowering:
+  labels `before-after-call-move-bundles`,
+  `value-and-preservation-republication`,
+  `callee-saved-preservation`,
+  `sret-and-result-retargeting`.
+  Functions: `lower_after_call_move`, preservation republication,
+  `lower_after_call_moves`, `lower_before_return_moves`, and
+  `lower_value_moves`. Outcome: needs shared-authority/evidence before any
+  shared extraction. A narrow local subowner may be possible only for pure
+  record-building helpers, not for prepared after-call/result/preservation
+  fact ownership.
+- Stack and frame-slot memory/source operands:
+  labels `stack-argument-marshalling`,
+  `sret-and-result-retargeting`,
+  `candidate-local-subowner`.
+  Functions: frame-slot encodability, frame-slot address materialization,
+  selected frame-slot/local-frame/sret sources, stack argument destination,
+  aggregate argument source, endpoint stack storage, frame-slot memory, prior
+  stack-preserved value source, and stack copy address helpers. Outcome:
+  candidate local subowner/follow-up implementation idea. The candidate boundary
+  is local to AArch64 calls and should consume existing prepared endpoints and
+  homes without moving source-selection authority.
+- F128 carrier handling:
+  labels `f128-carrier-handling`, `candidate-local-subowner`.
+  Functions: full-width/constant carrier completion, prepared carrier lookup,
+  q-register operand creation, and scalar FP view helpers. Outcome: candidate
+  local subowner/follow-up implementation idea. The boundary is narrow if it
+  remains an AArch64 calls-side carrier/operand renderer and does not invent new
+  shared f128 transport authority.
+- Immediate scalar argument publication:
+  labels `immediate-argument-publication`,
+  `candidate-local-subowner`.
+  Functions: same-block cast producer lookup, integer/immediate bit extraction,
+  scalar GP/FP view conversion, FP immediate materialization, and immediate cast
+  call-argument publication instruction builders. Outcome: candidate local
+  subowner/follow-up implementation idea. The subowner would stay target-local
+  and preserve existing prepared destination/source-home inputs.
+- Aggregate byval lane publication:
+  labels `aggregate-byval-lane-transport`,
+  `stack-argument-marshalling`.
+  Functions: byval lane detection, selected lane validation, lane prepared
+  source construction, selected extent, lane transport detection, aggregate
+  stack copy, and byval lane stack publication records. Outcome: intentionally
+  target-local unless Step 3 chooses an evidence idea. Ideas 75/90/91 already
+  fixed the current shared/local boundary; implementation extraction would need
+  new evidence, not line-count pressure.
+- Indirect callee materialization:
+  labels `indirect-callee-materialization`,
+  `prepared-call-plan-consumption`.
+  Functions: scratch candidate selection, prepared indirect callee source
+  producer/direct-global/stored-value lookup, csel/value materialization, and
+  `materialize_indirect_call_callee_to_prepared_register`. Outcome:
+  intentionally target-local. Scratch choice and concrete csel/materialization
+  spelling belong here while source facts remain prepared.
+- Scalar producer dispatch bridge:
+  labels `prepared-call-plan-consumption`,
+  `stack-argument-marshalling`.
+  Functions: local aggregate address materialization, prepared call-argument
+  plan/frame-slot/source-producer lookup, scalar argument value materialization,
+  and public `lower_scalar_call_argument_producers`. Outcome:
+  needs shared-authority/evidence. This bridge crosses dispatch scalar state,
+  prepared publication producers, and AArch64 address/materialization emission.
+- Result recording and late publication:
+  labels `value-and-preservation-republication`,
+  `sret-and-result-retargeting`,
+  `prepared-call-plan-consumption`.
+  Functions: call result source recording, FPR result store retargeting, missing
+  frame-slot argument materialization, and stack-preserved value publication.
+  Outcome: needs shared-authority/evidence before extraction. It mutates
+  dispatch scalar state around prepared result/preservation facts and should not
+  be split without a traced proof route.
+- Incoming, variadic, and fixed-frame call metadata:
+  labels `direct-indirect-call-emission`,
+  `stack-argument-marshalling`.
+  Functions: alignment, incoming stack size/alignment, incoming stack entry
+  param checks, named incoming stack bytes, function-call detection, fixed frame
+  adjustment, and variadic overflow offset helpers. Outcome: intentionally
+  target-local. They feed AArch64 call record metadata and local frame policy.
+
 ## Suggested Next
 
-Execute Step 2 by classifying these inventory groups with the runbook labels
-and deciding which clusters are intentionally target-local, candidate local
-subowners, or need shared-authority evidence before any implementation idea.
+Execute Step 3 by drafting scoped follow-up ideas only for the three accepted
+candidate local subowners:
+`stack-and-frame-slot memory/source operands`, `f128 carrier handling`, and
+`immediate scalar argument publication`. Leave evidence-first or target-local
+clusters in `todo.md` unless a follow-up idea can name concrete scope, proof,
+and reject signals.
 
 ## Watchouts
 
@@ -258,12 +383,17 @@ subowners, or need shared-authority evidence before any implementation idea.
   AArch64 ABI/scratch/record construction.
 - Any follow-up idea must avoid reopening ideas 69, 75, 84, 87, 90, or 91
   without new evidence.
-- Candidate local subowners should be narrow enough to preserve prepared-source
-  authority and not require moving call spelling, ABI register conversion,
-  scratch choice, or printer validation out of their current owners.
+- Do not turn the evidence-first clusters into implementation ideas during Step
+  3. Before-call lowering, after-call/preservation lowering, scalar producer
+  bridging, and late result publication all need shared-authority evidence or a
+  narrower proof route before extraction.
+- The three accepted candidates are local AArch64 calls subowners, not shared
+  BIR/prealloc owners. Their ideas should preserve prepared-source authority and
+  avoid moving call spelling, ABI register conversion, scratch choice, or
+  printer validation out of their current owners.
 
 ## Proof
 
-Audit-only packet; no build or tests required by the delegated proof because
-only `todo.md` was edited. `git diff --name-only` was run before handoff to
-confirm the changed-file set.
+Audit-only packet; no build or tests required by the delegated proof because no
+implementation files were touched. `git diff --name-only` was run before
+handoff and returned only `todo.md`.
