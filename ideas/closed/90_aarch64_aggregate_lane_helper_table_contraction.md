@@ -78,3 +78,26 @@ authority or printer diagnostics elsewhere.
   unexamined.
 - The old duplicate helper/table spelling remains under a new abstraction name
   with no real contraction of the audited surface.
+
+## Close Note
+
+Closed after completing the aggregate-lane helper/table contraction runbook.
+The implementation contracted the printable chunk helper surface and narrowed
+aggregate-lane helper declarations while preserving the ownership split between
+`calls.cpp` construction and `machine_printer.cpp` final assembly emission.
+
+Closure evidence:
+
+- Code slices landed in `31a509708` and `4966e2bd6`.
+- Closure evidence landed in `6f9fe586a`.
+- Matching focused logs at `test_before.log` and `test_after.log` both pass
+  `backend_aarch64_call_boundary_owner` and
+  `backend_aarch64_machine_printer`.
+- Close-time regression guard was run with matching logs and
+  `--allow-non-decreasing-passed`; it passed with 2/2 tests passing before and
+  2/2 tests passing after, with no new failures.
+
+The closed scope preserves assembly output, diagnostics, unsupported-path
+contracts, scratch selection, chunk-width selection, and the existing
+construction/printer authority boundary. Stack-lane inline-asm publication and
+broad call-boundary record cleanup remain out of scope.
