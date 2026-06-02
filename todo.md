@@ -1,22 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/93_aarch64_calls_stack_frame_slot_operand_owner.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce The Operand Owner
+Current Step ID: 3
+Current Step Title: Route All Stack/Frame-Slot Call Sites Through The Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2: `Introduce The Operand Owner`.
+Completed plan Step 3: `Route All Stack/Frame-Slot Call Sites Through The Owner`.
 
-Introduced the AArch64-local `StackFrameSlotCallOperandOwner` boundary inside `src/backend/mir/aarch64/codegen/calls.cpp` and routed the stack/frame-slot operand rendering helpers through it without changing behavior. The owner now contains the frame-slot offset/address rendering helpers, stack-copy address rendering, selected frame-slot/local-frame/sret memory operand construction, stack call destination and aggregate source operand construction, endpoint-to-frame-slot memory construction, and prior stack-preserved memory source construction.
+Routed the remaining in-scope memory-return frame-slot storage call site through `StackFrameSlotCallOperandOwner::memory_return_storage`. The owner now covers memory-return storage, selected frame-slot sources, sret/local-frame address sources, stack call argument destinations, aggregate stack-copy sources, endpoint stack storage, and prior stack-preserved sources.
 
-Selection and publication authority remains outside the owner. `make_selected_call_argument_source` still switches on prepared source-selection kind, `make_prior_preserved_call_argument_source` still owns register-vs-stack prior-preservation choice and register fallback, and call-boundary instruction construction/move ordering remain in the existing calls-side code.
+Reviewed remaining stack/frame-slot constructions in `calls.cpp` and left these outside the owner by boundary:
+
+- `make_byval_register_lane_prepared_source`: aggregate byval lane publication owns transport chunk/lane validation and is explicitly outside this route.
+- `lower_before_call_immediate_binding`: immediate scalar stack argument publication belongs to idea 95 and remains outside this owner.
+- `lower_after_call_move` stack-result store: after-call result publication is a non-goal for this route.
+- `make_value_stack_move_instruction`, `lower_value_moves`, and `lower_before_return_moves`: generic prepared value/return move helpers, not selected call operand rendering.
+- `publish_stack_preserved_call_values`: after-call preserved-value publication/republication producer, explicitly outside the owner.
 
 ## Suggested Next
 
-Execute Step 3 by auditing the remaining stack/frame-slot call sites against `StackFrameSlotCallOperandOwner` and documenting any intentionally outside call sites. Keep the packet behavior-preserving and local to `calls.cpp` plus `todo.md` unless a missing route requires supervisor review.
+Supervisor can move to Step 4/5 acceptance review. No additional code route is suggested from this packet.
 
 ## Watchouts
 
@@ -27,6 +33,7 @@ Execute Step 3 by auditing the remaining stack/frame-slot call sites against `St
 - Keep outside the owner: `make_selected_call_argument_source`, `make_call_boundary_move_instruction`, `make_call_boundary_machine_instruction`, `make_outgoing_stack_base_instruction`, `make_aggregate_stack_copy_instruction`, `make_byval_register_lane_stack_publication_instruction`, prior-preservation lookup, register-prior-preservation fallback, scalar immediate publication, f128 carrier handling, and all after-call republication producers.
 - `make_sret_memory_return_address_source` and selected frame/local address wrappers now live on the local owner, but callers still decide when those selected facts are applicable.
 - `make_stack_call_argument_destination` and `make_aggregate_call_argument_source` now live on the local owner as operand-record constructors; do not expand them into call-argument selection or aggregate transport ownership.
+- `memory_return_storage` now lives on the owner as an operand renderer; call-plan presence and call-record construction still stay outside.
 
 ## Proof
 

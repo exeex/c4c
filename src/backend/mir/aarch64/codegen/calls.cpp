@@ -263,7 +263,86 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_memory_return_storage(
+struct StackFrameSlotCallOperandOwner {
+  [[nodiscard]] static bool frame_slot_direct_offset_is_encodable(
+      const MemoryOperand& memory,
+      std::size_t load_width_bytes);
+
+  [[nodiscard]] static std::vector<std::string> materialize_frame_slot_address_lines(
+      abi::RegisterReference scratch,
+      const MemoryOperand& memory);
+
+  [[nodiscard]] static std::string stack_copy_address(std::string_view base,
+                                                      std::int64_t offset);
+
+  [[nodiscard]] static std::optional<MemoryOperand> memory_return_storage(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedMemoryReturnPlan& memory_return,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> selected_frame_slot_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome* source_home,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
+      bool materialized_address,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> sret_memory_return_address_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallPlan& call_plan,
+      const prepare::PreparedCallArgumentPlan& argument,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> selected_local_frame_address_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> stack_call_argument_destination(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const prepare::PreparedMoveResolution& move,
+      const prepare::PreparedAbiBinding* binding,
+      const MemoryOperand& source,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> aggregate_call_argument_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const RegisterOperand& source_register,
+      std::size_t size_bytes,
+      std::int64_t byte_offset,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> preserved_stack_selection_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static bool endpoint_has_stack_storage(
+      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint);
+
+  [[nodiscard]] static std::optional<MemoryOperand> frame_slot_memory_from_endpoint(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint,
+      prepare::PreparedValueId value_id,
+      ValueNameId value_name,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> prior_stack_preserved_value_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallPreservedValue& preserved,
+      std::size_t instruction_index);
+};
+
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::memory_return_storage(
     const module::BlockLoweringContext& context,
     const prepare::PreparedMemoryReturnPlan& memory_return,
     std::size_t instruction_index) {
@@ -678,9 +757,10 @@ std::optional<module::MachineInstruction> lower_prepared_call_instruction(
       .memory_return = call_plan.memory_return,
       .memory_return_storage =
           call_plan.memory_return.has_value()
-              ? make_memory_return_storage(context,
-                                           *call_plan.memory_return,
-                                           instruction_index)
+              ? StackFrameSlotCallOperandOwner::memory_return_storage(
+                    context,
+                    *call_plan.memory_return,
+                    instruction_index)
               : std::nullopt,
       .prepared_indirect_callee = call_plan.indirect_callee,
       .prepared_arguments = call_plan.arguments,
@@ -1297,79 +1377,6 @@ MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
   }
   return resource;
 }
-
-struct StackFrameSlotCallOperandOwner {
-  [[nodiscard]] static bool frame_slot_direct_offset_is_encodable(
-      const MemoryOperand& memory,
-      std::size_t load_width_bytes);
-
-  [[nodiscard]] static std::vector<std::string> materialize_frame_slot_address_lines(
-      abi::RegisterReference scratch,
-      const MemoryOperand& memory);
-
-  [[nodiscard]] static std::string stack_copy_address(std::string_view base,
-                                                      std::int64_t offset);
-
-  [[nodiscard]] static std::optional<MemoryOperand> selected_frame_slot_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallArgumentPlan& argument,
-      const prepare::PreparedValueHome* source_home,
-      const prepare::PreparedCallArgumentSourceSelection& selection,
-      prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
-      bool materialized_address,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> sret_memory_return_address_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallPlan& call_plan,
-      const prepare::PreparedCallArgumentPlan& argument,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> selected_local_frame_address_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallArgumentPlan& argument,
-      const prepare::PreparedValueHome& source_home,
-      const prepare::PreparedCallArgumentSourceSelection& selection,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> stack_call_argument_destination(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallArgumentPlan& argument,
-      const prepare::PreparedValueHome& source_home,
-      const prepare::PreparedMoveResolution& move,
-      const prepare::PreparedAbiBinding* binding,
-      const MemoryOperand& source,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> aggregate_call_argument_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallArgumentPlan& argument,
-      const prepare::PreparedValueHome& source_home,
-      const RegisterOperand& source_register,
-      std::size_t size_bytes,
-      std::int64_t byte_offset,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> preserved_stack_selection_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallArgumentSourceSelection& selection,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static bool endpoint_has_stack_storage(
-      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint);
-
-  [[nodiscard]] static std::optional<MemoryOperand> frame_slot_memory_from_endpoint(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint,
-      prepare::PreparedValueId value_id,
-      ValueNameId value_name,
-      std::size_t instruction_index);
-
-  [[nodiscard]] static std::optional<MemoryOperand> prior_stack_preserved_value_source(
-      const module::BlockLoweringContext& context,
-      const prepare::PreparedCallPreservedValue& preserved,
-      std::size_t instruction_index);
-};
 
 [[nodiscard]] bool StackFrameSlotCallOperandOwner::frame_slot_direct_offset_is_encodable(
     const MemoryOperand& memory,
