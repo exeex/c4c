@@ -1,49 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/91_aarch64_call_boundary_aggregate_lane_record_schema_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Route Printing Through the Explicit Shape
+Current Step ID: 5
+Current Step Title: Validate Surface and Acceptance
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 routed aggregate register-lane printing through the explicit
-`AggregateRegisterLanePublicationView` shape. The local aggregate-lane printer
-helper now consumes the view directly, and `print_call_boundary_move` computes
-`aggregate_register_lane_publication_view(move)` before calling it.
+Step 5 validated the final aggregate-lane record schema cleanup surface. The
+public instruction-record boundary now exposes
+`AggregateRegisterLanePublicationView`, and
+`is_aggregate_register_lane_publication` delegates to
+`aggregate_register_lane_publication_view`.
 
-The existing early missing-provenance/source/destination checks still run before
-aggregate-lane view selection. Printer-side unsupported fallbacks for scratch
-selection, lane destination validation, memory addressing, and chunk
-printability remain unchanged, and ordinary register/immediate/f128/frame-slot
-move printing is still routed through the existing branches.
+The audit found no implementation boundary leak: `calls.cpp` validates
+aggregate-lane construction through the view while retaining ABI and
+prepared-source ownership, and `machine_printer.cpp` consumes the view directly
+while retaining final scratch, lane destination, printable chunk, address, and
+diagnostic checks. Ordinary register/immediate/f128/frame-slot call-boundary
+routes remain on their existing branches.
 
 ## Suggested Next
 
-Step 5 should validate the aggregate-lane schema cleanup surface and acceptance
-criteria, including confirming that construction and printing now consume the
-explicit view at their boundaries without expectation rewrites or unrelated
-record-schema changes.
+Lifecycle close review is ready. The supervisor should route to the plan owner
+to decide whether the active runbook can close against
+`ideas/open/91_aarch64_call_boundary_aggregate_lane_record_schema_cleanup.md`.
 
 ## Watchouts
 
-- The printer helper now assumes the explicit view already identified the
-  aggregate-lane publication shape; keep any broader shape validation in the
-  view boundary instead of duplicating it in the helper.
-- Printer-side validation remains intentionally separate after the view
-  succeeds: scratch availability, occupied-lane destination selection, memory
-  addressing, and chunk printability can still reject a selected shape.
-- Step 5 should watch for accidental behavior changes in ordinary
-  register/immediate/f128/frame-slot call-boundary moves while reviewing the
-  acceptance surface.
+- No Step 5 code issue was found. The remaining action is lifecycle handling;
+  do not expand this runbook unless the plan-owner close review finds source
+  intent still unmet.
 
 ## Proof
 
-Step 4 proof passed and wrote CTest output to `test_after.log`.
+Step 5 proof passed and wrote CTest output to `test_after.log`.
 
 ```sh
-cmake --build build --target backend_aarch64_machine_printer_test backend_aarch64_target_instruction_records_test backend_aarch64_call_boundary_owner_test && ctest --test-dir build -R '^(backend_aarch64_(machine_printer|target_instruction_records|call_boundary_owner))$' --output-on-failure > test_after.log
+cmake --build build --target backend_aarch64_call_boundary_owner_test backend_prepare_frame_stack_call_contract_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test c4cll && ctest --test-dir build -R '^(backend_aarch64_(call_boundary_owner|target_instruction_records|machine_printer|instruction_dispatch)|backend_prepare_frame_stack_call_contract|backend_codegen_route_aarch64_(local_aggregate_address_pointer_copy_publishes_frame_address|dynamic_stack_fixed_slot_uses_fp_anchor))$' --output-on-failure > test_after.log
 ```
 
-CTest subset result: 3/3 passed.
+CTest subset result: 7/7 passed.
