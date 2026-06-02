@@ -1,5 +1,13 @@
 # AArch64 Memory Store-Retargeting Owner
 
+## Closure Note
+
+Closed after Steps 1-4 completed the store-retargeting owner split:
+boundary mapping, pointer store retargeting extraction, stack-layout store
+rewrite extraction, and final surface tightening. The resulting owner remains
+AArch64 memory-local, direct consumers include the retargeting header
+explicitly, and focused AArch64 prepared-memory/dispatch proof stayed green.
+
 ## Goal
 
 Split the AArch64 memory-local store-retargeting helpers into a narrow owner
