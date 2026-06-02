@@ -2,6 +2,7 @@
 
 #include "instruction.hpp"
 #include "alu.hpp"
+#include "memory_store_retargeting.hpp"
 #include "../module/module.hpp"
 
 #include <cstddef>
@@ -107,35 +108,6 @@ void record_memory_result(BlockScalarLoweringState& scalar_state,
 
 void retarget_memory_result_to_prepared_home(
     const module::BlockLoweringContext& context,
-    module::MachineInstruction& instruction);
-
-[[nodiscard]] bool store_local_uses_pointer_value_address(
-    const bir::StoreLocalInst& store);
-
-[[nodiscard]] std::optional<RegisterOperand> prepared_or_emitted_store_value_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const BlockScalarLoweringState& scalar_state);
-
-void retarget_pointer_store_value_to_materialized_address(
-    module::MachineInstruction& instruction,
-    const RegisterOperand& materialized_address);
-
-void retarget_store_address_to_materialized_pointer(
-    const bir::StoreLocalInst& store,
-    module::MachineInstruction& instruction,
-    const RegisterOperand& materialized_address);
-
-void retarget_pointer_store_value_to_emitted_scalar(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    const BlockScalarLoweringState& scalar_state,
-    module::MachineInstruction& instruction);
-
-void retarget_store_local_value_to_emitted_scalar(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    const BlockScalarLoweringState& scalar_state,
     module::MachineInstruction& instruction);
 
 [[nodiscard]] const prepare::PreparedMemoryAccess* prepared_store_local_access(
