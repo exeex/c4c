@@ -1,58 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/94_aarch64_calls_f128_carrier_operand_owner.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm F128 Carrier Boundary And Proof Subset
+Current Step ID: 2
+Current Step Title: Introduce The F128 Carrier Operand Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1: `Confirm F128 Carrier Boundary And Proof Subset`.
+Completed plan Step 2: `Introduce The F128 Carrier Operand Owner`.
 
-Boundary audit:
+Implemented a local `F128CarrierCallOperandOwner` in
+`src/backend/mir/aarch64/codegen/calls.cpp` and grouped only the f128-specific
+calls-side carrier operand helpers behind it:
 
-- `complete_full_width_f128_carrier` consumes prepared f128 carrier facts and
-  currently gates full-width structured q-register argument/result moves from
-  `lower_before_call_move` and `lower_after_call_move`.
-- `complete_f128_constant_carrier` consumes prepared f128 carrier facts plus
-  exact low/high constant payload facts and currently gates immediate f128
-  argument publication from `lower_before_call_move`.
-- `find_prepared_f128_carrier_in_module` is a calls-side fallback lookup for a
-  prepared f128 carrier by `PreparedValueId` when the current function carrier
-  table did not resolve the direct-call source.
-- `make_f128_q_register_operand_from_carrier` renders a prepared full-width
-  f128 carrier as an AArch64 q-register `RegisterOperand`, preserving prepared
-  bank/class/width/occupancy and diagnostics for non-FP/SIMD or non-q-viewable
-  carrier registers.
-- `scalar_fp_view_from_register_name` is shared by ordinary scalar FPR
-  argument/result moves and scalar frame-slot argument loads; it should not be
-  moved into the f128 owner except through a narrow f128-only wrapper if q-view
-  conversion needs one.
+- `is_complete_full_width` now owns the previous full-width f128 carrier
+  completion predicate.
+- `is_complete_constant` now owns the previous f128 constant carrier completion
+  predicate.
+- `find_in_module` now owns the module fallback lookup for a prepared f128
+  carrier by `PreparedValueId`.
+- `q_register_operand` now owns prepared f128 carrier to AArch64 q-register
+  operand rendering and preserves the existing diagnostics.
 
-Smallest proposed owner boundary:
-
-- Add a local `F128CarrierCallOperandOwner` in `calls.cpp`.
-- Move/consolidate only these f128-specific helpers behind it:
-  `complete_full_width_f128_carrier`,
-  `complete_f128_constant_carrier`,
-  `find_prepared_f128_carrier_in_module`, and
-  `make_f128_q_register_operand_from_carrier`.
-- Expose narrow methods such as `is_complete_full_width`,
-  `is_complete_constant`, `find_in_module`, and `q_register_operand`.
-- Inputs should be prepared carrier/function/module facts, payload/register
-  facts, operand role/value ids/names, and diagnostics context. Outputs should
-  remain booleans, a prepared carrier pointer, or a rendered q-register operand.
-- Keep prepared carrier creation/selection, call argument/result classification,
-  move-record construction, generic register operand rendering, and assembly
-  emission outside the owner.
+Updated the in-scope call sites in `lower_before_call_move` and
+`lower_after_call_move` to consume the owner. Shared scalar FP helpers,
+generic register operand rendering, prepared carrier selection, and
+call-boundary record construction remain outside the owner.
 
 ## Suggested Next
 
-Execute Step 2 by introducing the local `F128CarrierCallOperandOwner` in
-`src/backend/mir/aarch64/codegen/calls.cpp` and routing only the audited
-helper bodies through it. Do not change behavior or public declarations unless
-an existing external call path requires it.
+Execute Step 3 by checking whether any remaining f128 call-boundary uses should
+be routed through `F128CarrierCallOperandOwner`, or documenting why they stay
+outside. Keep the next packet limited to calls-side f128 carrier completion,
+module lookup consumption, and q-register operand rendering.
 
 ## Watchouts
 
@@ -78,34 +59,12 @@ an existing external call path requires it.
 
 ## Proof
 
-Audit-only packet; no build/tests required because no implementation files were
-touched.
-
-Local validation for this packet:
-
-`git diff --name-only`
-
-Expected result: only `todo.md` changed.
-
-Focused proof command to use after implementation:
+Ran the supervisor-selected proof command exactly:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_instruction_dispatch|backend_prepared_printer|backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result)$' --output-on-failure > test_after.log
 ```
 
-Subset coverage:
+Result: passed. `test_after.log` records 5/5 tests passed.
 
-- `backend_aarch64_call_boundary_owner`: full-width f128 HFA/call-boundary
-  q-register authority.
-- `backend_aarch64_target_instruction_records`: f128 call-boundary move record
-  q-register selection, f128 transport records, missing/incomplete f128 carrier
-  diagnostics, and adjacent scalar FPR call-boundary move records.
-- `backend_aarch64_instruction_dispatch`: prepared f128 argument q-register
-  moves, frame-slot f128 argument routes, f128 constant argument carrier
-  consumption, missing/incomplete carrier rejection paths, and representative
-  q-register assembly.
-- `backend_prepared_printer`: prepared f128 carrier dump contracts for memory,
-  full-width register, and constant payload facts.
-- `backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result`:
-  adjacent ordinary scalar FP route to catch accidental ownership bleed into
-  non-f128 FPR publication.
+Proof log: `test_after.log`.

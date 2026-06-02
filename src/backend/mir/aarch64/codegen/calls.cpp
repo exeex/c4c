@@ -870,7 +870,28 @@ struct PreservedCallArgumentSource {
   return prepare::PreparedRegisterClass::None;
 }
 
-[[nodiscard]] bool complete_full_width_f128_carrier(
+struct F128CarrierCallOperandOwner {
+  [[nodiscard]] static bool is_complete_full_width(
+      const prepare::PreparedF128Carrier* carrier);
+
+  [[nodiscard]] static bool is_complete_constant(
+      const prepare::PreparedF128Carrier* carrier);
+
+  [[nodiscard]] static const prepare::PreparedF128Carrier* find_in_module(
+      const prepare::PreparedBirModule& prepared,
+      prepare::PreparedValueId value_id);
+
+  [[nodiscard]] static std::optional<RegisterOperand> q_register_operand(
+      const prepare::PreparedF128Carrier& carrier,
+      RegisterOperandRole role,
+      std::optional<prepare::PreparedValueId> value_id,
+      c4c::ValueNameId value_name,
+      module::ModuleLoweringDiagnostics& diagnostics,
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index);
+};
+
+[[nodiscard]] bool F128CarrierCallOperandOwner::is_complete_full_width(
     const prepare::PreparedF128Carrier* carrier) {
   return carrier != nullptr &&
          carrier->kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
@@ -881,7 +902,7 @@ struct PreservedCallArgumentSource {
          carrier->contiguous_width == 1 && carrier->register_name.has_value();
 }
 
-[[nodiscard]] bool complete_f128_constant_carrier(
+[[nodiscard]] bool F128CarrierCallOperandOwner::is_complete_constant(
     const prepare::PreparedF128Carrier* carrier) {
   return carrier != nullptr &&
          carrier->source_type == bir::TypeKind::F128 &&
@@ -893,8 +914,9 @@ struct PreservedCallArgumentSource {
 }
 
 [[nodiscard]] const prepare::PreparedF128Carrier*
-find_prepared_f128_carrier_in_module(const prepare::PreparedBirModule& prepared,
-                                     prepare::PreparedValueId value_id) {
+F128CarrierCallOperandOwner::find_in_module(
+    const prepare::PreparedBirModule& prepared,
+    prepare::PreparedValueId value_id) {
   for (const auto& function_carriers : prepared.f128_carriers.functions) {
     if (const auto* carrier =
             prepare::find_prepared_f128_carrier(function_carriers, value_id)) {
@@ -902,6 +924,57 @@ find_prepared_f128_carrier_in_module(const prepare::PreparedBirModule& prepared,
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] std::optional<RegisterOperand>
+F128CarrierCallOperandOwner::q_register_operand(
+    const prepare::PreparedF128Carrier& carrier,
+    RegisterOperandRole role,
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (!carrier.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*carrier.register_name);
+  if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        "AArch64 binary128 call-boundary source carrier is not an FP/SIMD register");
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(parsed->index, abi::RegisterView::Q);
+  if (!viewed.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        "AArch64 binary128 call-boundary source carrier could not be re-viewed as q-register");
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *viewed,
+      .role = role,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = carrier.register_class,
+      .prepared_bank = carrier.register_bank,
+      .expected_view = abi::RegisterView::Q,
+      .contiguous_width = carrier.contiguous_width,
+      .occupied_register_references = {*viewed},
+      .occupied_registers =
+          carrier.occupied_register_names.empty()
+              ? std::vector<std::string_view>{abi::register_name(*viewed)}
+              : std::vector<std::string_view>(
+                    carrier.occupied_register_names.begin(),
+                    carrier.occupied_register_names.end()),
+  };
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_fp_view_from_register_name(
@@ -1028,57 +1101,6 @@ find_prepared_f128_carrier_in_module(const prepare::PreparedBirModule& prepared,
               ? std::vector<std::string_view>{abi::register_name(*converted.reg)}
               : std::vector<std::string_view>(occupied_registers.begin(),
                                                occupied_registers.end()),
-  };
-}
-
-[[nodiscard]] std::optional<RegisterOperand>
-make_f128_q_register_operand_from_carrier(
-    const prepare::PreparedF128Carrier& carrier,
-    RegisterOperandRole role,
-    std::optional<prepare::PreparedValueId> value_id,
-    c4c::ValueNameId value_name,
-    module::ModuleLoweringDiagnostics& diagnostics,
-    const module::BlockLoweringContext& context,
-    std::size_t instruction_index) {
-  if (!carrier.register_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto parsed = abi::parse_aarch64_register_name(*carrier.register_name);
-  if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
-        context,
-        instruction_index,
-        "AArch64 binary128 call-boundary source carrier is not an FP/SIMD register");
-    return std::nullopt;
-  }
-  const auto viewed = abi::fp_simd_register(parsed->index, abi::RegisterView::Q);
-  if (!viewed.has_value()) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
-        context,
-        instruction_index,
-        "AArch64 binary128 call-boundary source carrier could not be re-viewed as q-register");
-    return std::nullopt;
-  }
-  return RegisterOperand{
-      .reg = *viewed,
-      .role = role,
-      .value_id = value_id,
-      .value_name = value_name,
-      .prepared_class = carrier.register_class,
-      .prepared_bank = carrier.register_bank,
-      .expected_view = abi::RegisterView::Q,
-      .contiguous_width = carrier.contiguous_width,
-      .occupied_register_references = {*viewed},
-      .occupied_registers =
-          carrier.occupied_register_names.empty()
-              ? std::vector<std::string_view>{abi::register_name(*viewed)}
-              : std::vector<std::string_view>(
-                    carrier.occupied_register_names.begin(),
-                    carrier.occupied_register_names.end()),
   };
 }
 
@@ -2609,15 +2631,15 @@ make_immediate_cast_call_argument_publication_instruction(
   if (source_f128_carrier == nullptr && context.function.prepared != nullptr &&
       argument != nullptr && argument->source_value_id.has_value()) {
     source_f128_carrier =
-        find_prepared_f128_carrier_in_module(*context.function.prepared,
-                                             *argument->source_value_id);
+        F128CarrierCallOperandOwner::find_in_module(*context.function.prepared,
+                                                    *argument->source_value_id);
   }
   const bool structured_f128_register_argument_move =
       argument != nullptr &&
       (argument->source_register_bank == prepare::PreparedRegisterBank::Vreg ||
        argument->source_register_bank == prepare::PreparedRegisterBank::Fpr) &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
-      complete_full_width_f128_carrier(source_f128_carrier);
+      F128CarrierCallOperandOwner::is_complete_full_width(source_f128_carrier);
 
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow != nullptr
@@ -2810,7 +2832,7 @@ make_immediate_cast_call_argument_publication_instruction(
            : std::optional<prepare::PreparedRegisterBank>{
                  argument->destination_register_bank}) ==
           std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Vreg} &&
-      complete_f128_constant_carrier(source_f128_carrier) &&
+      F128CarrierCallOperandOwner::is_complete_constant(source_f128_carrier) &&
       source_f128_carrier->constant_payload->low_bits ==
           argument->source_literal->f128_payload->low_bits &&
       source_f128_carrier->constant_payload->high_bits ==
@@ -2905,7 +2927,7 @@ make_immediate_cast_call_argument_publication_instruction(
     }
     move_record.destination_register = *destination;
     if (selected_f128_argument_move) {
-      auto source = make_f128_q_register_operand_from_carrier(
+      auto source = F128CarrierCallOperandOwner::q_register_operand(
           *source_f128_carrier,
           RegisterOperandRole::CallAbi,
           source_home->value_id,
@@ -4163,7 +4185,7 @@ find_immediate_argument_in_call_plan(
       result_plan != nullptr &&
       result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
       result_plan->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
-      complete_full_width_f128_carrier(destination_f128_carrier);
+      F128CarrierCallOperandOwner::is_complete_full_width(destination_f128_carrier);
 
   if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
