@@ -14,6 +14,7 @@
 #include "f128.hpp"
 #include "fp_value_materialization.hpp"
 #include "float_ops.hpp"
+#include "frame_slot_address.hpp"
 #include "globals.hpp"
 #include "i128_ops.hpp"
 #include "inline_asm.hpp"

@@ -1,6 +1,7 @@
 #include "variadic.hpp"
 #include "constant_materialization.hpp"
 #include "dispatch_publication.hpp"
+#include "frame_slot_address.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
 #include "prepared_value_home_materialization.hpp"

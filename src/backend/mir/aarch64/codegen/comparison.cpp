@@ -5,6 +5,7 @@
 #include "alu.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -1390,12 +1391,7 @@ namespace {
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.slot_id == slot_id) {
-      return &slot;
-    }
-  }
-  return nullptr;
+  return prepare::find_frame_slot_by_id(stack_layout, slot_id);
 }
 
 [[nodiscard]] std::optional<std::string> branch_fusion_prepared_frame_slot_load_address(

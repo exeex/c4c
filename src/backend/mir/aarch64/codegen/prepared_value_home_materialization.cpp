@@ -2,6 +2,7 @@
 
 #include "../abi/abi.hpp"
 #include "dispatch_publication.hpp"
+#include "frame_slot_address.hpp"
 #include "memory.hpp"
 
 #include <algorithm>

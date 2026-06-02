@@ -8,6 +8,7 @@
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
 #include "fp_value_materialization.hpp"
+#include "frame_slot_address.hpp"
 #include "instruction.hpp"
 #include "memory.hpp"
 #include "operands.hpp"

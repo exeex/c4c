@@ -11,6 +11,7 @@
 #include "dispatch_publication.hpp"
 #include "fp_value_materialization.hpp"
 #include "float_ops.hpp"
+#include "frame_slot_address.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 #include "operands.hpp"

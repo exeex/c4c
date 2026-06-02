@@ -28,6 +28,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/f128.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/fp_value_materialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/float_ops.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/frame_slot_address.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/globals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/i128_ops.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/inline_asm.cpp"

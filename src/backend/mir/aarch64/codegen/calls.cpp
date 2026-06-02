@@ -5,6 +5,7 @@
 #include "effects.hpp"
 #include "float_ops.hpp"
 #include "f128.hpp"
+#include "frame_slot_address.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
 #include "variadic.hpp"

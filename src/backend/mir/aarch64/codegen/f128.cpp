@@ -2,6 +2,7 @@
 #include "calls.hpp"
 #include "comparison.hpp"
 #include "effects.hpp"
+#include "frame_slot_address.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
 

@@ -4,6 +4,7 @@
 #include "calls.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_publication.hpp"
+#include "frame_slot_address.hpp"
 #include "memory.hpp"
 #include "select_materialization.hpp"
 
