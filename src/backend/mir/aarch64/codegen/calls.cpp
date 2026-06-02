@@ -1298,7 +1298,80 @@ MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
   return resource;
 }
 
-[[nodiscard]] bool call_boundary_frame_slot_direct_offset_is_encodable(
+struct StackFrameSlotCallOperandOwner {
+  [[nodiscard]] static bool frame_slot_direct_offset_is_encodable(
+      const MemoryOperand& memory,
+      std::size_t load_width_bytes);
+
+  [[nodiscard]] static std::vector<std::string> materialize_frame_slot_address_lines(
+      abi::RegisterReference scratch,
+      const MemoryOperand& memory);
+
+  [[nodiscard]] static std::string stack_copy_address(std::string_view base,
+                                                      std::int64_t offset);
+
+  [[nodiscard]] static std::optional<MemoryOperand> selected_frame_slot_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome* source_home,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      prepare::PreparedCallArgumentSourceSelectionKind expected_kind,
+      bool materialized_address,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> sret_memory_return_address_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallPlan& call_plan,
+      const prepare::PreparedCallArgumentPlan& argument,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> selected_local_frame_address_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> stack_call_argument_destination(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const prepare::PreparedMoveResolution& move,
+      const prepare::PreparedAbiBinding* binding,
+      const MemoryOperand& source,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> aggregate_call_argument_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentPlan& argument,
+      const prepare::PreparedValueHome& source_home,
+      const RegisterOperand& source_register,
+      std::size_t size_bytes,
+      std::int64_t byte_offset,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> preserved_stack_selection_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallArgumentSourceSelection& selection,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static bool endpoint_has_stack_storage(
+      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint);
+
+  [[nodiscard]] static std::optional<MemoryOperand> frame_slot_memory_from_endpoint(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallBoundaryEffectEndpoint& endpoint,
+      prepare::PreparedValueId value_id,
+      ValueNameId value_name,
+      std::size_t instruction_index);
+
+  [[nodiscard]] static std::optional<MemoryOperand> prior_stack_preserved_value_source(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallPreservedValue& preserved,
+      std::size_t instruction_index);
+};
+
+[[nodiscard]] bool StackFrameSlotCallOperandOwner::frame_slot_direct_offset_is_encodable(
     const MemoryOperand& memory,
     std::size_t load_width_bytes) {
   if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
@@ -1313,7 +1386,7 @@ MachineEffectResource local_effect_from_operand(const OperandRecord& operand) {
   return offset % load_width_bytes == 0 && offset / load_width_bytes <= 4095U;
 }
 
-std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
+std::vector<std::string> StackFrameSlotCallOperandOwner::materialize_frame_slot_address_lines(
     abi::RegisterReference scratch,
     const MemoryOperand& memory) {
   if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0) {
@@ -1332,8 +1405,9 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   return lines;
 }
 
-[[nodiscard]] std::string stack_copy_address(std::string_view base,
-                                             std::int64_t offset) {
+[[nodiscard]] std::string StackFrameSlotCallOperandOwner::stack_copy_address(
+    std::string_view base,
+    std::int64_t offset) {
   std::ostringstream out;
   out << "[" << base;
   if (offset != 0) {
@@ -1365,7 +1439,8 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_selected_frame_slot_source(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::selected_frame_slot_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome* source_home,
@@ -1429,13 +1504,14 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index) {
   if (argument.source_selection.has_value()) {
-    if (auto selected = make_selected_frame_slot_source(
+    if (auto selected = selected_frame_slot_source(
             context,
             argument,
             nullptr,
@@ -1477,7 +1553,8 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_selected_local_frame_address_source(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::selected_local_frame_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
@@ -1532,7 +1609,8 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::stack_call_argument_destination(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
@@ -1579,7 +1657,8 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   };
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_aggregate_call_argument_source(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::aggregate_call_argument_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
@@ -1673,8 +1752,23 @@ make_prior_preserved_call_argument_source(
       *selection.preserved_stack_size_bytes == 0) {
     return std::nullopt;
   }
+  auto source_memory =
+      StackFrameSlotCallOperandOwner::preserved_stack_selection_source(
+          context, selection, instruction_index);
+  if (!source_memory.has_value()) {
+    return std::nullopt;
+  }
   PreservedCallArgumentSource result;
-  result.source_memory = MemoryOperand{
+  result.source_memory = *source_memory;
+  return result;
+}
+
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::preserved_stack_selection_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentSourceSelection& selection,
+    std::size_t instruction_index) {
+  return MemoryOperand{
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .support = MemoryOperandSupportKind::Prepared,
       .function_name = context.function.control_flow != nullptr
@@ -1695,7 +1789,6 @@ make_prior_preserved_call_argument_source(
       .align_bytes = *selection.preserved_stack_align_bytes,
       .can_use_base_plus_offset = true,
   };
-  return result;
 }
 
 [[nodiscard]] std::optional<prepare::PreparedValueId> effect_value_id(
@@ -1711,7 +1804,7 @@ make_prior_preserved_call_argument_source(
                                                        : fallback.value_name;
 }
 
-[[nodiscard]] bool endpoint_has_stack_storage(
+[[nodiscard]] bool StackFrameSlotCallOperandOwner::endpoint_has_stack_storage(
     const prepare::PreparedCallBoundaryEffectEndpoint& endpoint) {
   return endpoint.storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
          endpoint.slot_id.has_value() &&
@@ -1720,7 +1813,8 @@ make_prior_preserved_call_argument_source(
          *endpoint.stack_size_bytes != 0;
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_memory_from_endpoint(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::frame_slot_memory_from_endpoint(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallBoundaryEffectEndpoint& endpoint,
     prepare::PreparedValueId value_id,
@@ -1769,17 +1863,19 @@ find_prior_stack_preserved_value_before_instruction(
       preserved->route != prepare::PreparedCallPreservationRoute::StackSlot) {
     return nullptr;
   }
-  if (!endpoint_has_stack_storage(preserved->preservation_destination)) {
+  if (!StackFrameSlotCallOperandOwner::endpoint_has_stack_storage(
+          preserved->preservation_destination)) {
     return nullptr;
   }
   return preserved;
 }
 
-[[nodiscard]] std::optional<MemoryOperand> make_prior_stack_preserved_value_source(
+[[nodiscard]] std::optional<MemoryOperand>
+StackFrameSlotCallOperandOwner::prior_stack_preserved_value_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPreservedValue& preserved,
     std::size_t instruction_index) {
-  return make_frame_slot_memory_from_endpoint(
+  return frame_slot_memory_from_endpoint(
       context,
       preserved.preservation_destination,
       preserved.value_id,
@@ -2030,14 +2126,14 @@ make_value_stack_move_instruction(
     asm_text += " ";
     asm_text += std::string{abi::register_name(*scratch)};
     asm_text += ", ";
-    asm_text += stack_copy_address(
+    asm_text += StackFrameSlotCallOperandOwner::stack_copy_address(
         source_base, source.byte_offset + static_cast<std::int64_t>(offset));
     asm_text += '\n';
     asm_text += std::string{store_mnemonic};
     asm_text += " ";
     asm_text += std::string{abi::register_name(*scratch)};
     asm_text += ", ";
-    asm_text += stack_copy_address(
+    asm_text += StackFrameSlotCallOperandOwner::stack_copy_address(
         destination_base, destination.byte_offset + static_cast<std::int64_t>(offset));
     offset += width;
   }
@@ -2545,7 +2641,7 @@ make_immediate_cast_call_argument_publication_instruction(
           source_selection->kind ==
               prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) ||
          (source_selection == nullptr &&
-          make_sret_memory_return_address_source(
+          StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
               context, call_plan, *argument, instruction_index)
               .has_value()));
     const bool local_frame_address_argument =
@@ -3285,7 +3381,7 @@ make_immediate_cast_call_argument_publication_instruction(
     if (argument->source_selection.has_value()) {
       switch (argument->source_selection->kind) {
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
-          address_source = make_sret_memory_return_address_source(
+          address_source = StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
               context, call_plan, *argument, instruction_index);
           if (!address_source.has_value()) {
             address_source = make_selected_call_argument_source(
@@ -3311,7 +3407,7 @@ make_immediate_cast_call_argument_publication_instruction(
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
           if (argument->source_selection->byval_lane_extent_bytes.has_value() &&
               *argument->source_selection->byval_lane_extent_bytes > 16) {
-            address_source = make_selected_frame_slot_source(
+            address_source = StackFrameSlotCallOperandOwner::selected_frame_slot_source(
                 context,
                 *argument,
                 source_home,
@@ -3348,7 +3444,7 @@ make_immediate_cast_call_argument_publication_instruction(
           break;
       }
     } else {
-      address_source = make_sret_memory_return_address_source(
+      address_source = StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
           context, call_plan, *argument, instruction_index);
     }
     if (!address_source.has_value() &&
@@ -3462,7 +3558,7 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate stack-lane call-argument publication requires prepared source bytes");
       return std::nullopt;
     }
-    const auto destination = make_stack_call_argument_destination(
+    const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
         context, *argument, *source_home, move, binding, *source, instruction_index);
     if (!destination.has_value()) {
       append_call_diagnostic(
@@ -3562,7 +3658,7 @@ make_immediate_cast_call_argument_publication_instruction(
       return std::nullopt;
     }
     const auto source_byte_offset = source_home->pointer_byte_delta.value_or(0);
-    const auto source = make_aggregate_call_argument_source(
+    const auto source = StackFrameSlotCallOperandOwner::aggregate_call_argument_source(
         context,
         *argument,
         *source_home,
@@ -3579,7 +3675,7 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 aggregate stack call-argument copy requires a prepared aggregate address source");
       return std::nullopt;
     }
-    const auto destination = make_stack_call_argument_destination(
+    const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
         context, *argument, *source_home, move, binding, *source, instruction_index);
     if (!destination.has_value()) {
       append_call_diagnostic(
@@ -3626,7 +3722,7 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 binary128 stack call-argument move requires a prepared frame-slot source");
       return std::nullopt;
     }
-    const auto destination = make_stack_call_argument_destination(
+    const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
         context, *argument, *source_home, move, binding, *source, instruction_index);
     if (!destination.has_value()) {
       append_call_diagnostic(
@@ -3705,7 +3801,7 @@ make_immediate_cast_call_argument_publication_instruction(
           "AArch64 stack call-argument move lowering requires a 1, 4, or 8 byte prepared stack slot");
       return std::nullopt;
     }
-    const auto destination = make_stack_call_argument_destination(
+    const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
         context, *argument, *source_home, move, binding, *source, instruction_index);
     if (!destination.has_value()) {
       append_call_diagnostic(
@@ -4561,7 +4657,7 @@ make_callee_saved_preservation_home_population(
     }
   }
   if (!selected_source) {
-    if (auto source = make_frame_slot_memory_from_endpoint(
+    if (auto source = StackFrameSlotCallOperandOwner::frame_slot_memory_from_endpoint(
             context, value, *value_id, value_name, instruction_index)) {
       move_record.source_memory = *source;
       selected_source = true;
@@ -4594,7 +4690,7 @@ make_callee_saved_preservation_home_population(
       if (source_home == nullptr) {
         return std::nullopt;
       }
-      return make_selected_frame_slot_source(
+      return StackFrameSlotCallOperandOwner::selected_frame_slot_source(
           context,
           argument,
           source_home,
@@ -4603,7 +4699,7 @@ make_callee_saved_preservation_home_population(
           false,
           instruction_index);
     case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
-      return make_selected_frame_slot_source(
+      return StackFrameSlotCallOperandOwner::selected_frame_slot_source(
           context,
           argument,
           source_home,
@@ -4616,7 +4712,7 @@ make_callee_saved_preservation_home_population(
       if (source_home == nullptr) {
         return std::nullopt;
       }
-      return make_selected_local_frame_address_source(
+      return StackFrameSlotCallOperandOwner::selected_local_frame_address_source(
           context, argument, *source_home, selection, instruction_index);
     case prepare::PreparedCallArgumentSourceSelectionKind::None:
     case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
@@ -5054,7 +5150,7 @@ std::vector<module::MachineInstruction> lower_value_moves(
                              context, move.from_value_id, instruction_index)
                        : nullptr;
                prior_stack_preserved != nullptr) {
-      auto source = make_prior_stack_preserved_value_source(
+      auto source = StackFrameSlotCallOperandOwner::prior_stack_preserved_value_source(
           context, *prior_stack_preserved, instruction_index);
       if (!source.has_value()) {
         continue;
