@@ -55,6 +55,23 @@ address/value-home/storage authority instead of recreating it.
 - Acceptance-sized slices should use matching before/after regression logs when
   the change crosses more than the frame-slot/address helper boundary.
 
+## Closure Note
+
+Closed on 2026-06-02 after the active runbook completed Steps 1-5. The final
+audit confirmed the owner surface is narrow, `memory.hpp` no longer exposes the
+frame-slot helper cluster, f128 and variadic consumers remain consumers of
+prepared facts rather than owners of ABI or cursor policy, and generated
+records/diagnostics proof passed for the acceptance subset.
+
+Close guard:
+
+```sh
+cmake --build build --target backend_aarch64_memory_operand_records_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_memory_operand_contract_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test c4cll && ctest --test-dir build -R '^(backend_aarch64_(memory_operand_records|prepared_memory_operand_records|memory_operand_contract|machine_printer|instruction_dispatch)|backend_codegen_route_aarch64_(variadic_aggregate_overflow_byte_copy|dynamic_stack_fixed_slot_uses_fp_anchor)|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: 8/8 before, 8/8 after, no new failures, close guard passed.
+
 ## Reviewer Reject Signals
 
 - The route re-derives prepared value homes, storage decisions, stack-source
