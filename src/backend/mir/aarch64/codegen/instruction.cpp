@@ -1114,6 +1114,25 @@ std::optional<std::size_t> aggregate_register_lane_printable_chunk(
   return std::nullopt;
 }
 
+std::optional<AggregateRegisterLanePrintableChunk>
+aggregate_register_lane_printable_chunk_descriptor(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining,
+    abi::RegisterReference load_base_register) {
+  const auto width =
+      aggregate_register_lane_printable_chunk(memory, source_offset, remaining);
+  if (!width.has_value()) {
+    return std::nullopt;
+  }
+  return AggregateRegisterLanePrintableChunk{
+      .memory = aggregate_register_lane_memory(memory, source_offset, *width),
+      .width_bytes = *width,
+      .load_mnemonic = aggregate_register_lane_load_mnemonic(*width),
+      .load_register = aggregate_register_lane_load_register(load_base_register, *width),
+  };
+}
+
 std::optional<abi::RegisterReference> aggregate_register_lane_destination(
     const RegisterOperand& destination,
     std::size_t lane_index) {

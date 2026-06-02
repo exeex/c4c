@@ -1722,6 +1722,14 @@ struct InstructionRecord {
     std::size_t width_bytes);
 [[nodiscard]] std::vector<std::size_t> aggregate_stack_copy_chunks(
     std::size_t size_bytes);
+
+struct AggregateRegisterLanePrintableChunk {
+  MemoryOperand memory;
+  std::size_t width_bytes = 0;
+  std::string_view load_mnemonic;
+  abi::RegisterReference load_register;
+};
+
 [[nodiscard]] std::string_view aggregate_register_lane_load_mnemonic(
     std::size_t width_bytes);
 [[nodiscard]] abi::RegisterReference aggregate_register_lane_load_register(
@@ -1739,6 +1747,12 @@ struct InstructionRecord {
     const MemoryOperand& memory,
     std::size_t source_offset,
     std::size_t remaining);
+[[nodiscard]] std::optional<AggregateRegisterLanePrintableChunk>
+aggregate_register_lane_printable_chunk_descriptor(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining,
+    abi::RegisterReference load_base_register);
 [[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_destination(
     const RegisterOperand& destination,
     std::size_t lane_index);

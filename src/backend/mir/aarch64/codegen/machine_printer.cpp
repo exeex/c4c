@@ -1798,37 +1798,26 @@ std::optional<std::vector<std::string>> print_aggregate_register_lane_publicatio
     }
     std::size_t lane_offset = 0;
     while (lane_offset < lane_bytes) {
-      const auto printable_chunk =
-          aggregate_register_lane_printable_chunk(*move.source_memory,
-                                                  source_offset + lane_offset,
-                                                  lane_bytes - lane_offset);
-      if (!printable_chunk.has_value()) {
-        return std::nullopt;
-      }
-      const std::size_t chunk_width = *printable_chunk;
-      const auto chunk_memory =
-          aggregate_register_lane_memory(*move.source_memory,
-                                         source_offset + lane_offset,
-                                         chunk_width);
-      const auto mnemonic = aggregate_register_lane_load_mnemonic(chunk_width);
-      if (mnemonic.empty()) {
-        return std::nullopt;
-      }
       const bool first_chunk = lane_offset == 0;
-      const auto load_register =
-          first_chunk
-              ? aggregate_register_lane_load_register(*lane_register, chunk_width)
-              : aggregate_register_lane_load_register(*scratch, chunk_width);
-      lines.push_back(std::string{mnemonic} + " " +
-                      std::string{abi::register_name(load_register)} + ", " +
-                      memory_address(chunk_memory));
+      const auto load_base_register = first_chunk ? *lane_register : *scratch;
+      const auto chunk =
+          aggregate_register_lane_printable_chunk_descriptor(*move.source_memory,
+                                                            source_offset + lane_offset,
+                                                            lane_bytes - lane_offset,
+                                                            load_base_register);
+      if (!chunk.has_value()) {
+        return std::nullopt;
+      }
+      lines.push_back(std::string{chunk->load_mnemonic} + " " +
+                      std::string{abi::register_name(chunk->load_register)} + ", " +
+                      memory_address(chunk->memory));
       if (!first_chunk) {
         lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
                         ", " + std::string{abi::register_name(*lane_register)} +
                         ", " + scratch_x + ", lsl #" +
                         std::to_string(lane_offset * 8));
       }
-      lane_offset += chunk_width;
+      lane_offset += chunk->width_bytes;
     }
     remaining -= lane_bytes;
     source_offset += lane_bytes;
