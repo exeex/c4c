@@ -56,27 +56,77 @@ struct FunctionStackObjectPlan {
   return nullptr;
 }
 
-[[nodiscard]] const bir::Global* find_global_by_symbol(
+[[nodiscard]] const bir::Global* find_raw_no_id_global_address_compatibility(
     const bir::Module& module,
-    const bir::NameTables& bir_names,
-    std::string_view raw_symbol_name,
-    LinkNameId link_name_id) {
-  if (link_name_id != kInvalidLinkName) {
-    return find_global_by_link_name_id(module, link_name_id);
-  }
+    std::string_view raw_symbol_name) {
   if (raw_symbol_name.empty()) {
     return nullptr;
   }
   for (const auto& global : module.globals) {
-    if (global.name == raw_symbol_name) {
-      return &global;
-    }
-    if (global.link_name_id != kInvalidLinkName &&
-        bir_names.link_names.spelling(global.link_name_id) == raw_symbol_name) {
+    if (global.link_name_id == kInvalidLinkName && global.name == raw_symbol_name) {
       return &global;
     }
   }
   return nullptr;
+}
+
+struct ResolvedPreparedGlobalSymbolAddress {
+  const bir::Global* global = nullptr;
+  LinkNameId prepared_symbol_name = kInvalidLinkName;
+};
+
+[[nodiscard]] std::optional<ResolvedPreparedGlobalSymbolAddress>
+resolve_structured_global_symbol_address(PreparedNameTables& names,
+                                         const bir::Module& module,
+                                         const bir::NameTables& bir_names,
+                                         std::string_view raw_symbol_name,
+                                         LinkNameId symbol_link_name_id) {
+  if (symbol_link_name_id == kInvalidLinkName) {
+    return std::nullopt;
+  }
+  const std::string_view semantic_symbol_name =
+      bir_names.link_names.spelling(symbol_link_name_id);
+  if (semantic_symbol_name.empty()) {
+    return std::nullopt;
+  }
+  if (!raw_symbol_name.empty() && raw_symbol_name != semantic_symbol_name) {
+    return std::nullopt;
+  }
+  const auto* global = find_global_by_link_name_id(module, symbol_link_name_id);
+  if (global == nullptr) {
+    return std::nullopt;
+  }
+  return ResolvedPreparedGlobalSymbolAddress{
+      .global = global,
+      .prepared_symbol_name = names.link_names.intern(semantic_symbol_name),
+  };
+}
+
+[[nodiscard]] std::optional<ResolvedPreparedGlobalSymbolAddress>
+resolve_raw_no_id_global_address_compatibility(PreparedNameTables& names,
+                                               const bir::Module& module,
+                                               std::string_view raw_symbol_name) {
+  const auto* global = find_raw_no_id_global_address_compatibility(module, raw_symbol_name);
+  if (global == nullptr) {
+    return std::nullopt;
+  }
+  return ResolvedPreparedGlobalSymbolAddress{
+      .global = global,
+      .prepared_symbol_name = names.link_names.intern(raw_symbol_name),
+  };
+}
+
+[[nodiscard]] std::optional<ResolvedPreparedGlobalSymbolAddress>
+resolve_prepared_global_symbol_address(PreparedNameTables& names,
+                                       const bir::Module& module,
+                                       const bir::NameTables& bir_names,
+                                       std::string_view raw_symbol_name,
+                                       LinkNameId symbol_link_name_id) {
+  if (symbol_link_name_id != kInvalidLinkName) {
+    return resolve_structured_global_symbol_address(
+        names, module, bir_names, raw_symbol_name, symbol_link_name_id);
+  }
+  return resolve_raw_no_id_global_address_compatibility(names, module, raw_symbol_name);
 }
 
 [[nodiscard]] bool module_has_function_link_name_id(const bir::Module& module,
@@ -441,44 +491,19 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
     std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
     std::size_t align_bytes) {
-  const auto resolve_symbol_name =
-      [&](std::string_view raw_symbol_name,
-          LinkNameId symbol_link_name_id) -> std::optional<LinkNameId> {
-    if (symbol_link_name_id != kInvalidLinkName) {
-      const std::string_view semantic_symbol_name =
-          bir_names.link_names.spelling(symbol_link_name_id);
-      if (semantic_symbol_name.empty()) {
-        return std::nullopt;
-      }
-      if (!raw_symbol_name.empty() && raw_symbol_name != semantic_symbol_name) {
-        return std::nullopt;
-      }
-      return names.link_names.intern(semantic_symbol_name);
-    }
-    if (raw_symbol_name.empty()) {
-      return std::nullopt;
-    }
-    return names.link_names.intern(raw_symbol_name);
-  };
-
   if (!address.has_value()) {
-    const auto symbol_name =
-        resolve_symbol_name(fallback_symbol_name, fallback_symbol_link_name_id);
-    if (!symbol_name.has_value()) {
+    const auto resolved_global = resolve_prepared_global_symbol_address(
+        names, module, bir_names, fallback_symbol_name, fallback_symbol_link_name_id);
+    if (!resolved_global.has_value()) {
       return std::nullopt;
     }
-    const auto* global =
-        find_global_by_symbol(module, bir_names, fallback_symbol_name, fallback_symbol_link_name_id);
-    if (global == nullptr) {
-      return std::nullopt;
-    }
-    const auto policy = prepared_global_address_policy(target_profile, *global);
+    const auto policy = prepared_global_address_policy(target_profile, *resolved_global->global);
     if (!policy.has_value()) {
       return std::nullopt;
     }
     return PreparedAddress{
         .base_kind = PreparedAddressBaseKind::GlobalSymbol,
-        .symbol_name = *symbol_name,
+        .symbol_name = resolved_global->prepared_symbol_name,
         .global_address_materialization_policy = *policy,
         .byte_offset = fallback_byte_offset,
         .size_bytes = size_bytes,
@@ -507,26 +532,33 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
                  ? address->base_link_name_id
                  : (address->base_name.empty() ? fallback_symbol_link_name_id : kInvalidLinkName))
           : kInvalidLinkName;
-  const auto prepared_symbol_name = resolve_symbol_name(symbol_name, symbol_link_name_id);
-  if (!prepared_symbol_name.has_value()) {
-    return std::nullopt;
-  }
+  std::optional<LinkNameId> prepared_symbol_name;
   std::optional<bir::GlobalAddressMaterializationPolicy> global_policy;
   if (base_kind == PreparedAddressBaseKind::GlobalSymbol) {
-    const auto* global =
-        find_global_by_symbol(module, bir_names, symbol_name, symbol_link_name_id);
-    if (global == nullptr) {
+    const auto resolved_global = resolve_prepared_global_symbol_address(
+        names,
+        module,
+        bir_names,
+        symbol_name,
+        symbol_link_name_id);
+    if (!resolved_global.has_value()) {
       return std::nullopt;
     }
-    global_policy = prepared_global_address_policy(target_profile, *global);
+    prepared_symbol_name = resolved_global->prepared_symbol_name;
+    global_policy = prepared_global_address_policy(target_profile, *resolved_global->global);
     if (!global_policy.has_value()) {
       return std::nullopt;
     }
+  } else {
+    if (symbol_name.empty()) {
+      return std::nullopt;
+    }
+    prepared_symbol_name = names.link_names.intern(symbol_name);
   }
 
   return PreparedAddress{
       .base_kind = base_kind,
-      .symbol_name = *prepared_symbol_name,
+      .symbol_name = prepared_symbol_name,
       .global_address_materialization_policy =
           global_policy.value_or(bir::GlobalAddressMaterializationPolicy::Unspecified),
       .byte_offset = address->byte_offset + fallback_byte_offset,
