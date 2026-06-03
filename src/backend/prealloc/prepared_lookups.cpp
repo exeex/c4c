@@ -421,122 +421,6 @@ void publish_prepared_after_call_result_lane_bindings(
   }
 }
 
-void publish_source_producer(
-    std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>& producers,
-    ValueNameId value_name,
-    PreparedEdgePublicationSourceProducer producer) {
-  if (value_name == kInvalidValueName) {
-    return;
-  }
-  const auto [it, inserted] = producers.emplace(value_name, producer);
-  if (!inserted) {
-    it->second = PreparedEdgePublicationSourceProducer{};
-  }
-}
-
-[[nodiscard]] PreparedEdgePublicationSourceProducerLookups
-make_edge_publication_source_producers(const PreparedBirModule* prepared,
-                                       const PreparedControlFlowFunction& function) {
-  PreparedEdgePublicationSourceProducerLookups lookups;
-  if (prepared == nullptr) {
-    return lookups;
-  }
-  const auto* bir_function = prepared_bir_function(*prepared, function);
-  if (bir_function == nullptr) {
-    return lookups;
-  }
-
-  for (const auto& block : bir_function->blocks) {
-    const BlockLabelId block_label = prepared_bir_block_label_id(*prepared, block);
-    for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
-      const auto& inst = block.insts[inst_index];
-      if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst);
-          load_local != nullptr) {
-        if (const auto result_name =
-                existing_prepared_value_name_id(prepared->names, load_local->result);
-            result_name.has_value()) {
-          publish_source_producer(
-              lookups.producers_by_value_name,
-              *result_name,
-              PreparedEdgePublicationSourceProducer{
-                  .kind = PreparedEdgePublicationSourceProducerKind::LoadLocal,
-                  .block_label = block_label,
-                  .instruction_index = inst_index,
-                  .load_local = load_local,
-              });
-        }
-        continue;
-      }
-      if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
-          load_global != nullptr) {
-        if (const auto result_name =
-                existing_prepared_value_name_id(prepared->names, load_global->result);
-            result_name.has_value()) {
-          publish_source_producer(
-              lookups.producers_by_value_name,
-              *result_name,
-              PreparedEdgePublicationSourceProducer{
-                  .kind = PreparedEdgePublicationSourceProducerKind::LoadGlobal,
-                  .block_label = block_label,
-                  .instruction_index = inst_index,
-                  .load_global = load_global,
-              });
-        }
-        continue;
-      }
-      if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
-        if (const auto result_name =
-                existing_prepared_value_name_id(prepared->names, cast->result);
-            result_name.has_value()) {
-          publish_source_producer(
-              lookups.producers_by_value_name,
-              *result_name,
-              PreparedEdgePublicationSourceProducer{
-                  .kind = PreparedEdgePublicationSourceProducerKind::Cast,
-                  .block_label = block_label,
-                  .instruction_index = inst_index,
-                  .cast = cast,
-              });
-        }
-        continue;
-      }
-      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr) {
-        if (const auto result_name =
-                existing_prepared_value_name_id(prepared->names, binary->result);
-            result_name.has_value()) {
-          publish_source_producer(
-              lookups.producers_by_value_name,
-              *result_name,
-              PreparedEdgePublicationSourceProducer{
-                  .kind = PreparedEdgePublicationSourceProducerKind::Binary,
-                  .block_label = block_label,
-                  .instruction_index = inst_index,
-                  .binary = binary,
-              });
-        }
-        continue;
-      }
-      if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
-        if (const auto result_name =
-                existing_prepared_value_name_id(prepared->names, select->result);
-            result_name.has_value()) {
-          publish_source_producer(
-              lookups.producers_by_value_name,
-              *result_name,
-              PreparedEdgePublicationSourceProducer{
-                  .kind =
-                      PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
-                  .block_label = block_label,
-                  .instruction_index = inst_index,
-                  .select = select,
-              });
-        }
-      }
-    }
-  }
-  return lookups;
-}
-
 void apply_source_producer_fact(
     PreparedEdgePublication& publication,
     const PreparedEdgePublicationSourceProducerLookups& source_producers) {
@@ -1676,7 +1560,9 @@ void publish_prepared_return_chain(
   const auto* value_homes =
       value_home_lookups == nullptr ? &local_value_home_lookups : value_home_lookups;
   const auto source_producers =
-      make_edge_publication_source_producers(prepared, function);
+      prepared != nullptr
+          ? make_prepared_edge_publication_source_producer_lookups(*prepared, function)
+          : PreparedEdgePublicationSourceProducerLookups{};
   const auto* function_addressing =
       prepared != nullptr ? find_prepared_addressing(*prepared, function.function_name)
                           : nullptr;
@@ -1839,13 +1725,6 @@ void publish_prepared_return_chain(
     const PreparedValueHomeLookups* value_home_lookups) {
   return make_prepared_edge_publication_lookups(
       &prepared, prepared.names, function, value_locations, value_home_lookups);
-}
-
-[[nodiscard]] PreparedEdgePublicationSourceProducerLookups
-make_prepared_edge_publication_source_producer_lookups(
-    const PreparedBirModule& prepared,
-    const PreparedControlFlowFunction& function) {
-  return make_edge_publication_source_producers(&prepared, function);
 }
 
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
@@ -2552,20 +2431,6 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
   return it != lookups->next_operand_values_by_chain_value.end()
              ? it->second
              : kInvalidValueName;
-}
-
-[[nodiscard]] const PreparedEdgePublicationSourceProducer*
-find_indexed_prepared_edge_publication_source_producer(
-    const PreparedEdgePublicationSourceProducerLookups* lookups,
-    ValueNameId value_name) {
-  if (lookups == nullptr || value_name == kInvalidValueName) {
-    return nullptr;
-  }
-  const auto it = lookups->producers_by_value_name.find(value_name);
-  if (it == lookups->producers_by_value_name.end()) {
-    return nullptr;
-  }
-  return &it->second;
 }
 
 std::optional<PreparedSameBlockScalarProducer>

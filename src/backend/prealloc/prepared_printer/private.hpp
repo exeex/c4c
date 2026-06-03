@@ -13,6 +13,8 @@ void append_stack_layout(std::ostringstream& out, const PreparedBirModule& modul
 void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module);
 void append_dynamic_stack_plan(std::ostringstream& out, const PreparedBirModule& module);
 void append_call_plans(std::ostringstream& out, const PreparedBirModule& module);
+void append_select_chain_materializations(std::ostringstream& out,
+                                          const PreparedBirModule& module);
 void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModule& module);
 void append_regalloc(std::ostringstream& out, const PreparedBirModule& module);
 void append_storage_plans(std::ostringstream& out, const PreparedBirModule& module);

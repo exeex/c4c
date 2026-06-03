@@ -49,6 +49,7 @@ std::string print(const PreparedBirModule& module) {
   append_frame_plan(out, module);
   append_dynamic_stack_plan(out, module);
   append_call_plans(out, module);
+  append_select_chain_materializations(out, module);
   append_variadic_entry_plans(out, module);
   append_regalloc(out, module);
   append_storage_plans(out, module);

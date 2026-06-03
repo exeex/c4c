@@ -15,10 +15,12 @@ add_executable(backend_prepare_phi_materialize_test
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/intrinsics.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/regalloc.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/runtime_helpers.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/select_chains.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/special_carriers.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/storage.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/value_locations.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/variadic.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/select_chain_lookups.cpp"
 )
 target_include_directories(backend_prepare_phi_materialize_test PRIVATE
     "${PROJECT_SOURCE_DIR}"

@@ -337,6 +337,15 @@ find_prepared_direct_global_select_chain_dependency(
     const bir::Value& value,
     std::size_t before_instruction_index);
 
+[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+find_prepared_select_chain_source_producer(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
 [[nodiscard]] PreparedStoreSourceDirectGlobalSelectChainDependency
 find_prepared_store_source_direct_global_select_chain_dependency(
     const PreparedNameTables& names,
