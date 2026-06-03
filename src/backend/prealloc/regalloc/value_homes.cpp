@@ -295,6 +295,7 @@ PreparedValueHome classify_prepared_value_home(
   if (value.type == bir::TypeKind::Ptr) {
     if (const auto carrier_it = pointer_carriers.find(value.value_name);
         carrier_it != pointer_carriers.end() &&
+        has_semantic_pointer_carrier_authority(carrier_it->second) &&
         (carrier_it->second.base_value_name != value.value_name ||
          carrier_it->second.byte_delta != 0)) {
       home.kind = PreparedValueHomeKind::PointerBasePlusOffset;
