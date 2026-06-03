@@ -12,6 +12,12 @@
 
 namespace c4c::backend::prepare {
 
+struct PreparedStackSliceFamily {
+  SlotNameId family_name = kInvalidSlotName;
+  std::size_t slice_offset = 0;
+  bool legacy_slot_name_compatibility = false;
+};
+
 struct PreparedStackObject {
   PreparedObjectId object_id = 0;
   FunctionNameId function_name = kInvalidFunctionName;
@@ -24,6 +30,10 @@ struct PreparedStackObject {
   bool address_exposed = false;
   bool requires_home_slot = false;
   bool permanent_home_slot = false;
+  std::optional<PreparedStackSliceFamily> slice_family;
+  bool aggregate_address_published = false;
+  std::optional<ValueNameId> frame_address_value_name;
+  bool legacy_frame_address_name_compatibility = false;
 };
 
 struct PreparedFrameSlot {
@@ -307,20 +317,17 @@ parse_prepared_slot_slice_name(std::string_view slot_name) {
   std::optional<std::size_t> best_slice_offset;
   std::optional<std::size_t> best_frame_offset;
   for (const auto& object : stack_layout.objects) {
-    if (object.function_name != function_name || !object.slot_name.has_value()) {
+    if (object.function_name != function_name || !object.slice_family.has_value()) {
       continue;
     }
-    const auto slot_name = prepared_slot_name(names, *object.slot_name);
-    const auto candidate_slice = parse_prepared_slot_slice_name(slot_name);
-    if (!candidate_slice.has_value()) {
-      continue;
-    }
+    const auto family_name = prepared_slot_name(names, object.slice_family->family_name);
+    const std::size_t slice_offset = object.slice_family->slice_offset;
 
     std::optional<std::size_t> resolved_offset;
     if (requested_slice.has_value()) {
-      if (candidate_slice->first != requested_slice->first ||
-          requested_slice->second < candidate_slice->second ||
-          requested_slice->second >= candidate_slice->second + object.size_bytes) {
+      if (family_name != requested_slice->first ||
+          requested_slice->second < slice_offset ||
+          requested_slice->second >= slice_offset + object.size_bytes) {
         continue;
       }
       const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
@@ -328,9 +335,9 @@ parse_prepared_slot_slice_name(std::string_view slot_name) {
         continue;
       }
       resolved_offset =
-          frame_slot->offset_bytes + (requested_slice->second - candidate_slice->second);
+          frame_slot->offset_bytes + (requested_slice->second - slice_offset);
     } else {
-      if (candidate_slice->first != requested_name || candidate_slice->second != 0) {
+      if (family_name != requested_name || slice_offset != 0) {
         continue;
       }
       const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
@@ -341,10 +348,10 @@ parse_prepared_slot_slice_name(std::string_view slot_name) {
     }
 
     if (!resolved_offset.has_value() ||
-        (best_slice_offset.has_value() && candidate_slice->second >= *best_slice_offset)) {
+        (best_slice_offset.has_value() && slice_offset >= *best_slice_offset)) {
       continue;
     }
-    best_slice_offset = candidate_slice->second;
+    best_slice_offset = slice_offset;
     best_frame_offset = *resolved_offset;
   }
 

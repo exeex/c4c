@@ -2,6 +2,8 @@
 #include "../variadic.hpp"
 #include "stack_layout.hpp"
 
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -32,6 +34,29 @@ namespace {
   return slot.is_address_taken || source_kind_requires_permanent_home_slot(source_kind);
 }
 
+[[nodiscard]] std::optional<PreparedStackSliceFamily> legacy_slot_name_slice_family_compatibility(
+    PreparedNameTables& names,
+    std::string_view slot_name) {
+  const auto dot = slot_name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
+    return std::nullopt;
+  }
+  std::size_t slice_offset = 0;
+  for (std::size_t index = dot + 1; index < slot_name.size(); ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    slice_offset = (slice_offset * 10) + static_cast<std::size_t>(ch - '0');
+  }
+  const std::string family_name(slot_name.substr(0, dot));
+  return PreparedStackSliceFamily{
+      .family_name = names.slot_names.intern(family_name),
+      .slice_offset = slice_offset,
+      .legacy_slot_name_compatibility = true,
+  };
+}
+
 [[nodiscard]] PreparedStackObject make_local_slot_object(const bir::Function& function,
                                                          PreparedNameTables& names,
                                                          const bir::NameTables& bir_names,
@@ -40,10 +65,13 @@ namespace {
   const std::string_view source_kind = local_slot_source_kind(slot);
   const bool has_explicit_home_slot_contract =
       local_slot_has_explicit_home_slot_contract(slot, source_kind);
+  const SlotNameId prepared_slot_name_id =
+      intern_prepared_slot_name(names, bir_names, slot.slot_id, slot.name);
+  const std::string prepared_name(prepared_slot_name(names, prepared_slot_name_id));
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = names.function_names.intern(function.name),
-      .slot_name = intern_prepared_slot_name(names, bir_names, slot.slot_id, slot.name),
+      .slot_name = prepared_slot_name_id,
       .source_kind = std::string(source_kind),
       .type = slot.type,
       .size_bytes = slot.size_bytes,
@@ -51,6 +79,7 @@ namespace {
       .address_exposed = slot.is_address_taken,
       .requires_home_slot = has_explicit_home_slot_contract,
       .permanent_home_slot = has_explicit_home_slot_contract,
+      .slice_family = legacy_slot_name_slice_family_compatibility(names, prepared_name),
   };
 }
 
@@ -97,26 +126,21 @@ namespace {
   };
 }
 
-[[nodiscard]] std::optional<std::string_view> slot_slice_family(std::string_view slot_name) {
-  const auto dot = slot_name.rfind('.');
-  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
-    return std::nullopt;
-  }
-  for (std::size_t index = dot + 1; index < slot_name.size(); ++index) {
-    const char ch = slot_name[index];
-    if (ch < '0' || ch > '9') {
-      return std::nullopt;
-    }
-  }
-  return slot_name.substr(0, dot);
-}
-
 void collect_published_pointer_value(std::unordered_set<std::string_view>& families,
                                      const bir::Value& value) {
   if (value.type == bir::TypeKind::Ptr &&
       value.kind == bir::Value::Kind::Named &&
       !value.name.empty()) {
     families.insert(value.name);
+  }
+}
+
+void collect_named_pointer_value(std::unordered_set<std::string_view>& values,
+                                 const bir::Value& value) {
+  if (value.type == bir::TypeKind::Ptr &&
+      value.kind == bir::Value::Kind::Named &&
+      !value.name.empty()) {
+    values.insert(value.name);
   }
 }
 
@@ -173,13 +197,79 @@ void apply_aggregate_address_publication_hints(const PreparedNameTables& names,
     if (!object.slot_name.has_value()) {
       continue;
     }
-    const auto family = slot_slice_family(prepared_slot_name(names, *object.slot_name));
-    if (!family.has_value() ||
-        published_pointer_values.find(*family) == published_pointer_values.end()) {
+    if (!object.slice_family.has_value()) {
       continue;
     }
+    const auto family = prepared_slot_name(names, object.slice_family->family_name);
+    if (family.empty() || published_pointer_values.find(family) == published_pointer_values.end()) {
+      continue;
+    }
+    object.aggregate_address_published = true;
     object.requires_home_slot = true;
     object.permanent_home_slot = true;
+  }
+}
+
+void apply_frame_address_publication_hints(PreparedNameTables& names,
+                                           const bir::Function& function,
+                                           std::vector<PreparedStackObject>& objects) {
+  std::unordered_set<std::string_view> pointer_values;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr) {
+        collect_named_pointer_value(pointer_values, binary->lhs);
+        collect_named_pointer_value(pointer_values, binary->rhs);
+        collect_named_pointer_value(pointer_values, binary->result);
+      } else if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
+        collect_named_pointer_value(pointer_values, select->lhs);
+        collect_named_pointer_value(pointer_values, select->rhs);
+        collect_named_pointer_value(pointer_values, select->true_value);
+        collect_named_pointer_value(pointer_values, select->false_value);
+        collect_named_pointer_value(pointer_values, select->result);
+      } else if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
+        collect_named_pointer_value(pointer_values, cast->operand);
+        collect_named_pointer_value(pointer_values, cast->result);
+      } else if (const auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr) {
+        for (const auto& incoming : phi->incomings) {
+          collect_named_pointer_value(pointer_values, incoming.value);
+        }
+        collect_named_pointer_value(pointer_values, phi->result);
+      } else if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
+        if (call->callee_value.has_value()) {
+          collect_named_pointer_value(pointer_values, *call->callee_value);
+        }
+        for (const auto& arg : call->args) {
+          collect_named_pointer_value(pointer_values, arg);
+        }
+        if (call->result.has_value()) {
+          collect_named_pointer_value(pointer_values, *call->result);
+        }
+      } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
+        collect_named_pointer_value(pointer_values, store->value);
+      } else if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
+        collect_named_pointer_value(pointer_values, store->value);
+      } else if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
+        collect_named_pointer_value(pointer_values, load->result);
+      } else if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst); load != nullptr) {
+        collect_named_pointer_value(pointer_values, load->result);
+      }
+    }
+    if (block.terminator.value.has_value()) {
+      collect_named_pointer_value(pointer_values, *block.terminator.value);
+    }
+    collect_named_pointer_value(pointer_values, block.terminator.condition);
+  }
+
+  for (auto& object : objects) {
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto slot_name = prepared_slot_name(names, *object.slot_name);
+    if (pointer_values.find(slot_name) == pointer_values.end()) {
+      continue;
+    }
+    object.frame_address_value_name = names.value_names.intern(slot_name);
+    object.legacy_frame_address_name_compatibility = true;
   }
 }
 

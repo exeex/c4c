@@ -47,14 +47,10 @@ struct ObjectSliceLayout {
     if (uses_copy_coalesced_slot(object)) {
       continue;
     }
-    if (!object.slot_name.has_value()) {
+    if (!object.slice_family.has_value()) {
       continue;
     }
-    const auto slice = parse_prepared_slot_slice_name(prepared_slot_name(names, *object.slot_name));
-    if (!slice.has_value()) {
-      continue;
-    }
-    const std::string family_name(slice->first);
+    const std::string family_name(prepared_slot_name(names, object.slice_family->family_name));
     auto& layout = family_layouts[family_name];
     layout.fixed_location =
         layout.fixed_location || (object.requires_home_slot && uses_fixed_location_slot(object));
@@ -63,7 +59,7 @@ struct ObjectSliceLayout {
         normalize_alignment(object.type, object.align_bytes, size_bytes);
     layout.max_alignment_bytes = std::max(layout.max_alignment_bytes, align_bytes);
     family_entries[family_name].push_back(SliceEntry{
-        .ordinal = slice->second,
+        .ordinal = object.slice_family->slice_offset,
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
     });
@@ -105,14 +101,11 @@ struct ObjectSliceLayout {
     const PreparedNameTables& names,
     const PreparedStackObject& object,
     const std::unordered_map<std::string, SliceFamilyLayout>& family_layouts) {
-  if (!object.slot_name.has_value()) {
+  if (!object.slice_family.has_value()) {
     return false;
   }
-  const auto slice = parse_prepared_slot_slice_name(prepared_slot_name(names, *object.slot_name));
-  if (!slice.has_value()) {
-    return false;
-  }
-  const auto family_it = family_layouts.find(std::string(slice->first));
+  const auto family_it =
+      family_layouts.find(std::string(prepared_slot_name(names, object.slice_family->family_name)));
   return family_it != family_layouts.end() && family_it->second.fixed_location;
 }
 
@@ -120,21 +113,18 @@ struct ObjectSliceLayout {
     const PreparedNameTables& names,
     const PreparedStackObject& object,
     std::unordered_map<std::string, SliceFamilyLayout>& family_layouts) {
-  if (!object.slot_name.has_value()) {
+  if (!object.slice_family.has_value()) {
     return std::nullopt;
   }
-  const auto slice = parse_prepared_slot_slice_name(prepared_slot_name(names, *object.slot_name));
-  if (!slice.has_value()) {
-    return std::nullopt;
-  }
-  auto family_it = family_layouts.find(std::string(slice->first));
+  auto family_it =
+      family_layouts.find(std::string(prepared_slot_name(names, object.slice_family->family_name)));
   if (family_it == family_layouts.end() || !family_it->second.fixed_location ||
       !family_it->second.preserve_slice_offsets) {
     return std::nullopt;
   }
   return ObjectSliceLayout{
-      .family_name = std::string(slice->first),
-      .slice_offset = slice->second,
+      .family_name = std::string(prepared_slot_name(names, object.slice_family->family_name)),
+      .slice_offset = object.slice_family->slice_offset,
       .family = &family_it->second,
   };
 }

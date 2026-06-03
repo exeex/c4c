@@ -2,7 +2,6 @@
 #include "stack_layout.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -14,6 +13,7 @@ namespace c4c::backend::prepare {
 namespace {
 
 using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
+using FrameAddressValueMap = std::unordered_map<ValueNameId, const PreparedFrameSlot*>;
 
 struct ResolvedFrameSlot {
   const PreparedFrameSlot* frame_slot = nullptr;
@@ -26,6 +26,14 @@ struct SlotSliceCoverage {
   std::size_t ordinal = 0;
   std::int64_t begin = 0;
   std::int64_t end = 0;
+};
+
+using FrameSlotFamilyMap = std::unordered_map<SlotNameId, std::vector<SlotSliceCoverage>>;
+
+struct FrameSlotPublicationFacts {
+  FrameSlotMap frame_slots_by_name;
+  FrameAddressValueMap frame_slots_by_frame_address_value_name;
+  FrameSlotFamilyMap slice_coverage_by_family;
 };
 
 struct FunctionStackObjectPlan {
@@ -216,43 +224,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
   return names.block_labels.intern(raw_label);
 }
 
-[[nodiscard]] std::optional<std::pair<std::string_view, std::size_t>> parse_slot_slice_name(
-    std::string_view slot_name) {
-  const auto dot = slot_name.rfind('.');
-  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
-    return std::nullopt;
-  }
-
-  std::size_t slice_offset = 0;
-  const auto suffix = slot_name.substr(dot + 1);
-  const auto* begin = suffix.data();
-  const auto* end = begin + suffix.size();
-  const auto [ptr, ec] = std::from_chars(begin, end, slice_offset);
-  if (ec != std::errc{} || ptr != end) {
-    return std::nullopt;
-  }
-  return std::pair<std::string_view, std::size_t>{slot_name.substr(0, dot), slice_offset};
-}
-
-[[nodiscard]] std::vector<SlotSliceCoverage> build_slot_slice_coverage(
-    PreparedNameTables& names,
-    std::string_view family_name,
-    const FrameSlotMap& frame_slots_by_name) {
-  std::vector<SlotSliceCoverage> coverage;
-  coverage.reserve(frame_slots_by_name.size());
-  for (const auto& [candidate_name_id, candidate_slot] : frame_slots_by_name) {
-    const auto candidate_name = prepared_slot_name(names, candidate_name_id);
-    const auto candidate_slice = parse_slot_slice_name(candidate_name);
-    if (!candidate_slice.has_value() || candidate_slice->first != family_name) {
-      continue;
-    }
-    coverage.push_back(SlotSliceCoverage{
-        .slot_name_id = candidate_name_id,
-        .frame_slot = candidate_slot,
-        .ordinal = candidate_slice->second,
-    });
-  }
-
+void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   std::sort(coverage.begin(),
             coverage.end(),
             [](const SlotSliceCoverage& lhs, const SlotSliceCoverage& rhs) {
@@ -279,32 +251,47 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
       next_begin = entry.end;
     }
   }
-
-  return coverage;
 }
 
-[[nodiscard]] FrameSlotMap build_frame_slot_map(
+[[nodiscard]] FrameSlotPublicationFacts build_frame_slot_publication_facts(
     const std::vector<PreparedStackObject>& function_objects,
     const std::vector<PreparedFrameSlot>& function_slots) {
-  std::unordered_map<PreparedObjectId, SlotNameId> slot_names_by_object_id;
-  slot_names_by_object_id.reserve(function_objects.size());
+  std::unordered_map<PreparedObjectId, const PreparedStackObject*> objects_by_id;
+  objects_by_id.reserve(function_objects.size());
   for (const auto& object : function_objects) {
-    if (!object.slot_name.has_value()) {
-      continue;
-    }
-    slot_names_by_object_id.emplace(object.object_id, *object.slot_name);
+    objects_by_id.emplace(object.object_id, &object);
   }
 
-  FrameSlotMap frame_slots_by_name;
-  frame_slots_by_name.reserve(function_slots.size());
+  FrameSlotPublicationFacts facts;
+  facts.frame_slots_by_name.reserve(function_slots.size());
+  facts.frame_slots_by_frame_address_value_name.reserve(function_slots.size());
   for (const auto& slot : function_slots) {
-    const auto name_it = slot_names_by_object_id.find(slot.object_id);
-    if (name_it == slot_names_by_object_id.end()) {
+    const auto object_it = objects_by_id.find(slot.object_id);
+    if (object_it == objects_by_id.end()) {
       continue;
     }
-    frame_slots_by_name.emplace(name_it->second, &slot);
+    const auto& object = *object_it->second;
+    if (object.slot_name.has_value()) {
+      facts.frame_slots_by_name.emplace(*object.slot_name, &slot);
+    }
+    if (object.frame_address_value_name.has_value()) {
+      facts.frame_slots_by_frame_address_value_name.emplace(*object.frame_address_value_name,
+                                                            &slot);
+    }
+    if (object.slice_family.has_value() && object.slot_name.has_value()) {
+      facts.slice_coverage_by_family[object.slice_family->family_name].push_back(
+          SlotSliceCoverage{
+              .slot_name_id = *object.slot_name,
+              .frame_slot = &slot,
+              .ordinal = object.slice_family->slice_offset,
+          });
+    }
   }
-  return frame_slots_by_name;
+  for (auto& [family_name, coverage] : facts.slice_coverage_by_family) {
+    (void)family_name;
+    finalize_slot_slice_coverage(coverage);
+  }
+  return facts;
 }
 
 [[nodiscard]] ResolvedFrameSlot find_direct_frame_slot(
@@ -315,7 +302,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
     const std::optional<bir::MemoryAddress>& address,
     std::int64_t access_byte_offset,
     std::size_t access_size_bytes,
-    const FrameSlotMap& frame_slots_by_name) {
+    const FrameSlotPublicationFacts& frame_slot_facts) {
   std::string_view requested_slot_name = slot_name;
   SlotNameId requested_slot_id = slot_id;
   if (address.has_value()) {
@@ -330,34 +317,38 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
   ResolvedFrameSlot resolved;
   const SlotNameId prepared_slot_id =
       intern_prepared_slot_name(names, bir_names, requested_slot_id, requested_slot_name);
-  if (const auto slot_it = frame_slots_by_name.find(prepared_slot_id);
-      slot_it != frame_slots_by_name.end()) {
+  if (const auto slot_it = frame_slot_facts.frame_slots_by_name.find(prepared_slot_id);
+      slot_it != frame_slot_facts.frame_slots_by_name.end()) {
     resolved.frame_slot = slot_it->second;
   }
 
-  const auto requested_slice = parse_slot_slice_name(requested_slot_name);
-  if (!requested_slice.has_value()) {
-    return resolved;
-  }
-
-  const auto coverage =
-      build_slot_slice_coverage(names, requested_slice->first, frame_slots_by_name);
-  std::int64_t requested_slice_begin = static_cast<std::int64_t>(requested_slice->second);
-  for (const auto& entry : coverage) {
-    if (entry.slot_name_id == prepared_slot_id) {
-      requested_slice_begin = entry.begin;
+  const std::vector<SlotSliceCoverage>* coverage = nullptr;
+  std::optional<std::int64_t> requested_slice_begin;
+  for (const auto& [family_name, family_coverage] : frame_slot_facts.slice_coverage_by_family) {
+    (void)family_name;
+    for (const auto& entry : family_coverage) {
+      if (entry.slot_name_id == prepared_slot_id) {
+        coverage = &family_coverage;
+        requested_slice_begin = entry.begin;
+        break;
+      }
+    }
+    if (coverage != nullptr) {
       break;
     }
   }
+  if (coverage == nullptr || !requested_slice_begin.has_value()) {
+    return resolved;
+  }
 
-  const auto requested_begin = requested_slice_begin + access_byte_offset;
+  const auto requested_begin = *requested_slice_begin + access_byte_offset;
   const auto requested_end = requested_begin + static_cast<std::int64_t>(access_size_bytes);
   if (requested_begin < 0 || requested_end < requested_begin) {
     return resolved;
   }
 
   std::optional<std::int64_t> best_covering_begin;
-  for (const auto& entry : coverage) {
+  for (const auto& entry : *coverage) {
     if (requested_begin < entry.begin || requested_end > entry.end) {
       continue;
     }
@@ -365,7 +356,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
     if (!best_covering_begin.has_value() || entry.begin < *best_covering_begin) {
       best_covering_begin = entry.begin;
       resolved.frame_slot = entry.frame_slot;
-      resolved.byte_offset_adjust = requested_slice_begin - entry.begin;
+      resolved.byte_offset_adjust = *requested_slice_begin - entry.begin;
     }
   }
 
@@ -379,7 +370,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
     BlockLabelId block_label_id,
     std::size_t inst_index,
     const bir::LoadLocalInst& inst,
-    const FrameSlotMap& frame_slots_by_name) {
+    const FrameSlotPublicationFacts& frame_slot_facts) {
   if (inst.address.has_value() &&
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
@@ -401,7 +392,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
           inst.address,
           access_byte_offset,
           size_bytes,
-          frame_slots_by_name);
+          frame_slot_facts);
   if (resolved_frame_slot.frame_slot == nullptr) {
     return std::nullopt;
   }
@@ -433,7 +424,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
     BlockLabelId block_label_id,
     std::size_t inst_index,
     const bir::StoreLocalInst& inst,
-    const FrameSlotMap& frame_slots_by_name) {
+    const FrameSlotPublicationFacts& frame_slot_facts) {
   if (inst.address.has_value() &&
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
@@ -455,7 +446,7 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
           inst.address,
           access_byte_offset,
           size_bytes,
-          frame_slots_by_name);
+          frame_slot_facts);
   if (resolved_frame_slot.frame_slot == nullptr) {
     return std::nullopt;
   }
@@ -912,7 +903,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
                                        const c4c::TargetProfile& target_profile,
                                        const bir::NameTables& bir_names,
                                        const bir::Function& function,
-                                       const FrameSlotMap& frame_slots_by_name) {
+                                       const FrameSlotPublicationFacts& frame_slot_facts) {
   for (const auto& block : function.blocks) {
     const BlockLabelId block_label_id =
         intern_preferred_block_label(names, bir_names, block.label_id, block.label);
@@ -944,7 +935,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
                                                          block_label_id,
                                                          inst_index,
                                                          *load_local,
-                                                         frame_slots_by_name);
+                                                         frame_slot_facts);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -977,7 +968,7 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
                                                          block_label_id,
                                                          inst_index,
                                                          *store_local,
-                                                         frame_slots_by_name);
+                                                         frame_slot_facts);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -1045,16 +1036,21 @@ void append_frame_slot_address_materialization(PreparedNameTables& names,
                                                std::size_t inst_index,
                                                const bir::Value& result,
                                                std::int64_t byte_offset,
-                                               const FrameSlotMap& frame_slots_by_name) {
+                                               const FrameSlotPublicationFacts& frame_slot_facts) {
   if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named ||
       result.name.empty()) {
     return;
   }
 
-  const SlotNameId prepared_slot_id =
-      intern_prepared_slot_name(names, bir_names, kInvalidSlotName, result.name);
-  const auto slot_it = frame_slots_by_name.find(prepared_slot_id);
-  if (slot_it == frame_slots_by_name.end() || slot_it->second == nullptr) {
+  (void)bir_names;
+  const auto prepared_value_id = prepared_named_value_id(names, result);
+  if (!prepared_value_id.has_value()) {
+    return;
+  }
+  const auto slot_it =
+      frame_slot_facts.frame_slots_by_frame_address_value_name.find(*prepared_value_id);
+  if (slot_it == frame_slot_facts.frame_slots_by_frame_address_value_name.end() ||
+      slot_it->second == nullptr) {
     return;
   }
 
@@ -1063,7 +1059,7 @@ void append_frame_slot_address_materialization(PreparedNameTables& names,
       .block_label = block_label_id,
       .inst_index = inst_index,
       .kind = PreparedAddressMaterializationKind::FrameSlot,
-      .result_value_name = prepared_named_value_id(names, result),
+      .result_value_name = *prepared_value_id,
       .frame_slot_id = slot_it->second->slot_id,
       .byte_offset = static_cast<std::int64_t>(slot_it->second->offset_bytes) + byte_offset,
   });
@@ -1223,7 +1219,7 @@ void append_pointer_value_address_materialization(PreparedNameTables& names,
                                                   BlockLabelId block_label_id,
                                                   std::size_t inst_index,
                                                   const bir::Value& value,
-                                                  const FrameSlotMap& frame_slots_by_name) {
+                                                  const FrameSlotPublicationFacts& frame_slot_facts) {
   if (value.type != bir::TypeKind::Ptr || value.kind != bir::Value::Kind::Named) {
     return;
   }
@@ -1235,7 +1231,7 @@ void append_pointer_value_address_materialization(PreparedNameTables& names,
                                             inst_index,
                                             value,
                                             0,
-                                            frame_slots_by_name);
+                                            frame_slot_facts);
   if (value.pointer_symbol_link_name_id != kInvalidLinkName) {
     append_direct_global_address_materialization(
         names,
@@ -1345,7 +1341,7 @@ void append_address_materializations(PreparedNameTables& names,
                                      const c4c::TargetProfile& target_profile,
                                      FunctionNameId function_name_id,
                                      const bir::Function& function,
-                                     const FrameSlotMap& frame_slots_by_name) {
+                                     const FrameSlotPublicationFacts& frame_slot_facts) {
   for (const auto& block : function.blocks) {
     const BlockLabelId block_label_id =
         intern_preferred_block_label(names, module.names, block.label_id, block.label);
@@ -1360,7 +1356,7 @@ void append_address_materializations(PreparedNameTables& names,
                                                   inst_index,
                                                   binary->lhs,
                                                   0,
-                                                  frame_slots_by_name);
+                                                  frame_slot_facts);
         append_pointer_value_address_materialization(names,
                                                      function_addressing,
                                                      notes,
@@ -1370,7 +1366,7 @@ void append_address_materializations(PreparedNameTables& names,
                                                      block_label_id,
                                                      inst_index,
                                                      binary->lhs,
-                                                     frame_slots_by_name);
+                                                     frame_slot_facts);
         append_pointer_value_address_materialization(names,
                                                      function_addressing,
                                                      notes,
@@ -1380,7 +1376,7 @@ void append_address_materializations(PreparedNameTables& names,
                                                      block_label_id,
                                                      inst_index,
                                                      binary->rhs,
-                                                     frame_slots_by_name);
+                                                     frame_slot_facts);
         append_direct_global_address_materialization(
             names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, binary->result);
       } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
@@ -1419,7 +1415,7 @@ void append_address_materializations(PreparedNameTables& names,
                                                        block_label_id,
                                                        inst_index,
                                                        argument,
-                                                       frame_slots_by_name);
+                                                       frame_slot_facts);
         }
       } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         append_direct_global_address_materialization(
@@ -1482,7 +1478,7 @@ void append_address_materializations(PreparedNameTables& names,
                                                   inst_index,
                                                   store_local->value,
                                                   0,
-                                                  frame_slots_by_name);
+                                                  frame_slot_facts);
         append_direct_global_address_materialization(
             names,
             function_addressing,
@@ -1507,7 +1503,8 @@ void publish_function_addressing_facts(PreparedNameTables& names,
                                        const bir::Function& function,
                                        const std::vector<PreparedStackObject>& function_objects,
                                        const std::vector<PreparedFrameSlot>& function_slots) {
-  const auto frame_slots_by_name = build_frame_slot_map(function_objects, function_slots);
+  const auto frame_slot_facts =
+      build_frame_slot_publication_facts(function_objects, function_slots);
   append_direct_frame_slot_accesses(
       names,
       function_addressing,
@@ -1516,7 +1513,7 @@ void publish_function_addressing_facts(PreparedNameTables& names,
       target_profile,
       module.names,
       function,
-      frame_slots_by_name);
+      frame_slot_facts);
   append_address_materializations(names,
                                   function_addressing,
                                   notes,
@@ -1524,7 +1521,7 @@ void publish_function_addressing_facts(PreparedNameTables& names,
                                   target_profile,
                                   function_name_id,
                                   function,
-                                  frame_slots_by_name);
+                                  frame_slot_facts);
 }
 
 [[nodiscard]] FunctionStackObjectPlan plan_function_stack_objects(PreparedNameTables& names,
@@ -1536,6 +1533,7 @@ void publish_function_addressing_facts(PreparedNameTables& names,
   stack_layout::apply_alloca_coalescing_hints(names, function, objects);
   stack_layout::apply_copy_coalescing_hints(names, function, objects);
   stack_layout::apply_aggregate_address_publication_hints(names, function, objects);
+  stack_layout::apply_frame_address_publication_hints(names, function, objects);
 
   auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
   stack_layout::apply_regalloc_hints(names, function, inline_asm_summary, objects);
