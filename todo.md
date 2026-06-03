@@ -1,23 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/97_bir_prealloc_call_abi_authority_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Trace Runtime Helper And Special Carrier Plans
+Current Step ID: Step 4
+Current Step Title: Cross-Map Overlaps And Contract Gaps
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 - Trace Runtime Helper And Special Carrier Plans. Inspected
-`src/backend/prealloc/variadic_entry_plans.cpp`,
-`src/backend/prealloc/i128_runtime_helpers.cpp`,
-`src/backend/prealloc/f128_runtime_helpers.cpp`,
-`src/backend/prealloc/calls.hpp`, and related helper/carrier producers in
-`src/backend/prealloc/variadic.hpp`,
-`src/backend/prealloc/runtime_helpers.hpp`,
-`src/backend/prealloc/special_carriers.hpp`, and
-`src/backend/prealloc/regalloc/runtime_helpers.cpp` with `c4c-clang-tools`
-symbol queries plus focused source reads; no implementation files were edited.
+Completed Step 4 - Cross-Map Overlaps And Contract Gaps. Cross-mapped the
+retained Step 1 BIR fact inventory against the retained Step 2 and Step 3
+prealloc consumer inventories already recorded below, then classified concrete
+producer/consumer/fact triples with the plan labels. No implementation, plan,
+source-idea, test, or log files were edited.
 
 ### Retained Prior Evidence: Step 1 BIR Call ABI Fact Inventory
 
@@ -100,37 +95,58 @@ Step 1 inspected `src/backend/bir/bir.hpp`,
 | `f128_runtime_helpers.cpp::make_f128_helper_abi_register_binding` and scalar ABI builders | Inputs are target profile and helper-local F128/scalar types; use `infer_call_arg_abi` and local `CallResultAbiInfo` to choose helper registers and placements. | Produces helper arg/result ABI register bindings, banks, placements, ABI transitions, and marshal requirements. | Duplicated/rederived call ABI fact for synthetic helper calls, but no source BIR call exists to consume. This is analogous to i128 helper ABI binding and should be classified as a synthetic-helper ABI boundary gap. | Follow-up material: decide prepared-only helper-call ABI authority versus explicit BIR helper-call modeling. |
 | `f128_runtime_helpers.cpp::populate_f128_runtime_helper_boundary_policy`, preservation, and ownership | Inputs are target caller-saved register profile, liveness, regalloc, value homes, helper callee name, carrier/ABI/marshal completeness. | Produces resource policy, clobbers, live preservation, selected call ownership, and completeness facts. | Retained intentional prealloc legalization. These are physical helper-call boundary effects. | Cross-map with `PreparedCallPreservedValue` and `PreparedCallBoundaryEffectPlan`; no BIR duplication found. |
 
+### Step 4 Overlap And Contract Gap Table
+
+| Producer | Consumer | Fact | Classification | Step 4 conclusion |
+| --- | --- | --- | --- | --- |
+| `calling.cpp::lower_call_inst` / `CallInst::callee_link_name_id`, `callee`, `is_indirect`, `callee_value` | `call_plans.cpp::resolve_direct_callee`, `classify_call_wrapper_kind`, `build_indirect_callee_plan` | Direct callee identity, raw-name compatibility identity, indirect-call operand identity | `bir-fact-consumed-correctly` | Structured direct callee ids and indirect callee operands are consumed correctly for wrapper selection and indirect source planning. The raw-name fallback is covered separately below because it reconstructs identity when structured ids are absent or intentionally invalid. |
+| `calling.cpp::parse_lir_direct_global_callee` / `CallInst::callee_link_name_id`, `callee` | `call_plans.cpp::resolve_direct_callee` raw `call.callee` fallback | Direct callee identity when `callee_link_name_id` is invalid or mismatched | `prealloc-rederives-bir-fact`, `contract-ambiguous` | Prealloc can recover direct identity from the display/compatibility string. This is acceptable for placeholder or unresolved compatibility cases, but ambiguous for ordinary direct calls because BIR already owns link-name authority. |
+| `calling.cpp::lower_runtime_intrinsic_inst` / `CallInst::intrinsic`, placeholder `callee`, intentionally invalid `callee_link_name_id` | `variadic.hpp::prepared_variadic_entry_helper_kind_for_callee`, `variadic_entry_plans.cpp` helper scans, `call_plans.cpp::call_argument_allows_local_aggregate_address_publication` raw `llvm.` prefix check | Runtime intrinsic / LLVM placeholder identity | `contract-ambiguous`, `needs-follow-up-idea` | Raw placeholder string matching is the live contract for va helpers and aggregate-address publication policy. The exact producer is the BIR placeholder callee string; the consumers are raw-name scans. Step 5 should decide whether to create a focused idea for explicit runtime intrinsic/helper kind metadata or document string identity as intentional. |
+| `call_abi.cpp::compute_call_arg_abi` and `calling.cpp` BIR attachment / `CallInst::arg_abi`, `arg_types`, `args` | `call_plans.cpp::register_bank_from_arg_abi`, `plan_call_argument_destination`, `plan_call_argument_source`, `regalloc/call_moves.cpp::append_call_arg_move_resolution` | Call argument ABI class, type, logical operand order, register/stack preference, byval/sret flags | `bir-fact-consumed-correctly`, `intentional-prealloc-legalization` | Consumers derive register banks, source homes, destination registers/stack slots, and move records from BIR ABI entries. Physical placement is retained prealloc authority. |
+| `call_abi.cpp::compute_call_arg_abi` and `calling.cpp` BIR attachment / expected `CallInst::arg_abi` | `legalize.cpp::infer_call_arg_abi_impl`, `legalize_module` fallback sites, `call_plans.cpp` type-only register-bank fallbacks | Missing scalar call argument ABI classification | `prealloc-rederives-bir-fact`, `bir-missing-target-neutral-fact`, `needs-follow-up-idea` | When BIR arg ABI is absent, prealloc reconstructs ABI from target profile and scalar type. The exact gap is missing BIR arg ABI metadata before prealloc; Step 5 should consider a narrow follow-up for eliminating or documenting missing-ABI bootstrap fallbacks. |
+| `call_abi.cpp::lower_function_params_with_layouts` / `Function::params[*].abi`, `Param::is_sret`, `Param::is_byval`, `Param::is_varargs` | `legalize.cpp::infer_call_arg_abi_impl` param fallback and `variadic_entry_plans.cpp::populate_variadic_entry_plans` named-register counts | Function parameter ABI, byval/sret/varargs markers, named variadic register counts | `bir-fact-consumed-correctly`, `prealloc-rederives-bir-fact`, `bir-missing-target-neutral-fact` | Variadic entry planning correctly consumes present param ABI. The fallback path rederives missing param ABI and copies flags, so the concrete gap is absent `Param::abi` on a function param before prealloc. |
+| `call_abi.cpp::lower_return_info_from_type`, `infer_function_return_info`, `lower_signature_return_info`; `calling.cpp` / `CallInst::result_abi`, `Function::return_abi`, `result_lanes` | `call_plans.cpp::build_call_result_plan`, `regalloc/call_moves.cpp::append_call_result_move_resolution`, `append_return_move_resolution` | Call result and function return ABI class, memory return marker, result lanes | `bir-fact-consumed-correctly`, `intentional-prealloc-legalization` | Present result/return ABI facts are consumed to build target result registers, return moves, and storage transitions. Register names, placements, and after-call moves are retained prealloc legalization. |
+| `calling.cpp` / expected `CallInst::result_abi` and `call_abi.cpp` / expected `Function::return_abi` | `legalize.cpp::infer_call_result_abi`, `infer_function_return_abi`, `regalloc/call_moves.cpp::append_return_move_resolution` scalar fallback | Missing call result or function return ABI classification | `prealloc-rederives-bir-fact`, `bir-missing-target-neutral-fact`, `needs-follow-up-idea` | Scalar result/return ABI fallback duplicates BIR producer authority when metadata is absent. The concrete fact is the missing BIR result or return ABI carrier; Step 5 should group this with the missing-ABI fallback follow-up unless the audit chooses an intentional bootstrap exception. |
+| `calling.cpp` sret lowering and `call_abi.cpp::lower_function_params_with_layouts` / `CallInst::sret_storage_name`, `CallArgAbiInfo::sret_pointer`, `CallResultAbiInfo::returned_in_memory`, `Param::is_sret` | `call_plans.cpp::build_memory_return_plan` | Sret memory return storage, implicit sret argument relation, size/align | `bir-fact-consumed-correctly`, `contract-ambiguous` | The plan consumes BIR sret facts and resolves physical storage correctly, but it reconstructs the sret argument relation by scanning `arg_abi` for `sret_pointer`. The fact triple is exact enough for Step 5 to decide whether an explicit sret arg index contract is needed. |
+| `calling.cpp` byval lowering and `call_abi.cpp::lower_function_params_with_layouts` / `CallArgAbiInfo::byval_copy`, size/align/class, `Param::is_byval` | `call_plans.cpp::prepared_byval_lane_extent_bytes`, `select_prepared_call_argument_source`, `plan_prepared_aggregate_transport`, `regalloc/call_moves.cpp::call_arg_destination_register_width`, `append_call_arg_move_resolution` | Byval aggregate transport facts and small AArch64 register-lane predicate | `bir-fact-consumed-correctly`, `intentional-prealloc-legalization`, `contract-ambiguous` | Byval size/align/class facts are consumed, and physical lane/chunk/scratch movement is retained prealloc authority. The same small-byval lane predicate appears in call planning and move resolution, creating a prealloc-internal contract ambiguity rather than duplicated BIR authority. |
+| `module.cpp::apply_aarch64_fixed_hfa_pressure` / mutated `CallArgAbiInfo` and `Param::abi` HFA lane pressure facts | `call_plans.cpp::plan_call_argument_destination`, `variadic_fpr_arg_register_count`, `regalloc/call_moves.cpp::append_call_arg_move_resolution` | AArch64 fixed HFA lane count/index and register-vs-stack pressure result | `bir-fact-consumed-correctly`, `intentional-prealloc-legalization` | No reapplication of fixed HFA pressure was identified in the retained inventories. Prealloc consumes the BIR pressure result for stack/register planning and owns the physical locations. |
+| `calling.cpp::parse_typed_call`, `parse_direct_global_typed_call`; `call_abi.cpp::lower_function_params_with_layouts` / `CallInst::is_variadic`, `Function::is_variadic`, `Param::is_varargs` | `call_plans.cpp::classify_call_wrapper_kind`, `variadic_fpr_arg_register_count`, `variadic_entry_plans.cpp::populate_variadic_entry_plans` | Variadic call/function marker and named variadic parameter boundary | `bir-fact-consumed-correctly`, `intentional-prealloc-legalization` | Variadic markers are consumed for wrapper kind, SysV FPR count, and AAPCS64 entry save-area planning. Target-specific register-save areas and counts are retained prealloc authority. |
+| `variadic_entry_plans.cpp::make_aapcs64_scalar_va_arg_access_plan` using BIR placeholder `CallInst::return_type` | Same function calling `infer_call_arg_abi(target_profile, call.return_type)` | Scalar va_arg payload ABI class, size, align, and register-save/overflow route | `prealloc-rederives-bir-fact`, `bir-missing-target-neutral-fact`, `needs-follow-up-idea` | BIR carries the va_arg payload type but not an explicit payload ABI fact. Prealloc recomputes scalar ABI locally; Step 5 should decide whether runtime va_arg placeholders need payload ABI metadata or a documented helper-local exception. |
+| `variadic_entry_plans.cpp::make_aapcs64_aggregate_va_arg_access_plan` consuming BIR placeholder `call.arg_abi.front()` | Same function | Aggregate va_arg payload pointer/sret-style carrier, memory class, size, align | `bir-fact-consumed-correctly`, `contract-ambiguous` | Aggregate va_arg planning consumes BIR size/align and memory carrier facts. The ambiguous part is semantic naming: `sret_pointer` is reused as the aggregate va_arg payload carrier contract. |
+| `calling.cpp` aggregate/HFA call facts and `module.cpp::apply_aarch64_fixed_hfa_pressure` / fixed-call HFA lane metadata only | `variadic_entry_plans.cpp::infer_aapcs64_hfa_va_arg_shape` | AAPCS64 aggregate va_arg HFA lane count, lane size, lane destination homes | `bir-missing-target-neutral-fact`, `prealloc-rederives-bir-fact`, `needs-follow-up-idea` | Variadic aggregate HFA shape is inferred from post-call loads, slot suffixes, addressing, and frame slots rather than a BIR va_arg payload shape fact. This is the clearest concrete missing-fact overlap from Step 3. |
+| `calling.cpp` / `CallInst::arg_abi`, `result_abi`; `legalize.cpp::legalize_call_arg_abi`, `legalize_call_result_abi` | Later `call_plans.cpp` and `regalloc/call_moves.cpp` consumers | Prealloc-mutated BIR ABI type promotion and size/align repair | `intentional-prealloc-legalization`, `contract-ambiguous` | Prealloc rewrites BIR ABI carriers during target-facing legalization before consuming them. This is intentional today for promotions and repair, but it is the main authority-boundary exception because BIR carriers become both source facts and legalized facts. |
+| `regalloc/runtime_helpers.cpp::append_i128_runtime_helper_mappings`, `append_f128_runtime_helper_mappings` | `i128_runtime_helpers.cpp` and `f128_runtime_helpers.cpp` ABI binding, carrier population, boundary policy | Synthetic libgcc/soft-float helper callee identity, helper arg/result ABI, helper result bridge | `intentional-prealloc-legalization`, `contract-ambiguous`, `needs-follow-up-idea` | Helper callee synthesis is not duplicated source-call BIR authority because no source `CallInst` exists. The gap is whether prepared-only helper call ABI and F128 comparison helper-result-to-BIR-result semantics should be documented or modeled with explicit BIR-like helper-call carriers. |
+| `special_carriers.hpp` / `PreparedI128Carrier`, `PreparedF128Carrier` produced from prealloc value-carrier analysis | `i128_runtime_helpers.cpp` and `f128_runtime_helpers.cpp` carrier population and marshal routes | I128/F128 lane/full-width carrier homes and marshaling movement | `intentional-prealloc-legalization` | Retained prealloc authority. These facts are physical carrier/move facts, not BIR call ABI facts, and no concrete duplicated BIR producer was identified in the retained evidence. |
+| Target caller-saved/callee-saved profile, liveness, frame plan, and prepared call/helper plans | `call_plans.cpp::plan_prepared_call_boundary_effects`, `i128_runtime_helpers.cpp::build_call_clobber_set`, `f128_runtime_helpers.cpp::populate_f128_runtime_helper_boundary_policy` | Clobbers, preserved values, boundary effects, live-preservation completeness | `intentional-prealloc-legalization` | Retained prealloc authority. Boundary effects are physical call-boundary facts and do not reconstruct BIR direct callee, argument ABI, or result ABI semantics. |
+
 ## Suggested Next
 
-Execute Step 4 as assigned by the supervisor. Suggested packet: cross-map the
-Step 1 BIR facts against the Step 2 and Step 3 prealloc consumers, prioritizing
-the concrete overlap clusters already identified in this file.
+Execute Step 5 - Synthesize Follow-Up Ideas Or Intentional Retention. Suggested
+packet: turn the Step 4 table into final audit conclusions, explicitly retain
+the intentional legalization and correct-consumption rows, and create focused
+follow-up ideas only for the rows marked `needs-follow-up-idea`.
 
 ## Watchouts
 
 - This is an audit-only plan; do not edit implementation files during routine
   audit packets.
-- Step 4 should prioritize cross-mapping these overlap clusters: missing-ABI
-  inference in `legalize.cpp`; sret memory-return scan in `build_memory_return_plan`;
-  byval register-lane predicates duplicated between `call_plans.cpp` and
-  `regalloc/call_moves.cpp`; raw callee string/`llvm.` prefix fallback;
-  result/return ABI fallback and lane handling; and prepared move ABI binding
-  index/order assumptions.
+- Step 5 should keep follow-up ideas narrow. The strongest grouped candidates
+  are missing ABI fallback elimination/documentation, runtime intrinsic/helper
+  string identity, AAPCS64 va_arg payload ABI/HFA shape facts, and synthetic
+  helper-call ABI authority.
 - `CallArgAbiInfo`/`CallResultAbiInfo` already include target-informed BIR facts
-  from Step 1. Do not treat every target-profile use in prealloc as drift:
-  physical register names, stack offsets, clobbers, and move bundles are
-  legitimate prealloc authority.
-- Prealloc currently mutates BIR ABI carriers during legalization. That is the
-  main authority-boundary exception to scrutinize before proposing code changes.
+  from Step 1. Do not turn retained physical register names, stack offsets,
+  clobbers, move bundles, carrier marshaling, or helper live preservation into
+  BIR authority.
+- Prealloc BIR-carrier mutation in `legalize.cpp` is the main intentional
+  authority-boundary exception and should be called out explicitly in Step 5.
 - Runtime/intrinsic placeholder calls intentionally lack `callee_link_name_id`;
-  raw-name fallback must be judged with that exception in mind.
-- Step 3 added three likely follow-up clusters: raw string placeholder identity
-  for variadic helpers, AAPCS64 aggregate va_arg HFA shape inference from
-  post-call loads/slot suffixes, and synthetic i128/f128 helper-call ABI
-  register binding that reuses call ABI inference without an explicit BIR
-  helper-call carrier.
+  only ordinary direct-call raw-name fallback should be treated as a direct
+  callee authority ambiguity.
+- The byval lane predicate issue is currently a prealloc-internal contract
+  ambiguity, not a proven duplicated BIR fact.
 
 ## Proof
 
 Analysis-only packet. No build, CTest, or `test_after.log` was required by the
-delegated proof because only `todo.md` changed.
+delegated proof because only `todo.md` changed during Step 4.
