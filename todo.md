@@ -1,63 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/101_bir_prealloc_missing_call_abi_fallback_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Or Constrain Missing ABI Fallbacks
+Current Step ID: 4
+Current Step Title: Add Focused ABI Carrier Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by naming retained direct-BIR/bootstrap compatibility repairs
-and constraining shared placement helpers to consume existing ABI carriers.
-`legalize_module` still performs the retained type-only repairs for direct BIR
-or bootstrap modules, but those branches now live under stable compatibility
-helper names instead of anonymous inference helpers:
+Completed Step 4 by adding focused ABI carrier proof without editing
+implementation files.
 
-- `direct_bir_call_arg_abi_repair`
-- `direct_bir_call_result_abi_repair`
-- `direct_bir_function_return_abi_repair`
+`backend_prepare_liveness_test.cpp` now lowers an ordinary source-style
+`id_i32` call fixture and proves the lowered BIR supplies explicit ABI carriers
+before prealloc planning for:
 
-Shared call-argument placement now uses `resolve_call_arg_abi(call, index)` as
-an existing-carrier lookup only. The legacy `resolve_call_arg_abi(target, call,
-index)` overload remains source-compatible for existing callers, but delegates
-to the carrier-only lookup and no longer synthesizes ABI from `arg_types`.
-Register index, stack offset, byval lane width, register names, and placement
-logic are preserved once `CallInst::arg_abi` exists.
+- the formal parameter `Param::abi`
+- the call argument `CallInst::arg_abi`
+- the named call result `CallInst::result_abi`
+- the function return `Function::return_abi`
 
-Plan bank display fallback is retained only through named compatibility
-surfaces:
+The same test verifies prepared call plans consume those carriers through the
+concrete RISC-V `a0` argument and result ABI register surfaces, while allowing
+no-op cases where the value is already in the ABI register.
 
-- `direct_bir_call_arg_bank_display`
-- `direct_bir_call_result_bank_display`
-
-Those helpers keep prepared-plan display usable for direct-BIR plans without ABI
-metadata, while ordinary storage and move authority continue to prefer or
-require `arg_abi` and `result_abi`.
-
-Function-return move planning now separates ordinary carrier consumption from
-the retained scalar repair. `function_return_storage_kind` requires existing
-`Function::return_abi`; `append_return_move_resolution` falls back only through
-`direct_bir_function_return_move_repair` when the carrier is absent. Correctly
-populated ordinary lowered functions therefore route return moves through
-`Function::return_abi`, while direct-BIR/bootstrap scalar return fixtures keep a
-named repair path.
+`backend_prealloc_call_boundary_classification_test.cpp` now names the retained
+direct-BIR function-return compatibility path by checking that
+`function_return_storage_kind` has no ordinary authority when `Function::return_abi`
+is missing, while `direct_bir_function_return_move_repair` remains the explicit
+scalar fallback.
 
 ## Suggested Next
 
-Execute Step 4: add focused ABI carrier proof for ordinary lowered call args,
-params, named call results, and function returns, plus narrow assertions for the
-retained direct-BIR/bootstrap compatibility paths where needed.
+Ask the plan owner to evaluate whether the runbook is complete and should close
+or whether a final review/cleanup packet is needed.
 
 ## Watchouts
 
-- Step 4 should prove ordinary lowered code arrives with carriers before
-  prealloc planning; do not let the new `direct_bir_*` repair names become the
-  proof path for ordinary source-lowered cases.
-- `resolve_call_arg_abi(target, call, index)` still exists for source
-  compatibility, but it is no longer target-sensitive ABI inference.
-- The plan bank display helpers are intentionally display/bootstrap
-  compatibility, not ABI classification authority.
+- This packet did not edit `backend_prealloc_formal_publications_test.cpp` or
+  `backend_prepare_frame_stack_call_contract_test.cpp`; their delegated subset
+  coverage stayed green.
+- The direct-BIR call-argument and call-result repairs remain covered through
+  Step 3 implementation names and existing plan behavior; this packet added the
+  practical exported-helper assertion for the retained function-return fallback.
 
 ## Proof
 
@@ -65,6 +50,13 @@ Delegated proof command:
 
 ```sh
 cmake --build --preset default > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R 'backend_(prepare_liveness|prealloc_call_boundary_classification|prealloc_formal_publications|prepare_frame_stack_call_contract)' >> test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` contains the delegated build output.
+Result: passed. `test_after.log` contains the delegated build plus CTest output.
+CTest passed 4/4:
+
+- `backend_prepare_liveness`
+- `backend_prealloc_call_boundary_classification`
+- `backend_prealloc_formal_publications`
+- `backend_prepare_frame_stack_call_contract`

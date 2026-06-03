@@ -1648,6 +1648,58 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_call_result_module()
   return planner.run();
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_prepare_ordinary_call_abi_carrier_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu");
+
+  lir::LirExternDecl decl;
+  decl.name = "id_i32";
+  decl.return_type_str = "i32";
+  decl.return_type = "i32";
+  module.extern_decls.push_back(std::move(decl));
+
+  lir::LirFunction function;
+  function.name = "lowered_ordinary_abi_carriers";
+  function.signature_text = "define i32 @lowered_ordinary_abi_carriers(i32 %arg)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.params.emplace_back("%arg", c4c::TypeSpec{.base = c4c::TB_INT});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand("%call.result"),
+      .return_type = "i32",
+      .callee = lir::LirOperand("@id_i32"),
+      .callee_type_suffix = "(i32)",
+      .args_str = "i32 %arg",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%call.result"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_call_result_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu");
@@ -5994,6 +6046,99 @@ int check_lowered_call_result_abi(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_lowered_ordinary_call_abi_carriers(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(prepared, "lowered_ordinary_abi_carriers");
+  if (module_function == nullptr || module_function->blocks.size() != 1 ||
+      module_function->blocks.front().insts.size() != 1 ||
+      module_function->params.size() != 1) {
+    return fail("expected lowered ordinary ABI carrier BIR output with one param and one call");
+  }
+  if (!module_function->params.front().abi.has_value() ||
+      module_function->params.front().abi->type != bir::TypeKind::I32 ||
+      module_function->params.front().abi->primary_class != bir::AbiValueClass::Integer ||
+      !module_function->params.front().abi->passed_in_register) {
+    return fail("expected lowered ordinary formal parameter to publish an explicit ABI carrier");
+  }
+  if (!module_function->return_abi.has_value() ||
+      module_function->return_abi->type != bir::TypeKind::I32 ||
+      module_function->return_abi->primary_class != bir::AbiValueClass::Integer) {
+    return fail("expected lowered ordinary function return to publish an explicit ABI carrier");
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&module_function->blocks.front().insts.front());
+  if (call == nullptr || call->callee != "id_i32" || call->arg_abi.size() != 1 ||
+      !call->result_abi.has_value()) {
+    return fail("expected lowered ordinary call to publish argument and result ABI carriers");
+  }
+  if (call->arg_abi.front().type != bir::TypeKind::I32 ||
+      call->arg_abi.front().primary_class != bir::AbiValueClass::Integer ||
+      !call->arg_abi.front().passed_in_register) {
+    return fail("expected lowered ordinary call argument carrier to be integer-register ABI");
+  }
+  if (call->result_abi->type != bir::TypeKind::I32 ||
+      call->result_abi->primary_class != bir::AbiValueClass::Integer) {
+    return fail("expected lowered ordinary named call result carrier to be integer ABI");
+  }
+
+  const auto* function = find_regalloc_function(prepared, "lowered_ordinary_abi_carriers");
+  if (function == nullptr) {
+    return fail("expected regalloc output for lowered ordinary ABI carrier fixture");
+  }
+  const auto* call_arg = find_regalloc_value(prepared, *function, "%arg");
+  const auto* call_result = find_regalloc_value(prepared, *function, "%call.result");
+  if (call_arg == nullptr || call_result == nullptr) {
+    return fail("expected ordinary lowered argument and call result in regalloc output");
+  }
+
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared, function->function_name);
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1 ||
+      !call_plans->calls.front().result.has_value()) {
+    return fail("expected prepared call plan for lowered ordinary ABI carrier fixture");
+  }
+  const auto& arg_plan = call_plans->calls.front().arguments.front();
+  if (arg_plan.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      arg_plan.destination_register_name != std::optional<std::string>{"a0"} ||
+      arg_plan.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      !arg_plan.destination_register_placement.has_value() ||
+      arg_plan.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      arg_plan.destination_register_placement->slot_index != 0) {
+    return fail("expected ordinary lowered call arg plan to consume the carrier ABI destination");
+  }
+  const auto& result_plan = *call_plans->calls.front().result;
+  if (result_plan.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      result_plan.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      result_plan.source_register_name != std::optional<std::string>{"a0"} ||
+      result_plan.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      !result_plan.source_register_placement.has_value() ||
+      result_plan.source_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallResult ||
+      result_plan.source_register_placement->slot_index != 0) {
+    return fail("expected ordinary lowered call result plan to consume the carrier ABI source");
+  }
+
+  if (const auto* arg_move =
+          find_move_resolution(*function, call_arg->value_id, call_arg->value_id);
+      arg_move != nullptr &&
+      (arg_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+       arg_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+       arg_move->destination_abi_index != std::optional<std::size_t>{0} ||
+       arg_move->destination_register_name != std::optional<std::string>{"a0"})) {
+    return fail("expected ordinary lowered call arg move to preserve carrier ABI metadata");
+  }
+  if (const auto* result_move =
+          find_move_resolution(*function, call_result->value_id, call_result->value_id);
+      result_move != nullptr &&
+      result_move->destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      (result_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+       result_move->destination_register_name != std::optional<std::string>{"a0"})) {
+    return fail("expected ordinary lowered call result move to preserve carrier ABI metadata");
+  }
+
+  return 0;
+}
+
 int check_lowered_helper_call_result_abi(const prepare::PreparedBirModule& prepared) {
   const auto* module_function = find_module_function(prepared, "lowered_helper_call_result_metadata");
   if (module_function == nullptr || module_function->blocks.size() != 1 ||
@@ -7233,6 +7378,17 @@ int main() {
     return fail("expected lowered call-result module to succeed");
   }
   if (const int rc = check_lowered_call_result_abi(*lowered_call_result_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto lowered_ordinary_call_abi_carrier_prepared =
+      lower_and_prepare_ordinary_call_abi_carrier_module();
+  if (!lowered_ordinary_call_abi_carrier_prepared.has_value()) {
+    return fail("expected lowered ordinary ABI carrier module to succeed");
+  }
+  if (const int rc = check_lowered_ordinary_call_abi_carriers(
+          *lowered_ordinary_call_abi_carrier_prepared);
+      rc != 0) {
     return rc;
   }
 

@@ -1,4 +1,5 @@
 #include "src/backend/prealloc/call_plans.hpp"
+#include "src/backend/prealloc/regalloc/call_return_abi.hpp"
 #include "src/backend/prealloc/variadic.hpp"
 
 #include <cstdlib>
@@ -368,6 +369,38 @@ int verify_runtime_placeholder_identity_helper_contract() {
   return 0;
 }
 
+int verify_direct_bir_function_return_move_repair_is_explicit_fallback() {
+  c4c::backend::bir::Function direct_bir_function;
+  direct_bir_function.name = "direct_bir_return_fallback";
+  direct_bir_function.return_type = c4c::backend::bir::TypeKind::I32;
+
+  if (!expect(prepare::regalloc_detail::function_return_storage_kind(
+                  direct_bir_function) == prepare::PreparedMoveStorageKind::None,
+              "missing function return ABI should not be ordinary return-storage authority")) {
+    return 1;
+  }
+
+  const auto fallback =
+      prepare::regalloc_detail::direct_bir_function_return_move_repair(direct_bir_function);
+  if (!expect(fallback.has_value(),
+              "direct-BIR scalar return repair should remain an explicit fallback") ||
+      !expect(fallback->type == c4c::backend::bir::TypeKind::I32,
+              "direct-BIR scalar return repair should preserve the source return type") ||
+      !expect(fallback->primary_class == c4c::backend::bir::AbiValueClass::Integer,
+              "direct-BIR scalar return repair should name integer ABI classification")) {
+    return 1;
+  }
+
+  direct_bir_function.return_abi = *fallback;
+  if (!expect(prepare::regalloc_detail::function_return_storage_kind(
+                  direct_bir_function) == prepare::PreparedMoveStorageKind::Register,
+              "ordinary function return storage should require an existing return ABI carrier")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -381,6 +414,10 @@ int main() {
     return rc;
   }
   if (const int rc = verify_runtime_placeholder_identity_helper_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_direct_bir_function_return_move_repair_is_explicit_fallback();
+      rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;
