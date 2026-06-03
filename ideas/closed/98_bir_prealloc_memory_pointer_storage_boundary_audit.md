@@ -125,9 +125,9 @@ Overlaps deliberately not split into follow-up ideas:
 - Missing aggregate-copy authority is target-facing lowering/codegen follow-up
   material, not evidence that BIR should own stack-source placement.
 
-Close decision: source-complete but close rejected by the close-time regression
-guard. The backend guard had the same existing failure before and after
-(`c_testsuite_aarch64_backend_src_00204_c`) and no new failing tests, but the
-guard script rejected the comparison because the pass count did not strictly
-increase (`389/390` before and after). Keep this idea open until the close-gate
-policy is satisfied or the supervisor chooses a different lifecycle action.
+Close decision: source-complete and close accepted. The backend guard had the
+same existing failure before and after
+(`c_testsuite_aarch64_backend_src_00204_c`) and no new failing tests. Because
+this was analysis-only work with no implementation diff, the close guard used
+the documented non-decreasing pass-count mode and passed with `389/390` before
+and after.
