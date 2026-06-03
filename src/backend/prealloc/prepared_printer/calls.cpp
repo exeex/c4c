@@ -312,6 +312,24 @@ void append_call_argument_source_selection(
   }
 }
 
+void append_call_argument_direct_global_dependency(
+    std::ostringstream& out,
+    const PreparedNameTables& names,
+    const PreparedCallArgumentPlan& arg) {
+  const auto* dependency =
+      find_prepared_call_argument_direct_global_select_chain_dependency(arg);
+  if (dependency == nullptr) {
+    return;
+  }
+  out << " direct_global_select_chain=yes"
+      << " direct_global_source="
+      << maybe_value_name(names, dependency->source_value_name)
+      << " direct_global_root_is_select="
+      << (dependency->direct_global_dependency.root_is_select ? "yes" : "no")
+      << " direct_global_root_inst="
+      << *dependency->direct_global_dependency.root_instruction_index;
+}
+
 void append_aggregate_transport_plan(
     std::ostringstream& out,
     const PreparedAggregateTransportPlan& plan) {
@@ -471,6 +489,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.source_selection.has_value()) {
           append_call_argument_source_selection(out, module.names, *arg.source_selection);
         }
+        append_call_argument_direct_global_dependency(out, module.names, arg);
         if (arg.aggregate_transport.has_value()) {
           append_aggregate_transport_plan(out, *arg.aggregate_transport);
         }
