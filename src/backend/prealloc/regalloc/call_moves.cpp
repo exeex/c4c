@@ -88,6 +88,17 @@ struct RegallocValueNameIndex {
   return placement;
 }
 
+[[nodiscard]] PreparedMoveStorageKind return_abi_storage_kind(
+    const bir::CallResultAbiInfo& abi) {
+  if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory) {
+    return PreparedMoveStorageKind::StackSlot;
+  }
+  if (abi.type != bir::TypeKind::Void) {
+    return PreparedMoveStorageKind::Register;
+  }
+  return PreparedMoveStorageKind::None;
+}
+
 void append_f128_constant_call_arg_move_resolution_record(
     PreparedRegallocFunction& regalloc_function,
     const PreparedRegallocValue& source,
@@ -250,7 +261,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
         const PreparedMoveStorageKind consumed_kind =
             call_arg_storage_kind(target_profile, *call, arg_index);
         const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
-        const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
+        const auto arg_abi = resolve_call_arg_abi(*call, arg_index);
         const auto abi_register_index =
             call_arg_abi_register_index(target_profile, *call, arg_index);
         const auto abi_register_name =
@@ -462,13 +473,17 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                    const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
   const auto value_name_index = make_regalloc_value_name_index(regalloc_function);
-  const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
+  auto return_abi = function.return_abi;
+  PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
+  if (consumed_kind == PreparedMoveStorageKind::None && !return_abi.has_value()) {
+    return_abi = direct_bir_function_return_move_repair(function);
+    if (return_abi.has_value()) {
+      consumed_kind = return_abi_storage_kind(*return_abi);
+    }
+  }
   if (consumed_kind == PreparedMoveStorageKind::None) {
     return;
   }
-  const auto return_abi = function.return_abi.has_value()
-                              ? function.return_abi
-                              : infer_scalar_function_return_abi(function);
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];

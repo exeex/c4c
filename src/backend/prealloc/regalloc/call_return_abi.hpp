@@ -29,6 +29,10 @@ namespace regalloc_detail {
     std::size_t contiguous_width);
 
 [[nodiscard]] std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
+    const bir::CallInst& call,
+    std::size_t arg_index);
+
+[[nodiscard]] std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index);
@@ -50,7 +54,7 @@ namespace regalloc_detail {
 
 [[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call);
 
-[[nodiscard]] std::optional<bir::CallResultAbiInfo> infer_scalar_function_return_abi(
+[[nodiscard]] std::optional<bir::CallResultAbiInfo> direct_bir_function_return_move_repair(
     const bir::Function& function);
 
 [[nodiscard]] PreparedMoveStorageKind function_return_storage_kind(const bir::Function& function);

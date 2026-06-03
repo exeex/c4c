@@ -120,7 +120,7 @@ template <std::size_t N>
 [[nodiscard]] bool call_arg_requires_stack_destination(const c4c::TargetProfile& target_profile,
                                                        const bir::CallInst& call,
                                                        std::size_t arg_index) {
-  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  const auto abi = resolve_call_arg_abi(call, arg_index);
   if (!abi.has_value()) {
     return false;
   }
@@ -294,23 +294,27 @@ std::vector<std::string> call_result_destination_register_names(
 }
 
 std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
-    const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
   if (arg_index < call.arg_abi.size()) {
     return call.arg_abi[arg_index];
   }
-  if (arg_index >= call.arg_types.size()) {
-    return std::nullopt;
-  }
-  return infer_call_arg_abi(target_profile, call.arg_types[arg_index]);
+  return std::nullopt;
+}
+
+std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  (void)target_profile;
+  return resolve_call_arg_abi(call, arg_index);
 }
 
 std::optional<std::size_t> call_arg_abi_register_index(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
-  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  const auto abi = resolve_call_arg_abi(call, arg_index);
   if (!abi.has_value() || !abi->passed_in_register) {
     if (target_profile.arch == c4c::TargetArch::X86_64 &&
         abi.has_value() &&
@@ -336,7 +340,7 @@ std::optional<std::size_t> call_arg_abi_register_index(
 
   std::size_t register_index = 0;
   for (std::size_t candidate_index = 0; candidate_index < arg_index; ++candidate_index) {
-    const auto candidate_abi = resolve_call_arg_abi(target_profile, call, candidate_index);
+    const auto candidate_abi = resolve_call_arg_abi(call, candidate_index);
     if (!candidate_abi.has_value() || !candidate_abi->passed_in_register) {
       continue;
     }
@@ -362,7 +366,7 @@ std::optional<std::size_t> call_arg_abi_register_index(
 PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,
                                               const bir::CallInst& call,
                                               std::size_t arg_index) {
-  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  const auto abi = resolve_call_arg_abi(call, arg_index);
   if (!abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }
@@ -431,7 +435,7 @@ std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
     if (!call_arg_requires_stack_destination(target_profile, call, candidate_index)) {
       continue;
     }
-    const auto abi = resolve_call_arg_abi(target_profile, call, candidate_index);
+    const auto abi = resolve_call_arg_abi(call, candidate_index);
     if (!abi.has_value()) {
       return std::nullopt;
     }
@@ -460,7 +464,8 @@ PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call) {
   return PreparedMoveStorageKind::None;
 }
 
-std::optional<bir::CallResultAbiInfo> infer_scalar_function_return_abi(const bir::Function& function) {
+std::optional<bir::CallResultAbiInfo> direct_bir_function_return_move_repair(
+    const bir::Function& function) {
   if (function.return_type == bir::TypeKind::Void) {
     return std::nullopt;
   }
@@ -495,9 +500,7 @@ std::optional<bir::CallResultAbiInfo> infer_scalar_function_return_abi(const bir
 }
 
 PreparedMoveStorageKind function_return_storage_kind(const bir::Function& function) {
-  const auto return_abi = function.return_abi.has_value()
-                              ? function.return_abi
-                              : infer_scalar_function_return_abi(function);
+  const auto return_abi = function.return_abi;
   if (!return_abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }

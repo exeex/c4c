@@ -83,6 +83,14 @@ namespace {
   return PreparedRegisterBank::None;
 }
 
+[[nodiscard]] PreparedRegisterBank direct_bir_call_arg_bank_display(bir::TypeKind type) {
+  return register_bank_from_type(type);
+}
+
+[[nodiscard]] PreparedRegisterBank direct_bir_call_result_bank_display(bir::TypeKind type) {
+  return register_bank_from_type(type);
+}
+
 [[nodiscard]] std::optional<PreparedSpillSlotPlacement> make_spill_slot_placement(
     std::optional<PreparedFrameSlotId> slot_id,
     std::optional<std::size_t> offset_bytes) {
@@ -1003,7 +1011,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
       .instruction_index = instruction_index,
       .value_bank = call.result_abi.has_value()
                         ? register_bank_from_result_abi(*call.result_abi)
-                        : register_bank_from_type(call.result->type),
+                        : direct_bir_call_result_bank_display(call.result->type),
       .source_storage_kind = PreparedMoveStorageKind::None,
       .destination_storage_kind = PreparedMoveStorageKind::None,
       .destination_value_id = std::nullopt,
@@ -2558,7 +2566,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   call_argument_allows_local_aggregate_address_publication(*call, arg_index),
               .value_bank = arg_index < call->arg_abi.size()
                                 ? register_bank_from_arg_abi(call->arg_abi[arg_index])
-                                : register_bank_from_type(call->arg_types[arg_index]),
+                                : direct_bir_call_arg_bank_display(call->arg_types[arg_index]),
               .source_encoding = PreparedStorageEncodingKind::None,
               .source_value_id = std::nullopt,
               .source_base_value_id = std::nullopt,

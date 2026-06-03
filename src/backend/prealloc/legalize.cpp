@@ -88,7 +88,7 @@ void legalize_call_result_abi(const c4c::TargetProfile& target_profile,
   abi.type = legalize_type(target_profile, abi.type);
 }
 
-std::optional<bir::CallArgAbiInfo> infer_call_arg_abi_impl(
+std::optional<bir::CallArgAbiInfo> direct_bir_call_arg_abi_repair(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind type) {
   if (type == bir::TypeKind::Void) {
@@ -137,21 +137,21 @@ std::optional<bir::CallArgAbiInfo> infer_call_arg_abi_impl(
   return std::nullopt;
 }
 
-std::optional<bir::CallResultAbiInfo> infer_call_result_abi(
+std::optional<bir::CallResultAbiInfo> direct_bir_call_result_abi_repair(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind return_type);
 
-std::optional<bir::CallResultAbiInfo> infer_function_return_abi(
+std::optional<bir::CallResultAbiInfo> direct_bir_function_return_abi_repair(
     const c4c::TargetProfile& target_profile,
     const bir::Function& function) {
   if (function.return_type == bir::TypeKind::Void) {
     return std::nullopt;
   }
 
-  return infer_call_result_abi(target_profile, function.return_type);
+  return direct_bir_call_result_abi_repair(target_profile, function.return_type);
 }
 
-std::optional<bir::CallResultAbiInfo> infer_call_result_abi(
+std::optional<bir::CallResultAbiInfo> direct_bir_call_result_abi_repair(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind return_type) {
   if (return_type == bir::TypeKind::Void) {
@@ -289,7 +289,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
     legalize_sized_type(
         target_profile, function.return_type, function.return_size_bytes, function.return_align_bytes);
     if (!function.return_abi.has_value()) {
-      function.return_abi = infer_function_return_abi(target_profile, function);
+      function.return_abi = direct_bir_function_return_abi_repair(target_profile, function);
     }
     if (function.return_abi.has_value()) {
       legalize_call_result_abi(target_profile, *function.return_abi);
@@ -302,7 +302,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
     for (auto& param : function.params) {
       legalize_sized_type(target_profile, param.type, param.size_bytes, param.align_bytes);
       if (!param.abi.has_value()) {
-        param.abi = infer_call_arg_abi_impl(target_profile, param.type);
+        param.abi = direct_bir_call_arg_abi_repair(target_profile, param.type);
         if (param.abi.has_value()) {
           if (param.is_sret) {
             param.abi->sret_pointer = true;
@@ -368,7 +368,8 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                 }
                 while (lowered.arg_abi.size() < lowered.arg_types.size()) {
                   const auto inferred_arg_abi =
-                      infer_call_arg_abi_impl(target_profile, lowered.arg_types[lowered.arg_abi.size()]);
+                      direct_bir_call_arg_abi_repair(
+                          target_profile, lowered.arg_types[lowered.arg_abi.size()]);
                   if (!inferred_arg_abi.has_value()) {
                     break;
                   }
@@ -379,7 +380,8 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                 }
                 if (!lowered.result_abi.has_value() && lowered.result.has_value() &&
                     lowered.result->kind == bir::Value::Kind::Named) {
-                  lowered.result_abi = infer_call_result_abi(target_profile, lowered.return_type);
+                  lowered.result_abi =
+                      direct_bir_call_result_abi_repair(target_profile, lowered.return_type);
                 }
                 if (lowered.result_abi.has_value()) {
                   legalize_call_result_abi(target_profile, *lowered.result_abi);
@@ -447,7 +449,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
 std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind type) {
-  return infer_call_arg_abi_impl(target_profile, type);
+  return direct_bir_call_arg_abi_repair(target_profile, type);
 }
 
 void BirPreAlloc::run_legalize() {
