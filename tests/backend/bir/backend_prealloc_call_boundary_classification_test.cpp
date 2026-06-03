@@ -1,4 +1,5 @@
 #include "src/backend/prealloc/call_plans.hpp"
+#include "src/backend/prealloc/variadic.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -331,6 +332,42 @@ int verify_missing_and_mismatched_statuses() {
   return 0;
 }
 
+int verify_runtime_placeholder_identity_helper_contract() {
+  c4c::backend::bir::NameTables names;
+
+  const c4c::backend::bir::CallInst va_arg_placeholder{
+      .callee = "llvm.va_arg.i32",
+  };
+  const c4c::backend::bir::CallInst linked_llvm_direct_call{
+      .callee = "llvm.va_arg.i32",
+      .callee_link_name_id = names.link_names.intern("llvm.va_arg.i32"),
+  };
+  const c4c::backend::bir::CallInst indirect_llvm_display_call{
+      .callee = "llvm.va_arg.i32",
+      .callee_value = c4c::backend::bir::Value::named(
+          c4c::backend::bir::TypeKind::Ptr, "callee.ptr"),
+      .is_indirect = true,
+  };
+
+  const auto helper =
+      prepare::prepared_variadic_entry_helper_kind_for_call(va_arg_placeholder);
+  if (!expect(helper == prepare::PreparedVariadicEntryHelperKind::VaArg,
+              "runtime placeholder helper should classify scalar va_arg calls") ||
+      !expect(prepare::call_is_runtime_intrinsic_placeholder(va_arg_placeholder),
+              "invalid linked llvm display call should be a runtime placeholder") ||
+      !expect(!prepare::call_is_runtime_intrinsic_placeholder(linked_llvm_direct_call),
+              "valid linked llvm display call should keep direct-call authority") ||
+      !expect(!prepare::prepared_variadic_entry_helper_kind_for_call(linked_llvm_direct_call)
+                   .has_value(),
+              "valid linked llvm display call should not classify as variadic helper") ||
+      !expect(!prepare::call_is_runtime_intrinsic_placeholder(indirect_llvm_display_call),
+              "indirect llvm display call should not be a runtime placeholder")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -341,6 +378,9 @@ int main() {
     return rc;
   }
   if (const int rc = verify_missing_and_mismatched_statuses(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_runtime_placeholder_identity_helper_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;

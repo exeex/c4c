@@ -6899,6 +6899,132 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_liveness
       options);
 }
 
+prepare::PreparedBirModule
+prepare_runtime_placeholder_aggregate_publication_call_plan_module() {
+  bir::Module module;
+  const auto linked_llvm_sink_id = module.names.link_names.intern("llvm.user_sink");
+
+  bir::Function decl;
+  decl.name = "llvm.user_sink";
+  decl.link_name_id = linked_llvm_sink_id;
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "arg0",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "runtime_placeholder_aggregate_publication_call_plan_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "compat.aggregate.0",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "intrinsic.aggregate.0",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "direct.aggregate.0",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "compat.aggregate"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "compat.aggregate.0"),
+      .rhs = bir::Value::immediate_i64(0),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "intrinsic.aggregate"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "intrinsic.aggregate.0"),
+      .rhs = bir::Value::immediate_i64(0),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "direct.aggregate"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "direct.aggregate.0"),
+      .rhs = bir::Value::immediate_i64(0),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.user_sink",
+      .callee_link_name_id = linked_llvm_sink_id,
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "direct.aggregate")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "compat.aggregate")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "target.placeholder.intrinsic",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "intrinsic.aggregate")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+      .intrinsic = bir::IntrinsicOperation{},
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(module, aarch64_target_profile(), options);
+}
+
 int check_aapcs64_variadic_entry_helper_family_liveness() {
   const auto prepared = prepare_aapcs64_variadic_entry_helper_family_liveness_module();
   const auto* liveness =
@@ -6957,6 +7083,31 @@ int check_aapcs64_variadic_entry_helper_family_liveness() {
       !va_copy_homes->source_va_list.has_value()) {
     return fail("AAPCS64 variadic helper-family liveness: carrier lost helper operand-home facts");
   }
+  return 0;
+}
+
+int check_runtime_placeholder_aggregate_publication_call_plan_contract() {
+  const auto prepared = prepare_runtime_placeholder_aggregate_publication_call_plan_module();
+  const auto function_id = prepared.names.function_names.find(
+      "runtime_placeholder_aggregate_publication_call_plan_contract");
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared, function_id);
+  if (call_plans == nullptr || call_plans->calls.size() != 3 ||
+      call_plans->calls[0].arguments.size() != 1 ||
+      call_plans->calls[1].arguments.size() != 1 ||
+      call_plans->calls[2].arguments.size() != 1) {
+    return fail("expected runtime placeholder aggregate-publication call-plan fixture");
+  }
+
+  if (!call_plans->calls[0].arguments[0].allows_local_aggregate_address_publication) {
+    return fail("expected linked llvm direct call to remain aggregate-address-publication eligible");
+  }
+  if (call_plans->calls[1].arguments[0].allows_local_aggregate_address_publication) {
+    return fail("expected raw llvm runtime placeholder to reject aggregate address publication");
+  }
+  if (call_plans->calls[2].arguments[0].allows_local_aggregate_address_publication) {
+    return fail("expected structured intrinsic placeholder to reject aggregate address publication");
+  }
+
   return 0;
 }
 
@@ -7225,6 +7376,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_aapcs64_variadic_entry_helper_family_liveness(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_runtime_placeholder_aggregate_publication_call_plan_contract();
+      rc != 0) {
     return rc;
   }
   return 0;
