@@ -877,6 +877,19 @@ prepare::PreparedBirModule prepare_sliced_i16_local_address_module() {
               .align_bytes = 2,
           },
   });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%copy.malformed"),
+      .slot_name = "%slice.src.0",
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "%slice.src.bad",
+              .byte_offset = 2,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+  });
   entry.terminator = bir::ReturnTerminator{};
 
   function.blocks.push_back(std::move(entry));
@@ -1178,13 +1191,50 @@ int check_sliced_i16_local_address_coverage(const prepare::PreparedBirModule& pr
     return fail("expected sliced i16 local fixture to publish prepared addressing");
   }
 
+  const auto* src0_object = find_stack_object(prepared, "%slice.src.0");
   const auto* src1_object = find_stack_object(prepared, "%slice.src.1");
   const auto* src2_object = find_stack_object(prepared, "%slice.src.2");
+  const auto* dst0_object = find_stack_object(prepared, "%slice.dst.0");
   const auto* dst1_object = find_stack_object(prepared, "%slice.dst.1");
   const auto* dst2_object = find_stack_object(prepared, "%slice.dst.2");
-  if (src1_object == nullptr || src2_object == nullptr || dst1_object == nullptr ||
-      dst2_object == nullptr) {
+  if (src0_object == nullptr || src1_object == nullptr || src2_object == nullptr ||
+      dst0_object == nullptr || dst1_object == nullptr || dst2_object == nullptr) {
     return fail("expected sliced i16 local fixture to preserve consecutive slice objects");
+  }
+  const auto check_slice_family = [&](const prepare::PreparedStackObject& object,
+                                      std::string_view family,
+                                      std::size_t offset) -> int {
+    if (!object.slice_family.has_value()) {
+      return fail("expected sliced local object to publish structured slice-family metadata");
+    }
+    if (!object.slice_family->legacy_slot_name_compatibility ||
+        prepare::prepared_slot_name(prepared.names, object.slice_family->family_name) != family ||
+        object.slice_family->slice_offset != offset) {
+      return fail("expected sliced local object metadata to carry family and slice offset");
+    }
+    if (!object.requires_home_slot || !object.permanent_home_slot ||
+        !object.address_exposed) {
+      return fail("expected addressed sliced local object to keep frame placement requirements");
+    }
+    return 0;
+  };
+  if (const int rc = check_slice_family(*src0_object, "%slice.src", 0); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_slice_family(*src1_object, "%slice.src", 1); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_slice_family(*src2_object, "%slice.src", 2); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_slice_family(*dst0_object, "%slice.dst", 0); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_slice_family(*dst1_object, "%slice.dst", 1); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_slice_family(*dst2_object, "%slice.dst", 2); rc != 0) {
+    return rc;
   }
   const auto* src1_slot = find_frame_slot(prepared, src1_object->object_id);
   const auto* src2_slot = find_frame_slot(prepared, src2_object->object_id);
@@ -1231,6 +1281,10 @@ int check_sliced_i16_local_address_coverage(const prepare::PreparedBirModule& pr
   }
   if (const int rc = check_access(3, dst2_slot->slot_id, true); rc != 0) {
     return rc;
+  }
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 4) !=
+      nullptr) {
+    return fail("expected malformed slice-family address to fail closed");
   }
 
   return 0;
@@ -3453,6 +3507,11 @@ int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   if (copy_object->requires_home_slot) {
     return fail("expected the copy-coalescing candidate to stop advertising a dedicated home-slot requirement");
   }
+  if (copy_object->slice_family.has_value() || copy_object->aggregate_address_published ||
+      copy_object->frame_address_value_name.has_value() ||
+      copy_object->legacy_frame_address_name_compatibility) {
+    return fail("expected copy coalescing to remain a placement-only hint");
+  }
 
   const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
   const auto* dead_slot = find_frame_slot(prepared, dead_object->object_id);
@@ -5007,6 +5066,39 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
   }
   if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
     return fail("expected the rooted-only pointer-binary path to preserve its frame-slot layout");
+  }
+  if (!root_object->frame_address_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *root_object->frame_address_value_name) !=
+          "lv.binary.rooted.root" ||
+      !root_object->legacy_frame_address_name_compatibility) {
+    return fail("expected rooted pointer slot to publish bounded frame-address compatibility metadata");
+  }
+
+  const auto function_name_id =
+      find_function_name_id(prepared, "stack_layout_rooted_pointer_binary_local_slot_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (function_addressing == nullptr) {
+    return fail("expected rooted pointer binary fixture to publish prepared addressing");
+  }
+  bool saw_frame_address_materialization = false;
+  for (const auto& materialization : function_addressing->address_materializations) {
+    if (materialization.block_label != entry_block_label_id || materialization.inst_index != 0 ||
+        materialization.kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        !materialization.result_value_name.has_value() ||
+        prepare::prepared_value_name(prepared.names, *materialization.result_value_name) !=
+            "lv.binary.rooted.root") {
+      continue;
+    }
+    if (!materialization.frame_slot_id.has_value() ||
+        *materialization.frame_slot_id != root_slot->slot_id ||
+        materialization.byte_offset != static_cast<std::int64_t>(root_slot->offset_bytes)) {
+      return fail("expected frame-address materialization to consume the prepared frame-address fact");
+    }
+    saw_frame_address_materialization = true;
+  }
+  if (!saw_frame_address_materialization) {
+    return fail("expected rooted pointer binary fixture to publish frame-address materialization");
   }
 
   return 0;
