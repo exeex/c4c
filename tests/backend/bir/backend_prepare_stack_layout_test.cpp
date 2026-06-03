@@ -126,6 +126,23 @@ bir::PhiIncoming make_phi_incoming(bir::Module& module,
   };
 }
 
+bir::InlineAsmOperandMetadata inline_asm_operand(
+    bir::InlineAsmOperandKind kind,
+    std::size_t constraint_index,
+    std::string constraint,
+    std::optional<std::size_t> arg_index = std::nullopt,
+    std::optional<bir::MemoryAddress> memory_address = std::nullopt,
+    std::optional<bir::MemoryAddress> address = std::nullopt) {
+  return bir::InlineAsmOperandMetadata{
+      .kind = kind,
+      .constraint_index = constraint_index,
+      .constraint = std::move(constraint),
+      .arg_index = arg_index,
+      .memory_address = std::move(memory_address),
+      .address = std::move(address),
+  };
+}
+
 bir::Function make_stack_layout_analysis_object_collection_function() {
   bir::Function function;
   function.name = "stack_layout_analysis_object_collection_activation";
@@ -399,6 +416,116 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
   prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_inline_asm_stack_layout_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_inline_asm_metadata_activation";
+  function.return_type = bir::TypeKind::Void;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.inline.memory.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.inline.address.root",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.inline.missing.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "inline.memory.unrooted.ptr")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "ldr w0, $0",
+          .constraints = "m",
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::MemoryInput,
+              0,
+              "m",
+              std::size_t{0},
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value =
+                      bir::Value::named(bir::TypeKind::Ptr, "lv.inline.memory.root"),
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+              })},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "inline.address.unrooted.ptr")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "adr x0, $0",
+          .constraints = "p",
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::AddressInput,
+              0,
+              "p",
+              std::size_t{0},
+              std::nullopt,
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value =
+                      bir::Value::named(bir::TypeKind::Ptr, "lv.inline.address.root"),
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              })},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "inline.missing.unrooted.ptr")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "ldr w0, $0",
+          .constraints = "m,~{memory}",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(
+                  bir::InlineAsmOperandKind::MemoryInput, 0, "m", std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::Clobber, 1, "~{memory}"),
+          },
+          .clobbers = {"memory"},
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -5104,6 +5231,47 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
   return 0;
 }
 
+int check_inline_asm_metadata_stack_layout_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* memory_object = find_stack_object(prepared, "lv.inline.memory.root");
+  const auto* address_object = find_stack_object(prepared, "lv.inline.address.root");
+  const auto* missing_object = find_stack_object(prepared, "lv.inline.missing.root");
+  if (memory_object == nullptr || address_object == nullptr || missing_object == nullptr) {
+    return fail("expected inline-asm stack-layout fixture to produce all local-slot objects");
+  }
+
+  if (!memory_object->address_exposed || !memory_object->requires_home_slot) {
+    return fail(
+        "expected structured inline-asm memory_address metadata to expose the local root");
+  }
+  if (!address_object->address_exposed || !address_object->requires_home_slot) {
+    return fail(
+        "expected structured inline-asm address metadata to expose the local root");
+  }
+  if (missing_object->address_exposed || missing_object->requires_home_slot ||
+      missing_object->permanent_home_slot) {
+    return fail(
+        "expected missing inline-asm memory/address metadata not to create object-specific placement");
+  }
+
+  const auto* memory_slot = find_frame_slot(prepared, memory_object->object_id);
+  const auto* address_slot = find_frame_slot(prepared, address_object->object_id);
+  const auto* missing_slot = find_frame_slot(prepared, missing_object->object_id);
+  if (memory_slot == nullptr || address_slot == nullptr) {
+    return fail("expected structured inline-asm metadata roots to keep frame-slot storage");
+  }
+  if (memory_slot->size_bytes != 4 || memory_slot->align_bytes != 4 ||
+      address_slot->size_bytes != 8 || address_slot->align_bytes != 8) {
+    return fail("expected inline-asm metadata roots to preserve stack object layout");
+  }
+  if (missing_slot != nullptr) {
+    return fail(
+        "expected missing inline-asm metadata root to stay out of frame-slot storage");
+  }
+
+  return 0;
+}
+
 int check_prepared_addressing_contract_activation() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -5518,6 +5686,13 @@ int main() {
   const auto rooted_pointer_binary_prepared = prepare_rooted_pointer_binary_local_slot_module();
   if (const int rc =
           check_rooted_pointer_binary_local_slot_activation(rooted_pointer_binary_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto inline_asm_stack_layout_prepared = prepare_inline_asm_stack_layout_module();
+  if (const int rc =
+          check_inline_asm_metadata_stack_layout_activation(inline_asm_stack_layout_prepared);
       rc != 0) {
     return rc;
   }
