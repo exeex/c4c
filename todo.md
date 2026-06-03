@@ -2,47 +2,50 @@ Status: Active
 Source Idea Path: ideas/open/104_bir_prealloc_pointer_carrier_provenance_contract.md
 Source Plan Path: plan.md
 Current Step ID: 5
-Current Step Title: Explicit Computed Pointer Carrier Authority
+Current Step Title: Final Validation And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 backend validation blocker repaired with explicit computed-pointer
-authority.
+Step 5 final backend validation passed after the explicit computed-pointer
+authority repair.
 
-Implementation details:
+Source idea acceptance coverage:
 
-- Added `PreparedPointerCarrierAuthority::BirPointerImmediateOffset` as a
-  semantic carrier authority for explicit pointer-typed BIR `BinaryInst`
-  add/sub immediate relations.
-- `pointer_carriers.cpp` now publishes a computed pointer carrier only when the
-  BIR instruction itself names the relation, such as `derived = base + 4`, and
-  the pointer base already resolves to an authorized carrier.
-- The computed carrier records the BIR binary operand as
-  `base_value_name`, preserves any structured symbol name from the authorized
-  base carrier, carries the explicit immediate delta, and uses the base
-  carrier step size.
-- The removed raw same-slot `+step_bytes` route and addressed-store
-  `-step_bytes` recent-load route were not restored.
-- Updated the two failing source-shape fixtures so `derived.seed` is explicitly
-  produced by `BinaryInst{Ptr Add loaded.ptr, 4}` before being stored and
-  reloaded for the call argument. The fixtures no longer depend on a phantom
-  local-slot/order relation.
+- Each pointer-carrier provenance route is classified and implemented as either
+  retained transient prealloc metadata or explicit semantic authority:
+  prepared pointer-value access facts, BIR pointer-symbol link-name facts, and
+  explicit BIR pointer add/sub immediate relations from an authorized base.
+- Local-slot propagation no longer relies on raw slot spelling or nearby
+  load/store order to mint semantic pointer provenance. It may preserve an
+  already-authorized carrier unchanged through no-address slots.
+- Pointer-symbol carrier seeding has structured authority through valid BIR
+  `pointer_symbol_link_name_id` metadata; missing/invalid link-name metadata
+  fails closed.
+- Pointer plus/minus instruction-order derivation fails closed. The focused
+  proof includes the old recent-load precondition and still rejects base+delta
+  publication without an explicit carrier relation.
+- Computed pointer call-argument source shape is retained only through an
+  explicit BIR pointer-typed add/sub immediate relation from an already
+  authorized base carrier, not through local-slot/order inference.
 
-Coverage already established before this blocker:
+Focused proof coverage retained:
 
-- Local-slot preservation: valid BIR `pointer_symbol_link_name_id` carriers and
-  prepared pointer-value carriers preserve unchanged through no-address local
-  slots in the focused value-home test.
+- Local-slot preservation: valid BIR symbol carriers and prepared pointer-value
+  carriers preserve unchanged through no-address local slots.
 - Local-slot fail-closed: raw same-slot load/store adjacency does not mint a new
   `PointerBasePlusOffset` home, and unauthorized raw stores do not replace the
   existing authorized slot carrier.
-- Pointer-symbol seeding: valid structured link-name metadata publishes a
-  symbol-backed carrier; missing/invalid link-name metadata fails closed.
+- Pointer-symbol seeding/fail-closed: valid structured link-name metadata
+  publishes a symbol-backed carrier; missing/invalid link-name metadata fails
+  closed.
 - Plus/minus fail-closed: addressed local/global predecessor candidates include
   the old recent-load precondition and do not publish base+delta carrier facts
   without an explicit carrier relation.
+- Computed-pointer authority: `backend_prepare_frame_stack_call_contract` and
+  `backend_prepared_printer` cover explicit `loaded.ptr + 4` pointer source
+  shape through call-plan and printer contracts.
 
 Retained transient metadata details:
 
@@ -57,17 +60,15 @@ Retained transient metadata details:
 
 Close-readiness status:
 
-- Focused blocker repair is ready for supervisor review. The previously failing
-  call-plan and prepared-printer source-shape tests pass with explicit computed
-  pointer authority, and the local-slot/symbol/plus-minus focused carrier
-  contract tests still pass.
-- A final `^backend_` validation pass is still needed before lifecycle close
-  readiness because the last broad Step 5 run failed before this repair.
+- Close-ready for plan-owner closure review. The final delegated backend-wide
+  validation passed, and the source idea acceptance criteria are covered
+  without restoring raw slot/order-derived pointer provenance, weakening tests,
+  or moving physical placement authority out of prealloc/MIR.
 
 ## Suggested Next
 
-Rerun Step 5 final backend validation with `ctest -R "^backend_"` and record
-close-readiness if the broader guard is green.
+Hand off to the supervisor/plan-owner for closure review of
+`ideas/open/104_bir_prealloc_pointer_carrier_provenance_contract.md`.
 
 ## Watchouts
 
@@ -101,12 +102,9 @@ close-readiness if the broader guard is green.
 ## Proof
 
 Passed:
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -R "backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_prepare_stack_layout|backend_lir_to_bir_notes|backend_prepared_lookup_helper|backend_prealloc_decoded_home_storage" --output-on-failure; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -R "^backend_" -j --output-on-failure; } 2>&1 | tee test_after.log`
 
 Proof log: `test_after.log`
 
 Result:
-Build passed and focused CTest subset passed: `backend_lir_to_bir_notes`,
-`backend_prepare_stack_layout`, `backend_prepare_frame_stack_call_contract`,
-`backend_prepared_printer`, `backend_prepared_lookup_helper`, and
-`backend_prealloc_decoded_home_storage`.
+Build passed and backend CTest passed: 169/169 tests passed, 0 failed.
