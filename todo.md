@@ -1,20 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/97_bir_prealloc_call_abi_authority_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory BIR Call ABI Facts
+Current Step ID: Step 2
+Current Step Title: Inventory Prealloc Call ABI Inference
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 - Inventory BIR Call ABI Facts. Inspected
-`src/backend/bir/bir.hpp`,
+Completed Step 2 - Inventory Prealloc Call ABI Inference. Inspected
+`src/backend/prealloc/calls.hpp`,
+`src/backend/prealloc/call_plans.cpp`,
+`src/backend/prealloc/legalize.cpp`, and
+`src/backend/prealloc/regalloc/call_moves.cpp` with `c4c-clang-tools` symbol
+queries plus focused source reads; no implementation files were edited.
+
+### Retained Prior Evidence: Step 1 BIR Call ABI Fact Inventory
+
+Step 1 inspected `src/backend/bir/bir.hpp`,
 `src/backend/bir/lir_to_bir/calling.cpp`,
 `src/backend/bir/lir_to_bir/call_abi.cpp`, and
 `src/backend/bir/lir_to_bir/module.cpp`; no implementation files were edited.
-
-### BIR Call ABI Fact Inventory
 
 | Fact | BIR carrier | Producer site | Intended authority boundary | Needs prealloc-consumer tracing |
 | --- | --- | --- | --- | --- |
@@ -31,30 +37,70 @@ Completed Step 1 - Inventory BIR Call ABI Facts. Inspected
 | Runtime/intrinsic placeholder call metadata | `CallInst::intrinsic`, `inline_asm`, placeholder `callee`, arg/result ABI | `calling.cpp::lower_runtime_intrinsic_inst` synthesizes va_start/va_end/va_copy/va_arg, inline asm, stacksave/stackrestore, fabs, and AArch64 semantic intrinsic placeholder calls; these carry arg/result ABI where applicable and intentionally invalid link-name ids. | BIR owns semantic placeholder identity and typed metadata for intrinsics/inline asm. Runtime-helper expansion, helper-call ABI legalization, and special carrier movement are prealloc/backend authority unless they duplicate an existing BIR fact. | Yes: trace runtime helper and special-carrier plans later, especially i128/f128, variadic, and intrinsic/helper call planning. |
 | Module function symbol set for call resolution | `Function::link_name_id`, module `NameTables`, direct call `callee_link_name_id` | `module.cpp::lower_module` imports link-name tables, builds `FunctionSymbolSet` from extern decls/functions, lowers externs/declarations before definitions, and uses it to validate metadata-rich direct calls in `calling.cpp`. | BIR owns direct-call semantic identity when link-name ids resolve across the module. Raw names are compatibility indices. | Yes: trace whether prealloc preserves link-name authority or falls back to raw names when planning calls. |
 
+### Prealloc Call ABI Inference Inventory
+
+| Site | Prealloc behavior | Step 1 BIR fact overlap | Classification | Needs Step 4 cross-mapping |
+| --- | --- | --- | --- | --- |
+| `calls.hpp` `PreparedCallArgumentPlan`, `PreparedCallResultPlan`, `PreparedMemoryReturnPlan`, `PreparedCallPlan` | Defines prepared call records for wrapper kind, indirect callee, memory return, argument/result source and destination encodings, register banks, stack offsets, byval aggregate transport, preserved values, clobbers, and boundary effects. | Mirrors BIR facts into a target-ready planning model: direct/indirect callee identity, sret memory return, arg/result ABI movement, byval transport, variadic FPR count, and result movement. | Mostly target-sensitive plan carrier, not a new semantic classifier. Its fields make duplicated authority visible because several are derivable from `CallInst`/`Function` ABI facts. | Yes: map every prepared field derived from `CallInst::arg_abi`, `result_abi`, `is_indirect`, `callee_link_name_id`, `is_variadic`, and `sret_storage_name` to the specific BIR source fact. |
+| `call_plans.cpp::register_bank_from_arg_abi` / `register_bank_from_result_abi` | Converts BIR `AbiValueClass` plus BIR type into prepared register-bank categories, including aggregate-address handling for memory-class pointer ABI and F128 vector handling. | Consumes BIR arg/result ABI classification and type facts. Falls back elsewhere to `register_bank_from_type` when ABI metadata is absent. | Target-neutral-ish derived presentation of existing BIR ABI facts; fallback to type-only is semantic fact reconstruction when BIR ABI is missing. | Yes: cross-map type-only fallback paths in arg/result planning and decide whether missing ABI should be repaired before prealloc instead of inferred here. |
+| `call_plans.cpp::resolve_direct_callee` and `classify_call_wrapper_kind` | Resolves direct calls by `callee_link_name_id` first, validates raw callee string when both are present, falls back to raw `callee`, and classifies same-module/direct extern variadic/fixed/indirect wrappers using callee declaration and `is_variadic`. | Consumes Step 1 callee identity and variadic call/function markers. | Legitimate call-planning use of BIR semantic facts, with raw-name fallback as compatibility reconstruction. | Yes: cross-map raw-name fallback and placeholder/helper calls; ensure invalid link-name ids are only accepted for runtime/intrinsic placeholders or truly unresolved externs. |
+| `call_plans.cpp::variadic_fpr_arg_register_count` | Counts variadic floating/SSE register args from `call.arg_abi` when `call.is_variadic`. | Consumes BIR variadic marker and arg ABI register/class facts. | Target-sensitive legalization summary for wrapper emission; not semantic rediscovery. | Yes: map against Step 1 variadic markers and AArch64/SysV behavior to ensure it does not override BIR HFA pressure facts. |
+| `call_plans.cpp::build_indirect_callee_plan` | Builds an indirect callee source/home plan from `call.is_indirect` and `callee_value`, including register/slot/immediate/computed-address encodings. | Consumes BIR direct-vs-indirect callee identity and callee operand. | Target-sensitive source-location planning. | Low/Yes: cross-map only if Step 4 covers callee identity preservation across prepared call plans. |
+| `call_plans.cpp::build_memory_return_plan` | Requires `call.result_abi.returned_in_memory` and `sret_storage_name`; scans `call.arg_abi` for `sret_pointer`, copies sret size/align, and resolves the prepared stack slot for sret storage. | Direct overlap with BIR sret storage, implicit sret argument, and return ABI memory-result facts. | Target-sensitive address/slot planning, but it reconstructs the sret arg relation by scanning ABI flags. | Yes: high-priority cross-map with Step 1 sret facts; decide whether the sret arg index should be an explicit BIR/prepared contract or this scan remains acceptable. |
+| `call_plans.cpp::call_argument_allows_local_aggregate_address_publication` | Uses raw `call.callee.rfind("llvm.", 0)`, `arg_abi.byval_copy`, `arg_types`, and arg value type to decide whether a pointer arg may publish a local aggregate address. | Overlaps BIR callee identity, byval flag, arg type, and pointer operand facts. | Semantic policy reconstruction mixed with target planning; raw callee string check is not purely physical legalization. | Yes: high-priority cross-map, especially raw `llvm.` prefix handling versus BIR intrinsic/placeholder identity. |
+| `call_plans.cpp::plan_call_argument_destination` | Uses move ABI bindings plus `call_arg_abi_register_index`, `call_arg_destination_register_placement`, `call_arg_destination_stack_offset_bytes`, `prepared_call_stack_argument_size_bytes`, and AArch64 byval lane widening from `arg_abi`. | Consumes BIR arg ABI flags: type, byval, class, size/align, register-vs-stack, HFA lane count for stack sizing. | Target-sensitive physical legalization: register names, placements, stack offsets, contiguous widths. | Yes: cross-map byval and HFA stack/register decisions to ensure they honor BIR `arg_abi` instead of reclassifying independently. |
+| `call_plans.cpp::plan_call_argument_source` and direct-global select dependency helpers | Maps BIR arg values to prepared source encodings, symbol link-name ids, immediates, frame slots, pointer base/delta, F128 constants, and direct-global select-chain dependencies. | Consumes BIR arg values, symbol pointer link names, and indirect/direct value identity. | Mostly source-location planning; symbol-name fallback is semantic fact reconstruction when structured ids are absent. | Yes for symbol/link-name authority and direct-global dependencies if Step 4 includes callee/argument identity preservation. |
+| `call_plans.cpp::prepared_byval_lane_extent_bytes`, `select_prepared_call_argument_source`, and `plan_prepared_aggregate_transport` | Detects small AArch64-style byval register-lane moves from `arg_abi`, move reasons, wrapper kind, source homes, memory accesses, and stack-layout facts; creates byval lane/chunk/scratch transport plans. | Deep overlap with BIR byval `arg_abi` facts and call wrapper variadic classification. | Target-sensitive aggregate copy legalization, but move-reason and wrapper-kind predicates reconstruct policy around the BIR byval fact. | Yes: highest-priority Step 4 cross-map for byval aggregate register lanes, stack fallback, and direct variadic single-GPR lane special handling. |
+| `call_plans.cpp::build_call_result_plan` | Uses `call.result_abi` to choose result value bank and target result register placement; uses after-call ABI bindings and value homes to plan source/destination storage. | Consumes BIR call result ABI, result value, and result lanes indirectly through move bundles. | Target-sensitive result-move planning, with type fallback when result ABI is missing. | Yes: cross-map missing `result_abi` fallback and lane handling against BIR result ABI/result-lane authority. |
+| `call_plans.cpp::classify_prepared_call_boundary_move` and `plan_prepared_call_boundary_effects` | Classifies before/after call moves as call-argument ABI, call-result ABI, function-return ABI, or value preservation effects using prepared argument/result plans and ABI bindings. | Overlaps BIR arg/result ABI through prepared plans and move ABI indices; no independent type classification here. | Target-sensitive boundary-effect classification; mostly consumes prior prepared facts. | Medium: map only after Step 4 defines canonical relationship between BIR ABI index/order and prepared move ABI bindings. |
+| `legalize.cpp::legalize_call_arg_abi` / `legalize_call_result_abi` | Mutates BIR ABI metadata during prealloc legalization, mainly target-facing type promotion and size/align repair after `i1` promotion. | Directly edits BIR-carried arg/result ABI facts from Step 1. | Target-sensitive legalization of existing facts. | Yes: cross-map as an authority boundary exception because prealloc rewrites BIR ABI carriers rather than only consuming them. |
+| `legalize.cpp::infer_call_arg_abi_impl`, `infer_call_result_abi`, `infer_function_return_abi`, and call/function fallback sites in `legalize_module` | Synthesizes missing param/call arg/call result/function return ABI from target profile and scalar type; handles F128/i128 memory/register policy and byval/sret flag copying when param ABI is missing. | Duplicates BIR producer responsibility for scalar arg/result/return ABI classification when BIR metadata is absent. Does not reconstruct aggregate/HFA structured facts. | Target-neutral semantic fact reconstruction mixed with target-sensitive scalar ABI policy. | Yes: highest-priority Step 4 cross-map; decide whether prealloc fallback remains bootstrap-only or BIR lowering must always supply these ABI facts. |
+| `regalloc/call_moves.cpp::call_arg_destination_register_width` and `append_call_arg_move_resolution` | Uses `resolve_call_arg_abi`, storage-kind/register-index/register-name/stack-offset helpers, F128 constant handling, and AArch64 byval lane predicates to emit call-argument move records. | Consumes BIR arg ABI facts and arg values; duplicates the same small-byval predicate used by call plans. | Target-sensitive physical move planning; byval predicate duplication is an overlap risk. | Yes: high-priority Step 4 cross-map with `call_plans.cpp` byval lane planning and BIR `CallArgAbiInfo`. |
+| `regalloc/call_moves.cpp::append_call_result_move_resolution` | Uses `call.result_abi`, explicit `result_lanes`, result storage kind, destination register names/placements, and value assignments to emit after-call result moves. | Consumes BIR call result ABI and result-lane facts. | Target-sensitive physical result-move planning. | Yes: cross-map result lanes/register count and type fallback behavior with BIR result ABI authority. |
+| `regalloc/call_moves.cpp::append_return_move_resolution` | Uses `function.return_abi` or `infer_scalar_function_return_abi`, return lanes, and target result register placement to emit function return moves. | Consumes BIR function return ABI and return-lane facts; fallback reconstructs scalar return ABI when absent. | Target-sensitive physical return legalization plus semantic fallback. | Yes: high-priority cross-map for missing `Function::return_abi` fallback and consistency with call result ABI. |
+
+### Boundary Split
+
+- Target-sensitive legalization/planning sites: prepared register/stack
+  placement, ABI register names, ABI stack offsets, contiguous widths,
+  clobber/preservation plans, byval aggregate transport, call/result/return
+  move records, and boundary effects in `call_plans.cpp` and
+  `regalloc/call_moves.cpp`.
+- Target-neutral semantic fact reconstruction sites: raw callee-name fallback
+  in direct-callee resolution, raw `llvm.` prefix checks for aggregate-address
+  publication, type-only register-bank fallbacks, symbol-name fallbacks, and
+  missing-ABI inference in `legalize.cpp` plus return fallback in
+  `regalloc/call_moves.cpp`.
+- Existing BIR-authority mutation sites inside prealloc:
+  `legalize.cpp` rewrites BIR type and ABI carriers during target-facing
+  legalization and can synthesize missing `Param::abi`, `CallInst::arg_abi`,
+  `CallInst::result_abi`, and `Function::return_abi`.
+
 ## Suggested Next
 
-Execute Step 2 - Inventory Prealloc Call ABI Inference. Start with
-`src/backend/prealloc/calls.hpp`, `call_plans.cpp`, `legalize.cpp`, and
-`regalloc/call_moves.cpp`; compare each prealloc classifier against the BIR
-facts above, especially `arg_abi`, `result_abi`, sret/byval flags,
-variadic markers, direct callee identity, and AArch64 HFA pressure bits.
+Execute Step 3 as assigned by the supervisor. Suggested packet: inventory the
+helper authority behind `regalloc/call_return_abi.*`,
+`target_register_profile.*`, and runtime-helper call planning, because the Step
+2 files delegate the concrete register/stack classification helpers there.
 
 ## Watchouts
 
 - This is an audit-only plan; do not edit implementation files during routine
   audit packets.
-- Separate target-neutral BIR call facts from target-sensitive prealloc ABI
-  legalization.
-- Do not create follow-up ideas unless a concrete duplicated authority or
-  contract gap is traced to named files and proof expectations.
-- `CallArgAbiInfo`/`CallResultAbiInfo` are not purely target-neutral: BIR
-  producers already use `TargetProfile` for ABI class, fp register class,
-  i128/f128 memory classification, and AArch64 HFA pressure. Later packets
-  should classify prealloc overlap against this existing fact boundary, not
-  assume BIR has only semantic call shape.
+- Step 4 should prioritize cross-mapping these overlap clusters: missing-ABI
+  inference in `legalize.cpp`; sret memory-return scan in `build_memory_return_plan`;
+  byval register-lane predicates duplicated between `call_plans.cpp` and
+  `regalloc/call_moves.cpp`; raw callee string/`llvm.` prefix fallback;
+  result/return ABI fallback and lane handling; and prepared move ABI binding
+  index/order assumptions.
+- `CallArgAbiInfo`/`CallResultAbiInfo` already include target-informed BIR facts
+  from Step 1. Do not treat every target-profile use in prealloc as drift:
+  physical register names, stack offsets, clobbers, and move bundles are
+  legitimate prealloc authority.
+- Prealloc currently mutates BIR ABI carriers during legalization. That is the
+  main authority-boundary exception to scrutinize before proposing code changes.
 - Runtime/intrinsic placeholder calls intentionally lack `callee_link_name_id`;
-  do not classify that invalid id as missing direct-callee authority without
-  checking whether the call is a synthesized placeholder.
+  raw-name fallback must be judged with that exception in mind.
 
 ## Proof
 
