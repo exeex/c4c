@@ -67,3 +67,33 @@ become the durable semantic authority for pointer provenance.
   pointer-symbol, and plus/minus carrier routes remain unexamined.
 - Existing failures are hidden by expectation downgrades, unsupported markings,
   or weaker contracts.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. Pointer-carrier provenance routes are classified
+and implemented as either retained transient prealloc metadata or explicit
+semantic authority: prepared pointer-value access facts, BIR pointer-symbol
+link-name facts, and explicit BIR pointer add/sub immediate relations from an
+authorized base.
+
+Local-slot propagation no longer relies on raw slot spelling or nearby
+load/store order to mint semantic pointer provenance. It may only preserve an
+already-authorized carrier unchanged through no-address local slots. Pointer
+symbol carrier seeding is authorized by valid BIR `pointer_symbol_link_name_id`
+metadata, and missing or invalid link-name metadata fails closed.
+
+Generic pointer plus/minus derivation from recent load/store order now fails
+closed. Computed pointer call-argument source shape is retained only through an
+explicit BIR pointer-typed add/sub immediate relation from an already
+authorized base carrier, not through local-slot/order inference. Register
+homes, stack homes, call-argument moves, and target placement remain
+prealloc/MIR physical facts rather than provenance authority.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Coverage includes local-slot
+preservation and fail-closed behavior, pointer-symbol seeding and fail-closed
+behavior, plus/minus fail-closed behavior, and explicit computed-pointer
+authority through call-plan and prepared-printer contracts.
