@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/regalloc/value_homes.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstdlib>
@@ -15,6 +16,14 @@ namespace {
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
+
+struct PointerCarrierContractFixture {
+  prepare::PreparedNameTables names;
+  bir::Module module;
+  bir::Function function;
+  prepare::PreparedAddressingFunction addressing;
+  prepare::PreparedRegallocFunction regalloc;
+};
 
 c4c::TargetProfile riscv_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -71,6 +80,22 @@ c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prep
 c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
                                       std::string_view block_label) {
   return prepared.names.block_labels.find(block_label);
+}
+
+const prepare::PreparedValueHome* find_value_home_by_name(
+    const prepare::PreparedNameTables& names,
+    const std::vector<prepare::PreparedValueHome>& homes,
+    std::string_view value_name) {
+  const auto value_name_id = names.value_names.find(value_name);
+  if (value_name_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  for (const auto& home : homes) {
+    if (home.value_name == value_name_id) {
+      return &home;
+    }
+  }
+  return nullptr;
 }
 
 c4c::BlockLabelId block_label_id(bir::Module& module, std::string_view label) {
@@ -485,6 +510,173 @@ prepare::PreparedBirModule prepare_indirect_call_string_argument_module() {
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_stack_layout();
   return std::move(planner.prepared());
+}
+
+PointerCarrierContractFixture make_pointer_carrier_contract_fixture() {
+  PointerCarrierContractFixture fixture;
+  fixture.function.name = "pointer_carrier_contract_activation";
+  fixture.function.return_type = bir::TypeKind::I32;
+
+  const auto function_name = fixture.names.function_names.intern(fixture.function.name);
+  const auto entry_label = fixture.names.block_labels.intern("entry");
+  fixture.regalloc.function_name = function_name;
+  fixture.addressing.function_name = function_name;
+
+  const auto intern_value = [&](std::string_view name) {
+    return fixture.names.value_names.intern(name);
+  };
+  const auto symbol_ptr = intern_value("contract.symbol.ptr");
+  const auto symbol_copy = intern_value("contract.symbol.copy.ptr");
+  const auto missing_ptr = intern_value("contract.missing.ptr");
+  const auto missing_copy = intern_value("contract.missing.copy.ptr");
+  const auto base_ptr = intern_value("contract.base.ptr");
+  const auto prepared_copy = intern_value("contract.prepared.copy.ptr");
+  const auto adjacent_advanced = intern_value("contract.adjacent.advanced.ptr");
+  const auto adjacent_after = intern_value("contract.adjacent.after.ptr");
+  const auto local_recent = intern_value("contract.local.recent.ptr");
+  const auto local_previous = intern_value("contract.local.previous.ptr");
+  const auto global_recent = intern_value("contract.global.recent.ptr");
+  const auto global_previous = intern_value("contract.global.previous.ptr");
+  const auto symbol_name = fixture.module.names.link_names.intern("contract.symbol");
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(fixture.module, "entry");
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named_symbol_pointer("contract.symbol.ptr", symbol_name),
+      .global_name = "contract.symbol",
+      .global_name_id = symbol_name,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.contract.symbol",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.symbol.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.symbol.copy.ptr"),
+      .slot_name = "lv.contract.symbol",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.missing.ptr"),
+      .global_name = "contract.missing",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.contract.missing",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.missing.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.missing.copy.ptr"),
+      .slot_name = "lv.contract.missing",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.contract.prepared",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.base.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.prepared.copy.ptr"),
+      .slot_name = "lv.contract.prepared",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.contract.prepared",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.adjacent.advanced.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.adjacent.after.ptr"),
+      .slot_name = "lv.contract.prepared",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named_symbol_pointer("contract.local.recent.ptr", symbol_name),
+      .global_name = "contract.symbol",
+      .global_name_id = symbol_name,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.contract.local.previous",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.local.previous.ptr"),
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "contract.base.ptr"),
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named_symbol_pointer("contract.global.recent.ptr", symbol_name),
+      .global_name = "contract.symbol",
+      .global_name_id = symbol_name,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "contract.global.sink",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "contract.global.previous.ptr"),
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "contract.base.ptr"),
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  fixture.function.blocks.push_back(std::move(entry));
+
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .inst_index = 11,
+      .address = prepare::PreparedAddress{
+          .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+          .pointer_value_name = base_ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .can_use_base_plus_offset = true,
+      },
+  });
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .inst_index = 13,
+      .address = prepare::PreparedAddress{
+          .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+          .pointer_value_name = base_ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .can_use_base_plus_offset = true,
+      },
+  });
+
+  const auto add_ptr_value = [&](prepare::PreparedValueId value_id,
+                                 c4c::ValueNameId value_name) {
+    fixture.regalloc.values.push_back(prepare::PreparedRegallocValue{
+        .value_id = value_id,
+        .function_name = function_name,
+        .value_name = value_name,
+        .type = bir::TypeKind::Ptr,
+    });
+  };
+  add_ptr_value(1, symbol_copy);
+  add_ptr_value(2, missing_copy);
+  add_ptr_value(3, prepared_copy);
+  add_ptr_value(4, adjacent_advanced);
+  add_ptr_value(5, adjacent_after);
+  add_ptr_value(6, local_previous);
+  add_ptr_value(7, global_previous);
+
+  (void)symbol_ptr;
+  (void)missing_ptr;
+  (void)local_recent;
+  (void)global_recent;
+  return fixture;
 }
 
 lir::LirModule make_lir_indirect_call_string_argument_module() {
@@ -4242,6 +4434,103 @@ int check_global_pointer_addressed_local_slot_activation(
   return 0;
 }
 
+int check_pointer_carrier_contract_value_homes() {
+  auto fixture = make_pointer_carrier_contract_fixture();
+  const auto homes = prepare::regalloc_detail::build_prepared_value_homes(
+      fixture.names,
+      riscv_target_profile(),
+      fixture.module,
+      &fixture.function,
+      nullptr,
+      &fixture.addressing,
+      fixture.regalloc);
+
+  const auto* symbol_copy =
+      find_value_home_by_name(fixture.names, homes, "contract.symbol.copy.ptr");
+  if (symbol_copy == nullptr) {
+    return fail("expected a value home for the symbol-carrier local-slot copy");
+  }
+  if (symbol_copy->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !symbol_copy->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *symbol_copy->pointer_base_value_name) !=
+          "contract.symbol.ptr" ||
+      !symbol_copy->pointer_base_symbol_name.has_value() ||
+      prepare::prepared_link_name(fixture.names, *symbol_copy->pointer_base_symbol_name) !=
+          "contract.symbol" ||
+      symbol_copy->pointer_byte_delta != std::optional<std::int64_t>{0}) {
+    return fail("expected valid BIR link-name authority to publish a symbol-backed carrier");
+  }
+
+  const auto* missing_copy =
+      find_value_home_by_name(fixture.names, homes, "contract.missing.copy.ptr");
+  if (missing_copy == nullptr) {
+    return fail("expected a value home for the missing-symbol local-slot copy");
+  }
+  if (missing_copy->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      missing_copy->pointer_base_symbol_name.has_value() ||
+      missing_copy->pointer_byte_delta.has_value()) {
+    return fail("expected missing pointer-symbol metadata to fail closed");
+  }
+
+  const auto* prepared_copy =
+      find_value_home_by_name(fixture.names, homes, "contract.prepared.copy.ptr");
+  if (prepared_copy == nullptr) {
+    return fail("expected a value home for the prepared-pointer local-slot copy");
+  }
+  if (prepared_copy->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !prepared_copy->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *prepared_copy->pointer_base_value_name) !=
+          "contract.base.ptr" ||
+      prepared_copy->pointer_base_symbol_name.has_value() ||
+      prepared_copy->pointer_byte_delta != std::optional<std::int64_t>{0}) {
+    return fail("expected prepared pointer-value authority to survive local-slot storage unchanged");
+  }
+
+  const auto* adjacent_advanced =
+      find_value_home_by_name(fixture.names, homes, "contract.adjacent.advanced.ptr");
+  if (adjacent_advanced == nullptr) {
+    return fail("expected a value home for the raw same-slot store candidate");
+  }
+  if (adjacent_advanced->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      adjacent_advanced->pointer_base_value_name.has_value() ||
+      adjacent_advanced->pointer_byte_delta.has_value()) {
+    return fail("expected raw same-slot load/store adjacency not to mint a pointer carrier");
+  }
+
+  const auto* adjacent_after =
+      find_value_home_by_name(fixture.names, homes, "contract.adjacent.after.ptr");
+  if (adjacent_after == nullptr) {
+    return fail("expected a value home for the post-adjacency local-slot copy");
+  }
+  if (adjacent_after->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !adjacent_after->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *adjacent_after->pointer_base_value_name) !=
+          "contract.base.ptr" ||
+      adjacent_after->pointer_byte_delta != std::optional<std::int64_t>{0}) {
+    return fail("expected unauthorized raw store not to replace the authorized slot carrier");
+  }
+
+  const auto* local_previous =
+      find_value_home_by_name(fixture.names, homes, "contract.local.previous.ptr");
+  const auto* global_previous =
+      find_value_home_by_name(fixture.names, homes, "contract.global.previous.ptr");
+  if (local_previous == nullptr || global_previous == nullptr) {
+    return fail("expected value homes for addressed predecessor candidates");
+  }
+  if (local_previous->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      local_previous->pointer_base_value_name.has_value() ||
+      local_previous->pointer_byte_delta.has_value()) {
+    return fail("expected addressed local store predecessor inference to fail closed");
+  }
+  if (global_previous->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      global_previous->pointer_base_value_name.has_value() ||
+      global_previous->pointer_byte_delta.has_value()) {
+    return fail("expected addressed global store predecessor inference to fail closed");
+  }
+
+  return 0;
+}
+
 int check_store_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.store.root");
   if (root_object == nullptr) {
@@ -4969,6 +5258,10 @@ int main() {
   if (const int rc =
           check_global_pointer_addressed_local_slot_activation(global_pointer_addressed_prepared);
       rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = check_pointer_carrier_contract_value_homes(); rc != 0) {
     return rc;
   }
 
