@@ -1,119 +1,128 @@
 Status: Active
 Source Idea Path: ideas/open/96_aarch64_calls_deferred_move_publication_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Establish Deferred Cluster Map
+Current Step ID: Step 2
+Current Step Title: Trace Before-Call Move Bundle Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Establish Deferred Cluster Map completed as an audit-only pass. The
-current deferred clusters from idea 92 and the active source idea map to these
-concrete entry points:
+Step 2 - Trace Before-Call Move Bundle Lowering completed as an audit-only
+pass. AST-backed queries and focused source windows traced this path:
 
-- Before-call move bundle lowering:
-  - likely prepared fact producers: `prepare::populate_call_plans`,
-    `prepare::select_prepared_call_argument_source`,
-    `prepare::find_before_call_argument_move`,
-    `prepare::classify_prepared_call_boundary_move`,
-    `prepare::plan_prepared_call_boundary_effects`, and the
-    `PreparedMovePhase::BeforeCall` lookup via `find_move_bundle`
-  - dispatch consumers: `dispatch_prepared_block` calls
-    `lower_before_call_moves`, then
-    `retarget_call_boundary_source_to_emitted_scalar`,
-    `materialize_call_boundary_source_to_destination`,
-    `record_call_boundary_destination`, and
-    `record_call_boundary_source_in_destination`
-  - AArch64 emission sites: `lower_before_call_moves`,
-    `lower_before_call_move`, `lower_before_call_immediate_binding`,
-    `make_call_boundary_machine_instruction`,
-    `make_call_boundary_move_instruction`,
-    `make_call_boundary_abi_binding_instruction`,
-    `make_value_stack_move_instruction`,
-    `make_byval_register_lane_stack_publication_instruction`,
-    `materialize_call_boundary_source_to_destination`, and
-    `make_select_chain_materialization_instruction`
+- Prepared fact production:
+  - `prepare::plan_prepared_call_boundary_effects` calls
+    `append_explicit_call_boundary_effects` and
+    `append_preservation_call_boundary_effects`.
+  - `append_explicit_call_boundary_effects` consumes each
+    `PreparedMoveBundle::moves` entry, calls
+    `classify_prepared_call_boundary_move`, and records a
+    `PreparedCallBoundaryEffectPlan` with phase, order index,
+    classification status, destination kind/storage, ABI index, source
+    endpoint, destination endpoint, and reason.
+  - Argument/result endpoint authority is selected in prealloc through
+    `make_argument_source_endpoint`, `make_argument_destination_endpoint`,
+    `make_result_source_endpoint`, and `make_result_destination_endpoint`;
+    preservation endpoints are added separately from
+    `PreparedCallPlan::preserved_values`.
+  - `PreparedMovePhase::BeforeCall` bundle lookup is indexed by
+    `find_indexed_prepared_move_bundle`; the prepared lookup index also records
+    before-call argument moves by block/instruction/ABI position for later
+    direct lookup.
 
-- After-call, return, value, and preservation lowering:
-  - likely prepared fact producers: `prepare::populate_call_plans`,
-    `prepare::plan_prepared_call_boundary_effects`,
-    `prepare::append_explicit_call_boundary_effects`,
-    `prepare::append_preservation_call_boundary_effects`,
-    `prepare::make_result_source_endpoint`,
-    `prepare::make_result_destination_endpoint`,
-    `prepare::make_preserved_storage_endpoint`,
-    `prepare::make_preserved_republication_endpoint`, and
-    `PreparedMovePhase::AfterCall` / return value move bundles through
-    `find_move_bundle`
-  - dispatch consumers: `dispatch_prepared_block` calls
-    `record_call_result_source_register`, `lower_after_call_moves`,
-    `record_call_boundary_destination`,
-    `retarget_fpr_call_result_store_value_to_emitted_scalar`, and
-    `lower_before_return_moves`; block/value move handling also routes through
-    `lower_value_moves`
-  - AArch64 emission sites: `lower_after_call_moves`,
-    `lower_after_call_move`, `lower_before_return_moves`, `lower_value_moves`,
-    `make_callee_saved_preservation_home_population`,
-    `make_callee_saved_preservation_home_republication_instruction`,
-    `make_call_boundary_machine_instruction`,
-    `make_call_boundary_move_instruction`, and
-    `make_call_boundary_abi_binding_instruction`
+- AArch64 prepared-fact consumption and record construction:
+  - `dispatch_prepared_block` obtains the active `PreparedCallPlan`, then calls
+    `lower_scalar_call_argument_producers`, `publish_stack_preserved_call_values`,
+    `lower_address_materializations`, and finally `lower_before_call_moves`
+    before call emission.
+  - `lower_before_call_moves` calls local `find_move_bundle` for
+    `PreparedMovePhase::BeforeCall`; if no bundle is found it creates an empty
+    synthetic BeforeCall bundle so preservation home population and stack-base
+    setup still have a call-boundary context.
+  - `lower_before_call_moves` adds outgoing stack-base setup when the prepared
+    call plan needs outgoing stack argument bytes, calls
+    `prepare::plan_prepared_call_boundary_effects(call_plan, bundle, nullptr)`,
+    lowers `PreservationHomePopulation` effects with
+    `make_callee_saved_preservation_home_population`, lowers explicit move
+    effects through `lower_before_call_move`, and lowers immediate ABI bindings
+    through `lower_before_call_immediate_binding`.
+  - `lower_before_call_move` consumes the prepared move/effect/classification
+    and AArch64-local prepared adjuncts such as value homes, F128 carriers,
+    byval lanes, prior-preservation selections, frame-slot/local-frame address
+    selections, and register views; it emits a
+    `CallBoundaryMoveInstructionRecord` through
+    `make_call_boundary_move_instruction` /
+    `make_call_boundary_machine_instruction`.
+  - `lower_before_call_immediate_binding` consumes prepared ABI bindings and
+    prepared immediate call-argument lookups, then chooses AArch64 stack store
+    or register move spelling and emits a synthetic
+    `CallBoundaryMoveInstructionRecord` for the immediate source.
 
-- Scalar producer dispatch bridge:
-  - likely prepared fact producers: `prepare::populate_call_plans`,
-    `prepare::make_prepared_edge_publication_source_producer_lookups`,
-    `prepare::plan_prepared_scalar_publication`,
-    `prepare::plan_prepared_store_source_publication`, and prepared source
-    producer lookup helpers in `publication_plans.cpp`
-  - dispatch consumers: `dispatch_prepared_block` calls
-    `lower_scalar_call_argument_producers`; branch fusion hooks use
-    `emit_value_publication_to_register` and
-    `prepared_publication_source_producer_for_value`; producer tracing also
-    passes through `prepared_same_block_publication_source_producer`,
-    `prepared_source_producer_instruction`, and
-    `prepared_select_chain_contains_direct_global_load`
-  - AArch64 emission sites: `lower_scalar_call_argument_producers`,
-    `materialize_scalar_call_argument_value`,
-    `materialize_local_aggregate_address_call_argument`,
-    `make_scalar_call_argument_immediate`,
-    `make_byval_register_lane_prepared_source`,
-    `emit_value_publication_to_register`, and indirect-callee helpers
-    `find_prepared_indirect_callee_source_producer`,
-    `find_prepared_indirect_callee_direct_global_select_chain`,
-    `find_prepared_indirect_callee_stored_value_source`,
-    `emit_indirect_callee_value_to_register_with_csel`, and
-    `materialize_indirect_call_callee_to_prepared_register`
+- Dispatch-state mutation and target-local emission spelling:
+  - `dispatch_prepared_block` first retargets returned before-call records with
+    `retarget_call_boundary_source_to_emitted_scalar`; this rewrites the record
+    source from prepared memory/register to an already emitted scalar register
+    and may adjust GP destination view. It does not create prepared facts.
+  - Address-conflicting moves are emitted before address materializations and
+    immediately passed to `record_call_boundary_destination`, which records the
+    destination register in `BlockScalarLoweringState`.
+  - Non-conflicting moves are deferred, materialized addresses are emitted and
+    recorded with `record_emitted_scalar_register`, then deferred moves are
+    ordered by `order_before_call_moves_for_source_preservation`.
+  - For each deferred move, `call_boundary_move_reloads_materialized_address`
+    can suppress duplicate reloads; otherwise dispatch retargets again, tries
+    `materialize_call_boundary_source_to_destination`, and either emits the
+    materialization or records/emits the original call-boundary move.
+  - `materialize_call_boundary_source_to_destination` is target-local spelling:
+    it queries `prepared_call_boundary_source_value`, chooses reserved AArch64
+    scratch GP registers, calls `emit_value_publication_to_register`, records
+    the emitted scalar in `BlockScalarLoweringState`, and returns
+    `make_select_chain_materialization_instruction`.
+  - `record_call_boundary_destination` and
+    `record_call_boundary_source_in_destination` are dispatch-state mutation
+    helpers; they update emitted scalar state from the destination register or
+    source alias after a call-boundary move.
 
-- Result recording and late publication:
-  - likely prepared fact producers: `prepare::populate_call_plans`,
-    `prepare::find_prepared_call_plans`,
-    `prepare::first_indexed_stack_preserved_values_for_call`,
-    `prepare::find_indexed_prepared_value_home`,
-    `prepare::PreparedCallPlan::results`,
-    `prepare::PreparedCallPlan::preserved_values`, and prepared publication
-    source producer lookups from `publication_plans.cpp`
-  - dispatch consumers: `dispatch_prepared_block` calls
-    `record_call_result_source_register`,
-    `materialize_missing_frame_slot_call_arguments`,
-    `publish_stack_preserved_call_values`, and late
-    `retarget_fpr_call_result_store_value_to_emitted_scalar`
-  - AArch64 emission sites: `record_call_result_source_register`,
-    `retarget_fpr_call_result_store_value_to_emitted_scalar`,
-    `materialize_missing_frame_slot_call_arguments`,
-    `publish_stack_preserved_call_values`,
-    `frame_slot_address`,
-    `make_select_chain_materialization_instruction`, and
-    `emit_value_publication_to_register`
+Classification:
+
+- `prepared-fact-consumption`: `lower_before_call_moves`,
+  `lower_before_call_move`, and `lower_before_call_immediate_binding` consume
+  prepared move bundles, call plans, ABI bindings, classifications, and lookup
+  facts without owning their derivation.
+- `target-local-calls-emission`: AArch64 register views, scratch choice,
+  stack-store spelling, byval/F128/frame-slot operand construction,
+  call-boundary machine records, and select-chain materialization remain local
+  emission concerns.
+- `dispatch-state-mutation`: `dispatch_prepared_block`,
+  `retarget_call_boundary_source_to_emitted_scalar`,
+  `materialize_call_boundary_source_to_destination`,
+  `record_call_boundary_destination`, and
+  `record_call_boundary_source_in_destination` mutate emitted-scalar state or
+  rewrite records at the call boundary.
+- `intentionally-retained`: the before-call cluster crosses prepared fact
+  consumption, AArch64 call-boundary record spelling, address-materialization
+  ordering, and scalar-state publication. The trace does not expose a narrow
+  proofable implementation boundary that would improve authority without
+  either moving target-local AArch64 spelling into shared prealloc or creating a
+  broad dispatch/calls split.
+
+Follow-up boundary decision: no new implementation idea is recommended from
+Step 2. The narrowest apparent seams, such as extracting before-call move
+ordering/retargeting or immediate binding record spelling, are local structural
+cleanup seams rather than authority gaps; they would be hard to prove without
+line-count or helper-shape metrics and risk weakening the audit's overfit
+guard. Retain this cluster unless a later trace finds a repeated dispatch-state
+mutation boundary shared with after-call/result publication.
 
 ## Suggested Next
 
-Trace Step 2 next: start with before-call move bundle lowering from
-`prepare::plan_prepared_call_boundary_effects` /
-`prepare::classify_prepared_call_boundary_move` into `lower_before_call_moves`,
-then through `dispatch_prepared_block` source retargeting/materialization and
-destination recording. This is the best first trace because its producer,
-consumer, and AArch64 emission sites are now the most directly bounded.
+Trace Step 3 next: after-call result moves, return/value moves, preservation,
+and republication. Start from `prepare::plan_prepared_call_boundary_effects`
+with the AfterCall bundle and `PreparedCallPlan::preserved_values`, then trace
+`lower_after_call_moves`, `record_call_result_source_register`,
+`retarget_fpr_call_result_store_value_to_emitted_scalar`, `lower_value_moves`,
+and `lower_before_return_moves` through `dispatch_prepared_block`.
 
 ## Watchouts
 
@@ -131,9 +140,21 @@ consumer, and AArch64 emission sites are now the most directly bounded.
   the prepared publication/source-producer facts that feed it.
 - Indirect-callee materialization uses prepared source producers but also owns
   target-local scratch choice and concrete `csel`/materialization emission.
+- Step 2 did not identify a narrow implementation boundary. Do not turn
+  before-call helper extraction, immediate binding spelling, or move-ordering
+  reshuffles into capability progress unless a later step ties the same
+  dispatch-state mutation pattern to a broader prepared/publication authority
+  gap.
 
 ## Proof
 
-Audit-only packet. No build or backend test proof required, and no
-`test_after.log` was generated because no implementation or expectation files
-were touched.
+Audit-only packet. Used `c4c-clang-tools` AST queries for callees/callers around
+`lower_before_call_moves`, `dispatch_prepared_block`,
+`prepare::plan_prepared_call_boundary_effects`,
+`append_explicit_call_boundary_effects`,
+`lower_before_call_move`, `lower_before_call_immediate_binding`,
+`materialize_call_boundary_source_to_destination`,
+`record_call_boundary_destination`, and
+`retarget_call_boundary_source_to_emitted_scalar`. No build or backend test
+proof required, and no `test_after.log` was generated because no implementation
+or expectation files were touched.
