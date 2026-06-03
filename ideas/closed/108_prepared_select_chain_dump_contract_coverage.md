@@ -83,3 +83,35 @@ future x86/RISC-V rebuild work dependent on implicit lookup behavior.
   unstable formatting, or marks supported cases unsupported.
 - It creates new compare-join continuation or select-materialization
   join-transfer work despite the audit's no-action classification.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. Prepared dumps now expose the selected
+consumer-facing select-chain and direct-global facts without duplicating lookup
+authority in the printer. The final route uses `select_chain_lookups.cpp` as
+shared helper authority and `prepared_printer/select_chains.cpp` as formatting
+only, after the rejected printer-local scalar traversal was removed.
+
+Scalar select-chain materialization visibility is provided by the helper-backed
+`--- prepared-select-chain-materializations ---` section. Rows expose
+`function`, `block`, `value`, `root_is_select`, and `root_inst`. Supporting
+source-producer provenance appears on scalar rows as `source_producer`,
+`source_producer_block`, and `source_producer_inst`.
+
+Direct-global select-chain dependency visibility is covered in
+`prepared-call-plans` argument lines and scalar materialization rows. Call
+argument lines carry `direct_global_select_chain=yes`,
+`direct_global_source=<value>`, `direct_global_root_is_select=yes|no`, and
+`direct_global_root_inst=<index>`. Store-source dump visibility remains
+deferred because this route did not introduce a bounded prepared-module
+store-source carried fact; this close does not create separate store-source,
+compare-join continuation, or select-materialization join-transfer work.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Focused prepared-printer tests cover
+the `load_global -> select -> call arg` path, including call-argument
+direct-global labels, scalar materialization rows, and source-producer
+provenance.
