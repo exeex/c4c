@@ -74,3 +74,39 @@ separate intentional legalization from accidental re-derivation.
 - It creates vague "clean calls" follow-ups without naming exact BIR/prealloc
   facts.
 
+## Close Note
+
+Closed after the active audit runbook completed all five steps. The audit
+classified BIR/prealloc call ABI overlaps and generated focused follow-up
+ideas for the concrete gaps:
+
+- `ideas/open/100_bir_runtime_intrinsic_placeholder_identity_contract.md`
+- `ideas/open/101_bir_prealloc_missing_call_abi_fallback_boundary.md`
+- `ideas/open/102_aapcs64_va_arg_payload_shape_authority.md`
+- `ideas/open/103_prealloc_synthetic_helper_call_abi_authority.md`
+
+Retained `bir-fact-consumed-correctly` overlaps:
+
+- Structured direct/indirect callee identity and indirect callee operands are
+  consumed for wrapper selection and indirect source planning.
+- Present call arg ABI, arg types, operand order, byval/sret flags, result ABI,
+  return ABI, memory-return storage, byval aggregate facts, fixed HFA pressure
+  facts, and variadic markers are consumed by prealloc planning and move
+  resolution.
+- Aggregate AAPCS64 `va_arg` planning consumes BIR size/align and memory
+  carrier facts, with only naming ambiguity left unpromoted.
+
+Retained `intentional-prealloc-legalization` overlaps:
+
+- Physical arg/result register and stack placement, byval copy chunks,
+  register-bank presentation, call/return moves, clobbers, preserved values,
+  and boundary effects remain prealloc authority.
+- Variadic wrapper details, SysV FPR counts, AAPCS64 save-area planning, and
+  named variadic register counts remain target-sensitive prealloc authority
+  when they consume present BIR facts.
+- Prealloc mutation of BIR ABI carriers in `legalize.cpp` for target-facing
+  promotion and size/align repair is retained as the main authority-boundary
+  exception.
+- I128/F128 carrier homes, lane/full-width marshaling, helper callee
+  selection, helper clobbers, preserved values, boundary effects, and
+  live-preservation completeness remain prealloc/runtime-helper authority.
