@@ -1,185 +1,122 @@
 Status: Active
 Source Idea Path: ideas/open/106_prealloc_stack_layout_slice_family_fact_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Stack Layout Reconstruction Routes
+Current Step ID: 2
+Current Step Title: Decide The Slice-Family Fact Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventory completed for stack-layout reconstruction routes that infer
-slot families, aggregate slice exposure, address publication, pointer roots, or
-coalescing facts from names and BIR instruction scans.
+Step 2 contract decision completed for stack-layout slice-family and
+publication facts.
 
-Name-based family inference routes:
-- `analysis.cpp` `slot_slice_family`: parses a trailing numeric suffix after
-  the last dot in a slot name and treats the prefix as an aggregate/slice
-  family. Used by `apply_aggregate_address_publication_hints` to map a
-  published pointer value named like the family root to all slot objects whose
-  names look like `family.N`. Current behavior: target-neutral family/publication
-  relation is reconstructed from spelling. Likely owner: BIR/lowering should own
-  slice-family publication if this is semantic; prealloc may own only the
-  home-slot hint. Contract gap: no explicit BIR/prepared family carrier says
-  that scalarized slots belong to a published aggregate pointer.
-- `slot_assignment.cpp` `build_slice_family_layout_map`,
-  `belongs_to_fixed_slice_family`, and `find_object_slice_layout`: parse
-  prepared slot names with `parse_prepared_slot_slice_name`, group slots by
-  prefix, infer dense/non-dense families, preserve slice offsets when needed,
-  and force whole fixed-location families into fixed placement when any member
-  needs a fixed home. Current behavior: physical placement analysis uses
-  name-derived family facts. Likely owner: prealloc stack layout for frame-slot
-  ordering/offsets, but the family membership input is reconstructed. Contract
-  gap: decide whether the spelling-derived family is documented placement-only
-  compatibility or should consume explicit slice-family metadata.
-- `coordinator.cpp` private `parse_slot_slice_name`,
-  `build_slot_slice_coverage`, and `find_direct_frame_slot`: reconstruct slice
-  coverage from prepared slot names so an access to `family.0 + byte_offset`
-  can publish a `PreparedMemoryAccess` for the covering frame slot such as
-  `family.1` or `family.2`. Current behavior: prepared address publication for
-  local slots depends on name-derived slice coverage. Likely owner: prealloc
-  prepared-address publication, but the family/coverage fact is target-neutral.
-  Contract gap: this is more than physical placement; it affects published
-  memory-address authority consumed by later stages.
-- `frame.hpp` `find_prepared_stack_frame_offset_by_name`: public helper repeats
-  slice-name parsing to resolve frame offsets for a requested name or covering
-  slice. Current behavior: display/name helper reconstructs slot-family
-  coverage after stack layout. Likely owner: prepared frame lookup helper.
-  Contract gap: if retained, it needs the same status as coordinator slice
-  coverage to avoid a second semantic spelling authority.
+Chosen contract:
+- Keep physical stack layout in prealloc: object collection, frame-slot
+  assignment, offsets, frame size/alignment, fixed/reorderable placement, gap
+  filling, and copy-elision home-slot decisions remain prealloc authority.
+- Split target-neutral family/publication facts from physical placement. A
+  route may scan BIR or names only when its output is a named placement-only
+  hint; any route that publishes prepared memory/address facts must consume an
+  explicit prepared/BIR fact or fail closed.
+- Reject helper-only rename routes. Step 3 must either narrow a reconstruction
+  boundary, add/consume a structured fact, or clearly label a retained
+  placement-only compatibility class. Pure renaming while preserving semantic
+  name reconstruction is not progress.
 
-BIR instruction scans for aggregate slice exposure and address publication:
-- `analysis.cpp` `apply_aggregate_address_publication_hints`: scans all calls
-  except runtime intrinsic placeholders and skips byval-copy args; it records
-  pointer-typed named call args and pointer values stored to locals as published
-  pointer values. Then it name-matches those values to slice-family prefixes and
-  marks every matching slice object `requires_home_slot` and
-  `permanent_home_slot`. Current behavior: BIR instruction scan plus slot-name
-  family reconstruction publishes aggregate family exposure. Classification:
-  target-neutral family/publication fact reconstructed in prealloc. Likely
-  owner: BIR/lowering or prepared stack-object metadata for aggregate
-  publication; prealloc owns the resulting home-slot decision.
-- `coordinator.cpp` `append_frame_slot_address_materialization`: treats a
-  pointer result name as a slot name and materializes a frame-slot address when
-  a frame slot with the same prepared slot name exists. Current behavior:
-  prepared address-materialization publication infers local-slot address identity
-  from result-name/slot-name equality. Classification: address-publication
-  inference, not pure physical placement. Likely owner: BIR value metadata or
-  explicit prepared frame-address materialization fact. Proof gap: existing
-  tests cover string/global/label materialization more directly than local
-  frame-address name equality.
-- `coordinator.cpp` `build_pointer_indirect_address` and pointer-indirect access
-  builders: publish pointer-value memory accesses from explicit
-  `MemoryAddress::PointerValue` facts. Current behavior: fail-closed structured
-  input for pointer-indirect prepared addresses; no slot-family reconstruction.
-  Classification: fail-closed input / prepared address fact consumer. Likely
-  owner: BIR memory-address producer plus prealloc prepared addressing.
+Explicit fact targets for Step 3:
+- Add a structured prepared slice-family relation for stack objects, carrying
+  family/root identity and slice offset/coverage for scalarized aggregate slots.
+  This may be produced from current BIR/local-slot metadata initially, but once
+  published it becomes the authority consumed by stack-layout assignment,
+  prepared memory access publication, and frame-offset lookup.
+- Add a structured prepared aggregate address-publication fact or marker that
+  records when an aggregate family/root address is exposed by call/store
+  behavior. `apply_aggregate_address_publication_hints` may remain the first
+  producer in this route, but matching pointer values to `family.N` spelling
+  should not remain the semantic authority after the fact is published.
+- Add a structured frame-slot address-materialization authority for local
+  frame-address values. `append_frame_slot_address_materialization` should not
+  infer address identity solely from result-name/slot-name equality unless it is
+  explicitly retained as a narrow compatibility path.
 
-Pointer-root inference used by stack-layout hints:
-- `alloca_coalescing.cpp` `collect_slot_use_summary`: scans BIR instructions,
-  builds a pointer alias map, and marks root local slots as used or
-  address-exposed through `LocalSlot`, `PointerValue`, calls, returns,
-  conditional branches, stores, casts, phi/select merges, and pointer binary
-  operations. It uses raw `Value::name` equality against local-slot names and
-  propagated aliases to reconstruct pointer roots. Current behavior: conservative
-  prealloc alloca/home-slot analysis; roots can force `address_exposed` and
-  `requires_home_slot`. Classification: mostly physical placement analysis, but
-  pointer-root publication/exposure is target-neutral and reconstructed from
-  instruction shape. Likely owner: prealloc can own conservative placement
-  hints; BIR/prepared should own any durable pointer-root fact needed outside
-  home-slot decisions.
-- `alloca_coalescing.cpp` `record_memory_address_use`: explicit
-  `MemoryAddress::LocalSlot` marks a slot addressed directly; explicit
-  `MemoryAddress::PointerValue` follows pointer aliases and marks roots escaped.
-  Current behavior: structured memory-address input for some cases, but root
-  propagation remains scan-derived. Classification: mixed structured input plus
-  placement analysis. Proof gap: tests cover pointer-addressed local/global
-  roots, but not every alias transform as a contract family.
-- `alloca_coalescing.cpp` `record_call_pointer_uses`: `sret_storage_name` marks
-  a direct sret storage slot and call args/callee values escape pointer roots.
-  Current behavior: BIR call metadata plus scan-derived roots controls
-  `source_kind = call_result_sret`, permanent homes, and exposure. Classification:
-  target-neutral call storage fact for sret, placement analysis for the final
-  home-slot result. Likely owner: BIR call metadata for sret, prealloc stack
-  layout for slot placement.
-- `regalloc_helpers.cpp` `apply_regalloc_hints` and `inline_asm.cpp`
-  `summarize_inline_asm`: scan local-slot metadata and inline asm calls; if
-  inline asm has side effects and a slot is address-exposed, force a permanent
-  home. Current behavior: conservative placement-only analysis. Likely owner:
-  prealloc/regalloc bridge. Contract gap is low unless address-exposed itself
-  remains scan-derived from earlier routes.
+Retained placement-only paths:
+- `slot_assignment.cpp` may continue using slice-family metadata to decide
+  fixed-location family grouping, offset preservation, and frame-slot ordering.
+  These are physical placement decisions and must not move into BIR.
+- `alloca_coalescing.cpp` pointer-root scans may remain as named conservative
+  alloca/home-slot placement analysis when they only set `address_exposed`,
+  `requires_home_slot`, `permanent_home_slot`, or `source_kind`. They should not
+  become durable pointer-root/publication authority outside stack-layout
+  placement.
+- `copy_coalescing.cpp` may remain a named placement-only copy-elision hint:
+  same-block one-store/one-load lowering scratch, non-address-taken, non-byval.
+  It must not claim semantic copy authority or cross-block/liveness authority.
+- `regalloc_helpers.cpp` and `inline_asm.cpp` remain conservative placement-only
+  home-slot reinforcement.
 
-Alloca and copy coalescing paths depending on reconstructed facts:
-- `alloca_coalescing.cpp` final object mutation: uses scan summary to mark dead
-  local slots, addressed local slots, direct accesses, sret storage,
-  rooted-pointer-bookkeeping-only cases, and multi-block use as
-  `address_exposed`, `requires_home_slot`, or `source_kind = call_result_sret`.
-  Current behavior: conservative physical placement/coalescing hint. Likely
-  owner: prealloc stack-layout analysis, with source facts from BIR scans.
-  Contract gap: decide which outputs are only home-slot decisions versus durable
-  publication facts.
-- `copy_coalescing.cpp` `summarize_slot_accesses` and
-  `is_copy_coalescing_candidate`: scans raw `LoadLocalInst::slot_name` /
-  `StoreLocalInst::slot_name`, requires exactly one store and one load in the
-  same block on a lowering-scratch, non-address-taken, non-byval slot, then
-  marks `source_kind = copy_coalescing_candidate`, clears
-  `requires_home_slot`, and clears `address_exposed`. Current behavior:
-  placement-only copy-elision hint reconstructed from instruction shape.
-  Likely owner: prealloc stack layout. Contract gap: proof should ensure it
-  stays local and does not become semantic copy authority.
-- `slot_assignment.cpp` `uses_copy_coalesced_slot`: drops
-  `copy_coalescing_candidate` objects from frame-slot assignment. Current
-  behavior: physical placement decision based on previous scan hint. Likely
-  owner: prealloc stack layout.
+Compatibility paths retained only if needed:
+- Suffix-derived `family.N` parsing may remain temporarily as
+  `LegacySlotNameSliceFamilyCompatibility` only as a producer/bootstrap for the
+  new structured prepared slice-family relation. It should be isolated and
+  documented as compatibility, not used directly by consumers that publish
+  prepared memory/address facts.
+- Result-name/slot-name equality for frame-address materialization may remain
+  only as `LegacyFrameAddressNameCompatibility` if Step 3 cannot express all
+  current fixtures with explicit BIR/prepared metadata in one narrow slice.
+  If retained, tests must prove it is narrow and not the primary authority when
+  explicit metadata exists.
 
-Existing proof surfaces:
-- `backend_prepare_stack_layout_test.cpp` covers copy coalescing, dead slots,
-  addressed slots, fixed-location/gap-fill placement, permanent homes, byval and
-  sret params, sret storage, scalarized call-escaped families, pointer-addressed
-  local/global roots, store/phi/select/cast/return/cond-branch/pointer-binary
-  escape cases, and sliced i16 local-address coverage.
-- `backend_aarch64_instruction_dispatch_test.cpp` has downstream assembly/MIR
-  checks for local aggregate address publication and fixed-offset local copies,
-  but those are less direct than prepared stack-layout assertions.
+Implementation targets:
+- Introduce a prepared slice-family metadata surface near `PreparedStackObject`
+  or adjacent stack-layout facts, then route `slot_assignment.cpp`,
+  coordinator slice coverage, and `frame.hpp` lookup through it.
+- Replace direct `parse_slot_slice_name` consumer authority in coordinator/frame
+  helpers with structured slice-family lookup. Keep frame offsets/slot IDs
+  produced by prealloc.
+- Publish aggregate address exposure as an explicit prepared fact before it
+  mutates `requires_home_slot`/`permanent_home_slot`.
+- Keep alloca and copy coalescing implementation narrow: classify helper names
+  and comments only where they clarify placement-only status; do not rebuild
+  coalescing broadly.
 
-Candidate contract gaps for Step 2:
-- Decide whether suffix-derived slot families (`family.N`) are retained as
-  documented compatibility/placement analysis or replaced by explicit
-  BIR/prepared slice-family facts.
-- Decide whether aggregate address publication from call/store scans should
-  consume explicit publication metadata instead of matching pointer value names
-  to family prefixes.
-- Decide whether coordinator/frame helper slice coverage is allowed to publish
-  prepared memory facts from names or must consume structured slice coverage.
-- Decide which alloca pointer-root scans are placement-only and which expose
-  missing target-neutral root/publication facts.
-- Keep copy coalescing classified as prealloc placement-only unless a future
-  step needs broader liveness-backed copy authority.
+Focused proof targets:
+- Address-publication proof: a sliced/local aggregate access such as
+  `family.0 + offset` resolves through structured slice-family coverage to the
+  covering frame slot, and a malformed or unstructured slice spelling fails
+  closed instead of silently publishing a prepared access.
+- Frame-address materialization proof: local frame-address materialization uses
+  explicit prepared/BIR authority, or if compatibility remains, the test names
+  and bounds that compatibility.
+- Coalescing/slice-family proof: copy coalescing stays placement-only and local
+  to the one-store/one-load lowering-scratch case; aggregate slice-family
+  fixed-location/offset preservation remains driven by structured family
+  metadata rather than direct name parsing in consumers.
+- Pointer-root placement proof: at least one pointer-root escape path remains a
+  conservative home-slot placement hint without becoming prepared publication
+  authority.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2: decide the slice-family/publication fact contract,
-including retained placement-only paths, explicit BIR/prepared fact targets, and
-focused proof targets for address publication plus coalescing/slice-family
-behavior.
+Execute `plan.md` Step 3: implement the structured slice-family/publication
+boundary narrowly, keeping frame placement in prealloc and avoiding broad
+alloca/copy coalescing rewrites.
 
 ## Watchouts
 
 - Do not move frame offsets, stack object ordering, or home-slot placement into
   BIR.
-- Do not treat every BIR scan as duplication without naming the reconstructed
-  fact.
-- Separate prealloc placement-only hints from target-neutral slice-family or
-  publication facts.
 - The highest-risk routes are the ones that publish prepared memory/address
   facts (`find_direct_frame_slot`, `append_frame_slot_address_materialization`)
   rather than merely deciding home-slot placement.
-- Existing tests are broad, but Step 2 should pick focused proof cases rather
-  than relying only on the large stack-layout omnibus.
+- Step 3 should avoid a helper-only rename. The diff must create or consume a
+  structured fact, or explicitly isolate a named compatibility path.
+- Do not broaden into unrelated prepared memory, pointer-carrier, alloca, or
+  copy-coalescing rewrites.
 
 ## Proof
 
 Passed. Ran:
-`git diff --quiet -- src/backend/bir src/backend/prealloc tests && printf 'analysis-only proof: no implementation or test diff for stack-layout reconstruction inventory\n' > test_after.log`
+`git diff --quiet -- src/backend/bir src/backend/prealloc tests && printf 'analysis-only proof: no implementation or test diff for stack-layout slice-family contract decision\n' > test_after.log`
 
 Proof log: `test_after.log`.
