@@ -2991,6 +2991,57 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .calling_convention = bir::CallingConv::C,
       .is_indirect = true,
   });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "raw.structured.loaded"),
+      .global_name = "g.authoritative",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "gep.id.loaded"),
+      .global_name_id = canonical_global_id,
+      .byte_offset = 4,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .byte_offset = 8,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .base_link_name_id = canonical_global_id,
+          },
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "gep.raw.structured.loaded"),
+      .global_name_id = canonical_global_id,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.authoritative",
+              .byte_offset = 12,
+              .size_bytes = 4,
+              .align_bytes = 4,
+          },
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "gep.compat.loaded"),
+      .global_name = "g.compat",
+      .byte_offset = 4,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.compat",
+              .byte_offset = 16,
+              .size_bytes = 4,
+              .align_bytes = 4,
+          },
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "@g.raw.materialization"),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.raw.materialization.source"),
+  });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
   };
@@ -4617,8 +4668,8 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected link-name authoritative global fixture to publish addressing");
   }
   const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
-  if (function_addressing->accesses.size() != 2) {
-    return fail("expected mismatched LinkNameId/raw global spelling to fail closed");
+  if (function_addressing->accesses.size() != 4) {
+    return fail("expected raw structured-global fallbacks to fail closed while compatibility remains");
   }
 
   const auto* id_load_access =
@@ -4659,6 +4710,52 @@ int check_link_name_authoritative_global_access_activation(
       prepare::prepared_link_name(prepared.names, *compat_store_access->address.symbol_name) !=
           "g.compat") {
     return fail("expected raw-only compatibility global store to resolve by spelling");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 8) !=
+      nullptr) {
+    return fail("expected raw/no-id ordinary load to fail closed for a structured global");
+  }
+
+  const auto* id_gep_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 9);
+  if (id_gep_load_access == nullptr) {
+    return fail("expected explicit GlobalSymbol address with LinkNameId to publish prepared access");
+  }
+  if (!id_gep_load_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *id_gep_load_access->result_value_name) !=
+          "gep.id.loaded" ||
+      id_gep_load_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !id_gep_load_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *id_gep_load_access->address.symbol_name) !=
+          "g.authoritative" ||
+      id_gep_load_access->address.byte_offset != 12 ||
+      id_gep_load_access->address.size_bytes != 4 ||
+      id_gep_load_access->address.align_bytes != 4) {
+    return fail("expected explicit GlobalSymbol LinkNameId address to preserve structured facts");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 10) !=
+      nullptr) {
+    return fail("expected raw GlobalSymbol base_name alone to fail closed for a structured global");
+  }
+
+  const auto* compat_gep_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 11);
+  if (compat_gep_load_access == nullptr) {
+    return fail("expected raw/no-id GlobalSymbol compatibility access to remain supported");
+  }
+  if (!compat_gep_load_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *compat_gep_load_access->result_value_name) !=
+          "gep.compat.loaded" ||
+      compat_gep_load_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !compat_gep_load_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *compat_gep_load_access->address.symbol_name) !=
+          "g.compat" ||
+      compat_gep_load_access->address.byte_offset != 20 ||
+      compat_gep_load_access->address.size_bytes != 4 ||
+      compat_gep_load_access->address.align_bytes != 4) {
+    return fail("expected raw/no-id GlobalSymbol compatibility to preserve address facts");
   }
 
   if (function_addressing->address_materializations.size() != 5) {
@@ -4764,6 +4861,11 @@ int check_link_name_authoritative_global_access_activation(
       indirect_callee->is_thread_local ||
       indirect_callee->has_tls_address_space) {
     return fail("expected indirect callee materialization to preserve function symbol identity");
+  }
+  if (prepare::find_prepared_address_materialization(*function_addressing,
+                                                     entry_block_label_id,
+                                                     12) != nullptr) {
+    return fail("expected raw @name pointer value without LinkNameId to stay out of global materialization");
   }
 
   return 0;
