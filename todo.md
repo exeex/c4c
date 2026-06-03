@@ -1,76 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/99_bir_prealloc_control_publication_lookup_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Inventory Select And Compare Join Classification
+Current Step ID: 4
+Current Step Title: Audit Prepared Lookup APIs And Prepared Printer Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Inventory Select And Compare Join Classification is complete. I used
-`c4c-clang-tool-ccdb function-signatures` and `function-callees` on
-`src/backend/prealloc/out_of_ssa.cpp` and
-`src/backend/prealloc/publication_plans.cpp`, plus
-`c4c-clang-tool function-signatures` on
-`src/backend/prealloc/control_flow.hpp` and
-`src/backend/prealloc/prepared_lookups.hpp`, before reading targeted source
-ranges.
+Step 4 - Audit Prepared Lookup APIs And Prepared Printer Coverage is complete.
+I used `c4c-clang-tool-ccdb function-callers` on
+`src/backend/prealloc/publication_plans.cpp`,
+`src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`,
+`src/backend/mir/aarch64/codegen/memory.cpp`, and
+`src/backend/mir/x86/module/module.cpp`; `c4c-clang-tool function-signatures`
+on `src/backend/prealloc/control_flow.hpp`; and targeted `rg`/source reads for
+arch consumers plus prepared-printer output.
 
-### Select / Compare / Join Boundary Classification
+### Prepared Lookup / Printer Contract Audit
 
-| Area | Classification | Disposition | Concrete evidence | Boundary decision |
+| Audited item | Classification | Disposition | Concrete evidence | Boundary decision |
 | --- | --- | --- | --- | --- |
-| `materialize_phi` / `materialize_funnel_subtree` in `src/backend/prealloc/out_of_ssa.cpp` | `prealloc-transfer-plan-authority` with retained `bir-missing-target-neutral-fact` lead | retained | `materialize_phi` first proves the PHI incoming labels exactly match funnel leaves collected from BIR terminators, then requires `find_compare_for_condition` on the entry branch condition. `materialize_funnel_subtree` recursively follows BIR branch targets and emits a `bir::SelectInst` carrying the compare predicate/type/lhs/rhs and true/false values. | Legitimate out-of-SSA publication: the emitted `SelectInst` is the target-facing carrier replacing a reducible PHI funnel. BIR owns the component branch/compare/PHI facts, but does not currently publish a stable "this select materializes this branch/phi funnel" fact. Keep this retained for Step 4 lookup/printer scrutiny, not follow-up-worthy yet. |
-| `collect_select_materialized_join_transfers` in `src/backend/prealloc/out_of_ssa.cpp` | `prealloc-transfer-plan-authority` with retained `lookup-api-contract-gap` lead | retained | Scans first-in-block `bir::SelectInst`, matches it against `PreparedBranchCondition` predicate/type/lhs/rhs, derives true/false predecessor labels with `find_prepared_linear_join_predecessor`, and publishes a `PreparedJoinTransfer` with carrier `SelectMaterialization`, edge transfers, source branch label, and true/false transfer indices. | This is a valid prepared join-transfer publication after PHI removal. The semantic association is still reconstructed from select shape plus branch-condition shape, so Step 4 should check whether consumers get a named lookup/dump contract instead of inferring from carrier kind and indices. |
-| `annotate_branch_owned_join_transfers` in `src/backend/prealloc/out_of_ssa.cpp` | `prealloc-transfer-plan-authority` | no-overlap | For two-edge join transfers, it walks prepared branch conditions, finds linear true/false predecessors into the join, maps transfer edge indices, rejects ambiguity, and writes source branch label plus true/false incoming labels and indices onto `PreparedJoinTransfer`. | This is target-facing publication of branch-owned transfer routing. BIR owns branch targets and PHI incoming labels, but the published source/edge-index mapping is an out-of-SSA consumer contract. No BIR authority overlap found. |
-| `publish_branch_owned_join_transfer_continuation_labels` plus `find_prepared_compare_join_continuation_targets` in `src/backend/prealloc/out_of_ssa.cpp` / `control_flow.hpp` | `prealloc-transfer-plan-authority` with retained fallback-shape concern | retained | Publication first looks for an already-published continuation pair. If absent, `find_prepared_compare_join_continuation_targets` checks the join block, requires a supported carrier, recognizes `join_result != 0` or `join_result == 0`, and maps true/false labels from the join branch condition. The result is stored as `continuation_true_label` / `continuation_false_label` and exposed by `published_prepared_compare_join_continuation_targets`. | Published continuation labels are legitimate prepared authority. The fallback shape recognizer is acceptable as a producer, but Step 4 should verify consumers prefer `published_prepared_compare_join_continuation_targets` and do not independently re-derive continuation semantics. |
-| `publish_short_circuit_continuation_branch_conditions` in `src/backend/prealloc/out_of_ssa.cpp` | `prealloc-transfer-plan-authority` with retained `lookup-api-contract-gap` lead | retained | Uses `find_prepared_compare_branch_target_labels`, `find_prepared_short_circuit_join_context`, and `find_prepared_short_circuit_branch_plan`; publishes continuation labels on the join transfer and appends fused-compare `PreparedBranchCondition` rows for continuation blocks by reading each continuation block's trailing `bir::BinaryInst`. | This publishes branch conditions that targets need after short-circuit compare-join rewriting. It is not a competing BIR semantic source, but it creates consumer-visible synthetic branch-condition rows; Step 4 should check lookup names and printer output make these rows distinguishable enough. |
-| `find_prepared_scalar_select_chain_materialization` and select-chain helpers in `src/backend/prealloc/publication_plans.cpp` | `lookup-api-contract-gap` candidate | retained | `prepared_select_chain_source_producer` resolves an indexed source producer by value name, requires same block and instruction-before relation, and verifies the BIR instruction still matches. `prepared_select_chain_contains_direct_global_load` recursively walks load/cast/binary/select producers. `find_prepared_scalar_select_chain_materialization` publishes availability, root value name, `root_is_select`, root instruction index, and direct-global dependency. | This is not BIR authority duplication; it is a prepared lookup over source-producer facts. The retained concern is contract surface: the stable fact is "source producer kind/index, possibly select materialization", while consumers asking for scalar select-chain materialization may depend on a multi-hop recognition rule. Step 4 should decide whether this needs a named lookup/dump contract or tests. |
-| `src/backend/prealloc/prepared_lookups.*` source-producer indexing | `prealloc-transfer-plan-authority` | no-overlap | `make_edge_publication_source_producers` indexes BIR load-local, load-global, cast, binary, and select instructions by result value; duplicate producers collapse to unknown. `apply_source_producer_fact` copies the source kind, block label, instruction index, and source instruction pointer onto edge publications. `find_indexed_prepared_edge_publication_source_producer` exposes the indexed producer by value name. | The lookup owns prepared producer provenance, not BIR select/compare semantics. No Step 3 follow-up by itself. It remains evidence for Step 4 contract coverage. |
-| Prepared printer coverage for compare/join | `prepared-printer-contract-gap` rejected for compare/join | no-overlap | `src/backend/prealloc/prepared_printer/control_flow.cpp` prints branch-owned join-transfer source indices and prints `continuation_targets=(true, false)` when `published_prepared_compare_join_continuation_targets` is available. | Compare/join continuation publication has dump coverage. Do not create a printer follow-up for this item unless Step 4 finds a consumer-visible omission elsewhere. |
-| Prepared printer coverage for scalar select-chain materialization | `prepared-printer-contract-gap` candidate | retained | `rg` found prepared-printer output for compare/join continuation targets but no printer row naming `PreparedScalarSelectChainMaterialization`, `direct_global_select_chain`, `root_is_select`, or scalar select-chain root instruction. | Step 4 should decide whether this lack of dump coverage is a real contract-test gap. Not follow-up-worthy until lookup/printer audit confirms consumers need to inspect this fact. |
+| `find_select_materialization_join_transfer` | retained/no-overlap | retained | `control_flow.hpp` exposes a named lookup that filters `PreparedJoinTransferKind::PhiEdge` plus effective carrier `SelectMaterialization`, optional true/false predecessor labels, and rejects ambiguous matches. `rg` found no arch consumer currently calling this exact lookup; nearby consumers mostly inspect published transfer/source facts directly. `prepared_printer/control_flow.cpp` prints `join_transfer ... carrier=select_materialization`, `source_branch`, `source_incomings`, and `source_transfer_indexes`. | The API and dump name the prepared select-materialization carrier sufficiently for current consumers. Keep as retained context, but no Step 5 follow-up unless future x86/RISC-V work starts inferring this association from raw BIR shape instead of this lookup/dump contract. |
+| `find_prepared_compare_join_continuation_targets` | retained/no-overlap | no-overlap | Header overloads prefer `published_prepared_compare_join_continuation_targets` on an authoritative join transfer, then short-circuit context lookup. AArch64 comparison uses the published helper after `find_materialized_compare_join_context`; x86 module code calls the named lookup for ownership/target validation. `prepared_printer/control_flow.cpp` prints `continuation_targets=(true, false)` for published join-transfer targets. | Consumer-facing contract is explicit and dump-visible. No lookup or printer follow-up needed. |
+| `find_prepared_scalar_select_chain_materialization` | `prepared-printer-contract-gap` and possible `lookup-api-contract-gap` | needs Step 5 follow-up | AST shows the implementation itself has no local caller, while AArch64 consumers call it from `dispatch_value_materialization.cpp` and `alu.cpp`. The lookup returns `available`, `root_value_name`, `root_is_select`, `root_instruction_index`, and nested direct-global dependency by recursively walking source-producer chains. `rg` found no prepared-printer output naming `PreparedScalarSelectChainMaterialization`, `root_is_select`, `root_instruction_index`, or scalar select-chain availability. | The lookup is named, but its multi-hop recognition result is target-significant and not dump-visible. Step 5 should create a contract-test/dump-coverage follow-up before more arch rebuild work depends on this fact. |
+| Source-producer lookup fields | retained/no-overlap with printer gap risk | retained | `make_edge_publication_source_producers` indexes load-local, load-global, cast, binary, and select-materialization producers by value name; duplicates collapse to unknown. `apply_source_producer_fact` copies `source_producer_kind`, block label, instruction index, and producer pointers onto edge publications. Consumers in AArch64 edge copies, calls, memory, and dispatch producers use `find_indexed_prepared_edge_publication_source_producer` or the copied fields; RISC-V checks at least load-local source-producer publication. | Source-producer provenance is a legitimate prepared fact and not duplicate BIR authority. It remains retained because prepared-printer output does not expose these copied source-producer fields for edge/store publication facts, so Step 5 should decide whether to pair this with the scalar/direct-global printer follow-up or leave it as no-action. |
+| Direct-global select-chain dependency facts | `prepared-printer-contract-gap` | needs Step 5 follow-up | `find_prepared_direct_global_select_chain_dependency` publishes `contains_direct_global_load`, `root_is_select`, and root instruction index; call planning, AArch64 call argument materialization, indirect-callee handling, and store-source publication use these facts. Store-source plans persist `direct_global_select_chain_source`, `direct_global_select_chain_root_is_select`, and `direct_global_select_chain_root_instruction_index`; AArch64 memory lowering uses them to avoid duplicate emission and decide covered instructions. `rg` found no prepared-printer output for `direct_global_select_chain`, `root_is_select`, or root instruction index. | This is the clearest dump contract gap: target-significant facts are used by consumers but not visible in prepared dumps. Step 5 should create a focused prepared-printer/contract-test follow-up. |
+| Prepared-printer coverage for retained Step 3 compare/join items | retained/no-overlap | no-overlap | `prepared_printer/control_flow.cpp` prints branch conditions, join-transfer carrier, ownership, source branch, source incoming labels, source transfer indexes, edge transfers, and published continuation targets. | Compare/join continuation and select-materialization join-transfer summaries have adequate control-flow dump coverage for this audit. |
+| Prepared-printer coverage for scalar select-chain/source-producer/direct-global items | `prepared-printer-contract-gap` | needs Step 5 follow-up | Targeted `rg` across `src/backend/prealloc/prepared_printer` only found control-flow join-transfer/continuation output. It did not find dump text for scalar select-chain materialization, direct-global select-chain dependencies, source-producer kind/block/index on edge/store publication facts, or root instruction indexes. | Step 5 should convert this into a durable follow-up idea. The follow-up should require prepared dump/test visibility for the consumer-facing scalar select-chain/direct-global/source-producer facts without moving target emission policy into BIR. |
 
-### Step 3 Dispositions
+### Step 4 Dispositions
 
-- Follow-up-worthy now: none. Every Step 2 re-derived control row is currently
-  explainable as prepared publication or lookup over prepared producer facts.
-- Retained for Step 4: select materialization lacks a target-neutral BIR
-  association fact; scalar select-chain materialization is a multi-hop lookup
-  over source producers; short-circuit synthetic branch-condition rows and
-  compare-join fallback recognition should be checked against consumer lookup
-  usage and dump coverage.
-- No-overlap: branch-owned join-transfer source/edge-index publication,
-  source-producer indexing, and compare/join continuation printer coverage.
+- Follow-up-worthy now: prepared-printer/contract-test coverage for
+  scalar select-chain materialization and direct-global select-chain dependency
+  facts; likely include source-producer kind/block/index visibility for the
+  same dump contract if Step 5 can keep the scope focused.
+- Retained/no-overlap: `find_select_materialization_join_transfer` has a
+  named lookup and current control-flow dump coverage; source-producer indexing
+  is legitimate prepared provenance.
+- No-overlap: compare-join continuation targets have named lookup use in x86,
+  published-helper use in AArch64, and prepared-printer output.
 
 ## Suggested Next
 
-Begin Step 4 by auditing prepared lookup API consumers and prepared-printer
-coverage for the retained Step 3 items. Focus on
-`find_select_materialization_join_transfer`,
-`find_prepared_compare_join_continuation_targets`,
-`find_prepared_scalar_select_chain_materialization`, source-producer lookup
-fields, and printer coverage for scalar select-chain/direct-global dependency
-facts.
+Begin Step 5 by creating a focused follow-up idea for prepared-printer and
+contract-test coverage of scalar select-chain/direct-global dependency facts,
+including source-producer kind/block/index visibility only where it directly
+supports that same consumer-facing contract. Then summarize no-action findings
+for compare-join continuation and select-materialization join-transfer lookup
+coverage.
 
 ## Watchouts
 
 - This is analysis-only; do not edit implementation files.
-- Do not convert retained Step 3 items into ideas until Step 4 proves a
-  concrete consumer-facing lookup or dump contract gap.
-- The Step 3 retained items are contract-surface concerns, not current evidence
-  that prealloc owns duplicate BIR semantic authority.
-- `publish_branch_owned_join_transfer_continuation_labels` stores continuation
-  labels, but `control_flow.hpp` still has fallback recognition paths; Step 4
-  should distinguish producer fallback from consumer re-derivation.
+- The Step 5 follow-up should be about dump/contract visibility, not a rewrite
+  of lookup APIs or target lowering policy.
+- Do not create separate ideas for compare-join continuation or
+  `find_select_materialization_join_transfer`; this packet found adequate named
+  lookup/dump coverage for those retained Step 3 items.
+- Source-producer fields are widely consumed, but the strongest traced gap is
+  printer visibility for target-significant scalar select-chain/direct-global
+  facts.
 
 ## Proof
 
 Delegated proof command:
 
 ```sh
-git diff --quiet -- src/backend/bir src/backend/prealloc && printf 'analysis-only Step 3 proof: no implementation changes under src/backend/bir or src/backend/prealloc\n' > test_after.log
+git diff --quiet -- src/backend/bir src/backend/prealloc && printf 'analysis-only Step 4 proof: no implementation changes under src/backend/bir or src/backend/prealloc\n' > test_after.log
 ```
 
 Result: passed. `test_after.log` contains:
-`analysis-only Step 3 proof: no implementation changes under src/backend/bir or src/backend/prealloc`.
+`analysis-only Step 4 proof: no implementation changes under src/backend/bir or src/backend/prealloc`.
