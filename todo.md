@@ -1,19 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/97_bir_prealloc_call_abi_authority_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Inventory Prealloc Call ABI Inference
+Current Step ID: Step 3
+Current Step Title: Trace Runtime Helper And Special Carrier Plans
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 - Inventory Prealloc Call ABI Inference. Inspected
-`src/backend/prealloc/calls.hpp`,
-`src/backend/prealloc/call_plans.cpp`,
-`src/backend/prealloc/legalize.cpp`, and
-`src/backend/prealloc/regalloc/call_moves.cpp` with `c4c-clang-tools` symbol
-queries plus focused source reads; no implementation files were edited.
+Completed Step 3 - Trace Runtime Helper And Special Carrier Plans. Inspected
+`src/backend/prealloc/variadic_entry_plans.cpp`,
+`src/backend/prealloc/i128_runtime_helpers.cpp`,
+`src/backend/prealloc/f128_runtime_helpers.cpp`,
+`src/backend/prealloc/calls.hpp`, and related helper/carrier producers in
+`src/backend/prealloc/variadic.hpp`,
+`src/backend/prealloc/runtime_helpers.hpp`,
+`src/backend/prealloc/special_carriers.hpp`, and
+`src/backend/prealloc/regalloc/runtime_helpers.cpp` with `c4c-clang-tools`
+symbol queries plus focused source reads; no implementation files were edited.
 
 ### Retained Prior Evidence: Step 1 BIR Call ABI Fact Inventory
 
@@ -76,12 +80,31 @@ Step 1 inspected `src/backend/bir/bir.hpp`,
   legalization and can synthesize missing `Param::abi`, `CallInst::arg_abi`,
   `CallInst::result_abi`, and `Function::return_abi`.
 
+### Runtime Helper And Special Carrier Classification
+
+| Site | Producer / input facts | Consumer / planned facts | Classification | Step 4 / follow-up note |
+| --- | --- | --- | --- | --- |
+| `calls.hpp` prepared call/special boundary records | Defines prepared call argument/result, memory return, clobber, preserved-value, aggregate transport, indirect callee, wrapper-kind, and boundary-effect carriers. | Consumed by call planning, runtime-helper ownership, helper live-preservation, and prepared-printer/debug surfaces. | Retained intentional prealloc legalization carrier. It stores physical/register/stack and helper-boundary effects rather than producing new BIR semantics. | Step 4 should treat these records as the target-ready mirror of BIR facts plus prealloc-owned physical routes; duplicated authority exists only where producers fill them by re-inferring BIR facts. |
+| `variadic.hpp::prepared_variadic_entry_helper_kind_for_callee` and `variadic_entry_plans.cpp` helper scans | Producer is BIR runtime placeholder `CallInst::callee` from `calling.cpp::lower_runtime_intrinsic_inst`; placeholders intentionally lack `callee_link_name_id`. | Finds `llvm.va_start.p0`, `llvm.va_copy.p0.p0`, and `llvm.va_arg.*` calls to populate required helper kinds and operand homes. | Ambiguous but probably intentional compatibility use of placeholder callee strings. It consumes BIR placeholder identity, but the identity is string-only rather than structured. | Step 4 should decide whether raw placeholder-name matching remains the contract for runtime intrinsics or whether BIR needs an explicit va helper/intrinsic kind fact beyond `CallInst::intrinsic` plus `callee`. |
+| `variadic_entry_plans.cpp::populate_variadic_entry_plans` named register counts | Producer is BIR `Function::is_variadic`, `Function::params`, `Param::is_varargs`, and `Param::abi` from `call_abi.cpp::lower_function_params_with_layouts`. | Counts named GP/FP register params for AAPCS64 variadic entry save-area offsets. | BIR fact consumed correctly with retained intentional prealloc legalization. BIR owns variadic marker and param ABI facts; prealloc owns AAPCS64 register-save counts and frame objects. | Cross-map as legitimate consumption, while noting missing `Param::abi` is already a Step 2 missing-ABI/fallback concern. |
+| `variadic_entry_plans.cpp::populate_aapcs64_variadic_entry_abi_facts` and `attach_aapcs64_variadic_entry_storage_authority` | Inputs are target profile `Aapcs64`, helper presence, named register counts, and prepared stack layout. | Produces register save area size/layout, overflow area, va_list field layout, synthetic frame slots, and helper scratch requirements. | Retained intentional prealloc legalization. These are target ABI/runtime layout facts not carried by BIR and not target-neutral. | No BIR duplication found; leave as prealloc authority unless a future idea wants a structured target-ABI variadic contract. |
+| `variadic_entry_plans.cpp::make_aapcs64_scalar_va_arg_access_plan` | Inputs are BIR va_arg placeholder `call.return_type`, prepared value homes, and prealloc `infer_call_arg_abi(target_profile, call.return_type)`. | Classifies scalar va_arg source class, register-save/overflow field, stride, size, and align. | Duplicated/rederived BIR fact for ABI classification, mixed with retained prealloc legalization. The access route is prealloc-owned, but scalar payload ABI is recomputed from type instead of consumed from a BIR va_arg payload ABI fact. | Follow-up material: decide whether runtime va_arg placeholders should carry explicit payload ABI metadata, or document this as a helper-local ABI inference exception. |
+| `variadic_entry_plans.cpp::make_aapcs64_aggregate_va_arg_access_plan` | Inputs are BIR placeholder `call.arg_abi.front()` requiring `type=Ptr`, `sret_pointer`, memory class, size, and align, plus prepared homes. | Builds aggregate va_arg copy/overflow plan and destination payload home. | BIR fact consumed correctly for aggregate payload size/align and sret-style pointer carrier; retained prealloc legalization for copy source, fields, and progression. | Cross-map with Step 1 sret/aggregate facts; the use of `sret_pointer` for aggregate va_arg payload should be reviewed as a semantic contract name, but the size/align facts are consumed rather than rediscovered. |
+| `variadic_entry_plans.cpp::infer_aapcs64_hfa_va_arg_shape` | Inputs are BIR `call.arg_abi.front().size_bytes`, post-call `LoadLocalInst` result types, aggregate slot-name suffixes, addressing facts, and frame slots. | Infers HFA lane count, lane size, and lane destination homes for AAPCS64 register-save area access. | Missing BIR fact / duplicated target-specific fact. BIR already has AArch64 HFA lane facts for fixed params and calls, but this variadic aggregate va_arg route infers lane shape from lowered load naming and memory access pattern. | Follow-up material: create or cross-map an explicit va_arg aggregate/HFA payload shape fact, or document this as a narrow AAPCS64 helper-local reconstruction. |
+| `i128_runtime_helpers.cpp` lane/carrier population | Producer is `PreparedI128Carrier` from `special_carriers.hpp`, itself a prealloc value-carrier fact for I128 values, plus regalloc/value-location facts. | Binds low/high lanes, carrier kind, register or stack homes, scalar ownership, and marshaling routes. | Retained intentional prealloc legalization. This consumes prealloc special-carrier facts rather than BIR call ABI facts; no direct callee or call arg/result BIR fact is rederived here. | Cross-map as prealloc-owned carrier movement; only the producer of `PreparedI128Carrier` needs separate Step 4 validation if source-type recognition overlaps BIR type facts. |
+| `regalloc/runtime_helpers.cpp::append_i128_runtime_helper_mappings` | Inputs are BIR `BinaryInst`/`CastInst` opcodes, operand/result types, named value identity, and regalloc value ids. | Selects libgcc helper family/kind/callee (`__divti3`, `__fixdfti`, etc.), source/result ownership, signedness, width, and helper result policy. | Follow-up material / intentional prealloc runtime legalization. BIR does not carry libgcc helper callee identity, so selecting helper names is prealloc authority; however, opcode/type pattern matching is semantic helper lowering outside normal call BIR. | Step 4 should treat callee-name synthesis as prealloc-owned runtime expansion, not a duplicate of BIR direct-callee facts, but record it as a helper-lowering boundary that bypasses `CallInst` ABI carriers. |
+| `i128_runtime_helpers.cpp::i128_helper_abi_register_name` and ABI binding builders | Inputs are target profile plus synthesized helper ABI shape; sometimes construct local `CallArgAbiInfo`/`CallResultAbiInfo` for I64 or scalar conversion types. | Produces helper ABI registers, register placements, lane indexes, GPR/FPR banks, and ABI transition policy. | Duplicated/rederived call ABI fact for synthetic helper calls, but not for source BIR calls. The helper call has no BIR `CallInst`, so ABI registers must be planned somewhere; the ambiguity is whether synthetic helper calls should have BIR-like ABI facts. | Follow-up material: decide whether runtime helper calls should be modeled as prepared-only call boundaries or lowered to explicit BIR calls with arg/result ABI carriers before prealloc. |
+| `i128_runtime_helpers.cpp::build_call_clobber_set`, `build_call_preserved_values`, and selected ownership policy | Inputs are target caller-saved/callee-saved profiles, liveness, frame plan, regalloc assignments, and value homes. | Produces clobbers, preserved values, live-preservation completeness, and helper call ownership. | Retained intentional prealloc legalization. These are physical call-boundary effects and do not duplicate BIR call ABI metadata. | Cross-map with `calls.hpp` boundary-effect records as prealloc-owned preservation policy. |
+| `f128_runtime_helpers.cpp` carrier population | Producer is `PreparedF128Carrier` from `special_carriers.hpp`, including full-width register or memory-backed carrier facts, plus scalar value homes for casts/comparisons. | Binds F128 full-width carriers, scalar comparison results, scalar cast operands/results, and marshaling moves. | Retained intentional prealloc legalization. It consumes special-carrier/value-home facts rather than BIR call ABI carriers. | Cross-map as prealloc-owned carrier movement; inspect `PreparedF128Carrier` producer only if Step 4 includes special-carrier type recognition. |
+| `regalloc/runtime_helpers.cpp::append_f128_runtime_helper_mappings` | Inputs are BIR `BinaryInst`/`CastInst` opcode/type facts and regalloc values, including F128 comparison result rewriting to helper I32 result then BIR I1 zero-test consumption. | Selects soft-float helper family/kind/callee (`__addtf3`, `__lttf2`, `__extendsftf2`, etc.), result ownership, cmp zero-test, and source/result value ids. | Follow-up material / intentional prealloc runtime legalization. Helper callee selection is prealloc-owned, but comparison helper result ownership (`I32` helper result consumed into BIR `I1`) is a semantic bridge not represented as a BIR call result fact. | Step 4 should decide whether this remains a special helper contract or needs explicit prepared/BIR documentation for helper-result-to-BIR-result semantics. |
+| `f128_runtime_helpers.cpp::make_f128_helper_abi_register_binding` and scalar ABI builders | Inputs are target profile and helper-local F128/scalar types; use `infer_call_arg_abi` and local `CallResultAbiInfo` to choose helper registers and placements. | Produces helper arg/result ABI register bindings, banks, placements, ABI transitions, and marshal requirements. | Duplicated/rederived call ABI fact for synthetic helper calls, but no source BIR call exists to consume. This is analogous to i128 helper ABI binding and should be classified as a synthetic-helper ABI boundary gap. | Follow-up material: decide prepared-only helper-call ABI authority versus explicit BIR helper-call modeling. |
+| `f128_runtime_helpers.cpp::populate_f128_runtime_helper_boundary_policy`, preservation, and ownership | Inputs are target caller-saved register profile, liveness, regalloc, value homes, helper callee name, carrier/ABI/marshal completeness. | Produces resource policy, clobbers, live preservation, selected call ownership, and completeness facts. | Retained intentional prealloc legalization. These are physical helper-call boundary effects. | Cross-map with `PreparedCallPreservedValue` and `PreparedCallBoundaryEffectPlan`; no BIR duplication found. |
+
 ## Suggested Next
 
-Execute Step 3 as assigned by the supervisor. Suggested packet: inventory the
-helper authority behind `regalloc/call_return_abi.*`,
-`target_register_profile.*`, and runtime-helper call planning, because the Step
-2 files delegate the concrete register/stack classification helpers there.
+Execute Step 4 as assigned by the supervisor. Suggested packet: cross-map the
+Step 1 BIR facts against the Step 2 and Step 3 prealloc consumers, prioritizing
+the concrete overlap clusters already identified in this file.
 
 ## Watchouts
 
@@ -101,6 +124,11 @@ helper authority behind `regalloc/call_return_abi.*`,
   main authority-boundary exception to scrutinize before proposing code changes.
 - Runtime/intrinsic placeholder calls intentionally lack `callee_link_name_id`;
   raw-name fallback must be judged with that exception in mind.
+- Step 3 added three likely follow-up clusters: raw string placeholder identity
+  for variadic helpers, AAPCS64 aggregate va_arg HFA shape inference from
+  post-call loads/slot suffixes, and synthetic i128/f128 helper-call ABI
+  register binding that reuses call ABI inference without an explicit BIR
+  helper-call carrier.
 
 ## Proof
 
