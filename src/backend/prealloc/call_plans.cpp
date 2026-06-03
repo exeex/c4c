@@ -2,6 +2,7 @@
 #include "prepared_lookups.hpp"
 #include "regalloc/call_return_abi.hpp"
 #include "target_register_profile.hpp"
+#include "variadic.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -1112,7 +1113,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   if (arg_index >= call.args.size()) {
     return false;
   }
-  if (call.callee.rfind("llvm.", 0) == 0) {
+  if (call_is_runtime_intrinsic_placeholder(call)) {
     return false;
   }
   if (arg_index < call.arg_abi.size() && call.arg_abi[arg_index].byval_copy) {

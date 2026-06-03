@@ -679,8 +679,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
       if (call == nullptr) {
         continue;
       }
-      const auto helper_kind =
-          prepared_variadic_entry_helper_kind_for_callee(call->callee);
+      const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
       if (!helper_kind.has_value()) {
         continue;
       }
@@ -901,8 +900,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
         if (call == nullptr) {
           continue;
         }
-        const auto helper_kind =
-            prepared_variadic_entry_helper_kind_for_callee(call->callee);
+        const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
         if (!helper_kind.has_value()) {
           continue;
         }

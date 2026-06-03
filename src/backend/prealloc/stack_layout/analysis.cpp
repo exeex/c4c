@@ -1,4 +1,5 @@
 #include "../module.hpp"
+#include "../variadic.hpp"
 #include "stack_layout.hpp"
 
 #include <string_view>
@@ -149,7 +150,7 @@ void apply_aggregate_address_publication_hints(const PreparedNameTables& names,
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
-        if (call->callee.rfind("llvm.", 0) == 0) {
+        if (call_is_runtime_intrinsic_placeholder(*call)) {
           continue;
         }
         for (std::size_t index = 0; index < call->args.size(); ++index) {

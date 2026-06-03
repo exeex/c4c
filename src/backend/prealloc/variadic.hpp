@@ -122,6 +122,32 @@ prepared_variadic_entry_helper_kind_for_callee(std::string_view callee) {
   return std::nullopt;
 }
 
+[[nodiscard]] inline bool call_has_runtime_placeholder_shape(const bir::CallInst& call) {
+  return !call.is_indirect &&
+         call.callee_link_name_id == kInvalidLinkName &&
+         !call.callee_value.has_value();
+}
+
+[[nodiscard]] inline bool call_is_runtime_intrinsic_placeholder(
+    const bir::CallInst& call) {
+  if (!call_has_runtime_placeholder_shape(call)) {
+    return false;
+  }
+  if (call.intrinsic.has_value() || call.inline_asm.has_value()) {
+    return true;
+  }
+  constexpr std::string_view llvm_prefix = "llvm.";
+  return call.callee.substr(0, llvm_prefix.size()) == llvm_prefix;
+}
+
+[[nodiscard]] inline std::optional<PreparedVariadicEntryHelperKind>
+prepared_variadic_entry_helper_kind_for_call(const bir::CallInst& call) {
+  if (!call_is_runtime_intrinsic_placeholder(call)) {
+    return std::nullopt;
+  }
+  return prepared_variadic_entry_helper_kind_for_callee(call.callee);
+}
+
 struct PreparedVariadicEntryHelperResources {
   std::vector<PreparedVariadicEntryHelperKind> required_helpers;
   // Maximum simultaneous reserved MIR scratch resources required by any
