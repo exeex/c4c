@@ -81,3 +81,53 @@ BIR lacks a target-neutral fact and prealloc legitimately fills the gap.
   overlap.
 - It ignores the distinction between BIR provenance and prealloc placement.
 
+## Step 5 Synthesis
+
+Generated follow-up ideas:
+
+- `ideas/open/104_bir_prealloc_pointer_carrier_provenance_contract.md`
+- `ideas/open/105_prealloc_raw_global_address_identity_fallback_contract.md`
+- `ideas/open/106_prealloc_stack_layout_slice_family_fact_contract.md`
+- `ideas/open/107_prealloc_inline_asm_memory_effect_metadata_contract.md`
+
+Intentional retained BIR semantic authority:
+
+- Local slot identity, scalar storage facts, local pointer-to-slot provenance,
+  `MemoryAddress` annotations, and local/global load/store operation facts.
+- Global identity, extent, initializer facts, TLS/constant/external flags,
+  target-neutral global address materialization policy, and GEP-derived global
+  offsets.
+- Runtime pointer base plus offset facts where surfaced as
+  `MemoryAddress::PointerValue`, dynamic local/global array interpretation,
+  dynamic alloca as call-like pointer production until a later target route
+  proves a distinct lifetime/stack-adjustment fact is needed, and structured
+  inline-asm/intrinsic memory operand metadata.
+
+Intentional retained prealloc placement/storage authority:
+
+- Stack object candidacy, address-publication and coalescing placement hints,
+  frame-slot IDs, frame offsets, frame size/alignment, and stack object
+  ordering.
+- Prepared frame/global/string/pointer addresses, address materializations,
+  target relocation/TLS interpretation, and base-plus-offset availability.
+- Storage plans, decoded homes, register/stack homes, spill slots,
+  immediates/symbol storage encodings, and aggregate or typed stack-source
+  publication when based on prepared homes and frame-layout facts.
+
+Overlaps deliberately not split into follow-up ideas:
+
+- `prepared_lookups.cpp` same-block and source-producer helpers remain query
+  glue unless a later implementation route proves they create semantic memory
+  provenance instead of indexing prepared accesses and frame-range facts.
+- Dynamic alloca remains a call-like pointer producer for this audit; a future
+  idea should only be created if target stack adjustment, lifetime, or extent
+  handling needs a distinct target-neutral dynamic-allocation fact.
+- Missing aggregate-copy authority is target-facing lowering/codegen follow-up
+  material, not evidence that BIR should own stack-source placement.
+
+Close decision: source-complete but close rejected by the close-time regression
+guard. The backend guard had the same existing failure before and after
+(`c_testsuite_aarch64_backend_src_00204_c`) and no new failing tests, but the
+guard script rejected the comparison because the pass count did not strictly
+increase (`389/390` before and after). Keep this idea open until the close-gate
+policy is satisfied or the supervisor chooses a different lifecycle action.

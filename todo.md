@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/98_bir_prealloc_memory_pointer_storage_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Cross-Map Memory And Storage Overlaps
+Current Step ID: Step 5
+Current Step Title: Synthesize Follow-Up Ideas Or Intentional Retention
 
 # Current Packet
 
@@ -136,30 +136,57 @@ decisions are:
 
 ## Suggested Next
 
-Execute Step 5 - Synthesize Follow-Up Ideas Or Intentional Retention. Convert
-the Step 4 overlap decisions into durable conclusions, and create follow-up
-ideas only for narrow, proofable boundary gaps.
+Close gate is blocked. The Step 5 synthesis is complete, and the audit source
+idea is source-complete, but lifecycle close was rejected because the
+close-time regression guard failed its strict monotonic pass-count rule.
+
+Generated follow-up ideas:
+
+- `ideas/open/104_bir_prealloc_pointer_carrier_provenance_contract.md`
+- `ideas/open/105_prealloc_raw_global_address_identity_fallback_contract.md`
+- `ideas/open/106_prealloc_stack_layout_slice_family_fact_contract.md`
+- `ideas/open/107_prealloc_inline_asm_memory_effect_metadata_contract.md`
 
 ## Watchouts
 
-- Do not create follow-up ideas for correct consumption of `MemoryAddress`,
-  stack-object planning, frame-slot assignment, storage plans, decoded homes,
-  or prepared addressing carrier structs; those are intentional authority
-  boundaries.
-- Strongest follow-up candidate: clarify or replace
-  `pointer_carriers.cpp` direct provenance derivation for local-slot pointer
-  carriers, pointer-symbol carriers, and plus/minus pointer-value carrier
-  inference.
-- Secondary follow-up candidates should stay narrow: structured IDs for raw
-  global fallback, explicit slice-family/publication facts if name-based
-  stack-layout hints remain necessary, and inline-asm memory summaries only
-  when they cannot consume structured metadata.
-- Treat `prepared_lookups.cpp` same-block/source-producer helpers as query
-  glue unless Step 5 can name a specific semantic memory fact they create and
-  later consumers rely on.
+- Intentional BIR authority: local/global identity, memory operation facts,
+  `MemoryAddress`, pointer-value plus offset facts, dynamic access
+  interpretation, structured global/initializer identity, and structured
+  inline-asm/intrinsic memory metadata.
+- Intentional prealloc authority: stack objects, frame slots, frame layout,
+  prepared addresses/materializations, relocation/TLS interpretation, storage
+  plans, decoded homes, register/stack homes, spill slots, and aggregate or
+  typed stack-source publication based on prepared homes/frame facts.
+- `prepared_lookups.cpp` same-block/source-producer helpers remain query glue
+  unless a future implementation route proves they create semantic memory
+  provenance instead of indexing prepared accesses and frame-range facts.
+- Dynamic alloca remains a call-like pointer producer for this audit; create a
+  separate idea only if target stack adjustment, lifetime, or extent handling
+  later needs a distinct target-neutral dynamic-allocation fact.
+- Missing aggregate-copy authority is target-facing lowering/codegen follow-up
+  material, not evidence that BIR should own stack-source placement.
 
 ## Proof
 
-Audit-only packet. Ran `git diff --quiet -- src/backend/bir src/backend/prealloc`
-to prove implementation files stayed untouched. No backend tests or
-`test_after.log` were required because no implementation files were edited.
+Step 5 was audit/lifecycle-only. `git diff --quiet -- src/backend/bir
+src/backend/prealloc` passed, proving implementation files stayed untouched.
+
+Close gate attempted with:
+
+```bash
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R backend > test_before.log
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R backend > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
+```
+
+The backend scope had the same existing failure before and after:
+`c_testsuite_aarch64_backend_src_00204_c`. The checker reported
+`before: passed=389 failed=1 total=390`, `after: passed=389 failed=1
+total=390`, no new failures, and `result: FAIL` because `Passed count did not
+strictly increase`.
+
+Close decision: close rejected by guard. Leave the active plan open at Step 5
+with the generated follow-up ideas recorded and source-complete synthesis in
+the linked source idea.
