@@ -61,3 +61,34 @@ the BIR `I1` comparison result, which should be an explicit semantic contract.
   nearby helper families remain unexamined.
 - The implementation broadens into unrelated runtime-helper or regalloc
   rewrites.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. Synthetic i128 and f128 runtime helpers remain
+prepared-only runtime legalization artifacts rather than source BIR direct
+calls. Prepared helper records are now the reviewable authority surface for
+semantic helper ABI facts, including helper family/kind, source opcode or cast,
+source/result types and widths, callee identity, result ownership, ABI
+transition, argument/result banks/counts/lanes, value identities, and
+selected-call ownership.
+
+Physical call planning remains prealloc/MIR authority: carrier lanes,
+full-width/scalar homes, ABI register placement, marshaling moves,
+caller-saved clobbers, live preservation, stack/register placement, and
+AArch64 materialized registers. AArch64 consumers fail closed without valid
+prepared helper authority and do not reconstruct synthetic helper ABI from
+source BIR direct-call metadata.
+
+The f128 comparison helper-result bridge is named and covered by the
+`prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract` proof
+surface, including helper `I32` result ownership, BIR `I1` ownership, zero-test
+behavior, `consumes_helper_cmp_result`, `owns_bir_i1_result`, and AArch64 `I1`
+materialization.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Coverage includes i128 helper ABI
+binding, f128 arithmetic/cast helper ABI binding, and f128 comparison result
+bridging.
