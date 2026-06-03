@@ -1,47 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/107_prealloc_inline_asm_memory_effect_metadata_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Focused Inline Asm Proof
+Current Step ID: 5
+Current Step Title: Final Validation And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 focused proof completed for structured inline-asm metadata driving
-stack-layout placement.
+Step 5 final validation completed for the inline-asm memory/address metadata
+contract.
 
-Focused test coverage added in
-`tests/backend/bir/backend_prepare_stack_layout_test.cpp`:
-- `prepare_inline_asm_stack_layout_module` builds a BIR inline-asm fixture with
-  three local roots and runs stack layout only.
-- The positive `MemoryInput` case passes an unrooted pointer argument but
-  supplies `InlineAsmOperandMetadata::memory_address` with
-  `MemoryAddress::PointerValue` rooted in `lv.inline.memory.root`; the test
-  asserts the object becomes `address_exposed`, keeps `requires_home_slot`, and
-  receives a frame slot with the original layout.
-- The positive `AddressInput` case does the same through
-  `InlineAsmOperandMetadata::address` rooted in `lv.inline.address.root`.
-- The fail-closed/bounded fallback case uses side-effecting inline asm with a
-  `"memory"` clobber and a `MemoryInput` operand that lacks structured
-  `memory_address`; because its call argument is unrooted, the test asserts
-  `lv.inline.missing.root` does not become address-exposed, does not require a
-  home slot, and does not receive frame-slot storage.
-- The fixture proves placement through prepared stack-layout object state, not
-  through assembly output or target lowering symptoms.
+Close-readiness notes:
+- Structured inline-asm memory/address operand metadata is now the specific
+  stack-layout placement authority. `MemoryInput.memory_address` and
+  `AddressInput.address` feed the existing prealloc `MemoryAddress` pointer-root
+  path.
+- The intended placement consequence is proven: structured
+  `MemoryAddress::PointerValue` roots mark the referenced local stack object
+  `address_exposed`, keep `requires_home_slot`, and retain frame-slot storage
+  with the original object layout.
+- Focused tests cover both structured `MemoryInput.memory_address` and
+  structured `AddressInput.address` in
+  `tests/backend/bir/backend_prepare_stack_layout_test.cpp`.
+- The bounded fail-closed proof covers missing structured memory/address
+  metadata with a side-effecting inline asm and `"memory"` clobber; an unrooted
+  call argument does not create object-specific stack placement facts.
+- Retained conservative policy: side-effecting inline asm, including
+  `"memory"` clobber cases, may only reinforce home slots for objects already
+  address-exposed by other facts. It is not semantic object-specific memory
+  provenance.
+- Placement stayed in prealloc stack layout. No parser, BIR lowering,
+  prepared inline-asm carrier validation, MIR, AArch64 lowering, target operand
+  selection, or intrinsic redesign was introduced.
+- Source idea acceptance criteria appear satisfied; route is close-ready for
+  plan-owner closure review.
 
 ## Suggested Next
 
-Execute `plan.md` Step 5: final validation and close-readiness notes for the
-inline-asm memory/address metadata contract.
+Plan-owner closure review for
+`ideas/open/107_prealloc_inline_asm_memory_effect_metadata_contract.md`.
 
 ## Watchouts
 
-- The new fail-closed case intentionally keeps the inline-asm call argument
-  unrooted so the assertion isolates missing structured metadata from generic
-  call-argument escape behavior.
-- No source changes were needed in this proof packet; the Step 3 stack-layout
-  implementation already satisfied the focused contract.
+- Keep the close review scoped to the inline-asm metadata contract. The
+  retained conservative side-effect path is intentionally documented as
+  placement policy only.
+- The final validation packet changed only `todo.md` and `test_after.log`.
 
 ## Proof
 
