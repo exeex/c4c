@@ -102,3 +102,16 @@ implementation route.
 - It claims line-count progress without preserving diagnostics, record
   construction, and prepared fact consumption.
 
+## Closure Note
+
+Closed after the active audit runbook classified all deferred clusters:
+before-call move bundle lowering; after-call, return, value, and preservation
+lowering; scalar producer dispatch bridge; and result recording plus late
+publication.
+
+All traced clusters were classified as intentionally retained. The audit found
+a coherent boundary between prepared/prealloc facts, dispatch-state mutation,
+and AArch64 target-local emission rather than a narrow shared-authority leak.
+No implementation or test expectation files were touched, and no follow-up
+source ideas were generated because no proofable implementation boundary was
+identified.
