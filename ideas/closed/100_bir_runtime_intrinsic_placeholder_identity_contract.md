@@ -60,3 +60,30 @@ semantic identity or a deliberately documented string-only exception.
 - Tests are weakened, marked unsupported, or rewritten to hide the previous
   identity ambiguity.
 - The implementation broadens into unrelated call-plan or target ABI cleanup.
+
+## Close Note
+
+Closed: 2026-06-03
+
+The accepted contract identifies runtime/intrinsic placeholder calls through
+shared call-based helpers over `bir::CallInst`. A placeholder is a non-indirect
+call with invalid `callee_link_name_id` and no `callee_value`; structured
+`intrinsic` and `inline_asm` metadata remains authoritative, while invalid-link
+`llvm.*` display names are retained only as a documented compatibility
+placeholder path.
+
+Ordinary direct calls keep valid `callee_link_name_id` as their semantic
+authority and do not fall back to raw callee text. Prealloc variadic helper
+planning now uses the shared variadic helper query surface, and aggregate
+address publication checks use the shared runtime placeholder predicate rather
+than an undocumented raw `llvm.` prefix check.
+
+Dynamic-stack raw string checks remain documented compatibility exceptions
+outside this contract's changed consumers. No separate adjacent initiative was
+discovered during execution.
+
+Proof status: focused Step 5 validation passed the delegated build plus six
+backend/prealloc tests. The close regression guard regenerated backend-scope
+`test_after.log` and passed with `--allow-non-decreasing-passed`: `389/390`
+before and after, with no new failures and the same existing
+`c_testsuite_aarch64_backend_src_00204_c` failure.
