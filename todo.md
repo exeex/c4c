@@ -1,58 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/103_prealloc_synthetic_helper_call_abi_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Synthetic Helper ABI Producers And Consumers
+Current Step ID: 2
+Current Step Title: Classify Helper ABI Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventory is complete.
+Step 2 classification is complete.
 
-Producer surfaces:
+Chosen authority model:
 
-- `src/backend/prealloc/regalloc/runtime_helpers.cpp` is the semantic selector for synthetic helper calls. `append_i128_runtime_helper_mappings` maps BIR `I128` div/rem to `__divti3`, `__udivti3`, `__modti3`, and `__umodti3`, and maps supported `I128` float/integer casts to compiler-rt helper names such as `__fixdfti`, `__fixunsdfti`, `__floattidf`, and `__floatuntidf`. It records source opcode/cast, result and operand prepared value identities, source/result widths/signness, helper family/kind, callee identity, and result ownership.
-- The same file's `append_f128_runtime_helper_mappings` maps `F128` arithmetic to `__addtf3`, `__subtf3`, `__multf3`, and `__divtf3`; maps `F128` comparisons to `__eqtf2`, `__netf2`, `__lttf2`, `__letf2`, `__gttf2`, and `__getf2`; and maps `F32/F64 <-> F128` casts to `__extendsftf2`, `__extenddftf2`, `__trunctfsf2`, and `__trunctfdf2`. For comparisons it intentionally records helper `result_type=I32`, BIR result type `I1`, the predicate-specific zero test, and `consumes_helper_cmp_result/owns_bir_i1_result`.
-- `src/backend/prealloc/i128_runtime_helpers.cpp` enriches the selected i128 helpers from prepared carrier/value facts. It populates low/high carrier lanes, scalar operand/result ownership for conversion helpers, helper ABI bindings, marshaling moves, resource policy, caller-saved clobbers, live-preservation policy, and `selected_call_ownership`.
-- `src/backend/prealloc/f128_runtime_helpers.cpp` enriches f128 helpers from prepared F128 carriers and scalar value homes. It populates carrier/scalar ownership, ABI bindings, marshaling moves, the f128 comparison I32-to-I1 consumption contract, resource policy, caller-saved clobbers, live preservation, and `selected_call_ownership`.
-- `src/backend/prealloc/prealloc.cpp` orders helper fact publication after carrier/storage plans: `populate_f128_runtime_helper_facts` and `populate_i128_runtime_helper_lanes` consume already-published carriers, value locations, frame plans, liveness, and regalloc facts. `src/backend/prealloc/regalloc.cpp` seeds the initial helper mappings during regalloc.
+- Retain synthetic helper ABI authority as prepared-only, structured prealloc metadata. Do not introduce source BIR `CallInst`-like carriers for i128/f128 runtime helpers because these helper calls are legalization artifacts selected after semantic BIR, not source calls.
+- Treat `PreparedI128RuntimeHelper` and `PreparedF128RuntimeHelper` as the contract surfaces. The durable semantic ABI facts belong in those prepared records: helper family/kind, source opcode or cast, source/result type facts, callee identity, result ownership, ABI transition, argument/result bank/count/width policy, prepared value identities, and selected-call ownership.
+- Keep physical planning under prealloc/MIR: carrier lanes, full-width/scalar homes, ABI register placement, marshaling moves, caller-saved clobbers, live preservation, stack/register placement, and AArch64 materialized registers remain physical movement facts rather than BIR authority.
+- AArch64 MIR may consume prepared helper records and validate completeness, but it must fail closed when prepared helper authority is missing or incomplete instead of reconstructing helper ABI from source operation shape alone.
 
-Consumer surfaces:
+Family classifications:
 
-- `src/backend/prealloc/prepared_printer/runtime_helpers.cpp` consumes the prepared helper records for audit output. It prints helper family/kind, opcode/cast, callee, source/result types, ownership, resource policy, ABI transition, clobbers, carriers, ABI bindings, marshaling, scalar ownership, comparison result consumption, live preservation, selected ownership, and missing facts.
-- AArch64 MIR helper lowering consumes prepared helper authority through `make_prepared_i128_runtime_helper_boundary_record` and `make_prepared_f128_runtime_helper_boundary_record` in `src/backend/mir/aarch64/codegen/i128_ops.cpp` and `src/backend/mir/aarch64/codegen/f128.cpp`. Dispatch fails closed on missing or incomplete prepared helper authority instead of reconstructing helper ABI from source BIR shape.
-- `src/backend/mir/aarch64/codegen/f128.cpp` owns the physical f128 comparison bridge after consuming the prepared semantic contract: the prepared helper says the helper returns an `I32` compare result for a BIR `I1` result with a specific zero-test; AArch64 materializes the I1 register from that `I32` ABI result.
+- i128 helpers: prepared-only helper ABI authority. `append_i128_runtime_helper_mappings` selects div/rem and supported float/integer conversion callees from BIR opcode/cast/type facts; `populate_i128_runtime_helper_lanes` publishes the structured ABI policy, low/high lane ownership, scalar conversion ownership, marshaling, clobber, and selected ownership facts. For Step 3, make sure i128 conversion helpers are either equally reviewable through the prepared contract or explicitly documented as outside the immediate AArch64 boundary path if not yet consumed.
+- f128 arithmetic/cast helpers: prepared-only helper ABI authority. `append_f128_runtime_helper_mappings` selects soft-float arithmetic/cast helper callees; `populate_f128_runtime_helper_facts` publishes ABI policy, carrier/scalar ownership, marshaling, clobber, live preservation, and selected ownership. AArch64 record construction consumes those named prepared facts and rejects mismatched helper kind/opcode/cast/type/callee combinations.
+- f128 comparison helpers: prepared-only semantic bridge plus MIR physical materialization. The prepared semantic bridge is named as `PreparedF128RuntimeHelper::ScalarCmpResultConsumption`: helper result `cmp_type=I32`, BIR result `bir_result_type=I1`, predicate-specific `zero_test`, `consumes_helper_cmp_result=true`, and `owns_bir_i1_result=true`. AArch64 owns the physical bridge by consuming that contract, reading the `I32` ABI result, and materializing the BIR `I1` register.
 
-Existing proof surfaces:
+Rejected routes:
 
-- `tests/backend/bir/backend_prepare_liveness_test.cpp` checks i128 helper mapping authority, including div/rem callee identity, source opcode/value authority, GPR-pair ABI policy, lane bindings, marshaling, clobber policy, and terminal-call ownership.
-- `tests/backend/bir/backend_prepared_printer_test.cpp` audits the prepared helper dump for i128 and f128 helper facts, including callee, ABI transition, carriers, scalar/cast fields, and selected ownership.
-- `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp` checks that AArch64 records consume prepared i128/f128 helper authority, preserve helper callee/kind/source facts, reject unsupported or incomplete helpers, and preserve f128 comparison `I32` result plus materialized BIR `I1` ownership.
-- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` checks dispatch uses prepared helper authority, fails closed when helper records or selected ownership are missing, and lowers the f128 comparison helper into an I1 materialization using the prepared `cmp_result_consumption`.
-- `tests/backend/mir/backend_aarch64_machine_printer_test.cpp` checks final helper call printing for i128/f128 helper boundaries, including comparison and cast cases.
+- Do not model synthetic helpers as source BIR direct calls.
+- Do not add BIR-like helper-call carriers unless a later blocker proves prepared metadata cannot express a semantic helper fact. Current evidence shows the prepared records can carry the needed facts.
+- Do not move clobber, preservation, carrier marshaling, or register/stack movement out of prealloc.
+- Do not rely on extra callee-name parsing, testcase-shaped opcode matching, or dispatch-side ABI guesses as semantic authority.
 
-Authority split:
+Implementation targets for Step 3:
 
-- Semantic helper ABI facts are the prepared helper records: helper family/kind, source opcode/cast, source/result type facts, callee identity, ABI transition, argument/result banks and counts, result ownership, value identities, and the f128 comparison `I32` helper result to BIR `I1` zero-test contract.
-- Physical facts remain prealloc/MIR movement authority: low/high i128 lane carriers, f128 full-width/scalar carriers, register and stack homes, ABI register placement, caller-saved clobber sets, live preservation routes, marshaling move records, materialized AArch64 registers, and register-stack placement.
-- BIR does not own these synthetic runtime helper calls as direct call instructions. BIR contributes the source operation/cast shape and value types; prealloc selects and publishes the synthetic helper ABI contract, and MIR consumes that prepared contract.
+- Name or tighten contract helpers around the prepared-only model instead of widening lifecycle scope: i128 helper ABI completeness, f128 helper ABI completeness, and `ScalarCmpResultConsumption` validity are the likely target surfaces.
+- Make any remaining implicit i128 conversion ABI contract reviewable in `PreparedI128RuntimeHelper` facts or explicit helper predicates, while keeping physical movement in prealloc.
+- Make f128 arithmetic/cast ABI policy checks locally auditable as prepared-helper contract checks.
+- Make the f128 comparison bridge contract locally auditable by validating `ScalarCmpResultConsumption` before AArch64 record materialization.
+
+Proof targets for Step 4:
+
+- i128 helper ABI binding: prepared-plan or instruction-record assertions for callee identity, source opcode/cast, ABI transition, argument/result banks/counts/widths, lane or scalar ownership, marshaling, clobber policy, and fail-closed behavior for missing prepared authority.
+- f128 helper ABI binding: prepared-plan or instruction-record assertions for arithmetic and representative cast helpers, including callee identity, helper kind/opcode/cast/type agreement, ABI transition, carrier/scalar ownership, ABI registers, selected-call ownership, and fail-closed behavior for mismatched helper facts.
+- f128 comparison result bridge: assertions that `ScalarCmpResultConsumption` publishes `I32 -> I1`, predicate zero-test, `consumes_helper_cmp_result`, and `owns_bir_i1_result`, and that AArch64 consumes that contract to materialize the I1 result without using source BIR direct-call authority.
 
 ## Suggested Next
 
-Proceed to Step 2 by deciding the narrow contract surface: keep synthetic helper ABI authority as prepared-helper metadata, require consumers to fail closed without it, and decide whether any record fields need tightening for i128 helpers, f128 arithmetic/cast helpers, or the f128 comparison I32-to-I1 bridge.
+Proceed to Step 3 by implementing or tightening the prepared-only contract names/checks at the existing helper-record surfaces, with special attention to the f128 `ScalarCmpResultConsumption` bridge and any i128 conversion helper ABI facts that are less directly consumed than div/rem.
 
 ## Watchouts
 
-- Do not treat synthetic helper calls as source BIR direct calls.
-- Do not move caller-saved clobbers, preservation, carrier marshaling, or register/stack movement into BIR.
-- Do not let AArch64 lowering infer f128 comparison bridge semantics from callee names or testcase-shaped opcode checks alone; the prepared `ScalarCmpResultConsumption` contract is the named semantic bridge.
-- Keep unsupported helper families fail-closed instead of guessing helper callees or ABI transitions.
+- Keep the authority surface prepared-only; a structured BIR-like helper-call carrier is rejected for this route unless a concrete interface blocker appears.
+- Do not move physical call planning out of prealloc or MIR. The contract can name semantic ABI facts, but clobbers, preservation, carrier movement, and register/stack placement remain physical prepared/MIR facts.
+- Step 3 should not be a pure rename. It needs reviewable contract checks or named predicates that make helper ABI authority and the f128 result bridge explicit.
+- Unsupported or mismatched helper families should continue to fail closed.
 
 ## Proof
 
 Passed:
 
-`git diff --quiet -- src/backend/prealloc src/backend/bir tests && printf 'analysis-only proof: no implementation or test diff for synthetic helper ABI inventory\n' > test_after.log`
+`git diff --quiet -- src/backend/prealloc src/backend/bir src/backend/mir tests && printf 'analysis-only proof: no implementation or test diff for synthetic helper ABI classification\n' > test_after.log`
 
-`test_after.log`: analysis-only proof: no implementation or test diff for synthetic helper ABI inventory
+`test_after.log`: analysis-only proof: no implementation or test diff for synthetic helper ABI classification
