@@ -4,6 +4,7 @@
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/i128_runtime_helpers.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 #include "src/target_profile.hpp"
 
@@ -2842,6 +2843,7 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.abi_policy.lanes_per_argument != 2 ||
         helper.abi_policy.result_lane_count != 2 ||
         helper.abi_policy.lane_width_bytes != 8 ||
+        !prepare::prepared_i128_runtime_helper_has_abi_contract(helper) ||
         helper.clobbered_registers.empty() ||
         std::none_of(helper.clobbered_registers.begin(),
                      helper.clobbered_registers.end(),

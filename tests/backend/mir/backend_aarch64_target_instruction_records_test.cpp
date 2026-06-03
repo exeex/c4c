@@ -1,6 +1,8 @@
 #include "src/backend/mir/aarch64/codegen/effects.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 #include "src/backend/mir/aarch64/codegen/returns.hpp"
+#include "src/backend/prealloc/f128_runtime_helpers.hpp"
+#include "src/backend/prealloc/i128_runtime_helpers.hpp"
 
 #include <array>
 #include <iostream>
@@ -3613,6 +3615,7 @@ int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       prepared.record->rhs.high_lane.reg->reg != aarch64_abi::x_register(11) ||
       !prepared.record->resource_policy.call_boundary ||
       prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      !prepare::prepared_i128_runtime_helper_has_abi_contract(helper) ||
       !prepared.record->live_preservation_policy.evaluated ||
       !prepared.record->live_preservation_policy
            .no_additional_live_preservation_required ||
@@ -3721,6 +3724,7 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       !prepared.record->resource_policy.call_boundary ||
       prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
       prepared.record->abi_policy.result_count != 1 ||
+      !prepare::prepared_f128_runtime_helper_has_abi_contract(helper) ||
       !prepared.record->live_preservation_policy.evaluated ||
       !prepared.record->live_preservation_policy
            .no_additional_live_preservation_required ||
@@ -3937,6 +3941,8 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           aarch64_abi::w_register(0) ||
       prepared_eq.record->scalar_result.materialized_i1_register->reg !=
           aarch64_abi::w_register(9) ||
+      !prepare::prepared_f128_runtime_helper_has_abi_contract(eq_helper) ||
+      !prepare::prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract(eq_helper) ||
       !prepared_eq.record->scalar_result.cmp_result_consumption.has_value() ||
       prepared_eq.record->scalar_result.cmp_result_consumption->zero_test !=
           prepare::PreparedF128CmpResultZeroTest::EqualZero ||

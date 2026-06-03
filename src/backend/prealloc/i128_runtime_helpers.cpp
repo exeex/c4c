@@ -987,6 +987,8 @@ void populate_i128_runtime_helper_call_ownership(
       helper.resource_policy.preserves_source_operation_identity;
   bool has_abi_bindings = false;
   bool has_marshaling = false;
+  const bool has_prepared_abi_contract =
+      prepared_i128_runtime_helper_has_abi_contract(helper);
   if (helper.helper_family == PreparedI128RuntimeHelperFamily::FloatIntegerConversion) {
     const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
     const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
@@ -1025,6 +1027,7 @@ void populate_i128_runtime_helper_call_ownership(
         helper.result_low_unmarshal_move.has_value() &&
         helper.result_high_unmarshal_move.has_value();
   }
+  has_abi_bindings = has_abi_bindings && has_prepared_abi_contract;
   const bool has_live_preservation =
       helper.live_preservation_policy.evaluated &&
       helper.live_preservation_policy.caller_saved_clobbers_modeled &&
@@ -1055,6 +1058,10 @@ void populate_i128_runtime_helper_call_ownership(
   }
   if (!helper.selected_call_ownership.has_abi_bindings) {
     append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_abi_bindings");
+  }
+  if (!has_prepared_abi_contract) {
+    append_i128_runtime_helper_fact(
+        helper, "selected_call_ownership_requires_prepared_abi_contract");
   }
   if (!helper.selected_call_ownership.has_marshaling) {
     append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_marshaling");
@@ -1344,6 +1351,84 @@ void populate_i128_runtime_helper_boundary_policy(
 }
 
 }  // namespace
+
+bool prepared_i128_runtime_helper_has_abi_contract(
+    const PreparedI128RuntimeHelper& helper) {
+  if (helper.callee_name.empty()) {
+    return false;
+  }
+
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem) {
+    const bool div_rem_opcode =
+        helper.source_binary_opcode == bir::BinaryOpcode::SDiv ||
+        helper.source_binary_opcode == bir::BinaryOpcode::UDiv ||
+        helper.source_binary_opcode == bir::BinaryOpcode::SRem ||
+        helper.source_binary_opcode == bir::BinaryOpcode::URem;
+    return div_rem_opcode &&
+           helper.source_type == bir::TypeKind::I128 &&
+           helper.result_type == bir::TypeKind::I128 &&
+           helper.result_ownership ==
+               PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes &&
+           helper.abi_policy.transition ==
+               PreparedI128RuntimeHelperAbiTransition::
+                   DirectRegisterPairArgumentsAndResult &&
+           helper.abi_policy.argument_bank == PreparedRegisterBank::Gpr &&
+           helper.abi_policy.result_bank == PreparedRegisterBank::Gpr &&
+           helper.abi_policy.argument_count == 2 &&
+           helper.abi_policy.lanes_per_argument == 2 &&
+           helper.abi_policy.result_lane_count == 2 &&
+           helper.abi_policy.lane_width_bytes == 8;
+  }
+
+  if (helper.helper_family != PreparedI128RuntimeHelperFamily::FloatIntegerConversion ||
+      !helper.source_cast_opcode.has_value()) {
+    return false;
+  }
+
+  const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
+  const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
+  const bool source_is_supported_scalar =
+      helper.source_type == bir::TypeKind::F32 ||
+      helper.source_type == bir::TypeKind::F64;
+  const bool result_is_supported_scalar =
+      helper.result_type == bir::TypeKind::F32 ||
+      helper.result_type == bir::TypeKind::F64;
+  if (operand_is_i128 == result_is_i128 ||
+      (!operand_is_i128 && !source_is_supported_scalar) ||
+      (!result_is_i128 && !result_is_supported_scalar)) {
+    return false;
+  }
+
+  if (operand_is_i128) {
+    return helper.result_ownership ==
+               PreparedI128RuntimeHelperResultOwnership::ScalarValue &&
+           helper.abi_policy.transition ==
+               PreparedI128RuntimeHelperAbiTransition::
+                   RegisterPairArgumentAndScalarResult &&
+           helper.abi_policy.argument_bank == PreparedRegisterBank::Gpr &&
+           helper.abi_policy.result_bank == PreparedRegisterBank::Fpr &&
+           helper.abi_policy.argument_count == 1 &&
+           helper.abi_policy.lanes_per_argument == 2 &&
+           helper.abi_policy.result_lane_count == 1 &&
+           helper.abi_policy.lane_width_bytes == 8 &&
+           helper.source_width_bytes == 16 &&
+           (helper.result_width_bytes == 4 || helper.result_width_bytes == 8);
+  }
+
+  return helper.result_ownership ==
+             PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes &&
+         helper.abi_policy.transition ==
+             PreparedI128RuntimeHelperAbiTransition::
+                 ScalarArgumentAndRegisterPairResult &&
+         helper.abi_policy.argument_bank == PreparedRegisterBank::Fpr &&
+         helper.abi_policy.result_bank == PreparedRegisterBank::Gpr &&
+         helper.abi_policy.argument_count == 1 &&
+         helper.abi_policy.lanes_per_argument == 1 &&
+         helper.abi_policy.result_lane_count == 2 &&
+         helper.abi_policy.lane_width_bytes == 8 &&
+         (helper.source_width_bytes == 4 || helper.source_width_bytes == 8) &&
+         helper.result_width_bytes == 16;
+}
 
 void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
   for (auto& function_helpers : prepared.i128_runtime_helpers.functions) {

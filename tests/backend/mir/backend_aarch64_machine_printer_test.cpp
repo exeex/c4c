@@ -4432,7 +4432,41 @@ int selected_f128_helper_records_reject_source_policy_divergence() {
 }
 
 int selected_i128_records_reject_incomplete_structured_fields() {
-  const auto helper_record = incomplete_i128_helper_record();
+  auto missing_live_source =
+      printable_i128_helper(bir::BinaryOpcode::SDiv,
+                            prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                            "__divti3",
+                            prepare::PreparedValueId{70},
+                            c4c::ValueNameId{70},
+                            6,
+                            prepare::PreparedValueId{71},
+                            c4c::ValueNameId{71},
+                            8,
+                            prepare::PreparedValueId{72},
+                            c4c::ValueNameId{72},
+                            10);
+  missing_live_source.live_preservation_policy.no_additional_live_preservation_required =
+      false;
+  missing_live_source.selected_call_ownership.owns_terminal_call = false;
+  missing_live_source.selected_call_ownership.has_live_preservation = false;
+  auto helper_record =
+      i128_helper_record(&missing_live_source,
+                         bir::BinaryOpcode::SDiv,
+                         prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                         "__divti3",
+                         prepare::PreparedValueId{70},
+                         c4c::ValueNameId{70},
+                         6,
+                         prepare::PreparedValueId{71},
+                         c4c::ValueNameId{71},
+                         8,
+                         prepare::PreparedValueId{72},
+                         c4c::ValueNameId{72},
+                         10);
+  helper_record.live_preservation_policy.no_additional_live_preservation_required =
+      false;
+  helper_record.selected_call_ownership.owns_terminal_call = false;
+  helper_record.selected_call_ownership.has_live_preservation = false;
   const auto helper =
       aarch64_codegen::make_i128_runtime_helper_boundary_instruction(helper_record);
   const auto helper_result = aarch64_codegen::print_machine_instruction_line_payloads(helper);

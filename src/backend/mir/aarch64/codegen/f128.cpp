@@ -5,6 +5,7 @@
 #include "frame_slot_address.hpp"
 #include "memory.hpp"
 #include "mir/printer.hpp"
+#include "../../../prealloc/f128_runtime_helpers.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -991,8 +992,7 @@ std::optional<std::string_view> validate_f128_runtime_helper_source_policy(
   }
   if (!has_complete_f128_helper_abi_policy(
           record.helper_family, record.source_type, record.result_type, record.abi_policy) ||
-      !has_complete_f128_helper_abi_policy(
-          helper->helper_family, helper->source_type, helper->result_type, helper->abi_policy)) {
+      !prepare::prepared_f128_runtime_helper_has_abi_contract(*helper)) {
     return "f128 helper boundary is missing prepared ABI policy";
   }
   if (!has_complete_f128_live_preservation(record.live_preservation_policy) ||
@@ -2098,8 +2098,7 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
   }
-  if (!has_complete_f128_helper_abi_policy(
-          helper.helper_family, helper.source_type, helper.result_type, helper.abi_policy)) {
+  if (!prepare::prepared_f128_runtime_helper_has_abi_contract(helper)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
   }
@@ -2145,18 +2144,8 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
       .source_helper = &helper,
   };
   if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
-    if (!helper.scalar_result.has_value() || !helper.result_abi_result.has_value() ||
-        !helper.scalar_result_unmarshal_move.has_value() ||
-        !helper.scalar_cmp_result_consumption.has_value() ||
-        helper.scalar_result->type != bir::TypeKind::I32 ||
-        helper.scalar_result->width_bytes != 4 ||
-        helper.result_abi_result->register_bank != prepare::PreparedRegisterBank::Gpr ||
-        helper.scalar_cmp_result_consumption->cmp_type != bir::TypeKind::I32 ||
-        helper.scalar_cmp_result_consumption->bir_result_type != bir::TypeKind::I1 ||
-        helper.scalar_cmp_result_consumption->zero_test ==
-            prepare::PreparedF128CmpResultZeroTest::Missing ||
-        !helper.scalar_cmp_result_consumption->consumes_helper_cmp_result ||
-        !helper.scalar_cmp_result_consumption->owns_bir_i1_result) {
+    if (!prepare::prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract(
+            helper)) {
       return f128_runtime_helper_record_error(
           PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
     }

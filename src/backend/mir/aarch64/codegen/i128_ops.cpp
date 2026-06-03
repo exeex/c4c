@@ -5,8 +5,10 @@
 #include "comparison.hpp"
 #include "effects.hpp"
 #include "memory.hpp"
+#include "../../../prealloc/i128_runtime_helpers.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -183,6 +185,14 @@ bool has_complete_i128_div_rem_abi_policy(
          policy.lanes_per_argument == 2 &&
          policy.result_lane_count == 2 &&
          policy.lane_width_bytes == 8;
+}
+
+bool has_valid_i128_runtime_helper_provenance(
+    const prepare::PreparedI128RuntimeHelper* helper) {
+  return helper != nullptr &&
+         reinterpret_cast<std::uintptr_t>(helper) %
+                 alignof(prepare::PreparedI128RuntimeHelper) ==
+             0;
 }
 
 bool is_decimal_digit(char ch) {
@@ -911,7 +921,7 @@ mir::TargetInstructionPrintResult print_i128_compare(
 mir::TargetInstructionPrintResult print_i128_runtime_helper(
     const InstructionRecord& instruction,
     const I128RuntimeHelperBoundaryRecord& helper) {
-  if (helper.source_helper == nullptr) {
+  if (!has_valid_i128_runtime_helper_provenance(helper.source_helper)) {
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing prepared helper provenance");
   }
@@ -930,7 +940,7 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing resource or clobber policy");
   }
-  if (!has_complete_i128_div_rem_abi_policy(helper.abi_policy)) {
+  if (!prepare::prepared_i128_runtime_helper_has_abi_contract(*helper.source_helper)) {
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing ABI/register-bank policy");
   }
@@ -1996,7 +2006,7 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
   }
-  if (!has_complete_i128_div_rem_abi_policy(helper.abi_policy)) {
+  if (!prepare::prepared_i128_runtime_helper_has_abi_contract(helper)) {
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
   }
@@ -2424,7 +2434,7 @@ MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
            operand.low_lane.reg.has_value() &&
            operand.high_lane.reg.has_value();
   };
-  if (instruction.source_helper == nullptr) {
+  if (!has_valid_i128_runtime_helper_provenance(instruction.source_helper)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing prepared helper provenance"};
@@ -2461,7 +2471,7 @@ MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing resource policy facts"};
   }
-  if (!has_complete_i128_div_rem_abi_policy(instruction.abi_policy)) {
+  if (!prepare::prepared_i128_runtime_helper_has_abi_contract(*instruction.source_helper)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing ABI/register-bank policy facts"};
