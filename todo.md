@@ -1,142 +1,112 @@
 Status: Active
 Source Idea Path: ideas/open/105_prealloc_raw_global_address_identity_fallback_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Raw Global Identity Fallback Sites
+Current Step ID: 2
+Current Step Title: Decide The Missing-ID Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventory completed for raw global identity fallback sites in prepared
-address and global materialization construction.
+Step 2 contract decision completed for raw global missing-ID handling.
 
-Prepared address schema:
-- `src/backend/prealloc/addressing.hpp` carries global identity as
-  `PreparedAddress::symbol_name` / `PreparedAddressMaterialization::symbol_name`
-  (`LinkNameId` in prepared names). It does not preserve a separate raw spelling
-  channel for global symbols. `prepared_global_symbol_address_policy` is a
-  fail-closed consumer when a global-symbol address lacks `symbol_name`.
-- Owner classification: prepared-address schema/prealloc consumer boundary.
-  Contract gap: once raw spelling is interned as `symbol_name`, downstream code
-  cannot distinguish structured identity from raw compatibility.
+Chosen contract:
+- Structured `LinkNameId` is the ordinary global identity authority. If BIR can
+  publish a `LinkNameId`, prealloc prepared-address construction must consume
+  that ID and must not recover semantic identity from raw spelling.
+- Retain exactly one named compatibility class:
+  `RawNoIdGlobalAddressCompatibility`. It is allowed only when both the
+  instruction/address reference and the resolved module global are raw/no-id
+  (`kInvalidLinkName`) inputs. This preserves legacy imported/raw modules that
+  genuinely lack structured link-name identity.
+- Missing IDs for ordinary lowered globals that resolve to a module global with
+  a structured `Global::link_name_id` are assertion-worthy lowering bugs at the
+  BIR producer boundary and fail-closed inputs at the prealloc boundary. Prealloc
+  should not silently repair them with raw `global_name`.
+- If raw spelling and structured ID disagree, structured identity wins only when
+  the raw spelling is empty or matches the ID spelling; otherwise the input
+  fails closed. Raw spelling is never the primary identity path when an ID
+  exists.
 
-Raw fallback sites found:
-- `build_direct_symbol_backed_address` no-address route for ordinary
-  `LoadGlobalInst` / `StoreGlobalInst`: `resolve_symbol_name` uses
-  `global_name_id` when present, but falls back to nonempty `global_name` when
-  the ID is `kInvalidLinkName`; `find_global_by_symbol` also resolves policy by
-  raw `Global::name` or raw spelling of a declared link name when no ID exists.
-  Current behavior: raw/no-id ordinary global load/store can become a
-  `PreparedAddressBaseKind::GlobalSymbol` with a prepared `symbol_name` and
-  policy. Classification: compatibility fallback that currently becomes
-  semantic-looking identity authority. Likely owner: prealloc stack-layout
-  coordinator, with BIR lowering/validation responsible for publishing
-  structured `global_name_id` for normal lowered globals.
-- `build_direct_symbol_backed_address` explicit `MemoryAddress::GlobalSymbol`
-  route for addressed loads/stores: `base_link_name_id` is authoritative when
-  present, but raw `MemoryAddress::base_name` is accepted when the link-name ID
-  is missing. When the explicit address lacks `base_name`, the helper may use
-  the instruction fallback global ID/name; when `base_name` is present without
-  an ID it is treated as raw compatibility. Current behavior: global
-  GEP-derived/addressed global routes can publish a prepared symbol from raw
-  spelling. Classification: compatibility fallback that becomes
-  semantic-looking identity authority. Likely owner: BIR memory-address
-  producers for `base_link_name_id`, prealloc coordinator for fail-closed
-  consumption.
-- `find_global_by_symbol` policy lookup in the same helper: if `LinkNameId` is
-  missing it searches module globals by `global.name` and by the BIR link-name
-  spelling. Current behavior: raw spelling can select the target global used for
-  address-materialization policy/TLS eligibility. Classification:
-  compatibility fallback with ordinary identity-authority consequences. Likely
-  owner: prealloc stack-layout coordinator; target relocation/TLS policy itself
-  remains out of scope.
-- `resolve_prepared_text_id` and `direct_string_constant_name` accept raw string
-  names, including pointer values named `@...` for string constants. Current
-  behavior: display/raw compatibility for string constants, not global symbol
-  identity. Classification: display-only/string compatibility fallback. Likely
-  owner: prealloc string-constant materialization; source idea treats this as
-  adjacent unless it reuses the global-symbol contract.
-- `append_direct_global_address_materialization` for pointer results and pointer
-  values requires `Value::pointer_symbol_link_name_id`; missing ID records a
-  note for `@...` values and returns without materializing a global symbol.
-  Current behavior: no raw fallback for direct/GOT/TLS global materialization.
-  Classification: fail-closed input with structured BIR pointer-symbol metadata
-  as authority. Likely owner: BIR value metadata producers plus prealloc
-  materialization consumer.
-- `append_pointer_value_address_materialization` delegates to direct global
-  materialization only when `pointer_symbol_link_name_id` is present. Without an
-  ID it may materialize frame slots or string constants, but not globals.
-  Current behavior: global pointer-value materialization is structured/fail
-  closed; string constants retain raw display compatibility. Classification:
-  fail-closed for global identity, display-only fallback for strings. Likely
-  owner: prealloc address-materialization publication.
-- Global pointer initializer route: BIR global initializers carry
-  `initializer_symbol_name_id` and initializer elements carry
-  `Value::pointer_symbol_link_name_id`; prealloc materialization consumes the
-  value metadata path above. Current behavior in prealloc is structured/fail
-  closed for global materialization, while BIR lowering/validation retains
-  raw/no-id compatibility for some initializer imports. Classification:
-  semantic identity belongs to BIR; prealloc should not mint missing initializer
-  IDs from raw spelling.
-- Adjacent non-addressing sites: `control_flow.hpp`
-  `resolve_prepared_bir_link_name_ref` and `bir_link_name_or_raw`, plus
-  `call_plans.cpp` `resolve_symbol_pointer_name`, also accept raw spelling when
-  structured IDs are missing. These are not the primary prepared address /
-  materialization constructors, but they are live compatibility fallbacks that
-  can affect prepared same-module global references or symbol-address storage
-  display. Classification: compatibility fallback outside the Step 1 primary
-  target. Likely owner: control-flow/call-plan prepared contracts.
+Route decisions:
+- Raw/no-id ordinary `LoadGlobalInst` / `StoreGlobalInst` prepared-address
+  construction: retained only under `RawNoIdGlobalAddressCompatibility`.
+  Otherwise missing `global_name_id` is a fail-closed prealloc input, and a
+  normal lowering bug if the target global has a `LinkNameId`.
+- Explicit/GEP-derived `MemoryAddress::GlobalSymbol` without
+  `base_link_name_id`: retained only under the same
+  `RawNoIdGlobalAddressCompatibility` class when the resolved global also has
+  no structured link-name ID. GEP-derived addresses from normal lowered globals
+  must carry `base_link_name_id`; missing ID fails closed rather than publishing
+  `PreparedAddress::symbol_name` from raw `base_name`.
+- `find_global_by_symbol` raw policy lookup: constrain to the named
+  compatibility class. With a supplied `LinkNameId`, lookup is ID-only. Without
+  a supplied ID, raw lookup may resolve only a raw/no-id module global; it must
+  not use raw spelling to select a global that has structured identity. Target
+  relocation/TLS policy remains unchanged after the identity is resolved.
+- Direct/GOT/TLS global materialization through pointer values: preserve the
+  current fail-closed requirement on `Value::pointer_symbol_link_name_id`.
+  `append_direct_global_address_materialization` remains the structured
+  materialization authority and must not grow a raw `@name` fallback.
+- String constants and labels stay out of the global identity contract. Their
+  raw display compatibility is display/text identity, not global symbol
+  authority.
 
-Existing proof surfaces:
-- `backend_lir_to_bir_notes` already proves structured `LinkNameId` survives
-  drifted displays, ordinary global load/store mismatches are rejected by BIR
-  validation, raw/no-id ordinary global compatibility is still accepted, and
-  pointer initializer symbol names carry IDs where available.
-- `backend_aarch64_prepared_memory_operand_records` proves prepared consumers
-  reject global-symbol mismatches/missing prepared symbol facts and consume
-  structured `base_link_name_id` for addressed global operands.
-- `backend_x86_handoff_boundary_i32_guard_chain` contains drifted raw global
-  carrier tests proving prepared same-module global accesses are authoritative
-  over raw fallback after prepared publication, plus rejection after prepared
-  access loss.
+Implementation targets for Step 3:
+- Split the current `build_direct_symbol_backed_address` raw fallback into named
+  helper paths: structured global identity resolution and
+  `RawNoIdGlobalAddressCompatibility`.
+- Constrain `find_global_by_symbol` or replace it with helpers that make
+  ID-only lookup and raw/no-id compatibility lookup auditable.
+- Ensure prepared global addresses cannot publish `symbol_name` from raw
+  spelling when the resolved global has a structured `LinkNameId`.
+- Leave `append_direct_global_address_materialization` fail-closed on missing
+  `pointer_symbol_link_name_id`.
 
-Candidate contract gaps for Step 2:
-- Decide whether raw/no-id ordinary global load/store prepared-address
-  construction remains a named compatibility fallback or fails closed.
-- Decide whether explicit `MemoryAddress::GlobalSymbol` without
-  `base_link_name_id` may publish `PreparedAddress::symbol_name`, especially
-  for GEP-derived addresses.
-- Decide whether `find_global_by_symbol` can use raw spelling for policy lookup
-  once prepared global identity is expected to be structured.
-- Keep direct/GOT/TLS global materialization fail-closed on
-  `pointer_symbol_link_name_id`; do not introduce raw materialization fallback.
+Proof targets for Step 4:
+- Ordinary global loads/stores: prove structured `global_name_id` produces
+  prepared global-symbol addresses, drifted raw spelling cannot override the ID,
+  and missing `global_name_id` for a structured global fails closed; add one
+  explicit raw/no-id compatibility proof only if the retained compatibility path
+  remains implemented.
+- Explicit/GEP-derived global address route: prove
+  `MemoryAddress::GlobalSymbol::base_link_name_id` is required for structured
+  globals and that raw `base_name` alone cannot publish a prepared symbol for a
+  structured global.
+- Global address materialization: prove pointer-value direct/GOT/TLS
+  materialization requires `pointer_symbol_link_name_id` and missing ID records
+  no materialization.
+- Initializer-derived route: prove lowered pointer initializers / initializer
+  elements carry structured pointer-symbol IDs into prealloc materialization,
+  and raw initializer spelling does not become a prealloc global materialization
+  authority.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2: choose the narrow raw-global identity authority
-contract for ordinary global accesses, explicit/GEP-derived
-`MemoryAddress::GlobalSymbol`, raw/no-id compatibility, and fail-closed direct
-global materialization.
+Execute `plan.md` Step 3: implement the structured identity boundary by
+constraining prepared-address raw fallback to
+`RawNoIdGlobalAddressCompatibility`, fail-closing missing IDs for structured
+globals, and preserving fail-closed direct global materialization.
 
 ## Watchouts
 
 - Do not make raw symbol spelling the primary identity path when structured
   `LinkNameId` exists.
 - Keep final target relocation selection and TLS lowering out of scope.
-- Separate display-only compatibility from semantic global identity authority.
 - Watch the schema limitation: prepared global addresses currently have only
-  `symbol_name`, so retaining raw compatibility may need an explicit marker or
-  named helper boundary if downstream code must distinguish it.
+  `symbol_name`, so the implementation should use named helper boundaries or an
+  explicit marker if downstream code must distinguish raw/no-id compatibility.
 - Existing direct global materialization already fails closed on missing
-  `pointer_symbol_link_name_id`; Step 2 should avoid weakening that path.
+  `pointer_symbol_link_name_id`; Step 3 should avoid weakening that path.
 - Adjacent control-flow/call-plan raw fallbacks exist but are outside the
-  primary prepared-address/materialization construction target unless Step 2
+  primary prepared-address/materialization construction target unless Step 3
   intentionally broadens ownership.
+- The retained compatibility class should not match globals that have
+  structured `Global::link_name_id`, even if their raw name text matches.
 
 ## Proof
 
 Passed. Ran:
-`git diff --quiet -- src/backend/bir src/backend/prealloc tests && printf 'analysis-only proof: no implementation or test diff for raw global identity fallback inventory\n' > test_after.log`
+`git diff --quiet -- src/backend/bir src/backend/prealloc tests && printf 'analysis-only proof: no implementation or test diff for raw global missing-ID contract decision\n' > test_after.log`
 
 Proof log: `test_after.log`.
