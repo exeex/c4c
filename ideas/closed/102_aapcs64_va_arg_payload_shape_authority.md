@@ -56,3 +56,25 @@ target-neutral or documented helper-local contract.
 - Expectations are weakened, marked unsupported, or rewritten instead of
   repairing or documenting the authority boundary.
 - The implementation expands into unrelated variadic or AArch64 call rewrites.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. AAPCS64 runtime `va_arg` placeholders now publish
+explicit payload ABI metadata for scalar and aggregate payloads, and HFA
+aggregate placeholders publish explicit lane count and lane size metadata.
+Prealloc variadic entry planning consumes those facts instead of silently
+deriving semantic payload shape from lowered load names, slot suffixes, or
+incidental frame layout.
+
+The retained narrow helper-local behavior is destination-home mapping for HFA
+lanes. That mapping remains constrained to the aggregate `va_arg` access-plan
+route; lane count and lane size come from explicit BIR payload metadata, and
+mismatched homes fail closed as a missing aggregate access plan.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Coverage includes scalar GP and FP
+payload ABI, non-HFA aggregate payload shape and destination-home behavior, and
+HFA aggregate lane count and lane size.
