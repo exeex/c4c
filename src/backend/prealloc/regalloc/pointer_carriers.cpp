@@ -94,6 +94,88 @@ void update_prepared_pointer_value_access_step(
   };
 }
 
+[[nodiscard]] std::optional<std::int64_t> immediate_pointer_byte_delta(
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return value.immediate;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<PreparedPointerCarrierState> resolve_prepared_pointer_carrier_state(
+    ValueNameId value_name,
+    const PreparedPointerCarrierMap& pointer_carriers,
+    const std::unordered_map<ValueNameId, std::size_t>& direct_step_by_value_name,
+    std::string_view slot_name,
+    const std::unordered_map<std::string, PreparedPointerCarrierState>& slot_pointer_carriers);
+
+[[nodiscard]] std::optional<PreparedPointerCarrierState> bir_pointer_immediate_offset_carrier(
+    PreparedNameTables& names,
+    const bir::BinaryInst& binary,
+    const PreparedPointerCarrierMap& pointer_carriers,
+    const std::unordered_map<ValueNameId, std::size_t>& direct_step_by_value_name) {
+  if (binary.result.kind != bir::Value::Kind::Named ||
+      binary.result.type != bir::TypeKind::Ptr ||
+      binary.operand_type != bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+
+  const auto make_candidate =
+      [&](const bir::Value& base_value,
+          std::int64_t byte_delta) -> std::optional<PreparedPointerCarrierState> {
+    if (base_value.kind != bir::Value::Kind::Named ||
+        base_value.type != bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    const auto base_value_name = names.value_names.find(base_value.name);
+    if (base_value_name == kInvalidValueName) {
+      return std::nullopt;
+    }
+    const auto base_carrier = resolve_prepared_pointer_carrier_state(
+        base_value_name, pointer_carriers, direct_step_by_value_name, {}, {});
+    if (!base_carrier.has_value() || !has_semantic_pointer_carrier_authority(*base_carrier)) {
+      return std::nullopt;
+    }
+    return PreparedPointerCarrierState{
+        .base_value_name = base_value_name,
+        .base_symbol_name = base_carrier->base_symbol_name,
+        .byte_delta = byte_delta,
+        .step_bytes = base_carrier->step_bytes,
+        .authority = PreparedPointerCarrierAuthority::BirPointerImmediateOffset,
+    };
+  };
+
+  if (binary.lhs.type == bir::TypeKind::Ptr) {
+    if (const auto delta = immediate_pointer_byte_delta(binary.rhs);
+        delta.has_value()) {
+      if (binary.opcode == bir::BinaryOpcode::Add) {
+        return make_candidate(binary.lhs, *delta);
+      }
+      if (binary.opcode == bir::BinaryOpcode::Sub) {
+        return make_candidate(binary.lhs, -*delta);
+      }
+    }
+  }
+
+  if (binary.opcode == bir::BinaryOpcode::Add &&
+      binary.rhs.type == bir::TypeKind::Ptr) {
+    if (const auto delta = immediate_pointer_byte_delta(binary.lhs);
+        delta.has_value()) {
+      return make_candidate(binary.rhs, *delta);
+    }
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<PreparedPointerCarrierState> resolve_prepared_pointer_carrier_state(
     ValueNameId value_name,
     const PreparedPointerCarrierMap& pointer_carriers,
@@ -269,6 +351,20 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
                 pointer_carriers, stored_value_name, *stored_value_state, &changed);
             maybe_update_slot_pointer_carrier(
                 slot_pointer_carriers, store->slot_name, *stored_value_state, &changed);
+          }
+          continue;
+        }
+        if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+            binary != nullptr) {
+          const auto result_name = names.value_names.find(binary->result.name);
+          if (result_name == kInvalidValueName) {
+            continue;
+          }
+          if (const auto carrier = bir_pointer_immediate_offset_carrier(
+                  names, *binary, pointer_carriers, direct_step_by_value_name);
+              carrier.has_value()) {
+            maybe_update_prepared_pointer_carrier(
+                pointer_carriers, result_name, *carrier, &changed);
           }
           continue;
         }

@@ -1846,6 +1846,13 @@ bir::Module make_call_argument_source_shape_module() {
           .align_bytes = 4,
       },
   });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "derived.seed"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+      .rhs = bir::Value::immediate_i32(4),
+  });
   entry.insts.push_back(bir::StoreLocalInst{
       .slot_name = "lv.ptr",
       .value = bir::Value::named(bir::TypeKind::Ptr, "derived.seed"),

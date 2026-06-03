@@ -15,6 +15,7 @@ enum class PreparedPointerCarrierAuthority {
   None,
   PreparedPointerValueAccess,
   BirPointerSymbol,
+  BirPointerImmediateOffset,
 };
 
 struct PreparedPointerCarrierState {
@@ -32,6 +33,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   switch (authority) {
     case PreparedPointerCarrierAuthority::PreparedPointerValueAccess:
     case PreparedPointerCarrierAuthority::BirPointerSymbol:
+    case PreparedPointerCarrierAuthority::BirPointerImmediateOffset:
       return true;
     case PreparedPointerCarrierAuthority::None:
       return false;
