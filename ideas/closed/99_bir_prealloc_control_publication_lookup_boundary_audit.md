@@ -80,3 +80,21 @@ made explicit.
   consumer-facing API gaps.
 - It jumps directly to x86/RISC-V arch implementation.
 
+## Close Note
+
+Closed on 2026-06-03. The analysis-only audit completed all five runbook
+steps and found no duplicated BIR/prealloc control semantic authority requiring
+implementation work in this idea.
+
+Follow-up `ideas/open/108_prepared_select_chain_dump_contract_coverage.md`
+remains open for prepared-printer and contract-test visibility of scalar
+select-chain materialization, direct-global select-chain dependency facts, and
+directly supporting source-producer provenance.
+
+No-action findings:
+
+- Do not create compare-join continuation work from this audit.
+- Do not create select-materialization join-transfer lookup coverage work from
+  this audit.
+- Do not create x86/RISC-V arch implementation work from this audit before the
+  shared contract follow-up is handled.
