@@ -1,60 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/108_prepared_select_chain_dump_contract_coverage.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Prepared Dump Visibility
+Current Step ID: 4
+Current Step Title: Resolve Scalar Dump Linkage Or Carry-Fact Model
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 correction completed: removed the printer-local duplicate
-source-producer/select-chain traversal and kept only the already-carried
-call-argument direct-global dependency dump surface.
+Step 3 correction completed. The attempted
+`prepared-select-chain-materializations` section was removed because the route
+duplicated source-producer, direct-global, and scalar materialization lookup
+logic in `prepared_printer.cpp`.
 
-Changed route:
+Retained Step 3 progress:
+
 - `prepared-call-plans` argument lines now print carried call-argument
   direct-global dependency labels when
   `find_prepared_call_argument_direct_global_select_chain_dependency` returns a
-  dependency: `direct_global_select_chain=yes`,
-  `direct_global_source=<value>`, `direct_global_root_is_select=yes|no`, and
-  `direct_global_root_inst=<index>`.
+  dependency:
+  - `direct_global_select_chain=yes`
+  - `direct_global_source=<value>`
+  - `direct_global_root_is_select=yes|no`
+  - `direct_global_root_inst=<index>`
 
-Correction details:
-- The attempted `prepared-select-chain-materializations` section was removed
-  because implementing it in `prepared_printer.cpp` without linking
-  `prepared_lookups.cpp`/`publication_plans.cpp` required duplicating
+Rejected route:
+
+- Do not restore printer-local traversal for
   `make_prepared_edge_publication_source_producer_lookups`,
   `find_indexed_prepared_edge_publication_source_producer`, direct-global
-  recursion, and scalar materialization logic.
-- Calling the existing non-inline helpers directly from the top-level prepared
-  printer is not linkable under the current backend test graph: existing
-  printer-only fixtures such as `backend_prepare_phi_materialize_test` compile
-  and link `prepared_printer.cpp` and selected printer files without the lookup
-  implementation objects.
-- No prepared lookup APIs, target lowering, MIR, or call-planning policy were
-  changed.
-- Store-source dump remains deferred.
+  recursion, or scalar materialization lookup.
+- Calling existing non-inline helpers directly from top-level
+  `prepared_printer.cpp` is not currently linkable in printer-only backend
+  fixtures that compile selected printer files without `prepared_lookups.cpp`
+  and `publication_plans.cpp`.
+
+Plan-owner repair rewrote the remaining runbook path:
+
+- Step 4: Resolve Scalar Dump Linkage Or Carry-Fact Model
+- Step 5: Implement Remaining Scalar And Source-Producer Dump Visibility
+- Step 6: Add Focused Prepared-Printer Tests
+- Step 7: Final Validation And Close Readiness
 
 ## Suggested Next
 
-Execute Step 4 focused proof for the carried call-argument direct-global
-dependency labels. Treat scalar select-chain materialization section coverage as
-blocked until the prepared-printer linkage/model can consume existing lookup
-helpers without duplicating lookup authority.
+Execute Step 4. Determine a non-duplicative route for scalar select-chain
+materialization dump visibility:
+
+- include existing lookup/publication implementation objects in printer-only
+  test/link contexts,
+- expose a narrow adapter that reuses existing lookup authority without
+  duplicating traversal logic, or
+- carry scalar materialization facts in prepared-module data before the printer
+  consumes them.
+
+Keep the Step 3 call-argument direct-global dependency labels. Record the
+chosen route and proof target here before moving to Step 5.
 
 ## Watchouts
 
-- Do not restore printer-local select-chain/source-producer traversal.
-- A scalar select-chain section needs either a prepared-printer link model that
-  includes the existing lookup/publication helper implementation objects or a
-  separately carried prepared-module dump surface.
-- Do not broaden Step 4 into store-source visibility unless a prepared-module
-  carried fact already provides a bounded dump surface.
+- Source intent did not change; do not edit
+  `ideas/open/108_prepared_select_chain_dump_contract_coverage.md` for this
+  repair.
+- A scalar select-chain section remains required for acceptance.
+- Store-source visibility is not a shortcut unless a bounded carried fact
+  already directly supports this contract.
+- Do not restore printer-local source-producer/direct-global/scalar traversal
+  in `prepared_printer.cpp`.
+- Do not weaken prepared-printer expectations or mark supported dump paths
+  unsupported.
 
 ## Proof
 
-Passed. Ran:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_printer$'; } > test_after.log 2>&1`
-
-Proof log: `test_after.log`.
+Lifecycle repair only. `git diff --check -- plan.md todo.md` passed.

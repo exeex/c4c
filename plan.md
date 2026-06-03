@@ -145,7 +145,61 @@ Completion check:
   support needed for tests.
 - Existing prepared-printer expectations are extended rather than weakened.
 
-## Step 4: Add Focused Prepared-Printer Tests
+## Step 4: Resolve Scalar Dump Linkage Or Carry-Fact Model
+
+Goal: choose and prove a non-duplicative implementation path for scalar
+select-chain materialization dump visibility.
+
+Actions:
+
+- Do not restore printer-local source-producer, direct-global, or scalar
+  materialization traversal.
+- Inspect the prepared-printer test/link model that currently compiles
+  `prepared_printer.cpp` and selected printer files without
+  `prepared_lookups.cpp` / `publication_plans.cpp`.
+- Decide whether scalar select-chain facts can be dumped by:
+  - moving the existing lookup/publication implementation objects into the
+    printer-only link contexts,
+  - exposing a narrow inline/header-only adapter without duplicating lookup
+    logic, or
+  - carrying the scalar materialization facts in prepared-module data before
+    the printer consumes them.
+- Keep the already-implemented call-argument direct-global dependency labels.
+- Record the selected route and proof target in `todo.md`.
+
+Completion check:
+
+- The default build passes if code changes are made.
+- The selected route avoids duplicating source-producer/direct-global/scalar
+  lookup authority in top-level `prepared_printer.cpp`.
+- `todo.md` names the chosen implementation route for scalar select-chain and
+  source-producer visibility.
+
+## Step 5: Implement Remaining Scalar And Source-Producer Dump Visibility
+
+Goal: expose the remaining scalar select-chain materialization and supporting
+source-producer facts using the Step 4 route.
+
+Actions:
+
+- Print scalar select-chain materialization availability and root fields through
+  the selected non-duplicative route.
+- Print source-producer kind/block/index only where it directly supports scalar
+  select-chain materialization or direct-global dependency visibility.
+- Preserve the carried call-argument direct-global dependency labels already
+  implemented in Step 3.
+- Avoid store-source or other direct-global expansion unless a bounded carried
+  fact already exists and directly supports this source idea.
+- Avoid changes to prepared lookup authority or target lowering behavior.
+
+Completion check:
+
+- The default build passes.
+- The diff is limited to prepared-printer visibility, narrow link/carry-fact
+  support, and any focused fixture support needed for tests.
+- Existing prepared-printer expectations are extended rather than weakened.
+
+## Step 6: Add Focused Prepared-Printer Tests
 
 Goal: prove dump visibility for scalar select-chain materialization,
 direct-global select-chain dependency, and supporting source-producer
@@ -168,7 +222,7 @@ Completion check:
 - `backend_prepared_printer` or the relevant prepared-printer subset passes.
 - Tests fail if the selected facts disappear from the dump.
 
-## Step 5: Final Validation And Close Readiness
+## Step 7: Final Validation And Close Readiness
 
 Goal: prove the completed route and prepare the source idea for closure review.
 
