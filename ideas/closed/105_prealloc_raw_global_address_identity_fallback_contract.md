@@ -58,3 +58,28 @@ BIR can provide structured IDs.
   remain unexamined.
 - Tests are weakened, marked unsupported, or rewritten to hide missing
   structured identity.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. Every raw global spelling fallback in prepared
+address and materialization construction now has explicit status. Structured
+global prepared-address construction is `LinkNameId` authoritative, and raw
+spelling fallback is retained only as
+`RawNoIdGlobalAddressCompatibility` for legacy/raw module globals where both
+the reference and resolved `Global` have no `LinkNameId`.
+
+Structured `LinkNameId` identity remains preferred whenever available. Supplied
+IDs use ID-only lookup, raw display text may be empty or matching display text
+only, and drifted raw spelling with a structured ID fails closed. Missing IDs
+cannot resolve module globals that have structured `Global::link_name_id`.
+Direct, GOT, TLS, and indirect-callee global materialization remain
+fail-closed when `Value::pointer_symbol_link_name_id` is missing.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Coverage includes ordinary global
+loads/stores, explicit and GEP-derived global address routes, global address
+materialization, and initializer-derived pointer-symbol routes through
+`backend_lir_to_bir_notes`.
