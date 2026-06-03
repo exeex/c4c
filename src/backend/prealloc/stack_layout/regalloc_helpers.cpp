@@ -14,6 +14,12 @@ const bir::LocalSlot* find_local_slot(const bir::Function& function, std::string
   return nullptr;
 }
 
+[[nodiscard]] bool conservative_side_effect_inline_asm_placement_applies(
+    const FunctionInlineAsmSummary& inline_asm_summary,
+    bool address_exposed) {
+  return inline_asm_summary.has_conservative_side_effect_placement && address_exposed;
+}
+
 }  // namespace
 
 void apply_regalloc_hints(PreparedNameTables& names,
@@ -40,7 +46,8 @@ void apply_regalloc_hints(PreparedNameTables& names,
     }
     permanent_home_slot = permanent_home_slot || address_exposed;
 
-    if (inline_asm_summary.has_side_effects && address_exposed) {
+    if (conservative_side_effect_inline_asm_placement_applies(inline_asm_summary,
+                                                              address_exposed)) {
       requires_home_slot = true;
       permanent_home_slot = true;
     }

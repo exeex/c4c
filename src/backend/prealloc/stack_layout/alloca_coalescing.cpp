@@ -207,6 +207,18 @@ void record_call_pointer_uses(const bir::CallInst& call,
   for (const auto& arg : call.args) {
     record_local_slot_pointer_escape(arg, block_index, local_slot_names, pointer_aliases, summary);
   }
+  if (!call.inline_asm.has_value()) {
+    return;
+  }
+  for (const auto& operand : call.inline_asm->operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::MemoryInput) {
+      record_memory_address_use(
+          operand.memory_address, block_index, local_slot_names, pointer_aliases, summary);
+    } else if (operand.kind == bir::InlineAsmOperandKind::AddressInput) {
+      record_memory_address_use(
+          operand.address, block_index, local_slot_names, pointer_aliases, summary);
+    }
+  }
 }
 
 [[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function,

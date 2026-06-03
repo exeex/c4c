@@ -16,7 +16,16 @@ FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function) {
       }
 
       ++summary.instruction_count;
-      summary.has_side_effects = summary.has_side_effects || call->inline_asm->side_effects;
+      summary.has_conservative_side_effect_placement =
+          summary.has_conservative_side_effect_placement || call->inline_asm->side_effects;
+      for (const auto& operand : call->inline_asm->operands) {
+        if ((operand.kind == bir::InlineAsmOperandKind::MemoryInput &&
+             operand.memory_address.has_value()) ||
+            (operand.kind == bir::InlineAsmOperandKind::AddressInput &&
+             operand.address.has_value())) {
+          ++summary.structured_memory_address_operand_count;
+        }
+      }
     }
   }
 

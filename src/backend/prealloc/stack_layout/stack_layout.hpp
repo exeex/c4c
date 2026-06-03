@@ -13,7 +13,8 @@ namespace c4c::backend::prepare::stack_layout {
 
 struct FunctionInlineAsmSummary {
   std::size_t instruction_count = 0;
-  bool has_side_effects = false;
+  std::size_t structured_memory_address_operand_count = 0;
+  bool has_conservative_side_effect_placement = false;
 };
 
 std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
