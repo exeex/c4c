@@ -58,3 +58,35 @@ asm may be correct, but the source of the memory-effect fact must be explicit.
   remain unexamined.
 - The implementation broadens into unrelated inline-asm or intrinsic lowering
   redesign.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The source idea is complete. Inline-asm stack-layout placement consequences now
+consume structured inline-asm memory/address operand metadata where available:
+`MemoryInput.memory_address` and `AddressInput.address` feed the existing
+prealloc `MemoryAddress` pointer-root path. Structured
+`MemoryAddress::PointerValue` roots mark the referenced local stack object
+`address_exposed`, keep `requires_home_slot`, and retain frame-slot storage
+with the original object layout.
+
+The retained unstructured path is conservative placement policy only.
+Side-effecting inline asm, including `"memory"` clobber cases, may reinforce
+home slots for objects already address-exposed by other facts, but it is not
+object-specific BIR memory provenance authority. Missing structured
+memory/address metadata with a side-effecting inline asm and `"memory"` clobber
+does not create object-specific stack placement facts from an unrooted call
+argument.
+
+Placement remains in prealloc stack layout. The route did not move stack
+placement, register homes, operand storage, parser behavior, BIR lowering,
+prepared inline-asm carrier validation, MIR, AArch64 lowering, target operand
+selection, or intrinsic behavior into this contract.
+
+Proof status: final backend validation passed with `169/169` backend tests, and
+the close-time backend regression guard passed with `169/169` before and after,
+no new failures, and no resolved failures. Coverage includes structured
+`MemoryInput.memory_address`, structured `AddressInput.address`, the intended
+local stack placement consequence, and the bounded fail-closed conservative
+summary behavior.
