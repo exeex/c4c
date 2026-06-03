@@ -1,120 +1,100 @@
 Status: Active
 Source Idea Path: ideas/open/96_aarch64_calls_deferred_move_publication_authority_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Trace Result Recording And Late Publication
+Current Step ID: Step 6
+Current Step Title: Synthesize Audit Result And Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Trace Result Recording And Late Publication completed as an
-audit-only pass. AST-backed queries and focused source windows traced the late
-result/publication paths from prepared call facts through dispatch-state
-mutation and target-local AArch64 emission:
+Step 6 - Synthesize Audit Result And Follow-Up Ideas completed as an
+audit-only pass. The Step 1-5 traces classify every deferred cluster from idea
+92 and the active source idea without finding a narrow proofable authority
+boundary for implementation follow-up.
 
-- Call result source register recording:
-  - `prepare::build_call_result_plan` creates `PreparedCallResultPlan` from the
-    after-call move bundle, including destination value id, source ABI register
-    name/placement, source bank, contiguous width, occupied registers, and the
-    prepared destination home. This is the prepared authority for the primary
-    call result register.
-  - `prepare::publish_prepared_after_call_result_lane_bindings` derives
-    `PreparedAfterCallResultLaneBinding` facts from `AfterCall` bundles whose
-    ABI binding destination is `CallResultAbi` register storage, then indexes
-    them by block, instruction, and prepared value id.
-  - `record_call_result_source_register` consumes `PreparedCallPlan::result`
-    and `find_prepared_after_call_result_lane_binding`; it parses/converts the
-    prepared ABI register and records the destination value in
-    `BlockScalarLoweringState` with `record_emitted_scalar_register`.
-  - `dispatch_prepared_block` records the primary result immediately after
-    `lower_call_instruction` and `clear_call_clobbered_emitted_scalar_registers`,
-    lowers after-call moves, then calls `record_call_result_source_register`
-    again with `result_lanes_only=true` so lane bindings are recorded after
-    destination moves.
+Step-by-step synthesis:
 
-- FPR result store retargeting:
-  - `retarget_fpr_call_result_store_value_to_emitted_scalar` runs from the
-    ordinary memory path in `dispatch_prepared_block` after `lower_memory_instruction`.
-    It only handles `StoreLocal` of named `F32`/`F64` values whose emitted
-    memory record is a matching store.
-  - The helper does not create prepared facts. It consults
-    `BlockScalarLoweringState` for a prior `CallAbi` FPR emission recorded by
-    `record_call_result_source_register`, then rewrites the memory record value
-    operand to the emitted register with `make_register_operand`.
-  - The mutation is late dispatch-state repair for the machine record; the
-    AArch64 store record and register operand spelling remain target-local.
+- Step 1 mapped the deferred clusters to concrete producers, consumers, and
+  emission sites. The map showed four audit families: before-call move bundle
+  lowering; after-call, return, value, and preservation lowering; scalar
+  producer dispatch bridge; and result recording plus late publication.
+- Step 2 traced before-call move bundle lowering from
+  `prepare::plan_prepared_call_boundary_effects`,
+  `append_explicit_call_boundary_effects`, prepared before-call move bundles,
+  argument endpoints, preservation effects, and immediate argument facts into
+  `lower_before_call_moves`, `lower_before_call_move`,
+  `lower_before_call_immediate_binding`, and dispatch scalar-state retargeting
+  and recording.
+- Step 3 traced after-call/result moves, before-return/value moves,
+  preservation home population, and preservation republication through
+  prepared move bundles, result endpoints, value homes, preserved-value routes,
+  `lower_after_call_moves`, `lower_before_return_moves`, `lower_value_moves`,
+  `record_call_result_source_register`, and dispatch return/result
+  deduplication.
+- Step 4 traced scalar producer publication through prepared source-producer
+  facts, call-argument plans, same-block producer lookups, publication helper
+  facts, `lower_scalar_call_argument_producers`,
+  `materialize_scalar_call_argument_value`,
+  `emit_value_publication_to_register`, and indirect-callee materialization.
+- Step 5 traced result recording and late publication through prepared call
+  result plans, after-call result lane bindings, frame-slot call argument
+  selections, stack-preserved value lookups,
+  `record_call_result_source_register`,
+  `retarget_fpr_call_result_store_value_to_emitted_scalar`,
+  `materialize_missing_frame_slot_call_arguments`, and
+  `publish_stack_preserved_call_values`.
 
-- Missing frame-slot call arguments:
-  - `materialize_missing_frame_slot_call_arguments` runs after normal
-    before-call moves and call-boundary source materialization but before final
-    call emission. It only considers prepared call arguments whose source is a
-    frame slot, destination is a single GPR, and whose source value is not
-    already present in `BlockScalarLoweringState`.
-  - It consumes the prepared source home, the prepared frame-slot call argument
-    move from `find_prepared_frame_slot_call_argument_move`, and
-    `PreparedCallArgumentSourceSelection` to choose frame-slot address/value or
-    prior-preservation source memory.
-  - It emits a target-local dispatch bridge `CallBoundaryMoveInstructionRecord`
-    through `make_call_boundary_move_instruction` and records the destination
-    register in scalar state. This is late target-local materialization of an
-    already-prepared argument plan, not new call-argument authority.
+Final classification:
 
-- Stack-preserved value publication:
-  - `prepare::build_call_preserved_values` creates
-    `PreparedCallPreservedValue` records from liveness, value homes, frame
-    slots, stack assignments, and callee-saved register assignments. For stack
-    routes it records value id/name, slot id, stack offset/size/alignment, and
-    preservation source/destination endpoints.
-  - `prepare::make_prepared_call_plan_lookups` indexes the first stack-preserved
-    values per call, suppressing later calls already reached by a prior stack
-    preservation through `prior_stack_preserved_reaches_call`.
-  - `publish_stack_preserved_call_values` consumes
-    `first_indexed_stack_preserved_values_for_call`; for each stack-preserved
-    value it prefers an emitted GPR from `BlockScalarLoweringState`, otherwise
-    falls back to a prepared register home, chooses a W/X view from stack size,
-    and emits an AArch64 `str` to the prepared frame-slot address.
-  - This path is prepared preservation/publication fact consumption plus
-    target-local store spelling. It does not mutate scalar state and does not
-    derive preservation authority locally.
+- `before-call move bundle lowering`: intentionally retained. Prealloc owns the
+  prepared move bundle, call-boundary effect, argument endpoint, preservation,
+  ABI binding, immediate argument, value-home, byval, F128, and frame-slot
+  facts. Calls/codegen owns AArch64 register views, scratch choice, stack-store
+  spelling, operand construction, call-boundary records, and select-chain
+  materialization. Dispatch owns ordering around address materialization,
+  source retargeting, destination/source alias recording, and live scalar-state
+  mutation.
+- `after-call, return, value, and preservation lowering`: intentionally
+  retained. Prepared facts own result and preservation routes, move bundles,
+  value homes, ABI endpoints, and republication effects. Calls/codegen owns
+  target-local result/register/store/F128/callee-saved instruction spelling.
+  Dispatch owns result publication order, call-clobbered scalar clearing,
+  return-publication deduplication, and memory-record retargeting.
+- `scalar producer dispatch bridge`: intentionally retained. Prepared lookups
+  own source-producer, publication, select-chain, constant, stored-value,
+  call-argument, and indirect-callee facts. Calls/dispatch materialization owns
+  AArch64 `mov`, `ldr`, extension/truncation, ALU, compare/select, scratch
+  routing, direct-global, local aggregate address, and indirect-callee spelling.
+  `BlockScalarLoweringState` owns transient emitted-register availability.
+- `result recording and late publication`: intentionally retained. Prepared
+  facts own result registers, lane bindings, frame-slot argument moves,
+  source selections, stack-preserved values, and preservation lookup indexes.
+  Dispatch owns when call results/lane registers are recorded, when missing
+  frame-slot arguments are materialized, and when FPR stores are retargeted.
+  Calls/codegen owns target-local machine-record and instruction spelling.
 
-Classification:
+Generated follow-up ideas: none. The audit did not find a cluster classified
+`needs-narrow-implementation-idea`. The repeated pattern is a coherent
+three-way boundary, not a shared-authority leak: prealloc/prepared plans derive
+durable facts, dispatch mutates transient scalar state and ordering, and
+calls/codegen emits AArch64-specific records and instructions. The visible
+cleanup seams would prove mainly by helper shape, file size, or line count,
+which the source idea rejects as insufficient authority evidence.
 
-- `prepared-fact-consumption`: `record_call_result_source_register` consumes
-  `PreparedCallPlan::result` and prepared after-call lane bindings;
-  `materialize_missing_frame_slot_call_arguments` consumes prepared
-  frame-slot argument plans, source homes, and source selections;
-  `publish_stack_preserved_call_values` consumes prepared stack-preservation
-  lookups and value homes.
-- `dispatch-state-mutation`: `record_call_result_source_register` publishes
-  call result/lane registers into `BlockScalarLoweringState`;
-  `retarget_fpr_call_result_store_value_to_emitted_scalar` and
-  `materialize_missing_frame_slot_call_arguments` consult the same transient
-  scalar state to avoid stale or missing machine operands.
-- `target-local-calls-emission`: register parsing/conversion, memory record
-  operand retargeting, dispatch bridge record construction, frame-slot address
-  spelling, and the emitted `str` for preserved stack values remain AArch64
-  local codegen.
-- `intentionally-retained`: no Step 5 helper re-derives call result,
-  after-call lane, frame-slot argument, or stack-preservation authority. The
-  current split is coherent: prealloc owns prepared facts and lookups,
-  dispatch owns sequencing and live scalar-state mutation, and calls/codegen
-  owns target-local machine record or instruction spelling.
+Close-readiness notes for plan-owner review:
 
-Follow-up boundary decision: no narrow implementation idea is recommended from
-Step 5. The only visible cleanup boundary would be local organization around
-late scalar-state consumers (`record_call_result_source_register`,
-`retarget_fpr_call_result_store_value_to_emitted_scalar`, and
-`materialize_missing_frame_slot_call_arguments`), but the trace does not show a
-shared-authority gap or proofable compiler capability boundary. Retain these
-paths unless Step 6 synthesis finds a cross-step pattern worth documenting as a
-separate source idea.
+- The source idea's deferred clusters are all classified.
+- No implementation or test expectation files were touched.
+- No follow-up source ideas were generated because no narrow, proofable
+  authority boundary was found.
+- Plan-owner can review this active plan for closure as an audit-only route
+  whose durable conclusion is intentional retention of the traced clusters.
 
 ## Suggested Next
 
-Run Step 6 synthesis: summarize Steps 1-5 and decide whether the audit should
-close with intentionally retained boundaries or create only a narrow follow-up
-idea backed by repeated traced evidence.
+Supervisor should send the active plan to plan-owner for close review. No
+executor implementation packet is recommended from this audit.
 
 ## Watchouts
 
@@ -127,26 +107,19 @@ idea backed by repeated traced evidence.
   scalar producer emission, stack-preserved publication, before-call
   materialization, call emission, result recording, after-call moves, and late
   memory retargeting.
-- Step 5 did not find a prepared-publication authority gap. Avoid turning
-  local helper extraction or scalar-state consumer grouping into capability
-  progress.
-- Stack-preserved publication emits target-local stores from prepared
-  preservation facts and current scalar/register homes; it intentionally does
-  not record new scalar-state facts.
-- FPR result store retargeting depends on call result source registers already
-  published into scalar state. If future work changes result recording order,
-  this late memory path is a direct watchpoint.
+- The intentionally retained deferred clusters are:
+  before-call move bundle lowering; after-call/result/return/value and
+  preservation lowering; scalar producer dispatch bridge; result recording and
+  late publication.
+- Do not convert these retained clusters into helper-extraction, file-shrink,
+  or expectation-rewrite work and claim capability progress.
+- Any future follow-up should start from new evidence of a shared prepared
+  authority gap or dispatch-state leak, not from the current audit alone.
 
 ## Proof
 
-Audit-only packet. Used `c4c-clang-tools` AST queries for definitions,
-callees, callers, and dispatch ordering around
-`record_call_result_source_register`,
-`retarget_fpr_call_result_store_value_to_emitted_scalar`,
-`materialize_missing_frame_slot_call_arguments`,
-`publish_stack_preserved_call_values`, and `dispatch_prepared_block`; focused
-source windows confirmed prepared result plans, after-call lane bindings,
-stack-preserved lookup construction, dispatch-state mutation, and target-local
-emission spelling. No build or backend test proof required, and no
+Audit-only packet. Read `plan.md`, the active source idea, current `todo.md`,
+and recent `todo.md` history for Steps 1-5. No clang-tools re-check was needed
+for synthesis, no build or backend test proof was required, and no
 `test_after.log` was generated because no implementation or expectation files
 were touched.
