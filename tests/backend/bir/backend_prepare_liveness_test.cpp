@@ -3050,6 +3050,7 @@ int check_i128_runtime_helper_mapping_authority() {
         !helper.selected_call_ownership.has_clobber_policy ||
         !helper.selected_call_ownership.has_abi_bindings ||
         !helper.selected_call_ownership.has_marshaling ||
+        !prepare::prepared_i128_runtime_helper_has_abi_contract(helper) ||
         helper.memory_return.has_value() ||
         std::find(helper.missing_required_facts.begin(),
                   helper.missing_required_facts.end(),

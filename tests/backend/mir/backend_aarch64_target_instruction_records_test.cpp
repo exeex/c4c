@@ -4016,6 +4016,7 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           aarch64_abi::d_register(9) ||
       prepared_f64_to_f128.record->result.abi_register->reg !=
           aarch64_abi::q_register(0) ||
+      !prepare::prepared_f128_runtime_helper_has_abi_contract(f64_to_f128) ||
       prepared_f64_to_f128.record->abi_policy.transition !=
           prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result) {
     return fail("expected f64 to f128 cast helper boundary to consume unary prepared authority");
@@ -4057,6 +4058,7 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           aarch64_abi::s_register(0) ||
       prepared_f128_to_f32.record->scalar_result.materialized_i1_register->reg !=
           aarch64_abi::s_register(9) ||
+      !prepare::prepared_f128_runtime_helper_has_abi_contract(f128_to_f32) ||
       prepared_f128_to_f32.record->abi_policy.transition !=
           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult) {
     return fail("expected f128 to f32 cast helper boundary to consume unary prepared authority");

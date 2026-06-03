@@ -1,42 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/103_prealloc_synthetic_helper_call_abi_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Document The Contract
+Current Step ID: 4
+Current Step Title: Add Focused Helper Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implementation is complete.
+Step 4 focused proof is complete.
 
-Implemented prepared-only contract helpers:
+Coverage recorded:
 
-- Added `prepared_i128_runtime_helper_has_abi_contract` in `src/backend/prealloc/i128_runtime_helpers.hpp/.cpp`. It names the prepared-only i128 helper ABI contract for div/rem and supported float/integer conversion helpers, including helper family, source opcode/cast shape, source/result type and width facts, result ownership, ABI transition, argument/result banks, lane counts, and lane width.
-- Added `prepared_f128_runtime_helper_has_abi_contract` in `src/backend/prealloc/f128_runtime_helpers.hpp/.cpp`. It names the prepared-only f128 helper ABI contract for arithmetic, comparison, and cast helpers, including helper family, source opcode/cast shape, source/result type facts, result ownership, ABI transition, argument/result banks/counts, and width.
-- Added `prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract` in `src/backend/prealloc/f128_runtime_helpers.hpp/.cpp`. This is the named f128 comparison bridge contract: helper result `I32`, BIR result `I1`, non-missing predicate zero-test, `consumes_helper_cmp_result=true`, `owns_bir_i1_result=true`, scalar result ownership, GPR ABI result binding, and `AbiCmpResultToScalar` unmarshal direction.
+- i128 helper ABI binding: `tests/backend/bir/backend_prepare_liveness_test.cpp` now asserts both div/rem helpers and supported float/integer conversion helpers satisfy `prepared_i128_runtime_helper_has_abi_contract`. Existing assertions cover callee identity, source opcode/cast, source/result types and widths, ABI transition, banks/counts/lanes, lane/scalar ownership, marshaling, clobber policy, and selected ownership.
+- f128 arithmetic helper ABI binding: `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp` asserts the arithmetic helper consumed by AArch64 satisfies `prepared_f128_runtime_helper_has_abi_contract`, alongside existing helper kind/opcode/callee, ABI register, selected ownership, clobber, and fail-closed checks.
+- f128 cast helper ABI binding: strengthened `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp` so both scalar-to-f128 (`__extenddftf2`) and f128-to-scalar (`__trunctfsf2`) helper records must satisfy `prepared_f128_runtime_helper_has_abi_contract`. Existing prepared-printer, dispatch, and machine-printer assertions cover the cast ABI transitions and physical emission.
+- f128 comparison bridge: `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp` already asserts `prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract` for the `__eqtf2` helper, including helper `I32` result, BIR `I1` result ownership, zero-test, `consumes_helper_cmp_result`, and `owns_bir_i1_result`. Existing dispatch and machine-printer tests prove AArch64 materializes the I1 result from that prepared bridge.
 
-Consumer tightening:
-
-- `src/backend/mir/aarch64/codegen/i128_ops.cpp` now consumes the prepared i128 ABI contract predicate for record construction, instruction selection, and printing checks instead of relying only on local ABI-policy shape checks. It also guards invalid prepared-helper provenance before dereferencing source-helper pointers.
-- `src/backend/mir/aarch64/codegen/f128.cpp` now consumes the prepared f128 ABI contract predicate and the named f128 comparison bridge predicate before AArch64 record materialization. The consumer still owns physical materialization of the I1 result register after the prepared bridge contract is valid.
-- No synthetic helper was modeled as a source BIR direct call, and no physical clobber, preservation, carrier movement, or register/stack placement authority was moved out of prealloc/MIR.
-
-Focused proof added/strengthened:
-
-- `tests/backend/bir/backend_prepare_liveness_test.cpp` asserts i128 helper mappings satisfy the named prepared ABI contract.
-- `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp` asserts i128 and f128 helper boundary records consume helpers satisfying the named prepared ABI contract, and asserts the f128 comparison helper satisfies the named I32-to-I1 bridge contract.
-- `tests/backend/mir/backend_aarch64_machine_printer_test.cpp` keeps the incomplete i128 helper fail-closed fixture valid under the stricter prepared-helper provenance check by using a valid prepared helper with intentionally incomplete live-preservation facts.
+Only focused tests were strengthened. No implementation files were changed in this packet.
 
 ## Suggested Next
 
-Proceed to Step 4 by reviewing proof coverage for scalar i128 helper ABI binding, f128 arithmetic/cast helper ABI binding, and f128 comparison I32-to-I1 bridging. Add or strengthen focused assertions only where the existing Step 3 coverage leaves a real gap.
+Proceed to Step 5 final validation and close-readiness notes. Run the delegated broader validation, then record final coverage and retained prepared-only authority details in `todo.md`.
 
 ## Watchouts
 
-- The prepared-printer helper file intentionally does not call the new predicates because some lightweight printer-only tests link printer objects without the runtime-helper fact-population objects.
-- AArch64 i128 helper boundary support still consumes div/rem helper records directly; i128 conversion helper ABI is now named in the prepared contract predicate but is not broadened into unrelated AArch64 lowering.
-- Keep unsupported or mismatched helper families fail-closed. Do not replace the named predicates with callee-name parsing or testcase-shaped dispatch guesses.
+- The source tree already contains Step 3 implementation changes from the prior packet; this Step 4 packet intentionally touched only owned tests plus `todo.md` and `test_after.log`.
+- The prepared-only model remains the accepted authority. Do not add source BIR direct-call modeling or move physical call planning out of prealloc/MIR during final validation.
+- The prepared-printer still proves visible helper details without directly calling the new predicates, to avoid adding linker dependencies to printer-only tests.
 
 ## Proof
 
