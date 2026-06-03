@@ -60,3 +60,33 @@ and any remaining compatibility fallback.
   or helper renames.
 - The implementation broadens into unrelated ABI redesign instead of the
   missing-metadata boundary.
+
+## Close Note
+
+Closed on 2026-06-03.
+
+The audit and implementation completed the missing call ABI fallback boundary.
+Silent ordinary type-only ABI authority was removed from shared call argument,
+call result, and function return planning paths. Ordinary lowered calls and
+functions now depend on explicit BIR carriers for `Param::abi`,
+`CallInst::arg_abi`, `CallInst::result_abi`, and `Function::return_abi`.
+
+Retained fallback behavior is constrained to named direct-BIR/bootstrap
+compatibility repairs:
+
+- `direct_bir_call_arg_abi_repair`
+- `direct_bir_call_result_abi_repair`
+- `direct_bir_function_return_abi_repair`
+- `direct_bir_call_arg_bank_display`
+- `direct_bir_call_result_bank_display`
+- `direct_bir_function_return_move_repair`
+
+Target-sensitive physical placement, no-op move decisions, and register/stack
+planning remain prealloc authority after the BIR ABI carriers exist. The close
+keeps that boundary explicit: BIR publishes semantic ABI metadata, while
+prealloc owns target placement and movement decisions.
+
+Proof status: focused carrier tests and final delegated validation passed, and
+the close-time backend regression guard passed with `389/390` before and
+after, no new failures, and the same existing
+`c_testsuite_aarch64_backend_src_00204_c` failure.
