@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/98_bir_prealloc_memory_pointer_storage_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Inventory Prealloc Stack Layout And Storage Facts
+Current Step ID: Step 3
+Current Step Title: Trace Prepared Addressing And Pointer Carriers
 
 # Current Packet
 
@@ -34,10 +34,10 @@ lowering-only BIR provenance used to emit semantic facts. None grant BIR
 authority over prealloc stack placement, frame offsets, physical storage homes,
 decoded homes, register allocation, or target address-mode preparation.
 
-Step 2 - Inventory Prealloc Stack Layout And Storage Facts completed. This
-packet inventoried prealloc stack layout, frame-slot assignment, storage-plan
-construction, and decoded-home preparation without editing implementation
-files.
+Step 3 - Trace Prepared Addressing And Pointer Carriers completed. This
+packet preserved the Step 1 and Step 2 inventories, then classified prepared
+addressing, pointer-carrier construction, and prepared lookup routes without
+editing implementation files.
 
 ### Step 2 Prealloc Placement And Storage Inventory
 
@@ -60,28 +60,58 @@ stack-layout pointer-root scans in `alloca_coalescing.cpp` and
 `analysis.cpp`, raw symbol fallback in `coordinator.cpp`, and decoded/value
 home `PointerBasePlusOffset` handling.
 
+### Step 3 Prepared Addressing, Pointer Carrier, And Lookup Inventory
+
+| Route | Concrete sites traced | Classification | Boundary notes |
+| --- | --- | --- | --- |
+| Prepared memory-address carrier shape: frame slot, global symbol, pointer value, string constant, byte offset, access size/alignment, volatility/address-space context, and base-plus-offset capability. | `src/backend/prealloc/addressing.hpp` `PreparedAddress`, `PreparedMemoryAccess`, `PreparedAddressingFunction`; lookup helpers `find_prepared_memory_access*`. | `retained authority`: target-facing `prealloc-placement-authority` consuming BIR facts. | The carrier no longer names BIR local slots directly; local access has already crossed into `PreparedFrameSlotId`, while global and pointer routes preserve `LinkNameId`/`ValueNameId` as inputs. `can_use_base_plus_offset` is a target-preparation decision, not BIR memory authority. |
+| Prepared address materialization carrier shape for frame-slot addresses, direct/GOT/TLS globals, strings, labels, result homes, TLS model/register/relocation, and byte offsets. | `addressing.hpp` `PreparedAddressMaterialization`, `PreparedAddressMaterializationKind`, TLS enums, `find_prepared_address_materialization`. | `retained authority` with `ambiguous contract` only when upstream construction lacks structured IDs. | The struct is prealloc target materialization authority. It consumes BIR symbol/label/string/address-space facts plus frame-slot placement facts; the raw-name fallback risk remains in producer code traced by Step 2, not in this carrier type. |
+| Global materialization policy defaulting for prepared global addresses. | `addressing.hpp` `prepared_global_symbol_address_policy`. | `retained authority`: target-facing prealloc policy. | Uses BIR `GlobalAddressMaterializationPolicy` when present and defaults static relocation to direct addressing. This is not duplicated global provenance; it is target relocation/materialization interpretation. |
+| Prepared pointer carriers seeded from direct `PreparedMemoryAccess` pointer-value bases. | `regalloc/pointer_carriers.cpp` `build_pointer_carrier_map`, `direct_step_by_value_name`, `update_prepared_pointer_step`. | `retained authority` plus `duplicated provenance` trace target. | The step size comes from prepared access size and is prealloc/regalloc metadata. The pointer base value name is consumed from prepared addressing, which was itself built from BIR `MemoryAddress::PointerValue`; Step 4 should confirm producers do not rederive the same BIR pointer-base relation from instruction shape when prepared addressing is available. |
+| Pointer symbol carriers seeded from pointer-typed BIR instruction results with `pointer_symbol_link_name_id`. | `pointer_carriers.cpp` `pointer_result_value`, `prepared_pointer_symbol_name`, first pointer-carrier seeding loop. | `duplicated provenance` / `follow-up material` candidate. | This route reads BIR result values directly and copies `pointer_symbol_link_name_id` into a prealloc carrier. It may be a necessary regalloc convenience, but it duplicates target-neutral symbol provenance unless Step 4 proves there is no prepared-addressing surface for these pointer-def facts. |
+| Local-slot pointer carrier propagation through `LoadLocalInst`/`StoreLocalInst` without `MemoryAddress`. | `pointer_carriers.cpp` `resolve_prepared_pointer_carrier_state`, `slot_pointer_carriers`, load-local and store-local propagation for `!address.has_value()`. | `ambiguous contract` / `duplicated provenance` trace target. | The route uses slot spelling and intra-block/local slot state to propagate pointer carrier state. If it is only modeling stored pointer values for regalloc, it is retained prealloc convenience; if it reconstructs local pointer provenance already present in BIR lowering side tables or `MemoryAddress`, it is duplicated authority. |
+| Pointer plus/minus one-step derivation around addressed local/global stores. | `pointer_carriers.cpp` `StoreLocalInst` and `StoreGlobalInst` branches requiring `MemoryAddress::BaseKind::PointerValue`, `last_loaded_pointer_state`, and `byte_delta` adjusted by `step_bytes`. | `ambiguous contract` with likely `bir-missing-target-neutral-fact`. | The route infers predecessor/successor carrier values from recent load/store order and prepared step size. The inferred `base_value_name` plus signed byte delta looks like a target-neutral pointer relation that is not persisted as a BIR fact for these values; Step 4 should decide whether BIR should expose it or whether regalloc-only carrier inference is acceptable. |
+| Prepared memory-access and materialization lookup indexes. | `prepared_lookups.hpp`/`.cpp` `PreparedAddressMaterializationLookups`, `PreparedMemoryAccessLookups`, `make_prepared_address_materialization_lookups`, `make_prepared_memory_access_lookups`, `find_indexed_prepared_memory_access*`, `find_indexed_prepared_frame_address_offset_for_value*`. | `retained authority`: lookup/index material. | These routes index existing prepared facts by block/instruction/result/value ID and map frame materializations to stack-layout offsets. They do not create new BIR facts; ambiguity handling intentionally returns null for duplicate or incomplete matches. |
+| Edge-publication source producer discovery from BIR instructions. | `prepared_lookups.cpp` `make_edge_publication_source_producers`, `apply_source_producer_fact`, producer structs in `prepared_lookups.hpp`. | `ambiguous contract` / `follow-up material` candidate. | The lookup records the BIR producer kind for edge-copy source analysis (`LoadLocal`, `LoadGlobal`, `Cast`, `Binary`, `Select`, immediate). This is not placement authority, but it re-walks BIR instruction provenance rather than consuming a prepared producer fact; Step 4 should classify whether this is acceptable query glue or duplicated BIR provenance. |
+| Edge-publication source memory facts for local-load sources. | `prepared_lookups.cpp` `apply_source_memory_access_fact`, `copy_source_memory_access_fact`, `prepared_address_has_complete_base`. | `retained authority` consuming prepared addressing; `missing BIR fact` only if incomplete prepared access appears systematic. | The route copies a matching `PreparedMemoryAccess` onto edge-publication facts and requires complete prepared base/size/alignment. It does not reconstruct memory identity itself, but it currently only attaches memory facts for `LoadLocal`; global-load source memory facts are handled by separate same-block helpers. |
+| Same-block global load and local load/store source helpers. | `prepared_lookups.cpp` `find_prepared_global_load_access`, `find_prepared_same_block_global_load_access`, `find_prepared_same_block_load_local_stored_value_source`, range-match helpers. | `ambiguous contract` / `duplicated provenance` trace target. | These helpers combine BIR producer identity with prepared memory accesses and frame-layout overlap checks. The frame-range reasoning is prealloc authority; the same-block store-to-load source derivation may duplicate BIR dataflow/memory provenance if used as semantic identity rather than a codegen optimization guard. |
+| Aggregate and typed stack-source publication authority. | `prepared_lookups.hpp` `PreparedAggregateStackSourceAuthority`, `PreparedTypedStackSourcePublication`; `prepared_lookups.cpp` `prepare_aggregate_stack_source_authority`, `prepare_same_width_i32_stack_source_publication`. | `retained authority` / `follow-up material`. | These routes rely on prepared value homes, stack slot IDs, stack offsets/sizes/alignments, move authority, and register placement. That is prealloc storage authority. The current `MissingAggregateCopyAuthority` terminal status is explicit follow-up material for aggregate-copy lowering, not evidence that BIR should own stack-source placement. |
+| Same-block scalar producer and integer-constant evaluation helpers. | `prepared_lookups.cpp` `prepared_same_block_source_producer`, `evaluate_prepared_same_block_integer_constant`, fused-compare/materialized-condition helpers. | `follow-up material`, mostly outside memory boundary. | These are BIR-expression query helpers used by target-facing preparation. They are not stack/memory authority, but they are another direct BIR provenance walk and should stay out of the Step 4 memory-overlap table unless tied to memory access or pointer-carrier decisions. |
+
+Step 3 classification summary: `addressing.hpp` primarily defines retained
+prealloc target-facing carriers and lookup helpers. `prepared_lookups.*`
+mostly indexes prepared facts, but same-block producer/source helpers directly
+walk BIR and should be separated into query glue versus duplicated provenance
+during Step 4. `pointer_carriers.cpp` contains the strongest boundary risk:
+it derives pointer carrier base/delta/step state from prepared pointer-value
+accesses, BIR pointer symbol annotations, local slot loads/stores, and
+addressed pointer-value stores. Step 4 should decide whether those carrier
+relations are retained regalloc convenience, duplicated BIR provenance, or a
+missing target-neutral BIR pointer-carrier fact.
+
 ## Suggested Next
 
-Execute Step 3 - Trace Prepared Addressing And Pointer Carriers. Focus on
-`src/backend/prealloc/addressing.hpp`,
-`src/backend/prealloc/regalloc/pointer_carriers.cpp`, and
-`src/backend/prealloc/prepared_lookups.*`, then classify prepared addressing,
-pointer-carrier, and lookup inputs against the BIR/prealloc authority boundary.
+Execute Step 4 - Cross-Map Memory And Storage Overlaps. Cross-map the Step 1
+BIR facts against the Step 2 and Step 3 prealloc inventories, then classify
+each overlap as correct consumption, duplicated provenance, missing BIR fact,
+ambiguous contract, or follow-up material.
 
 ## Watchouts
 
-- `alloca_coalescing.cpp` reconstructs local pointer roots through BIR value
-  names, direct slot names, pointer aliases, and `MemoryAddress::PointerValue`.
-  That may be intentional placement analysis, but Step 4 should decide whether
-  any target-neutral provenance is being re-derived instead of consumed.
-- `coordinator.cpp` accepts structured IDs where available but still has raw
-  symbol/string/slot-name fallback paths. Step 3 should trace whether those
-  are compatibility bridges or concrete contract gaps.
-- `decode_prepared_value_home` marks `PointerBasePlusOffset` unsupported for
-  typed decoded-home storage. Step 3 should compare that with pointer-carrier
-  preparation before treating it as a missing BIR fact.
-- Dynamic stack facts are not primarily owned by the Step 2 files; they remain
-  a Step 3 trace target through prepared addressing/pointer-carrier routes.
+- Step 4 should compare `pointer_carriers.cpp` direct BIR walks against the
+  Step 1 pointer provenance inventory before deciding whether pointer carrier
+  base/delta/step state belongs in BIR, prepared addressing, or regalloc-only
+  analysis.
+- `prepared_lookups.cpp` source-producer and same-block source helpers mix
+  BIR instruction provenance with prepared memory/frame facts; classify them
+  by the fact they produce, not by the fact that they read BIR.
+- `addressing.hpp` appears to retain prealloc target-facing authority; any raw
+  symbol/string/slot-name contract gap should be attributed to the producing
+  coordinator routes from Step 2, not to the carrier struct itself.
+- Dynamic stack facts did not appear as a distinct prepared lookup/carrier
+  authority in the Step 3 files. Step 4 should verify whether they remain
+  call-like pointer producers or surface only through pointer-value/addressing
+  carriers.
 
 ## Proof
 
