@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/98_bir_prealloc_memory_pointer_storage_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory BIR Memory And Address Facts
+Current Step ID: Step 2
+Current Step Title: Inventory Prealloc Stack Layout And Storage Facts
 
 # Current Packet
 
@@ -34,25 +34,54 @@ lowering-only BIR provenance used to emit semantic facts. None grant BIR
 authority over prealloc stack placement, frame offsets, physical storage homes,
 decoded homes, register allocation, or target address-mode preparation.
 
+Step 2 - Inventory Prealloc Stack Layout And Storage Facts completed. This
+packet inventoried prealloc stack layout, frame-slot assignment, storage-plan
+construction, and decoded-home preparation without editing implementation
+files.
+
+### Step 2 Prealloc Placement And Storage Inventory
+
+| Fact | Concrete authority sites | Classification | Boundary against Step 1 BIR facts |
+| --- | --- | --- | --- |
+| Provisional stack objects for local slots and byval/sret params: object ID, function, slot/value name, source kind, type, size/alignment, address exposure, home-slot requirements. | `src/backend/prealloc/stack_layout/analysis.cpp` `collect_function_stack_objects`, `make_local_slot_object`, `make_param_object`; structs in `src/backend/prealloc/frame.hpp` `PreparedStackObject`. | `prealloc-placement-authority` consuming `bir-semantic-fact`. | BIR owns local/param identity, type, size/alignment, address-taken/byval/sret facts. Prealloc owns converting those facts into stack-object candidates and deciding whether a home slot is required or permanent. |
+| Address-publication, alloca-coalescing, copy-coalescing, inline-asm, and regalloc placement hints that adjust `PreparedStackObject` flags before slot assignment. | `analysis.cpp` `apply_aggregate_address_publication_hints`; `alloca_coalescing.cpp` `apply_alloca_coalescing_hints`, `collect_slot_use_summary`; `copy_coalescing.cpp` `apply_copy_coalescing_hints`; `inline_asm.cpp` `summarize_inline_asm`; `regalloc_helpers.cpp` `apply_regalloc_hints`; `coordinator.cpp` `plan_function_stack_objects`. | Mixed `prealloc-placement-authority` plus Step 3/4 trace target for `prealloc-rederives-bir-provenance`. | These helpers scan BIR instructions, slot names, pointer values, `MemoryAddress::LocalSlot`/`PointerValue`, and inline-asm side effects only to decide whether a prealloc home slot is needed or can be elided. The final placement decision is prealloc authority, but pointer-root and slice-family reconstruction should be cross-mapped later against Step 1 BIR provenance facts. |
+| Frame-slot assignment: `PreparedFrameSlotId`, object-to-slot mapping, offset, normalized size/alignment, fixed-location flag, frame size, and frame alignment. | `slot_assignment.cpp` `assign_frame_slots`, `build_slice_family_layout_map`, `append_slot_for_object`, `append_slice_offset_slot_for_object`; `frame.hpp` `PreparedFrameSlot`, `PreparedStackLayout`. | `prealloc-placement-authority`. | BIR does not own frame-slot IDs, target stack offsets, object ordering, gap filling, frame size, or frame alignment. Slice names and semantic sizes are BIR inputs; the physical layout is prealloc-owned. |
+| Direct prepared memory accesses for frame slots, globals/string constants, and pointer-value bases. | `coordinator.cpp` `publish_function_addressing_facts`, `build_direct_frame_slot_access`, `build_direct_symbol_backed_address`, `build_pointer_indirect_address`, `append_direct_frame_slot_accesses`; storage carrier in prepared addressing types. | `prealloc-placement-authority` / target-facing address preparation; needs Step 3 classification. | BIR owns the target-neutral memory operation and `MemoryAddress` identity. Prealloc maps that to `PreparedAddress` bases such as frame slot, global symbol, string constant, or pointer value with size/alignment and target materialization policy. This is not BIR placement authority, but the raw-name fallback and `PointerValue` routes need later overlap tracing. |
+| Address materialization facts for frame-slot addresses, globals/GOT/TLS, strings, labels, and pointer values. | `coordinator.cpp` `append_frame_slot_address_materialization`, `append_direct_global_address_materialization`, `append_string_constant_address_materialization`, `append_label_address_materialization`, `append_pointer_value_address_materialization`, `append_address_materializations`. | Target-facing `prealloc-placement-authority` / `contract-ambiguous` where structured BIR identity is missing. | BIR may carry `LinkNameId`, `BlockLabelId`, string names, and pointer values. Prealloc owns prepared materialization kind, target relocation policy checks, TLS model fields, frame-slot byte offsets, and diagnostic notes when structured identity is missing. |
+| Storage-plan values: storage encoding, register bank/class-derived width, physical register names/placements, frame-slot IDs and stack offsets, immediates, symbols, and spill-slot placement. | `src/backend/prealloc/storage_plans.cpp` `populate_storage_plans`, `build_storage_plan_value`, `storage_encoding_from_home`, `assignment_register_placement`, `make_spill_slot_placement`; `storage.hpp` `PreparedStoragePlanValue`. | `prealloc-placement-authority` / storage-home authority. | BIR value type helps choose a default bank only when regalloc data is absent. Actual register homes, stack homes, immediate rematerialization, computed-address encoding, and spill-slot placement come from prepared value locations/regalloc and are prealloc-owned storage facts. |
+| Decoded-home storage authority ordering and diagnostics: regalloc assignment first, then storage plan, then value home fallback; decoded kind/status/source; missing/unsupported authority categories. | `src/backend/prealloc/decoded_home_storage.hpp`; `decoded_home_storage.cpp` `decode_prepared_home_storage`, `decode_prepared_regalloc_assignment`, `decode_prepared_storage_plan_value`, `decode_prepared_value_home`, `build_prepared_decoded_home_storage_diagnostic`. | `prealloc-placement-authority` / decoded storage authority. | Decoded homes expose a target-facing operand source, not a new BIR semantic fact. They intentionally prefer typed regalloc assignment and storage-plan authority over raw value-home spelling; register placement, frame-slot presence, symbol names, immediates, and pointer-base-plus-offset support are prealloc contract/status facts. |
+
+Step 2 classification summary: stack objects, frame slots, frame size/alignment,
+storage plans, and decoded homes are prealloc placement/storage authority.
+They consume the Step 1 BIR semantic facts as inputs, but do not move local
+slot identity, global identity, `MemoryAddress`, or pointer provenance
+authority into prealloc. The live overlap risks for later steps are the
+stack-layout pointer-root scans in `alloca_coalescing.cpp` and
+`analysis.cpp`, raw symbol fallback in `coordinator.cpp`, and decoded/value
+home `PointerBasePlusOffset` handling.
+
 ## Suggested Next
 
-Execute Step 2 - Inventory Prealloc Stack Layout And Storage Facts. Focus on
-`src/backend/prealloc/stack_layout/*.cpp`, `storage_plans.cpp`, and
-`decoded_home_storage.*`, then classify placement/storage-home facts separately
-from the BIR semantic facts inventoried above.
+Execute Step 3 - Trace Prepared Addressing And Pointer Carriers. Focus on
+`src/backend/prealloc/addressing.hpp`,
+`src/backend/prealloc/regalloc/pointer_carriers.cpp`, and
+`src/backend/prealloc/prepared_lookups.*`, then classify prepared addressing,
+pointer-carrier, and lookup inputs against the BIR/prealloc authority boundary.
 
 ## Watchouts
 
-- High-value later traces: `MemoryAddress::PointerValue`, dynamic alloca
-  `llvm.dynamic_alloca.<type>` call handling, global pointer initializer
-  `LinkNameId` versus raw spelling, and scratch local slots introduced only to
-  carry addressed loads/stores.
-- Several provenance side tables are intentionally route-local lowering state,
-  not persistent BIR module authority. Later steps should compare prealloc
-  against emitted BIR facts, not assume every lowering side table has a
-  direct prealloc consumer.
-- Inline asm/intrinsic memory metadata exists in `bir.hpp`, but this Step 1
-  packet only confirmed the BIR carrier and direct memory intrinsic files.
+- `alloca_coalescing.cpp` reconstructs local pointer roots through BIR value
+  names, direct slot names, pointer aliases, and `MemoryAddress::PointerValue`.
+  That may be intentional placement analysis, but Step 4 should decide whether
+  any target-neutral provenance is being re-derived instead of consumed.
+- `coordinator.cpp` accepts structured IDs where available but still has raw
+  symbol/string/slot-name fallback paths. Step 3 should trace whether those
+  are compatibility bridges or concrete contract gaps.
+- `decode_prepared_value_home` marks `PointerBasePlusOffset` unsupported for
+  typed decoded-home storage. Step 3 should compare that with pointer-carrier
+  preparation before treating it as a missing BIR fact.
+- Dynamic stack facts are not primarily owned by the Step 2 files; they remain
+  a Step 3 trace target through prepared addressing/pointer-carrier routes.
 
 ## Proof
 
