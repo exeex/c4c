@@ -767,6 +767,13 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_mod
           .byval_copy = true,
       },
   });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "next.hfa.0",
+      .type = bir::TypeKind::F32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
 
   bir::Block entry;
   entry.label = "entry";
@@ -784,6 +791,12 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_mod
       .arg_types = {bir::TypeKind::Ptr},
       .return_type_name = "i32",
       .return_type = bir::TypeKind::I32,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
   });
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::F64, "next.f64"),
@@ -792,6 +805,12 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_mod
       .arg_types = {bir::TypeKind::Ptr},
       .return_type_name = "double",
       .return_type = bir::TypeKind::F64,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
   });
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.va_arg.aggregate",
@@ -815,6 +834,55 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_mod
            }},
       .return_type_name = "void",
       .return_type = bir::TypeKind::Void,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_arg.aggregate",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "next.hfa"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi =
+          {bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .primary_class = bir::AbiValueClass::Memory,
+               .sret_pointer = true,
+           },
+           bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 8,
+               .primary_class = bir::AbiValueClass::Integer,
+               .passed_in_register = true,
+           }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+      .va_arg_hfa_lane_count = 1,
+      .va_arg_hfa_lane_size_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "next.hfa.lane0"),
+      .slot_name = "next.hfa.0",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "next.hfa.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
   });
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::Ptr, "missing.aggregate"),
@@ -4858,7 +4926,7 @@ int main() {
           std::optional<std::size_t>{2} ||
       aapcs64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      aapcs64_helper_family_entry_plan->helper_operand_homes.size() != 6) {
+      aapcs64_helper_family_entry_plan->helper_operand_homes.size() != 7) {
     std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts, helpers, or scratch facts\n";
     return EXIT_FAILURE;
   }
@@ -4883,9 +4951,12 @@ int main() {
   const auto* aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *aapcs64_helper_family_entry_plan, 0, 3);
-  const auto* missing_aggregate_homes =
+  const auto* hfa_aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *aapcs64_helper_family_entry_plan, 0, 4);
+  const auto* missing_aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 6);
   if (scalar_i32_homes == nullptr || scalar_f64_homes == nullptr ||
       !scalar_i32_homes->scalar_access_plan.has_value() ||
       scalar_i32_homes->scalar_access_plan->source_class !=
@@ -4998,6 +5069,29 @@ int main() {
     std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier missed prepared access-plan facts\n";
     return EXIT_FAILURE;
   }
+  if (hfa_aggregate_homes == nullptr ||
+      !hfa_aggregate_homes->aggregate_access_plan.has_value() ||
+      hfa_aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea ||
+      hfa_aggregate_homes->aggregate_access_plan->payload_size_bytes != 4 ||
+      hfa_aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      hfa_aggregate_homes->aggregate_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea} ||
+      hfa_aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{16} ||
+      hfa_aggregate_homes->aggregate_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpOffset} ||
+      hfa_aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{16} ||
+      hfa_aggregate_homes->aggregate_access_plan->register_save_lane_count !=
+          std::optional<std::size_t>{1} ||
+      hfa_aggregate_homes->aggregate_access_plan->register_save_lane_size_bytes !=
+          std::optional<std::size_t>{4}) {
+    std::cerr << "[FAIL] AAPCS64 variadic HFA va_arg carrier missed explicit lane-shape facts\n";
+    return EXIT_FAILURE;
+  }
   if (missing_aggregate_homes == nullptr ||
       missing_aggregate_homes->aggregate_access_plan.has_value() ||
       std::find(aapcs64_helper_family_entry_plan->missing_required_facts.begin(),
@@ -5071,6 +5165,23 @@ int main() {
   }
   if (!expect_contains(aapcs64_helper_family_dump,
                        "helper_operand kind=va_arg_aggregate block=0 inst=4",
+                       "AAPCS64 variadic HFA aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "aggregate_access_plan=source_class=register_save_area:payload_size=4:payload_align=4",
+          "AAPCS64 variadic HFA aggregate va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "register_save_lanes=1:register_save_lane_size=4",
+          "AAPCS64 variadic HFA aggregate va_arg lane-shape facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_operand kind=va_arg_aggregate block=0 inst=6",
                        "AAPCS64 variadic aggregate va_arg missing operand homes")) {
     return EXIT_FAILURE;
   }
@@ -5086,7 +5197,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_helper_family_dump,
-                       "helper_operand kind=va_copy block=0 inst=5",
+                       "helper_operand kind=va_copy block=0 inst=7",
                        "AAPCS64 variadic va_copy operand homes")) {
     return EXIT_FAILURE;
   }

@@ -784,6 +784,12 @@ struct CallInst {
   std::string return_type_name;
   TypeKind return_type = TypeKind::Void;
   std::optional<CallResultAbiInfo> result_abi;
+  // Runtime va_arg placeholders publish the semantic payload ABI here so
+  // prealloc can plan AAPCS64 helper access without recomputing ABI from the
+  // display callee or lowered result type.
+  std::optional<CallArgAbiInfo> va_arg_payload_abi;
+  std::size_t va_arg_hfa_lane_count = 0;
+  std::size_t va_arg_hfa_lane_size_bytes = 0;
   CallingConv calling_convention = CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

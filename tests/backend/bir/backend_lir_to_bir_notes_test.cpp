@@ -5234,7 +5234,13 @@ int expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff() {
           call->arg_abi.size() == 2 &&
           call->arg_abi[0].sret_pointer &&
           call->arg_abi[0].size_bytes == 4 &&
-          call->arg_abi[0].align_bytes == 4) {
+          call->arg_abi[0].align_bytes == 4 &&
+          call->va_arg_payload_abi.has_value() &&
+          call->va_arg_payload_abi->sret_pointer &&
+          call->va_arg_payload_abi->size_bytes == 4 &&
+          call->va_arg_payload_abi->align_bytes == 4 &&
+          call->va_arg_hfa_lane_count == 1 &&
+          call->va_arg_hfa_lane_size_bytes == 4) {
         saw_va_arg_aggregate = true;
       }
       const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);

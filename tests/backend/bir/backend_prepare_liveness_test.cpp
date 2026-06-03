@@ -6383,6 +6383,14 @@ int check_lowered_helper_va_arg_aggregate_abi(const prepare::PreparedBirModule& 
       va_arg->arg_abi[0].size_bytes != 8 || va_arg->arg_abi[0].align_bytes != 4) {
     return fail("expected aggregate va_arg result storage to preserve explicit sret-style ABI metadata");
   }
+  if (!va_arg->va_arg_payload_abi.has_value() ||
+      va_arg->va_arg_payload_abi->type != bir::TypeKind::Ptr ||
+      !va_arg->va_arg_payload_abi->sret_pointer ||
+      va_arg->va_arg_payload_abi->primary_class != bir::AbiValueClass::Memory ||
+      va_arg->va_arg_payload_abi->size_bytes != 8 ||
+      va_arg->va_arg_payload_abi->align_bytes != 4) {
+    return fail("expected aggregate va_arg payload shape to publish explicit BIR payload ABI metadata");
+  }
   if (va_arg->arg_abi[1].type != bir::TypeKind::Ptr ||
       va_arg->arg_abi[1].primary_class != bir::AbiValueClass::Integer ||
       !va_arg->arg_abi[1].passed_in_register) {
@@ -7003,6 +7011,12 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_liveness
       .arg_types = {bir::TypeKind::Ptr},
       .return_type_name = "i32",
       .return_type = bir::TypeKind::I32,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
   });
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::F64, "next.f64"),
@@ -7011,6 +7025,12 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_liveness
       .arg_types = {bir::TypeKind::Ptr},
       .return_type_name = "double",
       .return_type = bir::TypeKind::F64,
+      .va_arg_payload_abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
   });
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),

@@ -121,6 +121,98 @@ struct InlineAsmTemplateModifierFacts {
          operand >= '0' && operand <= '9';
 }
 
+struct Aapcs64VaArgHfaPayloadShape {
+  bir::TypeKind lane_type = bir::TypeKind::Void;
+  std::size_t lane_count = 0;
+  std::size_t lane_size_bytes = 0;
+};
+
+[[nodiscard]] std::optional<std::size_t> va_arg_hfa_lane_size_bytes(
+    bir::TypeKind lane_type) {
+  switch (lane_type) {
+    case bir::TypeKind::F32:
+      return std::size_t{4};
+    case bir::TypeKind::F64:
+      return std::size_t{8};
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] bool collect_va_arg_hfa_payload_lanes(
+    const BirFunctionLowerer::AggregateTypeLayout& layout,
+    std::optional<bir::TypeKind>& lane_type,
+    std::size_t& lane_count) {
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
+      if (layout.scalar_type != bir::TypeKind::F32 &&
+          layout.scalar_type != bir::TypeKind::F64) {
+        return false;
+      }
+      if (lane_type.has_value() && *lane_type != layout.scalar_type) {
+        return false;
+      }
+      lane_type = layout.scalar_type;
+      ++lane_count;
+      return lane_count <= 4;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      if (layout.array_count == 0) {
+        return false;
+      }
+      const auto element_layout =
+          lir_to_bir_detail::compute_aggregate_type_layout(layout.element_type_text, {});
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid) {
+        return false;
+      }
+      for (std::size_t index = 0; index < layout.array_count; ++index) {
+        if (!collect_va_arg_hfa_payload_lanes(element_layout, lane_type, lane_count)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      if (layout.fields.empty()) {
+        return false;
+      }
+      for (const auto& field : layout.fields) {
+        const auto field_layout =
+            lir_to_bir_detail::compute_aggregate_type_layout(field.type_text, {});
+        if (field_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+            !collect_va_arg_hfa_payload_lanes(field_layout, lane_type, lane_count)) {
+          return false;
+        }
+      }
+      return true;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<Aapcs64VaArgHfaPayloadShape>
+aapcs64_va_arg_hfa_payload_shape(
+    const c4c::TargetProfile& target_profile,
+    const BirFunctionLowerer::AggregateTypeLayout& layout) {
+  if (target_profile.arch != c4c::TargetArch::Aarch64 ||
+      !target_profile.has_float_return_registers) {
+    return std::nullopt;
+  }
+  std::optional<bir::TypeKind> lane_type;
+  std::size_t lane_count = 0;
+  if (!collect_va_arg_hfa_payload_lanes(layout, lane_type, lane_count) ||
+      !lane_type.has_value() || lane_count == 0 || lane_count > 4) {
+    return std::nullopt;
+  }
+  const auto lane_size = va_arg_hfa_lane_size_bytes(*lane_type);
+  if (!lane_size.has_value()) {
+    return std::nullopt;
+  }
+  return Aapcs64VaArgHfaPayloadShape{.lane_type = *lane_type,
+                                     .lane_count = lane_count,
+                                     .lane_size_bytes = *lane_size};
+}
+
 [[nodiscard]] InlineAsmTemplateModifierFacts inline_asm_template_modifier_facts(
     std::string_view asm_text) {
   InlineAsmTemplateModifierFacts facts;
@@ -1453,25 +1545,39 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         return fail_runtime_family("variadic runtime family");
       }
       aggregate_value_aliases_[va_arg.result.str()] = va_arg.result.str();
+      bir::CallArgAbiInfo payload_abi{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = aggregate_layout->size_bytes,
+          .align_bytes = aggregate_layout->align_bytes,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      };
+      const auto hfa_payload_shape =
+          aapcs64_va_arg_hfa_payload_shape(context_.target_profile, *aggregate_layout);
       // Runtime helpers are synthesized BIR compatibility calls rather than
       // user/extern symbols, so callee_link_name_id intentionally stays invalid.
-      lowered_insts->push_back(bir::CallInst{
+      bir::CallInst lowered_call{
           .callee = "llvm.va_arg.aggregate",
           .args = {bir::Value::named(bir::TypeKind::Ptr, va_arg.result.str()), *lowered_ap},
           .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
-          .arg_abi =
-              {bir::CallArgAbiInfo{
-                   .type = bir::TypeKind::Ptr,
-                   .size_bytes = aggregate_layout->size_bytes,
-                   .align_bytes = aggregate_layout->align_bytes,
-                   .primary_class = bir::AbiValueClass::Memory,
-                   .sret_pointer = true,
-               },
-               *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
+          .arg_abi = {payload_abi,
+                      *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
           .return_type_name = "void",
           .return_type = bir::TypeKind::Void,
-      });
+          .va_arg_payload_abi = payload_abi,
+      };
+      if (hfa_payload_shape.has_value()) {
+        lowered_call.va_arg_hfa_lane_count = hfa_payload_shape->lane_count;
+        lowered_call.va_arg_hfa_lane_size_bytes =
+            hfa_payload_shape->lane_size_bytes;
+      }
+      lowered_insts->push_back(std::move(lowered_call));
       return true;
+    }
+    const auto payload_abi =
+        compute_call_arg_abi(context_.target_profile, *lowered_type);
+    if (!payload_abi.has_value()) {
+      return fail_runtime_family("variadic runtime family");
     }
     lowered_insts->push_back(bir::CallInst{
         .result = bir::Value::named(*lowered_type, va_arg.result.str()),
@@ -1482,6 +1588,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
         .return_type = *lowered_type,
         .result_abi = compute_function_return_abi(context_.target_profile, *lowered_type, false),
+        .va_arg_payload_abi = *payload_abi,
     });
     return true;
   };

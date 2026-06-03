@@ -66,9 +66,7 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
   return std::nullopt;
 }
 
-struct Aapcs64HfaVaArgShape {
-  std::size_t lane_count = 0;
-  std::size_t lane_size_bytes = 0;
+struct Aapcs64HfaVaArgLaneHomes {
   std::vector<PreparedValueHome> lane_destination_homes;
 };
 
@@ -106,19 +104,22 @@ struct Aapcs64HfaVaArgShape {
   return value;
 }
 
-[[nodiscard]] std::optional<Aapcs64HfaVaArgShape> infer_aapcs64_hfa_va_arg_shape(
+[[nodiscard]] std::optional<Aapcs64HfaVaArgLaneHomes>
+find_aapcs64_hfa_va_arg_lane_destination_homes(
     const PreparedBirModule& prepared,
     const PreparedVariadicEntryPlanFunction& function_plan,
     const bir::Block& block,
     std::size_t instruction_index,
-    const bir::CallInst& call) {
+    const bir::CallInst& call,
+    std::size_t expected_lane_count,
+    std::size_t expected_lane_size_bytes) {
   if (call.args.empty() ||
       call.args.front().kind != bir::Value::Kind::Named ||
       call.args.front().name.empty() ||
-      call.arg_abi.empty()) {
+      expected_lane_count == 0 ||
+      expected_lane_size_bytes == 0) {
     return std::nullopt;
   }
-  const auto& payload_abi = call.arg_abi.front();
   const auto* function_addressing =
       find_prepared_addressing_function(prepared.addressing,
                                         function_plan.function_name);
@@ -127,8 +128,6 @@ struct Aapcs64HfaVaArgShape {
   }
   std::vector<std::size_t> lane_offsets;
   std::vector<PreparedValueHome> lane_destination_homes;
-  bir::TypeKind lane_type = bir::TypeKind::Void;
-  std::size_t lane_size = 0;
   for (std::size_t index = instruction_index + 1; index < block.insts.size(); ++index) {
     const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[index]);
     if (load == nullptr) {
@@ -140,16 +139,10 @@ struct Aapcs64HfaVaArgShape {
       continue;
     }
     const std::size_t current_lane_size = type_kind_size_bytes(load->result.type);
-    if (current_lane_size == 0) {
+    if (current_lane_size != expected_lane_size_bytes) {
       return std::nullopt;
     }
-    if (lane_type == bir::TypeKind::Void) {
-      lane_type = load->result.type;
-      lane_size = current_lane_size;
-    } else if (lane_type != load->result.type || lane_size != current_lane_size) {
-      return std::nullopt;
-    }
-    if (*offset != lane_offsets.size() * lane_size) {
+    if (*offset != lane_offsets.size() * expected_lane_size_bytes) {
       return std::nullopt;
     }
     const auto* access =
@@ -184,17 +177,14 @@ struct Aapcs64HfaVaArgShape {
     });
     lane_offsets.push_back(*offset);
   }
-  if (lane_offsets.empty() || lane_offsets.size() > 4 ||
-      lane_offsets.size() * lane_size != payload_abi.size_bytes) {
+  if (lane_offsets.size() != expected_lane_count) {
     return std::nullopt;
   }
   if (lane_destination_homes.size() != lane_offsets.size()) {
     return std::nullopt;
   }
-  return Aapcs64HfaVaArgShape{.lane_count = lane_offsets.size(),
-                              .lane_size_bytes = lane_size,
-                              .lane_destination_homes =
-                                  std::move(lane_destination_homes)};
+  return Aapcs64HfaVaArgLaneHomes{.lane_destination_homes =
+                                      std::move(lane_destination_homes)};
 }
 
 [[nodiscard]] PreparedObjectId next_prepared_object_id(
@@ -485,27 +475,26 @@ void populate_aapcs64_variadic_entry_helper_resource_authority(
 
 [[nodiscard]] std::optional<PreparedVariadicScalarVaArgAccessPlan>
 make_aapcs64_scalar_va_arg_access_plan(
-    const c4c::TargetProfile& target_profile,
     const PreparedVariadicEntryPlanFunction& function_plan,
     const PreparedVariadicEntryHelperOperandHomes& homes,
     const bir::CallInst& call) {
   if (!homes.scalar_result.has_value() || !homes.source_va_list.has_value()) {
     return std::nullopt;
   }
-  const auto abi = infer_call_arg_abi(target_profile, call.return_type);
-  if (!abi.has_value()) {
+  if (!call.va_arg_payload_abi.has_value()) {
     return std::nullopt;
   }
+  const auto& abi = *call.va_arg_payload_abi;
 
   PreparedVariadicScalarVaArgAccessPlan plan{
-      .value_type = abi->type,
-      .value_size_bytes = abi->size_bytes,
-      .value_align_bytes = abi->align_bytes,
+      .value_type = abi.type,
+      .value_size_bytes = abi.size_bytes,
+      .value_align_bytes = abi.align_bytes,
       .result_home = homes.scalar_result,
       .overflow_source_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
       .overflow_stride_bytes =
-          align_prepared_offset(std::max<std::size_t>(abi->size_bytes, 1),
-                                std::max<std::size_t>(abi->align_bytes, 1)),
+          align_prepared_offset(std::max<std::size_t>(abi.size_bytes, 1),
+                                std::max<std::size_t>(abi.align_bytes, 1)),
   };
 
   if (const auto overflow_field = find_variadic_va_list_field(
@@ -514,7 +503,7 @@ make_aapcs64_scalar_va_arg_access_plan(
     plan.overflow_source_field_offset_bytes = overflow_field->offset_bytes;
   }
 
-  switch (abi->primary_class) {
+  switch (abi.primary_class) {
     case bir::AbiValueClass::Integer:
       plan.source_class = PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea;
       plan.source_field = PreparedVariadicVaListFieldKind::GpRegisterSaveArea;
@@ -569,11 +558,11 @@ make_aapcs64_aggregate_va_arg_access_plan(
     const bir::CallInst& call) {
   if (!homes.aggregate_destination_payload.has_value() ||
       !homes.source_va_list.has_value() ||
-      call.arg_abi.empty()) {
+      !call.va_arg_payload_abi.has_value()) {
     return std::nullopt;
   }
 
-  const auto& payload_abi = call.arg_abi.front();
+  const auto& payload_abi = *call.va_arg_payload_abi;
   if (payload_abi.type != bir::TypeKind::Ptr ||
       !payload_abi.sret_pointer ||
       payload_abi.primary_class != bir::AbiValueClass::Memory ||
@@ -601,10 +590,20 @@ make_aapcs64_aggregate_va_arg_access_plan(
       .overflow_stride_bytes = payload_stride_bytes,
   };
 
-  const auto hfa_shape =
-      infer_aapcs64_hfa_va_arg_shape(prepared, function_plan, block, instruction_index, call);
-  if (hfa_shape.has_value() &&
+  if (call.va_arg_hfa_lane_count > 0 &&
+      call.va_arg_hfa_lane_size_bytes > 0 &&
       function_plan.register_save_area.fp_slot_size_bytes.has_value()) {
+    const auto lane_homes = find_aapcs64_hfa_va_arg_lane_destination_homes(
+        prepared,
+        function_plan,
+        block,
+        instruction_index,
+        call,
+        call.va_arg_hfa_lane_count,
+        call.va_arg_hfa_lane_size_bytes);
+    if (!lane_homes.has_value()) {
+      return std::nullopt;
+    }
     plan.source_class = PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea;
     plan.source_field = PreparedVariadicVaListFieldKind::FpRegisterSaveArea;
     plan.source_slot_size_bytes = function_plan.register_save_area.fp_slot_size_bytes;
@@ -612,14 +611,14 @@ make_aapcs64_aggregate_va_arg_access_plan(
     plan.copy_align_bytes = payload_abi.align_bytes;
     plan.progression_field = PreparedVariadicVaListFieldKind::FpOffset;
     plan.progression_stride_bytes =
-        hfa_shape->lane_count * *function_plan.register_save_area.fp_slot_size_bytes;
-    plan.register_save_lane_count = hfa_shape->lane_count;
-    plan.register_save_lane_size_bytes = hfa_shape->lane_size_bytes;
+        call.va_arg_hfa_lane_count * *function_plan.register_save_area.fp_slot_size_bytes;
+    plan.register_save_lane_count = call.va_arg_hfa_lane_count;
+    plan.register_save_lane_size_bytes = call.va_arg_hfa_lane_size_bytes;
     plan.register_save_lane_destination_homes =
-        std::move(hfa_shape->lane_destination_homes);
+        std::move(lane_homes->lane_destination_homes);
     plan.overflow_stride_bytes =
         aapcs64_hfa_overflow_stride_bytes(payload_abi.size_bytes,
-                                          hfa_shape->lane_size_bytes);
+                                          call.va_arg_hfa_lane_size_bytes);
   }
 
   if (const auto overflow_field = find_variadic_va_list_field(
@@ -724,7 +723,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
           homes.scalar_access_plan = make_aapcs64_scalar_va_arg_access_plan(
-              prepared.target_profile, function_plan, homes, *call);
+              function_plan, homes, *call);
           if (!homes.scalar_access_plan.has_value()) {
             append_missing_variadic_entry_fact(
                 function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
