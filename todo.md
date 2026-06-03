@@ -1,18 +1,106 @@
 Status: Active
 Source Idea Path: ideas/open/97_bir_prealloc_call_abi_authority_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Cross-Map Overlaps And Contract Gaps
+Current Step ID: Step 5
+Current Step Title: Synthesize Follow-Up Ideas Or Intentional Retention
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 - Cross-Map Overlaps And Contract Gaps. Cross-mapped the
-retained Step 1 BIR fact inventory against the retained Step 2 and Step 3
-prealloc consumer inventories already recorded below, then classified concrete
-producer/consumer/fact triples with the plan labels. No implementation, plan,
-source-idea, test, or log files were edited.
+Completed Step 5 - Synthesize Follow-Up Ideas Or Intentional Retention.
+Synthesized the Step 4 overlap table into final audit conclusions, retained
+the intentional prealloc-legalization and correct-consumption rows below, and
+created focused follow-up ideas only for rows proven as
+`needs-follow-up-idea`. No implementation files, tests, or test logs were
+edited.
+
+Generated follow-up ideas:
+
+- `ideas/open/100_bir_runtime_intrinsic_placeholder_identity_contract.md` for
+  runtime/intrinsic placeholder identity currently consumed through raw
+  placeholder callee strings.
+- `ideas/open/101_bir_prealloc_missing_call_abi_fallback_boundary.md` for
+  missing call/param/result/return ABI fallbacks that reconstruct BIR-owned ABI
+  facts before prealloc planning.
+- `ideas/open/102_aapcs64_va_arg_payload_shape_authority.md` for AAPCS64
+  scalar `va_arg` payload ABI and aggregate/HFA payload shape authority.
+- `ideas/open/103_prealloc_synthetic_helper_call_abi_authority.md` for
+  synthetic i128/f128 helper-call ABI and F128 helper-result bridge authority.
+
+No follow-up idea was created for rows that were only `contract-ambiguous`
+without `needs-follow-up-idea`; those remain audit notes unless a future plan
+chooses to promote them. In particular, ordinary direct-call raw-name fallback,
+sret arg-index scanning, byval lane predicate duplication, aggregate `va_arg`
+use of `sret_pointer`, and prealloc mutation of BIR ABI carriers were not
+promoted by this Step 5 packet because the Step 4 table did not mark them as
+proven follow-up rows.
+
+### Final Audit Conclusions
+
+Retained `bir-fact-consumed-correctly` overlaps:
+
+- Structured direct callee ids, indirect-call flags, and indirect callee
+  operands are consumed by `resolve_direct_callee`,
+  `classify_call_wrapper_kind`, and `build_indirect_callee_plan`.
+- Present call argument ABI facts, argument types, operand order, byval flags,
+  and sret flags are consumed by call argument planning and call-move
+  resolution.
+- Present function parameter ABI and variadic markers are consumed by variadic
+  entry planning when available.
+- Present call result and function return ABI facts are consumed by call result
+  planning, call result moves, and return moves.
+- Sret memory return storage, memory-return result ABI, and sret pointer flags
+  are consumed by memory return planning, with only the arg-index relation left
+  as a non-promoted contract ambiguity.
+- Byval aggregate size, align, class, and byval-copy facts are consumed by
+  aggregate transport and move planning.
+- AArch64 fixed HFA lane pressure facts are consumed by call argument
+  destinations, variadic FPR counting, and call-arg move resolution.
+- Variadic call/function markers are consumed for wrapper kind, SysV FPR count,
+  and AAPCS64 entry save-area planning.
+- Aggregate AAPCS64 `va_arg` planning consumes BIR size/align and memory
+  carrier facts, though the `sret_pointer` naming remains a non-promoted
+  contract ambiguity.
+
+Retained `intentional-prealloc-legalization` overlaps:
+
+- Physical call argument destination/source planning, register/stack placement,
+  register-bank presentation, stack offsets, byval copy chunks, and call move
+  records remain prealloc authority.
+- Physical result registers, after-call storage transitions, return moves, and
+  result move records remain prealloc authority.
+- AArch64 fixed-HFA pressure results from BIR are consumed, while final
+  physical register/stack placement remains prealloc authority.
+- Variadic wrapper details, SysV FPR count emission, AAPCS64 register-save area
+  planning, and named variadic register counts remain target-sensitive
+  prealloc authority when they consume present BIR facts.
+- Prealloc mutation of BIR ABI carriers in `legalize.cpp` for target-facing
+  type promotion and size/align repair is retained as the main intentional
+  authority-boundary exception.
+- I128/F128 carrier homes, lane/full-width marshaling, helper clobbers,
+  preserved values, boundary effects, and live-preservation completeness are
+  retained prealloc/regalloc authority.
+- Synthetic helper callee selection remains intentional runtime legalization,
+  but the helper-call ABI authority and F128 helper-result bridge were promoted
+  to a focused follow-up because the Step 4 row was marked
+  `needs-follow-up-idea`.
+
+Rows promoted to follow-up:
+
+- Runtime/intrinsic placeholder identity from `CallInst::intrinsic` and raw
+  placeholder `callee` strings to prealloc raw-name consumers.
+- Missing BIR arg/param/result/return ABI metadata reconstructed by prealloc
+  scalar/type fallbacks.
+- AAPCS64 scalar `va_arg` payload ABI recomputation and aggregate/HFA
+  `va_arg` shape inference from lowered load/slot/addressing patterns.
+- Synthetic i128/f128 helper-call ABI binding and F128 comparison
+  helper-result-to-BIR-result bridge.
+
+Close-review preparation: the active audit runbook has now completed all five
+steps. The source idea is ready for supervisor close/deactivation review as an
+analysis-only audit, with the generated follow-up idea names listed above and
+the intentional retained overlaps explicitly recorded here.
 
 ### Retained Prior Evidence: Step 1 BIR Call ABI Fact Inventory
 
@@ -121,19 +209,19 @@ Step 1 inspected `src/backend/bir/bir.hpp`,
 
 ## Suggested Next
 
-Execute Step 5 - Synthesize Follow-Up Ideas Or Intentional Retention. Suggested
-packet: turn the Step 4 table into final audit conclusions, explicitly retain
-the intentional legalization and correct-consumption rows, and create focused
-follow-up ideas only for the rows marked `needs-follow-up-idea`.
+Supervisor close/deactivation review for
+`ideas/open/97_bir_prealloc_call_abi_authority_boundary_audit.md`. The active
+runbook is exhausted and the audit source idea appears complete as an
+analysis-only boundary audit; generated follow-up ideas are listed in the Step
+5 summary above.
 
 ## Watchouts
 
 - This is an audit-only plan; do not edit implementation files during routine
   audit packets.
-- Step 5 should keep follow-up ideas narrow. The strongest grouped candidates
-  are missing ABI fallback elimination/documentation, runtime intrinsic/helper
-  string identity, AAPCS64 va_arg payload ABI/HFA shape facts, and synthetic
-  helper-call ABI authority.
+- Follow-up ideas were intentionally limited to Step 4 rows marked
+  `needs-follow-up-idea`; do not treat non-promoted contract ambiguities as
+  already activated work.
 - `CallArgAbiInfo`/`CallResultAbiInfo` already include target-informed BIR facts
   from Step 1. Do not turn retained physical register names, stack offsets,
   clobbers, move bundles, carrier marshaling, or helper live preservation into
@@ -148,5 +236,6 @@ follow-up ideas only for the rows marked `needs-follow-up-idea`.
 
 ## Proof
 
-Analysis-only packet. No build, CTest, or `test_after.log` was required by the
-delegated proof because only `todo.md` changed during Step 4.
+Analysis-only lifecycle packet. No build, CTest, or `test_after.log` was
+required because only `todo.md` and new `ideas/open/` source-idea files were
+changed; no implementation files, tests, or logs were edited.
