@@ -1,49 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/108_prepared_select_chain_dump_contract_coverage.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Add Focused Prepared-Printer Tests
+Current Step ID: 7
+Current Step Title: Final Validation And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 6 added focused prepared-printer tests for the select-chain/direct-global
-dump contract.
+Step 7 final validation passed and the prepared select-chain dump contract is
+close-ready for plan-owner review.
 
-Focused proof added in `tests/backend/bir/backend_prepared_printer_test.cpp`:
-- New `select_chain_direct_global_dump_contract` fixture builds a
-  `load_global -> select -> call argument` path.
-- Asserts `prepared-call-plans` argument output carries
-  `direct_global_select_chain=yes`, `direct_global_source=selected.arg`,
-  `direct_global_root_is_select=yes`, and `direct_global_root_inst=1`.
-- Asserts the `--- prepared-select-chain-materializations ---` section is
-  present.
-- Asserts the selected scalar row contains root fields, nested direct-global
-  fields, and source-producer labels:
-  `function`, `block`, `value`, `root_is_select`, `root_inst`,
-  `direct_global_root_is_select`, `direct_global_root_inst`,
+Close-readiness notes:
+- Scalar select-chain materialization dump visibility is implemented through
+  the helper-backed `--- prepared-select-chain-materializations ---` section.
+- Scalar rows cover root fields: `function`, `block`, `value`,
+  `root_is_select`, and `root_inst`.
+- Direct-global select-chain dependency coverage is present in both surfaces:
+  `prepared-call-plans` argument lines and scalar materialization rows.
+- Supporting source-producer provenance coverage is present on scalar rows via
   `source_producer`, `source_producer_block`, and `source_producer_inst`.
-- Asserts the direct global load row also carries root/direct-global and
-  `source_producer=load_global` labels.
-
-No implementation changes were needed in this packet.
+- Focused prepared-printer tests prove the `load_global -> select -> call arg`
+  path keeps call-argument direct-global labels and scalar row labels visible.
+- Store-source visibility remains deferred because this route did not introduce
+  a bounded prepared-module store-source carried fact; the current accepted
+  dump surfaces are call arguments and scalar select-chain materializations.
+- The route did not change target lowering policy and did not model synthetic
+  dump facts in MIR/AArch64/x86/RISC-V lowering.
+- Lookup authority remains centralized in prealloc helper APIs. The work split
+  select-chain helper implementation into `select_chain_lookups.cpp` and added
+  a narrow root-producer helper, but did not restore printer-local traversal or
+  rewrite lookup policy.
 
 ## Suggested Next
 
-Execute Step 7 final validation and close-readiness notes for the prepared
-select-chain dump contract.
+Plan-owner closure review for
+`ideas/open/108_prepared_select_chain_dump_contract_coverage.md`.
 
 ## Watchouts
 
-- Keep the scalar dump helper-backed; do not reintroduce printer-local lookup
-  traversal.
-- Store-source visibility remains deferred unless a bounded carried fact
-  directly supports it.
+- Keep store-source dump visibility deferred unless a future route introduces a
+  bounded carried prepared-module fact.
+- Do not collapse the helper-backed scalar section back into printer-local
+  reconstruction.
 
 ## Proof
 
 Passed. Ran:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_printer$'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
 Proof log: `test_after.log`.
+
+Result: 169 backend tests passed, 0 failed.
