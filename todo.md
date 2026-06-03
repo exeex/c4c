@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/98_bir_prealloc_memory_pointer_storage_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Trace Prepared Addressing And Pointer Carriers
+Current Step ID: Step 4
+Current Step Title: Cross-Map Memory And Storage Overlaps
 
 # Current Packet
 
@@ -89,29 +89,74 @@ addressed pointer-value stores. Step 4 should decide whether those carrier
 relations are retained regalloc convenience, duplicated BIR provenance, or a
 missing target-neutral BIR pointer-carrier fact.
 
+Step 4 - Cross-Map Memory And Storage Overlaps completed. This packet
+cross-mapped every scoped Step 1 BIR memory/address fact to the Step 2 and
+Step 3 prealloc consumers, then classified each overlap while preserving the
+previous inventories.
+
+### Step 4 Memory And Storage Overlap Table
+
+| Step 1 fact | Exact BIR producer | Step 2/3 prealloc consumer | Overlap classification | Boundary decision |
+| --- | --- | --- | --- | --- |
+| Local slot identity and scalar storage facts: slot spelling/`SlotNameId`, scalar type, size, alignment, address-taken/byval/scratch flags. | `bir::LocalSlot`; `BirFunctionLowerer::lower_local_memory_alloca_inst`, `declare_local_aggregate_slots`, `ensure_local_scratch_slot`; scratch-slot producers in `try_lower_pointer_provenance_load`, `try_lower_pointer_provenance_store`, `try_lower_addressed_pointer_load`, `try_lower_addressed_pointer_store`. | `collect_function_stack_objects`, `make_local_slot_object`, `make_param_object`, `plan_function_stack_objects`, `assign_frame_slots`, `PreparedStackObject`, `PreparedFrameSlot`, storage-plan stack placements. | `bir-semantic-fact` consumed by `prealloc-placement-authority`. | Correct consumption. BIR owns the target-neutral local object and type/size/alignment facts. Prealloc owns object candidacy, home-slot requirements, frame-slot IDs, offsets, frame size/alignment, and stack storage placement. |
+| Local slot address publication and local aggregate/slice exposure. | `try_lower_local_slot_pointer_load`, `try_lower_local_slot_pointer_store`, aggregate local load/store paths, `MemoryAddress{BaseKind::LocalSlot}` producers. | `apply_aggregate_address_publication_hints`, `apply_alloca_coalescing_hints`, `collect_slot_use_summary`, `append_direct_frame_slot_accesses`, `build_direct_frame_slot_access`. | `bir-semantic-fact` consumed by `prealloc-placement-authority`; overlap risk classified as `contract-ambiguous` only where helpers infer slot families from names or use scans rather than a prepared access. | Prepared frame-slot access is intentional target-facing consumption. Coalescing and address-publication scans are acceptable placement analysis when they decide elision/exposure; they remain contract-ambiguous where slot-family or pointer-root identity is inferred from instruction shape instead of an explicit BIR/prepared fact. |
+| Local pointer-to-slot provenance for pointers denoting local slots, aggregate leaves, scalar arrays, and one-past array positions. | `LocalSlotAddress`, `LocalSlotAddressSlots`, `LocalSlotPointerValues`, `LocalPointerArrayBase`; `try_lower_local_slot_store`, `try_lower_tracked_local_pointer_slot_load`, `record_loaded_local_pointer_slot_state`; `try_lower_local_slot_pointer_gep`, `try_lower_local_array_slot_gep`, `try_lower_local_pointer_array_base_gep`, `try_lower_local_pointer_slot_base_gep`, `lower_memory_gep_inst`. | `build_direct_frame_slot_access`, `PreparedMemoryAccess{FrameSlot}`; `pointer_carriers.cpp` `slot_pointer_carriers`, `resolve_prepared_pointer_carrier_state`, load-local/store-local propagation for `!address.has_value()`. | Prepared access path: `bir-semantic-fact` consumed by `prealloc-placement-authority`. Pointer-carrier load/store route: `prealloc-rederives-bir-provenance` plus `contract-ambiguous`. | When a `MemoryAddress::LocalSlot` reaches prepared addressing, prealloc correctly maps local provenance to frame-slot addressing. The `pointer_carriers.cpp` local-slot propagation rederives stored pointer carrier state from `LoadLocalInst`/`StoreLocalInst` and slot spelling without `MemoryAddress`; Step 5 should decide whether this is retained regalloc query glue or needs a follow-up explicit target-neutral pointer-value-store fact. |
+| Persistent memory address annotations for indirect or subobject accesses. | `bir::MemoryAddress`; local aggregate/direct pointer producers in `local_slots.cpp`; provenance producers in `try_lower_pointer_provenance_load`, `try_lower_pointer_provenance_store`, `try_lower_addressed_pointer_load`, `try_lower_addressed_pointer_store`; dynamic pointer array materialization in `load_dynamic_pointer_value_array_value`, `append_dynamic_pointer_value_array_store`. | `publish_function_addressing_facts`, `build_direct_frame_slot_access`, `build_direct_symbol_backed_address`, `build_pointer_indirect_address`, `PreparedMemoryAccess`, `make_prepared_memory_access_lookups`, `apply_source_memory_access_fact`, `copy_source_memory_access_fact`. | `bir-semantic-fact` consumed by `prealloc-placement-authority`. | Correct consumption. `MemoryAddress` is the target-neutral access identity; prepared addressing converts it into frame/global/string/pointer bases with target-facing size/alignment, base-plus-offset availability, and lookup indexes. |
+| Local and global load/store operation facts. | `LoadLocalInst`, `StoreLocalInst`, `LoadGlobalInst`, `StoreGlobalInst`; `lower_memory_load_inst`, `lower_memory_store_inst`, `try_lower_local_slot_load`, `try_lower_local_slot_store`, `try_lower_global_provenance_load`, `try_lower_global_provenance_store`. | `publish_function_addressing_facts`; `make_prepared_memory_access_lookups`; `make_edge_publication_source_producers`; same-block helpers `find_prepared_global_load_access`, `find_prepared_same_block_global_load_access`, `find_prepared_same_block_load_local_stored_value_source`. | Prepared access path: `bir-semantic-fact` consumed by `prealloc-placement-authority`. Source-producer/same-block helpers: `contract-ambiguous`. | Operation kind and memory identity remain BIR facts. Prealloc can index prepared accesses and use frame-range overlap for target-facing edge publication. Same-block load/store source discovery is ambiguous because it re-walks BIR dataflow and memory producer identity; Step 5 should keep or split it based on whether it is only codegen query glue or a semantic memory-provenance substitute. |
+| Global symbol identity, extent, initializer, constant/external/TLS flags, and materialization policy. | `bir::Global`, `GlobalAddressMaterializationPolicy`; `lower_scalar_global`, `lower_minimal_global_impl`, `lower_string_constant_global`, `lower_global_address_materialization_policy`, `lower_global_initializer`. | `build_direct_symbol_backed_address`, `append_direct_global_address_materialization`, `prepared_global_symbol_address_policy`, `PreparedAddressMaterialization{DirectGlobal, GOT, TLS}`, `find_prepared_address_materialization`. | Structured ID path: `bir-semantic-fact` consumed by target-facing prealloc authority. Raw spelling fallback: `contract-ambiguous`. | BIR owns global identity, extent, initializer, flags, and target-neutral materialization policy. Prealloc owns prepared symbol address kind, relocation/TLS model fields, and diagnostics. Any fallback from missing `LinkNameId` to raw spelling is a contract gap in the producer/consumer contract, not placement authority. |
+| Global initializer pointer provenance and pointer fields inside aggregate globals. | `parse_global_address_initializer_impl`, `parse_global_gep_initializer`, `lower_aggregate_initializer_recursive`, `resolve_known_global_address`, `resolve_pointer_initializer_offsets`, `GlobalInfo::known_global_address`, `pointer_initializer_offsets`, `pointer_initializer_value_indices`. | Global prepared address/materialization lookup routes that consume `Global` and `LinkNameId`; pointer symbol carriers via `pointer_result_value` and `prepared_pointer_symbol_name` when pointer-typed results carry `pointer_symbol_link_name_id`. | Prepared global materialization: `bir-semantic-fact` consumed by prealloc. Pointer-symbol carrier seeding: `prealloc-rederives-bir-provenance` unless retained as regalloc-only convenience. | Prealloc should consume structured global identity and initializer-derived pointer targets. `pointer_carriers.cpp` directly copies `pointer_symbol_link_name_id` from BIR instruction results into carrier state, duplicating target-neutral symbol provenance if the carrier is later treated as semantic identity rather than transient regalloc metadata. |
+| Global GEP-derived addresses. | `resolve_global_gep_address`, `resolve_relative_global_gep_address`, `lower_memory_gep_inst`; `try_lower_global_provenance_load`, `try_lower_global_provenance_store`. | `build_direct_symbol_backed_address`, `append_direct_global_address_materialization`, `find_prepared_global_load_access`, `find_prepared_same_block_global_load_access`. | Prepared address path: `bir-semantic-fact` consumed by prealloc. Same-block global-load source helper: `contract-ambiguous`. | Global plus byte offset is a BIR semantic fact. Prealloc correctly prepares target symbol accesses and materializations. Same-block global-load helpers are ambiguous only where they infer producer/source provenance from nearby BIR operations instead of using already prepared access facts. |
+| Dynamic global array access facts. | `resolve_global_dynamic_pointer_array_access`, `resolve_global_dynamic_scalar_array_access`, `resolve_global_dynamic_aggregate_array_access`, `try_lower_dynamic_pointer_array_load`, `load_dynamic_global_scalar_array_value`, `append_dynamic_global_scalar_array_store`, dynamic global scalar handling in local load/store lowering. | Prepared memory-access indexing for the emitted load/store facts; same-block source helpers if the dynamic access becomes a load/store source; pointer-carrier direct steps when the dynamic access produces pointer-value bases. | Mostly `bir-semantic-fact` consumed by prealloc; `contract-ambiguous` where same-block helpers reason beyond prepared access. | Dynamic indexing remains target-neutral in BIR lowering and surfaces to prealloc as ordinary emitted BIR operations plus `MemoryAddress` where available. No distinct prealloc placement authority should reconstruct dynamic global provenance from names; any such same-block/source inference belongs in the Step 5 ambiguity review. |
+| Pointer-value plus offset provenance for runtime pointer bases. | `PointerAddress`, `PointerAddressMap`, `PointerAddressIntMap`, `DynamicPointerValueArrayAccess`; `publish_dynamic_pointer_value_address`; `make_runtime_global_pointer_address`, `resolve_pointer_store_value_address`, `try_lower_addressed_pointer_load`, `try_lower_addressed_pointer_store`; pointer-slot propagation in `local_slots.cpp`. | `build_pointer_indirect_address`, `PreparedMemoryAccess{PointerValue}`, `build_pointer_carrier_map`, `direct_step_by_value_name`, `update_prepared_pointer_step`, pointer plus/minus derivation in `StoreLocalInst`/`StoreGlobalInst` branches. | Prepared access path: `bir-semantic-fact` consumed by prealloc. Carrier plus/minus route: `bir-missing-target-neutral-fact` plus `contract-ambiguous`. | `MemoryAddress::PointerValue` is the correct BIR surface for runtime pointer base plus static offset. The carrier plus/minus derivation infers predecessor/successor carrier states from recent load/store order, prepared step bytes, and byte deltas. That inferred relation appears target-neutral and is not clearly persisted as a BIR fact for the derived carrier values. |
+| Dynamic local array and aggregate access facts. | `DynamicLocalPointerArrayAccess`, `DynamicLocalAggregateArrayAccess`; `try_lower_local_array_slot_gep`, `try_lower_local_pointer_array_base_gep`, `try_lower_dynamic_local_aggregate_gep_projection`; `try_lower_dynamic_local_aggregate_load`, `try_lower_dynamic_local_aggregate_store`, `load_dynamic_local_aggregate_array_value`, `append_dynamic_local_aggregate_store`. | `collect_function_stack_objects`, `assign_frame_slots`, `build_direct_frame_slot_access`, prepared memory-access lookups for emitted local accesses, alloca/copy coalescing scans when slice families are involved. | `bir-semantic-fact` consumed by `prealloc-placement-authority`; possible `contract-ambiguous` for slice-family name reconstruction. | BIR owns dynamic-index-to-slot/leaf materialization and emitted select/load/store structure. Prealloc owns physical placement and frame-slot addressing for the resulting slots. Any slice-family reconstruction from slot naming is ambiguous and should be retained only as placement analysis or converted to an explicit prepared/BIR family fact. |
+| Dynamic stack allocation facts. | `lower_local_memory_alloca_inst` with dynamic `alloca.count` and `preserve_dynamic_alloca`; emitted `bir::CallInst` named `llvm.dynamic_alloca.<type>`; `PointerAddressMap` entry for the returned pointer. | `build_pointer_carrier_map` pointer-result scanning if the call result is pointer-typed; `build_pointer_indirect_address` only if later accesses carry `MemoryAddress::PointerValue`; decoded/storage routes only through ordinary value homes. | `contract-ambiguous`; potential `bir-missing-target-neutral-fact` if dynamic alloca lifetime/extent must be distinguished from ordinary call-like pointer production. | Step 3 did not find a distinct dynamic-stack prepared authority. Today it appears to surface as a call-like pointer producer plus later pointer-value accesses. That may be intentional, but if target stack adjustment or lifetime needs special treatment, BIR likely needs a clearer target-neutral dynamic-allocation fact. |
+| Inline asm and intrinsic memory operand facts. | `InlineAsmOperandMetadata::memory_address`, `InlineAsmOperandMetadata::address`, `IntrinsicOperation::memory_operand`, `memory_access`; `lower_memory_memcpy_inst`, `lower_memory_memset_inst`, `try_lower_direct_memory_intrinsic_call`. | `summarize_inline_asm`, stack-layout address-publication hints, prepared memory-input/address-input routes when operands become `MemoryAddress` or storage homes. | `bir-semantic-fact` consumed by prealloc; `contract-ambiguous` where inline-asm memory effects are summarized without structured `MemoryAddress`. | BIR owns target-neutral operand/address metadata. Prealloc owns placement consequences and target-facing operand storage. Any unstructured inline-asm summary is an explicit contract ambiguity, especially if it forces conservative stack homes from raw use shape. |
+| Storage-plan and decoded-home facts derived from values participating in memory/address operations. | BIR value types and instruction result IDs from all scoped memory/address producers. | `populate_storage_plans`, `build_storage_plan_value`, `storage_encoding_from_home`, `decode_prepared_home_storage`, `decode_prepared_regalloc_assignment`, `decode_prepared_storage_plan_value`, `decode_prepared_value_home`. | `prealloc-placement-authority` consuming `bir-semantic-fact`. | Correct separation. BIR value type can inform storage width/bank defaults, but register assignment, stack home, spill slot, immediate, symbol, computed address, decoded status, and diagnostics are prealloc storage authority. |
+| Prepared aggregate and typed stack-source publication facts. | BIR aggregate/local/global load/store producers only as source operation identity. | `PreparedAggregateStackSourceAuthority`, `PreparedTypedStackSourcePublication`, `prepare_aggregate_stack_source_authority`, `prepare_same_width_i32_stack_source_publication`. | `prealloc-placement-authority`; `needs-follow-up-idea` candidate only for missing aggregate-copy authority, not a BIR/prealloc boundary violation by itself. | The authority is target-facing: stack slot IDs, offsets, sizes, alignments, move authority, and register placement. Missing aggregate-copy authority is follow-up material for lowering/codegen capability, not evidence that BIR should own stack-source placement. |
+
+Step 4 classification summary: the clean boundary is that BIR owns
+target-neutral local/global identity, `MemoryAddress`, pointer-value plus
+offset facts, dynamic access interpretation, and memory operation semantics.
+Prealloc owns stack objects, frame-slot assignment, target-facing prepared
+addresses/materializations, storage plans, decoded homes, register/stack
+homes, and publication decisions. The concrete overlaps that need Step 5
+decisions are:
+
+- `prealloc-rederives-bir-provenance`: `pointer_carriers.cpp` local-slot
+  load/store propagation without `MemoryAddress`, and direct
+  `pointer_symbol_link_name_id` carrier seeding from BIR instruction results.
+- `bir-missing-target-neutral-fact`: `pointer_carriers.cpp` plus/minus
+  carrier derivation around `MemoryAddress::PointerValue` stores, and
+  possibly dynamic alloca if later target handling needs more than ordinary
+  call-like pointer production.
+- `contract-ambiguous`: same-block/source-producer helpers in
+  `prepared_lookups.cpp`, slot/slice-family reconstruction in stack-layout
+  hints, raw global spelling fallback when `LinkNameId` is absent, and
+  unstructured inline-asm memory summaries.
+
 ## Suggested Next
 
-Execute Step 4 - Cross-Map Memory And Storage Overlaps. Cross-map the Step 1
-BIR facts against the Step 2 and Step 3 prealloc inventories, then classify
-each overlap as correct consumption, duplicated provenance, missing BIR fact,
-ambiguous contract, or follow-up material.
+Execute Step 5 - Synthesize Follow-Up Ideas Or Intentional Retention. Convert
+the Step 4 overlap decisions into durable conclusions, and create follow-up
+ideas only for narrow, proofable boundary gaps.
 
 ## Watchouts
 
-- Step 4 should compare `pointer_carriers.cpp` direct BIR walks against the
-  Step 1 pointer provenance inventory before deciding whether pointer carrier
-  base/delta/step state belongs in BIR, prepared addressing, or regalloc-only
-  analysis.
-- `prepared_lookups.cpp` source-producer and same-block source helpers mix
-  BIR instruction provenance with prepared memory/frame facts; classify them
-  by the fact they produce, not by the fact that they read BIR.
-- `addressing.hpp` appears to retain prealloc target-facing authority; any raw
-  symbol/string/slot-name contract gap should be attributed to the producing
-  coordinator routes from Step 2, not to the carrier struct itself.
-- Dynamic stack facts did not appear as a distinct prepared lookup/carrier
-  authority in the Step 3 files. Step 4 should verify whether they remain
-  call-like pointer producers or surface only through pointer-value/addressing
-  carriers.
+- Do not create follow-up ideas for correct consumption of `MemoryAddress`,
+  stack-object planning, frame-slot assignment, storage plans, decoded homes,
+  or prepared addressing carrier structs; those are intentional authority
+  boundaries.
+- Strongest follow-up candidate: clarify or replace
+  `pointer_carriers.cpp` direct provenance derivation for local-slot pointer
+  carriers, pointer-symbol carriers, and plus/minus pointer-value carrier
+  inference.
+- Secondary follow-up candidates should stay narrow: structured IDs for raw
+  global fallback, explicit slice-family/publication facts if name-based
+  stack-layout hints remain necessary, and inline-asm memory summaries only
+  when they cannot consume structured metadata.
+- Treat `prepared_lookups.cpp` same-block/source-producer helpers as query
+  glue unless Step 5 can name a specific semantic memory fact they create and
+  later consumers rely on.
 
 ## Proof
 
