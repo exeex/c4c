@@ -1173,6 +1173,96 @@ prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_select_chain_direct_global_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  const c4c::LinkNameId extern_data_id =
+      module.names.link_names.intern("extern_select_source");
+  module.globals.push_back(bir::Global{
+      .name = "extern_select_source",
+      .link_name_id = extern_data_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function callee;
+  callee.name = "extern_consume_select_i32";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::I32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "select_chain_direct_global_dump_contract";
+  caller.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.global"),
+      .global_name = "extern_select_source",
+      .global_name_id = extern_data_id,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "selected.arg"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::named(bir::TypeKind::I32, "loaded.global"),
+      .false_value = bir::Value::immediate_i32(7),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.result"),
+      .callee = "extern_consume_select_i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "selected.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "call.result")};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 prepare::PreparedBirModule prepare_cross_call_preservation_dump_module() {
   bir::Module module;
   module.target_triple = "riscv64-unknown-linux-gnu";
@@ -5494,6 +5584,38 @@ int main() {
   if (!expect_contains(source_shape_dump,
                        computed_detail_shape,
                        "computed-address argument detail payload")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto select_chain_prepared = prepare_select_chain_direct_global_dump_module();
+  const std::string select_chain_dump = prepare::print(select_chain_prepared);
+  if (!expect_contains(select_chain_dump,
+                       "direct_global_select_chain=yes direct_global_source=selected.arg "
+                       "direct_global_root_is_select=yes direct_global_root_inst=1",
+                       "call-argument direct-global select-chain dependency labels")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(select_chain_dump,
+                       "--- prepared-select-chain-materializations ---",
+                       "prepared select-chain materialization section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(select_chain_dump,
+                       "select_chain function=select_chain_direct_global_dump_contract "
+                       "block=entry value=selected.arg root_is_select=yes root_inst=1 "
+                       "direct_global_select_chain=yes direct_global_root_is_select=yes "
+                       "direct_global_root_inst=1 source_producer=select_materialization "
+                       "source_producer_block=entry source_producer_inst=1",
+                       "scalar select-chain direct-global row with source producer labels")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(select_chain_dump,
+                       "select_chain function=select_chain_direct_global_dump_contract "
+                       "block=entry value=loaded.global root_is_select=no root_inst=0 "
+                       "direct_global_select_chain=yes direct_global_root_is_select=no "
+                       "direct_global_root_inst=0 source_producer=load_global "
+                       "source_producer_block=entry source_producer_inst=0",
+                       "scalar direct-global load row with source producer labels")) {
     return EXIT_FAILURE;
   }
 
