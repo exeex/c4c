@@ -27,7 +27,9 @@ unsupported.
 - `src/backend/prealloc/call_plans.cpp`
 - `src/backend/prealloc/variadic_entry_plans.cpp`
 - `src/backend/prealloc/regalloc/call_moves.cpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 - `src/backend/mir/aarch64/codegen/variadic.cpp`
 - Relevant backend call, variadic, liveness, and prepared-frame contract tests
 - The `00204.c`, `00032.c`, and `00182.c` AArch64 backend test routes
@@ -40,6 +42,8 @@ unsupported.
   double payload corruption.
 - Locate the first wrong fact across BIR call ABI, prealloc call plans,
   variadic entry plans, call moves, and AArch64 call lowering.
+- Define and repair the AArch64 outgoing stack argument lifetime contract when
+  stack-passed argument sources are prepared frame slots.
 - Add focused contract coverage for the repaired ABI fact before broad
   c-testsuite expectation changes.
 - Preserve green coverage for `00032.c`, `00182.c`, and relevant backend
@@ -67,6 +71,8 @@ pointer-carrier cleanup.
 - Keep investigation notes, current failure signatures, and proof commands in
   `todo.md`.
 - Prefer ABI-fact probes over named-testcase matching.
+- Treat outgoing stack argument lifetime as a semantic call-boundary ABI fact:
+  choose a stable invariant before code changes.
 - Add or strengthen internal contract coverage before changing broad
   c-testsuite expectations.
 - Preserve the existing supported-path contract for `00204.c`.
@@ -186,7 +192,52 @@ Completion check:
 - The focused contract test from Step 3 passes.
 - The diff is scoped to the owned ABI fact and required tests.
 
-## Step 5: Prove The AArch64 Targeted Cases
+## Step 5: Repair AArch64 Outgoing Stack Argument Lifetime
+
+Goal: repair the call-boundary lifetime model for AArch64 stack-passed
+outgoing arguments without making an HFA lane-layout patch or a `00204.c`
+shortcut.
+
+Primary targets:
+
+- `src/backend/prealloc/call_plans.cpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- `src/backend/prealloc/regalloc/call_moves.cpp`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- Relevant AArch64 backend route tests for outgoing stack arguments
+
+Actions:
+
+- Choose and document the invariant before implementation:
+  - reserve the outgoing call argument area in prepared stack layout/frame
+    planning so before-call stores target owned in-frame storage with stable
+    prepared frame-slot source addressing; or
+  - adjust SP before outgoing stack stores and explicitly rebase prepared
+    frame-slot source loads against the old-SP frame-slot model.
+- Add or strengthen a focused internal contract for stack-passed outgoing
+  arguments whose sources are prepared frame slots.
+- Cover at least one non-HFA stack argument case and the current HFA overflow
+  representative so the repair cannot be a float/double lane-layout patch.
+- Preserve packed overflow HFA lane layout unless a new ABI oracle proves the
+  existing Clang-confirmed layout is wrong.
+- Keep `00032.c` and `00182.c` visible as guard cases.
+- Do not change `00204.c` expectations, mark it unsupported, or special-case
+  its literal output shape.
+
+Completion check:
+
+- The chosen outgoing-stack lifetime invariant is named in code comments,
+  tests, or `todo.md` proof notes.
+- A focused internal lifetime contract covers prepared-frame-slot sources
+  copied into outgoing stack arguments.
+- Proof covers the new lifetime contract, one non-HFA stack argument case, the
+  HFA overflow representative, and guard status for `00032.c` and `00182.c`.
+- The diff is not a calls.cpp-only HFA lane-offset adjustment and does not
+  weaken supported-path expectations.
+
+## Step 6: Prove The AArch64 Targeted Cases
 
 Goal: prove the repaired route on the targeted c-testsuite cases and internal
 guards.
@@ -210,7 +261,7 @@ Completion check:
 - Internal contract coverage for the repaired fact passes.
 - No supported-path expectation has been downgraded.
 
-## Step 6: Final Validation And Close Readiness
+## Step 7: Final Validation And Close Readiness
 
 Goal: prepare the repaired source idea for supervisor review and later closure.
 
