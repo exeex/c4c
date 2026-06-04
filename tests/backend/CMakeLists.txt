@@ -133,6 +133,17 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_f128_hfa_global_payload_call_boundary
+  SRC "${BACKEND_CASE_ROOT}/aarch64_f128_hfa_global_payload_call_boundary.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_f128_hfa_global_payload_call_boundary.s"
+  REQUIRED_SNIPPETS "call_f128_hfa_globals:|adrp x9, global_f128_2|ldr q0, [x9]|ldr q1, [x9, #16]|bl take_f128_2"
+  FORBIDDEN_SNIPPETS "mov q0, q13|mov q1, q|mov v0.16b, v13.16b|mov v1.16b, v"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 hfa prepared_call_boundary f128 probe
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy
   SRC "${BACKEND_CASE_ROOT}/aarch64_variadic_aggregate_overflow_byte_copy.c"
   TARGET_TRIPLE aarch64-linux-gnu
