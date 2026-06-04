@@ -1,65 +1,79 @@
 Status: Active
 Source Idea Path: ideas/open/100_aarch64_00204_stdarg_hfa_runtime_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce And Characterize 00204
+Current Step ID: Step 2
+Current Step Title: Trace The First Wrong ABI Fact
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 of `plan.md`: reproduced and characterized the current
-AArch64 backend `00204.c` runtime mismatch without implementation changes.
+Completed Step 2 of `plan.md`: traced the first wrong ABI fact for the
+AArch64 `00204.c` mismatch without implementation changes.
 
-Exact reproduction/proof command:
+Owned repair layer: `src/backend/prealloc/call_plans.cpp`, specifically the
+byval aggregate call-source/materialization path around
+`select_byval_payload_lane_source`, `select_prepared_call_argument_source`, and
+`plan_prepared_aggregate_transport`.
 
-```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00032_c|c_testsuite_aarch64_backend_src_00182_c)$'
-```
+Last known-good upstream fact:
 
-Observed `00204.c` signature in `test_after.log`: build succeeds, `00032.c`
-passes, `00182.c` passes, and `00204.c` fails with `[RUNTIME_MISMATCH]`.
-The non-stdarg `MOVI:` block matches expected output through the end of the
-log, which keeps the failure focused on argument/return/variadic/HFA ABI
-traffic rather than generic runtime output.
+- Semantic and prepared BIR for `arg()` correctly load the global aggregate
+  payload bytes before the direct byval calls. For example, `fa_s1(s1)` is
+  represented as `%t2.global.aggregate.load.0 = bir.load_local i8 %t2.0, addr
+  s1`, followed by `bir.store_local %t2.0, ...`, then `bir.call void fa_s1(ptr
+  byval(size=1, align=1) %t2)`. `fa_s2(s2)` similarly has two
+  `.global.aggregate.load.` byte loads from `s2` and `s2+1`.
+- The call ABI classification itself is plausible for these first cases:
+  prepared call plans place `fa_s1` and `fa_s2` byval aggregate payloads in
+  `x0` with `reason=call_arg_byval_aggregate_register_lanes`. This is the
+  expected AAPCS64 direct small-aggregate register path, not a wrong register
+  number or a variadic-entry decision.
 
-Failure split from the current artifacts:
+First wrong downstream fact:
 
-- Fixed argument and return aggregate/string cases are already corrupt before
-  the explicit `stdarg:` block. The `Arguments:` output starts with repeated
-  low control-byte payloads instead of `0`, `12`, `345`, ...; the `Return
-  values:` string aggregates print repeated `!` payloads. The scalar/HFA
-  direct argument and return values print mostly `0.0`, so ordinary aggregate
-  argument/return movement is also suspect, not only `va_arg`.
-- String/integer stdarg corruption is visible in the two string `myprintf`
-  calls: expected `ABCDE...`/`lmnopqr` strings are replaced by short control
-  bytes and garbage pointer-looking bytes. The prepared `myprintf` artifact
-  shows `variadic_entry=yes` and GPR `va_arg` paths for `%7s` and `%9s` using
-  `%lv.ap.24` offsets and `%lv.ap.8`/`%lv.ap.0` register-vs-stack source
-  selection.
-- HFA payload corruption is separate and affects all three payload families.
-  `HFA long double:` prints all `0.0,0.0`; `HFA double:` prints mostly
-  `0.0,0.0` with some `-nan`; `HFA float:` prints mostly `0.0,0.0` with a few
-  stray values such as `-337.3` and one very large negative float. The prepared
-  `myprintf` artifact lowers HFA varargs through `llvm.va_arg.aggregate(...)`
-  blocks after the string cases, so Step 2 should trace both the variadic entry
-  save-area setup and aggregate/HFA `va_arg` expansion before choosing a
-  repair layer.
+- The prepared byval source selection fails to bind those `.global.aggregate.load.`
+  payload bytes as the source lane. In the prepared artifact, `%t2` is treated
+  as a register aggregate carrier in `x21`, `%t3` as a stack-slot carrier, and
+  the call move then moves those carriers to `x0`; the actual global-byte
+  loads are only transient homes in `x13`.
+- The emitted assembly confirms the miss before the first direct aggregate
+  call: after `printf("Arguments:\n")`, it uses `mov x13, x0` and stores
+  `w13` into the `%t2`/`%t3` stack bytes before `bl fa_s1`/`bl fa_s2`, instead
+  of loading from `s1`/`s2`. That explains the repeated low control-byte output
+  and places the first wrong fact before AArch64 variadic lowering.
 
-Relevant current artifacts observed:
+Why earlier layers are not currently blamed:
 
-- `build/c_testsuite_aarch64_backend/src/00204.c.s`
-- `build/c_testsuite_aarch64_backend/src/00204.c.bin`
-- `build/tmp_00204_prepared_myprintf.txt`
-- `build/tmp_00204_prepared_myprintf_join.txt`
+- Frontend/HIR-to-BIR lowering preserves the source intent as per-byte global
+  aggregate loads feeding byval calls.
+- General AArch64 call ABI register assignment is not the first wrong fact for
+  `fa_s1`/`fa_s2`; the register target is `x0`, which is correct for these
+  small integer-class byval aggregates.
+- `call_moves.cpp` records the move that the call plan describes, but the move
+  is already consuming the wrong aggregate carrier/source. The repair owner is
+  the call-plan source selection/materialization layer that should connect
+  `.global.aggregate.load.` lanes to the byval transport plan.
+- `variadic_entry_plans.cpp` and `src/backend/mir/aarch64/codegen/variadic.cpp`
+  still likely own later stdarg/HFA failures, but they are downstream of this
+  first direct aggregate corruption and should not be repaired first.
+
+Concrete source-side clue:
+
+- `select_byval_payload_lane_load_source` currently recognizes
+  `.array.aggregate.load.` suffixes when searching for contiguous byval lane
+  stores before a call. The `00204.c` global struct path emits
+  `.global.aggregate.load.` suffixes, so the direct global aggregate payload
+  source is missed before the byval register-lane transport is planned.
 
 ## Suggested Next
 
-Proceed to Step 2: trace the first wrong ABI fact across BIR call ABI,
-prealloc call plans, variadic entry plans, call moves, and AArch64 lowering.
-Start with the direct aggregate argument/return corruption, then compare it
-against `myprintf` variadic GPR save-area behavior and HFA
-`llvm.va_arg.aggregate` payload behavior.
+Proceed to Step 3: add focused contract coverage for the byval aggregate
+source-selection fact. The smallest useful test should prove that an AArch64
+small byval aggregate argument whose payload is assembled from same-module
+global aggregate byte loads gets a prepared byval register-lane source/transport
+from those payload bytes, not from a stale aggregate carrier register or prior
+call result.
 
 ## Watchouts
 
@@ -69,9 +83,12 @@ against `myprintf` variadic GPR save-area behavior and HFA
 - Treat narrow probes as ABI-fact probes, not testcase-shaped shortcuts.
 - The mismatch is broader than the final `stdarg:` section: direct aggregate
   argument and return paths are visibly wrong too, while `MOVI:` remains green.
-- The current evidence separates string/integer varargs from HFA varargs, but
-  it does not yet identify the first wrong layer; do not jump directly to a
-  named `00204.c` output fix.
+- This Step 2 trace identifies the first wrong layer for the direct aggregate
+  path only. String/integer varargs and HFA varargs remain separately corrupt,
+  but should be revisited after the earlier byval aggregate source repair is
+  tested and implemented.
+- The next test must target the semantic source-selection rule, not the full
+  `00204.c` output.
 
 ## Proof
 
@@ -81,7 +98,8 @@ Ran:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00032_c|c_testsuite_aarch64_backend_src_00182_c)$'
 ```
 
-Result: exit code 8, expected for this characterization packet. Guard status:
+Result: exit code 8, expected for this trace packet because no implementation
+change was allowed and `00204.c` remains the known failing target. Guard status:
 `c_testsuite_aarch64_backend_src_00032_c` passed and
 `c_testsuite_aarch64_backend_src_00182_c` passed;
 `c_testsuite_aarch64_backend_src_00204_c` failed with runtime mismatch.
