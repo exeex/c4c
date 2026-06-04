@@ -1,4 +1,6 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/bir/lir_to_bir/lowering.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
@@ -14,12 +16,16 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -42,6 +48,21 @@ const bir::CallInst* find_first_call(const bir::Function& function) {
       if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
         return call;
       }
+    }
+  }
+  return nullptr;
+}
+
+const bir::CallInst* find_call_with_destination(const bir::Function& function,
+                                                std::string_view destination_name) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<bir::CallInst>(&inst);
+      if (call == nullptr || call->callee != "llvm.va_arg.aggregate" ||
+          call->args.empty() || call->args.front().name != destination_name) {
+        continue;
+      }
+      return call;
     }
   }
   return nullptr;
@@ -6675,6 +6696,114 @@ int check_variadic_nested_dynamic_stack_call_contract() {
   return 0;
 }
 
+lir::LirModule make_aarch64_f128_hfa_va_arg_metadata_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.F128Hfa = type { fp128, fp128 }");
+  module.type_decls.push_back("%struct.NonHfa32 = type { i64, i64, i64, i64 }");
+
+  const c4c::StructNameId hfa_id = module.struct_names.intern("%struct.F128Hfa");
+  const c4c::StructNameId non_hfa_id = module.struct_names.intern("%struct.NonHfa32");
+  const lir::LirTypeRef hfa_ref = lir::LirTypeRef::struct_type("%struct.F128Hfa", hfa_id);
+  const lir::LirTypeRef non_hfa_ref =
+      lir::LirTypeRef::struct_type("%struct.NonHfa32", non_hfa_id);
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("fp128")},
+                 lir::LirStructField{lir::LirTypeRef("fp128")}},
+  });
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = non_hfa_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i64")},
+                 lir::LirStructField{lir::LirTypeRef("i64")},
+                 lir::LirStructField{lir::LirTypeRef("i64")},
+                 lir::LirStructField{lir::LirTypeRef("i64")}},
+  });
+
+  lir::LirFunction function;
+  function.name = "aarch64_f128_hfa_va_arg_metadata";
+  function.signature_text = "define void @aarch64_f128_hfa_va_arg_metadata(ptr %ap)";
+  function.params.emplace_back("%ap", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirVaArgOp{
+      .result = lir::LirOperand("%hfa"),
+      .ap_ptr = lir::LirOperand("%ap"),
+      .type_str = hfa_ref,
+  });
+  entry.insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.hfa"),
+      .type_str = hfa_ref,
+      .align = 16,
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = hfa_ref,
+      .val = lir::LirOperand("%hfa"),
+      .ptr = lir::LirOperand("%lv.hfa"),
+  });
+  entry.insts.push_back(lir::LirVaArgOp{
+      .result = lir::LirOperand("%plain"),
+      .ap_ptr = lir::LirOperand("%ap"),
+      .type_str = non_hfa_ref,
+  });
+  entry.insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.plain"),
+      .type_str = non_hfa_ref,
+      .align = 16,
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = non_hfa_ref,
+      .val = lir::LirOperand("%plain"),
+      .ptr = lir::LirOperand("%lv.plain"),
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_aarch64_f128_hfa_va_arg_metadata_contract() {
+  auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      make_aarch64_f128_hfa_va_arg_metadata_module(), c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("AAPCS64 F128 HFA va_arg metadata contract: LIR fixture did not lower");
+  }
+  const auto* function = find_function(*lowered.module, "aarch64_f128_hfa_va_arg_metadata");
+  if (function == nullptr) {
+    return fail("AAPCS64 F128 HFA va_arg metadata contract: missing lowered function");
+  }
+  const auto* hfa_call = find_call_with_destination(*function, "%hfa");
+  const auto* plain_call = find_call_with_destination(*function, "%plain");
+  if (hfa_call == nullptr || plain_call == nullptr) {
+    return fail("AAPCS64 F128 HFA va_arg metadata contract: missing aggregate helpers");
+  }
+  if (hfa_call->arg_abi.size() != 2 ||
+      !hfa_call->arg_abi[0].sret_pointer ||
+      hfa_call->arg_abi[0].size_bytes != 32 ||
+      hfa_call->arg_abi[0].align_bytes != 16 ||
+      !hfa_call->va_arg_payload_abi.has_value() ||
+      !hfa_call->va_arg_payload_abi->sret_pointer ||
+      hfa_call->va_arg_payload_abi->size_bytes != 32 ||
+      hfa_call->va_arg_payload_abi->align_bytes != 16 ||
+      hfa_call->va_arg_hfa_lane_count != 2 ||
+      hfa_call->va_arg_hfa_lane_size_bytes != 16) {
+    return fail("AAPCS64 F128 HFA va_arg metadata contract: missing F128 lane facts");
+  }
+  if (plain_call->va_arg_hfa_lane_count != 0 ||
+      plain_call->va_arg_hfa_lane_size_bytes != 0) {
+    return fail("AAPCS64 F128 HFA va_arg metadata contract: non-floating aggregate gained HFA lane facts");
+  }
+  return 0;
+}
+
 bir::Module make_aapcs64_variadic_entry_helper_family_frame_module() {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -7083,6 +7212,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aarch64_f128_hfa_va_arg_metadata_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_aapcs64_variadic_entry_helper_family_frame_contract(); rc != 0) {
