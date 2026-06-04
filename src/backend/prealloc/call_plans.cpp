@@ -73,6 +73,9 @@ namespace {
     const bir::CallResultAbiInfo& abi) {
   switch (abi.primary_class) {
     case bir::AbiValueClass::Sse:
+      if (abi.type == bir::TypeKind::F128) {
+        return PreparedRegisterBank::Vreg;
+      }
       return PreparedRegisterBank::Fpr;
     case bir::AbiValueClass::Memory:
       return abi.type == bir::TypeKind::Ptr ? PreparedRegisterBank::AggregateAddress

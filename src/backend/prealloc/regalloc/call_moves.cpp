@@ -389,7 +389,9 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                   consumed_kind == PreparedMoveStorageKind::Register &&
                   base_destination_register_name.has_value() && call->result_abi.has_value()
               ? call_result_destination_register_names(target_profile,
-                                                       PreparedRegisterClass::Float,
+                                                       call->result_abi->type == bir::TypeKind::F128
+                                                           ? PreparedRegisterClass::Vector
+                                                           : PreparedRegisterClass::Float,
                                                        *base_destination_register_name,
                                                        std::max<std::size_t>(
                                                            call->result_abi->register_count,

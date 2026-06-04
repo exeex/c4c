@@ -94,6 +94,9 @@ template <std::size_t N>
 
 [[nodiscard]] PreparedRegisterBank register_bank_from_arg_abi(const bir::CallArgAbiInfo& abi) {
   if (is_float_abi_class(abi.primary_class)) {
+    if (abi.type == bir::TypeKind::F128) {
+      return PreparedRegisterBank::Vreg;
+    }
     return PreparedRegisterBank::Fpr;
   }
   if (abi.primary_class == bir::AbiValueClass::Memory && abi.type == bir::TypeKind::Ptr) {
@@ -105,6 +108,9 @@ template <std::size_t N>
 [[nodiscard]] PreparedRegisterBank register_bank_from_result_abi(
     const bir::CallResultAbiInfo& abi) {
   if (is_float_abi_class(abi.primary_class)) {
+    if (abi.type == bir::TypeKind::F128) {
+      return PreparedRegisterBank::Vreg;
+    }
     return PreparedRegisterBank::Fpr;
   }
   if (abi.primary_class == bir::AbiValueClass::Memory && abi.type == bir::TypeKind::Ptr) {

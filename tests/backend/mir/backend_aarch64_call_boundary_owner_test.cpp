@@ -637,6 +637,100 @@ int hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bund
   return 0;
 }
 
+int f128_hfa_lane0_call_result_publishes_q_register_to_prepared_stack_home() {
+  constexpr auto function_name = c4c::FunctionNameId{4481};
+  constexpr auto block_label = c4c::BlockLabelId{4482};
+  constexpr auto result_value_id = prepare::PreparedValueId{4483};
+  constexpr auto result_value_name = c4c::ValueNameId{4484};
+  constexpr auto result_slot = prepare::PreparedFrameSlotId{4485};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = result_value_id,
+          .function_name = function_name,
+          .value_name = result_value_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = result_slot,
+          .offset_bytes = std::size_t{80},
+          .size_bytes = std::size_t{16},
+          .align_bytes = std::size_t{16},
+      }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 11,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"make_hfa_f128"},
+      .result = prepare::PreparedCallResultPlan{
+          .instruction_index = 11,
+          .value_bank = prepare::PreparedRegisterBank::Vreg,
+          .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .destination_value_id = result_value_id,
+          .source_register_name = std::string{"q0"},
+          .source_contiguous_width = 1,
+          .source_occupied_register_names = {"q0"},
+          .source_register_bank = prepare::PreparedRegisterBank::Vreg,
+          .destination_slot_id = result_slot,
+          .destination_stack_offset_bytes = std::size_t{80},
+      },
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_after_call_moves(block_context, call_plan, 11, diagnostics);
+  if (!diagnostics.empty() || lowered.size() != 1) {
+    return fail("expected F128 HFA lane-0 call result to synthesize one stack-home q-register publication");
+  }
+  const auto* store =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(&lowered.front().target.payload);
+  if (store == nullptr ||
+      store->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      store->value_type != bir::TypeKind::F128 ||
+      !store->value.has_value() ||
+      store->value->kind != aarch64_codegen::OperandKind::Register ||
+      store->address.base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      store->address.frame_slot_id != result_slot ||
+      store->address.byte_offset != 80 ||
+      store->address.size_bytes != 16 ||
+      store->address.align_bytes != 16 ||
+      store->address.stored_value_id != result_value_id ||
+      store->address.stored_value_name != result_value_name) {
+    return fail("expected F128 HFA lane-0 publication to store into the aggregate result home");
+  }
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(&store->value->payload);
+  if (source == nullptr ||
+      source->reg != aarch64_abi::fp_simd_register(0, aarch64_abi::RegisterView::Q) ||
+      source->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      source->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      source->prepared_class != prepare::PreparedRegisterClass::Vector ||
+      source->expected_view != aarch64_abi::RegisterView::Q ||
+      source->value_id != result_value_id) {
+    return fail("expected F128 HFA lane-0 stack-home publication to source ABI q0");
+  }
+  return 0;
+}
+
 int callee_saved_preservation_uses_shared_boundary_effects() {
   constexpr auto function_name = c4c::FunctionNameId{4501};
   constexpr auto block_label = c4c::BlockLabelId{4502};
@@ -766,6 +860,7 @@ int main() {
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
   status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
   status |= hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle();
+  status |= f128_hfa_lane0_call_result_publishes_q_register_to_prepared_stack_home();
   status |= callee_saved_preservation_uses_shared_boundary_effects();
   return status == 0 ? 0 : 1;
 }

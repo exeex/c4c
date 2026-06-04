@@ -4370,7 +4370,8 @@ find_immediate_argument_in_call_plan(
         result_plan->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         !result_plan->source_register_name.has_value() ||
         (result_plan->source_register_bank != prepare::PreparedRegisterBank::Gpr &&
-         result_plan->source_register_bank != prepare::PreparedRegisterBank::Fpr)) {
+         result_plan->source_register_bank != prepare::PreparedRegisterBank::Fpr &&
+         result_plan->source_register_bank != prepare::PreparedRegisterBank::Vreg)) {
       return std::nullopt;
     }
     if ((binding != nullptr &&
@@ -4388,17 +4389,22 @@ find_immediate_argument_in_call_plan(
       return std::nullopt;
     }
     const auto source_view =
-        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+        (result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr ||
+         result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg)
             ? scalar_fp_view_from_register_name(result_plan->source_register_name)
             : scalar_view_from_register_name(result_plan->source_register_name);
     const auto width_bytes =
         destination_home->size_bytes.value_or(scalar_size_from_register_view(source_view));
     const auto expected_view =
-        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+        result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg
+            ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
+        : result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
             ? source_view
             : scalar_integer_register_view_from_size(width_bytes);
     const auto value_type =
-        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+        result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg
+            ? std::optional<bir::TypeKind>{bir::TypeKind::F128}
+        : result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
             ? (expected_view == std::optional<abi::RegisterView>{abi::RegisterView::S}
                    ? std::optional<bir::TypeKind>{bir::TypeKind::F32}
                : expected_view == std::optional<abi::RegisterView>{abi::RegisterView::D}
@@ -4411,7 +4417,7 @@ find_immediate_argument_in_call_plan(
           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
           context,
           instruction_index,
-          "AArch64 stack call-result publication requires a scalar GPR or FPR result");
+          "AArch64 stack call-result publication requires a scalar GPR, FPR, or binary128 vector result");
       return std::nullopt;
     }
     const auto source_register_name =
@@ -7594,8 +7600,11 @@ void record_call_result_source_register(
             prepared_class = prepare::PreparedRegisterClass::Float;
             expected_bank = abi::RegisterBank::FpSimd;
             break;
-          case prepare::PreparedRegisterBank::None:
           case prepare::PreparedRegisterBank::Vreg:
+            prepared_class = prepare::PreparedRegisterClass::Vector;
+            expected_bank = abi::RegisterBank::FpSimd;
+            break;
+          case prepare::PreparedRegisterBank::None:
             break;
         }
         if (prepared_class != prepare::PreparedRegisterClass::None &&
@@ -7689,6 +7698,9 @@ void record_call_result_source_register(
         case bir::TypeKind::F64:
           expected_view = abi::RegisterView::D;
           break;
+        case bir::TypeKind::F128:
+          expected_view = abi::RegisterView::Q;
+          break;
         default:
           expected_view = scalar_register_view(value.type);
           break;
@@ -7713,8 +7725,10 @@ void record_call_result_source_register(
       case prepare::PreparedRegisterBank::Fpr:
         prepared_class = prepare::PreparedRegisterClass::Float;
         break;
-      case prepare::PreparedRegisterBank::None:
       case prepare::PreparedRegisterBank::Vreg:
+        prepared_class = prepare::PreparedRegisterClass::Vector;
+        break;
+      case prepare::PreparedRegisterBank::None:
       case prepare::PreparedRegisterBank::AggregateAddress:
         return;
     }
@@ -7775,7 +7789,8 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   if (store == nullptr ||
       store->value.kind != bir::Value::Kind::Named ||
       (store->value.type != bir::TypeKind::F32 &&
-       store->value.type != bir::TypeKind::F64)) {
+       store->value.type != bir::TypeKind::F64 &&
+       store->value.type != bir::TypeKind::F128)) {
     return;
   }
   auto* memory_record =
@@ -7792,7 +7807,8 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
   if (!emitted.has_value() ||
       emitted->role != RegisterOperandRole::CallAbi ||
-      emitted->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      (emitted->prepared_bank != prepare::PreparedRegisterBank::Fpr &&
+       emitted->prepared_bank != prepare::PreparedRegisterBank::Vreg) ||
       emitted->reg.bank != abi::RegisterBank::FpSimd) {
     return;
   }
