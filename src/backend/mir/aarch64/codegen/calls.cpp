@@ -6736,6 +6736,80 @@ materialize_aggregate_register_lane_sources_to_destination(
   return false;
 }
 
+[[nodiscard]] std::optional<std::vector<std::string>>
+f128_call_boundary_register_move_lines(abi::RegisterReference source,
+                                       abi::RegisterReference destination) {
+  if (!abi::is_fp_simd_register(source) || !abi::is_fp_simd_register(destination)) {
+    return std::nullopt;
+  }
+  const auto source_v = abi::fp_simd_register(source.index, abi::RegisterView::V);
+  const auto destination_v =
+      abi::fp_simd_register(destination.index, abi::RegisterView::V);
+  if (!source_v.has_value() || !destination_v.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  if (source_v->index != destination_v->index) {
+    lines.push_back("mov " + std::string{abi::register_name(*destination_v)} +
+                    ".16b, " + std::string{abi::register_name(*source_v)} +
+                    ".16b");
+  }
+  return lines;
+}
+
+[[nodiscard]] bool f128_call_boundary_value_traces_to_global(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 8U || value.type != bir::TypeKind::F128 ||
+      value.kind != bir::Value::Kind::Named || context.bir_block == nullptr) {
+    return false;
+  }
+  const auto* producer =
+      mir::find_same_block_named_producer(
+          context.bir_block, value.name, before_instruction_index);
+  const auto producer_index =
+      producer != nullptr ? mir::producer_instruction_index(context.bir_block, producer)
+                          : std::nullopt;
+  if (producer == nullptr || !producer_index.has_value()) {
+    return false;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
+    return true;
+  }
+  const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
+  if (load_local != nullptr &&
+      load_local->address.has_value() &&
+      load_local->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol &&
+      !load_local->address->base_name.empty()) {
+    return true;
+  }
+  const auto source_offset =
+      load_local != nullptr ? prepared_local_load_offset(context, *producer_index)
+                            : std::nullopt;
+  const auto* addressing =
+      context.function.prepared != nullptr && context.function.control_flow != nullptr
+          ? prepare::find_prepared_addressing(
+                *context.function.prepared,
+                context.function.control_flow->function_name)
+          : nullptr;
+  if (!source_offset.has_value() || addressing == nullptr) {
+    return false;
+  }
+  const auto stored = find_prepared_frame_stored_value(
+      context,
+      *addressing,
+      static_cast<std::int64_t>(*source_offset),
+      16U,
+      *producer_index);
+  return stored.has_value() &&
+         f128_call_boundary_value_traces_to_global(context,
+                                                   stored->value,
+                                                   stored->instruction_index,
+                                                   depth + 1);
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_f128_stack_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -6873,6 +6947,30 @@ materialize_call_boundary_source_to_destination(
       move_record->destination_register->expected_view == abi::RegisterView::Q &&
       move_record->source_f128_carrier != nullptr &&
       abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    if (move_record->source_f128_carrier->kind ==
+            prepare::PreparedF128CarrierKind::FullWidthRegister &&
+        move_record->source_f128_carrier->missing_required_facts.empty() &&
+        move_record->source_f128_carrier->total_size_bytes == 16 &&
+        move_record->source_f128_carrier->total_align_bytes == 16 &&
+        abi::is_fp_simd_register(move_record->source_register->reg)) {
+      const auto source_value =
+          call_boundary_source_value_by_name(
+              context, move_record->source_register->value_name, instruction_index);
+      if (!source_value.has_value() ||
+          !f128_call_boundary_value_traces_to_global(
+              context, *source_value, instruction_index)) {
+        auto lines = f128_call_boundary_register_move_lines(
+            move_record->source_register->reg,
+            move_record->destination_register->reg);
+        if (lines.has_value() && !lines->empty()) {
+          record_emitted_scalar_register(scalar_state,
+                                         move_record->destination_register->value_name,
+                                         *move_record->destination_register);
+          return make_select_chain_materialization_instruction(
+              context, instruction_index, std::move(*lines));
+        }
+      }
+    }
     const auto source_value =
         call_boundary_source_value_by_name(
             context, move_record->source_register->value_name, instruction_index);

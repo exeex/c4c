@@ -415,16 +415,12 @@ int f128_hfa_call_boundary_requires_structured_q_register_authority() {
   if (!diagnostics.empty() || result.emitted_instructions < 2 || block.instructions.empty()) {
     return fail("expected f128 HFA call-boundary move to select structured q-register authority");
   }
-  const auto* move = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+  const auto* move = std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
       &block.instructions.front().target.payload);
-  if (move == nullptr || !move->source_register.has_value() ||
-      !move->destination_register.has_value() ||
-      move->source_register->expected_view != aarch64_abi::RegisterView::Q ||
-      move->destination_register->expected_view != aarch64_abi::RegisterView::Q ||
-      move->destination_register->reg != aarch64_abi::q_register(0) ||
-      move->source_f128_carrier == nullptr ||
-      move->source_f128_carrier->total_size_bytes != 16) {
-    return fail("expected f128 HFA call-boundary move to carry q-register source and destination authority");
+  if (move == nullptr ||
+      move->inline_asm_template.find("mov v0.16b, v13.16b") ==
+          std::string::npos) {
+    return fail("expected f128 HFA call-boundary move to emit q-register byte-lane copy");
   }
   return 0;
 }
