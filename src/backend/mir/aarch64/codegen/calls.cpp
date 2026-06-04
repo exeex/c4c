@@ -856,6 +856,13 @@ materialize_f128_stack_call_argument_source(
     const MemoryOperand& source,
     const MemoryOperand& destination);
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_byval_stack_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const MemoryOperand& source,
+    const MemoryOperand& destination,
+    std::size_t before_instruction_index);
+
 namespace {
 
 struct PreservedCallArgumentSource {
@@ -3644,6 +3651,10 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 aggregate stack-lane call-argument publication requires a prepared destination stack offset");
       return std::nullopt;
     }
+    if (auto materialized = materialize_byval_stack_call_argument_source(
+            context, *source, *destination, instruction_index)) {
+      return materialized;
+    }
     auto lowered = make_byval_register_lane_stack_publication_instruction(
         context, instruction_index, *source, *destination);
     if (!lowered.has_value()) {
@@ -5667,6 +5678,78 @@ materialize_local_aggregate_address_payload(
                                  lines)) {
       return std::nullopt;
     }
+  }
+  if (lines.empty()) {
+    return std::nullopt;
+  }
+  return make_select_chain_materialization_instruction(
+      context, before_instruction_index, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_byval_stack_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const MemoryOperand& source,
+    const MemoryOperand& destination,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr || context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr || context.bir_block == nullptr ||
+      source.byte_offset < 0 ||
+      destination.base_kind != MemoryBaseKind::Register ||
+      !destination.base_register.has_value() ||
+      !abi::is_gp_register(destination.base_register->reg) ||
+      source.size_bytes == 0 || source.size_bytes > 16) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2) {
+    return std::nullopt;
+  }
+  const std::uint8_t value_index = scratches.front().index;
+  const std::uint8_t address_index = scratches[1].index;
+
+  std::vector<std::string> lines;
+  const auto destination_base = abi::register_name(destination.base_register->reg);
+  for (std::size_t byte_offset = 0; byte_offset < source.size_bytes; ++byte_offset) {
+    const auto stored_value =
+        find_prepared_frame_byte_stored_value(
+            context,
+            *addressing,
+            source.byte_offset + static_cast<std::int64_t>(byte_offset),
+            before_instruction_index);
+    if (!stored_value.has_value()) {
+      return std::nullopt;
+    }
+    const auto before_line_count = lines.size();
+    if (!emit_value_publication_to_register(context,
+                                            *stored_value,
+                                            before_instruction_index,
+                                            value_index,
+                                            address_index,
+                                            lines,
+                                            true) &&
+        !append_global_byte_load_for_prepared_value(context,
+                                                   *stored_value,
+                                                   before_instruction_index,
+                                                   value_index,
+                                                   address_index,
+                                                   lines)) {
+      return std::nullopt;
+    }
+    if (lines.size() == before_line_count) {
+      return std::nullopt;
+    }
+    lines.push_back("strb " + std::string{abi::register_name(abi::w_register(value_index))} +
+                    ", " +
+                    StackFrameSlotCallOperandOwner::stack_copy_address(
+                        destination_base,
+                        destination.byte_offset + static_cast<std::int64_t>(byte_offset)));
   }
   if (lines.empty()) {
     return std::nullopt;

@@ -2386,17 +2386,22 @@ plan_prepared_aggregate_transport(const bir::CallInst& call,
   }
   const auto& abi = call.arg_abi[argument.arg_index];
   const auto& selection = *argument.source_selection;
+  const bool has_register_destination =
+      argument.destination_register_name.has_value() &&
+      argument.destination_register_bank.has_value() &&
+      !argument.destination_occupied_register_names.empty();
+  const bool has_stack_destination =
+      argument.destination_stack_offset_bytes.has_value() &&
+      argument.destination_stack_size_bytes.has_value();
   if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
-      !abi.passed_in_register || abi.passed_on_stack ||
+      !abi.passed_in_register ||
       abi.primary_class != bir::AbiValueClass::Integer ||
       abi.size_bytes == 0 ||
       !selection.byval_lane_extent_bytes.has_value() ||
       !selection.source_stack_offset_bytes.has_value() ||
       !selection.source_size_bytes.has_value() ||
       !selection.source_align_bytes.has_value() ||
-      !argument.destination_register_name.has_value() ||
-      !argument.destination_register_bank.has_value() ||
-      argument.destination_occupied_register_names.empty()) {
+      (!has_register_destination && !has_stack_destination)) {
     return std::nullopt;
   }
 
@@ -2404,11 +2409,18 @@ plan_prepared_aggregate_transport(const bir::CallInst& call,
   if (payload_size == 0) {
     return std::nullopt;
   }
-  const std::size_t lane_count = std::max<std::size_t>(
-      std::size_t{1},
-      std::min(argument.destination_contiguous_width,
-               argument.destination_occupied_register_names.size()));
+  const std::size_t register_lane_count =
+      has_register_destination
+          ? std::max<std::size_t>(
+                std::size_t{1},
+                std::min(argument.destination_contiguous_width,
+                         argument.destination_occupied_register_names.size()))
+          : std::size_t{0};
   constexpr std::size_t max_lane_size = 8;
+  const std::size_t stack_lane_count =
+      (payload_size + max_lane_size - 1) / max_lane_size;
+  const std::size_t lane_count =
+      has_register_destination ? register_lane_count : stack_lane_count;
 
   PreparedAggregateTransportPlan plan{
       .kind = PreparedAggregateTransportKind::ByvalRegisterLanes,
@@ -2451,10 +2463,12 @@ plan_prepared_aggregate_transport(const bir::CallInst& call,
         .destination_offset_bytes = payload_offset,
         .lane_size_bytes = lane_size,
         .destination_register_name =
-            lane_index == 0
-                ? argument.destination_register_name
-                : std::optional<std::string>{
-                      argument.destination_occupied_register_names[lane_index]},
+            has_register_destination
+                ? (lane_index == 0
+                       ? argument.destination_register_name
+                       : std::optional<std::string>{
+                             argument.destination_occupied_register_names[lane_index]})
+                : std::nullopt,
         .destination_register_bank = argument.destination_register_bank,
         .destination_contiguous_width = argument.destination_contiguous_width,
         .destination_occupied_register_names =
