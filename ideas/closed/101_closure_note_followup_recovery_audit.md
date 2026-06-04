@@ -79,3 +79,35 @@ ownership and proof routes.
 - It creates implementation tasks without naming the duplicated or missing
   authority fact.
 
+## Close Note
+
+Closed: 2026-06-04
+
+The audit is complete. Step 3 was intentionally skipped because the Step 2
+disposition table found no still-needed recovered follow-up ideas to create.
+Every numbered closure-note follow-up from 100 through 108 is already closed by
+later work:
+
+- 100: runtime/intrinsic placeholder identity contract completed.
+- 101: missing call ABI fallback boundary completed.
+- 102: AAPCS64 `va_arg` payload shape authority completed.
+- 103: synthetic helper call ABI authority completed.
+- 104: pointer-carrier provenance contract completed.
+- 105: raw global address identity fallback contract completed.
+- 106: stack-layout slice-family fact contract completed.
+- 107: inline-asm memory effect metadata contract completed.
+- 108: prepared select-chain dump contract coverage completed.
+
+The remaining conditional or no-action claims do not require new open ideas.
+The dynamic-allocation note remains stale/no-action because no concrete
+target-neutral lifetime, extent, or target stack-adjustment fact was found.
+The aggregate-copy material is superseded by the better-scoped shared aggregate
+transport work. The compare-join, select-materialization join-transfer, and
+direct x86/RISC-V arch implementation notes were explicitly no-action within
+the source audits and remain outside this recovery scope.
+
+No implementation files were changed and no new `ideas/open/*.md` files were
+created. Close-time regression guard used the existing backend-scope
+`test_before.log` and `test_after.log` with the documented lifecycle
+non-decreasing mode: `178/179` passed before and after, no new failures, and
+the same existing `backend_aarch64_instruction_dispatch` failure.
