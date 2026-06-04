@@ -61,6 +61,27 @@ pointer-carrier cleanup.
 - If `00204.c` is decomposed into smaller probes, each probe must name the ABI
   fact it proves and avoid testcase-shaped special casing.
 
+## Closure Notes
+
+Closed after `13587128e Repair AArch64 outgoing stack argument lifetime`.
+
+The active repair identified the remaining runtime mismatch as an AArch64
+outgoing stack argument lifetime issue for stack-passed arguments whose sources
+are prepared frame slots. The final invariant publishes the x16-relative
+outgoing argument slot as the destination lifetime while preserving the
+selected prepared frame source bytes as uses, including byval register-lane and
+HFA/FPR overflow stack materialization.
+
+Focused proof passed `00204.c`, `00032.c`, `00182.c`, the prepared-frame stack
+call contract, liveness guard, AArch64 call-boundary owner guard, byval stack
+overflow route guards, HFA global payload route guard, and f128 HFA route guard.
+
+Close-time backend guard used canonical `test_before.log` and `test_after.log`
+for the same `^backend_` scope. Both logs report 178/179 passing with the same
+known `backend_aarch64_instruction_dispatch` failure, and the regression guard
+passes with non-decreasing passed count allowed: no new failing tests and no
+pass-count loss.
+
 ## Reviewer Reject Signals
 
 - The patch special-cases `00204.c` or its literal output shape.
@@ -68,4 +89,3 @@ pointer-carrier cleanup.
 - The route makes stdarg output less wrong while leaving the underlying call ABI
   fact unidentified.
 - The proof omits the previously regressed `00032` and `00182` cases.
-
