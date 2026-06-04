@@ -279,4 +279,19 @@ c4c_set_backend_test_labels(
 )
 
 add_subdirectory(mir)
+
+add_test(
+  NAME backend_codegen_route_aarch64_hfa_result_home_publication_contract
+  COMMAND $<TARGET_FILE:backend_aarch64_call_boundary_owner_test>
+)
+c4c_set_backend_test_labels(
+  backend_codegen_route_aarch64_hfa_result_home_publication_contract
+  backend_route
+  aarch64
+  hfa
+  aggregate_return
+  prepared_call_boundary
+  contract
+)
+
 add_subdirectory(bir)

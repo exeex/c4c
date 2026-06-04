@@ -4369,7 +4369,8 @@ find_immediate_argument_in_call_plan(
             std::optional<prepare::PreparedValueId>{move.to_value_id} ||
         result_plan->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         !result_plan->source_register_name.has_value() ||
-        result_plan->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
+        (result_plan->source_register_bank != prepare::PreparedRegisterBank::Gpr &&
+         result_plan->source_register_bank != prepare::PreparedRegisterBank::Fpr)) {
       return std::nullopt;
     }
     if ((binding != nullptr &&
@@ -4386,18 +4387,31 @@ find_immediate_argument_in_call_plan(
           "AArch64 stack call-result publication source register disagrees with prepared ABI binding");
       return std::nullopt;
     }
-    const auto width_bytes = destination_home->size_bytes.value_or(
-        scalar_size_from_register_view(
-            scalar_view_from_register_name(result_plan->source_register_name)));
-    const auto expected_view = scalar_integer_register_view_from_size(width_bytes);
-    const auto value_type = scalar_integer_type_from_size(width_bytes);
+    const auto source_view =
+        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+            ? scalar_fp_view_from_register_name(result_plan->source_register_name)
+            : scalar_view_from_register_name(result_plan->source_register_name);
+    const auto width_bytes =
+        destination_home->size_bytes.value_or(scalar_size_from_register_view(source_view));
+    const auto expected_view =
+        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+            ? source_view
+            : scalar_integer_register_view_from_size(width_bytes);
+    const auto value_type =
+        result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr
+            ? (expected_view == std::optional<abi::RegisterView>{abi::RegisterView::S}
+                   ? std::optional<bir::TypeKind>{bir::TypeKind::F32}
+               : expected_view == std::optional<abi::RegisterView>{abi::RegisterView::D}
+                   ? std::optional<bir::TypeKind>{bir::TypeKind::F64}
+                   : std::nullopt)
+            : scalar_integer_type_from_size(width_bytes);
     if (!expected_view.has_value() || !value_type.has_value()) {
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
           context,
           instruction_index,
-          "AArch64 stack call-result publication requires a 1, 2, 4, or 8 byte scalar GPR result");
+          "AArch64 stack call-result publication requires a scalar GPR or FPR result");
       return std::nullopt;
     }
     const auto source_register_name =
@@ -5004,6 +5018,67 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
     for (const auto& move : bundle->moves) {
       if (auto instruction =
               lower_after_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+        lowered.push_back(std::move(*instruction));
+      }
+    }
+  }
+
+  if (call_plan.result.has_value() &&
+      call_plan.result->source_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      call_plan.result->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      call_plan.result->destination_value_id.has_value() &&
+      call_plan.result->source_register_name.has_value()) {
+    const bool bundle_already_publishes_result =
+        bundle != nullptr &&
+        std::any_of(bundle->moves.begin(),
+                    bundle->moves.end(),
+                    [&](const prepare::PreparedMoveResolution& move) {
+                      return move.destination_kind ==
+                                 prepare::PreparedMoveDestinationKind::CallResultAbi &&
+                             move.to_value_id == *call_plan.result->destination_value_id;
+                    });
+    if (!bundle_already_publishes_result) {
+      prepare::PreparedMoveBundle synthetic_result_bundle{
+          .function_name = context.function.control_flow != nullptr
+                               ? context.function.control_flow->function_name
+                               : c4c::kInvalidFunctionName,
+          .phase = prepare::PreparedMovePhase::AfterCall,
+          .block_index = context.block_index,
+          .instruction_index = instruction_index,
+      };
+      synthetic_result_bundle.abi_bindings.push_back(prepare::PreparedAbiBinding{
+          .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_abi_index = std::nullopt,
+          .destination_register_name = call_plan.result->source_register_name,
+          .destination_contiguous_width = call_plan.result->source_contiguous_width,
+          .destination_occupied_register_names =
+              call_plan.result->source_occupied_register_names,
+          .destination_register_placement =
+              call_plan.result->source_register_placement,
+      });
+      synthetic_result_bundle.moves.push_back(prepare::PreparedMoveResolution{
+          .from_value_id = *call_plan.result->destination_value_id,
+          .to_value_id = *call_plan.result->destination_value_id,
+          .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_abi_index = std::nullopt,
+          .destination_register_name = call_plan.result->source_register_name,
+          .destination_contiguous_width = call_plan.result->source_contiguous_width,
+          .destination_occupied_register_names =
+              call_plan.result->source_occupied_register_names,
+          .block_index = context.block_index,
+          .instruction_index = instruction_index,
+          .reason = "synthetic_stack_call_result_home_publication",
+          .destination_register_placement =
+              call_plan.result->source_register_placement,
+      });
+      if (auto instruction = lower_after_call_move(context,
+                                                  call_plan,
+                                                  synthetic_result_bundle,
+                                                  synthetic_result_bundle.moves.front(),
+                                                  instruction_index,
+                                                  diagnostics)) {
         lowered.push_back(std::move(*instruction));
       }
     }

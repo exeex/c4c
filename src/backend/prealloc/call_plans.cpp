@@ -1051,6 +1051,24 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
                                                        result_plan.source_contiguous_width);
       }
     }
+  } else if (!call.result_lanes.empty() &&
+             call.result_abi.has_value() &&
+             call.result_lanes.front().kind == call.result->kind &&
+             call.result_lanes.front().name == call.result->name &&
+             call.result_lanes.front().type == call.result->type) {
+    const auto source_register_name =
+        call_result_destination_register_name(target_profile, *call.result_abi);
+    if (source_register_name.has_value()) {
+      result_plan.source_storage_kind = PreparedMoveStorageKind::Register;
+      result_plan.source_register_name = source_register_name;
+      result_plan.source_contiguous_width = 1;
+      result_plan.source_occupied_register_names = {*source_register_name};
+      result_plan.source_register_bank = result_plan.value_bank;
+      result_plan.source_register_placement =
+          call_result_destination_register_placement(target_profile,
+                                                     *call.result_abi,
+                                                     result_plan.source_contiguous_width);
+    }
   }
 
   if (const auto value_name_id = maybe_named_value_id(names, *call.result);
