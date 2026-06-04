@@ -8,35 +8,37 @@ Current Step Title: Prove The AArch64 Targeted Cases
 
 ## Just Finished
 
-Traced a Step 5 F128 transport gap while chasing the remaining `fr_hfa31`
-through `fr_hfa34` long-double HFA return payloads, but the full `00204.c`
-runtime repair is still blocked.
+Traced Step 5 producer-side facts for the remaining `fr_hfa31` through
+`fr_hfa34` long-double/F128 HFA return payloads and stopped at an ownership
+boundary before changing implementation.
 
-- Added a focused AArch64 dispatch contract for an F128 `LoadGlobalInst` whose
-  prepared carrier is a q-register and whose prepared memory operand is a
-  direct global symbol.
-- Repaired F128 transport admission so global F128 loads can produce selected
-  `F128TransportRecord` load-from-memory facts instead of falling through to
-  the generic scalar/global-load route first.
-- Moved F128 transport dispatch ahead of generic `LoadGlobalInst` lowering so
-  prepared q-register F128 global-load carriers get first ownership.
+- Focused BIR for `fr_hfa31` through `fr_hfa34` shows the same producer shape:
+  global aggregate F128 lanes are represented as `bir.load_local f128` with
+  global-symbol addresses such as `addr hfa31`, followed by local stores and
+  sret-pointer stores.
+- Focused prepared BIR for `fr_hfa31` proves the first wrong producer-side
+  fact: `prepared-addressing` has no memory access for the initial global-symbol
+  load at `entry` `inst_index=0`; it starts at the local store at `inst_index=1`.
+- Because F128 transport now owns F128 `LoadLocalInst` before ordinary memory
+  lowering, the missing prepared memory access makes the global-symbol load
+  handled without emitting the required `adrp`/`ldr q...` producer. The later
+  local/sret stores then publish uninitialized `q13` through `x8`.
+- The direct repair point is
+  `src/backend/prealloc/stack_layout/coordinator.cpp` in the prepared-addressing
+  publisher, specifically the direct symbol-backed `LoadLocalInst` access
+  path. That file is not in this packet's owned-file list, so no implementation
+  repair was made here.
 - No broad c-testsuite expectations or `00204.c` dump expectations were
   changed.
-- The delegated proof still fails only
-  `c_testsuite_aarch64_backend_src_00204_c`. Generated AArch64 for
-  `fr_hfa31` through `fr_hfa34` still stores an uninitialized `q13` stack slot
-  into the `x8` sret destination, so the repaired F128 global-load fact is not
-  the root repair for these callees.
 
 ## Suggested Next
 
-Take the next focused packet at the producer side of the remaining F128 HFA
-`00204.c` runtime path: dump/trace BIR, prepared BIR, and MIR for
-`fr_hfa31` through `fr_hfa34` to identify why their global aggregate payload
-does not become an F128 transport source before the sret copy. The current
-evidence points past plain F128 `LoadGlobalInst` dispatch and toward
-aggregate-copy/source-publication or local F128 `StoreLocal` transport
-ownership.
+Delegate a narrow prepared-addressing packet that owns
+`src/backend/prealloc/stack_layout/coordinator.cpp`: add focused non-overfit
+coverage proving a `LoadLocalInst` with an F128 result and global-symbol memory
+address receives a `PreparedMemoryAccess`, then repair the direct
+symbol-backed access publisher so F128 transport can emit the producer load
+before local/sret publication.
 
 ## Watchouts
 
@@ -60,6 +62,12 @@ ownership.
 - `fr_hfa31` through `fr_hfa34` still emit the same uninitialized-q-register
   sret shape after this packet: a stack slot is filled from `q13`, reloaded,
   then stored through `x8`.
+- The first wrong fact is not in final AArch64 printing and not in the F128
+  global `LoadGlobalInst` route: it is the absent `PreparedMemoryAccess` for
+  global-symbol `LoadLocalInst` producers in prepared addressing.
+- A candidate implementation file for the repair is
+  `src/backend/prealloc/stack_layout/coordinator.cpp`; keep the next packet's
+  ownership aligned before editing it.
 - F128 `StoreLocal` is intercepted by the F128 transport owner before ordinary
   memory-store retargeting. If the next trace reaches local F128 aggregate
   stores after a call result, repair may need an owned memory-transport packet
@@ -82,23 +90,15 @@ Ran:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_.*|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_(00204|00032|00182)_c)$' > test_after.log 2>&1
 ```
 
-Result: exit code 8. All selected backend route tests pass, including
-`backend_codegen_route_aarch64_hfa_result_home_publication_contract`,
-`backend_codegen_route_aarch64_hfa_global_payload_return`,
-`backend_codegen_route_aarch64_f128_hfa_global_payload_call_boundary`, and the
-prior SRET/large-stack publication probes. `backend_prepare_frame_stack_call_contract`
-passes, and guard cases `00032.c`/`00182.c` pass. The selected proof is back to
-the contained 26-test shape; the only selected failure remains
-`c_testsuite_aarch64_backend_src_00204_c`. In that failure, expected
-long-double HFA returns under `HFA long double:` include `34.1,34.4`,
-`33.1,33.3`, `32.1,32.2`, and `31.1,31.1`; the actual corresponding block is
-still all `0.0,0.0`. Full `00204.c` does not pass.
-
-Also ran the direct
-`build/tests/backend/mir/backend_aarch64_instruction_dispatch_test` binary
-while checking the new focused contract. It reached the new F128 global-load
-case, then failed later on an existing F64 global-readback selected-value test;
-that direct binary is outside the delegated proof regex and was not used as
-acceptance proof.
+Result: exit code 8. The selected build completed with no rebuild work needed,
+and CTest ran the contained 26-test subset. 25/26 selected tests passed. The
+only selected failure remains `c_testsuite_aarch64_backend_src_00204_c`; guard
+cases `c_testsuite_aarch64_backend_src_00032_c` and
+`c_testsuite_aarch64_backend_src_00182_c` passed, as did the selected backend
+route and `backend_prepare_frame_stack_call_contract` tests. The `00204.c`
+output family remains the long-double/F128 HFA area: `fr_hfa31` through
+`fr_hfa34` still lower to uninitialized `q13` stack publications into the
+`x8` sret destination because the producer global-symbol F128 loads lack
+prepared memory access facts.
 
 Canonical executor proof log: `test_after.log`.
