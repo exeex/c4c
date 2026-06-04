@@ -5,6 +5,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 namespace c4c::backend::prepare::regalloc_detail {
@@ -31,6 +32,61 @@ namespace c4c::backend::prepare::regalloc_detail {
         }
       },
       inst);
+}
+
+[[nodiscard]] std::unordered_set<std::string_view> collect_cfg_cycle_block_labels(
+    const bir::Function& function) {
+  std::unordered_map<std::string_view, std::size_t> block_index_by_label;
+  block_index_by_label.reserve(function.blocks.size());
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    block_index_by_label.emplace(function.blocks[index].label, index);
+  }
+  std::unordered_set<std::string_view> cycle_labels;
+  const auto add_backedge_range =
+      [&](std::size_t source_index, const std::string& target_label) {
+        const auto target_it = block_index_by_label.find(target_label);
+        if (target_it == block_index_by_label.end() ||
+            target_it->second > source_index) {
+          return;
+        }
+        for (std::size_t index = target_it->second; index <= source_index; ++index) {
+          cycle_labels.insert(function.blocks[index].label);
+        }
+      };
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    const auto& terminator = function.blocks[index].terminator;
+    add_backedge_range(index, terminator.target_label);
+    add_backedge_range(index, terminator.false_label);
+  }
+  return cycle_labels;
+}
+
+[[nodiscard]] std::unordered_set<std::string> collect_risky_cycle_pointer_slots(
+    const bir::Function& function,
+    const std::unordered_set<std::string_view>& cycle_labels) {
+  std::unordered_map<std::string, std::size_t> pointer_stores_by_slot;
+  for (const auto& block : function.blocks) {
+    if (cycle_labels.find(block.label) == cycle_labels.end()) {
+      continue;
+    }
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+      if (store == nullptr ||
+          store->value.kind != bir::Value::Kind::Named ||
+          store->value.type != bir::TypeKind::Ptr ||
+          store->address.has_value()) {
+        continue;
+      }
+      ++pointer_stores_by_slot[store->slot_name];
+    }
+  }
+  std::unordered_set<std::string> risky_slots;
+  for (const auto& [slot_name, count] : pointer_stores_by_slot) {
+    if (count > 1) {
+      risky_slots.insert(slot_name);
+    }
+  }
+  return risky_slots;
 }
 
 [[nodiscard]] std::optional<LinkNameId> prepared_pointer_symbol_name(
@@ -79,6 +135,16 @@ void update_prepared_pointer_value_access_step(
       .byte_delta = 0,
       .step_bytes = step_bytes,
       .authority = PreparedPointerCarrierAuthority::PreparedPointerValueAccess,
+  };
+}
+
+[[nodiscard]] PreparedPointerCarrierState prepared_frame_address_materialization_carrier(
+    ValueNameId value_name) {
+  return PreparedPointerCarrierState{
+      .base_value_name = value_name,
+      .byte_delta = 0,
+      .step_bytes = 1,
+      .authority = PreparedPointerCarrierAuthority::PreparedFrameAddressMaterialization,
   };
 }
 
@@ -145,9 +211,9 @@ void update_prepared_pointer_value_access_step(
       return std::nullopt;
     }
     return PreparedPointerCarrierState{
-        .base_value_name = base_value_name,
+        .base_value_name = base_carrier->base_value_name,
         .base_symbol_name = base_carrier->base_symbol_name,
-        .byte_delta = byte_delta,
+        .byte_delta = base_carrier->byte_delta + byte_delta,
         .step_bytes = base_carrier->step_bytes,
         .authority = PreparedPointerCarrierAuthority::BirPointerImmediateOffset,
     };
@@ -296,6 +362,20 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
         prepared_pointer_value_access_carrier(value_name, step_bytes),
         nullptr);
   }
+  if (function_addressing != nullptr) {
+    for (const auto& materialization : function_addressing->address_materializations) {
+      if (materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+          !materialization.result_value_name.has_value() ||
+          !materialization.frame_slot_id.has_value()) {
+        continue;
+      }
+      maybe_update_prepared_pointer_carrier(
+          pointer_carriers,
+          *materialization.result_value_name,
+          prepared_frame_address_materialization_carrier(*materialization.result_value_name),
+          nullptr);
+    }
+  }
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       const auto* result = pointer_result_value(inst);
@@ -314,6 +394,9 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
           nullptr);
     }
   }
+  const auto cfg_cycle_block_labels = collect_cfg_cycle_block_labels(function);
+  const auto risky_cycle_pointer_slots =
+      collect_risky_cycle_pointer_slots(function, cfg_cycle_block_labels);
   std::unordered_map<std::string, PreparedPointerCarrierState> slot_pointer_carriers;
   bool changed = true;
   std::size_t remaining_iterations = function.blocks.size() * 4U + 1U;
@@ -327,9 +410,17 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
           const auto result_name = names.value_names.find(load->result.name);
           if (result_name != kInvalidValueName) {
             if (!load->address.has_value()) {
+              const bool slot_allows_pointer_carrier =
+                  risky_cycle_pointer_slots.find(load->slot_name) ==
+                  risky_cycle_pointer_slots.end();
               if (const auto carrier = resolve_prepared_pointer_carrier_state(
-                      result_name, pointer_carriers, direct_step_by_value_name, load->slot_name,
-                      slot_pointer_carriers);
+                      result_name,
+                      pointer_carriers,
+                      direct_step_by_value_name,
+                      slot_allows_pointer_carrier ? load->slot_name : std::string_view{},
+                      slot_allows_pointer_carrier
+                          ? slot_pointer_carriers
+                          : std::unordered_map<std::string, PreparedPointerCarrierState>{});
                   carrier.has_value()) {
                 maybe_update_prepared_pointer_carrier(pointer_carriers, result_name, *carrier, &changed);
               }
@@ -349,8 +440,11 @@ PreparedPointerCarrierMap build_pointer_carrier_map(
               stored_value_state.has_value() && !store->address.has_value()) {
             maybe_update_prepared_pointer_carrier(
                 pointer_carriers, stored_value_name, *stored_value_state, &changed);
-            maybe_update_slot_pointer_carrier(
-                slot_pointer_carriers, store->slot_name, *stored_value_state, &changed);
+            if (risky_cycle_pointer_slots.find(store->slot_name) ==
+                risky_cycle_pointer_slots.end()) {
+              maybe_update_slot_pointer_carrier(
+                  slot_pointer_carriers, store->slot_name, *stored_value_state, &changed);
+            }
           }
           continue;
         }

@@ -2267,6 +2267,67 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
     }
   }
 
+  if (argument.allows_local_aggregate_address_publication &&
+      argument.source_encoding == PreparedStorageEncodingKind::ComputedAddress &&
+      source_home != nullptr &&
+      source_home->kind == PreparedValueHomeKind::PointerBasePlusOffset &&
+      source_home->pointer_base_value_name.has_value()) {
+    const auto selected_source_value_name = *source_home->pointer_base_value_name;
+    const auto selected_source_delta = source_home->pointer_byte_delta.value_or(0);
+    if (const auto* materialization =
+            find_latest_frame_slot_materialization(addressing,
+                                                   names,
+                                                   block_label,
+                                                   call_plan.instruction_index,
+                                                   selected_source_value_name,
+                                                   true);
+        materialization != nullptr) {
+      selection.kind =
+          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
+      copy_materialization_source_selection_fields(selection, *materialization);
+      selection.source_stack_offset_bytes = std::nullopt;
+      selection.address_materialization_byte_offset =
+          materialization->byte_offset + selected_source_delta;
+      if (*selection.address_materialization_byte_offset >= 0) {
+        selection.source_stack_offset_bytes =
+            static_cast<std::size_t>(*selection.address_materialization_byte_offset);
+      }
+      selection.source_pointer_byte_delta = selected_source_delta;
+      selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
+      selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      return selection.source_stack_offset_bytes.has_value()
+                 ? std::optional<PreparedCallArgumentSourceSelection>{selection}
+                 : std::nullopt;
+    }
+
+    const auto local_source =
+        find_local_frame_address_source(names,
+                                        prepared.stack_layout,
+                                        function_name,
+                                        selected_source_value_name);
+    if (local_source.object != nullptr && local_source.slot != nullptr) {
+      const auto selected_stack_offset =
+          static_cast<std::int64_t>(local_source.slot->offset_bytes) +
+          selected_source_delta;
+      if (selected_stack_offset < 0) {
+        return std::nullopt;
+      }
+      selection.kind =
+          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
+      selection.source_slot_id = local_source.slot->slot_id;
+      selection.source_stack_offset_bytes =
+          static_cast<std::size_t>(selected_stack_offset);
+      selection.source_pointer_byte_delta = selected_source_delta;
+      selection.source_size_bytes =
+          local_source.object->size_bytes == 0 ? std::size_t{8}
+                                               : local_source.object->size_bytes;
+      selection.source_align_bytes =
+          local_source.object->align_bytes == 0 ? std::size_t{8}
+                                                : local_source.object->align_bytes;
+      return selection;
+    }
+  }
+
   const auto value_id = argument.source_value_id.value_or(move->from_value_id);
   const auto preserved_lookup = find_unique_indexed_prior_preserved_value_source(
       call_plan_lookups, control_flow, call_plan, value_id);

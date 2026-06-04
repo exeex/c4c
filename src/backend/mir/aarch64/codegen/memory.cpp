@@ -4275,6 +4275,7 @@ find_prepared_pointer_base_plus_offset_materialization(
 [[nodiscard]] bool emit_pointer_base_plus_offset_to_register(
     const module::BlockLoweringContext& context,
     const PreparedPointerBasePlusOffsetMaterialization& materialization,
+    std::size_t instruction_index,
     std::uint8_t target_index,
     std::vector<std::string>& lines) {
   const auto* value_home = materialization.value_home;
@@ -4297,6 +4298,31 @@ find_prepared_pointer_base_plus_offset_materialization(
   const auto* base_home = materialization.base_home;
   if (base_home == nullptr) {
     return false;
+  }
+  if (base_home->value_name != kInvalidValueName &&
+      context.function.prepared != nullptr) {
+    const auto block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel;
+    const auto frame_address =
+        prepare::find_indexed_prepared_frame_address_offset_for_value(
+            context.function.prepared->stack_layout,
+            context.function.address_materialization_lookups,
+            block_label,
+            base_home->value_name,
+            instruction_index);
+    if (frame_address.has_value()) {
+      const auto address_delta =
+          frame_address->materialization_byte_offset + delta;
+      if (address_delta >= 0) {
+        lines.push_back("add " + *target + ", sp, #" +
+                        std::to_string(address_delta));
+      } else {
+        lines.push_back("sub " + *target + ", sp, #" +
+                        std::to_string(-address_delta));
+      }
+      return true;
+    }
   }
   if (base_home->kind == prepare::PreparedValueHomeKind::Register &&
       base_home->register_name.has_value()) {
@@ -4395,7 +4421,11 @@ lower_pointer_base_plus_offset_store_local_publication(
                   prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
               materialization.has_value() &&
               emit_pointer_base_plus_offset_to_register(
-                  context, *materialization, scratches.front().index, lines);
+                  context,
+                  *materialization,
+                  instruction_index,
+                  scratches.front().index,
+                  lines);
   }
   if (!emitted) {
     return std::nullopt;

@@ -654,16 +654,20 @@ PointerCarrierContractFixture make_pointer_carrier_contract_fixture() {
   };
   const auto symbol_ptr = intern_value("contract.symbol.ptr");
   const auto symbol_copy = intern_value("contract.symbol.copy.ptr");
+  const auto symbol_copy_plus = intern_value("contract.symbol.copy.plus.ptr");
   const auto missing_ptr = intern_value("contract.missing.ptr");
   const auto missing_copy = intern_value("contract.missing.copy.ptr");
   const auto base_ptr = intern_value("contract.base.ptr");
   const auto prepared_copy = intern_value("contract.prepared.copy.ptr");
+  const auto prepared_copy_plus = intern_value("contract.prepared.copy.plus.ptr");
   const auto adjacent_advanced = intern_value("contract.adjacent.advanced.ptr");
   const auto adjacent_after = intern_value("contract.adjacent.after.ptr");
   const auto local_recent = intern_value("contract.local.recent.ptr");
   const auto local_previous = intern_value("contract.local.previous.ptr");
   const auto global_recent = intern_value("contract.global.recent.ptr");
   const auto global_previous = intern_value("contract.global.previous.ptr");
+  const auto frame_addr = intern_value("contract.frame.addr.ptr");
+  const auto frame_addr_plus = intern_value("contract.frame.addr.plus.ptr");
   const auto symbol_name = fixture.module.names.link_names.intern("contract.symbol");
 
   bir::Block entry;
@@ -754,6 +758,27 @@ PointerCarrierContractFixture make_pointer_carrier_contract_fixture() {
           .align_bytes = 8,
       },
   });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.frame.addr.plus.ptr"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "contract.frame.addr.ptr"),
+      .rhs = bir::Value::immediate_i32(12),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.symbol.copy.plus.ptr"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "contract.symbol.copy.ptr"),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "contract.prepared.copy.plus.ptr"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "contract.prepared.copy.ptr"),
+      .rhs = bir::Value::immediate_i32(8),
+  });
   entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
   fixture.function.blocks.push_back(std::move(entry));
 
@@ -781,6 +806,15 @@ PointerCarrierContractFixture make_pointer_carrier_contract_fixture() {
           .can_use_base_plus_offset = true,
       },
   });
+  fixture.addressing.address_materializations.push_back(prepare::PreparedAddressMaterialization{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .inst_index = 14,
+      .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+      .result_value_name = frame_addr,
+      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+      .byte_offset = 24,
+  });
 
   const auto add_ptr_value = [&](prepare::PreparedValueId value_id,
                                  c4c::ValueNameId value_name) {
@@ -798,11 +832,15 @@ PointerCarrierContractFixture make_pointer_carrier_contract_fixture() {
   add_ptr_value(5, adjacent_after);
   add_ptr_value(6, local_previous);
   add_ptr_value(7, global_previous);
+  add_ptr_value(8, frame_addr_plus);
+  add_ptr_value(9, symbol_copy_plus);
+  add_ptr_value(10, prepared_copy_plus);
 
   (void)symbol_ptr;
   (void)missing_ptr;
   (void)local_recent;
   (void)global_recent;
+  (void)frame_addr;
   return fixture;
 }
 
@@ -4698,6 +4736,22 @@ int check_pointer_carrier_contract_value_homes() {
     return fail("expected valid BIR link-name authority to publish a symbol-backed carrier");
   }
 
+  const auto* symbol_copy_plus =
+      find_value_home_by_name(fixture.names, homes, "contract.symbol.copy.plus.ptr");
+  if (symbol_copy_plus == nullptr) {
+    return fail("expected a value home for the symbol-carrier local-slot copy offset");
+  }
+  if (symbol_copy_plus->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !symbol_copy_plus->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *symbol_copy_plus->pointer_base_value_name) !=
+          "contract.symbol.ptr" ||
+      !symbol_copy_plus->pointer_base_symbol_name.has_value() ||
+      prepare::prepared_link_name(fixture.names, *symbol_copy_plus->pointer_base_symbol_name) !=
+          "contract.symbol" ||
+      symbol_copy_plus->pointer_byte_delta != std::optional<std::int64_t>{4}) {
+    return fail("expected acyclic local-slot symbol copy arithmetic to seed derived carriers");
+  }
+
   const auto* missing_copy =
       find_value_home_by_name(fixture.names, homes, "contract.missing.copy.ptr");
   if (missing_copy == nullptr) {
@@ -4721,6 +4775,20 @@ int check_pointer_carrier_contract_value_homes() {
       prepared_copy->pointer_base_symbol_name.has_value() ||
       prepared_copy->pointer_byte_delta != std::optional<std::int64_t>{0}) {
     return fail("expected prepared pointer-value authority to survive local-slot storage unchanged");
+  }
+
+  const auto* prepared_copy_plus =
+      find_value_home_by_name(fixture.names, homes, "contract.prepared.copy.plus.ptr");
+  if (prepared_copy_plus == nullptr) {
+    return fail("expected a value home for the prepared-pointer local-slot copy offset");
+  }
+  if (prepared_copy_plus->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !prepared_copy_plus->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *prepared_copy_plus->pointer_base_value_name) !=
+          "contract.base.ptr" ||
+      prepared_copy_plus->pointer_base_symbol_name.has_value() ||
+      prepared_copy_plus->pointer_byte_delta != std::optional<std::int64_t>{8}) {
+    return fail("expected acyclic prepared local-slot copy arithmetic to seed derived carriers");
   }
 
   const auto* adjacent_advanced =
@@ -4763,6 +4831,20 @@ int check_pointer_carrier_contract_value_homes() {
       global_previous->pointer_base_value_name.has_value() ||
       global_previous->pointer_byte_delta.has_value()) {
     return fail("expected addressed global store predecessor inference to fail closed");
+  }
+
+  const auto* frame_addr_plus =
+      find_value_home_by_name(fixture.names, homes, "contract.frame.addr.plus.ptr");
+  if (frame_addr_plus == nullptr) {
+    return fail("expected a value home for the frame-address offset carrier");
+  }
+  if (frame_addr_plus->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !frame_addr_plus->pointer_base_value_name.has_value() ||
+      prepare::prepared_value_name(fixture.names, *frame_addr_plus->pointer_base_value_name) !=
+          "contract.frame.addr.ptr" ||
+      frame_addr_plus->pointer_base_symbol_name.has_value() ||
+      frame_addr_plus->pointer_byte_delta != std::optional<std::int64_t>{12}) {
+    return fail("expected prepared frame-address materialization authority to seed pointer offsets");
   }
 
   return 0;

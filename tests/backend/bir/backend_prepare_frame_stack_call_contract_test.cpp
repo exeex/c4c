@@ -3912,7 +3912,8 @@ int check_local_frame_address_source_selection_contract() {
 
   const auto& arg = call_plans->calls.front().arguments.front();
   if (!arg.allows_local_aggregate_address_publication ||
-      arg.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (arg.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
+       arg.source_encoding != prepare::PreparedStorageEncodingKind::ComputedAddress) ||
       !arg.source_selection.has_value()) {
     return fail(
         "local frame address selection contract: call argument lost prepared "
@@ -3923,9 +3924,12 @@ int check_local_frame_address_source_selection_contract() {
           prepare::PreparedCallArgumentSourceSelectionKind::
               LocalFrameAddressMaterialization ||
       selection.source_value_name != std::optional<c4c::ValueNameId>{source_name} ||
-      selection.source_home_kind !=
-          std::optional<prepare::PreparedValueHomeKind>{
-              prepare::PreparedValueHomeKind::Register} ||
+      (selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::Register} &&
+       selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::PointerBasePlusOffset}) ||
       selection.source_slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
       selection.source_stack_offset_bytes !=
@@ -3959,7 +3963,8 @@ int check_derived_local_frame_address_source_selection_contract() {
 
   const auto& arg = call_plans->calls.front().arguments.front();
   if (!arg.allows_local_aggregate_address_publication ||
-      arg.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (arg.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
+       arg.source_encoding != prepare::PreparedStorageEncodingKind::ComputedAddress) ||
       !arg.source_selection.has_value()) {
     return fail(
         "derived local frame address selection contract: call argument lost "
@@ -3970,9 +3975,12 @@ int check_derived_local_frame_address_source_selection_contract() {
           prepare::PreparedCallArgumentSourceSelectionKind::
               LocalFrameAddressMaterialization ||
       selection.source_value_name != std::optional<c4c::ValueNameId>{source_name} ||
-      selection.source_home_kind !=
-          std::optional<prepare::PreparedValueHomeKind>{
-              prepare::PreparedValueHomeKind::Register} ||
+      (selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::Register} &&
+       selection.source_home_kind !=
+           std::optional<prepare::PreparedValueHomeKind>{
+               prepare::PreparedValueHomeKind::PointerBasePlusOffset}) ||
       selection.source_slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
       selection.source_stack_offset_bytes !=

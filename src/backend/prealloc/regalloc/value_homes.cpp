@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -140,6 +141,102 @@ namespace {
   return lookup;
 }
 
+[[nodiscard]] std::unordered_set<std::string_view> collect_cfg_cycle_block_labels(
+    const bir::Function* function) {
+  if (function == nullptr) {
+    return {};
+  }
+  std::unordered_map<std::string_view, std::size_t> block_index_by_label;
+  block_index_by_label.reserve(function->blocks.size());
+  for (std::size_t index = 0; index < function->blocks.size(); ++index) {
+    block_index_by_label.emplace(function->blocks[index].label, index);
+  }
+  std::unordered_set<std::string_view> cycle_labels;
+  const auto add_backedge_range =
+      [&](std::size_t source_index, const std::string& target_label) {
+        const auto target_it = block_index_by_label.find(target_label);
+        if (target_it == block_index_by_label.end() ||
+            target_it->second > source_index) {
+          return;
+        }
+        for (std::size_t index = target_it->second; index <= source_index; ++index) {
+          cycle_labels.insert(function->blocks[index].label);
+        }
+      };
+  for (std::size_t index = 0; index < function->blocks.size(); ++index) {
+    const auto& terminator = function->blocks[index].terminator;
+    add_backedge_range(index, terminator.target_label);
+    add_backedge_range(index, terminator.false_label);
+  }
+  return cycle_labels;
+}
+
+[[nodiscard]] std::unordered_set<ValueNameId> collect_local_pointer_load_results(
+    PreparedNameTables& names,
+    const c4c::backend::bir::Function* function,
+    const PreparedAddressingFunction* function_addressing,
+    const std::unordered_set<std::string_view>& cycle_block_labels) {
+  std::unordered_set<ValueNameId> results;
+  if (function == nullptr) {
+    return results;
+  }
+  std::unordered_set<ValueNameId> pointer_memory_base_values;
+  if (function_addressing != nullptr) {
+    for (const auto& access : function_addressing->accesses) {
+      if (access.address.base_kind == PreparedAddressBaseKind::PointerValue &&
+          access.address.pointer_value_name.has_value()) {
+        pointer_memory_base_values.insert(*access.address.pointer_value_name);
+      }
+    }
+  }
+  std::unordered_map<std::string, std::size_t> pointer_stores_by_slot;
+  for (const auto& block : function->blocks) {
+    if (cycle_block_labels.find(block.label) == cycle_block_labels.end()) {
+      continue;
+    }
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+      if (store == nullptr ||
+          store->value.kind != bir::Value::Kind::Named ||
+          store->value.type != bir::TypeKind::Ptr ||
+          store->address.has_value()) {
+        continue;
+      }
+      ++pointer_stores_by_slot[store->slot_name];
+    }
+  }
+  std::unordered_set<std::string> risky_slots;
+  for (const auto& [slot_name, count] : pointer_stores_by_slot) {
+    if (count > 1) {
+      risky_slots.insert(slot_name);
+    }
+  }
+  for (const auto& block : function->blocks) {
+    const bool is_cycle_block =
+        cycle_block_labels.find(block.label) != cycle_block_labels.end();
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+      if (load == nullptr ||
+          load->result.kind != bir::Value::Kind::Named ||
+          load->result.type != bir::TypeKind::Ptr) {
+        continue;
+      }
+      if (const auto value_name = prepared_named_value_id(names, load->result);
+          value_name.has_value()) {
+        const bool risky_cycle_load =
+            is_cycle_block && risky_slots.find(load->slot_name) != risky_slots.end();
+        const bool memory_base_load =
+            pointer_memory_base_values.find(*value_name) != pointer_memory_base_values.end();
+        if (risky_cycle_load || memory_base_load) {
+          results.insert(*value_name);
+        }
+      }
+    }
+  }
+  results.insert(pointer_memory_base_values.begin(), pointer_memory_base_values.end());
+  return results;
+}
+
 }  // namespace
 
 PreparedValueHome classify_prepared_value_home(
@@ -150,6 +247,7 @@ PreparedValueHome classify_prepared_value_home(
     const PreparedAddressingFunction* function_addressing,
     const PreparedPointerCarrierMap& pointer_carriers,
     const PreparedComputedValueLookup& computed_values,
+    const std::unordered_set<ValueNameId>& local_pointer_load_results,
     const PreparedRegallocValue& value) {
   PreparedValueHome home{
       .value_id = value.value_id,
@@ -292,7 +390,8 @@ PreparedValueHome classify_prepared_value_home(
       }
     }
   }
-  if (value.type == bir::TypeKind::Ptr) {
+  if (value.type == bir::TypeKind::Ptr &&
+      local_pointer_load_results.find(value.value_name) == local_pointer_load_results.end()) {
     if (const auto carrier_it = pointer_carriers.find(value.value_name);
         carrier_it != pointer_carriers.end() &&
         has_semantic_pointer_carrier_authority(carrier_it->second) &&
@@ -342,6 +441,9 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
       function == nullptr ? PreparedPointerCarrierMap{}
                           : build_pointer_carrier_map(names, module, *function, function_addressing);
   const auto computed_values = make_prepared_computed_value_lookup(names, function);
+  const auto local_pointer_load_results =
+      collect_local_pointer_load_results(
+          names, function, function_addressing, collect_cfg_cycle_block_labels(function));
   std::vector<PreparedValueHome> value_homes;
   value_homes.reserve(regalloc_function.values.size());
   for (const auto& value : regalloc_function.values) {
@@ -353,6 +455,7 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
                                      function_addressing,
                                      pointer_carriers,
                                      computed_values,
+                                     local_pointer_load_results,
                                      value));
   }
   return value_homes;

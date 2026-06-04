@@ -14,6 +14,7 @@ namespace regalloc_detail {
 enum class PreparedPointerCarrierAuthority {
   None,
   PreparedPointerValueAccess,
+  PreparedFrameAddressMaterialization,
   BirPointerSymbol,
   BirPointerImmediateOffset,
 };
@@ -32,6 +33,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     PreparedPointerCarrierAuthority authority) {
   switch (authority) {
     case PreparedPointerCarrierAuthority::PreparedPointerValueAccess:
+    case PreparedPointerCarrierAuthority::PreparedFrameAddressMaterialization:
     case PreparedPointerCarrierAuthority::BirPointerSymbol:
     case PreparedPointerCarrierAuthority::BirPointerImmediateOffset:
       return true;
