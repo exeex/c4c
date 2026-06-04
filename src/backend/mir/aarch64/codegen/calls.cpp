@@ -11,11 +11,13 @@
 #include "variadic.hpp"
 
 #include "../abi/abi.hpp"
+#include "../../query.hpp"
 #include "alu.hpp"
 #include "comparison.hpp"
 #include "dispatch_edge_copies.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
+#include "fp_value_materialization.hpp"
 #include "memory_dynamic_stack.hpp"
 #include "select_materialization.hpp"
 
@@ -5481,6 +5483,62 @@ enum class LocalAggregateAddressMaterializationResult {
   return std::nullopt;
 }
 
+struct PreparedFrameStoredValue {
+  bir::Value value;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] std::optional<PreparedFrameStoredValue>
+find_prepared_frame_stored_value(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedAddressingFunction& addressing,
+    std::int64_t stack_byte_offset,
+    std::size_t size_bytes,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr || context.control_flow_block == nullptr ||
+      context.bir_block == nullptr || stack_byte_offset < 0 || size_bytes == 0) {
+    return std::nullopt;
+  }
+  const auto wanted_stack_offset = static_cast<std::size_t>(stack_byte_offset);
+  for (const auto& access : addressing.accesses) {
+    if (access.block_label != context.control_flow_block->block_label ||
+        access.inst_index >= before_instruction_index ||
+        !access.stored_value_name.has_value() ||
+        access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access.address.frame_slot_id.has_value() ||
+        access.address.byte_offset < 0 ||
+        access.address.size_bytes != size_bytes) {
+      continue;
+    }
+    const auto* slot =
+        prepare::find_frame_slot_by_id(context.function.prepared->stack_layout,
+                                       *access.address.frame_slot_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    const auto access_stack_offset =
+        slot->offset_bytes + static_cast<std::size_t>(access.address.byte_offset);
+    if (access_stack_offset != wanted_stack_offset ||
+        access.inst_index >= context.bir_block->insts.size()) {
+      continue;
+    }
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[access.inst_index]);
+    if (store == nullptr) {
+      return std::nullopt;
+    }
+    const auto stored_name = prepared_named_value_id(context, store->value);
+    if (!stored_name.has_value() || *stored_name != *access.stored_value_name) {
+      return std::nullopt;
+    }
+    return PreparedFrameStoredValue{
+        .value = store->value,
+        .instruction_index = access.inst_index,
+    };
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool append_frame_byte_store(std::int64_t stack_byte_offset,
                                            std::uint8_t value_index,
                                            std::uint8_t address_index,
@@ -6130,6 +6188,46 @@ lower_scalar_call_argument_producers(
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<bir::Value> call_boundary_source_value_by_name(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name,
+    std::size_t before_instruction_index) {
+  if (auto source =
+          prepared_call_boundary_source_value(context, value_name, before_instruction_index)) {
+    return source;
+  }
+  if (value_name == c4c::kInvalidValueName ||
+      context.function.prepared == nullptr ||
+      context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto spelling =
+      context.function.prepared->names.value_names.spelling(value_name);
+  if (spelling.empty()) {
+    return std::nullopt;
+  }
+  const auto* producer =
+      mir::find_same_block_named_producer(context.bir_block, spelling, before_instruction_index);
+  if (producer == nullptr) {
+    return std::nullopt;
+  }
+  return std::visit(
+      [](const auto& typed_inst) -> std::optional<bir::Value> {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return typed_inst.result;
+        }
+        return std::nullopt;
+      },
+      *producer);
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_aggregate_register_lane_sources_to_destination(
     const module::BlockLoweringContext& context,
@@ -6235,6 +6333,89 @@ materialize_aggregate_register_lane_sources_to_destination(
       context, instruction_index, std::move(lines));
 }
 
+[[nodiscard]] bool emit_fp_call_boundary_value_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    abi::RegisterReference destination,
+    std::uint8_t gp_scratch_index,
+    std::vector<std::string>& lines,
+    unsigned depth = 0) {
+  if (depth > 8U) {
+    return false;
+  }
+  const auto destination_view = scalar_fp_register_view(destination, value.type);
+  const auto size_bytes =
+      value.type == bir::TypeKind::F32 ? std::optional<std::size_t>{4}
+      : value.type == bir::TypeKind::F64 ? std::optional<std::size_t>{8}
+                                         : std::nullopt;
+  const auto* producer =
+      value.kind == bir::Value::Kind::Named && context.bir_block != nullptr
+          ? mir::find_same_block_named_producer(
+                context.bir_block, value.name, before_instruction_index)
+          : nullptr;
+  const auto* load_local =
+      producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
+  const auto producer_index =
+      producer != nullptr ? mir::producer_instruction_index(context.bir_block, producer)
+                          : std::nullopt;
+  if (destination_view.has_value() && load_local != nullptr &&
+      load_local->address.has_value() &&
+      load_local->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol &&
+      !load_local->address->base_name.empty()) {
+    const auto address = abi::x_register(gp_scratch_index);
+    const auto offset = load_local->address->byte_offset;
+    lines.push_back("adrp " + std::string{abi::register_name(address)} + ", " +
+                    load_local->address->base_name);
+    lines.push_back("add " + std::string{abi::register_name(address)} + ", " +
+                    std::string{abi::register_name(address)} + ", :lo12:" +
+                    load_local->address->base_name);
+    lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} +
+                    ", [" + std::string{abi::register_name(address)} +
+                    (offset == 0 ? std::string{}
+                                 : std::string{", #"} + std::to_string(offset)) +
+                    "]");
+    return true;
+  }
+  const auto source_offset =
+      load_local != nullptr && producer_index.has_value()
+          ? prepared_local_load_offset(context, *producer_index)
+          : std::nullopt;
+  const auto* addressing =
+      context.function.prepared != nullptr && context.function.control_flow != nullptr
+          ? prepare::find_prepared_addressing(
+                *context.function.prepared,
+                context.function.control_flow->function_name)
+          : nullptr;
+  if (destination_view.has_value() && size_bytes.has_value() &&
+      source_offset.has_value() && addressing != nullptr) {
+    if (auto stored =
+            find_prepared_frame_stored_value(context,
+                                             *addressing,
+                                             static_cast<std::int64_t>(*source_offset),
+                                             *size_bytes,
+                                             *producer_index)) {
+      bir::Value stored_value = stored->value;
+      stored_value.type = value.type;
+      if (emit_fp_call_boundary_value_to_register(context,
+                                                  stored_value,
+                                                  stored->instruction_index,
+                                                  *destination_view,
+                                                  gp_scratch_index,
+                                                  lines,
+                                                  depth + 1)) {
+        return true;
+      }
+    }
+  }
+  return emit_fp_value_to_register(context,
+                                   value,
+                                   before_instruction_index,
+                                   destination,
+                                   gp_scratch_index,
+                                   lines);
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_call_boundary_source_to_destination(
     const module::BlockLoweringContext& context,
@@ -6248,6 +6429,69 @@ materialize_call_boundary_source_to_destination(
             materialize_aggregate_register_lane_sources_to_destination(
                 context, *move_record, instruction_index, scalar_state)) {
       return aggregate_materialized;
+    }
+  }
+  if (move_record != nullptr &&
+      move_record->phase == prepare::PreparedMovePhase::BeforeCall &&
+      move_record->move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move_record->source_register.has_value() &&
+      move_record->destination_register.has_value() &&
+      move_record->source_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+      move_record->destination_register->prepared_bank ==
+          prepare::PreparedRegisterBank::Fpr &&
+      abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    const auto source_value =
+        call_boundary_source_value_by_name(
+            context, move_record->source_register->value_name, instruction_index);
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    std::vector<std::string> lines;
+    if (source_value.has_value() && !scratches.empty() &&
+        emit_fp_call_boundary_value_to_register(context,
+                                                *source_value,
+                                                instruction_index,
+                                                move_record->destination_register->reg,
+                                                scratches.front().index,
+                                                lines) &&
+        !lines.empty()) {
+      record_emitted_scalar_register(scalar_state,
+                                     move_record->destination_register->value_name,
+                                     *move_record->destination_register);
+      return make_select_chain_materialization_instruction(
+          context, instruction_index, std::move(lines));
+    }
+  }
+  if (move_record != nullptr &&
+      move_record->phase == prepare::PreparedMovePhase::BeforeCall &&
+      move_record->move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move_record->source_memory.has_value() &&
+      !move_record->source_memory_materializes_address &&
+      move_record->destination_register.has_value() &&
+      move_record->destination_register->prepared_bank ==
+          prepare::PreparedRegisterBank::Fpr &&
+      abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    const auto source_value_name =
+        move_record->source_memory->result_value_name.has_value()
+            ? *move_record->source_memory->result_value_name
+            : move_record->destination_register->value_name;
+    const auto source_value =
+        call_boundary_source_value_by_name(context, source_value_name, instruction_index);
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    std::vector<std::string> lines;
+    if (source_value.has_value() && !scratches.empty() &&
+        emit_fp_call_boundary_value_to_register(context,
+                                                *source_value,
+                                                instruction_index,
+                                                move_record->destination_register->reg,
+                                                scratches.front().index,
+                                                lines) &&
+        !lines.empty()) {
+      record_emitted_scalar_register(scalar_state,
+                                     move_record->destination_register->value_name,
+                                     *move_record->destination_register);
+      return make_select_chain_materialization_instruction(
+          context, instruction_index, std::move(lines));
     }
   }
   if (move_record == nullptr ||

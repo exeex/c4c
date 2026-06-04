@@ -2,75 +2,68 @@ Status: Active
 Source Idea Path: ideas/open/100_aarch64_00204_stdarg_hfa_runtime_repair.md
 Source Plan Path: plan.md
 Current Step ID: Step 5
-Current Step Title: Direct >16-byte byval/address materialization
+Current Step Title: Direct HFA argument materialization
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 follow-up implementation for direct >16-byte AArch64
-byval/address argument materialization.
+Completed Step 5 direct HFA argument materialization follow-up for scalar FP
+HFA lanes.
 
-Implemented facts:
+First wrong fact repaired:
 
-- The existing 1..16 byte direct byval register-lane repair remains green. The
-  focused route test
-  `backend_codegen_route_aarch64_byval_global_payload_call_boundary` continues
-  to prove final call-boundary GPR lane materialization from prepared global
-  payload bytes.
-- Direct >16-byte byval/address arguments now materialize the pointed-to
-  outgoing object before the address is placed in the outgoing ABI GPR. The new
-  focused route test
-  `backend_codegen_route_aarch64_byval_global_payload_address_call_boundary`
-  proves a compact `s1..s17` sequence where `s17` is selected as
-  `frame_slot_address`; final AArch64 reloads bytes from global `s17`, stores
-  them into the outgoing stack object, then emits `add x0, sp, #136` and
-  `bl fa_s17`.
-- Diagnostic final AArch64 for full `00204.c` now shows the previous
-  `fa_s17(s17)` wrong fact repaired: after the stale scratch stores, the
-  call-boundary path reloads `s17+0..16`, writes `sp+1064..1080`, then passes
-  `add x0, sp, #1064` to `fa_s17`.
+- Fixed-arity HFA float/double arguments were selected as FPR ABI lanes, but
+  final call-boundary lowering consumed stale prepared FPR homes (`s13`/`d13`)
+  or stale frame reloads instead of tracing the prepared aggregate-copy lane
+  back to the same-block global payload producer.
+- AArch64 call-boundary materialization now follows prepared frame-slot
+  stored-value facts for scalar FP lanes and emits direct global-address FP
+  loads into the outgoing ABI registers.
+- Added focused route test
+  `backend_codegen_route_aarch64_hfa_global_payload_call_boundary`; it proves
+  global HFA float lanes reach `s0/s1` and global HFA double lanes reach
+  `d0/d1` immediately before fixed-arity calls.
+- Diagnostic final AArch64 for full `00204.c` now shows `fa_hfa11` through
+  `fa_hfa24` loading `hfa11..hfa24` global payload lanes into `s0..s3` and
+  `d0..d3`. The direct `Arguments:` output now prints the expected float and
+  double HFA direct-call lines through `24.1 24.2 24.3 24.4`.
 
 ## Suggested Next
 
-Trace/repair the next remaining `00204.c` ABI families after the direct integer
-byval argument section. The current runtime output reaches and correctly prints
-the direct `Arguments:` integer aggregate calls through `fa_s17`; the first
-remaining visible mismatch is the direct HFA argument block printing `0.0`
-instead of the expected HFA float/double/long-double values. Return/sret,
-stdarg, and HFA-vararg output remains downstream/separate and should not be
-folded into this direct byval/address packet.
+Trace/repair the next direct HFA argument family: F128/long-double HFA lanes.
+The current first remaining direct HFA mismatch is `fa_hfa31` through
+`fa_hfa34`, where final AArch64 still stores/reloads stale `q13` and passes
+zero long-double values. Mixed direct calls `fa3`/`fa4` also still lose their
+F128 HFA lanes after the scalar float/double lanes are now materialized.
 
 ## Watchouts
 
 - Do not downgrade `00204.c` expectations, mark it unsupported, or special-case
   its literal output shape.
 - Keep `00032.c` and `00182.c` visible as guard cases.
-- Do not start with HFA or return/sret repair for this packet. Direct HFA
-  argument materialization is a separate FPR/HFA lane problem that starts only
-  after `fa_s17`; direct aggregate/sret return materialization is callee-side
-  return lowering, not the caller address-argument setup traced here.
-- Do not start with stdarg/HFA-vararg repair: those sections execute after the
-  direct `arg` and `ret` families, and remain downstream until direct argument
-  and return paths are correct.
-- The fixed direct integer byval register-lane calls still leave stale stack
-  publications in the assembly, but the call boundary no longer consumes them.
-  Do not treat those stale stores as proof of failure unless a later consumer
-  still reloads them into the ABI argument registers.
-- For `s17`, the stale stores are no longer the consumed pointee state: the
-  final call-boundary materialization overwrites them from the prepared global
-  payload bytes immediately before passing the address.
+- The scalar FP repair is intentionally limited to fixed-arity before-call FPR
+  call-argument moves. It does not repair F128/q-register HFA lanes, return
+  value lowering, sret, stdarg, or variadic HFA paths.
+- Direct `arg()` now advances through the scalar HFA float/double calls, but
+  the later `stdarg:` HFA float/double output is still bad and should remain
+  downstream until direct F128 HFA arguments and return-family facts are
+  handled.
+- Stale scratch stack stores are still present before the repaired scalar HFA
+  calls, but the call boundary now overwrites the consumed ABI FP lanes from
+  prepared global payloads. Treat only consumed ABI lanes as the failure fact.
 
 ## Proof
 
 Ran:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_byval_global_payload_address_call_boundary|backend_codegen_route_aarch64_byval_global_payload_call_boundary|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00032_c|c_testsuite_aarch64_backend_src_00182_c)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_.*|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_(00204|00032|00182)_c)$'
 ```
 
-Result: exit code 8. Expected for this bounded packet: both focused byval
-call-boundary route proofs, the existing prepared contract, and both guard
-cases passed; `c_testsuite_aarch64_backend_src_00204_c` remains the only
-failing test in this scope due later HFA/return/stdarg families. Canonical
-executor proof log: `test_after.log`.
+Result: exit code 8. Expected for this bounded packet: 18 of 19 tests passed,
+including all selected backend route tests, the new HFA scalar FP route,
+`backend_prepare_frame_stack_call_contract`, and guard cases `00032.c`/`00182.c`;
+`c_testsuite_aarch64_backend_src_00204_c` remains the only failing test in this
+scope due remaining direct F128 HFA, return/sret, and stdarg/variadic ABI
+families. Canonical executor proof log: `test_after.log`.
