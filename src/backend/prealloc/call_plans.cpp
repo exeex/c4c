@@ -1655,12 +1655,16 @@ struct ByvalPayloadLaneStore {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   PreparedFrameSlotId slot_id = 0;
+  std::optional<ValueNameId> source_value_name;
+  std::optional<std::size_t> source_instruction_index;
 };
 
 [[nodiscard]] std::optional<ByvalPayloadLaneStore> byval_payload_lane_store(
     const PreparedStackLayout& stack_layout,
     const PreparedMemoryAccess& access,
-    std::size_t source_offset) {
+    std::size_t source_offset,
+    std::optional<ValueNameId> source_value_name = std::nullopt,
+    std::optional<std::size_t> source_instruction_index = std::nullopt) {
   if (access.address.base_kind != PreparedAddressBaseKind::FrameSlot ||
       !access.address.frame_slot_id.has_value() ||
       access.address.size_bytes == 0) {
@@ -1682,6 +1686,8 @@ struct ByvalPayloadLaneStore {
       .size_bytes = access.address.size_bytes,
       .align_bytes = access.address.align_bytes,
       .slot_id = *access.address.frame_slot_id,
+      .source_value_name = source_value_name,
+      .source_instruction_index = source_instruction_index,
   };
 }
 
@@ -1720,6 +1726,18 @@ struct ByvalPayloadLaneStore {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::size_t> byval_payload_load_source_offset(
+    std::string_view result_name,
+    std::string_view aggregate_name) {
+  if (const auto source_offset = aggregate_result_suffix_offset(
+          result_name, aggregate_name, ".array.aggregate.load.");
+      source_offset.has_value()) {
+    return source_offset;
+  }
+  return aggregate_result_suffix_offset(
+      result_name, aggregate_name, ".global.aggregate.load.");
+}
+
 [[nodiscard]] std::optional<ByvalPayloadLaneStore> select_byval_payload_lane_load_source(
     const PreparedStackLayout& stack_layout,
     const bir::Block& block,
@@ -1735,8 +1753,8 @@ struct ByvalPayloadLaneStore {
     if (load == nullptr || load->result.name.empty()) {
       continue;
     }
-    const auto source_offset = aggregate_result_suffix_offset(
-        load->result.name, aggregate_name, ".array.aggregate.load.");
+    const auto source_offset =
+        byval_payload_load_source_offset(load->result.name, aggregate_name);
     if (!source_offset.has_value()) {
       continue;
     }
@@ -1745,7 +1763,11 @@ struct ByvalPayloadLaneStore {
       continue;
     }
     auto payload_store =
-        byval_payload_lane_store(stack_layout, *access, *source_offset);
+        byval_payload_lane_store(stack_layout,
+                                 *access,
+                                 *source_offset,
+                                 access->result_value_name,
+                                 index);
     if (payload_store.has_value()) {
       stores.push_back(*payload_store);
     }
@@ -2115,10 +2137,17 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
                                            *selection.source_value_name,
                                            abi.size_bytes);
       if (payload_source.has_value()) {
+        if (payload_source->source_value_name.has_value()) {
+          selection.source_value_name = payload_source->source_value_name;
+        }
         selection.source_slot_id = payload_source->slot_id;
         selection.source_stack_offset_bytes = payload_source->stack_offset;
         selection.source_size_bytes = byval_extent;
         selection.source_align_bytes = payload_source->align_bytes;
+        if (payload_source->source_instruction_index.has_value()) {
+          selection.byval_lane_source_instruction_index =
+              payload_source->source_instruction_index;
+        }
         return selection;
       }
     }

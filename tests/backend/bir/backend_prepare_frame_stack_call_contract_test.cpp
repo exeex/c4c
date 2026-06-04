@@ -4201,6 +4201,154 @@ int check_byval_register_lane_aggregate_transport_contract() {
   return 0;
 }
 
+bir::Module make_aarch64_global_byval_register_lane_source_selection_contract_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "same_module_take_global_byval";
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate",
+      .size_bytes = 1,
+      .align_bytes = 1,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 1,
+          .align_bytes = 1,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+  bir::Block callee_entry;
+  callee_entry.label = "entry";
+  callee_entry.terminator = bir::ReturnTerminator{};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "global_byval_register_lane_source_selection_contract";
+  caller.return_type = bir::TypeKind::Void;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "same_module.global.byte",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "materialized.global.byte",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(
+          bir::TypeKind::I8, "aggregate.byval.global.aggregate.load.0"),
+      .slot_name = "same_module.global.byte",
+      .align_bytes = 1,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "materialized.global.byte",
+      .value = bir::Value::named(
+          bir::TypeKind::I8, "aggregate.byval.global.aggregate.load.0"),
+      .align_bytes = 1,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "same_module_take_global_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "aggregate.byval")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 1,
+          .align_bytes = 1,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+          .byval_copy = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+int check_aarch64_global_byval_register_lane_source_selection_contract() {
+  const auto prepared = prepare_aarch64_module(
+      make_aarch64_global_byval_register_lane_source_selection_contract_module());
+  const auto* call_plans = find_call_plans_function(
+      prepared, "global_byval_register_lane_source_selection_contract");
+  const auto* source_slot_object =
+      find_stack_object(prepared, "same_module.global.byte");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1 ||
+      source_slot_object == nullptr) {
+    return fail(
+        "AArch64 global byval source-selection contract: missing prepared call or source slot");
+  }
+  const auto* source_frame_slot =
+      find_frame_slot(prepared, source_slot_object->object_id);
+  if (source_frame_slot == nullptr) {
+    return fail(
+        "AArch64 global byval source-selection contract: missing source frame slot");
+  }
+
+  const auto& arg = call_plans->calls.front().arguments.front();
+  const auto loaded_lane_name =
+      prepared.names.value_names.find("aggregate.byval.global.aggregate.load.0");
+  if (!arg.source_selection.has_value() ||
+      arg.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane ||
+      arg.source_selection->source_value_name !=
+          std::optional<c4c::ValueNameId>{loaded_lane_name} ||
+      arg.source_selection->source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{source_frame_slot->slot_id} ||
+      arg.source_selection->source_stack_offset_bytes !=
+          std::optional<std::size_t>{source_frame_slot->offset_bytes} ||
+      arg.source_selection->source_size_bytes != std::optional<std::size_t>{1} ||
+      arg.source_selection->source_align_bytes != std::optional<std::size_t>{1} ||
+      arg.source_selection->byval_lane_source_instruction_index !=
+          std::optional<std::size_t>{0}) {
+    return fail(
+        "AArch64 global byval source-selection contract: byval lane source did not select the global aggregate payload load");
+  }
+  if (!arg.aggregate_transport.has_value() ||
+      arg.aggregate_transport->kind !=
+          prepare::PreparedAggregateTransportKind::ByvalRegisterLanes ||
+      arg.aggregate_transport->source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{source_frame_slot->slot_id} ||
+      arg.aggregate_transport->source_stack_offset_bytes !=
+          std::optional<std::size_t>{source_frame_slot->offset_bytes} ||
+      arg.aggregate_transport->payload_size_bytes != 1 ||
+      arg.aggregate_transport->lanes.size() != 1 ||
+      arg.aggregate_transport->lanes.front().destination_register_name !=
+          std::optional<std::string>{"x0"}) {
+    return fail(
+        "AArch64 global byval source-selection contract: aggregate transport did not publish the loaded payload lane source");
+  }
+  return 0;
+}
+
 int check_missing_local_aggregate_frame_slot_address_source_selection_contract() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -6765,6 +6913,11 @@ int main() {
     return rc;
   }
   if (const int rc = check_byval_register_lane_aggregate_transport_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_aarch64_global_byval_register_lane_source_selection_contract();
       rc != 0) {
     return rc;
   }
