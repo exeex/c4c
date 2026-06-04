@@ -8,50 +8,38 @@ Current Step Title: Direct >16-byte byval/address materialization
 
 ## Just Finished
 
-Completed Step 5 follow-up trace for direct >16-byte AArch64 byval/address
-argument materialization in `00204.c` after commit `6e0b504e5`.
+Completed Step 5 follow-up implementation for direct >16-byte AArch64
+byval/address argument materialization.
 
-Last known-good facts:
+Implemented facts:
 
-- The landed 1..16 byte direct byval register-lane repair is still visible in
-  final AArch64 for `arg`: calls through `fa_s16` load bytes from globals such
-  as `s16`, pack them into outgoing ABI GPR lanes `x0`/`x1`, and branch to the
-  helper. The focused route test
+- The existing 1..16 byte direct byval register-lane repair remains green. The
+  focused route test
   `backend_codegen_route_aarch64_byval_global_payload_call_boundary` continues
-  to prove the same final call-boundary fact without depending on full
-  `00204.c` output.
-- Semantic BIR for the next call is correct:
-  `bir.call void fa_s17(ptr byval(size=17, align=1) %t18)`, preceded by
-  `%t18.global.aggregate.load.0..16 = bir.load_local i8 ..., addr s17+N` and
-  corresponding stores to `%t18.0..16`.
-- Prepared BIR still carries useful payload metadata for the `s17` local
-  aggregate object: prepared-addressing records stores of
-  `%t18.global.aggregate.load.0..16` into consecutive frame slots
-  `#903..#919`, and the prepared call plan for `fa_s17` publishes
-  `arg index=0 value_bank=gpr source_encoding=frame_slot source_value_id=990
-  source_stack_offset=1344 dest_reg=x0` with
-  `arg.source_selection=frame_slot_address`.
-
-First wrong fact:
-
-- Final AArch64 for the `fa_s17(s17)` caller materializes the address argument
-  but not the pointed-to payload. Immediately after the good `fa_s16` call, the
-  emitted code stores stale `w13` into `sp+1064..1080`, then emits
-  `add x0, sp, #1064` and `bl fa_s17`. There are no `s17` global byte loads or
-  payload-copy stores feeding that 17-byte object before the call.
-- This is a different failure from the repaired 1..16 register-lane case: the
-  outgoing ABI register `x0` is an address for byval-indirect passing, and the
-  pointee object must be materialized from the prepared aggregate payload bytes
-  before the call boundary consumes the address.
+  to prove final call-boundary GPR lane materialization from prepared global
+  payload bytes.
+- Direct >16-byte byval/address arguments now materialize the pointed-to
+  outgoing object before the address is placed in the outgoing ABI GPR. The new
+  focused route test
+  `backend_codegen_route_aarch64_byval_global_payload_address_call_boundary`
+  proves a compact `s1..s17` sequence where `s17` is selected as
+  `frame_slot_address`; final AArch64 reloads bytes from global `s17`, stores
+  them into the outgoing stack object, then emits `add x0, sp, #136` and
+  `bl fa_s17`.
+- Diagnostic final AArch64 for full `00204.c` now shows the previous
+  `fa_s17(s17)` wrong fact repaired: after the stale scratch stores, the
+  call-boundary path reloads `s17+0..16`, writes `sp+1064..1080`, then passes
+  `add x0, sp, #1064` to `fa_s17`.
 
 ## Suggested Next
 
-Repair direct >16-byte byval/address call argument materialization in
-`src/backend/mir/aarch64/codegen/calls.cpp`, likely around the address path
-rooted at `materialize_local_aggregate_address_call_argument` and
-`materialize_missing_frame_slot_call_arguments`. The repair should use prepared
-addressing / producer facts to populate the addressable outgoing byval object
-from the aggregate payload bytes before passing its address in `x0`.
+Trace/repair the next remaining `00204.c` ABI families after the direct integer
+byval argument section. The current runtime output reaches and correctly prints
+the direct `Arguments:` integer aggregate calls through `fa_s17`; the first
+remaining visible mismatch is the direct HFA argument block printing `0.0`
+instead of the expected HFA float/double/long-double values. Return/sret,
+stdarg, and HFA-vararg output remains downstream/separate and should not be
+folded into this direct byval/address packet.
 
 ## Watchouts
 
@@ -69,19 +57,20 @@ from the aggregate payload bytes before passing its address in `x0`.
   publications in the assembly, but the call boundary no longer consumes them.
   Do not treat those stale stores as proof of failure unless a later consumer
   still reloads them into the ABI argument registers.
-- For `s17`, the stale stores are consumed: the callee receives a pointer to
-  the stale object. That makes this a real address/pointee materialization bug,
-  not just harmless leftover stack publication.
+- For `s17`, the stale stores are no longer the consumed pointee state: the
+  final call-boundary materialization overwrites them from the prepared global
+  payload bytes immediately before passing the address.
 
 ## Proof
 
 Ran:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_byval_global_payload_call_boundary|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00032_c|c_testsuite_aarch64_backend_src_00182_c)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_byval_global_payload_address_call_boundary|backend_codegen_route_aarch64_byval_global_payload_call_boundary|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00032_c|c_testsuite_aarch64_backend_src_00182_c)$'
 ```
 
-Result: exit code 8. Expected for this trace-only packet: the focused byval
-call-boundary route proof, the existing prepared contract, and both guard
+Result: exit code 8. Expected for this bounded packet: both focused byval
+call-boundary route proofs, the existing prepared contract, and both guard
 cases passed; `c_testsuite_aarch64_backend_src_00204_c` remains the only
-failing test in this scope. Canonical executor proof log: `test_after.log`.
+failing test in this scope due later HFA/return/stdarg families. Canonical
+executor proof log: `test_after.log`.

@@ -1,0 +1,55 @@
+struct s1 { char x[1]; } s1 = {"0"};
+struct s2 { char x[2]; } s2 = {"12"};
+struct s3 { char x[3]; } s3 = {"345"};
+struct s4 { char x[4]; } s4 = {"6789"};
+struct s5 { char x[5]; } s5 = {"abcde"};
+struct s6 { char x[6]; } s6 = {"fghijk"};
+struct s7 { char x[7]; } s7 = {"lmnopqr"};
+struct s8 { char x[8]; } s8 = {"stuvwxyz"};
+struct s9 { char x[9]; } s9 = {"ABCDEFGHI"};
+struct s10 { char x[10]; } s10 = {"JKLMNOPQRS"};
+struct s11 { char x[11]; } s11 = {"TUVWXYZ0123"};
+struct s12 { char x[12]; } s12 = {"456789abcdef"};
+struct s13 { char x[13]; } s13 = {"ghijklmnopqrs"};
+struct s14 { char x[14]; } s14 = {"tuvwxyzABCDEFG"};
+struct s15 { char x[15]; } s15 = {"HIJKLMNOPQRSTUV"};
+struct s16 { char x[16]; } s16 = {"WXYZ0123456789ab"};
+struct s17 { char x[17]; } s17 = {"cdefghijklmnopqrs"};
+
+extern void fa_s1(struct s1 a);
+extern void fa_s2(struct s2 a);
+extern void fa_s3(struct s3 a);
+extern void fa_s4(struct s4 a);
+extern void fa_s5(struct s5 a);
+extern void fa_s6(struct s6 a);
+extern void fa_s7(struct s7 a);
+extern void fa_s8(struct s8 a);
+extern void fa_s9(struct s9 a);
+extern void fa_s10(struct s10 a);
+extern void fa_s11(struct s11 a);
+extern void fa_s12(struct s12 a);
+extern void fa_s13(struct s13 a);
+extern void fa_s14(struct s14 a);
+extern void fa_s15(struct s15 a);
+extern void fa_s16(struct s16 a);
+extern void fa_s17(struct s17 a);
+
+void arg(void) {
+  fa_s1(s1);
+  fa_s2(s2);
+  fa_s3(s3);
+  fa_s4(s4);
+  fa_s5(s5);
+  fa_s6(s6);
+  fa_s7(s7);
+  fa_s8(s8);
+  fa_s9(s9);
+  fa_s10(s10);
+  fa_s11(s11);
+  fa_s12(s12);
+  fa_s13(s13);
+  fa_s14(s14);
+  fa_s15(s15);
+  fa_s16(s16);
+  fa_s17(s17);
+}

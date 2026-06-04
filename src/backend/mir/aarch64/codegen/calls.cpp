@@ -4869,6 +4869,13 @@ order_before_call_moves_for_source_preservation(
   return ordered;
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_local_aggregate_address_payload(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const MemoryOperand& source,
+    std::size_t before_instruction_index);
+
 std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -4918,6 +4925,22 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
     if (auto instruction =
             lower_before_call_move(
                 context, call_plan, *bundle, effect, move, instruction_index, diagnostics)) {
+      const auto* move_record =
+          std::get_if<CallBoundaryMoveInstructionRecord>(&instruction->target.payload);
+      const auto classification =
+          prepare::classify_prepared_call_boundary_move(call_plan, *bundle, move);
+      if (move_record != nullptr &&
+          move_record->source_memory.has_value() &&
+          move_record->source_memory_materializes_address &&
+          classification.argument_plan != nullptr) {
+        if (auto payload = materialize_local_aggregate_address_payload(
+                context,
+                *classification.argument_plan,
+                *move_record->source_memory,
+                instruction_index)) {
+          lowered.push_back(std::move(*payload));
+        }
+      }
       lowered.push_back(std::move(*instruction));
     }
   }
@@ -5374,6 +5397,214 @@ enum class LocalAggregateAddressMaterializationResult {
   return lines;
 }
 
+[[nodiscard]] bool append_global_byte_load_for_prepared_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t address_index,
+    std::vector<std::string>& out) {
+  if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return false;
+  }
+  for (std::size_t index = 0;
+       index < std::min(before_instruction_index, context.bir_block->insts.size());
+       ++index) {
+    const auto* load =
+        std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[index]);
+    if (load == nullptr || load->result.name != value.name ||
+        !load->address.has_value() ||
+        load->address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol ||
+        load->address->base_name.empty()) {
+      continue;
+    }
+    const auto target = abi::register_name(abi::w_register(target_index));
+    const auto address = abi::register_name(abi::x_register(address_index));
+    const auto offset = load->address->byte_offset;
+    out.push_back("adrp " + std::string{address} + ", " +
+                  load->address->base_name);
+    out.push_back("add " + std::string{address} + ", " +
+                  std::string{address} + ", :lo12:" + load->address->base_name);
+    out.push_back("ldrb " + std::string{target} + ", [" +
+                  std::string{address} +
+                  (offset == 0 ? std::string{}
+                               : std::string{", #"} + std::to_string(offset)) +
+                  "]");
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<bir::Value> find_prepared_frame_byte_stored_value(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedAddressingFunction& addressing,
+    std::int64_t stack_byte_offset,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr || context.control_flow_block == nullptr ||
+      context.bir_block == nullptr || stack_byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto wanted_stack_offset = static_cast<std::size_t>(stack_byte_offset);
+  for (const auto& access : addressing.accesses) {
+    if (access.block_label != context.control_flow_block->block_label ||
+        access.inst_index >= before_instruction_index ||
+        !access.stored_value_name.has_value() ||
+        access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access.address.frame_slot_id.has_value() ||
+        access.address.byte_offset < 0 || access.address.size_bytes != 1) {
+      continue;
+    }
+    const auto* slot =
+        prepare::find_frame_slot_by_id(context.function.prepared->stack_layout,
+                                       *access.address.frame_slot_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    const auto access_stack_offset =
+        slot->offset_bytes + static_cast<std::size_t>(access.address.byte_offset);
+    if (access_stack_offset != wanted_stack_offset ||
+        access.inst_index >= context.bir_block->insts.size()) {
+      continue;
+    }
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[access.inst_index]);
+    if (store == nullptr) {
+      return std::nullopt;
+    }
+    const auto stored_name = prepared_named_value_id(context, store->value);
+    if (!stored_name.has_value() || *stored_name != *access.stored_value_name) {
+      return std::nullopt;
+    }
+    return store->value;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool append_frame_byte_store(std::int64_t stack_byte_offset,
+                                           std::uint8_t value_index,
+                                           std::uint8_t address_index,
+                                           const module::BlockLoweringContext& context,
+                                           std::vector<std::string>& out) {
+  if (stack_byte_offset < 0) {
+    return false;
+  }
+  const std::string value = std::string{abi::register_name(abi::w_register(value_index))};
+  const std::uint64_t offset = static_cast<std::uint64_t>(stack_byte_offset);
+  const std::string_view base =
+      context.function.frame_plan != nullptr &&
+              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
+          ? "x29"
+          : "sp";
+  if (offset <= 4095U) {
+    out.push_back("strb " + value + ", [" + std::string{base} +
+                  (offset == 0 ? std::string{}
+                               : std::string{", #"} + std::to_string(offset)) +
+                  "]");
+    return true;
+  }
+  auto address = materialize_local_aggregate_address_lines(
+      abi::x_register(address_index), context, stack_byte_offset);
+  if (address.empty()) {
+    return false;
+  }
+  out.insert(out.end(), address.begin(), address.end());
+  out.push_back("strb " + value + ", [" +
+                std::string{abi::register_name(abi::x_register(address_index))} + "]");
+  return true;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_local_aggregate_address_payload(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const MemoryOperand& source,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr || context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr || context.bir_block == nullptr ||
+      source.byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2) {
+    return std::nullopt;
+  }
+  const std::uint8_t value_index = scratches.front().index;
+  const std::uint8_t address_index = scratches[1].index;
+
+  const auto semantic_byval_size = [&]() -> std::optional<std::size_t> {
+    if (before_instruction_index >= context.bir_block->insts.size()) {
+      return std::nullopt;
+    }
+    const auto* call =
+        std::get_if<bir::CallInst>(&context.bir_block->insts[before_instruction_index]);
+    if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+      return std::nullopt;
+    }
+    const auto& abi_info = call->arg_abi[argument.arg_index];
+    if (!abi_info.byval_copy || abi_info.size_bytes == 0) {
+      return std::nullopt;
+    }
+    return abi_info.size_bytes;
+  }();
+  if (!semantic_byval_size.has_value()) {
+    return std::nullopt;
+  }
+  const std::size_t size_bytes = *semantic_byval_size;
+  if (size_bytes == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  for (std::size_t byte_offset = 0; byte_offset < size_bytes; ++byte_offset) {
+    const auto stored_value =
+        find_prepared_frame_byte_stored_value(
+            context,
+            *addressing,
+            source.byte_offset + static_cast<std::int64_t>(byte_offset),
+            before_instruction_index);
+    if (!stored_value.has_value()) {
+      return std::nullopt;
+    }
+    const auto before_line_count = lines.size();
+    if (!emit_value_publication_to_register(context,
+                                            *stored_value,
+                                            before_instruction_index,
+                                            value_index,
+                                            address_index,
+                                            lines,
+                                            true) &&
+        !append_global_byte_load_for_prepared_value(context,
+                                                   *stored_value,
+                                                   before_instruction_index,
+                                                   value_index,
+                                                   address_index,
+                                                   lines)) {
+      return std::nullopt;
+    }
+    if (lines.size() == before_line_count ||
+        !append_frame_byte_store(source.byte_offset +
+                                     static_cast<std::int64_t>(byte_offset),
+                                 value_index,
+                                 address_index,
+                                 context,
+                                 lines)) {
+      return std::nullopt;
+    }
+  }
+  if (lines.empty()) {
+    return std::nullopt;
+  }
+  return make_select_chain_materialization_instruction(
+      context, before_instruction_index, std::move(lines));
+}
+
 [[nodiscard]] LocalAggregateAddressMaterializationResult
 materialize_local_aggregate_address_call_argument(
     const module::BlockLoweringContext& context,
@@ -5443,6 +5674,10 @@ materialize_local_aggregate_address_call_argument(
   if (lines.empty()) {
     return diagnostic(
         "AArch64 local aggregate address call argument requires a printable prepared frame address");
+  }
+  if (auto payload = materialize_local_aggregate_address_payload(
+          context, argument, *source, before_instruction_index)) {
+    lowered.push_back(std::move(*payload));
   }
   auto instruction =
       make_select_chain_materialization_instruction(
@@ -5916,82 +6151,6 @@ materialize_aggregate_register_lane_sources_to_destination(
 
   const auto source_stack_offset =
       static_cast<std::size_t>(view->source_memory->byte_offset);
-  const auto find_stored_value = [&](std::size_t byte_offset)
-      -> std::optional<bir::Value> {
-    const auto wanted_stack_offset = source_stack_offset + byte_offset;
-    for (const auto& access : addressing->accesses) {
-      if (access.block_label != context.control_flow_block->block_label ||
-          access.inst_index >= instruction_index ||
-          !access.stored_value_name.has_value() ||
-          access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-          !access.address.frame_slot_id.has_value() ||
-          access.address.byte_offset < 0 || access.address.size_bytes != 1) {
-        continue;
-      }
-      const auto* slot =
-          prepare::find_frame_slot_by_id(context.function.prepared->stack_layout,
-                                         *access.address.frame_slot_id);
-      if (slot == nullptr) {
-        continue;
-      }
-      const auto access_stack_offset =
-          slot->offset_bytes + static_cast<std::size_t>(access.address.byte_offset);
-      if (access_stack_offset != wanted_stack_offset) {
-        continue;
-      }
-      if (access.inst_index >= context.bir_block->insts.size()) {
-        return std::nullopt;
-      }
-      const auto* store =
-          std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[access.inst_index]);
-      if (store == nullptr) {
-        return std::nullopt;
-      }
-      const auto stored_name = prepared_named_value_id(context, store->value);
-      if (!stored_name.has_value() || *stored_name != *access.stored_value_name) {
-        return std::nullopt;
-      }
-      return store->value;
-    }
-    return std::nullopt;
-  };
-
-  const auto append_global_byte_load = [&](const bir::Value& value,
-                                           std::uint8_t target_index,
-                                           std::uint8_t scratch_index,
-                                           std::vector<std::string>& out) {
-    if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
-      return false;
-    }
-    for (std::size_t index = 0;
-         index < std::min(instruction_index, context.bir_block->insts.size());
-         ++index) {
-      const auto* load =
-          std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[index]);
-      if (load == nullptr || load->result.name != value.name ||
-          !load->address.has_value() ||
-          load->address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol ||
-          load->address->base_name.empty()) {
-        continue;
-      }
-      const auto target = abi::register_name(abi::w_register(target_index));
-      const auto address = abi::register_name(abi::x_register(scratch_index));
-      const auto offset = load->address->byte_offset;
-      out.push_back("adrp " + std::string{address} + ", " +
-                    load->address->base_name);
-      out.push_back("add " + std::string{address} + ", " +
-                    std::string{address} + ", :lo12:" +
-                    load->address->base_name);
-      out.push_back("ldrb " + std::string{target} + ", [" +
-                    std::string{address} +
-                    (offset == 0 ? std::string{}
-                                 : std::string{", #"} + std::to_string(offset)) +
-                    "]");
-      return true;
-    }
-    return false;
-  };
-
   const auto scratch_registers = abi::reserved_mir_scratch_gp_registers();
   if (scratch_registers.size() < 2) {
     return std::nullopt;
@@ -6022,7 +6181,12 @@ materialize_aggregate_register_lane_sources_to_destination(
     if (!auxiliary_scratch.has_value()) {
       return std::nullopt;
     }
-    const auto stored_value = find_stored_value(byte_offset);
+    const auto stored_value =
+        find_prepared_frame_byte_stored_value(
+            context,
+            *addressing,
+            static_cast<std::int64_t>(source_stack_offset + byte_offset),
+            instruction_index);
     if (!stored_value.has_value()) {
       if (first_lane_byte) {
         lines.push_back("mov " +
@@ -6039,7 +6203,12 @@ materialize_aggregate_register_lane_sources_to_destination(
                                             *auxiliary_scratch,
                                             lines,
                                             true) &&
-        !append_global_byte_load(*stored_value, target_index, *auxiliary_scratch, lines)) {
+        !append_global_byte_load_for_prepared_value(context,
+                                                   *stored_value,
+                                                   instruction_index,
+                                                   target_index,
+                                                   *auxiliary_scratch,
+                                                   lines)) {
       return std::nullopt;
     }
     if (lines.size() == before_line_count) {
@@ -7084,6 +7253,12 @@ materialize_missing_frame_slot_call_arguments(
         .source_bundle = prepared_move->bundle,
         .source_move = prepared_move->move,
     };
+    if (address_source.has_value()) {
+      if (auto payload = materialize_local_aggregate_address_payload(
+              context, argument, *address_source, instruction_index)) {
+        lowered.push_back(std::move(*payload));
+      }
+    }
     record_emitted_scalar_register(scalar_state, destination.value_name, destination);
     lowered.push_back(make_dispatch_bridge_machine_instruction(
         context,
