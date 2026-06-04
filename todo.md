@@ -8,40 +8,31 @@ Current Step Title: Prove The AArch64 Targeted Cases
 
 ## Just Finished
 
-Completed the Step 5 decomposed HFA return/consumption packet for the next
-remaining AArch64 `00204.c` blocker after the global HFA return lane-source
-repair.
+Completed the Step 5 F128 HFA follow-up as a localization-only containment
+packet after supervisor rejection.
 
-Repaired the first wrong multi-lane HFA return/consumption fact:
-
-- `fr_hfa23().a` and `fr_hfa24().a` now print `23.1` and `24.1` instead of
-  `0.0`.
-- The first wrong fact was caller-side result-home publication, not callee
-  return publication: `fr_hfa23`/`fr_hfa24` already returned lanes in `d0..dN`,
-  but the caller later reloaded lane 0 from the aggregate result home without
-  ever publishing the ABI result register there.
-- `PreparedCallResultPlan` now records lane-0 HFA aggregate results as sourced
-  from the ABI result register when lane 0 aliases `call.result`.
-- AArch64 after-call lowering now emits a synthetic stack result-home
-  publication for stack-homed scalar call results when no explicit after-call
-  move bundle publishes that result.
-- Stack call-result publication now supports scalar FPR sources (`sN`/`dN`) in
-  addition to the previous scalar GPR path.
-- Added focused non-`00204.c` coverage:
-  `backend_codegen_route_aarch64_hfa_result_home_publication_contract`, which
-  runs the AArch64 call-boundary owner contract and asserts that a stack-homed
-  HFA lane-0 call result without an explicit after-call move bundle stores ABI
-  `d0` into the aggregate result home.
-- No broad c-testsuite expectations were changed and no `00204.c` special case
-  was added.
+- Re-tested the attempted F128/`long double` HFA return classification and
+  Q-register result-bank route.
+- Confirmed the first exposed wrong fact: enabling F128 HFA return
+  classification makes `00204.c` function `ret` enter aggregate store
+  local-memory lowering for F128 HFA call results.
+- A small semantic repair was identified during tracing: local aggregate HFA
+  store classification also needs to admit F128 lanes, and single-lane
+  structured HFA call results need a lane publication/consumption contract.
+- With that semantic admission in place, `00204.c` advances past BIR admission
+  to a later prepared/MIR printer blocker, and the existing prepared `00204.c`
+  dump contract changes its source id/slot snippets. Because this packet may
+  not rewrite or downgrade that existing dump test, the F128 classification and
+  focused proof slice were contained/reverted instead of accepted.
+- No implementation/test changes remain from the rejected F128 slice; no broad
+  c-testsuite expectations or dump expectations were changed.
 
 ## Suggested Next
 
-Repair the next remaining AArch64 `00204.c` ABI family exposed after float and
-double HFA return/consumption now pass: long-double HFA return payloads still
-print `0.0`, and variadic HFA register/overflow payload consumption remains
-corrupt. Trace long-double HFA ABI classification/publication first, then
-variadic HFA overflow lane progression; do not weaken expectations.
+Take a focused packet that first repairs/proves F128 HFA aggregate-store
+publication independently of `00204.c`, then re-enable F128 HFA return
+classification/result-bank authority with a non-brittle focused contract before
+touching the existing `00204.c` prepared dump expectations.
 
 ## Watchouts
 
@@ -53,8 +44,14 @@ variadic HFA overflow lane progression; do not weaken expectations.
 - HFA return/output advanced: `fr_hfa11`, `fr_hfa12`, `fr_hfa13`,
   `fr_hfa14`, `fr_hfa21`, `fr_hfa22`, `fr_hfa23`, and `fr_hfa24` now print
   correctly in `00204.c`.
-- The next return mismatch is long-double HFA return output: `fr_hfa31`,
-  `fr_hfa32`, `fr_hfa33`, and `fr_hfa34` still print `0.0`.
+- The rejected F128 classification route is not accepted in the current tree.
+  Re-enabling it exposes, in order, F128 HFA aggregate-store local-memory
+  admission and then later prepared/MIR call-boundary publication issues.
+- Do not rewrite the existing `00204.c` backend dump snippets merely to accept
+  source-id churn from the F128 route; add a focused non-overfit contract first.
+- The next remaining ABI family is still `fr_hfa31` through `fr_hfa34`
+  long-double/F128 HFA return payloads, which print `0.0` in `00204.c` in the
+  contained state.
 - Variadic HFA output is still corrupt. Long double HFA variadic output remains
   all zero; float/double variadic output still corrupts later lane groups after
   the initial register-resident payloads.
@@ -73,14 +70,21 @@ Ran:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_aarch64_.*|backend_prepare_frame_stack_call_contract|c_testsuite_aarch64_backend_src_(00204|00032|00182)_c)$' > test_after.log 2>&1
 ```
 
-Result: exit code 8. All selected backend route tests pass, including the new
-`backend_codegen_route_aarch64_hfa_result_home_publication_contract` focused
-contract and `backend_codegen_route_aarch64_hfa_global_payload_return` probe
-plus the prior SRET and large-stack publication probes.
-`backend_prepare_frame_stack_call_contract` passes, and guard cases
-`00032.c`/`00182.c` pass. The selected proof now runs 26 tests with one
-additional passing focused test; the only selected failure remains
-`c_testsuite_aarch64_backend_src_00204_c`, now advanced past `fr_hfa23().a` /
-`fr_hfa24().a` and failing later long-double HFA return plus variadic payload
-families.
-Canonical executor proof log: `test_after.log`.
+Result: exit code 8. All selected backend route tests pass, including
+`backend_codegen_route_aarch64_hfa_result_home_publication_contract`,
+`backend_codegen_route_aarch64_hfa_global_payload_return`,
+`backend_codegen_route_aarch64_f128_hfa_global_payload_call_boundary`, and the
+prior SRET/large-stack publication probes. `backend_prepare_frame_stack_call_contract`
+passes, and guard cases `00032.c`/`00182.c` pass. The selected proof is back to
+the contained 26-test shape; the only selected failure remains
+`c_testsuite_aarch64_backend_src_00204_c`.
+
+Also ran:
+
+```bash
+ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' > test_cli_after.log 2>&1
+```
+
+Result: exit code 0. Both existing `00204.c` backend dump tests pass after
+containment.
+Canonical executor proof logs: `test_after.log`, `test_cli_after.log`.
