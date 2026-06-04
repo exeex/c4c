@@ -3494,11 +3494,22 @@ prepared_store_source_producer(
       load.address->byte_offset < 0) {
     return false;
   }
-  const auto mnemonic = scalar_load_mnemonic(load.result.type);
-  const auto target_view = scalar_view_for_type(load.result.type);
-  const auto target = target_view.has_value()
-                          ? gp_register_name(target_index, *target_view)
-                          : std::nullopt;
+  std::optional<std::string_view> mnemonic = scalar_load_mnemonic(load.result.type);
+  std::optional<std::string> target;
+  if (const auto target_view = scalar_view_for_type(load.result.type);
+      target_view.has_value()) {
+    target = gp_register_name(target_index, *target_view);
+  } else if (load.result.type == bir::TypeKind::F32 ||
+             load.result.type == bir::TypeKind::F64) {
+    const auto base = abi::fp_simd_register(target_index, abi::RegisterView::D);
+    const auto viewed =
+        base.has_value() ? scalar_fp_register_view(*base, load.result.type)
+                         : std::nullopt;
+    if (viewed.has_value()) {
+      mnemonic = std::string_view{"ldr"};
+      target = std::string{abi::register_name(*viewed)};
+    }
+  }
   const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
   if (!mnemonic.has_value() || !target.has_value() || !address.has_value()) {
     return false;
@@ -4096,6 +4107,18 @@ lower_store_local_value_publication(
       if (!emitted) {
         return std::nullopt;
       }
+    }
+    if (!emitted && abi::is_fp_simd_register(target_register->reg) &&
+        has_prepared_global_symbol_load_local &&
+        store_source_plan.source_load_local != nullptr &&
+        !scratches.empty()) {
+      lines.clear();
+      emitted = emit_load_local_global_symbol_to_register(
+          context,
+          *store_source_plan.source_load_local,
+          target_register->reg.index,
+          scratches.front().index,
+          lines);
     }
     if (!emitted && abi::is_fp_simd_register(target_register->reg) &&
         has_prepared_scalar_fp_binary_producer &&
