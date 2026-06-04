@@ -5896,6 +5896,177 @@ lower_scalar_call_argument_producers(
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
+materialize_aggregate_register_lane_sources_to_destination(
+    const module::BlockLoweringContext& context,
+    const CallBoundaryMoveInstructionRecord& move_record,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto view = aggregate_register_lane_publication_view(move_record);
+  if (!view.has_value() || context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr || context.control_flow_block == nullptr ||
+      context.bir_block == nullptr || view->source_memory->byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto source_stack_offset =
+      static_cast<std::size_t>(view->source_memory->byte_offset);
+  const auto find_stored_value = [&](std::size_t byte_offset)
+      -> std::optional<bir::Value> {
+    const auto wanted_stack_offset = source_stack_offset + byte_offset;
+    for (const auto& access : addressing->accesses) {
+      if (access.block_label != context.control_flow_block->block_label ||
+          access.inst_index >= instruction_index ||
+          !access.stored_value_name.has_value() ||
+          access.address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+          !access.address.frame_slot_id.has_value() ||
+          access.address.byte_offset < 0 || access.address.size_bytes != 1) {
+        continue;
+      }
+      const auto* slot =
+          prepare::find_frame_slot_by_id(context.function.prepared->stack_layout,
+                                         *access.address.frame_slot_id);
+      if (slot == nullptr) {
+        continue;
+      }
+      const auto access_stack_offset =
+          slot->offset_bytes + static_cast<std::size_t>(access.address.byte_offset);
+      if (access_stack_offset != wanted_stack_offset) {
+        continue;
+      }
+      if (access.inst_index >= context.bir_block->insts.size()) {
+        return std::nullopt;
+      }
+      const auto* store =
+          std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[access.inst_index]);
+      if (store == nullptr) {
+        return std::nullopt;
+      }
+      const auto stored_name = prepared_named_value_id(context, store->value);
+      if (!stored_name.has_value() || *stored_name != *access.stored_value_name) {
+        return std::nullopt;
+      }
+      return store->value;
+    }
+    return std::nullopt;
+  };
+
+  const auto append_global_byte_load = [&](const bir::Value& value,
+                                           std::uint8_t target_index,
+                                           std::uint8_t scratch_index,
+                                           std::vector<std::string>& out) {
+    if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+      return false;
+    }
+    for (std::size_t index = 0;
+         index < std::min(instruction_index, context.bir_block->insts.size());
+         ++index) {
+      const auto* load =
+          std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[index]);
+      if (load == nullptr || load->result.name != value.name ||
+          !load->address.has_value() ||
+          load->address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol ||
+          load->address->base_name.empty()) {
+        continue;
+      }
+      const auto target = abi::register_name(abi::w_register(target_index));
+      const auto address = abi::register_name(abi::x_register(scratch_index));
+      const auto offset = load->address->byte_offset;
+      out.push_back("adrp " + std::string{address} + ", " +
+                    load->address->base_name);
+      out.push_back("add " + std::string{address} + ", " +
+                    std::string{address} + ", :lo12:" +
+                    load->address->base_name);
+      out.push_back("ldrb " + std::string{target} + ", [" +
+                    std::string{address} +
+                    (offset == 0 ? std::string{}
+                                 : std::string{", #"} + std::to_string(offset)) +
+                    "]");
+      return true;
+    }
+    return false;
+  };
+
+  const auto scratch_registers = abi::reserved_mir_scratch_gp_registers();
+  if (scratch_registers.size() < 2) {
+    return std::nullopt;
+  }
+  auto choose_auxiliary_scratch = [&](std::uint8_t target_index)
+      -> std::optional<std::uint8_t> {
+    for (const auto scratch : scratch_registers) {
+      if (scratch.index != target_index) {
+        return scratch.index;
+      }
+    }
+    return std::nullopt;
+  };
+
+  std::vector<std::string> lines;
+  for (std::size_t byte_offset = 0; byte_offset < view->size_bytes; ++byte_offset) {
+    const auto lane_index = byte_offset / 8U;
+    const auto lane_byte_offset = byte_offset % 8U;
+    const auto lane_register =
+        aggregate_register_lane_destination(*view->destination_register, lane_index);
+    if (!lane_register.has_value()) {
+      return std::nullopt;
+    }
+    const bool first_lane_byte = lane_byte_offset == 0;
+    const std::uint8_t target_index =
+        first_lane_byte ? lane_register->index : scratch_registers.front().index;
+    const auto auxiliary_scratch = choose_auxiliary_scratch(target_index);
+    if (!auxiliary_scratch.has_value()) {
+      return std::nullopt;
+    }
+    const auto stored_value = find_stored_value(byte_offset);
+    if (!stored_value.has_value()) {
+      if (first_lane_byte) {
+        lines.push_back("mov " +
+                        std::string{abi::register_name(abi::w_register(target_index))} +
+                        ", #0");
+      }
+      continue;
+    }
+    const auto before_line_count = lines.size();
+    if (!emit_value_publication_to_register(context,
+                                            *stored_value,
+                                            instruction_index,
+                                            target_index,
+                                            *auxiliary_scratch,
+                                            lines,
+                                            true) &&
+        !append_global_byte_load(*stored_value, target_index, *auxiliary_scratch, lines)) {
+      return std::nullopt;
+    }
+    if (lines.size() == before_line_count) {
+      return std::nullopt;
+    }
+    if (!first_lane_byte) {
+      lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
+                      ", " + std::string{abi::register_name(*lane_register)} +
+                      ", " +
+                      std::string{abi::register_name(abi::x_register(target_index))} +
+                      ", lsl #" + std::to_string(lane_byte_offset * 8U));
+    }
+  }
+  if (lines.empty()) {
+    return std::nullopt;
+  }
+  if (move_record.destination_register.has_value() &&
+      move_record.destination_register->value_name != c4c::kInvalidValueName) {
+    record_emitted_scalar_register(scalar_state,
+                                   move_record.destination_register->value_name,
+                                   *move_record.destination_register);
+  }
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
 materialize_call_boundary_source_to_destination(
     const module::BlockLoweringContext& context,
     module::MachineInstruction& instruction,
@@ -5903,6 +6074,13 @@ materialize_call_boundary_source_to_destination(
     BlockScalarLoweringState& scalar_state) {
   auto* move_record =
       std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record != nullptr) {
+    if (auto aggregate_materialized =
+            materialize_aggregate_register_lane_sources_to_destination(
+                context, *move_record, instruction_index, scalar_state)) {
+      return aggregate_materialized;
+    }
+  }
   if (move_record == nullptr ||
       !move_record->source_memory.has_value() ||
       move_record->source_memory_materializes_address ||

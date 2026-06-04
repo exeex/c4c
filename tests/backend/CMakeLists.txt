@@ -100,6 +100,17 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_byval_global_payload_call_boundary
+  SRC "${BACKEND_CASE_ROOT}/aarch64_byval_global_payload_call_boundary.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_byval_global_payload_call_boundary.s"
+  REQUIRED_SNIPPETS "call_pair:|global_pair|adrp x9, global_pair|add x9, x9, :lo12:global_pair|ldrb w0, [x9]|orr x0, x0, x9, lsl #8|bl take_pair"
+  FORBIDDEN_SNIPPETS "ldrb w0, [sp|ldr w0, [sp|ldr x0, [sp"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 byval prepared_call_boundary probe
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_aarch64_variadic_aggregate_overflow_byte_copy
   SRC "${BACKEND_CASE_ROOT}/aarch64_variadic_aggregate_overflow_byte_copy.c"
   TARGET_TRIPLE aarch64-linux-gnu
