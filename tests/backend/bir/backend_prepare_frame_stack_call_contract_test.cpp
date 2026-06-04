@@ -27,6 +27,7 @@ namespace {
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -4790,6 +4791,358 @@ int check_aarch64_prior_preservation_rejects_missing_source_selection() {
   return 0;
 }
 
+prepare::PreparedBirModule make_aarch64_outgoing_stack_scalar_lifetime_contract_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = aarch64_target_profile();
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("aarch64_outgoing_stack_scalar_lifetime");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("stack.scalar.source");
+  constexpr auto source_value_id = prepare::PreparedValueId{9101};
+  constexpr auto source_object_id = prepare::PreparedObjectId{9102};
+  constexpr auto source_slot_id = prepare::PreparedFrameSlotId{9103};
+  constexpr auto assigned_object_id = prepare::PreparedObjectId{9104};
+  constexpr auto assigned_slot_id = prepare::PreparedFrameSlotId{9105};
+
+  bir::Function callee;
+  callee.name = "take_nine_i64";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 9; ++index) {
+    callee.params.push_back(bir::Param{
+        .type = bir::TypeKind::I64,
+        .name = "arg" + std::to_string(index),
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I64,
+            .size_bytes = 8,
+            .align_bytes = 8,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = index < 8,
+            .passed_on_stack = index >= 8,
+        },
+    });
+  }
+  prepared.module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "aarch64_outgoing_stack_scalar_lifetime";
+  caller.return_type = bir::TypeKind::Void;
+
+  bir::CallInst call;
+  call.callee = "take_nine_i64";
+  call.return_type_name = "void";
+  call.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 9; ++index) {
+    call.arg_types.push_back(bir::TypeKind::I64);
+    call.arg_abi.push_back(bir::CallArgAbiInfo{
+        .type = bir::TypeKind::I64,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .primary_class = bir::AbiValueClass::Integer,
+        .passed_in_register = index < 8,
+        .passed_on_stack = index >= 8,
+    });
+    call.args.push_back(index == 8
+                            ? bir::Value::named(bir::TypeKind::I64,
+                                                "stack.scalar.source")
+                            : bir::Value::immediate_i64(index + 1));
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(caller));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = source_value_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = assigned_slot_id,
+              .offset_bytes = std::size_t{256},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = source_value_id,
+                      .to_value_id = source_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{8},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_stack_to_stack",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{8},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                  }},
+          }},
+  });
+  prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedRegallocValue{
+              .value_id = source_value_id,
+              .stack_object_id = assigned_object_id,
+              .function_name = function_name,
+              .value_name = source_name,
+              .type = bir::TypeKind::I64,
+              .register_class = prepare::PreparedRegisterClass::General,
+              .allocation_status = prepare::PreparedAllocationStatus::Spilled,
+              .assigned_stack_slot =
+                  prepare::PreparedStackSlotAssignment{
+                      .slot_id = assigned_slot_id,
+                      .offset_bytes = 256,
+                      .size_bytes = std::size_t{8},
+                      .align_bytes = std::size_t{8},
+                      .placement =
+                          prepare::PreparedSpillSlotPlacement{
+                              .slot_id = assigned_slot_id,
+                              .offset_bytes = 256,
+                          },
+                  },
+          }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 264,
+      .frame_alignment_bytes = 8,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = block_label,
+              .inst_index = 0,
+              .result_value_name = source_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = source_slot_id,
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = source_object_id,
+      .function_name = function_name,
+      .value_name = source_name,
+      .source_kind = "spill",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = source_slot_id,
+      .object_id = source_object_id,
+      .function_name = function_name,
+      .offset_bytes = 128,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = assigned_object_id,
+      .function_name = function_name,
+      .value_name = source_name,
+      .source_kind = "spill",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = assigned_slot_id,
+      .object_id = assigned_object_id,
+      .function_name = function_name,
+      .offset_bytes = 256,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  prepare::populate_call_plans(prepared);
+  return prepared;
+}
+
+int check_aarch64_outgoing_stack_scalar_argument_lifetime_contract() {
+  auto prepared = make_aarch64_outgoing_stack_scalar_lifetime_contract_module();
+  const auto function_id =
+      prepared.names.function_names.find("aarch64_outgoing_stack_scalar_lifetime");
+  const auto source_name = prepared.names.value_names.find("stack.scalar.source");
+  const auto* control_flow =
+      prepare::find_prepared_control_flow_function(prepared.control_flow, function_id);
+  const auto* call_plans = find_call_plans_function(
+      prepared, "aarch64_outgoing_stack_scalar_lifetime");
+  if (function_id == c4c::kInvalidFunctionName ||
+      source_name == c4c::kInvalidValueName ||
+      control_flow == nullptr || call_plans == nullptr ||
+      call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 9) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: missing prepared call fixture");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto& argument = call_plan.arguments.back();
+  if (argument.arg_index != 8 ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.source_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{9101}} ||
+      argument.source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{9105}} ||
+      argument.source_stack_offset_bytes != std::optional<std::size_t>{256} ||
+      argument.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      !argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+      argument.source_selection->source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{9103}} ||
+      argument.source_selection->source_stack_offset_bytes !=
+          std::optional<std::size_t>{128}) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: stack argument lost distinct assigned and selected frame-slot authority");
+  }
+
+  const auto boundary_effects = prepare::plan_prepared_call_boundary_effects(
+      call_plan,
+      prepare::find_prepared_move_bundle(
+          *prepare::find_prepared_value_location_function(
+              prepared, function_id),
+          prepare::PreparedMovePhase::BeforeCall,
+          call_plan.block_index,
+          call_plan.instruction_index),
+      nullptr);
+  const prepare::PreparedCallBoundaryEffectPlan* stack_arg_effect = nullptr;
+  for (const auto& effect : boundary_effects) {
+    if (effect.effect_kind == prepare::PreparedCallBoundaryEffectKind::ExplicitMove &&
+        effect.phase == prepare::PreparedMovePhase::BeforeCall &&
+        effect.destination_kind ==
+            prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        effect.abi_index == std::optional<std::size_t>{8}) {
+      stack_arg_effect = &effect;
+      break;
+    }
+  }
+  if (stack_arg_effect == nullptr ||
+      stack_arg_effect->source.storage_kind !=
+          prepare::PreparedMoveStorageKind::StackSlot ||
+      stack_arg_effect->source.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{9103}} ||
+      stack_arg_effect->source.stack_offset_bytes !=
+          std::optional<std::size_t>{128} ||
+      stack_arg_effect->source.stack_size_bytes != std::optional<std::size_t>{8} ||
+      stack_arg_effect->destination.stack_offset_bytes !=
+          std::optional<std::size_t>{0}) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: boundary effect did not use the selected prepared frame-slot source");
+  }
+
+  const auto function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, *control_flow);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(
+          function_context, control_flow->blocks[call_plan.block_index],
+          call_plan.block_index);
+  c4c::backend::aarch64::module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_before_call_moves(
+      block_context, call_plan, call_plan.instruction_index, diagnostics);
+
+  const aarch64_codegen::InstructionRecord* stack_store = nullptr;
+  const aarch64_codegen::MemoryInstructionRecord* memory_record = nullptr;
+  for (const auto& instruction : lowered) {
+    const auto* candidate =
+        std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+            &instruction.target.payload);
+    if (candidate == nullptr ||
+        candidate->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+        candidate->address.stored_value_id !=
+            std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{9101}} ||
+        !candidate->value.has_value()) {
+      continue;
+    }
+    stack_store = &instruction.target;
+    memory_record = candidate;
+    break;
+  }
+  if (stack_store == nullptr || memory_record == nullptr || !diagnostics.empty()) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: missing lowered outgoing stack store");
+  }
+  const auto* source_memory =
+      std::get_if<aarch64_codegen::MemoryOperand>(&memory_record->value->payload);
+  if (memory_record->address.base_kind != aarch64_codegen::MemoryBaseKind::Register ||
+      !memory_record->address.base_register.has_value() ||
+      memory_record->address.byte_offset != 0 ||
+      memory_record->address.size_bytes != 8 ||
+      source_memory == nullptr ||
+      source_memory->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      source_memory->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{9103}} ||
+      source_memory->result_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{9101}}) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: lowered store did not keep source and destination operands distinct");
+  }
+
+  const auto has_prepared_frame_slot_source_use =
+      std::any_of(stack_store->uses.begin(), stack_store->uses.end(),
+                  [](const aarch64_codegen::MachineEffectResource& use) {
+                    return use.kind ==
+                               aarch64_codegen::MachineEffectResourceKind::Memory &&
+                           use.frame_slot_id ==
+                               std::optional<prepare::PreparedFrameSlotId>{
+                                   prepare::PreparedFrameSlotId{9103}} &&
+                           use.value_id ==
+                               std::optional<prepare::PreparedValueId>{
+                                   prepare::PreparedValueId{9101}};
+                  });
+  if (stack_store->defs.size() != 1 ||
+      stack_store->defs.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::Memory ||
+      stack_store->defs.front().value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{9101}} ||
+      stack_store->defs.front().value_name != source_name ||
+      !has_prepared_frame_slot_source_use) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: outgoing stack slot must be the def and prepared frame slot must stay a use");
+  }
+  return 0;
+}
+
 int check_saved_register_slot_placement_carrier_contract() {
   const prepare::PreparedRegisterPlacement register_placement{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -7148,6 +7501,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_aarch64_prior_preservation_rejects_missing_source_selection();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aarch64_outgoing_stack_scalar_argument_lifetime_contract();
       rc != 0) {
     return rc;
   }

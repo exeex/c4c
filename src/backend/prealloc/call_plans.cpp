@@ -2897,6 +2897,54 @@ namespace {
 
 [[nodiscard]] PreparedCallBoundaryEffectEndpoint make_argument_source_endpoint(
     const PreparedCallArgumentPlan& argument) {
+  if (argument.source_selection.has_value() &&
+      (argument.source_selection->kind ==
+           PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+       argument.source_selection->kind ==
+           PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane)) {
+    const auto& selection = *argument.source_selection;
+    const auto* transport = argument.aggregate_transport.has_value()
+                                ? &*argument.aggregate_transport
+                                : nullptr;
+    const auto source_slot_id =
+        selection.kind == PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
+                transport != nullptr && transport->source_slot_id.has_value()
+            ? transport->source_slot_id
+            : selection.source_slot_id;
+    const auto source_stack_offset =
+        selection.kind == PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
+                transport != nullptr && transport->source_stack_offset_bytes.has_value()
+            ? transport->source_stack_offset_bytes
+            : selection.source_stack_offset_bytes;
+    const auto source_size =
+        selection.kind == PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
+                transport != nullptr && transport->payload_size_bytes != 0
+            ? std::optional<std::size_t>{transport->payload_size_bytes}
+            : selection.source_size_bytes;
+    const auto source_align =
+        selection.kind == PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane &&
+                transport != nullptr && transport->payload_align_bytes != 0
+            ? std::optional<std::size_t>{transport->payload_align_bytes}
+            : selection.source_align_bytes;
+    // Outgoing stack arguments are lowered from selected prepared frame bytes,
+    // not necessarily the regalloc spill slot originally assigned to the value.
+    // Keep call-boundary lifetime sources aligned with lowering so the outgoing
+    // stack store preserves the actual prepared source slot it reads.
+    return PreparedCallBoundaryEffectEndpoint{
+        .encoding = PreparedStorageEncodingKind::FrameSlot,
+        .storage_kind = PreparedMoveStorageKind::StackSlot,
+        .value_id = selection.source_value_id.has_value()
+                        ? selection.source_value_id
+                        : argument.source_value_id,
+        .value_name = selection.source_value_name.value_or(kInvalidValueName),
+        .register_bank = argument.source_register_bank,
+        .contiguous_width = 1,
+        .slot_id = source_slot_id,
+        .stack_offset_bytes = source_stack_offset,
+        .stack_size_bytes = source_size,
+        .stack_align_bytes = source_align,
+    };
+  }
   return PreparedCallBoundaryEffectEndpoint{
       .encoding = argument.source_encoding,
       .storage_kind = move_storage_kind_from_storage_encoding(argument.source_encoding),
