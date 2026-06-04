@@ -3383,6 +3383,65 @@ prepared_store_source_producer(
          plan.source_binary != nullptr &&
          is_prepared_scalar_float_alu_operation(*plan.source_binary);
 }
+[[nodiscard]] std::string load_local_global_symbol_name(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load) {
+  if (!load.address.has_value() ||
+      load.address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol) {
+    return {};
+  }
+  if (context.function.prepared != nullptr &&
+      load.address->base_link_name_id != c4c::kInvalidLinkName) {
+    const std::string_view symbol =
+        prepare::prepared_link_name(context.function.prepared->names,
+                                    load.address->base_link_name_id);
+    if (!symbol.empty()) {
+      return std::string{symbol};
+    }
+  }
+  return load.address->base_name;
+}
+[[nodiscard]] bool emit_load_local_global_symbol_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  const auto symbol_name = load_local_global_symbol_name(context, load);
+  if (!load.address.has_value() || symbol_name.empty() ||
+      load.address->byte_offset < 0) {
+    return false;
+  }
+  const auto mnemonic = scalar_load_mnemonic(load.result.type);
+  const auto target_view = scalar_view_for_type(load.result.type);
+  const auto target = target_view.has_value()
+                          ? gp_register_name(target_index, *target_view)
+                          : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (!mnemonic.has_value() || !target.has_value() || !address.has_value()) {
+    return false;
+  }
+  const auto symbol =
+      relocation_operand(symbol_name,
+                         static_cast<std::size_t>(load.address->byte_offset));
+  lines.push_back("adrp " + *address + ", " + symbol);
+  lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
+  return true;
+}
+[[nodiscard]] bool prepared_store_source_global_symbol_load_local_is_complete(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedStoreSourcePublicationPlan& plan) {
+  if (!prepared_store_source_producer_is_complete(
+          context,
+          plan,
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) ||
+      plan.source_load_local == nullptr ||
+      !plan.source_producer_instruction_index.has_value()) {
+    return false;
+  }
+  return !load_local_global_symbol_name(context, *plan.source_load_local).empty();
+}
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,
@@ -3807,6 +3866,9 @@ lower_store_local_value_publication(
   const bool has_prepared_scalar_fp_binary_producer =
       prepared_store_source_scalar_fp_binary_producer_is_complete(
           context, store_source_plan);
+  const bool has_prepared_global_symbol_load_local =
+      prepared_store_source_global_symbol_load_local_is_complete(
+          context, store_source_plan);
   const bool has_direct_global_select_chain =
       store_source_plan.direct_global_select_chain_source;
   if ((!store_source_plan.byval_load_local_source &&
@@ -3814,6 +3876,7 @@ lower_store_local_value_publication(
        !has_prepared_select_producer &&
        !has_prepared_scalar_fp_binary_producer &&
        !has_prepared_cast_producer &&
+       !has_prepared_global_symbol_load_local &&
        !has_direct_global_select_chain)) {
     return std::nullopt;
   }
@@ -3885,26 +3948,44 @@ lower_store_local_value_publication(
           break;
         }
       }
-      if (!has_prepared_select_producer ||
-          value_home == nullptr ||
-          value_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-          !value_home->offset_bytes.has_value() ||
-          !store_mnemonic.has_value() ||
+      if (!has_prepared_select_producer &&
+          !has_prepared_global_symbol_load_local) {
+        return std::nullopt;
+      }
+      if (has_prepared_select_producer &&
+          (value_home == nullptr ||
+           value_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+           !value_home->offset_bytes.has_value())) {
+        return std::nullopt;
+      }
+      if (!store_mnemonic.has_value() ||
           !store_register.has_value() ||
           !alternate_scratch.has_value()) {
         return std::nullopt;
       }
-      emitted = emit_value_publication_to_register(context,
-                                                   value,
-                                                   instruction_index,
-                                                   target_register->reg.index,
-                                                   *alternate_scratch,
-                                                   lines,
-                                                   true);
+      if (has_prepared_global_symbol_load_local &&
+          store_source_plan.source_load_local != nullptr) {
+        emitted = emit_load_local_global_symbol_to_register(
+            context,
+            *store_source_plan.source_load_local,
+            target_register->reg.index,
+            *alternate_scratch,
+            lines);
+      } else {
+        emitted = emit_value_publication_to_register(context,
+                                                     value,
+                                                     instruction_index,
+                                                     target_register->reg.index,
+                                                     *alternate_scratch,
+                                                     lines,
+                                                     true);
+      }
       if (emitted) {
-        lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
-                        ", " + frame_slot_address(context.function, *value_home->offset_bytes));
-        published_stack_home = true;
+        if (has_prepared_select_producer) {
+          lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
+                          ", " + frame_slot_address(context.function, *value_home->offset_bytes));
+          published_stack_home = true;
+        }
       }
     } else if (store_source_plan.source_producer_kind ==
                prepare::PreparedEdgePublicationSourceProducerKind::Cast) {
@@ -3934,18 +4015,29 @@ lower_store_local_value_publication(
     }
     if (!emitted && abi::is_gp_register(target_register->reg) && !scratches.empty()) {
       lines.clear();
-      emitted = emit_value_publication_to_register(context,
-                                                   value,
-                                                   instruction_index,
-                                                   target_register->reg.index,
-                                                   scratches.front().index,
-                                                   lines);
+      if (has_prepared_global_symbol_load_local &&
+          store_source_plan.source_load_local != nullptr) {
+        emitted = emit_load_local_global_symbol_to_register(
+            context,
+            *store_source_plan.source_load_local,
+            target_register->reg.index,
+            scratches.front().index,
+            lines);
+      } else {
+        emitted = emit_value_publication_to_register(context,
+                                                     value,
+                                                     instruction_index,
+                                                     target_register->reg.index,
+                                                     scratches.front().index,
+                                                     lines);
+      }
     }
   } else if (const auto* target_memory =
                  std::get_if<MemoryOperand>(&memory_record->value->payload);
              target_memory != nullptr &&
              (has_prepared_select_producer ||
               has_prepared_cast_producer ||
+              has_prepared_global_symbol_load_local ||
               has_direct_global_select_chain)) {
     if (store_source_plan_available &&
         (store_source_plan.destination_base_kind !=
@@ -3970,7 +4062,15 @@ lower_store_local_value_publication(
         stack_home.empty()) {
       return std::nullopt;
     }
-    if (has_prepared_cast_producer &&
+    if (has_prepared_global_symbol_load_local &&
+        store_source_plan.source_load_local != nullptr) {
+      emitted = emit_load_local_global_symbol_to_register(
+          context,
+          *store_source_plan.source_load_local,
+          scratches.front().index,
+          scratches[1].index,
+          lines);
+    } else if (has_prepared_cast_producer &&
         store_source_plan.source_cast != nullptr &&
         store_source_plan.source_producer_instruction_index.has_value() &&
         (store_source_plan.source_cast->opcode == bir::CastOpcode::IntToPtr ||

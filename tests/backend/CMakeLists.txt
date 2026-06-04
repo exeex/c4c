@@ -194,6 +194,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 store_global stack_publication probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_sret_global_scalar_source_publication
+  SRC "${BACKEND_CASE_ROOT}/aarch64_sret_global_scalar_source_publication.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_sret_global_scalar_source_publication.s"
+  REQUIRED_SNIPPETS "return_global_one_byte:|adrp x9, global_one_byte|add x9, x9, :lo12:global_one_byte|ldrb w13, [x9]|strb w13, [sp, #1]|strb w13, [x8]"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 sret dispatch_value_materialization aggregate_return probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
