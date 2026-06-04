@@ -78,6 +78,24 @@ struct FunctionStackObjectPlan {
   return nullptr;
 }
 
+[[nodiscard]] const bir::Global* find_global_by_link_name_spelling(
+    const bir::Module& module,
+    const bir::NameTables& bir_names,
+    std::string_view symbol_name) {
+  if (symbol_name.empty()) {
+    return nullptr;
+  }
+  for (const auto& global : module.globals) {
+    if (global.link_name_id == kInvalidLinkName) {
+      continue;
+    }
+    if (bir_names.link_names.spelling(global.link_name_id) == symbol_name) {
+      return &global;
+    }
+  }
+  return nullptr;
+}
+
 struct ResolvedPreparedGlobalSymbolAddress {
   const bir::Global* global = nullptr;
   LinkNameId prepared_symbol_name = kInvalidLinkName;
@@ -112,9 +130,21 @@ resolve_structured_global_symbol_address(PreparedNameTables& names,
 
 [[nodiscard]] std::optional<ResolvedPreparedGlobalSymbolAddress>
 resolve_raw_no_id_global_address_compatibility(PreparedNameTables& names,
+                                               const bir::NameTables& bir_names,
                                                const bir::Module& module,
-                                               std::string_view raw_symbol_name) {
-  const auto* global = find_raw_no_id_global_address_compatibility(module, raw_symbol_name);
+                                               std::string_view raw_symbol_name,
+                                               bool allow_link_name_spelling_resolution) {
+  const bir::Global* global = nullptr;
+  if (allow_link_name_spelling_resolution) {
+    global = find_global_by_link_name_spelling(module, bir_names, raw_symbol_name);
+    if (global != nullptr) {
+      return ResolvedPreparedGlobalSymbolAddress{
+          .global = global,
+          .prepared_symbol_name = names.link_names.intern(raw_symbol_name),
+      };
+    }
+  }
+  global = find_raw_no_id_global_address_compatibility(module, raw_symbol_name);
   if (global == nullptr) {
     return std::nullopt;
   }
@@ -129,12 +159,14 @@ resolve_prepared_global_symbol_address(PreparedNameTables& names,
                                        const bir::Module& module,
                                        const bir::NameTables& bir_names,
                                        std::string_view raw_symbol_name,
-                                       LinkNameId symbol_link_name_id) {
+                                       LinkNameId symbol_link_name_id,
+                                       bool allow_link_name_spelling_resolution) {
   if (symbol_link_name_id != kInvalidLinkName) {
     return resolve_structured_global_symbol_address(
         names, module, bir_names, raw_symbol_name, symbol_link_name_id);
   }
-  return resolve_raw_no_id_global_address_compatibility(names, module, raw_symbol_name);
+  return resolve_raw_no_id_global_address_compatibility(
+      names, bir_names, module, raw_symbol_name, allow_link_name_spelling_resolution);
 }
 
 [[nodiscard]] bool module_has_function_link_name_id(const bir::Module& module,
@@ -481,10 +513,16 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     LinkNameId fallback_symbol_link_name_id,
     std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
-    std::size_t align_bytes) {
+    std::size_t align_bytes,
+    bool allow_link_name_spelling_resolution = false) {
   if (!address.has_value()) {
     const auto resolved_global = resolve_prepared_global_symbol_address(
-        names, module, bir_names, fallback_symbol_name, fallback_symbol_link_name_id);
+        names,
+        module,
+        bir_names,
+        fallback_symbol_name,
+        fallback_symbol_link_name_id,
+        allow_link_name_spelling_resolution);
     if (!resolved_global.has_value()) {
       return std::nullopt;
     }
@@ -531,7 +569,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
         module,
         bir_names,
         symbol_name,
-        symbol_link_name_id);
+        symbol_link_name_id,
+        allow_link_name_spelling_resolution);
     if (!resolved_global.has_value()) {
       return std::nullopt;
     }
@@ -583,11 +622,13 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       bir_names,
       target_profile,
       inst.address,
-      {},
+      inst.result.type == bir::TypeKind::F128 ? std::string_view(inst.slot_name)
+                                              : std::string_view{},
       kInvalidLinkName,
       static_cast<std::int64_t>(inst.byte_offset),
       size_bytes,
-      align_bytes);
+      align_bytes,
+      inst.result.type == bir::TypeKind::F128);
   if (!address.has_value()) {
     return std::nullopt;
   }

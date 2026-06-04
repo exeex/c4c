@@ -291,6 +291,49 @@ prepare::PreparedBirModule prepare_aarch64_module(const bir::Module& module) {
       module, aarch64_target_profile(), options);
 }
 
+bir::Module make_f128_symbol_backed_load_local_addressing_contract_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-linux-gnu";
+
+  const auto source_slot_id = module.names.slot_names.intern("hfa31");
+  const auto source_link_name_id = module.names.link_names.intern("hfa31");
+  module.globals.push_back(bir::Global{
+      .name = "hfa31",
+      .link_name_id = source_link_name_id,
+      .type = bir::TypeKind::F128,
+      .is_extern = true,
+      .size_bytes = 16,
+      .align_bytes = 16,
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+
+  bir::Function function;
+  function.name = "f128_symbol_backed_load_local_addressing_contract";
+  function.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F128, "loaded.hfa31"),
+      .slot_name = "hfa31",
+      .slot_id = source_slot_id,
+      .byte_offset = 0,
+      .align_bytes = 16,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .byte_offset = 0,
+              .size_bytes = 16,
+              .align_bytes = 16,
+          },
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void set_register_group_override(prepare::PreparedBirModule& prepared,
                                  std::string_view function_name,
                                  std::string_view value_name,
@@ -3673,6 +3716,48 @@ int check_call_argument_symbol_link_name_id_mismatch_contract() {
   return 0;
 }
 
+int check_f128_symbol_backed_load_local_addressing_contract() {
+  const auto prepared =
+      prepare_aarch64_module(make_f128_symbol_backed_load_local_addressing_contract_module());
+  const auto function_name_id = prepared.names.function_names.find(
+      "f128_symbol_backed_load_local_addressing_contract");
+  const auto entry_block_label_id = prepared.names.block_labels.find("entry");
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, function_name_id);
+  if (function_name_id == c4c::kInvalidFunctionName ||
+      entry_block_label_id == c4c::kInvalidBlockLabel ||
+      function_addressing == nullptr) {
+    return fail(
+        "F128 symbol-backed load-local addressing contract: missing prepared function addressing");
+  }
+
+  const auto* load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
+  if (load_access == nullptr) {
+    return fail(
+        "F128 symbol-backed load-local addressing contract: missing prepared memory access");
+  }
+  if (!load_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *load_access->result_value_name) !=
+          "loaded.hfa31" ||
+      load_access->stored_value_name.has_value() ||
+      load_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !load_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *load_access->address.symbol_name) !=
+          "hfa31" ||
+      load_access->address.byte_offset != 0 ||
+      load_access->address.size_bytes != 16 ||
+      load_access->address.align_bytes != 16 ||
+      !load_access->address.can_use_base_plus_offset ||
+      load_access->address.global_address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct) {
+    return fail(
+        "F128 symbol-backed load-local addressing contract: wrong prepared global access facts");
+  }
+
+  return 0;
+}
+
 int check_stack_argument_slot_contract() {
   const auto prepared = prepare_module(make_stack_argument_slot_contract_module());
   const auto* call_plans = find_call_plans_function(prepared, "stack_argument_slot_contract");
@@ -6890,6 +6975,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_argument_symbol_link_name_id_mismatch_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_f128_symbol_backed_load_local_addressing_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_stack_argument_slot_contract(); rc != 0) {
