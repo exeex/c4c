@@ -2875,8 +2875,10 @@ MemoryInstructionLoweringResult lower_f128_transport_instruction(
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+  const auto* global_load = std::get_if<bir::LoadGlobalInst>(&inst);
   const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
   if ((load == nullptr || load->result.type != bir::TypeKind::F128) &&
+      (global_load == nullptr || global_load->result.type != bir::TypeKind::F128) &&
       (store == nullptr || store->value.type != bir::TypeKind::F128)) {
     return MemoryInstructionLoweringResult{.handled = false};
   }
@@ -2933,6 +2935,17 @@ MemoryInstructionLoweringResult lower_f128_transport_instruction(
         *load);
     carrier_value_name =
         context.function.prepared->names.value_names.find(load->result.name);
+    transport_kind = F128TransportKind::LoadFromMemory;
+  } else if (global_load != nullptr) {
+    memory = make_prepared_memory_operand_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *global_load);
+    carrier_value_name =
+        context.function.prepared->names.value_names.find(global_load->result.name);
     transport_kind = F128TransportKind::LoadFromMemory;
   } else {
     memory = make_prepared_memory_operand_record(

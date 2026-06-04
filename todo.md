@@ -8,31 +8,35 @@ Current Step Title: Prove The AArch64 Targeted Cases
 
 ## Just Finished
 
-Completed a Step 5 focused F128 HFA aggregate-result publication slice, but not
-the full `00204.c` runtime repair.
+Traced a Step 5 F128 transport gap while chasing the remaining `fr_hfa31`
+through `fr_hfa34` long-double HFA return payloads, but the full `00204.c`
+runtime repair is still blocked.
 
-- Added a proof-owned AArch64 call-boundary contract that lowers a binary128
-  HFA lane-0 call result from ABI `q0` into a prepared 16-byte aggregate stack
-  home.
-- Repaired F128 SSE call-result bank publication so result plans, ABI bindings,
-  move resolution, and AArch64 stack call-result lowering can use vector/q
-  register authority instead of scalar FPR-only authority.
-- AArch64 call result source recording and store retargeting now admit Vreg/Q
-  F128 result publications on the same semantic path as existing F32/F64 HFA
-  lane publications.
+- Added a focused AArch64 dispatch contract for an F128 `LoadGlobalInst` whose
+  prepared carrier is a q-register and whose prepared memory operand is a
+  direct global symbol.
+- Repaired F128 transport admission so global F128 loads can produce selected
+  `F128TransportRecord` load-from-memory facts instead of falling through to
+  the generic scalar/global-load route first.
+- Moved F128 transport dispatch ahead of generic `LoadGlobalInst` lowering so
+  prepared q-register F128 global-load carriers get first ownership.
 - No broad c-testsuite expectations or `00204.c` dump expectations were
   changed.
-- The delegated proof still fails `c_testsuite_aarch64_backend_src_00204_c`.
-  The remaining expected long-double HFA return family (`fr_hfa31` through
-  `fr_hfa34`) still prints all `0.0,0.0` in the actual `00204.c` output.
+- The delegated proof still fails only
+  `c_testsuite_aarch64_backend_src_00204_c`. Generated AArch64 for
+  `fr_hfa31` through `fr_hfa34` still stores an uninitialized `q13` stack slot
+  into the `x8` sret destination, so the repaired F128 global-load fact is not
+  the root repair for these callees.
 
 ## Suggested Next
 
-Take the next focused packet at the remaining F128 HFA `00204.c` runtime path:
-trace why the now-proven q-register stack publication fact is not reached for
-the `fr_hfa31` through `fr_hfa34` return payloads, with special attention to
-multi-lane F128 HFA result classification and local F128 aggregate `StoreLocal`
-transport ownership.
+Take the next focused packet at the producer side of the remaining F128 HFA
+`00204.c` runtime path: dump/trace BIR, prepared BIR, and MIR for
+`fr_hfa31` through `fr_hfa34` to identify why their global aggregate payload
+does not become an F128 transport source before the sret copy. The current
+evidence points past plain F128 `LoadGlobalInst` dispatch and toward
+aggregate-copy/source-publication or local F128 `StoreLocal` transport
+ownership.
 
 ## Watchouts
 
@@ -46,11 +50,16 @@ transport ownership.
   correctly in `00204.c`.
 - The focused q-register stack publication contract is accepted in the current
   tree; it is not sufficient to make `00204.c` pass.
+- The new F128 global-load transport contract compiles and is exercised by the
+  selected proof, but it is not sufficient to make `00204.c` pass.
 - Do not rewrite the existing `00204.c` backend dump snippets merely to accept
   source-id churn from the F128 route.
 - The next remaining ABI family is still `fr_hfa31` through `fr_hfa34`
   long-double/F128 HFA return payloads, which print `0.0` in `00204.c` in the
   current proof.
+- `fr_hfa31` through `fr_hfa34` still emit the same uninitialized-q-register
+  sret shape after this packet: a stack slot is filled from `q13`, reloaded,
+  then stored through `x8`.
 - F128 `StoreLocal` is intercepted by the F128 transport owner before ordinary
   memory-store retargeting. If the next trace reaches local F128 aggregate
   stores after a call result, repair may need an owned memory-transport packet
@@ -83,6 +92,13 @@ the contained 26-test shape; the only selected failure remains
 `c_testsuite_aarch64_backend_src_00204_c`. In that failure, expected
 long-double HFA returns under `HFA long double:` include `34.1,34.4`,
 `33.1,33.3`, `32.1,32.2`, and `31.1,31.1`; the actual corresponding block is
-still all `0.0,0.0`.
+still all `0.0,0.0`. Full `00204.c` does not pass.
+
+Also ran the direct
+`build/tests/backend/mir/backend_aarch64_instruction_dispatch_test` binary
+while checking the new focused contract. It reached the new F128 global-load
+case, then failed later on an existing F64 global-readback selected-value test;
+that direct binary is outside the delegated proof regex and was not used as
+acceptance proof.
 
 Canonical executor proof log: `test_after.log`.

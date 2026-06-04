@@ -6592,6 +6592,99 @@ prepare::PreparedBirModule prepared_with_f128_frame_slot_load(bool include_carri
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_f128_global_load() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.global.load");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.f128.global.load.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.global.load.entry");
+  const auto prepared_global_link = prepared.names.link_names.intern("global_quad_lane");
+  const auto bir_global_link = prepared.module.names.link_names.intern("global_quad_lane");
+  const auto result_name = prepared.names.value_names.intern("%loaded.f128.global");
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_quad_lane",
+      .link_name_id = bir_global_link,
+      .type = bir::TypeKind::F128,
+      .is_extern = false,
+      .size_bytes = 16,
+      .align_bytes = 16,
+      .address_materialization_policy = bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.global.load",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.global.load.entry",
+              .insts =
+                  {bir::LoadGlobalInst{
+                      .result =
+                          bir::Value::named(bir::TypeKind::F128, "%loaded.f128.global"),
+                      .global_name = "global_quad_lane",
+                      .global_name_id = bir_global_link,
+                      .byte_offset = 0,
+                      .align_bytes = 16,
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{113},
+          .function_name = function_name,
+          .value_name = result_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = "q6",
+      }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {fpr_storage(prepare::PreparedValueId{113}, result_name, "q6")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = entry_label,
+          .inst_index = 0,
+          .result_value_name = result_name,
+          .address_space = bir::AddressSpace::Default,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = prepared_global_link,
+              .global_address_materialization_policy =
+                  bir::GlobalAddressMaterializationPolicy::Direct,
+              .byte_offset = 0,
+              .size_bytes = 16,
+              .align_bytes = 16,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers = {dispatch_f128_register_carrier(
+          function_name, prepare::PreparedValueId{113}, result_name, "q6")},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f128_frame_slot_store(
     bool include_carrier = true,
     bool complete_carrier = true) {
@@ -29865,6 +29958,59 @@ int block_dispatch_lowers_f128_frame_slot_load_from_prepared_carrier() {
   return 0;
 }
 
+int block_dispatch_lowers_f128_global_load_from_prepared_carrier() {
+  auto prepared = prepared_with_f128_global_load();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected dispatch to select f128 global-load transport plus return");
+  }
+
+  const auto* transport =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions.front().target.payload);
+  if (transport == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      transport->transport_kind != aarch64_codegen::F128TransportKind::LoadFromMemory ||
+      transport->value_id != prepare::PreparedValueId{113} ||
+      transport->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      !transport->reg.has_value() ||
+      transport->reg->reg != aarch64_abi::q_register(6) ||
+      !transport->memory.has_value() ||
+      transport->memory->base_kind != aarch64_codegen::MemoryBaseKind::Symbol ||
+      transport->memory->symbol_name !=
+          std::optional<c4c::LinkNameId>{
+              prepared.names.link_names.find("global_quad_lane")} ||
+      transport->memory->symbol_label != "global_quad_lane" ||
+      transport->memory->result_value_id != prepare::PreparedValueId{113} ||
+      transport->memory->size_bytes != 16 ||
+      transport->memory->align_bytes != 16 ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::F128Transport ||
+      block.instructions.front().target.side_effects.size() != 1 ||
+      block.instructions.front().target.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryRead) {
+    return fail("expected f128 global load to preserve q-register carrier and symbol memory facts");
+  }
+
+  return 0;
+}
+
 int block_dispatch_reports_missing_f128_carrier_authority() {
   auto prepared = prepared_with_f128_frame_slot_load();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -32849,6 +32995,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_f128_frame_slot_load_from_prepared_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_global_load_from_prepared_carrier();
       status != 0) {
     return status;
   }

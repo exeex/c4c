@@ -763,6 +763,18 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         ++result.visited_operations;
         continue;
+      } else if (auto lowered_f128_transport =
+                     lower_f128_transport_instruction(
+                         context, inst, instruction_index, diagnostics);
+                 lowered_f128_transport.handled) {
+        if (lowered_f128_transport.instruction.has_value()) {
+          retarget_memory_result_to_prepared_home(
+              context, *lowered_f128_transport.instruction);
+          record_memory_result(scalar_state, *lowered_f128_transport.instruction);
+          block.instructions.push_back(std::move(*lowered_f128_transport.instruction));
+        }
+        ++result.visited_operations;
+        continue;
       } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
                  load_global != nullptr) {
         if (auto got_load =
@@ -814,16 +826,6 @@ InstructionDispatchResult dispatch_prepared_block(
                      lower_stack_homed_pointer_value_load_publication(
                          context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
-      } else if (auto lowered_f128_transport =
-                     lower_f128_transport_instruction(
-                         context, inst, instruction_index, diagnostics);
-                 lowered_f128_transport.handled) {
-        if (lowered_f128_transport.instruction.has_value()) {
-          retarget_memory_result_to_prepared_home(
-              context, *lowered_f128_transport.instruction);
-          record_memory_result(scalar_state, *lowered_f128_transport.instruction);
-          block.instructions.push_back(std::move(*lowered_f128_transport.instruction));
-        }
       } else if (auto lowered = lower_local_slot_address_publication(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
