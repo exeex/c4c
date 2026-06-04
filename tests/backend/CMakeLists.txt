@@ -204,6 +204,17 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 sret dispatch_value_materialization aggregate_return probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_large_stack_global_byte_publication
+  SRC "${BACKEND_CASE_ROOT}/aarch64_large_stack_global_byte_publication.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_large_stack_global_byte_publication.s"
+  REQUIRED_SNIPPETS "large_stack_global_byte_publication:|adrp x9, large_stack_publication_source|add x9, x9, :lo12:large_stack_publication_source|ldrb w13, [x9]|movz x9, #8112|add x9, sp, x9|strb w13, [x9]|bl consume_large_stack_publication"
+  FORBIDDEN_SNIPPETS "strb w9, [sp, #8112]|strb w13, [sp, #8112]"
+  CASE_TIMEOUT_SEC 5
+  LABELS aarch64 dispatch_value_materialization stack_publication probe
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)

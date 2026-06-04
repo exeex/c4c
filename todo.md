@@ -8,33 +8,31 @@ Current Step Title: Prove The AArch64 Targeted Cases
 
 ## Just Finished
 
-Completed Step 5 decomposed SRET source-publication repair packet for the next
-remaining AArch64 `00204.c` ABI family after direct `Arguments:` matched.
+Completed Step 5 decomposed large-offset stack byte-store encoding repair
+packet for the next remaining AArch64 `00204.c` blocker.
 
-Repaired the localized return/sret fact:
+Repaired the localized memory-lowering fact:
 
-- AArch64 store-local source publication now recognizes a completed same-block
-  scalar `LoadLocal` producer whose BIR address is a global symbol and emits
-  `adrp`/`add`/scalar `ldr` before the original store publishes the byte to the
-  temporary stack home.
-- The repaired `fr_s1` path in `00204.c` now materializes `s1` before the stack
-  byte and hidden `x8` copy: `adrp x9, s1`, `add x9, x9, :lo12:s1`,
-  `ldrb w13, [x9]`, `strb w13, [sp, #1]`, `ldrb w13, [sp, #1]`,
-  `strb w13, [x8]`.
+- Prepared AArch64 scalar stack stores now check whether a frame-slot store
+  offset is encodable for the selected store width before printing direct
+  `[sp, #offset]`.
+- Large frame-slot scalar stores materialize `sp + offset` through an existing
+  frame-slot address materialization path and store through the scratch address
+  register, e.g. `movz x10, #8112`, `add x10, sp, x10`, `strb w9, [x10]`.
 - Added focused route case
-  `backend_codegen_route_aarch64_sret_global_scalar_source_publication` so the
-  repaired behavior is asserted directly and the stale no-source-load behavior
-  is not codified.
+  `backend_codegen_route_aarch64_large_stack_global_byte_publication` so a
+  large global-byte-to-stack publication asserts the materialized form and
+  forbids the illegal direct `strb ..., [sp, #8112]` shape.
 - No broad c-testsuite expectations were changed and no `00204.c` special case
   was added.
 
 ## Suggested Next
 
-Repair the next remaining AArch64 `00204.c` ABI family exposed by the proof:
-large aggregate/byval stack publications still emit byte stores such as
-`strb w9, [sp, #8112]`, which the AArch64 assembler rejects because the
-immediate is outside the byte-store addressing range. Route this through the
-existing large-offset materialization form instead of weakening expectations.
+Repair the next remaining AArch64 `00204.c` ABI family exposed after the
+assembler blocker is gone: the selected proof now reaches runtime mismatch,
+with remaining corruption concentrated in HFA float/double payload output.
+Trace HFA argument/return lane placement and variadic handoff rather than
+weakening expectations.
 
 ## Watchouts
 
@@ -43,10 +41,13 @@ existing large-offset materialization form instead of weakening expectations.
 - Keep `00032.c` and `00182.c` visible as guard cases.
 - Small non-HFA aggregate return classification may still be modeled as sret;
   do not paper over that with expectation rewrites.
-- HFA return output is also still suspect, but the current selected proof stops
-  first on large-offset stack-store encoding in `00204.c`.
+- HFA return/output is still suspect; the current selected proof now gets past
+  the large-offset byte-store assembler error and fails at `00204.c` runtime
+  comparison.
 - The new SRET route case asserts the global materialization snippets and the
   stack/`x8` publication snippets; it does not rely on `00204.c` naming.
+- The new large-stack route case asserts a legal materialized byte-store form
+  and forbids the direct large `[sp, #8112]` byte-store form.
 
 ## Proof
 
@@ -57,9 +58,10 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 Result: exit code 8. All selected backend route tests pass, including the new
-`backend_codegen_route_aarch64_sret_global_scalar_source_publication` probe.
+`backend_codegen_route_aarch64_sret_global_scalar_source_publication` probe and
+`backend_codegen_route_aarch64_large_stack_global_byte_publication`.
 `backend_prepare_frame_stack_call_contract` passes, and guard cases
 `00032.c`/`00182.c` pass. The only selected failure remains
-`c_testsuite_aarch64_backend_src_00204_c`, now blocked by assembler range
-errors on large stack byte stores beginning at `strb w9, [sp, #8112]`.
+`c_testsuite_aarch64_backend_src_00204_c`, now a runtime mismatch after the
+large-offset byte-store assembler errors are gone.
 Canonical executor proof log: `test_after.log`.

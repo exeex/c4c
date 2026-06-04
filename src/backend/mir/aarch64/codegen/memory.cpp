@@ -282,6 +282,70 @@ void append_memory_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<std::size_t> scalar_store_width_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
+      return std::size_t{8};
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return std::size_t{16};
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool scalar_frame_slot_store_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t width_bytes) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      width_bytes == 0) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % width_bytes == 0 && offset / width_bytes <= 4095U;
+}
+
+[[nodiscard]] bool append_scalar_store_to_memory(
+    std::string_view mnemonic,
+    std::string_view value_register,
+    const MemoryOperand& memory,
+    std::optional<abi::RegisterReference> address_scratch,
+    std::vector<std::string>& lines) {
+  if (memory.base_kind == MemoryBaseKind::FrameSlot &&
+      !scalar_frame_slot_store_offset_is_encodable(memory, memory.size_bytes)) {
+    if (!address_scratch.has_value()) {
+      return false;
+    }
+    auto address_lines = materialize_frame_slot_memory_address_lines(*address_scratch, memory);
+    if (address_lines.empty()) {
+      return false;
+    }
+    lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+    lines.push_back(std::string{mnemonic} + " " + std::string{value_register} +
+                    ", [" + std::string{abi::register_name(*address_scratch)} + "]");
+    return true;
+  }
+
+  const auto address = memory_address(memory);
+  if (address.empty()) {
+    return false;
+  }
+  lines.push_back(std::string{mnemonic} + " " + std::string{value_register} +
+                  ", " + address);
+  return true;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_byte_immediate_store_machine_instruction(
     const module::BlockLoweringContext& context,
@@ -296,17 +360,26 @@ make_byte_immediate_store_machine_instruction(
   if (immediate == nullptr) {
     return std::nullopt;
   }
-  const auto address = memory_address(memory.address);
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (address.empty() || scratches.empty()) {
+  if (scratches.empty()) {
     return std::nullopt;
   }
   const auto scratch = abi::w_register(scratches.front().index);
+  const auto address_scratch =
+      scratches.size() > 1U ? std::optional<abi::RegisterReference>{abi::x_register(scratches[1].index)}
+                            : std::nullopt;
   const auto byte_value = static_cast<unsigned>(immediate->unsigned_value & 0xffU);
 
-  std::ostringstream asm_text;
-  asm_text << "movz " << abi::register_name(scratch) << ", #" << byte_value
-           << "\nstrb " << abi::register_name(scratch) << ", " << address;
+  std::vector<std::string> lines{
+      "movz " + std::string{abi::register_name(scratch)} + ", #" +
+      std::to_string(byte_value)};
+  if (!append_scalar_store_to_memory("strb",
+                                     abi::register_name(scratch),
+                                     memory.address,
+                                     address_scratch,
+                                     lines)) {
+    return std::nullopt;
+  }
 
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
@@ -330,7 +403,16 @@ make_byte_immediate_store_machine_instruction(
           AssemblerInstructionRecord{
               .has_inline_asm_payload = true,
               .side_effects = true,
-              .inline_asm_template = asm_text.str(),
+              .inline_asm_template = [&] {
+                std::string text;
+                for (std::size_t index = 0; index < lines.size(); ++index) {
+                  if (index != 0) {
+                    text += '\n';
+                  }
+                  text += lines[index];
+                }
+                return text;
+              }(),
           },
   };
   return make_bir_machine_instruction(context, instruction_index, std::move(target));
@@ -3982,8 +4064,21 @@ lower_store_local_value_publication(
       }
       if (emitted) {
         if (has_prepared_select_producer) {
-          lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
-                          ", " + frame_slot_address(context.function, *value_home->offset_bytes));
+          MemoryOperand stack_home{
+              .base_kind = MemoryBaseKind::FrameSlot,
+              .byte_offset = static_cast<std::int64_t>(*value_home->offset_bytes),
+              .size_bytes = scalar_store_width_bytes(value.type).value_or(1),
+              .align_bytes = scalar_store_width_bytes(value.type).value_or(1),
+              .can_use_base_plus_offset = true,
+              .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
+          };
+          if (!append_scalar_store_to_memory(*store_mnemonic,
+                                             *store_register,
+                                             stack_home,
+                                             abi::x_register(*alternate_scratch),
+                                             lines)) {
+            return std::nullopt;
+          }
           published_stack_home = true;
         }
       }
@@ -4051,15 +4146,13 @@ lower_store_local_value_publication(
         store_view.has_value() && !scratches.empty()
             ? gp_register_name(scratches.front().index, *store_view)
             : std::nullopt;
-    const auto stack_home = memory_address(*target_memory);
     if (target_memory->support != MemoryOperandSupportKind::Prepared ||
         target_memory->base_kind != MemoryBaseKind::FrameSlot ||
         !target_memory->byte_offset_is_prepared_snapshot ||
         !target_memory->can_use_base_plus_offset ||
         scratches.size() < 2U ||
         !store_mnemonic.has_value() ||
-        !store_register.has_value() ||
-        stack_home.empty()) {
+        !store_register.has_value()) {
       return std::nullopt;
     }
     if (has_prepared_global_symbol_load_local &&
@@ -4091,8 +4184,16 @@ lower_store_local_value_publication(
                                                    lines);
     }
     if (emitted) {
-      lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
-                      ", " + stack_home);
+      auto store_memory = *target_memory;
+      store_memory.size_bytes = scalar_store_width_bytes(value.type).value_or(
+          target_memory->size_bytes);
+      if (!append_scalar_store_to_memory(*store_mnemonic,
+                                         *store_register,
+                                         store_memory,
+                                         abi::x_register(scratches[1].index),
+                                         lines)) {
+        return std::nullopt;
+      }
       published_stack_home = true;
     }
   }
