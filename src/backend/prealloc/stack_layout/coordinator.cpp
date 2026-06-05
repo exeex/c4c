@@ -1106,6 +1106,90 @@ void append_frame_slot_address_materialization(PreparedNameTables& names,
   });
 }
 
+[[nodiscard]] std::optional<std::int64_t> pointer_immediate_byte_delta(
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return value.immediate;
+    default:
+      return std::nullopt;
+  }
+}
+
+void append_binary_frame_slot_result_materialization(
+    PreparedNameTables& names,
+    PreparedAddressingFunction& function_addressing,
+    FunctionNameId function_name_id,
+    BlockLabelId block_label_id,
+    std::size_t inst_index,
+    const bir::BinaryInst& binary,
+    const FrameSlotPublicationFacts& frame_slot_facts) {
+  if (binary.result.type != bir::TypeKind::Ptr ||
+      binary.result.kind != bir::Value::Kind::Named ||
+      binary.result.name.empty() ||
+      binary.operand_type != bir::TypeKind::Ptr) {
+    return;
+  }
+
+  const bir::Value* base_value = nullptr;
+  std::optional<std::int64_t> byte_delta;
+  if (binary.lhs.type == bir::TypeKind::Ptr &&
+      binary.lhs.kind == bir::Value::Kind::Named) {
+    if (const auto delta = pointer_immediate_byte_delta(binary.rhs);
+        delta.has_value()) {
+      if (binary.opcode == bir::BinaryOpcode::Add) {
+        base_value = &binary.lhs;
+        byte_delta = *delta;
+      } else if (binary.opcode == bir::BinaryOpcode::Sub) {
+        base_value = &binary.lhs;
+        byte_delta = -*delta;
+      }
+    }
+  }
+  if (base_value == nullptr &&
+      binary.opcode == bir::BinaryOpcode::Add &&
+      binary.rhs.type == bir::TypeKind::Ptr &&
+      binary.rhs.kind == bir::Value::Kind::Named) {
+    if (const auto delta = pointer_immediate_byte_delta(binary.lhs);
+        delta.has_value()) {
+      base_value = &binary.rhs;
+      byte_delta = *delta;
+    }
+  }
+  if (base_value == nullptr || !byte_delta.has_value()) {
+    return;
+  }
+
+  const auto base_value_name = prepared_named_value_id(names, *base_value);
+  const auto result_value_name = prepared_named_value_id(names, binary.result);
+  if (!base_value_name.has_value() || !result_value_name.has_value()) {
+    return;
+  }
+  const auto slot_it =
+      frame_slot_facts.frame_slots_by_frame_address_value_name.find(*base_value_name);
+  if (slot_it == frame_slot_facts.frame_slots_by_frame_address_value_name.end() ||
+      slot_it->second == nullptr) {
+    return;
+  }
+
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = PreparedAddressMaterializationKind::FrameSlot,
+      .result_value_name = *result_value_name,
+      .frame_slot_id = slot_it->second->slot_id,
+      .byte_offset =
+          static_cast<std::int64_t>(slot_it->second->offset_bytes) + *byte_delta,
+  });
+}
+
 void append_direct_global_address_materialization(PreparedNameTables& names,
                                                   PreparedAddressingFunction& function_addressing,
                                                   std::vector<PrepareNote>& notes,
@@ -1389,15 +1473,6 @@ void append_address_materializations(PreparedNameTables& names,
     for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
       const auto& inst = block.insts[inst_index];
       if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
-        append_frame_slot_address_materialization(names,
-                                                  function_addressing,
-                                                  module.names,
-                                                  function_name_id,
-                                                  block_label_id,
-                                                  inst_index,
-                                                  binary->lhs,
-                                                  0,
-                                                  frame_slot_facts);
         append_pointer_value_address_materialization(names,
                                                      function_addressing,
                                                      notes,
@@ -1418,6 +1493,13 @@ void append_address_materializations(PreparedNameTables& names,
                                                      inst_index,
                                                      binary->rhs,
                                                      frame_slot_facts);
+        append_binary_frame_slot_result_materialization(names,
+                                                        function_addressing,
+                                                        function_name_id,
+                                                        block_label_id,
+                                                        inst_index,
+                                                        *binary,
+                                                        frame_slot_facts);
         append_direct_global_address_materialization(
             names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, binary->result);
       } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {

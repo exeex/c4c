@@ -265,11 +265,21 @@ void apply_frame_address_publication_hints(PreparedNameTables& names,
       continue;
     }
     const auto slot_name = prepared_slot_name(names, *object.slot_name);
-    if (pointer_values.find(slot_name) == pointer_values.end()) {
+    if (pointer_values.find(slot_name) != pointer_values.end()) {
+      object.frame_address_value_name = names.value_names.intern(slot_name);
+      object.legacy_frame_address_name_compatibility = true;
       continue;
     }
-    object.frame_address_value_name = names.value_names.intern(slot_name);
-    object.legacy_frame_address_name_compatibility = true;
+    if (object.slice_family.has_value() &&
+        object.slice_family->slice_offset == 0) {
+      const auto family_name =
+          prepared_slot_name(names, object.slice_family->family_name);
+      if (!family_name.empty() &&
+          pointer_values.find(family_name) != pointer_values.end()) {
+        object.frame_address_value_name = names.value_names.intern(family_name);
+        object.legacy_frame_address_name_compatibility = true;
+      }
+    }
   }
 }
 

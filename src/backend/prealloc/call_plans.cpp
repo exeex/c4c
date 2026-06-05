@@ -1911,12 +1911,12 @@ void copy_materialization_source_selection_fields(
   }
 }
 
-struct LocalFrameAddressSource {
-  const PreparedStackObject* object = nullptr;
+struct NoAddressingFrameAddressSource {
   const PreparedFrameSlot* slot = nullptr;
 };
 
-[[nodiscard]] LocalFrameAddressSource find_local_frame_address_source(
+[[nodiscard]] NoAddressingFrameAddressSource
+find_no_addressing_local_frame_address_source_compatibility(
     const PreparedNameTables& names,
     const PreparedStackLayout& stack_layout,
     FunctionNameId function_name,
@@ -1926,7 +1926,7 @@ struct LocalFrameAddressSource {
     return {};
   }
 
-  LocalFrameAddressSource selected;
+  NoAddressingFrameAddressSource selected;
   for (const auto& object : stack_layout.objects) {
     if (object.function_name != function_name ||
         object.source_kind != "local_slot") {
@@ -1942,7 +1942,6 @@ struct LocalFrameAddressSource {
     }
     if (selected.slot == nullptr || object_name == source_name ||
         slot->offset_bytes < selected.slot->offset_bytes) {
-      selected.object = &object;
       selected.slot = slot;
       if (object_name == source_name) {
         break;
@@ -1961,20 +1960,9 @@ struct LocalFrameAddressSource {
       call.args[argument.arg_index].type != bir::TypeKind::Ptr) {
     return false;
   }
-  const auto source_name = maybe_named_value_id(names, call.args[argument.arg_index]);
+  const auto source_name =
+      maybe_named_value_id(names, call.args[argument.arg_index]);
   return source_name == std::optional<ValueNameId>{source_home.value_name};
-}
-
-[[nodiscard]] bool call_argument_uses_local_aggregate_frame_address(
-    const PreparedNameTables& names,
-    const bir::CallInst& call,
-    const PreparedCallArgumentPlan& argument,
-    const PreparedValueHome* source_home) {
-  return source_home != nullptr &&
-         call_argument_is_source_pointer_operand(names, call, argument, *source_home) &&
-         argument.source_value_id ==
-             std::optional<PreparedValueId>{source_home->value_id} &&
-         argument.destination_register_bank == PreparedRegisterBank::Gpr;
 }
 
 [[nodiscard]] bool copy_prior_preservation_source_selection_fields(
@@ -2131,9 +2119,6 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
 
   const auto block_label =
       prepared_block_label_for_index(control_flow, function, call_plan.block_index);
-  const auto function_name = control_flow != nullptr
-                                 ? control_flow->function_name
-                                 : names.function_names.find(function.name);
   const auto* source_access =
       selection.source_value_name.has_value()
           ? find_unique_memory_access_by_result_name(addressing, *selection.source_value_name)
@@ -2205,29 +2190,30 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
         selection.source_align_bytes = source_home->align_bytes;
         return selection;
       }
-    }
-
-    if (call_argument_uses_local_aggregate_frame_address(
-            names, call, argument, source_home) &&
-        selection.source_value_name.has_value()) {
-      const auto local_source = find_local_frame_address_source(
-          names, prepared.stack_layout, function_name, *selection.source_value_name);
-      if (local_source.object != nullptr && local_source.slot != nullptr) {
-        selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
-        selection.source_slot_id = local_source.slot->slot_id;
-        selection.source_stack_offset_bytes = local_source.slot->offset_bytes;
-        if (argument.allows_local_aggregate_address_publication) {
+      if (addressing == nullptr &&
+          call_argument_is_source_pointer_operand(names, call, argument, *source_home) &&
+          argument.source_value_id ==
+              std::optional<PreparedValueId>{source_home->value_id} &&
+          argument.destination_register_bank == PreparedRegisterBank::Gpr) {
+        const auto function_name =
+            control_flow != nullptr ? control_flow->function_name
+                                    : names.function_names.find(function.name);
+        const auto local_source =
+            find_no_addressing_local_frame_address_source_compatibility(
+                names,
+                prepared.stack_layout,
+                function_name,
+                source_home->value_name);
+        if (local_source.slot != nullptr) {
+          selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+          selection.source_slot_id = local_source.slot->slot_id;
+          selection.source_stack_offset_bytes = local_source.slot->offset_bytes;
           selection.source_size_bytes =
-              local_source.object->size_bytes == 0 ? std::size_t{8}
-                                                   : local_source.object->size_bytes;
+              source_home->size_bytes.value_or(std::size_t{8});
           selection.source_align_bytes =
-              local_source.object->align_bytes == 0 ? std::size_t{8}
-                                                    : local_source.object->align_bytes;
-        } else {
-          selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
-          selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+              source_home->align_bytes.value_or(std::size_t{8});
+          return selection;
         }
-        return selection;
       }
     }
 
@@ -2288,33 +2274,6 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
                  ? std::optional<PreparedCallArgumentSourceSelection>{selection}
                  : std::nullopt;
     }
-
-    const auto local_source =
-        find_local_frame_address_source(names,
-                                        prepared.stack_layout,
-                                        function_name,
-                                        selected_source_value_name);
-    if (local_source.object != nullptr && local_source.slot != nullptr) {
-      const auto selected_stack_offset =
-          static_cast<std::int64_t>(local_source.slot->offset_bytes) +
-          selected_source_delta;
-      if (selected_stack_offset < 0) {
-        return std::nullopt;
-      }
-      selection.kind =
-          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
-      selection.source_slot_id = local_source.slot->slot_id;
-      selection.source_stack_offset_bytes =
-          static_cast<std::size_t>(selected_stack_offset);
-      selection.source_pointer_byte_delta = selected_source_delta;
-      selection.source_size_bytes =
-          local_source.object->size_bytes == 0 ? std::size_t{8}
-                                               : local_source.object->size_bytes;
-      selection.source_align_bytes =
-          local_source.object->align_bytes == 0 ? std::size_t{8}
-                                                : local_source.object->align_bytes;
-      return selection;
-    }
   }
 
   if (argument.allows_local_aggregate_address_publication &&
@@ -2348,33 +2307,6 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
       return selection.source_stack_offset_bytes.has_value()
                  ? std::optional<PreparedCallArgumentSourceSelection>{selection}
                  : std::nullopt;
-    }
-
-    const auto local_source =
-        find_local_frame_address_source(names,
-                                        prepared.stack_layout,
-                                        function_name,
-                                        selected_source_value_name);
-    if (local_source.object != nullptr && local_source.slot != nullptr) {
-      const auto selected_stack_offset =
-          static_cast<std::int64_t>(local_source.slot->offset_bytes) +
-          selected_source_delta;
-      if (selected_stack_offset < 0) {
-        return std::nullopt;
-      }
-      selection.kind =
-          PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization;
-      selection.source_slot_id = local_source.slot->slot_id;
-      selection.source_stack_offset_bytes =
-          static_cast<std::size_t>(selected_stack_offset);
-      selection.source_pointer_byte_delta = selected_source_delta;
-      selection.source_size_bytes =
-          local_source.object->size_bytes == 0 ? std::size_t{8}
-                                               : local_source.object->size_bytes;
-      selection.source_align_bytes =
-          local_source.object->align_bytes == 0 ? std::size_t{8}
-                                                : local_source.object->align_bytes;
-      return selection;
     }
   }
 
