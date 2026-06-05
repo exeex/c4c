@@ -1517,6 +1517,7 @@ struct VariadicAggregateVaArgRecord {
   std::size_t payload_size_bytes = 0;
   std::size_t payload_align_bytes = 0;
   prepare::PreparedValueHome source_va_list;
+  std::optional<prepare::PreparedValueHome> source_va_list_address;
   prepare::PreparedValueHome destination_payload_home;
   prepare::PreparedVariadicVaListFieldKind source_field =
       prepare::PreparedVariadicVaListFieldKind::OverflowArgArea;

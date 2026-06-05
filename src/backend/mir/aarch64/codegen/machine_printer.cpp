@@ -2071,14 +2071,7 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
     }
     std::ostringstream out;
     out << mnemonic << " " << register_name(*callee);
-    if (call.outgoing_stack_argument_bytes == 0) {
-      return target_printed({out.str()});
-    }
-    return target_printed({
-        "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-        out.str(),
-        "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-    });
+    return target_printed({out.str()});
   }
   if (!call.direct_callee.has_value() || call.direct_callee_label.empty() ||
       call.source_call == nullptr || !call.wrapper_kind.has_value()) {
@@ -2088,14 +2081,7 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
 
   std::ostringstream out;
   out << mnemonic << " " << call.direct_callee_label;
-  if (call.outgoing_stack_argument_bytes == 0) {
-    return target_printed({out.str()});
-  }
-  return target_printed({
-      "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-      out.str(),
-      "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
-  });
+  return target_printed({out.str()});
 }
 
 mir::TargetInstructionPrintResult print_call_boundary_abi_binding(

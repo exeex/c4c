@@ -1470,6 +1470,23 @@ std::vector<std::string> StackFrameSlotCallOperandOwner::materialize_frame_slot_
   return out.str();
 }
 
+[[nodiscard]] MemoryOperand source_memory_after_outgoing_stack_reservation(
+    MemoryOperand source,
+    std::size_t outgoing_bytes) {
+  if (outgoing_bytes == 0) {
+    return source;
+  }
+  const auto adjustment = static_cast<std::int64_t>(outgoing_bytes);
+  if (source.base_register.has_value() &&
+      abi::is_stack_pointer(source.base_register->reg)) {
+    source.byte_offset += adjustment;
+  } else if (source.base_kind == MemoryBaseKind::FrameSlot &&
+             !source.uses_frame_pointer_base) {
+    source.byte_offset += adjustment;
+  }
+  return source;
+}
+
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -1941,10 +1958,8 @@ StackFrameSlotCallOperandOwner::prior_stack_preserved_value_source(
 [[nodiscard]] module::MachineInstruction make_outgoing_stack_base_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    std::size_t outgoing_bytes) {
+    std::string asm_text) {
   const auto scratch = outgoing_stack_argument_base_register();
-  std::ostringstream asm_text;
-  asm_text << "sub " << abi::register_name(scratch) << ", sp, #" << outgoing_bytes;
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
       .surface = RecordSurfaceKind::MachineInstructionNode,
@@ -1968,7 +1983,36 @@ StackFrameSlotCallOperandOwner::prior_stack_preserved_value_source(
       .payload = AssemblerInstructionRecord{
           .has_inline_asm_payload = true,
           .side_effects = true,
-          .inline_asm_template = asm_text.str(),
+          .inline_asm_template = std::move(asm_text),
+      },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
+}
+
+[[nodiscard]] module::MachineInstruction make_outgoing_stack_adjustment_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string asm_text) {
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = std::move(asm_text),
       },
   };
   return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
@@ -3598,7 +3642,8 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 frame-slot call-argument move requires a prepared load access for the source value");
       return std::nullopt;
     }
-    move_record.source_memory = *source;
+    move_record.source_memory = source_memory_after_outgoing_stack_reservation(
+        *source, outgoing_stack_argument_bytes(call_plan));
     move_record.source_memory_materializes_address = address_source.has_value();
     move_record.destination_register = *destination;
   }
@@ -3651,8 +3696,10 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 aggregate stack-lane call-argument publication requires prepared source bytes");
       return std::nullopt;
     }
+    const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
+        *source, outgoing_stack_argument_bytes(call_plan));
     const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
-        context, *argument, *source_home, move, binding, *source, instruction_index);
+        context, *argument, *source_home, move, binding, adjusted_source, instruction_index);
     if (!destination.has_value()) {
       append_call_diagnostic(
           diagnostics,
@@ -3663,11 +3710,11 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     if (auto materialized = materialize_byval_stack_call_argument_source(
-            context, *source, *destination, instruction_index)) {
+            context, adjusted_source, *destination, instruction_index)) {
       return materialized;
     }
     auto lowered = make_byval_register_lane_stack_publication_instruction(
-        context, instruction_index, *source, *destination);
+        context, instruction_index, adjusted_source, *destination);
     if (!lowered.has_value()) {
       append_call_diagnostic(
           diagnostics,
@@ -3783,8 +3830,10 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 aggregate stack call-argument copy requires a prepared destination stack offset");
       return std::nullopt;
     }
+    const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
+        *source, outgoing_stack_argument_bytes(call_plan));
     return make_aggregate_stack_copy_instruction(
-        context, instruction_index, *source, *destination);
+        context, instruction_index, adjusted_source, *destination);
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
@@ -3830,8 +3879,10 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 binary128 stack call-argument move requires a prepared destination stack offset");
       return std::nullopt;
     }
+    const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
+        *source, outgoing_stack_argument_bytes(call_plan));
     if (auto materialized = materialize_f128_stack_call_argument_source(
-            context, instruction_index, *source, *destination)) {
+            context, instruction_index, adjusted_source, *destination)) {
       return materialized;
     }
     if (f128_carriers == nullptr) {
@@ -3913,14 +3964,16 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
           "AArch64 stack call-argument move requires a prepared destination stack offset");
       return std::nullopt;
     }
+    const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
+        *source, outgoing_stack_argument_bytes(call_plan));
     if (auto materialized = materialize_fp_stack_call_argument_source(
-            context, instruction_index, *source, *destination)) {
+            context, instruction_index, adjusted_source, *destination)) {
       return materialized;
     }
     auto target = make_memory_instruction(MemoryInstructionRecord{
         .memory_kind = MemoryInstructionKind::Store,
         .address = *destination,
-        .value = make_memory_operand(*source),
+        .value = make_memory_operand(adjusted_source),
         .value_type = *value_type,
     });
     // Outgoing stack arguments are call-boundary writes.  Keep the address
@@ -3928,7 +3981,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
     // outgoing argument slot as the destination lifetime.
     target.defs = {local_effect_from_operand(make_memory_operand(*destination))};
     target.uses = {local_effect_from_operand(make_memory_operand(*destination)),
-                   local_effect_from_operand(make_memory_operand(*source))};
+                   local_effect_from_operand(make_memory_operand(adjusted_source))};
     return make_call_boundary_machine_instruction(context, instruction_index,
                                                   std::move(target));
   }
@@ -4964,8 +5017,15 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
   }
   const std::size_t outgoing_bytes = outgoing_stack_argument_bytes(call_plan);
   if (outgoing_bytes > 0) {
-    lowered.push_back(
-        make_outgoing_stack_base_instruction(context, instruction_index, outgoing_bytes));
+    lowered.push_back(make_outgoing_stack_adjustment_instruction(
+        context,
+        instruction_index,
+        "sub sp, sp, #" + std::to_string(outgoing_bytes)));
+    lowered.push_back(make_outgoing_stack_base_instruction(
+        context,
+        instruction_index,
+        "mov " + std::string{abi::register_name(outgoing_stack_argument_base_register())} +
+            ", sp"));
   }
   const auto boundary_effects =
       prepare::plan_prepared_call_boundary_effects(call_plan, bundle, nullptr);
@@ -5108,6 +5168,15 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
         lowered.push_back(std::move(*instruction));
       }
     }
+  }
+
+  const std::size_t outgoing_bytes = outgoing_stack_argument_bytes(call_plan);
+  if (outgoing_bytes > 0) {
+    lowered.insert(lowered.begin(),
+                   make_outgoing_stack_adjustment_instruction(
+                       context,
+                       instruction_index,
+                       "add sp, sp, #" + std::to_string(outgoing_bytes)));
   }
 
   const auto& republication_bundle =
@@ -6290,6 +6359,14 @@ find_prepared_scalar_call_argument_source_producer(
   return false;
 }
 
+[[nodiscard]] bool is_inline_variadic_entry_helper_call(
+    const prepare::PreparedCallPlan& call_plan) {
+  return call_plan.direct_callee_name.has_value() &&
+         prepare::prepared_variadic_entry_helper_kind_for_callee(
+             *call_plan.direct_callee_name)
+             .has_value();
+}
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_scalar_call_argument_producers(
     const module::BlockLoweringContext& context,
@@ -6299,6 +6376,9 @@ lower_scalar_call_argument_producers(
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
+  if (is_inline_variadic_entry_helper_call(call_plan)) {
+    return lowered;
+  }
   std::optional<prepare::PreparedEdgePublicationSourceProducerLookups>
       fallback_source_producers;
   const auto* source_producers =

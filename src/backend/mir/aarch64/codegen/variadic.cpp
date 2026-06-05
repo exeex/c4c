@@ -221,6 +221,19 @@ make_variadic_aggregate_va_arg_record(
     return std::nullopt;
   }
 
+  std::optional<prepare::PreparedValueHome> source_va_list_address;
+  for (const auto& helper_homes : entry.helper_operand_homes) {
+    if (helper_homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+        !helper_homes.destination_va_list.has_value() ||
+        !helper_homes.destination_va_list_address.has_value()) {
+      continue;
+    }
+    if (helper_homes.destination_va_list->value_id == homes.source_va_list->value_id) {
+      source_va_list_address = *helper_homes.destination_va_list_address;
+      break;
+    }
+  }
+
   return VariadicAggregateVaArgRecord{
       .source_class = plan.source_class,
       .function_name_id = entry.function_name,
@@ -229,6 +242,7 @@ make_variadic_aggregate_va_arg_record(
       .payload_size_bytes = plan.payload_size_bytes,
       .payload_align_bytes = plan.payload_align_bytes,
       .source_va_list = *homes.source_va_list,
+      .source_va_list_address = source_va_list_address,
       .destination_payload_home = *plan.destination_payload_home,
       .source_field = *plan.source_field,
       .source_field_offset_bytes = *plan.source_field_offset_bytes,
@@ -883,6 +897,33 @@ bool append_aggregate_copy_from_va_list_field(
   return true;
 }
 
+bool append_va_list_base_rematerialization_lines(
+    std::vector<std::string>& lines,
+    const VariadicAggregateVaArgRecord& va_arg) {
+  if (!va_arg.source_va_list_address.has_value()) {
+    return true;
+  }
+  if (va_arg.source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
+      !va_arg.source_va_list.register_name.has_value() ||
+      va_arg.source_va_list_address->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !va_arg.source_va_list_address->offset_bytes.has_value()) {
+    return false;
+  }
+  const auto destination_index =
+      parse_x_register_index(va_arg.source_va_list.register_name);
+  if (!destination_index.has_value()) {
+    return false;
+  }
+  auto address_lines = materialize_stack_address_lines(
+      abi::x_register(*destination_index),
+      *va_arg.source_va_list_address->offset_bytes);
+  if (address_lines.empty()) {
+    return false;
+  }
+  lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+  return true;
+}
+
 [[nodiscard]] std::optional<std::vector<std::string>>
 print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg) {
   if (va_arg.copy_size_bytes == 0 || va_arg.progression_stride_bytes == 0 ||
@@ -895,6 +936,9 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
   std::vector<std::string> lines;
   if (va_arg.source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
       !va_arg.source_va_list.register_name.has_value()) {
+    return std::nullopt;
+  }
+  if (!append_va_list_base_rematerialization_lines(lines, va_arg)) {
     return std::nullopt;
   }
 
