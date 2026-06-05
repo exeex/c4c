@@ -126,7 +126,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/byval_helper_payload_8_to_13.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_byval_payload_8_to_13_stack_overflow.s"
-  REQUIRED_SNIPPETS "main:|sub x16, sp, #32|ldrb w9, [sp, #38]|strb w9, [x16]|ldrb w9, [sp, #50]|strb w9, [x16, #16]|bl fa1"
+  REQUIRED_SNIPPETS "main:|sub sp, sp, #32|mov x16, sp|ldrb w9, [sp, #70]|strb w9, [x16]|ldrb w9, [sp, #82]|strb w9, [x16, #16]|bl fa1|add sp, sp, #32"
   CASE_TIMEOUT_SEC 5
   LABELS aarch64 byval prepared_call_boundary aggregate_stack probe
 )
@@ -136,7 +136,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/byval_helper_payload_9_to_14.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_byval_payload_9_to_14_stack_overflow.s"
-  REQUIRED_SNIPPETS "main:|sub x16, sp, #32|ldrb w9, [sp, #42]|strb w9, [x16]|ldrb w9, [sp, #55]|strb w9, [x16, #16]|bl fa2"
+  REQUIRED_SNIPPETS "main:|sub sp, sp, #32|mov x16, sp|ldrb w9, [sp, #74]|strb w9, [x16]|ldrb w9, [sp, #87]|strb w9, [x16, #16]|bl fa2|add sp, sp, #32"
   CASE_TIMEOUT_SEC 5
   LABELS aarch64 byval prepared_call_boundary aggregate_stack probe
 )
