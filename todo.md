@@ -8,12 +8,13 @@ Current Step Title: Verify Current Reachability And Ownership
 
 ## Just Finished
 
-Step 2 classified the deferred store-source dump visibility residue after the
-earlier frame-address fallback, pointer-carrier, and memory-base boundary
-classifications. Current code carries store-source source-producer and
-direct-global select-chain facts through prealloc publication plans and AArch64
-consumers, but prepared dumps still expose only call-argument and scalar
-select-chain visibility for the comparable facts.
+Step 2 classified the dynamic alloca / VLA no-action residue after the earlier
+frame-address fallback, pointer-carrier, memory-base boundary, and store-source
+dump visibility classifications. Current code has live dynamic-stack support
+through BIR helper calls, `PreparedDynamicStackPlan`, prepared-printer
+visibility, and AArch64 fail-closed consumers; the old dynamic-allocation
+no-action note remains stale as a separate follow-up because no current
+target-neutral lifetime, extent, or target stack-adjustment fact gap was found.
 
 ### Stack-Layout Compatibility Reachability
 
@@ -399,6 +400,112 @@ gap is contract visibility: add a bounded prepared-printer/module dump surface
 for store-source publication-plan facts, scoped to source-producer and
 direct-global select-chain fields, without broad unrelated printer expansion.
 
+### Dynamic Alloca / VLA No-Action Classification
+
+Step 2 classified the dynamic alloca / VLA no-action residue from
+`ideas/closed/101_closure_note_followup_recovery_audit.md` and the source idea
+inventory. The closed note treated the old dynamic-allocation concern as
+stale/no-action because it did not identify a concrete target-neutral lifetime,
+extent, or target stack-adjustment fact. Current code now has explicit
+dynamic-stack operation handling, but that evidence supports the same
+`stale-no-action` disposition for this residue rather than a new broad
+follow-up idea.
+
+The BIR producer path is concrete and narrow. Dynamic LIR alloca is preserved
+only when `LirToBirOptions::preserve_dynamic_alloca` is enabled; then
+`BirFunctionLowerer::lower_local_memory_alloca_inst()` lowers counted alloca
+to a pointer-returning helper call named `llvm.dynamic_alloca.<type>` with the
+count as the first argument and records the resulting pointer address locally.
+Stack state operations lower through
+`BirFunctionLowerer::lower_call_family_inst()`, which converts
+`LirStackSaveOp` and `LirStackRestoreOp` to `llvm.stacksave` and
+`llvm.stackrestore` BIR calls. CLI route evidence in
+`tests/backend/bir/CMakeLists.txt` still exercises the ordinary VLA path:
+`vla_goto_stackrestore.c` must dump BIR containing `llvm.stacksave`,
+`llvm.dynamic_alloca.i32`, and `llvm.stackrestore`, and the prepared dump must
+show matching dynamic-stack operations for `accumulate_vla`.
+
+Prealloc publishes bounded prepared authority for those helper calls instead
+of leaving target consumers to rediscover lifetime or stack-state behavior from
+raw strings alone. AST-backed inventory shows `populate_dynamic_stack_plan()`
+is the exported producer in `src/backend/prealloc/dynamic_stack.cpp`; its
+direct callees include `is_dynamic_alloca_call()`,
+`dynamic_alloca_type_text()`, value-name lookup, block-label normalization, and
+`find_prepared_frame_plan()`. It scans BIR call instructions for
+`llvm.stacksave`, `llvm.stackrestore`, and `llvm.dynamic_alloca.*`, then
+records `PreparedDynamicStackOp` entries with function, block label,
+instruction index, kind, result value, operand value, and dynamic-allocation
+type text. `PreparedDynamicStackPlanFunction` also records
+`requires_stack_save_restore` and `uses_frame_pointer_for_fixed_slots`, the
+latter copied from the prepared frame plan.
+
+Frame and register-allocation consumers treat dynamic stack as a prepared
+placement policy input, not as a missing BIR semantic fact. `frame_plan.cpp`
+sets `PreparedFramePlanFunction::has_dynamic_stack` when a stack-save,
+stack-restore, or dynamic-alloca helper is present and requires fixed frame
+slots to use a frame-pointer base when dynamic stack and fixed slots coexist.
+`regalloc.cpp` uses `function_has_dynamic_stack_operation()` to keep active
+register assignments live across non-call boundaries unless values start at a
+call point, preventing dynamic stack movement from invalidating fixed-slot or
+home assumptions. This is target-facing placement and lifetime-preservation
+policy derived from existing BIR helper operations plus prepared frame/layout
+facts, not evidence of a missing target-neutral lifetime or extent fact.
+
+Prepared visibility already exists for the bounded fact. `prepare::print()`
+calls `append_dynamic_stack_plan()`, and the printer emits the
+`--- prepared-dynamic-stack-plan ---` section with function, stack-save/restore
+requirement, fixed-slot frame-pointer policy, operation block, instruction
+index, kind, result, operand, allocation type, and optional element
+size/alignment fields. Function summaries also report `has_dynamic_stack` and
+dynamic-stack operation counts. Current prepared-printer tests for the VLA
+route require the dynamic-stack plan section and operation lines, so this is
+not a dump-visibility gap like the deferred store-source publication residue.
+
+AArch64 target lowering consumes prepared dynamic-stack authority and fails
+closed when it is absent. AST-backed caller evidence shows
+`lower_dynamic_stack_helper_call()` is reached from both
+`dispatch_prepared_block()` and `lower_call_instruction()`. Its direct callees
+include `dynamic_stack_helper_kind()`, `find_dynamic_stack_op()`,
+`lower_dynamic_stack_save()`, `lower_dynamic_alloca()`, and
+`lower_dynamic_stack_restore()`. It first recognizes the helper spelling, then
+requires a matching `PreparedDynamicStackOp` at the current instruction index;
+without that prepared authority it emits a missing-value-authority diagnostic
+and a deferred-unsupported machine node before unresolved LLVM helper calls can
+reach assembly.
+
+The concrete target stack adjustment is currently target-owned and bounded.
+`lower_dynamic_alloca()` requires a printable nonzero element size, prepared
+operand and result homes, and stable frame-pointer-backed stack homes when
+fixed slots are involved. It computes the byte count from the prepared count
+home and allocation type, subtracts from `sp`, aligns the new stack pointer,
+updates `sp`, and publishes the allocation result through its prepared home.
+`lower_dynamic_stack_save()` and `lower_dynamic_stack_restore()` similarly use
+prepared homes to move `sp` to or from a register or stable frame slot. Tests in
+`backend_aarch64_instruction_dispatch_test.cpp` verify both fail-closed missing
+prepared authority and supported target-owned output without unresolved
+`llvm.stacksave`, `llvm.dynamic_alloca`, or `llvm.stackrestore` assembly
+references.
+
+The remaining raw dynamic-stack string checks are reached by ordinary lowering,
+but current code has documented and bounded compatibility around those
+pseudo-intrinsic spellings rather than an exposed semantic gap. BIR still uses
+`llvm.dynamic_alloca.<type>`, `llvm.stacksave`, and `llvm.stackrestore` as the
+operation identity, and prealloc/AArch64 recognize those spellings to build or
+match prepared dynamic-stack operations. However, target consumers that lower
+or reject the calls require `PreparedDynamicStackPlan` authority, prepared value
+homes, and prepared frame policy; x86 handoff docs also state that VLA and
+dynamic `alloca` handling must come from `dynamic_stack_plan` and must not
+rediscover lifetime or fixed-slot anchoring from raw call names.
+
+Overall classification for the dynamic alloca / VLA no-action residue:
+`stale-no-action`. Current code does expose live dynamic-stack handling, but it
+does not expose a concrete missing target-neutral lifetime, extent, or target
+stack-adjustment fact that needs a new follow-up idea. Dynamic-stack operations
+are already represented by a prepared plan with printer coverage and
+fail-closed AArch64 consumption; target stack adjustment remains target-owned,
+and the raw helper spellings are bounded compatibility identity for producing
+or matching the prepared plan.
+
 ## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
@@ -420,12 +527,11 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Run the next Step 2 packet against the dynamic alloca / VLA no-action residue.
-Check current BIR/prealloc/backend reachability for dynamic stack allocation,
-VLA, lifetime/extent, target stack-adjustment, and documented raw dynamic-stack
-string compatibility. Classify it as `stale-no-action` unless current code
-shows a concrete target-neutral fact gap that should become
-`needs-follow-up-idea`.
+Run the next Step 2 packet against the `prepared_lookups.cpp` helper authority
+questions. Build a current caller/helper map for the named lookup families,
+identify the fact each helper returns, and classify each helper as retained
+query glue unless current consumers prove semantic fact re-derivation or a
+consumer-facing API gap.
 
 ## Watchouts
 
@@ -460,6 +566,14 @@ shows a concrete target-neutral fact gap that should become
   target-side planning. Treat the live gap as dump/contract visibility, not as
   missing semantic authority, unless a later implementation packet proves the
   printer needs a new persistent prepared-module fact container.
+- Dynamic alloca/VLA support is live but already routed through
+  `PreparedDynamicStackPlan`; do not turn the old no-action note into broad
+  cleanup unless a later packet identifies a concrete target-neutral lifetime,
+  extent, or stack-adjustment fact that is missing from the prepared contract.
+- Raw dynamic-stack helper spellings are still the BIR pseudo-intrinsic identity
+  used to produce and match prepared dynamic-stack operations. Treat that as
+  bounded compatibility unless a target consumer lowers those helpers without
+  prepared dynamic-stack operation authority.
 - Several residues are already closed as completed contracts or explicit
   no-action notes. Reopening them needs fresh current-code evidence, not only
   the existence of old helper names.
@@ -470,15 +584,13 @@ shows a concrete target-neutral fact gap that should become
 
 Analysis-only Step 2 packet. This packet used `rg` plus
 `c4c-clang-tool-ccdb function-signatures`, `function-callers`, and
-`function-callees` around `src/backend/prealloc/prepared_printer.cpp`,
-`src/backend/prealloc/prepared_printer/{calls,select_chains}.cpp`,
-`src/backend/prealloc/prepared_lookups.cpp`,
-`src/backend/prealloc/select_chain_lookups.cpp`,
-`src/backend/prealloc/publication_plans.cpp`, and representative AArch64
-`memory.cpp` store-source consumers. Focused ranges were inspected for
-`PreparedStoreSourcePublicationPlan` source-producer/direct-global fields,
-store-source direct-global select-chain lookup, prepared-printer section
-coverage, and consumer use in AArch64 memory lowering. Final proof commands
-for this packet: `git diff --check` and `git status --short`. No
+`function-callees` around `src/backend/prealloc/dynamic_stack.cpp`,
+`src/backend/mir/aarch64/codegen/memory_dynamic_stack.cpp`, and the
+`lower_dynamic_stack_helper_call()` callers in AArch64 dispatch/call lowering.
+Focused ranges were inspected for BIR dynamic alloca/stack-save/restore
+lowering, `PreparedDynamicStackPlan` production and printer visibility, frame
+and regalloc dynamic-stack policy consumers, AArch64 fail-closed dynamic-stack
+lowering, x86 handoff comments, and VLA prepared-dump tests. Final proof
+commands for this packet: `git diff --check` and `git status --short`. No
 `test_after.log` was produced because the delegated proof was
 analysis/status-only.
