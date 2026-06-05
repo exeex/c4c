@@ -1965,6 +1965,17 @@ find_no_addressing_local_frame_address_source_compatibility(
   return source_name == std::optional<ValueNameId>{source_home.value_name};
 }
 
+[[nodiscard]] bool call_argument_uses_local_frame_address_operand(
+    const PreparedNameTables& names,
+    const bir::CallInst& call,
+    const PreparedCallArgumentPlan& argument,
+    const PreparedValueHome& source_home) {
+  return call_argument_is_source_pointer_operand(names, call, argument, source_home) &&
+         argument.source_value_id ==
+             std::optional<PreparedValueId>{source_home.value_id} &&
+         argument.destination_register_bank == PreparedRegisterBank::Gpr;
+}
+
 [[nodiscard]] bool copy_prior_preservation_source_selection_fields(
     PreparedCallArgumentSourceSelection& selection,
     const PreparedCallPreservedValue& preserved) {
@@ -2176,13 +2187,16 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
       return selection;
     }
     if (source_home != nullptr) {
+      const bool direct_local_frame_address_operand =
+          call_argument_uses_local_frame_address_operand(
+              names, call, argument, *source_home);
       if (const auto* materialization =
               find_latest_frame_slot_materialization(addressing,
                                                      names,
                                                      block_label,
                                                      call_plan.instruction_index,
                                                      source_home->value_name,
-                                                     false);
+                                                     direct_local_frame_address_operand);
           materialization != nullptr) {
         selection.kind = PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
         copy_materialization_source_selection_fields(selection, *materialization);
@@ -2191,10 +2205,7 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
         return selection;
       }
       if (addressing == nullptr &&
-          call_argument_is_source_pointer_operand(names, call, argument, *source_home) &&
-          argument.source_value_id ==
-              std::optional<PreparedValueId>{source_home->value_id} &&
-          argument.destination_register_bank == PreparedRegisterBank::Gpr) {
+          direct_local_frame_address_operand) {
         const auto function_name =
             control_flow != nullptr ? control_flow->function_name
                                     : names.function_names.find(function.name);
