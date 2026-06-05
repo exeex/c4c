@@ -1,12 +1,81 @@
 Status: Active
 Source Idea Path: ideas/open/109_bir_prealloc_legacy_compatibility_residue_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Retained Residue Inventory
+Current Step ID: 2
+Current Step Title: Verify Current Reachability And Ownership
 
 # Current Packet
 
 ## Just Finished
+
+Step 2 validated current reachability and provisional ownership for the two
+named stack-layout compatibility residues.
+
+### Stack-Layout Compatibility Reachability
+
+`LegacySlotNameSliceFamilyCompatibility` is still reachable through the normal
+stack-layout route. `BirPreAlloc::run_stack_layout()` calls
+`plan_function_stack_objects()` in
+`src/backend/prealloc/stack_layout/coordinator.cpp`; that calls
+`stack_layout::collect_function_stack_objects()` and then
+`apply_aggregate_address_publication_hints()`. Local slots are converted by
+`make_local_slot_object()` in
+`src/backend/prealloc/stack_layout/analysis.cpp`, which assigns
+`.slice_family = legacy_slot_name_slice_family_compatibility(names,
+prepared_name)`. The helper parses dotted prepared slot names such as
+`%slice.src.0`, interns the family prefix, records the numeric slice offset,
+and sets `PreparedStackSliceFamily::legacy_slot_name_compatibility = true`.
+Current-code search found no non-legacy producer for
+`PreparedStackSliceFamily`: outside tests, the only assignment to
+`PreparedStackObject::slice_family` is this helper. Consumers are real:
+`apply_aggregate_address_publication_hints()` marks family members
+`aggregate_address_published` when the undotted family pointer is used, frame
+slot publication indexes `slice_coverage_by_family`, `find_direct_frame_slot()`
+uses that coverage to resolve sliced accesses, and `slot_assignment.cpp`
+preserves fixed slice-family layout when needed. Provisional classification:
+retained bootstrap producer for prepared slice-family identity, not physical
+placement authority. Suspected owner is BIR/prepared slice-family production;
+prealloc owns the current compatibility bridge and frame placement consequences.
+
+`LegacyFrameAddressNameCompatibility` is also still reachable. The same
+`plan_function_stack_objects()` path calls
+`apply_frame_address_publication_hints()` in
+`src/backend/prealloc/stack_layout/analysis.cpp`; that scans pointer-typed
+named values across binary/select/cast/phi/call/load/store/terminator use
+shapes, then for a stack object whose prepared slot name appears as a pointer
+value it sets `frame_address_value_name` and
+`legacy_frame_address_name_compatibility = true`. The producer feeds
+`build_frame_slot_publication_facts()` in
+`src/backend/prealloc/stack_layout/coordinator.cpp`, which indexes
+`frame_slots_by_frame_address_value_name`; `append_frame_slot_address_materialization()`
+then publishes `PreparedAddressMaterializationKind::FrameSlot` for matching
+pointer values, and `append_address_materializations()` reaches that helper
+from binary operands, pointer call arguments, and store-local values.
+Downstream consumers now prefer structured materializations where available:
+`prepared_lookups.cpp` has value-name and value-id frame-address lookup helpers
+that consume indexed `PreparedAddressMaterialization` records and fail closed
+on missing, future, non-addressable, or conflicting authority. However,
+`call_plans.cpp` still has name-derived fallback ownership:
+`find_local_frame_address_source()` matches a source value name to a local-slot
+object by exact name or `.0` compatibility, and
+`select_prepared_call_argument_source()` uses that fallback for
+`FrameSlotAddress` and `LocalFrameAddressMaterialization` selection when a
+latest prepared frame-slot materialization is unavailable. Provisional
+classification: mixed state. Structured prepared frame-address materialization
+authority exists and is consumed, but name-derived local frame-address
+selection remains reachable as a compatibility fallback. Suspected owner is
+BIR/prepared frame-address value identity plus prepared materialization facts;
+prealloc owns the temporary bridge and target-facing slot/address selection.
+
+Exact ambiguity left for later Step 2 packets: current reachability is proven,
+but this packet did not prove whether every ordinary local aggregate
+frame-address publication now gets an indexed
+`PreparedAddressMaterialization` before `call_plans.cpp` selection. The next
+packet should classify each remaining `find_local_frame_address_source()`
+fallback as either still required by supported lowering or removable after a
+bounded prepared-materialization producer check.
+
+## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
 closed idea notes. The inventory below captures the named residue, closed-note
@@ -27,15 +96,22 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Execute Step 2 by validating the current reachability of the two named stack
-layout compatibility paths before proposing any implementation or follow-up
-idea.
+Run the next Step 2 packet against `call_plans.cpp` and addressing
+materialization production: prove whether each reachable
+`find_local_frame_address_source()` fallback is still required by a supported
+ordinary aggregate-address route or can be replaced by explicit prepared
+frame-address materialization authority.
 
 ## Watchouts
 
-- This is analysis-only; do not edit implementation files.
-- Do not treat compatibility naming as automatically wrong without current
-  reachability evidence.
+- This remains analysis-only until the fallback-by-fallback ownership question
+  is closed.
+- Do not remove or narrow `legacy_slot_name_slice_family_compatibility()` before
+  adding a non-legacy `PreparedStackSliceFamily` producer; current code search
+  found no other producer.
+- `LegacyFrameAddressNameCompatibility` should not be treated as wholly stale:
+  prepared materialization lookup exists, but call-argument selection still has
+  reachable name-derived fallback paths.
 - Several residues are already closed as completed contracts or explicit
   no-action notes. Reopening them needs fresh current-code evidence, not only
   the existence of old helper names.
@@ -44,6 +120,10 @@ idea.
 
 ## Proof
 
-Analysis-only packet. Ran `git status --short` after editing and confirmed the
-only changed file is `todo.md`. No `test_after.log` was produced because the
-delegated proof was status-only.
+Analysis-only packet. Used `rg` plus `c4c-clang-tool-ccdb function-signatures`
+for `src/backend/prealloc/stack_layout/analysis.cpp`,
+`src/backend/prealloc/stack_layout/coordinator.cpp`,
+`src/backend/prealloc/prepared_lookups.cpp`, and
+`src/backend/prealloc/call_plans.cpp`. Ran `git status --short` after editing;
+the only changed file is `todo.md`. No `test_after.log` was produced because
+the delegated proof was status-only.
