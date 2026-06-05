@@ -1,54 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/110_call_planning_frame_address_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Replace Or Narrow Name-Derived Call-Planning Authority
+Current Step ID: 4
+Current Step Title: Add Contracts And Run Acceptance Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 producer repair while keeping ordinary name-derived
-call-planning fallback removal in `src/backend/prealloc/call_plans.cpp`.
+Completed Step 4 contract tightening for explicit prepared frame-slot
+authority on local aggregate call arguments.
 
-Producer evidence:
+Coverage changes:
 
-- Removed the duplicate binary-lhs frame-slot materialization in
-  `append_address_materializations()`. The old path emitted the same
-  `PreparedAddressMaterializationKind::FrameSlot` fact twice at one instruction,
-  causing `find_latest_frame_slot_materialization()` to fail closed on
-  same-instruction ambiguity after the fallback was removed.
-- Added binary-result frame-slot materialization for pointer add/sub with an
-  immediate offset over an already-published frame-address operand. Direct and
-  derived local aggregate pointer results such as `local.aggregate =
-  local.aggregate.0 + 4` now have explicit `FrameSlot` facts before call
-  planning consumes them.
-- Extended `apply_frame_address_publication_hints()` so pointer uses of an
-  aggregate slice-family name publish the zero-offset slice as that family's
-  explicit frame-address value. This repaired the byval-over-16 address path
-  that must pass the aggregate address instead of loading a preserved pointer
-  spill.
-- Kept only a bounded no-addressing compatibility path in the `FrameSlot`
-  source-selection branch for manually assembled `populate_call_plans()`
-  fixtures with no `PreparedAddressingFunction`. Normal prepared pipelines
-  still require explicit address materialization facts.
+- `backend_prepare_frame_stack_call_contract_test.cpp` now requires the direct
+  local aggregate call-argument route to have a concrete
+  `FrameSlot` address materialization at the producing instruction and requires
+  the call argument source selection to carry the matching materialization
+  block, instruction, frame-slot, and byte-offset facts.
+- The same contract now requires the same-block derived local aggregate route
+  (`local.aggregate.0 + 4`) to publish and consume the derived frame-slot
+  materialization offset, including computed-address base and immediate-delta
+  authority when the source encoding is `ComputedAddress`.
+- `backend_prepared_lookup_helper_test.cpp` now verifies frame-address lookup
+  fails closed when value-id lookup authority is absent and when explicit
+  value-id materialization authority is conflicting.
+- No `backend_prepare_stack_layout_test.cpp` edit was needed for this packet:
+  its existing rooted pointer-binary contract already proves the stack-layout
+  producer publishes frame-address materialization facts for the local
+  frame-address route.
 
 ## Suggested Next
 
-Proceed to the next coherent packet by tightening contracts around the retained
-no-addressing compatibility path and the direct/derived producer routes, without
-expanding name-derived fallback back into ordinary prepared call planning.
+Recommend lifecycle review/closure consideration for Step 4. The focused
+backend contracts and delegated acceptance proof are complete; any next packet
+should be supervisor or plan-owner driven rather than executor-selected.
 
 ## Watchouts
 
-- The compatibility branch in `select_prepared_call_argument_source()` is
-  intentionally gated on `addressing == nullptr`; do not let it become ordinary
-  supported authority for prepared pipelines.
-- The binary-result producer depends on the base operand already having
-  frame-address publication authority; it does not infer stack-object ownership
-  from arbitrary result names.
-- The aggregate family publication path maps only the zero-offset slice to the
-  family address value.
+- These contracts intentionally assert prepared data structures directly and do
+  not rely on broad dump string matching.
+- The immediate computed-address route is explicitly checked when the planner
+  chooses `ComputedAddress`; the direct route is allowed to remain register
+  sourced as long as it still carries the prepared local frame-address
+  materialization selection facts.
+- Residual risk: this packet proves supported local aggregate call argument
+  routes and lookup fail-closed behavior in the backend subset, but does not add
+  broader non-backend coverage.
 
 ## Proof
 

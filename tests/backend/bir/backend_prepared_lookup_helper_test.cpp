@@ -2453,6 +2453,11 @@ int verify_prepared_frame_address_offset_lookup() {
           .has_value()) {
     return fail("frame-address id lookup should reject non-addressable spill slots");
   }
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout, &lookups, nullptr, block_label, aggregate_value_id, 8)
+          .has_value()) {
+    return fail("frame-address id lookup should fail closed without value-id authority");
+  }
 
   auto duplicate_lookups = lookups;
   duplicate_lookups.materializations_by_block[block_label].push_back(
@@ -2472,6 +2477,22 @@ int verify_prepared_frame_address_offset_lookup() {
           stack_layout, &duplicate_lookups, block_label, aggregate_value, 8)
           .has_value()) {
     return fail("frame-address lookup should reject conflicting prepared authority");
+  }
+
+  auto conflicting_id = addressing.address_materializations[2];
+  conflicting_id.result_value_id = aggregate_value_id;
+  conflicting_id.byte_offset = 52;
+  auto id_conflict_lookups = lookups;
+  id_conflict_lookups.materializations_by_block[block_label].push_back(&conflicting_id);
+  if (prepare::find_indexed_prepared_frame_address_offset_for_value_id(
+          stack_layout,
+          &id_conflict_lookups,
+          &value_home_lookups,
+          block_label,
+          aggregate_value_id,
+          8)
+          .has_value()) {
+    return fail("frame-address id lookup should reject conflicting explicit prepared authority");
   }
 
   return 0;

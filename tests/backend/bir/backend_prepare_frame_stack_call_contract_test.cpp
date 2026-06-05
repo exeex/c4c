@@ -200,6 +200,35 @@ const prepare::PreparedStoragePlanValue* find_storage_value(
   return nullptr;
 }
 
+const prepare::PreparedAddressMaterialization* find_address_materialization(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    std::string_view result_value_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  const auto block_label_id = prepared.names.block_labels.find(block_label);
+  const auto result_value_id = prepared.names.value_names.find(result_value_name);
+  if (function_id == c4c::kInvalidFunctionName ||
+      block_label_id == c4c::kInvalidBlockLabel ||
+      result_value_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_id);
+  if (function_addressing == nullptr) {
+    return nullptr;
+  }
+  for (const auto& materialization : function_addressing->address_materializations) {
+    if (materialization.block_label == block_label_id &&
+        materialization.inst_index == inst_index &&
+        materialization.result_value_name ==
+            std::optional<c4c::ValueNameId>{result_value_id}) {
+      return &materialization;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedRegallocValue* find_regalloc_value(
     const prepare::PreparedRegallocFunction& function,
     prepare::PreparedValueId value_id) {
@@ -4010,11 +4039,26 @@ int check_local_frame_address_source_selection_contract() {
   const auto* frame_slot =
       stack_object == nullptr ? nullptr : find_frame_slot(prepared, stack_object->object_id);
   const auto source_name = prepared.names.value_names.find("local.aggregate");
+  const auto entry_label = prepared.names.block_labels.find("entry");
+  const auto* materialization =
+      find_address_materialization(prepared,
+                                   "local_frame_address_source_selection_contract",
+                                   "entry",
+                                   0,
+                                   "local.aggregate");
   if (call_plans == nullptr || call_plans->calls.size() != 1 ||
       call_plans->calls.front().arguments.size() != 1 ||
       stack_object == nullptr || frame_slot == nullptr ||
-      source_name == c4c::kInvalidValueName) {
+      source_name == c4c::kInvalidValueName ||
+      entry_label == c4c::kInvalidBlockLabel || materialization == nullptr) {
     return fail("local frame address selection contract: missing prepared call or frame slot");
+  }
+  if (materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+      materialization->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      materialization->byte_offset != static_cast<std::int64_t>(frame_slot->offset_bytes)) {
+    return fail(
+        "local frame address selection contract: producer did not publish explicit frame-slot authority");
   }
 
   const auto& arg = call_plans->calls.front().arguments.front();
@@ -4041,11 +4085,27 @@ int check_local_frame_address_source_selection_contract() {
           std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
       selection.source_stack_offset_bytes !=
           std::optional<std::size_t>{frame_slot->offset_bytes} ||
+      selection.address_materialization_block_label !=
+          std::optional<c4c::BlockLabelId>{entry_label} ||
+      selection.address_materialization_inst_index != std::optional<std::size_t>{0} ||
+      selection.address_materialization_frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      selection.address_materialization_byte_offset !=
+          std::optional<std::int64_t>{
+              static_cast<std::int64_t>(frame_slot->offset_bytes)} ||
       selection.source_size_bytes != std::optional<std::size_t>{8} ||
       selection.source_align_bytes != std::optional<std::size_t>{8}) {
     return fail(
         "local frame address selection contract: missing prepared local frame "
         "address source fact");
+  }
+  if (arg.source_encoding == prepare::PreparedStorageEncodingKind::ComputedAddress &&
+      (!arg.source_base_value_name.has_value() ||
+       prepare::prepared_value_name(prepared.names, *arg.source_base_value_name) !=
+           "local.aggregate.0" ||
+       arg.source_pointer_byte_delta != std::optional<std::int64_t>{0})) {
+    return fail(
+        "local frame address selection contract: computed source lost local aggregate base authority");
   }
   return 0;
 }
@@ -4060,12 +4120,28 @@ int check_derived_local_frame_address_source_selection_contract() {
   const auto* frame_slot =
       stack_object == nullptr ? nullptr : find_frame_slot(prepared, stack_object->object_id);
   const auto source_name = prepared.names.value_names.find("local.aggregate");
+  const auto entry_label = prepared.names.block_labels.find("entry");
+  const auto* materialization =
+      find_address_materialization(prepared,
+                                   "derived_local_frame_address_source_selection_contract",
+                                   "entry",
+                                   0,
+                                   "local.aggregate");
   if (call_plans == nullptr || call_plans->calls.size() != 1 ||
       call_plans->calls.front().arguments.size() != 1 ||
       stack_object == nullptr || frame_slot == nullptr ||
-      source_name == c4c::kInvalidValueName) {
+      source_name == c4c::kInvalidValueName ||
+      entry_label == c4c::kInvalidBlockLabel || materialization == nullptr) {
     return fail(
         "derived local frame address selection contract: missing prepared call or frame slot");
+  }
+  if (materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+      materialization->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      materialization->byte_offset !=
+          static_cast<std::int64_t>(frame_slot->offset_bytes + 4U)) {
+    return fail(
+        "derived local frame address selection contract: producer did not publish explicit derived frame-slot authority");
   }
 
   const auto& arg = call_plans->calls.front().arguments.front();
@@ -4093,11 +4169,27 @@ int check_derived_local_frame_address_source_selection_contract() {
       selection.source_stack_offset_bytes !=
           std::optional<std::size_t>{frame_slot->offset_bytes + 4U} ||
       selection.source_pointer_byte_delta != std::optional<std::int64_t>{4} ||
+      selection.address_materialization_block_label !=
+          std::optional<c4c::BlockLabelId>{entry_label} ||
+      selection.address_materialization_inst_index != std::optional<std::size_t>{0} ||
+      selection.address_materialization_frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      selection.address_materialization_byte_offset !=
+          std::optional<std::int64_t>{
+              static_cast<std::int64_t>(frame_slot->offset_bytes + 4U)} ||
       selection.source_size_bytes != std::optional<std::size_t>{8} ||
       selection.source_align_bytes != std::optional<std::size_t>{8}) {
     return fail(
         "derived local frame address selection contract: missing prepared "
         "derived local frame address source fact");
+  }
+  if (arg.source_encoding == prepare::PreparedStorageEncodingKind::ComputedAddress &&
+      (!arg.source_base_value_name.has_value() ||
+       prepare::prepared_value_name(prepared.names, *arg.source_base_value_name) !=
+           "local.aggregate.0" ||
+       arg.source_pointer_byte_delta != std::optional<std::int64_t>{4})) {
+    return fail(
+        "derived local frame address selection contract: computed source lost immediate offset authority");
   }
   return 0;
 }
