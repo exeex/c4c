@@ -16970,11 +16970,20 @@ int semantic_stack_call_argument_uses_distinct_outgoing_area_base() {
   if (!printed.ok) {
     return fail("expected stack-call-argument route to print: " + printed.diagnostic);
   }
-  if (printed.assembly.find("sub x16, sp, #16") == std::string::npos ||
-      printed.assembly.find("str x") == std::string::npos ||
-      printed.assembly.find("[x16]") == std::string::npos ||
-      printed.assembly.find("sub sp, sp, #16\n    bl consume_byval\n    add sp, sp, #16") ==
-          std::string::npos) {
+  const auto reserve = printed.assembly.find("sub sp, sp, #16");
+  const auto publish_base = printed.assembly.find("mov x16, sp", reserve);
+  const auto store = printed.assembly.find("str x", publish_base);
+  const auto store_base = printed.assembly.find("[x16]", store);
+  const auto call = printed.assembly.find("bl consume_byval", store_base);
+  const auto restore = printed.assembly.find("add sp, sp, #16", call);
+  if (reserve == std::string::npos ||
+      publish_base == std::string::npos ||
+      store == std::string::npos ||
+      store_base == std::string::npos ||
+      call == std::string::npos ||
+      restore == std::string::npos ||
+      !(reserve < publish_base && publish_base < store && store < store_base &&
+        store_base < call && call < restore)) {
     return fail("expected stack call argument to use a distinct outgoing stack area");
   }
   if (printed.assembly.find("str x0, [sp]") != std::string::npos ||
@@ -18770,22 +18779,28 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 2, diagnostics);
-  if (lowered.size() != 2 || !diagnostics.empty()) {
-    return fail("expected overflow byval stack-lane publication to lower base setup and one move");
+  if (lowered.size() != 3 || !diagnostics.empty()) {
+    return fail("expected overflow byval stack-lane publication to lower stack reservation, base setup, and one move");
+  }
+  const auto reserve_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+  if (!reserve_printed.ok ||
+      reserve_printed.instruction_lines != std::vector<std::string>{"sub sp, sp, #48"}) {
+    return fail("expected overflow byval stack lanes to reserve outgoing stack area");
   }
   const auto base_printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered[1].target);
   if (!base_printed.ok ||
-      base_printed.instruction_lines != std::vector<std::string>{"sub x16, sp, #48"}) {
-    return fail("expected overflow byval stack lanes to materialize outgoing stack base");
+      base_printed.instruction_lines != std::vector<std::string>{"mov x16, sp"}) {
+    return fail("expected overflow byval stack lanes to publish outgoing stack base");
   }
   const auto printed =
       aarch64_codegen::print_machine_instruction_line_payloads(lowered.back().target);
   if (!printed.ok ||
       printed.instruction_lines !=
-          std::vector<std::string>{"ldr x9, [sp, #96]",
+          std::vector<std::string>{"ldr x9, [sp, #144]",
                                    "str x9, [x16, #32]",
-                                   "ldr x9, [sp, #104]",
+                                   "ldr x9, [sp, #152]",
                                    "str x9, [x16, #40]"}) {
     return fail("expected overflow byval stack lanes to publish from prepared source lanes");
   }
@@ -21285,7 +21300,7 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
   if (!diagnostics.empty() || result.visited_operations != 1 ||
-      !result.visited_terminator || block.instructions.size() != 4) {
+      !result.visited_terminator || block.instructions.size() != 6) {
     return fail("expected immediate stack call argument, call, and return to dispatch: emitted=" +
                 std::to_string(block.instructions.size()) +
                 " visited=" + std::to_string(result.visited_operations) +
@@ -21296,7 +21311,7 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
   }
   const auto* store =
       std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
-          &block.instructions[1].target.payload);
+          &block.instructions[2].target.payload);
   const auto* immediate =
       store != nullptr && store->value.has_value()
           ? std::get_if<aarch64_module::codegen::ImmediateOperand>(
@@ -21304,9 +21319,9 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
           : nullptr;
   const auto* call =
       std::get_if<aarch64_module::codegen::CallInstructionRecord>(
-          &block.instructions[2].target.payload);
+          &block.instructions[3].target.payload);
   if (store == nullptr || immediate == nullptr || call == nullptr ||
-      block.instructions[1].target.selection.status !=
+      block.instructions[2].target.selection.status !=
           aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
       store->memory_kind != aarch64_module::codegen::MemoryInstructionKind::Store ||
       store->address.base_kind != aarch64_module::codegen::MemoryBaseKind::Register ||
@@ -21336,25 +21351,25 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
     return fail("expected immediate stack argument to print before direct call: " +
                 printed.diagnostic);
   }
-  const auto outgoing_base = printed.assembly.find("sub x16, sp, #16");
+  const auto stack_adjust = printed.assembly.find("sub sp, sp, #16");
+  const auto outgoing_base = printed.assembly.find("mov x16, sp", stack_adjust);
   const auto materialized_immediate = printed.assembly.find("#75", outgoing_base);
   const auto outgoing_store = printed.assembly.find("str ", materialized_immediate);
   const auto outgoing_store_base = printed.assembly.find("[x16]", outgoing_store);
-  const auto stack_adjust = printed.assembly.find("sub sp, sp, #16", outgoing_store);
-  const auto call_pos = printed.assembly.find("bl consume_overflow", stack_adjust);
+  const auto call_pos = printed.assembly.find("bl consume_overflow", outgoing_store_base);
   const auto restore = printed.assembly.find("add sp, sp, #16", call_pos);
-  if (outgoing_base == std::string::npos ||
+  if (stack_adjust == std::string::npos ||
+      outgoing_base == std::string::npos ||
       materialized_immediate == std::string::npos ||
       outgoing_store == std::string::npos ||
       outgoing_store_base == std::string::npos ||
-      stack_adjust == std::string::npos ||
       call_pos == std::string::npos ||
       restore == std::string::npos ||
-      !(outgoing_base < materialized_immediate &&
+      !(stack_adjust < outgoing_base &&
+        outgoing_base < materialized_immediate &&
         materialized_immediate < outgoing_store &&
         outgoing_store < outgoing_store_base &&
-        outgoing_store_base < stack_adjust &&
-        stack_adjust < call_pos && call_pos < restore)) {
+        outgoing_store_base < call_pos && call_pos < restore)) {
     return fail("expected immediate stack argument to print before direct call: " +
                 printed.assembly);
   }
@@ -28919,7 +28934,7 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 1 || !result.visited_terminator ||
-      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6 ||
       !diagnostics.empty()) {
     for (const auto& diagnostic : diagnostics.entries) {
       std::cerr << diagnostic.message << "\n";
@@ -28931,17 +28946,23 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
 
   const auto* transport =
       std::get_if<aarch64_codegen::F128TransportRecord>(
-          &block.instructions[1].target.payload);
-  const auto base_printed =
+          &block.instructions[2].target.payload);
+  const auto reserve_printed =
       aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.front().target);
+  if (!reserve_printed.ok ||
+      reserve_printed.instruction_lines != std::vector<std::string>{"sub sp, sp, #48"}) {
+    return fail("expected f128 outgoing stack argument to reserve outgoing stack area");
+  }
+  const auto base_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[1].target);
   if (!base_printed.ok ||
-      base_printed.instruction_lines != std::vector<std::string>{"sub x16, sp, #48"}) {
-    return fail("expected f128 outgoing stack argument to materialize outgoing stack base");
+      base_printed.instruction_lines != std::vector<std::string>{"mov x16, sp"}) {
+    return fail("expected f128 outgoing stack argument to publish outgoing stack base");
   }
   if (transport == nullptr ||
-      block.instructions[1].target.family !=
+      block.instructions[2].target.family !=
           aarch64_codegen::InstructionFamily::F128Transport ||
-      block.instructions[1].target.selection.status !=
+      block.instructions[2].target.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       transport->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
       transport->value_id != prepare::PreparedValueId{151} ||
@@ -28960,7 +28981,7 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
   }
 
   const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[1].target);
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[2].target);
   if (!printed.ok || printed.instruction_lines.size() != 2 ||
       printed.instruction_lines[0] != "ldr q16, [sp, #80]" ||
       printed.instruction_lines[1] != "str q16, [x16, #32]") {
