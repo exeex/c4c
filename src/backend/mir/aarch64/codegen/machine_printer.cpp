@@ -1863,9 +1863,6 @@ std::optional<std::vector<std::string>> print_call_boundary_frame_slot_load_line
 std::optional<std::string> f128_call_boundary_vector_register_name(
     const RegisterOperand& operand) {
   if (operand.expected_view != abi::RegisterView::Q ||
-      operand.prepared_bank != prepare::PreparedRegisterBank::Vreg ||
-      operand.prepared_class != prepare::PreparedRegisterClass::Vector ||
-      operand.contiguous_width != 1 ||
       !abi::is_fp_simd_register(operand.reg)) {
     return std::nullopt;
   }
@@ -2018,9 +2015,8 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
   std::ostringstream out;
   const bool f128_q_register_move =
       move.source_register.has_value() &&
-      move.source_f128_carrier != nullptr &&
-      move.source_register->expected_view == abi::RegisterView::Q &&
-      move.destination_register->expected_view == abi::RegisterView::Q;
+      f128_call_boundary_vector_register_name(*move.source_register).has_value() &&
+      f128_call_boundary_vector_register_name(*move.destination_register).has_value();
   if (f128_q_register_move) {
     const auto destination =
         f128_call_boundary_vector_register_name(*move.destination_register);

@@ -6922,6 +6922,67 @@ f128_call_boundary_register_move_lines(abi::RegisterReference source,
                                                    depth + 1);
 }
 
+[[nodiscard]] bool fp_call_boundary_value_traces_to_global(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  const auto size_bytes =
+      value.type == bir::TypeKind::F32 ? std::optional<std::size_t>{4}
+      : value.type == bir::TypeKind::F64 ? std::optional<std::size_t>{8}
+                                         : std::nullopt;
+  if (depth > 8U || !size_bytes.has_value() ||
+      value.kind != bir::Value::Kind::Named || context.bir_block == nullptr) {
+    return false;
+  }
+  const auto* producer =
+      mir::find_same_block_named_producer(
+          context.bir_block, value.name, before_instruction_index);
+  const auto producer_index =
+      producer != nullptr ? mir::producer_instruction_index(context.bir_block, producer)
+                          : std::nullopt;
+  if (producer == nullptr || !producer_index.has_value()) {
+    return false;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
+    return true;
+  }
+  const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
+  if (load_local != nullptr &&
+      load_local->address.has_value() &&
+      load_local->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol &&
+      !load_local->address->base_name.empty()) {
+    return true;
+  }
+  const auto source_offset =
+      load_local != nullptr ? prepared_local_load_offset(context, *producer_index)
+                            : std::nullopt;
+  const auto* addressing =
+      context.function.prepared != nullptr && context.function.control_flow != nullptr
+          ? prepare::find_prepared_addressing(
+                *context.function.prepared,
+                context.function.control_flow->function_name)
+          : nullptr;
+  if (!source_offset.has_value() || addressing == nullptr) {
+    return false;
+  }
+  const auto stored = find_prepared_frame_stored_value(
+      context,
+      *addressing,
+      static_cast<std::int64_t>(*source_offset),
+      *size_bytes,
+      *producer_index);
+  if (!stored.has_value()) {
+    return false;
+  }
+  bir::Value stored_value = stored->value;
+  stored_value.type = value.type;
+  return fp_call_boundary_value_traces_to_global(context,
+                                                 stored_value,
+                                                 stored->instruction_index,
+                                                 depth + 1);
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_fp_stack_call_argument_source(
     const module::BlockLoweringContext& context,
@@ -7113,6 +7174,9 @@ materialize_call_boundary_source_to_destination(
       move_record->destination_register->prepared_bank ==
           prepare::PreparedRegisterBank::Fpr &&
       abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    const auto source_value =
+        call_boundary_source_value_by_name(
+            context, move_record->source_register->value_name, instruction_index);
     if (move_record->source_register->value_name != c4c::kInvalidValueName) {
       const auto emitted =
           find_emitted_scalar_register(scalar_state,
@@ -7120,13 +7184,13 @@ materialize_call_boundary_source_to_destination(
       if (emitted.has_value() &&
           emitted->reg.bank == abi::RegisterBank::FpSimd &&
           register_operands_share_physical_register(
-              *emitted, *move_record->source_register)) {
+              *emitted, *move_record->source_register) &&
+          (!source_value.has_value() ||
+           !fp_call_boundary_value_traces_to_global(
+               context, *source_value, instruction_index))) {
         return std::nullopt;
       }
     }
-    const auto source_value =
-        call_boundary_source_value_by_name(
-            context, move_record->source_register->value_name, instruction_index);
     const auto scratches = abi::reserved_mir_scratch_gp_registers();
     std::vector<std::string> lines;
     if (source_value.has_value() && !scratches.empty() &&
@@ -7168,6 +7232,24 @@ materialize_call_boundary_source_to_destination(
       if (!source_value.has_value() ||
           !f128_call_boundary_value_traces_to_global(
               context, *source_value, instruction_index)) {
+        if (move_record->source_f128_carrier->register_name.has_value()) {
+          const auto carrier_register = abi::parse_aarch64_register_name(
+              *move_record->source_f128_carrier->register_name);
+          if (carrier_register.has_value() &&
+              carrier_register->view != abi::RegisterView::Q) {
+            if (auto lines = f128_call_boundary_register_move_lines(
+                    move_record->source_register->reg,
+                    move_record->destination_register->reg);
+                lines.has_value() && !lines->empty()) {
+              record_emitted_scalar_register(
+                  scalar_state,
+                  move_record->destination_register->value_name,
+                  *move_record->destination_register);
+              return make_select_chain_materialization_instruction(
+                  context, instruction_index, std::move(*lines));
+            }
+          }
+        }
         return std::nullopt;
       }
     }
