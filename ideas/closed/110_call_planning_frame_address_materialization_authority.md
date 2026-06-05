@@ -66,6 +66,17 @@ the fallback without weakening supported local aggregate lowering.
   fail-closed behavior.
 - No test expectation is downgraded to claim progress.
 
+## Closure Note
+
+Closed after active runbook Step 4. Executor proof completed
+`git diff --check && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"`
+with 179 of 179 backend tests passing in `test_after.log`.
+
+Close-time regression guard used the existing matching backend-scope
+`test_before.log` and `test_after.log`; both reported 179 passed, 0 failed.
+The guard passed in documented non-decreasing mode because there were no new
+failures and no pass-count decrease.
+
 ## Ownership And Proof Route
 
 Owner: prealloc call planning owns the consumer cleanup in
