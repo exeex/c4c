@@ -1,12 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/109_bir_prealloc_legacy_compatibility_residue_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Verify Current Reachability And Ownership
+Current Step ID: 3
+Current Step Title: Draft Focused Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
+
+Step 3 drafted focused follow-up ideas for only the actionable residues from
+the Step 2 audit:
+
+- Call-planning local frame-address fallback replacement candidates:
+  `ideas/open/110_call_planning_frame_address_materialization_authority.md`
+- Store-source prepared dump visibility gap:
+  `ideas/open/111_store_source_publication_dump_visibility.md`
+
+No ideas were created for the `safe-compatibility-glue` or `stale-no-action`
+residues.
+
+### Step 2 Evidence Basis
 
 Step 2 classified the `prepared_lookups.cpp` helper authority questions after
 the earlier stack-layout, call-planning fallback, pointer-carrier,
@@ -663,10 +676,10 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Proceed to Step 3. Draft focused follow-up ideas only for actionable
-non-`safe-compatibility-glue` / non-`stale-no-action` residues, currently the
-call-planning local frame-address fallback replacement candidates and the
-store-source prepared dump visibility gap.
+Proceed to Step 4. Prepare closure evidence by consolidating the final
+disposition table in `todo.md`, listing the two created follow-up idea paths
+beside their residues, and recording why the remaining audited residues are
+safe, stale, or out of scope.
 
 ## Watchouts
 
@@ -725,14 +738,7 @@ store-source prepared dump visibility gap.
 
 ## Proof
 
-Analysis-only Step 2 packet. This packet used `rg` plus
-`c4c-clang-tool-ccdb list-symbols`, `function-callers`, and
-`function-callees` around `src/backend/prealloc/prepared_lookups.cpp`,
-`src/backend/prealloc/select_chain_lookups.cpp`, and representative prealloc
-and AArch64 consumers. Focused ranges were inspected for prepared memory
-access lookups, frame-address offset lookups, source-producer/select-chain
-lookups, same-block load-local stored-value source lookup, edge-publication
-source-fact packaging, and prior-preserved call helpers. Final proof commands
-for this packet: `git diff --check` and `git status --short`. No
-`test_after.log` was produced because the delegated proof was
-analysis/status-only.
+Analysis-only Step 3 packet. Created two focused follow-up ideas under
+`ideas/open/` and updated this scratchpad. Final proof commands for this
+packet: `git diff --check` and `git status --short`. No `test_after.log` was
+produced because the delegated proof was analysis/status-only.
