@@ -70,3 +70,28 @@ repo-standard baseline command and compare against the preserved baseline log.
 - If a failure cluster turns out to require a larger architectural move, close
   or split this idea with follow-up ideas rather than expanding this recovery
   into unrelated BIR/prealloc cleanup.
+
+Closed on 2026-06-05 after the active Step 5 repair slice and close gate.
+
+Genuinely recovered failures:
+
+- `backend_aarch64_instruction_dispatch`
+- `c_testsuite_aarch64_backend_src_00172_c`
+- `c_testsuite_aarch64_backend_src_00180_c`
+- `c_testsuite_aarch64_backend_src_00216_c`
+- `c_testsuite_aarch64_backend_src_00220_c`
+- `backend_codegen_route_aarch64_hfa_global_payload_call_boundary`
+- `backend_codegen_route_aarch64_hfa_result_home_publication_contract`
+- `backend_aarch64_call_boundary_owner`
+
+`c_testsuite_aarch64_backend_src_00204_c` was confirmed stale-only in the
+preserved baseline: it passed in the focused recovery proof and in the broader
+AArch64 validation recorded during Step 5.
+
+Close gate:
+
+- Focused before/after regression guard passed with `test_before.log` at 6/9
+  passing and `test_after.log` at 9/9 passing.
+- The hook-generated full-suite `test_baseline.new.log` after commit
+  `23213dbe4` was reported as 3427/3427 passing and accepted with
+  `scripts/plan_review_state.py accept-baseline`.
