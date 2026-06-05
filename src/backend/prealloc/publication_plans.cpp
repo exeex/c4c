@@ -1,7 +1,10 @@
 #include "publication_plans.hpp"
 
+#include "module.hpp"
+
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 
 namespace c4c::backend::prepare {
@@ -264,6 +267,57 @@ namespace {
     }
   }
   return false;
+}
+
+[[nodiscard]] const PreparedStackObject* find_stack_object(
+    const PreparedStackLayout& stack_layout,
+    PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const PreparedStackObject* prepared_stack_object_for_frame_slot(
+    const PreparedStackLayout& stack_layout,
+    const PreparedFrameSlot* slot) {
+  if (slot == nullptr) {
+    return nullptr;
+  }
+  return find_stack_object(stack_layout, slot->object_id);
+}
+
+[[nodiscard]] BlockLabelId prepared_block_label_id(const PreparedNameTables& names,
+                                                   const bir::Block& block) {
+  const BlockLabelId structured = names.block_labels.find(block.label);
+  return structured != kInvalidBlockLabel ? structured : kInvalidBlockLabel;
+}
+
+[[nodiscard]] const PreparedControlFlowFunction* find_control_flow_function(
+    const PreparedControlFlow& control_flow,
+    FunctionNameId function_name) {
+  for (const auto& function : control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+void append_store_source_record(
+    PreparedStoreSourcePublicationPlans& plans,
+    FunctionNameId function_name,
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    PreparedStoreSourcePublicationPlan plan) {
+  plans.records.push_back(PreparedStoreSourcePublicationRecord{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = instruction_index,
+      .plan = std::move(plan),
+  });
 }
 
 }  // namespace
@@ -538,6 +592,135 @@ plan_pending_prepared_store_global_publications(
     });
   }
   return candidates;
+}
+
+void populate_store_source_publication_plans(PreparedBirModule& prepared) {
+  prepared.store_source_publications.records.clear();
+
+  for (const auto& function : prepared.module.functions) {
+    const FunctionNameId function_name = prepared.names.function_names.find(function.name);
+    if (function_name == kInvalidFunctionName) {
+      continue;
+    }
+
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_name);
+    const auto* addressing = find_prepared_addressing(prepared, function_name);
+    const auto* function_cf =
+        find_control_flow_function(prepared.control_flow, function_name);
+    std::optional<PreparedEdgePublicationSourceProducerLookups>
+        source_producer_lookups;
+    const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
+    if (function_cf != nullptr) {
+      source_producer_lookups =
+          make_prepared_edge_publication_source_producer_lookups(prepared, *function_cf);
+      source_producers = &*source_producer_lookups;
+    }
+
+    for (const auto& block : function.blocks) {
+      const BlockLabelId block_label = prepared_block_label_id(prepared.names, block);
+      if (block_label == kInvalidBlockLabel) {
+        continue;
+      }
+
+      for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+        const auto* store_local =
+            std::get_if<bir::StoreLocalInst>(&block.insts[inst_index]);
+        const auto* store_global =
+            std::get_if<bir::StoreGlobalInst>(&block.insts[inst_index]);
+        if (store_local == nullptr && store_global == nullptr) {
+          continue;
+        }
+
+        const bir::Value& source_value =
+            store_local != nullptr ? store_local->value : store_global->value;
+        const auto* access =
+            addressing != nullptr
+                ? find_prepared_memory_access(*addressing, block_label, inst_index)
+                : nullptr;
+        const auto* source_home =
+            find_publication_source_home(value_locations,
+                                         access != nullptr ? access->stored_value_name
+                                                           : std::nullopt);
+        const auto* source_producer =
+            find_prepared_select_chain_source_producer(prepared.names,
+                                                       source_producers,
+                                                       block_label,
+                                                       &block,
+                                                       source_value,
+                                                       inst_index);
+        const auto direct_global_select_chain =
+            find_prepared_store_source_direct_global_select_chain_dependency(
+                prepared.names,
+                source_producers,
+                block_label,
+                &block,
+                source_value,
+                inst_index);
+        const auto* destination_slot =
+            prepared_frame_slot_for_access(prepared.stack_layout, access);
+        const auto* destination_object =
+            prepared_stack_object_for_frame_slot(prepared.stack_layout, destination_slot);
+
+        std::optional<PreparedRecoveredStoreSourcePublication> recovered_source;
+        bool byval_load_local_source = false;
+        if (store_local != nullptr) {
+          if (source_producer != nullptr && source_producer->load_local != nullptr) {
+            recovered_source =
+                find_prepared_recovered_narrow_store_source_for_wide_local_load(
+                    prepared.names,
+                    prepared.module.names,
+                    prepared.stack_layout,
+                    addressing,
+                    block_label,
+                    &block,
+                    *source_producer->load_local,
+                    source_producer->instruction_index);
+          }
+          byval_load_local_source =
+              prepared_store_source_load_local_is_byval_formal_pointer_source(
+                  prepared.names, &function, addressing, source_producer);
+        }
+
+        const bool duplicate_publication =
+            store_global != nullptr && source_home != nullptr &&
+            source_home->kind == PreparedValueHomeKind::StackSlot;
+        const bir::Value* recovered_value =
+            recovered_source.has_value() ? &recovered_source->stored_value : nullptr;
+        auto plan = plan_prepared_store_source_publication({
+            .source_value = &source_value,
+            .destination_access = access,
+            .source_home = source_home,
+            .destination_frame_slot = destination_slot,
+            .destination_stack_object = destination_object,
+            .recovered_source_value = recovered_value,
+            .recovered_source_instruction_index =
+                recovered_source.has_value()
+                    ? std::optional<std::size_t>{recovered_source->instruction_index}
+                    : std::nullopt,
+            .byval_load_local_source = byval_load_local_source,
+            .direct_global_select_chain_source =
+                direct_global_select_chain.contains_direct_global_load,
+            .direct_global_select_chain_root_is_select =
+                direct_global_select_chain.root_is_select,
+            .direct_global_select_chain_root_instruction_index =
+                direct_global_select_chain.root_instruction_index,
+            .intent =
+                store_local != nullptr
+                    ? PreparedStoreSourcePublicationIntent::StoreLocalPublication
+                    : PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+            .stack_homes_only = store_global != nullptr,
+            .duplicate_publication = duplicate_publication,
+            .source_producer = source_producer,
+        });
+        append_store_source_record(prepared.store_source_publications,
+                                   function_name,
+                                   block_label,
+                                   inst_index,
+                                   std::move(plan));
+      }
+    }
+  }
 }
 
 PreparedFixedFormalStoreSourcePublication

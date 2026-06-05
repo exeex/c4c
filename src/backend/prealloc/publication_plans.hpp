@@ -280,6 +280,19 @@ struct PreparedStoreGlobalPublicationCandidate {
   PreparedStoreSourcePublicationPlan store_source;
 };
 
+struct PreparedStoreSourcePublicationRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  PreparedStoreSourcePublicationPlan plan;
+};
+
+struct PreparedStoreSourcePublicationPlans {
+  std::vector<PreparedStoreSourcePublicationRecord> records;
+};
+
+struct PreparedBirModule;
+
 [[nodiscard]] bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan);
 
@@ -304,6 +317,8 @@ plan_pending_prepared_store_global_publications(
     BlockLabelId block_label,
     const bir::Block* block,
     std::size_t instruction_index);
+
+void populate_store_source_publication_plans(PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedFixedFormalStoreSourcePublication
 plan_prepared_fixed_formal_store_source_publication(

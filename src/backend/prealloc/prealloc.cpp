@@ -43,6 +43,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_frame_plan(prepared_);
   populate_dynamic_stack_plan(prepared_);
   populate_call_plans(prepared_);
+  populate_store_source_publication_plans(prepared_);
   populate_variadic_entry_plans(prepared_);
   populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);

@@ -107,7 +107,63 @@ void append_select_chain_row(
   out << "\n";
 }
 
+const char* yes_no(bool value) {
+  return value ? "yes" : "no";
+}
+
+void append_optional_index(std::ostringstream& out,
+                           std::string_view label,
+                           std::optional<std::size_t> value) {
+  if (value.has_value()) {
+    out << " " << label << "=" << *value;
+  }
+}
+
+void append_store_source_publication_row(
+    std::ostringstream& out,
+    const PreparedBirModule& module,
+    const PreparedStoreSourcePublicationRecord& record) {
+  const auto& plan = record.plan;
+  out << "  store_source function="
+      << maybe_function_name(module.names, record.function_name)
+      << " block=" << maybe_block_label(module.names, record.block_label)
+      << " inst=" << record.instruction_index
+      << " source=" << maybe_value_name(module.names, plan.source_value_name)
+      << " status=" << prepared_store_source_publication_status_name(plan.status)
+      << " intent=" << prepared_store_source_publication_intent_name(plan.intent)
+      << " source_producer="
+      << prepared_edge_publication_source_producer_kind_name(plan.source_producer_kind);
+  if (plan.source_producer_block_label.has_value()) {
+    out << " source_producer_block="
+        << maybe_block_label(module.names, *plan.source_producer_block_label);
+  }
+  append_optional_index(out,
+                        "source_producer_inst",
+                        plan.source_producer_instruction_index);
+  out << " source_load_local=" << yes_no(plan.source_load_local != nullptr)
+      << " source_load_global=" << yes_no(plan.source_load_global != nullptr)
+      << " source_cast=" << yes_no(plan.source_cast != nullptr)
+      << " source_binary=" << yes_no(plan.source_binary != nullptr)
+      << " source_select=" << yes_no(plan.source_select != nullptr)
+      << " direct_global_select_chain="
+      << yes_no(plan.direct_global_select_chain_source)
+      << " direct_global_root_is_select="
+      << yes_no(plan.direct_global_select_chain_root_is_select);
+  append_optional_index(out,
+                        "direct_global_root_inst",
+                        plan.direct_global_select_chain_root_instruction_index);
+  out << "\n";
+}
+
 }  // namespace
+
+void append_store_source_publications(std::ostringstream& out,
+                                      const PreparedBirModule& module) {
+  out << "--- prepared-store-source-publications ---\n";
+  for (const auto& record : module.store_source_publications.records) {
+    append_store_source_publication_row(out, module, record);
+  }
+}
 
 void append_select_chain_materializations(std::ostringstream& out,
                                           const PreparedBirModule& module) {
