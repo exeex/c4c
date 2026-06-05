@@ -91,3 +91,10 @@ Proof route:
   contracts to avoid missing visibility.
 - The idea is expanded into architecture-specific x86/RISC-V implementation
   before the shared dump contract exists.
+
+## Closure Note
+
+Closed after prepared-printer output exposed bounded store-source publication
+facts from `PreparedStoreSourcePublicationPlan`, focused tests asserted
+source-producer and direct-global select-chain rows, and matching backend-scope
+close-gate logs passed without regressions.
