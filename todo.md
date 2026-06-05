@@ -8,13 +8,14 @@ Current Step Title: Verify Current Reachability And Ownership
 
 ## Just Finished
 
-Step 2 classified the dynamic alloca / VLA no-action residue after the earlier
-frame-address fallback, pointer-carrier, memory-base boundary, and store-source
-dump visibility classifications. Current code has live dynamic-stack support
-through BIR helper calls, `PreparedDynamicStackPlan`, prepared-printer
-visibility, and AArch64 fail-closed consumers; the old dynamic-allocation
-no-action note remains stale as a separate follow-up because no current
-target-neutral lifetime, extent, or target stack-adjustment fact gap was found.
+Step 2 classified the `prepared_lookups.cpp` helper authority questions after
+the earlier stack-layout, call-planning fallback, pointer-carrier,
+memory-base, store-source dump visibility, and dynamic alloca / VLA
+classifications. Current helper evidence shows the queried families return
+indexed prepared facts, same-block producer context, select-chain dependency
+metadata, or copied edge-publication source facts; no current consumer proved a
+new semantic fact re-derivation or consumer-facing API gap in
+`prepared_lookups.cpp` / `select_chain_lookups.cpp`.
 
 ### Stack-Layout Compatibility Reachability
 
@@ -506,6 +507,141 @@ fail-closed AArch64 consumption; target stack adjustment remains target-owned,
 and the raw helper spellings are bounded compatibility identity for producing
 or matching the prepared plan.
 
+### `prepared_lookups.cpp` Helper Authority Classification
+
+Step 2 classified the helper authority questions around
+`src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/prealloc/select_chain_lookups.cpp`, and representative AArch64
+consumers. AST-backed symbol inventory shows `prepared_lookups.cpp` exports
+the broad function lookup/index surface, while `select_chain_lookups.cpp`
+exports source-producer and select-chain helpers declared through
+`publication_plans.hpp`. Exact call-site search found all queried families are
+reachable, but as consumers of prepared/BIR facts rather than producers of new
+semantic authority.
+
+The basic indexed fact helpers are retained query glue. `find_frame_slot_by_id()`
+and `find_stack_object_by_id()` return existing `PreparedFrameSlot` /
+`PreparedStackObject` records by prepared IDs. `make_prepared_value_home_lookups()`
+indexes existing `PreparedValueHome` records by value ID and name, while the
+value-home lookup consumers use those tables to avoid repeated scans.
+`make_prepared_call_plan_lookups()`, `make_prepared_move_bundle_lookups()`,
+`make_prepared_return_chain_lookups()`, and their `find_indexed_*` helpers
+return existing `PreparedCallPlan`, `PreparedCallArgumentPlan`,
+`PreparedMoveBundle`, `PreparedMoveResolution`, after-call lane binding,
+return-chain terminal, or return-chain next-operand facts. Some helpers retain
+fallback scans when an index is not supplied, but they still return records
+from prepared call/value-location data. Classification:
+`safe-compatibility-glue`; no helper in this family creates BIR/prealloc
+semantic facts.
+
+The prepared memory-access lookup family is also retained query glue.
+`make_prepared_memory_access_lookups()` indexes existing
+`PreparedMemoryAccess` records by block/instruction position, result value
+name, and result value ID. `find_indexed_prepared_memory_access()`,
+`find_unique_indexed_prepared_memory_access_by_result_value_name()`, and
+`find_unique_indexed_prepared_memory_access_by_result_value_id()` return those
+records or fail closed on missing/ambiguous indexes. Current call sites include
+`publication_plans.cpp` for source-memory publication planning and AArch64
+`alu.cpp` for result-value-ID memory access lookup. The helpers do not derive
+memory bases from instruction shape; the underlying `PreparedMemoryAccess`
+producer requires prepared addressing, stack-layout, or symbol facts.
+Classification: `safe-compatibility-glue`.
+
+The prepared frame-address lookup helpers consume explicit prepared address
+materializations, with bounded validation, and are retained query glue.
+`find_indexed_prepared_frame_address_offset_for_value()` selects the latest
+same-block `PreparedAddressMaterializationKind::FrameSlot` for the requested
+value name at or before the query instruction, resolves the prepared frame
+slot, rejects negative offsets, rejects non-addressable stack objects, and
+fails closed on conflicting same-instruction materializations.
+`find_indexed_prepared_frame_address_offset_for_value_id()` performs the same
+query by value ID, using `PreparedValueHomeLookups` only to map name-only
+materialization records to value IDs when needed. Exact callers are AArch64
+`memory_store_retargeting.cpp`, `memory.cpp`, and `globals.cpp`.
+Classification: `safe-compatibility-glue`; these helpers select and validate
+explicit prepared frame-address materialization facts rather than recreating
+frame-address authority from names.
+
+The same-block scalar/source-producer helpers are retained producer-context
+query glue. `make_prepared_edge_publication_source_producer_lookups()` scans
+the prepared BIR function and indexes named `LoadLocal`, `LoadGlobal`, `Cast`,
+`Binary`, and `SelectInst` results by value name with block label,
+instruction index, and instruction pointer. `find_prepared_same_block_scalar_producer()`
+and `find_prepared_select_chain_source_producer()` require a same-block
+producer before the consumer instruction, verify the producer pointer still
+matches the indexed BIR instruction, and verify the result value/type/name.
+Representative consumers include AArch64 dispatch producers, FP value
+materialization, comparison, memory, calls, and prealloc publication planning.
+Classification: `safe-compatibility-glue`; these helpers recover bounded
+producer context for already-named BIR results, not provenance or storage
+authority.
+
+The select-chain helpers in `select_chain_lookups.cpp` are retained query glue
+with one already-recorded visibility consequence. `find_prepared_direct_global_select_chain_dependency()`
+and `find_prepared_store_source_direct_global_select_chain_dependency()` walk
+same-block source-producer chains and report whether the chain contains a
+direct global load, plus root select-ness and root instruction index.
+`find_prepared_scalar_select_chain_materialization()` returns root value name,
+root instruction index, root-is-select, and the direct-global dependency.
+Current callers include prealloc `publication_plans.cpp` and `call_plans.cpp`,
+prepared-printer select-chain output, and AArch64 `alu.cpp`, `memory.cpp`, and
+`calls.cpp`. Classification: `safe-compatibility-glue` for authority, with the
+separate store-source result above still classified
+`needs-prepared-dump-visibility` because store-source plan fields are not yet
+printed.
+
+The same-block load-local stored-value helper is retained guarded query glue,
+not memory-provenance creation. `find_prepared_same_block_load_local_stored_value_source()`
+first finds a same-block `LoadLocal` producer for the queried value, then
+requires an existing prepared load memory access whose result matches the load
+and whose address resolves to a prepared frame slot. It walks preceding
+same-block `StoreLocalInst` operations and only returns a stored value when the
+store has a prepared memory access, the stored value matches the prepared
+access, the load/store prepared frame-slot ranges overlap exactly, and
+conflicting or partial overlaps fail closed. The exact external caller is
+AArch64 `calls.cpp`. Classification: `safe-compatibility-glue`; the helper
+uses existing prepared memory-access and stack-layout facts to answer a
+same-block copy-source question.
+
+The edge-publication source-fact helpers are retained copied-fact/query glue.
+`make_prepared_edge_publication_lookups()` builds `PreparedEdgePublication`
+records from prepared control-flow transfer, value-home, source-producer,
+memory-access, move, and aggregate-copy authority; `find_unique_indexed_prepared_edge_publication()`
+returns a unique indexed publication or fails on missing/ambiguous entries.
+`prepare_edge_copy_source_facts()` copies source value, value-home, producer,
+memory-access, destination, move, and edge labels from an existing available
+publication and validates missing source value/home/producer or missing and
+incomplete source memory access. `prepare_block_entry_parallel_copy_edge_source_facts()`
+adds block-entry parallel-copy move checks before returning the same copied
+source facts. Exact callers include AArch64 `dispatch_edge_copies.cpp`, and
+`prepare_current_block_join_parallel_copy_source_facts()` consumes the
+block-entry variant. Classification: `safe-compatibility-glue`; these helpers
+package and validate publication facts for consumers instead of inventing
+edge-copy authority.
+
+The prior-preserved call helper family is retained dominance/index glue.
+`make_prepared_call_plan_lookups()` indexes prior preserved values from
+prepared call plans and computes block dominance from prepared control-flow
+facts. `find_latest_indexed_prior_preserved_value()`,
+`find_dominating_indexed_prior_preserved_value()`,
+`find_unique_indexed_prior_preserved_value_source()`,
+`find_latest_indexed_prior_stack_preserved_value_before_instruction()`, and
+`first_indexed_stack_preserved_values_for_call()` return existing
+`PreparedCallPreservedValue` records filtered by instruction order, dominance,
+or uniqueness. Current consumers are call/result preservation and target
+publication paths that need an already-planned preserved value. Classification:
+`safe-compatibility-glue`.
+
+Overall classification for the `prepared_lookups.cpp` helper authority
+questions: `safe-compatibility-glue`, with the separate store-source dump
+visibility classification preserved as `needs-prepared-dump-visibility`.
+Current evidence did not find a helper that owns durable target-neutral
+semantic facts that BIR/prepared producers should publish elsewhere. The
+helpers are reachable and consumer-facing, but their authority is indexing,
+same-block context recovery, uniqueness/ambiguity filtering, and copied
+prepared-fact packaging over existing prepared/BIR records. No additional
+Step 2 reachability gap remains in the inventory.
+
 ## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
@@ -527,11 +663,10 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Run the next Step 2 packet against the `prepared_lookups.cpp` helper authority
-questions. Build a current caller/helper map for the named lookup families,
-identify the fact each helper returns, and classify each helper as retained
-query glue unless current consumers prove semantic fact re-derivation or a
-consumer-facing API gap.
+Proceed to Step 3. Draft focused follow-up ideas only for actionable
+non-`safe-compatibility-glue` / non-`stale-no-action` residues, currently the
+call-planning local frame-address fallback replacement candidates and the
+store-source prepared dump visibility gap.
 
 ## Watchouts
 
@@ -579,18 +714,25 @@ consumer-facing API gap.
   the existence of old helper names.
 - `prepared_lookups.cpp` is explicitly not a cleanup target without a named
   fact or consumer-facing API gap.
+- The current `prepared_lookups.cpp` / `select_chain_lookups.cpp`
+  classification found query glue, not semantic authority leakage. Do not turn
+  helper size, cross-file reachability, or same-block producer context into a
+  cleanup idea unless a future packet names a concrete fact re-derived outside
+  prepared/BIR producers.
+- Store-source select-chain helper authority is safe query glue, but
+  store-source plan facts still lack prepared-printer/module dump visibility.
+  Keep that as a visibility follow-up, not a source-producer authority rewrite.
 
 ## Proof
 
 Analysis-only Step 2 packet. This packet used `rg` plus
-`c4c-clang-tool-ccdb function-signatures`, `function-callers`, and
-`function-callees` around `src/backend/prealloc/dynamic_stack.cpp`,
-`src/backend/mir/aarch64/codegen/memory_dynamic_stack.cpp`, and the
-`lower_dynamic_stack_helper_call()` callers in AArch64 dispatch/call lowering.
-Focused ranges were inspected for BIR dynamic alloca/stack-save/restore
-lowering, `PreparedDynamicStackPlan` production and printer visibility, frame
-and regalloc dynamic-stack policy consumers, AArch64 fail-closed dynamic-stack
-lowering, x86 handoff comments, and VLA prepared-dump tests. Final proof
-commands for this packet: `git diff --check` and `git status --short`. No
+`c4c-clang-tool-ccdb list-symbols`, `function-callers`, and
+`function-callees` around `src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/prealloc/select_chain_lookups.cpp`, and representative prealloc
+and AArch64 consumers. Focused ranges were inspected for prepared memory
+access lookups, frame-address offset lookups, source-producer/select-chain
+lookups, same-block load-local stored-value source lookup, edge-publication
+source-fact packaging, and prior-preserved call helpers. Final proof commands
+for this packet: `git diff --check` and `git status --short`. No
 `test_after.log` was produced because the delegated proof was
 analysis/status-only.
