@@ -1210,6 +1210,12 @@ prepare::PreparedBirModule prepare_select_chain_direct_global_dump_module() {
   bir::Function caller;
   caller.name = "select_chain_direct_global_dump_contract";
   caller.return_type = bir::TypeKind::I32;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.selected",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
 
   bir::Block entry;
   entry.label = "entry";
@@ -1227,6 +1233,11 @@ prepare::PreparedBirModule prepare_select_chain_direct_global_dump_module() {
       .rhs = bir::Value::immediate_i32(0),
       .true_value = bir::Value::named(bir::TypeKind::I32, "loaded.global"),
       .false_value = bir::Value::immediate_i32(7),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.selected",
+      .value = bir::Value::named(bir::TypeKind::I32, "selected.arg"),
+      .align_bytes = 4,
   });
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::I32, "call.result"),
@@ -5586,6 +5597,22 @@ int main() {
                        "computed-address argument detail payload")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(source_shape_dump,
+                       "--- prepared-store-source-publications ---",
+                       "prepared store-source publication section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "store_source function=call_argument_source_shape_dump_contract "
+                       "block=entry inst=4 source=derived.seed status=available "
+                       "intent=store_local_publication source_producer=binary "
+                       "source_producer_block=entry source_producer_inst=3 "
+                       "source_load_local=no source_load_global=no source_cast=no "
+                       "source_binary=yes source_select=no direct_global_select_chain=no "
+                       "direct_global_root_is_select=no",
+                       "store-source row with concrete binary source producer fields")) {
+    return EXIT_FAILURE;
+  }
 
   const auto select_chain_prepared = prepare_select_chain_direct_global_dump_module();
   const std::string select_chain_dump = prepare::print(select_chain_prepared);
@@ -5616,6 +5643,17 @@ int main() {
                        "direct_global_root_inst=0 source_producer=load_global "
                        "source_producer_block=entry source_producer_inst=0",
                        "scalar direct-global load row with source producer labels")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(select_chain_dump,
+                       "store_source function=select_chain_direct_global_dump_contract "
+                       "block=entry inst=2 source=selected.arg status=available "
+                       "intent=store_local_publication source_producer=select_materialization "
+                       "source_producer_block=entry source_producer_inst=1 "
+                       "source_load_local=no source_load_global=no source_cast=no "
+                       "source_binary=no source_select=yes direct_global_select_chain=yes "
+                       "direct_global_root_is_select=yes direct_global_root_inst=1",
+                       "store-source row with concrete direct-global select-chain fields")) {
     return EXIT_FAILURE;
   }
 
