@@ -10,7 +10,9 @@ Current Step Title: Verify Current Reachability And Ownership
 
 Step 2 closed the `find_local_frame_address_source()` ambiguity in
 `src/backend/prealloc/call_plans.cpp` by classifying each reachable fallback
-call site against explicit prepared frame-address materialization authority.
+call site against explicit prepared frame-address materialization authority,
+then classified the current pointer-carrier publication / dereference boundary
+residue against explicit prepared/BIR carrier authority.
 
 ### Stack-Layout Compatibility Reachability
 
@@ -156,6 +158,80 @@ lowering appears to be covered by
 fallback-by-fallback evidence found a call-planning path that must continue to
 derive local frame-address selection from object names.
 
+### Pointer-Carrier Publication / Dereference Boundary Classification
+
+Step 2 classified the current pointer-carrier publication / dereference
+boundary residue around `src/backend/prealloc/regalloc/pointer_carriers.cpp`,
+`src/backend/prealloc/regalloc/value_homes.cpp`,
+`src/backend/prealloc/prepared_lookups.cpp`, and representative consumers.
+
+AST-backed inventory shows `build_pointer_carrier_map()` is the only exported
+producer in `pointer_carriers.cpp`; `build_prepared_value_homes()` in
+`value_homes.cpp` is its direct caller, and
+`classify_prepared_value_home()` is the direct consumer that can turn a carrier
+into `PreparedValueHomeKind::PointerBasePlusOffset`. The only semantic carrier
+authorities accepted by `has_semantic_pointer_carrier_authority()` are
+`PreparedPointerValueAccess`, `PreparedFrameAddressMaterialization`,
+`BirPointerSymbol`, and `BirPointerImmediateOffset`.
+
+Raw load/store order does not create a new carrier from nothing. The initial
+`PreparedPointerValueAccess` seeds come only from prepared memory accesses whose
+address has `PreparedAddressBaseKind::PointerValue` and a
+`pointer_value_name`. Prepared frame-address seeds come only from explicit
+`PreparedAddressMaterializationKind::FrameSlot` records with a result value and
+frame slot. BIR pointer-symbol seeds require a named pointer result carrying
+`pointer_symbol_link_name_id`. Immediate add/sub carriers require an existing
+semantic base carrier and a named pointer binary result. Classification:
+explicit prepared/BIR authority is required before a carrier is publishable.
+
+The local-slot loop preserves and propagates already-authorized carriers across
+unaddressed local pointer loads/stores, but it does not infer publication or
+dereference authority from slot spelling alone. `StoreLocalInst` and
+`LoadLocalInst` propagation is skipped for instructions with `address`; a load
+can resolve through `slot_pointer_carriers` only when the slot is not a
+multi-store CFG-cycle risky slot, and the slot map is populated only from a
+stored value that already resolved to a semantic carrier. Classification:
+retained physical preservation/query glue for no-address local pointer slots,
+not durable semantic provenance creation. Ambiguous cycle slots fail closed by
+withholding slot-carrier propagation.
+
+Missing `MemoryAddress` is not used to mint object-specific dereference facts.
+Pointer-indirect prepared memory access production in
+`stack_layout/coordinator.cpp` requires `address.has_value()` with
+`MemoryAddress::BaseKind::PointerValue`; `prepared_address_has_complete_base()`
+requires the prepared pointer base name; source-memory publication lookup copies
+only fields from an existing `PreparedMemoryAccess` and reports
+`MissingPreparedMemoryAccess` or `IncompletePreparedMemoryAccess` when the
+prepared fact is absent or incomplete. `value_homes.cpp` also records local
+pointer-load results that are used as prepared pointer memory bases, then
+prevents those loaded values from being reclassified as
+`PointerBasePlusOffset`. Classification: dereference-side facts consume
+structured `MemoryAddress` / prepared memory-access authority or fail closed;
+missing `MemoryAddress` remains compatibility local-slot storage, not
+semantic dereference authority.
+
+Byte deltas are derived only from explicit immediate BIR pointer add/sub
+relations after a semantic base carrier is found. Consumers treat deltas as
+computed-address materialization detail rather than independent authority:
+`publication_plans.cpp` marks `PointerBasePlusOffset` as `ComputedAddress` and
+requires both base and delta, `call_plans.cpp` passes the base/delta through
+and first prefers explicit frame-slot materialization for local aggregate
+addresses, AArch64 memory lowering uses prepared frame-address lookup or a
+prepared register/stack home before emitting the address, and RISC-V edge
+publication requires a prepared register base. Classification: no current
+consumer evidence found a dereference or publication path whose main authority
+is raw byte-delta arithmetic without a prepared/BIR base fact.
+
+Overall classification for the pointer-carrier publication / dereference
+boundary residue: mostly retained-by-boundary, not a current semantic leak.
+`pointer_carriers.cpp` still preserves already-authorized pointer carriers
+through no-address local pointer slots, and that route is reachable, but it is
+guarded by explicit carrier authority and cycle ambiguity checks. Related
+prepared lookup and backend consumers consume explicit BIR/prepared facts or
+fail closed on missing/incomplete authority. No current path was found that
+publishes or dereferences a pointer carrier solely from raw load/store order,
+slot spelling, byte deltas, or absent `MemoryAddress`.
+
 ## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
@@ -177,12 +253,12 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Run the next Step 2 packet against the pointer-carrier publication /
-dereference boundary residue. Classify current `pointer_carriers.cpp` and
-related consumer reachability for any remaining publication or dereference
-inference from raw load/store order, slot spelling, byte deltas, or missing
-`MemoryAddress`; distinguish fail-closed query glue from semantic fact
-creation.
+Run the next Step 2 packet against the memory-base publication / dereference
+boundary residue. Classify current prepared memory-access, inline-asm, and
+publication-plan reachability for any object-specific memory-base publication
+or dereference facts minted from raw use shape without `MemoryAddress`,
+inline-asm operand metadata, or prepared address facts; distinguish
+conservative home-slot reinforcement from semantic provenance.
 
 ## Watchouts
 
@@ -198,6 +274,13 @@ creation.
   pointer-carrier branch: follow-up implementation work should first prove no
   supported non-binary pointer-carrier authority lacks a preceding explicit
   frame-slot materialization for its base.
+- `pointer_carriers.cpp` still has a reachable no-address local slot
+  preservation loop. Treat that as retained compatibility/query glue unless a
+  later packet finds it creating carriers without one of the four explicit
+  authorities.
+- `PreparedValueHomeKind::PointerBasePlusOffset` is a computed-address carrier,
+  not a storage home that all consumers support. Several consumers deliberately
+  fail closed or require a prepared base register/frame-address lookup.
 - Several residues are already closed as completed contracts or explicit
   no-action notes. Reopening them needs fresh current-code evidence, not only
   the existence of old helper names.
@@ -206,11 +289,16 @@ creation.
 
 ## Proof
 
-Analysis-only packet. Used `rg` plus `c4c-clang-tool-ccdb
-function-signatures`, `function-callees`, and `function-callers` for
-`src/backend/prealloc/call_plans.cpp` and
-`src/backend/prealloc/stack_layout/coordinator.cpp`; inspected the narrow
-producer ranges in `stack_layout/analysis.cpp`, `regalloc/value_homes.cpp`,
-and `regalloc/pointer_carriers.cpp`. Final proof command: `git status
---short`. No `test_after.log` was produced because the delegated proof was
-status-only.
+Analysis-only repair packet. Restored the earlier accepted Step 2
+stack-layout compatibility and call-planning frame-address fallback evidence
+from `HEAD:todo.md`, while retaining the current pointer-carrier classification
+and memory-base suggested next packet. The retained pointer-carrier packet used
+`rg` plus `c4c-clang-tool-ccdb list-symbols`, `function-signatures`,
+`function-callees`, and `function-callers` for
+`src/backend/prealloc/regalloc/pointer_carriers.cpp` and
+`src/backend/prealloc/regalloc/value_homes.cpp`; inspected focused producer and
+consumer ranges in `pointer_carriers.cpp`, `value_homes.cpp`,
+`prepared_lookups.cpp`, `publication_plans.cpp`, `call_plans.cpp`, and
+representative AArch64/RISC-V backend consumers. Final proof commands for this
+repair: `git diff --check` and `git status --short`. No `test_after.log` was
+produced because the delegated proof was analysis/status-only.
