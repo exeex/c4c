@@ -11,8 +11,8 @@ Current Step Title: Verify Current Reachability And Ownership
 Step 2 closed the `find_local_frame_address_source()` ambiguity in
 `src/backend/prealloc/call_plans.cpp` by classifying each reachable fallback
 call site against explicit prepared frame-address materialization authority,
-then classified the current pointer-carrier publication / dereference boundary
-residue against explicit prepared/BIR carrier authority.
+then classified the current pointer-carrier and memory-base publication /
+dereference boundary residues against explicit prepared/BIR authority.
 
 ### Stack-Layout Compatibility Reachability
 
@@ -232,6 +232,94 @@ fail closed on missing/incomplete authority. No current path was found that
 publishes or dereferences a pointer carrier solely from raw load/store order,
 slot spelling, byte deltas, or absent `MemoryAddress`.
 
+### Memory-Base Publication / Dereference Boundary Classification
+
+Step 2 classified the current memory-base publication / dereference boundary
+residue around `src/backend/prealloc/stack_layout/coordinator.cpp`,
+`src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/prealloc/inline_asm.cpp`, publication-plan/source-memory lookup
+paths, and representative AArch64 consumers.
+
+AST-backed inventory shows `PreparedMemoryAccess` production is concentrated
+in the stack-layout coordinator helpers: `build_direct_frame_slot_access()`,
+`build_direct_symbol_backed_access()`, and `build_pointer_indirect_access()`.
+The pointer-indirect route is fail-closed on missing structure:
+`build_pointer_indirect_address()` returns no prepared address unless the BIR
+instruction has `MemoryAddress::BaseKind::PointerValue` with a named pointer
+base. The direct global/string route requires either a structured
+`MemoryAddress` global/string base or an existing structured global/link-name
+fallback from the BIR load/store instruction; unresolved symbol identity or
+policy returns no prepared access. Classification: prepared memory-access
+production consumes explicit `MemoryAddress` or structured symbol/address
+facts for object-specific non-frame bases; it does not mint pointer/global
+dereference authority from raw use shape.
+
+The direct frame-slot route is the one reachable no-address compatibility
+case. `build_direct_frame_slot_access()` accepts no-address local loads/stores
+only by resolving the instruction's local slot through
+`find_direct_frame_slot()` and existing `FrameSlotPublicationFacts`, including
+slice-family coverage when applicable. It then emits a
+`PreparedAddressBaseKind::FrameSlot` access for an existing prepared frame
+slot. Classification: conservative home-slot / stack-layout reinforcement,
+not semantic memory-base provenance. It can identify a physical stack home for
+local-slot traffic, but it does not create pointer, global, string, or
+inline-asm dereference facts without the corresponding structured authority.
+
+Source-memory publication facts are copied from existing prepared memory
+accesses and fail closed when those facts are absent or incomplete.
+`apply_source_memory_access_fact()` applies only to
+`PreparedEdgePublicationSourceProducerKind::LoadLocal`, requires producer
+block/instruction coordinates, calls `find_prepared_memory_access()`, then
+sets `MissingPreparedMemoryAccess` if no access exists. After
+`copy_source_memory_access_fact()` copies fields from the found
+`PreparedMemoryAccess`, the helper marks the fact incomplete unless the access
+result matches the publication source value, `prepared_address_has_complete_base()`
+accepts the base, and size/alignment are nonzero. AArch64
+`prepared_publication_source_memory_access()` revalidates the publication,
+load instruction, prepared access identity, and every copied address field
+before using source-memory facts. Classification: publication-plan/query glue,
+not independent semantic authority; missing or incomplete prepared access
+blocks the source-memory route instead of reconstructing a base from raw
+publication shape.
+
+Inline-asm memory/address operands are also guarded by structured metadata and
+prepared homes. BIR carries `InlineAsmOperandMetadata::memory_address` and
+`address`; prealloc `make_prepared_inline_asm_operand()` copies those fields
+into `PreparedInlineAsmOperand`, and `validate_inline_asm_carrier()` records
+missing facts such as `*_memory_address_authority` or `*_address_authority`
+when operand metadata is absent. Both memory and address operands require
+`inline_asm_pointer_address_is_prepared_selectable()`: the metadata address
+must be `MemoryAddress::BaseKind::PointerValue`, its base value must equal the
+operand value, and the value must already have a prepared register home.
+AArch64 `make_inline_asm_memory_address_operand()` repeats those checks before
+constructing a prepared `MemoryOperand`, and
+`lower_inline_asm_instruction()` rejects memory/address operands with missing
+metadata. Classification: structured inline-asm operand metadata plus prepared
+home authority is required; unstructured inline-asm side effects and raw
+constraint/use shape do not publish object-specific dereference facts.
+
+Representative AArch64 consumers preserve the same boundary. Edge-copy source
+memory lowering requires an available and field-matching prepared source
+memory access when the publication claims source-memory authority; otherwise
+it either fails that route or falls back to non-memory value-home/register
+publication. Inline-asm printing accepts only prepared base+offset memory
+operands. Aggregate move/source-memory consumers check prepared support,
+frame-slot identity, prepared byte-offset snapshots, and printable prepared
+addresses before using source memory. Classification: consumers consume
+prepared memory/address facts or conservative homes and fail closed on missing
+authority; no consumer evidence found object-specific dereference/publication
+facts derived solely from raw load/store order, inline-asm text/constraints,
+or absent `MemoryAddress`.
+
+Overall classification for the memory-base publication / dereference boundary
+residue: `safe-compatibility-glue` / retained-by-boundary. The remaining
+no-address local-slot route is conservative frame-home reinforcement owned by
+prealloc stack layout, while object-specific pointer/global/string/inline-asm
+memory bases require `MemoryAddress`, inline-asm operand metadata, structured
+symbol identity, or an existing prepared memory/address fact. Publication
+plans and backend consumers copy and validate those facts, or report
+missing/incomplete authority and fail closed.
+
 ## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
@@ -253,12 +341,11 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Run the next Step 2 packet against the memory-base publication / dereference
-boundary residue. Classify current prepared memory-access, inline-asm, and
-publication-plan reachability for any object-specific memory-base publication
-or dereference facts minted from raw use shape without `MemoryAddress`,
-inline-asm operand metadata, or prepared address facts; distinguish
-conservative home-slot reinforcement from semantic provenance.
+Run the next Step 2 packet against the deferred store-source dump visibility
+residue. Identify whether a bounded prepared-module store-source carried fact
+now exists or is still needed, cite the consumer-facing lookup users, and
+classify whether the gap is `needs-prepared-dump-visibility`,
+`needs-follow-up-idea`, or stale/no-action.
 
 ## Watchouts
 
@@ -281,6 +368,13 @@ conservative home-slot reinforcement from semantic provenance.
 - `PreparedValueHomeKind::PointerBasePlusOffset` is a computed-address carrier,
   not a storage home that all consumers support. Several consumers deliberately
   fail closed or require a prepared base register/frame-address lookup.
+- Direct no-address local-slot `PreparedMemoryAccess` production is retained
+  frame-home reinforcement. Do not treat it as a semantic memory-base leak
+  unless a later packet finds a consumer using it to infer pointer/global/string
+  provenance outside prepared stack-layout authority.
+- Inline-asm side-effect summaries and raw constraints are not enough for
+  object-specific memory facts; current code requires structured operand
+  metadata and prepared register homes for memory/address operands.
 - Several residues are already closed as completed contracts or explicit
   no-action notes. Reopening them needs fresh current-code evidence, not only
   the existence of old helper names.
@@ -289,16 +383,14 @@ conservative home-slot reinforcement from semantic provenance.
 
 ## Proof
 
-Analysis-only repair packet. Restored the earlier accepted Step 2
-stack-layout compatibility and call-planning frame-address fallback evidence
-from `HEAD:todo.md`, while retaining the current pointer-carrier classification
-and memory-base suggested next packet. The retained pointer-carrier packet used
-`rg` plus `c4c-clang-tool-ccdb list-symbols`, `function-signatures`,
-`function-callees`, and `function-callers` for
-`src/backend/prealloc/regalloc/pointer_carriers.cpp` and
-`src/backend/prealloc/regalloc/value_homes.cpp`; inspected focused producer and
-consumer ranges in `pointer_carriers.cpp`, `value_homes.cpp`,
-`prepared_lookups.cpp`, `publication_plans.cpp`, `call_plans.cpp`, and
-representative AArch64/RISC-V backend consumers. Final proof commands for this
-repair: `git diff --check` and `git status --short`. No `test_after.log` was
-produced because the delegated proof was analysis/status-only.
+Analysis-only Step 2 packet. This packet used `rg` plus
+`c4c-clang-tool-ccdb function-signatures` and `function-callees` around
+`src/backend/prealloc/stack_layout/coordinator.cpp`,
+`src/backend/prealloc/prepared_lookups.cpp`,
+`src/backend/prealloc/inline_asm.cpp`, and representative AArch64
+`dispatch_edge_copies.cpp` / `inline_asm.cpp` consumers. Focused ranges were
+inspected for `PreparedMemoryAccess` production, source-memory publication
+fact copying/validation, inline-asm memory/address operand metadata, and
+consumer fail-closed behavior. Final proof commands for this packet:
+`git diff --check` and `git status --short`. No `test_after.log` was produced
+because the delegated proof was analysis/status-only.
