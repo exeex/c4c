@@ -8,11 +8,12 @@ Current Step Title: Verify Current Reachability And Ownership
 
 ## Just Finished
 
-Step 2 closed the `find_local_frame_address_source()` ambiguity in
-`src/backend/prealloc/call_plans.cpp` by classifying each reachable fallback
-call site against explicit prepared frame-address materialization authority,
-then classified the current pointer-carrier and memory-base publication /
-dereference boundary residues against explicit prepared/BIR authority.
+Step 2 classified the deferred store-source dump visibility residue after the
+earlier frame-address fallback, pointer-carrier, and memory-base boundary
+classifications. Current code carries store-source source-producer and
+direct-global select-chain facts through prealloc publication plans and AArch64
+consumers, but prepared dumps still expose only call-argument and scalar
+select-chain visibility for the comparable facts.
 
 ### Stack-Layout Compatibility Reachability
 
@@ -320,6 +321,84 @@ symbol identity, or an existing prepared memory/address fact. Publication
 plans and backend consumers copy and validate those facts, or report
 missing/incomplete authority and fail closed.
 
+### Deferred Store-Source Dump Visibility Classification
+
+Step 2 classified the deferred store-source dump visibility residue from
+`ideas/closed/108_prepared_select_chain_dump_contract_coverage.md`. The close
+note says scalar select-chain materialization visibility now prints
+`source_producer`, `source_producer_block`, and `source_producer_inst`, and
+call-argument direct-global dependency lines now print
+`direct_global_select_chain`, `direct_global_source`,
+`direct_global_root_is_select`, and `direct_global_root_inst`; it also states
+store-source dump visibility remained deferred because that route did not add a
+bounded prepared-module store-source carried fact.
+
+Current code has a bounded store-source carried fact at the publication-plan
+layer, not at the prepared-module/printer layer. `publication_plans.hpp`
+defines `PreparedStoreSourcePublicationPlan` fields for
+`source_producer_kind`, source-producer block/instruction coordinates, producer
+instruction pointers, `direct_global_select_chain_source`,
+`direct_global_select_chain_root_is_select`, and
+`direct_global_select_chain_root_instruction_index`.
+`plan_prepared_store_source_publication()` in
+`src/backend/prealloc/publication_plans.cpp` copies those fields from
+`PreparedStoreSourcePublicationInputs` and from the supplied
+`PreparedEdgePublicationSourceProducer`. This fact is bounded to an individual
+store-source publication plan, but it is currently a transient planning result,
+not a section persisted inside `PreparedBirModule` and printed by
+`prepare::print()`.
+
+The producer/query route exists and is store-source-specific. AST-backed
+signature inventory shows `select_chain_lookups.cpp` exports
+`make_prepared_edge_publication_source_producer_lookups()`,
+`find_indexed_prepared_edge_publication_source_producer()`,
+`find_prepared_direct_global_select_chain_dependency()`, and
+`find_prepared_store_source_direct_global_select_chain_dependency()`. The
+store-source helper is a narrow wrapper over the direct-global select-chain
+dependency query, so it consumes the same BIR source-producer map instead of
+inventing new semantic authority. Current-code search shows the production
+consumer in AArch64 `plan_store_local_source_publication()`:
+it obtains the source producer with `prepared_store_source_producer()`, builds
+or reuses `edge_publication_source_producers`, calls
+`find_prepared_store_source_direct_global_select_chain_dependency()`, and passes
+both source-producer and direct-global fields into
+`plan_prepared_store_source_publication()`.
+
+Consumer-facing users are real. In AArch64 memory lowering,
+`lower_store_local_value_publication()` requires a store-source plan and then
+branches on complete source-producer facts for cast, select materialization,
+scalar floating binary, global-symbol load-local, recovered/byval load-local,
+and direct-global select-chain cases. It checks source-producer kind,
+block label, and instruction index before using producer-specific records, and
+uses `direct_global_select_chain_root_instruction_index` to avoid duplicate
+materialization around select-chain roots. Other consumer evidence includes
+`lower_stack_homed_pointer_value_load_publication()`,
+`lower_pointer_base_plus_offset_store_local_publication()`,
+`lower_store_global_value_publication_from_plan()`, and the x86 reuse test
+adapter in `tests/backend/mir/backend_x86_store_source_publication_plan_reuse_test.cpp`,
+all consuming `PreparedStoreSourcePublicationPlan` availability and fields.
+
+Printer visibility is still absent. `prepare::print()` calls
+`append_call_plans()` and `append_select_chain_materializations()` but has no
+store-source publication-plan printer section. Exact string search in
+`src/backend/prealloc/prepared_printer/` and
+`tests/backend/bir/backend_prepared_printer_test.cpp` finds only call-argument
+direct-global labels and scalar select-chain source-producer rows, with no
+`store_source` / `PreparedStoreSourcePublicationPlan` dump surface. The focused
+MIR tests prove the facts exist in planning:
+`backend_store_source_publication_plan_test.cpp` records cast source-producer
+publication, store-source direct-global select-chain dependency fields, and
+missing-input fail-closed behavior. The prepared-printer tests do not expose
+those store-source facts.
+
+Provisional classification: `needs-prepared-dump-visibility`. No current
+evidence suggests a new BIR semantic fact is needed before visibility work:
+BIR/prepared source-producer and direct-global select-chain queries already
+feed the store-source plan, and consumers use the carried fields. The remaining
+gap is contract visibility: add a bounded prepared-printer/module dump surface
+for store-source publication-plan facts, scoped to source-producer and
+direct-global select-chain fields, without broad unrelated printer expansion.
+
 ## Inventory Context
 
 Step 1 seeded the retained BIR/prealloc compatibility residue inventory from
@@ -341,11 +420,12 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Run the next Step 2 packet against the deferred store-source dump visibility
-residue. Identify whether a bounded prepared-module store-source carried fact
-now exists or is still needed, cite the consumer-facing lookup users, and
-classify whether the gap is `needs-prepared-dump-visibility`,
-`needs-follow-up-idea`, or stale/no-action.
+Run the next Step 2 packet against the dynamic alloca / VLA no-action residue.
+Check current BIR/prealloc/backend reachability for dynamic stack allocation,
+VLA, lifetime/extent, target stack-adjustment, and documented raw dynamic-stack
+string compatibility. Classify it as `stale-no-action` unless current code
+shows a concrete target-neutral fact gap that should become
+`needs-follow-up-idea`.
 
 ## Watchouts
 
@@ -375,6 +455,11 @@ classify whether the gap is `needs-prepared-dump-visibility`,
 - Inline-asm side-effect summaries and raw constraints are not enough for
   object-specific memory facts; current code requires structured operand
   metadata and prepared register homes for memory/address operands.
+- Store-source source-producer and direct-global select-chain facts currently
+  exist as transient `PreparedStoreSourcePublicationPlan` fields consumed by
+  target-side planning. Treat the live gap as dump/contract visibility, not as
+  missing semantic authority, unless a later implementation packet proves the
+  printer needs a new persistent prepared-module fact container.
 - Several residues are already closed as completed contracts or explicit
   no-action notes. Reopening them needs fresh current-code evidence, not only
   the existence of old helper names.
@@ -384,13 +469,16 @@ classify whether the gap is `needs-prepared-dump-visibility`,
 ## Proof
 
 Analysis-only Step 2 packet. This packet used `rg` plus
-`c4c-clang-tool-ccdb function-signatures` and `function-callees` around
-`src/backend/prealloc/stack_layout/coordinator.cpp`,
+`c4c-clang-tool-ccdb function-signatures`, `function-callers`, and
+`function-callees` around `src/backend/prealloc/prepared_printer.cpp`,
+`src/backend/prealloc/prepared_printer/{calls,select_chains}.cpp`,
 `src/backend/prealloc/prepared_lookups.cpp`,
-`src/backend/prealloc/inline_asm.cpp`, and representative AArch64
-`dispatch_edge_copies.cpp` / `inline_asm.cpp` consumers. Focused ranges were
-inspected for `PreparedMemoryAccess` production, source-memory publication
-fact copying/validation, inline-asm memory/address operand metadata, and
-consumer fail-closed behavior. Final proof commands for this packet:
-`git diff --check` and `git status --short`. No `test_after.log` was produced
-because the delegated proof was analysis/status-only.
+`src/backend/prealloc/select_chain_lookups.cpp`,
+`src/backend/prealloc/publication_plans.cpp`, and representative AArch64
+`memory.cpp` store-source consumers. Focused ranges were inspected for
+`PreparedStoreSourcePublicationPlan` source-producer/direct-global fields,
+store-source direct-global select-chain lookup, prepared-printer section
+coverage, and consumer use in AArch64 memory lowering. Final proof commands
+for this packet: `git diff --check` and `git status --short`. No
+`test_after.log` was produced because the delegated proof was
+analysis/status-only.
