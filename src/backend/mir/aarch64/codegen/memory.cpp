@@ -3292,8 +3292,141 @@ lower_stack_homed_pointer_value_load_publication(
     return std::nullopt;
   }
   const auto* access = prepared_memory_access(context, instruction_index);
-  if (access == nullptr ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+  if (access == nullptr) {
+    return std::nullopt;
+  }
+  if (access->address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+      load->result.type == bir::TypeKind::Ptr) {
+    if (context.function.prepared == nullptr ||
+        !access->address.frame_slot_id.has_value()) {
+      return std::nullopt;
+    }
+    const auto* source_slot =
+        find_frame_slot(context.function.prepared->stack_layout,
+                        *access->address.frame_slot_id);
+    const auto* source_object =
+        source_slot != nullptr
+            ? find_stack_object(context.function.prepared->stack_layout,
+                                source_slot->object_id)
+            : nullptr;
+    if (source_object == nullptr ||
+        source_object->source_kind != std::string_view{"local_slot"} ||
+        source_object->type != bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    const auto source_name =
+        prepare::prepared_stack_object_name(context.function.prepared->names,
+                                            *source_object);
+    constexpr std::string_view variadic_local_prefix{"%lv.ap."};
+    if (source_name.size() >= variadic_local_prefix.size() &&
+        source_name.substr(0, variadic_local_prefix.size()) ==
+            variadic_local_prefix) {
+      return std::nullopt;
+    }
+    const auto result_name = prepared_named_value_id(context, load->result);
+    if (!result_name.has_value()) {
+      return std::nullopt;
+    }
+    const auto* result_home =
+        prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
+                                                  context.function.regalloc,
+                                                  context.function.value_locations,
+                                                  *result_name);
+    if (result_home == nullptr) {
+      return std::nullopt;
+    }
+    if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      return std::nullopt;
+    }
+    const auto* fallback_storage_plan =
+        context.function.prepared != nullptr &&
+                context.function.control_flow != nullptr
+            ? prepare::find_prepared_storage_plan(
+                  *context.function.prepared,
+                  context.function.control_flow->function_name)
+            : nullptr;
+    const auto* selected_storage_plan =
+        context.function.storage_plan != nullptr ? context.function.storage_plan
+                                                 : fallback_storage_plan;
+    const auto* result_storage =
+        selected_storage_plan != nullptr
+            ? find_storage_plan_value(*selected_storage_plan,
+                                      result_home->value_id)
+            : nullptr;
+    const auto target_view = scalar_view_for_type(load->result.type);
+    if (!target_view.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::uint8_t> target_index;
+    if (result_storage != nullptr &&
+        result_storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+        result_storage->register_name.has_value()) {
+      const auto parsed =
+          abi::parse_aarch64_register_name(*result_storage->register_name);
+      if (parsed.has_value() &&
+          parsed->bank == abi::RegisterBank::GeneralPurpose) {
+        target_index = parsed->index;
+      }
+    }
+    if (!target_index.has_value() &&
+        result_storage != nullptr &&
+        result_storage->register_placement.has_value()) {
+      const auto converted =
+          abi::convert_prepared_register(*result_storage->register_placement,
+                                         prepare::PreparedRegisterClass::General,
+                                         *target_view);
+      if (converted.reg.has_value() &&
+          converted.reg->bank == abi::RegisterBank::GeneralPurpose) {
+        target_index = converted.reg->index;
+      }
+    }
+    if (!target_index.has_value() &&
+        result_home->kind == prepare::PreparedValueHomeKind::Register &&
+        result_home->register_name.has_value()) {
+      const auto parsed = abi::parse_aarch64_register_name(*result_home->register_name);
+      if (parsed.has_value() &&
+          parsed->bank == abi::RegisterBank::GeneralPurpose) {
+        target_index = parsed->index;
+      }
+    }
+    if (!target_index.has_value() &&
+        result_home->target_register_identity.has_value() &&
+        result_home->target_register_identity->bank ==
+            prepare::PreparedRegisterBank::Gpr) {
+      target_index =
+          static_cast<std::uint8_t>(
+              result_home->target_register_identity->physical_index);
+    }
+    if (!target_index.has_value()) {
+      const auto scratches = abi::reserved_mir_scratch_gp_registers();
+      if (scratches.empty()) {
+        return std::nullopt;
+      }
+      target_index = scratches.front().index;
+    }
+    const auto target = gp_register_name(*target_index, *target_view);
+    const auto offset = prepared_local_load_offset(context, instruction_index);
+    if (!target.has_value() || !offset.has_value()) {
+      return std::nullopt;
+    }
+
+    std::vector<std::string> lines;
+    lines.push_back("ldr " + *target + ", " +
+                    frame_slot_address(context.function, *offset));
+    RegisterOperand emitted{
+        .reg = *abi::gp_register(*target_index, *target_view),
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = result_home->value_id,
+        .value_name = result_home->value_name,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = target_view,
+    };
+    record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+    return make_select_chain_materialization_instruction(
+        context, instruction_index, std::move(lines));
+  }
+  if (access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
       !access->address.pointer_value_name.has_value()) {
     return std::nullopt;
   }

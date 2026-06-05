@@ -713,6 +713,10 @@ InstructionDispatchResult dispatch_prepared_block(
                      diagnostics)) {
         ++result.visited_operations;
         continue;
+      } else if (auto lowered =
+                     lower_stack_homed_pointer_value_load_publication(
+                         context, inst, memory_lowering_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
       } else if (current_block_join_prepared_query_incoming_expression(
                      join_prepared_query_routing, context, instruction_index, inst) &&
                  !instruction_result_has_stack_home(context, inst)) {
@@ -818,14 +822,14 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (auto lowered = lower_scalar_cast_publication_to_prepared_stack(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
-      } else if (current_block_join_prepared_query_source(
-                     join_prepared_query_routing, context, instruction_index, inst) &&
-                 !instruction_result_has_stack_home(context, inst)) {
-        continue;
       } else if (auto lowered =
                      lower_stack_homed_pointer_value_load_publication(
                          context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
+      } else if (current_block_join_prepared_query_source(
+                     join_prepared_query_routing, context, instruction_index, inst) &&
+                 !instruction_result_has_stack_home(context, inst)) {
+        continue;
       } else if (auto lowered = lower_local_slot_address_publication(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));

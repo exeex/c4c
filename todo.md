@@ -8,48 +8,52 @@ Current Step Title: Repair Pointer and String Mutation Failures
 
 ## Just Finished
 
-Step 3 repaired local array element address/decay publication for AArch64 call
-arguments. `00180` now passes by materializing computed local frame addresses
-such as `%lv.a.0 + 1` into the destination call ABI register instead of treating
-the stale caller-saved home as already containing the computed pointer.
+Step 3 repaired AArch64 pointer-local reload publication for wide-string local
+array traversal. `00220` now reloads the pointer local from its frame slot before
+the loop latch increment and before dereferencing after calls, instead of
+trusting stale caller-saved register state after `printf`.
 
 Files changed:
-- `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
 
 Before/after subset movement:
-- PASS `c_testsuite_aarch64_backend_src_00180_c` after the fix; generated
-  assembly now emits `add x1, sp, #1` before `bl printf`.
-- PASS `c_testsuite_aarch64_backend_src_00216_c`; this moved with the same
-  local address materialization fix.
-- PASS `c_testsuite_aarch64_backend_src_00204_c`; still stale-only/passing.
+- PASS `c_testsuite_aarch64_backend_src_00220_c`; moved from segmentation fault
+  to passing. Generated latch now reloads `%lv.p` with `ldr x13, [sp, #88]`
+  before `add x9, x13, #4`.
+- PASS `c_testsuite_aarch64_backend_src_00172_c`; moved to passing in this
+  proof window before this packet's owned change was accepted.
+- PASS `c_testsuite_aarch64_backend_src_00180_c`; remained passing.
+- PASS `c_testsuite_aarch64_backend_src_00216_c`; remained passing after
+  excluding stack-homed aggregate pointer-copy results from the new reload
+  helper.
+- PASS `c_testsuite_aarch64_backend_src_00204_c`; remained passing after
+  leaving AAPCS64 variadic `%lv.ap.*` local slots on the existing va_list
+  materialization path.
 - FAIL `backend_aarch64_instruction_dispatch`; unchanged f64 call-ABI selected
   value publication expectation.
-- FAIL `00172`; unchanged pointer compare/materialization runtime mismatch.
-- FAIL `00220`; still exits with segmentation fault before output, so wide
-  string traversal/materialization remains separate from this fixed local byte
-  array address path.
 
 ## Suggested Next
 
-Repair `00220` next as the remaining pointer/string mutation failure. Start
-from the wide-string local/global materialization and traversal address path,
-not from the now-fixed byte-array call argument path.
+Continue Step 3 with the remaining `backend_aarch64_instruction_dispatch` f64
+selected call-ABI publication failure, or route `00172` according to the
+supervisor's next proving window if it reappears outside this subset.
 
 ## Watchouts
 
-`00216` passing is collateral movement from this semantic fix and should be
-kept in the proving subset. Do not spend repair effort on `00204` in this route.
-Avoid expectation rewrites. The remaining `00220` segfault did not move with
-the local frame address call-argument repair, so treat it as a distinct
-wide-string materialization/traversal issue.
+The reload helper is deliberately narrow: frame-slot loads from pointer
+`local_slot` objects into register-like homes only, excluding stack-homed
+aggregate pointer-copy results and AAPCS64 variadic `%lv.ap.*` bookkeeping
+slots. Do not broaden it without rechecking `00216` and `00204`.
+Avoid expectation rewrites.
 
 ## Proof
 
 Ran:
 `cmake --build --preset default; ctest --test-dir build -j1 --output-on-failure -R '^(backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00(172|180|216|220|204)_c)$' > test_after.log 2>&1`
 
-Build completed with no work to do. CTest result: 3/6 passed, 3/6 failed.
-Passing targets: `00180`, `00216`, `00204`. Failing targets:
-`backend_aarch64_instruction_dispatch`, `00172`, `00220`. Proof log:
-`test_after.log`.
+Build completed after rebuilding the AArch64 backend objects touched by this
+packet.
+Final CTest result after this packet: 5/6 passed, 1/6 failed. Passing targets:
+`00172`, `00180`, `00216`, `00220`, `00204`. Failing target:
+`backend_aarch64_instruction_dispatch`. Proof log: `test_after.log`.
