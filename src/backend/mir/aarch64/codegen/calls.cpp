@@ -7113,6 +7113,17 @@ materialize_call_boundary_source_to_destination(
       move_record->destination_register->prepared_bank ==
           prepare::PreparedRegisterBank::Fpr &&
       abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    if (move_record->source_register->value_name != c4c::kInvalidValueName) {
+      const auto emitted =
+          find_emitted_scalar_register(scalar_state,
+                                       move_record->source_register->value_name);
+      if (emitted.has_value() &&
+          emitted->reg.bank == abi::RegisterBank::FpSimd &&
+          register_operands_share_physical_register(
+              *emitted, *move_record->source_register)) {
+        return std::nullopt;
+      }
+    }
     const auto source_value =
         call_boundary_source_value_by_name(
             context, move_record->source_register->value_name, instruction_index);
@@ -7145,33 +7156,21 @@ materialize_call_boundary_source_to_destination(
       move_record->destination_register->expected_view == abi::RegisterView::Q &&
       move_record->source_f128_carrier != nullptr &&
       abi::is_fp_simd_register(move_record->destination_register->reg)) {
+    const auto source_value =
+        call_boundary_source_value_by_name(
+            context, move_record->source_register->value_name, instruction_index);
     if (move_record->source_f128_carrier->kind ==
             prepare::PreparedF128CarrierKind::FullWidthRegister &&
         move_record->source_f128_carrier->missing_required_facts.empty() &&
         move_record->source_f128_carrier->total_size_bytes == 16 &&
         move_record->source_f128_carrier->total_align_bytes == 16 &&
         abi::is_fp_simd_register(move_record->source_register->reg)) {
-      const auto source_value =
-          call_boundary_source_value_by_name(
-              context, move_record->source_register->value_name, instruction_index);
       if (!source_value.has_value() ||
           !f128_call_boundary_value_traces_to_global(
               context, *source_value, instruction_index)) {
-        auto lines = f128_call_boundary_register_move_lines(
-            move_record->source_register->reg,
-            move_record->destination_register->reg);
-        if (lines.has_value() && !lines->empty()) {
-          record_emitted_scalar_register(scalar_state,
-                                         move_record->destination_register->value_name,
-                                         *move_record->destination_register);
-          return make_select_chain_materialization_instruction(
-              context, instruction_index, std::move(*lines));
-        }
+        return std::nullopt;
       }
     }
-    const auto source_value =
-        call_boundary_source_value_by_name(
-            context, move_record->source_register->value_name, instruction_index);
     const auto scratches = abi::reserved_mir_scratch_gp_registers();
     std::vector<std::string> lines;
     if (source_value.has_value() && !scratches.empty() &&
