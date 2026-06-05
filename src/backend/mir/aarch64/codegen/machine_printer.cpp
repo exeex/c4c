@@ -1764,14 +1764,17 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
   }
   const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
   const std::string scratch_name = abi::register_name(scratch);
+  const std::string_view base = memory.uses_frame_pointer_base ? "x29" : "sp";
   if (offset <= 4095U) {
-    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+    return {"add " + scratch_name + ", " + std::string{base} + ", #" +
+            std::to_string(offset)};
   }
   auto lines = materialize_integer_constant_lines(scratch, offset, 64);
   if (lines.empty()) {
     return {};
   }
-  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  lines.push_back("add " + scratch_name + ", " + std::string{base} + ", " +
+                  scratch_name);
   return lines;
 }
 

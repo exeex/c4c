@@ -1554,6 +1554,7 @@ StackFrameSlotCallOperandOwner::selected_frame_slot_source(
       .size_bytes = *selection.source_size_bytes,
       .align_bytes = *selection.source_align_bytes,
       .can_use_base_plus_offset = true,
+      .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
   };
 }
 
@@ -1659,6 +1660,7 @@ StackFrameSlotCallOperandOwner::selected_local_frame_address_source(
       .size_bytes = *selection.source_size_bytes,
       .align_bytes = *selection.source_align_bytes,
       .can_use_base_plus_offset = true,
+      .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
   };
 }
 
@@ -3024,7 +3026,9 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
   if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       source_home != nullptr &&
-      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      (source_home->kind == prepare::PreparedValueHomeKind::Register ||
+       source_home->kind ==
+           prepare::PreparedValueHomeKind::PointerBasePlusOffset) &&
       argument != nullptr &&
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
@@ -8153,6 +8157,18 @@ materialize_missing_frame_slot_call_arguments(
             home,
             *source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+            instruction_index);
+        source = address_source;
+      } else if (source_selection->kind ==
+                 prepare::PreparedCallArgumentSourceSelectionKind::
+                     LocalFrameAddressMaterialization) {
+        address_source = make_selected_call_argument_source(
+            context,
+            argument,
+            home,
+            *source_selection,
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization,
             instruction_index);
         source = address_source;
       } else if (source_selection->kind ==
