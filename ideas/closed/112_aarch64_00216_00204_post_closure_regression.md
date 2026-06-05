@@ -80,3 +80,25 @@ ctest --test-dir build -j1 --output-on-failure -R '^(backend_aarch64_instruction
   path.
 - The change treats prepared-printer output as the root cause without proving a
   construction-time side effect.
+
+## Closure Notes
+
+Closed after the focused regressions and the prior idea-110 recovered target
+set were repaired without weakening test expectations. The final close guard
+used matching canonical AArch64-labelled CTest logs:
+
+```sh
+ctest --test-dir build -j --output-on-failure -L aarch64
+```
+
+`test_before.log` recorded 270/272 passing with the two byval stack-overflow
+route probes failing under the old outgoing-stack contract. `test_after.log`
+recorded 272/272 passing after the contract repair, and
+`c4c-regression-guard` reported no new failures.
+
+The repaired failure family was call aggregate and call-boundary related, but
+`00216` and `00204` did not share one identical root cause. `00216` was fixed
+by restoring direct aggregate address materialization for frame-slot-backed
+local aggregate pointer operands. `00204` additionally required outgoing
+AArch64 stack argument reservation before `x16`-relative stores and stable
+callee-side `va_list` home preservation for aggregate `va_arg`.
