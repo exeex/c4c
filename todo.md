@@ -1,23 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/109_bir_prealloc_legacy_compatibility_residue_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Draft Focused Follow-Up Ideas
+Current Step ID: 4
+Current Step Title: Prepare Audit Closure Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 drafted focused follow-up ideas for only the actionable residues from
-the Step 2 audit:
+Step 4 prepared closure evidence for the BIR/prealloc legacy compatibility
+residue audit. The final disposition table below covers every audited residue,
+maps actionable items to the follow-up ideas created in Step 3, records why the
+remaining residues are safe, stale, or no-action, and confirms this audit slice
+changed no implementation files.
 
-- Call-planning local frame-address fallback replacement candidates:
-  `ideas/open/110_call_planning_frame_address_materialization_authority.md`
-- Store-source prepared dump visibility gap:
-  `ideas/open/111_store_source_publication_dump_visibility.md`
+### Final Audit Disposition
 
-No ideas were created for the `safe-compatibility-glue` or `stale-no-action`
-residues.
+| Audited residue | Final disposition | Follow-up idea path | Closure reason |
+| --- | --- | --- | --- |
+| `LegacySlotNameSliceFamilyCompatibility` | `safe-compatibility-glue` / retained bootstrap | None | Still reachable as the only current `PreparedStackSliceFamily` producer for dotted scalarized local-slot names. It feeds stack-layout slice coverage and fixed placement, but does not create independent physical placement authority. Removing or narrowing it belongs only after a non-legacy prepared slice-family producer exists. |
+| `LegacyFrameAddressNameCompatibility` stack-layout bridge | `safe-compatibility-glue` / retained bootstrap | None | Still reachable in stack layout to seed frame-address publication facts. Prepared frame-address materialization authority now exists downstream, but stack layout still needs the legacy bridge until BIR/prepared publishes durable frame-address value identity directly. |
+| `find_local_frame_address_source()` call-planning fallbacks using `LegacyFrameAddressNameCompatibility` | `needs-follow-up-idea` | `ideas/open/110_call_planning_frame_address_materialization_authority.md` | The three remaining call-planning fallbacks are reachable name-derived compatibility lookups. Ordinary local-frame-address lowering appears covered by explicit `PreparedAddressMaterializationKind::FrameSlot` production and lookup, so replacement should be owned by a focused follow-up that proves the computed pointer-carrier caveat before removing the fallback. |
+| Pointer-carrier publication / dereference boundary residue | `safe-compatibility-glue` / retained-by-boundary | None | Current carrier propagation requires explicit prepared/BIR authority from prepared pointer-value access, frame-address materialization, pointer-symbol identity, or immediate pointer add/sub from an authorized base. No path was found that publishes or dereferences a carrier solely from raw load/store order, slot spelling, byte deltas, or absent `MemoryAddress`. |
+| Memory-base publication / dereference boundary residue | `safe-compatibility-glue` / retained-by-boundary | None | Object-specific pointer/global/string/inline-asm memory facts require structured `MemoryAddress`, inline-asm operand metadata, structured symbol identity, or an existing prepared memory/address fact. The no-address local-slot route only reinforces conservative prepared frame homes and does not mint non-frame provenance. |
+| Deferred store-source dump visibility | `needs-follow-up-idea` | `ideas/open/111_store_source_publication_dump_visibility.md` | Store-source source-producer and direct-global select-chain facts now exist as bounded `PreparedStoreSourcePublicationPlan` fields and are consumed by target-side planning, but `prepare::print()` still has no prepared-module dump surface for them. The gap is contract visibility, not missing semantic authority. |
+| Dynamic alloca / VLA no-action notes | `stale-no-action` | None | Live support is already represented through `PreparedDynamicStackPlan`, prepared-printer coverage, prepared frame/register policy, and fail-closed AArch64 lowering. No concrete missing target-neutral lifetime, extent, or target stack-adjustment fact was found. Raw helper spellings remain bounded pseudo-intrinsic identity for producing or matching prepared dynamic-stack operations. |
+| `prepared_lookups.cpp` / `select_chain_lookups.cpp` helper authority questions | `safe-compatibility-glue` | None | The audited helpers index, select, validate, or package existing prepared/BIR facts. No helper was found creating durable semantic authority, re-deriving memory provenance, or exposing a consumer-facing API gap beyond the separately recorded store-source dump-visibility follow-up. |
+
+No implementation files changed in this audit packet. The only file edited by
+Step 4 is canonical `todo.md`.
 
 ### Step 2 Evidence Basis
 
@@ -676,15 +687,17 @@ needed before any follow-up can be accepted as real progress.
 
 ## Suggested Next
 
-Proceed to Step 4. Prepare closure evidence by consolidating the final
-disposition table in `todo.md`, listing the two created follow-up idea paths
-beside their residues, and recording why the remaining audited residues are
-safe, stale, or out of scope.
+Supervisor should call `to_subagent: c4c-plan-owner` for the closure decision:
+decide whether this exhausted audit runbook should close, deactivate, or be
+replaced now that Step 4 has consolidated final evidence and created the two
+follow-up ideas for actionable residue.
 
 ## Watchouts
 
 - The `call_plans.cpp` fallbacks should not be removed in this audit plan; the
-  current plan is analysis-only. A follow-up idea should own any replacement.
+  current plan is analysis-only. Follow-up idea
+  `ideas/open/110_call_planning_frame_address_materialization_authority.md`
+  should own any replacement.
 - Do not remove or narrow `legacy_slot_name_slice_family_compatibility()` before
   adding a non-legacy `PreparedStackSliceFamily` producer; current code search
   found no other producer.
@@ -711,9 +724,11 @@ safe, stale, or out of scope.
   metadata and prepared register homes for memory/address operands.
 - Store-source source-producer and direct-global select-chain facts currently
   exist as transient `PreparedStoreSourcePublicationPlan` fields consumed by
-  target-side planning. Treat the live gap as dump/contract visibility, not as
-  missing semantic authority, unless a later implementation packet proves the
-  printer needs a new persistent prepared-module fact container.
+  target-side planning. Follow-up idea
+  `ideas/open/111_store_source_publication_dump_visibility.md` should treat the
+  live gap as dump/contract visibility, not as missing semantic authority,
+  unless a later implementation packet proves the printer needs a new
+  persistent prepared-module fact container.
 - Dynamic alloca/VLA support is live but already routed through
   `PreparedDynamicStackPlan`; do not turn the old no-action note into broad
   cleanup unless a later packet identifies a concrete target-neutral lifetime,
@@ -738,7 +753,7 @@ safe, stale, or out of scope.
 
 ## Proof
 
-Analysis-only Step 3 packet. Created two focused follow-up ideas under
-`ideas/open/` and updated this scratchpad. Final proof commands for this
+Analysis-only Step 4 packet. Consolidated closure evidence in canonical
+`todo.md` and changed no implementation files. Final proof commands for this
 packet: `git diff --check` and `git status --short`. No `test_after.log` was
 produced because the delegated proof was analysis/status-only.
