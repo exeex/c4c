@@ -430,6 +430,10 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       if (call.memory_return.has_value()) {
         append_memory_return_detail(out, module.names, *call.memory_return);
       }
+      if (call.outgoing_stack_argument_area.has_value()) {
+        out << " outgoing_stack_argument_area="
+            << call.outgoing_stack_argument_area->size_bytes;
+      }
       out << "\n";
       for (const auto& arg : call.arguments) {
         out << "    arg index=" << arg.arg_index

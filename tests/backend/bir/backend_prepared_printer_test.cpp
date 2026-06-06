@@ -1572,6 +1572,8 @@ prepare::PreparedBirModule manual_stack_prior_preservation_source_selection_dump
                   .instruction_index = 8,
                   .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
                   .direct_callee_name = std::string{"manual_stack_sink"},
+                  .outgoing_stack_argument_area =
+                      prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 32},
                   .arguments =
                       {
                           prepare::PreparedCallArgumentPlan{
@@ -1579,8 +1581,8 @@ prepare::PreparedBirModule manual_stack_prior_preservation_source_selection_dump
                               .value_bank = prepare::PreparedRegisterBank::Gpr,
                               .source_encoding = prepare::PreparedStorageEncodingKind::Register,
                               .source_value_id = prepare::PreparedValueId{77},
-                              .destination_register_name = std::string{"rdi"},
-                              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .destination_stack_offset_bytes = std::size_t{8},
+                              .destination_stack_size_bytes = std::size_t{8},
                               .source_selection =
                                   prepare::PreparedCallArgumentSourceSelection{
                                       .kind = prepare::PreparedCallArgumentSourceSelectionKind::
@@ -5828,6 +5830,19 @@ int main() {
   const auto manual_stack_prior_prepared =
       manual_stack_prior_preservation_source_selection_dump_module();
   const std::string manual_stack_prior_dump = prepare::print(manual_stack_prior_prepared);
+  if (!expect_contains(manual_stack_prior_dump,
+                       "call block_index=0 inst_index=8 "
+                       "wrapper_kind=direct_extern_fixed_arity "
+                       "variadic_fpr_arg_register_count=0 indirect=no "
+                       "callee=manual_stack_sink outgoing_stack_argument_area=32",
+                       "manual call-level outgoing stack argument area")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(manual_stack_prior_dump,
+                       "dest_stack_offset=8 dest_stack_size=8",
+                       "manual per-argument stack lane remains separate from call area")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(manual_stack_prior_dump,
                        "arg.source_selection=prior_preservation selection_source_value_id=77 "
                        "selection_source_value=stack.saved.arg",
