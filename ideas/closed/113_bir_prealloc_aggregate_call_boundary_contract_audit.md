@@ -113,3 +113,32 @@ work.
   instead of separating it from the shared outgoing-stack area requirement.
 - It proposes x86/RISC-V target work before the shared aggregate call-boundary
   facts are made explicit.
+
+## Closure Notes
+
+Closed after the analysis classified the idea-112 aggregate call-boundary
+repairs by owner layer and created exactly one follow-up source idea:
+
+- `ideas/open/114_prepared_outgoing_stack_argument_area_contract.md`
+
+The single unresolved gap is the target-neutral prepared outgoing stack
+argument area contract. Idea 114 keeps shared prealloc/call planning
+responsible for publishing the total stack argument reservation/address area
+and leaves physical stack adjustment, scratch-base register choice, concrete
+store ordering, and ABI placement details to target backends.
+
+No new follow-up idea was created for frame-slot aggregate address
+materialization, local aggregate pointer operand selection, byval aggregate
+transport, or aggregate `va_arg` home preservation. The audit found those
+covered by nearby closed work and current prepared visibility, so duplicating
+them would violate this idea's non-duplication criterion.
+
+This was an analysis-only lifecycle slice. No implementation files or test
+files were changed. The close gate used the existing canonical AArch64/backend
+focused regression logs; `c4c-regression-guard` reported:
+
+```text
+before: passed=270 failed=2 total=272
+after : passed=272 failed=0 total=272
+result: PASS
+```
