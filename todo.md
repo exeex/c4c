@@ -8,41 +8,43 @@ Current Step Title: Acceptance Validation And Route Review
 
 ## Just Finished
 
-Step 5 completed AArch64 consumption of the shared prepared outgoing stack
-argument area. `src/backend/mir/aarch64/codegen/calls.cpp` now derives
-AArch64 outgoing stack reservation bytes from
-`PreparedCallPlan::outgoing_stack_argument_area` instead of recomputing
-authority from per-argument destination offsets and sizes.
+Step 6 completed closure-quality acceptance validation and route review for the
+prepared outgoing stack argument area contract.
 
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` now gives the
-F128 stack-argument dispatch fixture a prepared call-level area of 64 bytes
-while its actual stack lane remains at offset 32 with size 16. The test checks
-that AArch64 reserves/restores 64 bytes while still using x16 as the outgoing
-area base and storing the lane at `[x16, #32]`. Existing manual stack-argument
-fixtures that expected outgoing stack reservation now seed the shared prepared
-area fact explicitly.
+Fresh supervisor-run validation passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00216_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log`
+
+`test_after.log` records the selected closure subset passing 7/7, and
+`report_fail_categories.py --log test_after.log` reported zero failures.
+
+Reviewer report
+`review/114_prepared_outgoing_stack_area_route_review.md` records the route as
+on track, with no overfit or target-policy leakage. Its earlier blocker was
+missing canonical after-HEAD validation, now addressed by the fresh
+`test_after.log`.
 
 ## Suggested Next
 
-Run Step 6 acceptance validation and route review for the prepared outgoing
-stack argument area contract.
+Recommend lifecycle closure review via plan-owner for
+`ideas/open/114_prepared_outgoing_stack_argument_area_contract.md`.
 
 ## Watchouts
 
-AArch64 still owns the target-specific x16 scratch base choice, stack-pointer
-adjustment/restoration, source-offset adjustment after reservation, and store
-ordering. Manual AArch64 tests with stack destinations must seed
-`outgoing_stack_argument_area`; per-argument destination offsets and sizes are
-lane facts, not reservation authority.
+Closure should preserve the distinction established by this route:
+`PreparedCallPlan::outgoing_stack_argument_area` is shared reservation
+authority, while per-argument destination offsets and sizes remain lane facts.
+Backend targets still own their target-specific scratch base, stack adjustment,
+and store ordering policies.
 
 ## Proof
 
-Step 5 proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$' > test_after.log`
+Step 6 proof was supervisor-run and passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00216_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log`
 
-`test_after.log` records `backend_aarch64_instruction_dispatch` passing 1/1.
+`test_after.log` records the selected closure subset passing 7/7.
+`report_fail_categories.py --log test_after.log` reported zero failures.
 
-Supervisor-side broader backend subset also passed:
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-Reported result: 179/179 backend tests passing.
+Route review proof:
+`review/114_prepared_outgoing_stack_area_route_review.md` reports the route on
+track, with no overfit or target-policy leakage; its earlier missing canonical
+after-HEAD validation blocker is addressed by the fresh `test_after.log`.
