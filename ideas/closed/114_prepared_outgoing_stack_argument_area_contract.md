@@ -122,3 +122,38 @@ Target backends own:
   outgoing stack argument area.
 - A broad BIR/prealloc call ABI rewrite lands without proving the bounded
   prepared area contract first.
+
+## Closure Notes
+
+Closed on 2026-06-06 after Step 6 acceptance validation and route review.
+
+Completion summary:
+
+- The prepared call-plan surface now exposes an explicit outgoing stack
+  argument area fact.
+- Prepared lookup/classification and prepared-printer coverage preserve and
+  expose the call-level area independently from per-argument destination lanes.
+- AArch64 consumes the shared prepared area as reservation/address authority
+  while retaining target-local `x16`, stack adjustment/restoration, and store
+  ordering policy.
+- Focused tests cover a multi-stack-argument shape, dump visibility,
+  lookup/classification preservation, AArch64 consumption, and existing
+  AArch64 c-testsuite stack-argument cases.
+
+Closure proof:
+
+- Route review:
+  `review/114_prepared_outgoing_stack_area_route_review.md` found the route on
+  track, with no overfit or target-policy leakage. Its validation blocker was
+  addressed by fresh canonical closure validation.
+- Fresh closure validation:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_prepared_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00216_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log`
+  passed 7/7.
+- `report_fail_categories.py --log test_after.log` reported zero failures.
+- Close-time regression guard used matched `test_before.log` and
+  `test_after.log` for the same 7-test closure subset and passed with
+  `--allow-non-decreasing-passed`.
+
+No leftover source-idea scope remains. Adjacent aggregate source-selection,
+byval transport, variadic aggregate-home, x86, and RISC-V initiatives remain
+out of scope for this closed idea.
