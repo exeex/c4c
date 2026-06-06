@@ -401,6 +401,10 @@ struct PreparedMemoryReturnPlan {
   std::size_t align_bytes = 0;
 };
 
+struct PreparedOutgoingStackArgumentArea {
+  std::size_t size_bytes = 0;
+};
+
 struct PreparedCallPlan {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -410,6 +414,7 @@ struct PreparedCallPlan {
   std::optional<std::string> direct_callee_name;
   std::optional<PreparedIndirectCalleePlan> indirect_callee;
   std::optional<PreparedMemoryReturnPlan> memory_return;
+  std::optional<PreparedOutgoingStackArgumentArea> outgoing_stack_argument_area;
   std::vector<PreparedCallArgumentPlan> arguments;
   std::optional<PreparedCallResultPlan> result;
   std::vector<PreparedCallPreservedValue> preserved_values;

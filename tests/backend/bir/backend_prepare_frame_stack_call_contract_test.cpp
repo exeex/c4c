@@ -4899,10 +4899,10 @@ prepare::PreparedBirModule make_aarch64_outgoing_stack_scalar_lifetime_contract_
   constexpr auto assigned_slot_id = prepare::PreparedFrameSlotId{9105};
 
   bir::Function callee;
-  callee.name = "take_nine_i64";
+  callee.name = "take_ten_i64";
   callee.is_declaration = true;
   callee.return_type = bir::TypeKind::Void;
-  for (int index = 0; index < 9; ++index) {
+  for (int index = 0; index < 10; ++index) {
     callee.params.push_back(bir::Param{
         .type = bir::TypeKind::I64,
         .name = "arg" + std::to_string(index),
@@ -4925,10 +4925,10 @@ prepare::PreparedBirModule make_aarch64_outgoing_stack_scalar_lifetime_contract_
   caller.return_type = bir::TypeKind::Void;
 
   bir::CallInst call;
-  call.callee = "take_nine_i64";
+  call.callee = "take_ten_i64";
   call.return_type_name = "void";
   call.return_type = bir::TypeKind::Void;
-  for (int index = 0; index < 9; ++index) {
+  for (int index = 0; index < 10; ++index) {
     call.arg_types.push_back(bir::TypeKind::I64);
     call.arg_abi.push_back(bir::CallArgAbiInfo{
         .type = bir::TypeKind::I64,
@@ -4995,6 +4995,14 @@ prepare::PreparedBirModule make_aarch64_outgoing_stack_scalar_lifetime_contract_
                           prepare::PreparedMoveStorageKind::StackSlot,
                       .destination_abi_index = std::size_t{8},
                       .destination_stack_offset_bytes = std::size_t{0},
+                  },
+                   prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{9},
+                      .destination_stack_offset_bytes = std::size_t{8},
                   }},
           }},
   });
@@ -5102,13 +5110,29 @@ int check_aarch64_outgoing_stack_scalar_argument_lifetime_contract() {
       source_name == c4c::kInvalidValueName ||
       control_flow == nullptr || call_plans == nullptr ||
       call_plans->calls.size() != 1 ||
-      call_plans->calls.front().arguments.size() != 9) {
+      call_plans->calls.front().arguments.size() != 10) {
     return fail(
         "AArch64 outgoing stack scalar lifetime contract: missing prepared call fixture");
   }
 
   const auto& call_plan = call_plans->calls.front();
-  const auto& argument = call_plan.arguments.back();
+  if (!call_plan.outgoing_stack_argument_area.has_value() ||
+      call_plan.outgoing_stack_argument_area->size_bytes != 16) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: shared outgoing stack argument area did not cover every complete stack destination");
+  }
+
+  const auto& second_stack_argument = call_plan.arguments.back();
+  if (second_stack_argument.arg_index != 9 ||
+      second_stack_argument.destination_stack_offset_bytes !=
+          std::optional<std::size_t>{8} ||
+      second_stack_argument.destination_stack_size_bytes !=
+          std::optional<std::size_t>{8}) {
+    return fail(
+        "AArch64 outgoing stack scalar lifetime contract: second stack argument destination disappeared");
+  }
+
+  const auto& argument = call_plan.arguments[8];
   if (argument.arg_index != 8 ||
       argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
       argument.source_value_id !=

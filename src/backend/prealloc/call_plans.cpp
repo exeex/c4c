@@ -225,6 +225,26 @@ namespace {
   return align_stack_argument_size_bytes(std::max<std::size_t>(abi.size_bytes, 8), 8);
 }
 
+[[nodiscard]] std::optional<PreparedOutgoingStackArgumentArea>
+compute_outgoing_stack_argument_area(
+    const std::vector<PreparedCallArgumentPlan>& arguments) {
+  std::size_t size_bytes = 0;
+  for (const auto& argument : arguments) {
+    if (!argument.destination_stack_offset_bytes.has_value() ||
+        !argument.destination_stack_size_bytes.has_value() ||
+        *argument.destination_stack_size_bytes == 0) {
+      continue;
+    }
+    size_bytes = std::max(size_bytes,
+                          *argument.destination_stack_offset_bytes +
+                              *argument.destination_stack_size_bytes);
+  }
+  if (size_bytes == 0) {
+    return std::nullopt;
+  }
+  return PreparedOutgoingStackArgumentArea{.size_bytes = size_bytes};
+}
+
 [[nodiscard]] const PreparedRegallocFunction* find_regalloc_function(
     const PreparedRegalloc& regalloc,
     FunctionNameId function_name) {
@@ -2602,6 +2622,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                          prepared.stack_layout,
                                          function_name_id,
                                          *call),
+            .outgoing_stack_argument_area = std::nullopt,
             .arguments = {},
             .result = std::nullopt,
             .preserved_values = build_call_preserved_values(
@@ -2732,6 +2753,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
           call_plan.arguments.push_back(std::move(arg_plan));
         }
 
+        call_plan.outgoing_stack_argument_area =
+            compute_outgoing_stack_argument_area(call_plan.arguments);
         call_plan.result = build_call_result_plan(prepared.names,
                                                   prepared.target_profile,
                                                   regalloc_function,
