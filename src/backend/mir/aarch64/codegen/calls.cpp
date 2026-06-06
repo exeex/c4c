@@ -572,17 +572,10 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
 
 [[nodiscard]] std::size_t outgoing_stack_argument_bytes(
     const prepare::PreparedCallPlan& call_plan) {
-  std::size_t bytes = 0;
-  for (const auto& argument : call_plan.arguments) {
-    if (!argument.destination_stack_offset_bytes.has_value() ||
-        !argument.destination_stack_size_bytes.has_value()) {
-      continue;
-    }
-    bytes = std::max(bytes,
-                     *argument.destination_stack_offset_bytes +
-                         *argument.destination_stack_size_bytes);
-  }
-  return align_to(bytes, kStackPointerAlignmentBytes);
+  return call_plan.outgoing_stack_argument_area.has_value()
+             ? align_to(call_plan.outgoing_stack_argument_area->size_bytes,
+                        kStackPointerAlignmentBytes)
+             : 0;
 }
 
 [[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register() {

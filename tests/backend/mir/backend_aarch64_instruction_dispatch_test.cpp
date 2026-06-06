@@ -4565,6 +4565,8 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_stack_argum
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .direct_callee_name = std::string{"actual_f128_function"},
+          .outgoing_stack_argument_area =
+              prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 64},
           .arguments =
               {
                   prepare::PreparedCallArgumentPlan{
@@ -18741,6 +18743,8 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
   const prepare::PreparedCallPlan call_plan{
       .block_index = 0,
       .instruction_index = 2,
+      .outgoing_stack_argument_area =
+          prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 48},
       .arguments =
           {prepare::PreparedCallArgumentPlan{
               .instruction_index = 2,
@@ -21275,6 +21279,8 @@ int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .direct_callee_name = std::string{"consume_overflow"},
+          .outgoing_stack_argument_area =
+              prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 8},
           .arguments =
               {prepare::PreparedCallArgumentPlan{
                   .instruction_index = 0,
@@ -28950,8 +28956,8 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
   const auto reserve_printed =
       aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.front().target);
   if (!reserve_printed.ok ||
-      reserve_printed.instruction_lines != std::vector<std::string>{"sub sp, sp, #48"}) {
-    return fail("expected f128 outgoing stack argument to reserve outgoing stack area");
+      reserve_printed.instruction_lines != std::vector<std::string>{"sub sp, sp, #64"}) {
+    return fail("expected f128 outgoing stack argument to reserve prepared outgoing stack area");
   }
   const auto base_printed =
       aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[1].target);
@@ -28986,6 +28992,12 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
       printed.instruction_lines[0] != "ldr q16, [sp, #80]" ||
       printed.instruction_lines[1] != "str q16, [x16, #32]") {
     return fail("expected f128 outgoing stack argument to print load/store stack handoff");
+  }
+  const auto restore_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[4].target);
+  if (!restore_printed.ok ||
+      restore_printed.instruction_lines != std::vector<std::string>{"add sp, sp, #64"}) {
+    return fail("expected f128 outgoing stack argument to restore prepared outgoing stack area");
   }
   return 0;
 }

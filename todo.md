@@ -1,46 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/114_prepared_outgoing_stack_argument_area_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Consume The Shared Area In AArch64
+Current Step ID: 6
+Current Step Title: Acceptance Validation And Route Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the prepared printer surface for the call-level outgoing stack
-argument area. `src/backend/prealloc/prepared_printer/calls.cpp` now prints
-`PreparedCallPlan::outgoing_stack_argument_area` on the call-plan line when the
-prepared fact is present.
+Step 5 completed AArch64 consumption of the shared prepared outgoing stack
+argument area. `src/backend/mir/aarch64/codegen/calls.cpp` now derives
+AArch64 outgoing stack reservation bytes from
+`PreparedCallPlan::outgoing_stack_argument_area` instead of recomputing
+authority from per-argument destination offsets and sizes.
 
-`tests/backend/bir/backend_prepared_printer_test.cpp` now seeds a manual call
-plan with `outgoing_stack_argument_area=32` and a distinct per-argument stack
-lane of `dest_stack_offset=8 dest_stack_size=8`, so the dump contract fails if
-reviewers have to reconstruct the total area from individual arguments. No
-target-specific scratch register, stack adjustment, instruction ordering, or
-AArch64 codegen behavior was added.
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` now gives the
+F128 stack-argument dispatch fixture a prepared call-level area of 64 bytes
+while its actual stack lane remains at offset 32 with size 16. The test checks
+that AArch64 reserves/restores 64 bytes while still using x16 as the outgoing
+area base and storing the lane at `[x16, #32]`. Existing manual stack-argument
+fixtures that expected outgoing stack reservation now seed the shared prepared
+area fact explicitly.
 
 ## Suggested Next
 
-Implement Step 5 by consuming the shared prepared outgoing stack argument area
-in AArch64 instead of inferring the outgoing stack adjustment from individual
-argument destinations.
+Run Step 6 acceptance validation and route review for the prepared outgoing
+stack argument area contract.
 
 ## Watchouts
 
-The prepared printer now makes the call-level area visible as
-`outgoing_stack_argument_area=<bytes>`, while per-argument
-`dest_stack_offset`/`dest_stack_size` fields remain lane facts. AArch64's
-`outgoing_stack_argument_bytes()` remains the consumer-side inference to
-replace next; the Step 4 slice did not touch AArch64 codegen, prepared
-lookup/classification files, or call-plan construction files.
+AArch64 still owns the target-specific x16 scratch base choice, stack-pointer
+adjustment/restoration, source-offset adjustment after reservation, and store
+ordering. Manual AArch64 tests with stack destinations must seed
+`outgoing_stack_argument_area`; per-argument destination offsets and sizes are
+lane facts, not reservation authority.
 
 ## Proof
 
-Step 4 proof passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_printer$' > test_after.log`
+Step 5 proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$' > test_after.log`
 
-`test_after.log` records `backend_prepared_printer` passing 1/1.
+`test_after.log` records `backend_aarch64_instruction_dispatch` passing 1/1.
 
 Supervisor-side broader backend subset also passed:
 `ctest --test-dir build -j --output-on-failure -R '^backend_'`
