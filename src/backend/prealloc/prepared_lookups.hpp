@@ -38,6 +38,8 @@ struct PreparedPriorPreservedValueLookupResult {
 
 struct PreparedCallPlanLookups {
   std::unordered_map<std::size_t, const PreparedCallPlan*> calls_by_position;
+  std::unordered_map<std::size_t, const PreparedOutgoingStackArgumentArea*>
+      outgoing_stack_argument_areas_by_position;
   std::unordered_map<std::size_t, const PreparedCallArgumentPlan*>
       immediate_arguments_by_position_and_abi;
   std::vector<std::vector<PreparedPriorPreservedValueEntry>> prior_preserved_by_value;
@@ -1002,6 +1004,13 @@ first_indexed_stack_preserved_values_for_call(
     const PreparedCallPlanLookups& lookups,
     const PreparedCallPlansFunction& call_plans,
     const PreparedCallPlan& current_call_plan);
+
+[[nodiscard]] const PreparedOutgoingStackArgumentArea*
+find_indexed_prepared_outgoing_stack_argument_area(
+    const PreparedCallPlanLookups& lookups,
+    const PreparedCallPlansFunction* call_plans,
+    std::size_t block_index,
+    std::size_t instruction_index);
 
 [[nodiscard]] const std::vector<PreparedCallBoundaryEffectPlan>*
 indexed_block_entry_republication_effects_for_block(

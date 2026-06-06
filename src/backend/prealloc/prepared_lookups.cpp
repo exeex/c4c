@@ -1219,8 +1219,13 @@ prepared_same_block_source_producer(
   const auto dominates = make_prepared_dominance_matrix(function);
   for (std::size_t call_index = 0; call_index < call_plans->calls.size(); ++call_index) {
     const auto& call = call_plans->calls[call_index];
-    lookups.calls_by_position.emplace(
-        prepared_call_position_key(call.block_index, call.instruction_index), &call);
+    const auto call_position_key =
+        prepared_call_position_key(call.block_index, call.instruction_index);
+    lookups.calls_by_position.emplace(call_position_key, &call);
+    if (call.outgoing_stack_argument_area.has_value()) {
+      lookups.outgoing_stack_argument_areas_by_position.emplace(
+          call_position_key, &*call.outgoing_stack_argument_area);
+    }
     for (const auto& argument : call.arguments) {
       if (argument.source_encoding != PreparedStorageEncodingKind::Immediate ||
           !argument.source_literal.has_value()) {
@@ -3395,6 +3400,22 @@ first_indexed_stack_preserved_values_for_call(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] const PreparedOutgoingStackArgumentArea*
+find_indexed_prepared_outgoing_stack_argument_area(
+    const PreparedCallPlanLookups& lookups,
+    const PreparedCallPlansFunction* call_plans,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (call_plans == nullptr) {
+    return nullptr;
+  }
+  const auto area_it = lookups.outgoing_stack_argument_areas_by_position.find(
+      prepared_call_position_key(block_index, instruction_index));
+  return area_it != lookups.outgoing_stack_argument_areas_by_position.end()
+             ? area_it->second
+             : nullptr;
 }
 
 [[nodiscard]] const std::vector<PreparedCallBoundaryEffectPlan>*

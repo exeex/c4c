@@ -32,6 +32,8 @@ prepare::PreparedCallPlan sample_call_plan() {
   return prepare::PreparedCallPlan{
       .block_index = 3,
       .instruction_index = 9,
+      .outgoing_stack_argument_area =
+          prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 64},
       .arguments = {
           prepare::PreparedCallArgumentPlan{
               .instruction_index = 9,
@@ -56,6 +58,7 @@ prepare::PreparedCallPlan sample_call_plan() {
               .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
               .source_value_id = 12,
               .destination_stack_offset_bytes = 16,
+              .destination_stack_size_bytes = 8,
           },
       },
       .result = prepare::PreparedCallResultPlan{
@@ -150,7 +153,15 @@ int verify_argument_classification() {
       !expect(imm.argument_plan == &call_plan.arguments[1],
               "immediate argument plan without source value was not matched") ||
       !expect(byval.argument_plan == &call_plan.arguments[2],
-              "byval lane fallback argument plan was not matched")) {
+              "byval lane fallback argument plan was not matched") ||
+      !expect(byval.call_plan != nullptr &&
+                  byval.call_plan->outgoing_stack_argument_area.has_value(),
+              "byval classification should expose the call-level outgoing stack area") ||
+      !expect(byval.call_plan->outgoing_stack_argument_area->size_bytes == 64,
+              "byval classification should preserve the prepared call-level area") ||
+      !expect(byval.call_plan->outgoing_stack_argument_area->size_bytes !=
+                  *byval.argument_plan->destination_stack_size_bytes,
+              "byval classification should not recompute the area from one stack lane")) {
     return 1;
   }
 

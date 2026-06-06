@@ -202,6 +202,16 @@ int verify_linear_function_lookup() {
               .instruction_index = 2,
               .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
               .direct_callee_name = std::string("callee_a"),
+              .outgoing_stack_argument_area =
+                  prepare::PreparedOutgoingStackArgumentArea{.size_bytes = 64},
+              .arguments = {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 2,
+                      .arg_index = 0,
+                      .destination_stack_offset_bytes = std::size_t{16},
+                      .destination_stack_size_bytes = std::size_t{8},
+                  },
+              },
               .preserved_values = {
                   prepare::PreparedCallPreservedValue{
                       .value_id = 4,
@@ -371,6 +381,21 @@ int verify_linear_function_lookup() {
   if (prepare::find_indexed_prepared_call_plan(&lookups.call_plans, call_plans, 0, 9) !=
       nullptr) {
     return fail("indexed call-plan lookup returned an unmatched linear call");
+  }
+  const auto* outgoing_area =
+      prepare::find_indexed_prepared_outgoing_stack_argument_area(
+          lookups.call_plans, call_plans, 0, 2);
+  if (outgoing_area != &*call_plans->calls[0].outgoing_stack_argument_area ||
+      outgoing_area->size_bytes != 64) {
+    return fail("indexed outgoing stack argument area did not preserve call-level area");
+  }
+  if (outgoing_area->size_bytes ==
+      *call_plans->calls[0].arguments[0].destination_stack_size_bytes) {
+    return fail("indexed outgoing stack argument area was recomputed from one stack lane");
+  }
+  if (prepare::find_indexed_prepared_outgoing_stack_argument_area(
+          lookups.call_plans, call_plans, 1, 0) != nullptr) {
+    return fail("indexed outgoing stack argument area fabricated a missing area");
   }
   const prepare::PreparedCallPlan same_block_current{
       .block_index = 0,
