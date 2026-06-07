@@ -212,16 +212,6 @@ prepared_edge_named_source_producer_context(
              : std::nullopt;
 }
 
-[[nodiscard]] bool prepared_edge_copy_source_facts_have_materializable_producer(
-    const prepare::PreparedEdgeCopySourceFacts& facts) {
-  return facts.status == prepare::PreparedEdgeCopySourceFactsStatus::Available &&
-         facts.publication != nullptr &&
-         facts.source_producer_kind !=
-             prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
-         facts.source_producer_kind !=
-             prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
-}
-
 struct EdgeSelectChainState {
   std::size_t label_index = 0;
   std::vector<std::string_view> active_values;
@@ -1195,7 +1185,8 @@ lower_predecessor_join_source_publication(
           publication.predecessor_label,
           publication.successor_label,
           publication.destination_value_id);
-      if (!prepared_edge_copy_source_facts_have_materializable_producer(source_facts) ||
+      if (!prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+              source_facts) ||
           source_facts.publication->phase != prepare::PreparedMovePhase::BlockEntry ||
           source_facts.predecessor_label != context.control_flow_block->block_label) {
         continue;
@@ -1243,7 +1234,8 @@ lower_predecessor_join_source_publication(
     return false;
   }
   if (move->source_move != nullptr &&
-      prepared_edge_copy_source_facts_have_materializable_producer(source_facts) &&
+      prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          source_facts) &&
       source_facts.source_home != nullptr &&
       prepare::prepared_edge_publication_matches_parallel_copy_move_source(
           *source_facts.publication, *move->source_move, *source_facts.source_home)) {
@@ -1304,7 +1296,8 @@ lower_predecessor_select_parallel_copy_sources(
             context.control_flow_block->block_label,
             *bundle->source_parallel_copy_successor_label,
             move);
-    if (!prepared_edge_copy_source_facts_have_materializable_producer(source_facts) ||
+    if (!prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+            source_facts) ||
         source_facts.source_home == nullptr ||
         source_facts.destination_home == nullptr ||
         source_facts.source_home->value_name == c4c::kInvalidValueName ||

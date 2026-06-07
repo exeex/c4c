@@ -2203,6 +2203,40 @@ int verify_edge_publication_source_producer_facts() {
       select_publication->source_producer_instruction_index != std::size_t{3}) {
     return fail("edge publication should expose select-style source producer facts");
   }
+  const auto load_source_facts = prepare::prepare_edge_copy_source_facts(
+      &lookups.edge_publications, predecessor_label, successor_label, 11);
+  if (!prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          load_source_facts)) {
+    return fail(
+        "edge source facts helper should classify load-local producers as materializable");
+  }
+  auto immediate_source_facts = load_source_facts;
+  immediate_source_facts.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
+  if (prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          immediate_source_facts)) {
+    return fail("edge source facts helper should not materialize immediate producers");
+  }
+  auto unknown_source_facts = load_source_facts;
+  unknown_source_facts.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  if (prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          unknown_source_facts)) {
+    return fail("edge source facts helper should not materialize unknown producers");
+  }
+  auto unavailable_source_facts = load_source_facts;
+  unavailable_source_facts.status =
+      prepare::PreparedEdgeCopySourceFactsStatus::MissingSourceProducer;
+  if (prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          unavailable_source_facts)) {
+    return fail("edge source facts helper should require available source facts");
+  }
+  auto publicationless_source_facts = load_source_facts;
+  publicationless_source_facts.publication = nullptr;
+  if (prepare::prepared_edge_copy_source_facts_have_materializable_producer(
+          publicationless_source_facts)) {
+    return fail("edge source facts helper should require publication authority");
+  }
 
   return 0;
 }

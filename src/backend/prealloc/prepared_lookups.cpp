@@ -2842,6 +2842,16 @@ validate_prepared_edge_copy_publication_source_facts(
 
 }  // namespace
 
+[[nodiscard]] bool prepared_edge_copy_source_facts_have_materializable_producer(
+    const PreparedEdgeCopySourceFacts& facts) {
+  return facts.status == PreparedEdgeCopySourceFactsStatus::Available &&
+         facts.publication != nullptr &&
+         facts.source_producer_kind !=
+             PreparedEdgePublicationSourceProducerKind::Unknown &&
+         facts.source_producer_kind !=
+             PreparedEdgePublicationSourceProducerKind::Immediate;
+}
+
 [[nodiscard]] PreparedEdgeCopySourceFacts prepare_edge_copy_source_facts(
     const PreparedEdgePublicationLookups* lookups,
     BlockLabelId predecessor_label,
