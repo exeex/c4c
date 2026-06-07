@@ -1,12 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/115_aarch64_codegen_layout_post_prealloc_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Dispatch-Family Residue
+Current Step ID: 4
+Current Step Title: Draft Focused Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
+
+Step 4 - Draft Focused Follow-Up Ideas completed as an analysis-only lifecycle
+packet.
+
+Created follow-up ideas:
+
+- `ideas/open/116_aarch64_dispatch_prepared_producer_contract_surface.md` for
+  the concrete dispatch-family `move-forward`/`contract-needed` residue in
+  `dispatch_edge_copies.cpp` and `dispatch_producers.cpp`. This is justified
+  by Step 3 evidence around edge-publication producer contexts, current-block
+  join/source routing, select-chain producer wrappers, and publication
+  register clobber/read checks still being shaped in AArch64 dispatch after
+  prior prepared-authority repairs.
+- `ideas/open/117_aarch64_comparison_fused_compare_publication_contract.md`
+  for the bounded `comparison.cpp` `move-forward`/`contract-needed` residue.
+  This is justified by Step 2 evidence around
+  `find_prepared_materialized_compare_join_targets`,
+  `find_prepared_fused_compare_operand_producer_facts`,
+  `collect_prepared_current_block_entry_publications`, and
+  `prepared_current_block_entry_publication_register`.
+
+No-new-idea decisions from Step 4:
+
+- No new `calls.cpp` idea: old helper split cleanup is already covered by idea
+  35, outgoing stack argument area authority is covered by idea 114, and Step 2
+  did not name a concrete call-boundary dump/test consumer strong enough for a
+  new contract-visibility idea.
+- No new `memory.cpp` idea: old store-source helper cleanup is covered by
+  ideas 34, 39, and 39a, and Step 2 found prepared store-local/global
+  publication consumers rather than a concrete new shared-authority slice.
+- No new `alu.cpp` idea: Step 2 found target-local scalar opcode, immediate,
+  scratch, and publication emission responsibilities; scalar-publication
+  visibility was not concrete enough to draft without a named cleanup
+  consumer.
+- No new `f128.cpp` or `i128_ops.cpp` idea: Step 2 found specialized
+  representation/runtime-helper ABI machinery, not a concrete shared-authority
+  migration or phoenix route.
+- No new `machine_printer.cpp` or `instruction.cpp` idea: Step 2 found
+  target-local spelling, printing, record-schema, and validation surfaces; no
+  bounded cleanup or contract proof route was identified.
+- No new `dispatch.cpp` idea: Step 3 found central prepared-block orchestration
+  and hook wiring, with contract-consumer evidence only.
+- No new `dispatch_value_materialization.cpp` idea: Step 3 found target
+  materialization glue that already delegates same-block/select-chain lookup to
+  `prepare` helpers; no rediscovery cleanup was justified.
+- No phoenix-candidate idea: Step 2 and Step 3 found identifiable owner
+  domains rather than a tangled replacement target.
+- No fold-back idea: Step 3 found no current dispatch helper family that should
+  mechanically merge back into an owner before shared contracts are clarified.
 
 Step 3 - Classify Dispatch-Family Residue completed as an analysis-only
 classification packet.
@@ -107,11 +156,11 @@ Dispatch Step 3 conclusion:
 
 ## Suggested Next
 
-Draft Step 4 follow-up idea text for the bounded dispatch residue found in
-`dispatch_edge_copies.cpp` and `dispatch_producers.cpp`: prepared
-edge-publication/current-block producer and join-routing contract visibility or
-move-forward. Keep `dispatch.cpp` and `dispatch_value_materialization.cpp` as
-supporting consumer evidence unless a concrete dump/test need is named.
+Step 5 - Prepare Closure Summary. Summarize the final owner classification
+table, dispatch-family residue map, no-new-idea decisions, and new follow-up
+ideas 116 and 117 with their evidence. Confirm this audit did not change
+implementation, test, or build metadata files, and preserve the full-suite
+baseline note from the source idea.
 
 ## Watchouts
 
@@ -129,6 +178,13 @@ supporting consumer evidence unless a concrete dump/test need is named.
 - For Step 4 dispatch follow-up drafting, prior closure notes reject
   AArch64-local rediscovery of prepared/publication facts through predecessor
   scans, BIR name matching, or same-block producer matching.
+- Step 4 created idea 116 for dispatch prepared producer contract surface and
+  idea 117 for comparison fused-compare publication contract.
+- Step 4 deliberately did not create new ideas for calls, memory, alu, f128,
+  i128, machine printer, instruction, dispatch.cpp alone,
+  dispatch_value_materialization.cpp alone, fold-back cleanup, or phoenix
+  rebuild because the audit evidence did not justify concrete non-duplicative
+  follow-up slices.
 - Step 3 found no new idea for `dispatch.cpp` alone and no new idea for
   `dispatch_value_materialization.cpp` alone; both are mostly target-local
   orchestration/materialization consumers of prepared facts.
@@ -148,8 +204,11 @@ supporting consumer evidence unless a concrete dump/test need is named.
 ## Proof
 
 No build/test proof required by the delegated packet because this slice was
-analysis-only. Verification used read-only `c4c-clang-tool-ccdb`
+analysis-only. Step 4 created only new idea files under `ideas/open/` and
+updated `todo.md`; no implementation, test, or build metadata files were
+changed, and no `test_after.log` was produced for this packet.
+
+Step 3 verification used read-only `c4c-clang-tool-ccdb`
 `function-signatures` and `function-callees` queries for `dispatch.cpp`,
 `dispatch_edge_copies.cpp`, `dispatch_value_materialization.cpp`, and
-`dispatch_producers.cpp`, plus narrow text reads around the relevant helpers;
-no `test_after.log` was produced for this packet.
+`dispatch_producers.cpp`, plus narrow text reads around the relevant helpers.
