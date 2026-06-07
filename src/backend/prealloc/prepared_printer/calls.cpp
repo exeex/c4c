@@ -330,6 +330,26 @@ void append_call_argument_direct_global_dependency(
       << *dependency->direct_global_dependency.root_instruction_index;
 }
 
+void append_missing_frame_slot_call_argument_publication_need(
+    std::ostringstream& out,
+    const PreparedCallArgumentPlan& arg) {
+  const auto need =
+      find_prepared_missing_frame_slot_call_argument_publication_need(arg);
+  if (!need.available) {
+    return;
+  }
+  out << " missing_frame_slot_arg_publication=yes"
+      << " missing_frame_slot_arg_kind="
+      << prepared_missing_frame_slot_call_argument_publication_kind_name(
+             need.kind)
+      << " missing_frame_slot_arg_source_value_id="
+      << need.source_value_id
+      << " missing_frame_slot_arg_source_materializes_address="
+      << (need.source_materializes_address ? "yes" : "no")
+      << " missing_frame_slot_arg_may_emit_local_payload="
+      << (need.may_emit_local_aggregate_address_payload ? "yes" : "no");
+}
+
 void append_aggregate_transport_plan(
     std::ostringstream& out,
     const PreparedAggregateTransportPlan& plan) {
@@ -494,6 +514,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
           append_call_argument_source_selection(out, module.names, *arg.source_selection);
         }
         append_call_argument_direct_global_dependency(out, module.names, arg);
+        append_missing_frame_slot_call_argument_publication_need(out, arg);
         if (arg.aggregate_transport.has_value()) {
           append_aggregate_transport_plan(out, *arg.aggregate_transport);
         }

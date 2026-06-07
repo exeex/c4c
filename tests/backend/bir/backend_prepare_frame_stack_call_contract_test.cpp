@@ -4872,6 +4872,34 @@ int check_missing_local_aggregate_frame_slot_address_source_selection_contract()
     return fail(
         "missing local aggregate frame-slot address contract: prepared plan did not own the object address source");
   }
+  const auto publication_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(arg);
+  if (!publication_need.available ||
+      publication_need.kind !=
+          prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+              FrameSlotAddress ||
+      publication_need.source_value_id != source_value_id ||
+      publication_need.source_selection != &selection ||
+      publication_need.destination_register_bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      publication_need.destination_contiguous_width != 1 ||
+      !publication_need.source_materializes_address ||
+      publication_need.may_emit_local_aggregate_address_payload) {
+    return fail(
+        "missing local aggregate frame-slot address contract: shared missing frame-slot publication need was not visible");
+  }
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("missing_frame_slot_arg_publication=yes") ==
+          std::string::npos ||
+      prepared_dump.find("missing_frame_slot_arg_kind=frame_slot_address") ==
+          std::string::npos ||
+      prepared_dump.find("missing_frame_slot_arg_source_materializes_address=yes") ==
+          std::string::npos ||
+      prepared_dump.find("missing_frame_slot_arg_may_emit_local_payload=no") ==
+          std::string::npos) {
+    return fail(
+        "missing local aggregate frame-slot address contract: prepared dump lost shared missing frame-slot publication visibility");
+  }
   return 0;
 }
 

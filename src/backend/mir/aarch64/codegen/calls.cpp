@@ -8374,16 +8374,17 @@ materialize_missing_frame_slot_call_arguments(
     return lowered;
   }
   for (const auto& argument : call_plan.arguments) {
-    if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
-        !argument.source_value_id.has_value() ||
-        argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
-        argument.destination_contiguous_width > 1) {
+    const auto publication_need =
+        prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+            argument);
+    if (!publication_need.available ||
+        publication_need.source_selection == nullptr) {
       continue;
     }
     const auto* home =
         prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
                                                   context.function.value_locations,
-                                                  *argument.source_value_id);
+                                                  publication_need.source_value_id);
     if (home == nullptr ||
         home->kind != prepare::PreparedValueHomeKind::StackSlot ||
         find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
@@ -8397,41 +8398,39 @@ materialize_missing_frame_slot_call_arguments(
     }
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
-    const auto* source_selection = argument.source_selection.has_value()
-                                       ? &*argument.source_selection
-                                       : nullptr;
-    if (source_selection != nullptr) {
-      if (source_selection->kind ==
+    const auto& source_selection = *publication_need.source_selection;
+    {
+      if (source_selection.kind ==
           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
         address_source = make_selected_call_argument_source(
             context,
             argument,
             home,
-            *source_selection,
+            source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
             instruction_index);
         source = address_source;
-      } else if (source_selection->kind ==
+      } else if (source_selection.kind ==
                  prepare::PreparedCallArgumentSourceSelectionKind::
                      LocalFrameAddressMaterialization) {
         address_source = make_selected_call_argument_source(
             context,
             argument,
             home,
-            *source_selection,
+            source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::
                 LocalFrameAddressMaterialization,
             instruction_index);
         source = address_source;
-      } else if (source_selection->kind ==
+      } else if (source_selection.kind ==
                      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
-                 source_selection->kind ==
+                 source_selection.kind ==
                      prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
         address_source = make_selected_call_argument_source(
             context,
             argument,
             home,
-            *source_selection,
+            source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
             instruction_index);
         source =
@@ -8441,7 +8440,7 @@ materialize_missing_frame_slot_call_arguments(
                       context,
                       argument,
                       home,
-                      *source_selection,
+                      source_selection,
                       prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
                       instruction_index);
       }

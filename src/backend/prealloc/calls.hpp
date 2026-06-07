@@ -329,6 +329,94 @@ find_prepared_call_argument_publication_source_routing(
   };
 }
 
+enum class PreparedMissingFrameSlotCallArgumentPublicationKind {
+  None,
+  FrameSlotAddress,
+  FrameSlotValue,
+  PriorPreservation,
+  LocalFrameAddressMaterialization,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_missing_frame_slot_call_argument_publication_kind_name(
+    PreparedMissingFrameSlotCallArgumentPublicationKind kind) {
+  switch (kind) {
+    case PreparedMissingFrameSlotCallArgumentPublicationKind::None:
+      return "none";
+    case PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotAddress:
+      return "frame_slot_address";
+    case PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotValue:
+      return "frame_slot_value";
+    case PreparedMissingFrameSlotCallArgumentPublicationKind::PriorPreservation:
+      return "prior_preservation";
+    case PreparedMissingFrameSlotCallArgumentPublicationKind::
+        LocalFrameAddressMaterialization:
+      return "local_frame_address_materialization";
+  }
+  return "unknown";
+}
+
+struct PreparedMissingFrameSlotCallArgumentPublicationNeed {
+  bool available = false;
+  PreparedMissingFrameSlotCallArgumentPublicationKind kind =
+      PreparedMissingFrameSlotCallArgumentPublicationKind::None;
+  PreparedValueId source_value_id = 0;
+  const PreparedCallArgumentSourceSelection* source_selection = nullptr;
+  PreparedRegisterBank destination_register_bank = PreparedRegisterBank::None;
+  std::size_t destination_contiguous_width = 1;
+  bool source_materializes_address = false;
+  bool may_emit_local_aggregate_address_payload = false;
+};
+
+[[nodiscard]] inline PreparedMissingFrameSlotCallArgumentPublicationNeed
+find_prepared_missing_frame_slot_call_argument_publication_need(
+    const PreparedCallArgumentPlan& argument) {
+  if (argument.source_encoding != PreparedStorageEncodingKind::FrameSlot ||
+      !argument.source_value_id.has_value() ||
+      argument.destination_register_bank != PreparedRegisterBank::Gpr ||
+      argument.destination_contiguous_width > 1 ||
+      !argument.source_selection.has_value()) {
+    return {};
+  }
+
+  PreparedMissingFrameSlotCallArgumentPublicationKind kind =
+      PreparedMissingFrameSlotCallArgumentPublicationKind::None;
+  bool source_materializes_address = false;
+  switch (argument.source_selection->kind) {
+    case PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      kind = PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotAddress;
+      source_materializes_address = true;
+      break;
+    case PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      kind = PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotValue;
+      break;
+    case PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+      kind = PreparedMissingFrameSlotCallArgumentPublicationKind::PriorPreservation;
+      break;
+    case PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization:
+      kind = PreparedMissingFrameSlotCallArgumentPublicationKind::
+          LocalFrameAddressMaterialization;
+      source_materializes_address = true;
+      break;
+    case PreparedCallArgumentSourceSelectionKind::None:
+    case PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+      return {};
+  }
+
+  return PreparedMissingFrameSlotCallArgumentPublicationNeed{
+      .available = true,
+      .kind = kind,
+      .source_value_id = *argument.source_value_id,
+      .source_selection = &*argument.source_selection,
+      .destination_register_bank = *argument.destination_register_bank,
+      .destination_contiguous_width = argument.destination_contiguous_width,
+      .source_materializes_address = source_materializes_address,
+      .may_emit_local_aggregate_address_payload =
+          source_materializes_address &&
+          argument.allows_local_aggregate_address_publication,
+  };
+}
+
 struct PreparedCallResultPlan {
   std::size_t instruction_index = 0;
   PreparedRegisterBank value_bank = PreparedRegisterBank::None;
