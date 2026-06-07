@@ -3,54 +3,56 @@
 Status: Active
 Source Idea Path: ideas/open/123_prepared_call_result_late_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Shared Call-Result Late-Publication Fact Or Query
+Current Step ID: 3
+Current Step Title: Add Source-In-Destination And Source-Register Visibility
 
 ## Just Finished
 
-Completed plan Step 2: added a shared target-neutral
-`PreparedCallResultLatePublicationFact` query over `PreparedCallResultPlan`
-without moving AArch64 emission behavior.
+Completed plan Step 3: converted the AArch64 source-register recording and
+register-source-in-destination alias gates to consult the shared
+`PreparedCallResultLatePublicationFact` where the target-neutral facts are
+available.
 
 Changed files:
-- `src/backend/prealloc/calls.hpp`: added
-  `find_prepared_call_result_late_publication`, exposing availability for
-  source-register result publication, source-in-destination aliasing,
-  and FPR/VREG store-value retargeting from prepared result-plan fields.
-  `current_block_publication_consumption_available` remains false because
-  this Step 2 surface is not tied to an existing prepared current-block
-  publication fact.
-- `src/backend/prealloc/prepared_printer/calls.cpp`: prints the
-  late-publication fact on prepared call-result dump lines.
+- `src/backend/mir/aarch64/codegen/calls.cpp`: `record_call_result_source_register`
+  now gates direct call-result ABI source-register recording through
+  `find_prepared_call_result_late_publication`; the selected register-source
+  alias path in `record_call_boundary_source_in_destination` uses a narrow
+  local bridge into the shared query before recording the source value in the
+  selected destination register.
+- `src/backend/prealloc/calls.hpp`: refined
+  `source_in_destination_alias_available` to describe a register-backed source
+  value that can be recorded in a prepared register destination with the same
+  prepared bank, instead of requiring identical physical register names.
 - `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`:
-  covers source-register visibility on a stack-backed result, verifies that
-  current-block publication is not overclaimed, covers FPR retargeting
-  visibility on a float result, and includes a focused alias query fixture.
+  adjusted the focused alias query fixture to cover a distinct source and
+  destination register in the same prepared bank.
 
-AArch64 FP/f128/GP emission, scratch policy, q/vector spelling, memory-store
-record mutation, and call-boundary machine record construction remain
-target-local; no AArch64 source file was changed in this packet.
+Scalar-state recording, register parsing/view selection, and concrete
+call-boundary machine records remain AArch64-local. Memory-backed
+source-in-destination recording remains target-local because the shared
+call-result late-publication query represents register-backed call-result
+publication, not arbitrary memory-source move aliases.
 
 ## Suggested Next
 
-Execute Step 3 by converting the AArch64 call-result late-publication
-consumers to consult the shared query where it describes target-neutral
-availability, while keeping concrete materialization, scalar-state mutation,
-and machine-record emission local.
+Execute Step 4 by converting FPR/VREG call-result store-value retarget
+availability to consume the shared late-publication query while keeping
+`MemoryInstructionRecord` mutation, AArch64 register-bank/view checks, q/vector
+spelling, and f128 handling local.
 
 ## Watchouts
 
-- The new query answers availability from prepared result-plan facts only; it
-  intentionally does not decide AArch64 register views, scratch registers,
-  f128 carrier transport, or memory-store record mutation.
-- `current_block_publication_consumption_available` is intentionally not
-  claimed by this query yet. Representing it accurately needs a broader
-  signature tied to the existing prepared current-block publication/producer
-  facts rather than destination identity on `PreparedCallResultPlan`.
-- `source_in_destination_alias_available` is true only when the prepared
-  source and destination register names/banks are both present and equal.
-- Do not reopen idea 117 current-block publication authority or idea 116
-  source-producer authority while consuming this surface.
+- The local alias bridge preserves the old fallback when the selected
+  `CallBoundaryMoveInstructionRecord` lacks prepared-bank identity; the shared
+  query cannot classify that target-neutral route without prepared source and
+  destination banks.
+- `current_block_publication_consumption_available` remains intentionally
+  unclaimed by this query. Do not derive it from destination identity; a future
+  surface needs to accept or reference the existing current-block
+  publication/producer facts.
+- Do not move scalar-state mutation or machine-record construction into shared
+  prepared code.
 
 ## Proof
 

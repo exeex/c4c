@@ -3298,7 +3298,7 @@ int check_call_contract() {
       .destination_value_id = prepare::PreparedValueId{1},
       .source_register_name = std::string("rax"),
       .source_register_bank = prepare::PreparedRegisterBank::Gpr,
-      .destination_register_name = std::string("rax"),
+      .destination_register_name = std::string("rcx"),
       .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
   };
   const auto aliased_late_publication =

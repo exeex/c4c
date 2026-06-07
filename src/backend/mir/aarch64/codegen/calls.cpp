@@ -7646,6 +7646,30 @@ void record_call_boundary_destination(
   }
 }
 
+[[nodiscard]] bool call_boundary_register_source_in_destination_available(
+    const CallBoundaryMoveInstructionRecord& move_record) {
+  if (!move_record.source_register.has_value() ||
+      !move_record.destination_register.has_value() ||
+      !move_record.source_register->value_id.has_value()) {
+    return false;
+  }
+
+  const prepare::PreparedCallResultPlan result{
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_value_id = *move_record.source_register->value_id,
+      .source_register_name =
+          std::string(abi::register_name(move_record.source_register->reg)),
+      .source_register_bank = move_record.source_register->prepared_bank,
+      .destination_register_name =
+          std::string(abi::register_name(move_record.destination_register->reg)),
+      .destination_register_bank =
+          move_record.destination_register->prepared_bank,
+  };
+  return prepare::find_prepared_call_result_late_publication(result)
+      .source_in_destination_alias_available;
+}
+
 void record_call_boundary_source_in_destination(
     const module::MachineInstruction& instruction,
     BlockScalarLoweringState& scalar_state) {
@@ -7662,6 +7686,14 @@ void record_call_boundary_source_in_destination(
     source_value_name = *move_record->source_memory->result_value_name;
   } else if (move_record->source_register.has_value() &&
              move_record->source_register->value_name != c4c::kInvalidValueName) {
+    if (move_record->source_register->value_id.has_value() &&
+        move_record->source_register->prepared_bank !=
+            prepare::PreparedRegisterBank::None &&
+        move_record->destination_register->prepared_bank !=
+            prepare::PreparedRegisterBank::None &&
+        !call_boundary_register_source_in_destination_available(*move_record)) {
+      return;
+    }
     source_value_id = move_record->source_register->value_id;
     source_value_name = move_record->source_register->value_name;
   }
@@ -8132,10 +8164,13 @@ void record_call_result_source_register(
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state,
     bool result_lanes_only) {
+  const auto result_late_publication =
+      call_plan.result.has_value()
+          ? prepare::find_prepared_call_result_late_publication(
+                *call_plan.result)
+          : prepare::PreparedCallResultLatePublicationFact{};
   if (result_lanes_only ||
-      !call_plan.result.has_value() ||
-      !call_plan.result->destination_value_id.has_value() ||
-      !call_plan.result->source_register_name.has_value()) {
+      !result_late_publication.source_register_publication_available) {
     if (context.bir_block == nullptr ||
         instruction_index >= context.bir_block->insts.size()) {
       return;

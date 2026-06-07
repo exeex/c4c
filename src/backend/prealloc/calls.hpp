@@ -482,8 +482,7 @@ find_prepared_call_result_late_publication(const PreparedCallResultPlan& result)
       result.destination_storage_kind == PreparedMoveStorageKind::Register &&
       result.destination_register_name.has_value() &&
       result.destination_register_bank.has_value() &&
-      *result.source_register_bank == *result.destination_register_bank &&
-      *result.source_register_name == *result.destination_register_name;
+      *result.source_register_bank == *result.destination_register_bank;
   fact.fpr_or_vreg_store_value_retarget_available =
       fact.source_register_publication_available &&
       (*result.source_register_bank == PreparedRegisterBank::Fpr ||
