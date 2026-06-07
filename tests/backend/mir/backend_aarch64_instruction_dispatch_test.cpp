@@ -16025,11 +16025,38 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
       std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
           &block.instructions[1].target.payload);
   if (reload == nullptr || !reload->source_memory.has_value() ||
-      !reload->destination_register.has_value() ||
-      reload->source_memory->byte_offset != 96 ||
-      reload->destination_register->reg != aarch64_module::abi::x_register(22)) {
+      !reload->destination_register.has_value()) {
     const auto printed = print_route_block(function_cf.function_name, block);
-    return fail("expected before-instruction endpoint stack home reload to seed x22: " +
+    return fail("expected stack-to-register republication move record: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  if (reload->move.reason != "consumer_stack_to_register") {
+    return fail("expected stack-to-register republication to keep the prepared "
+                "consumer move reason");
+  }
+  if (
+      reload->source_memory->support !=
+          aarch64_module::codegen::MemoryOperandSupportKind::Prepared ||
+      reload->source_memory->base_kind !=
+          aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      reload->source_memory->frame_slot_id !=
+          prepare::PreparedFrameSlotId{77} ||
+      reload->source_memory->frame_slot_id == preserved.slot_id ||
+      reload->source_memory->byte_offset != 96 ||
+      reload->source_memory->byte_offset == preserved.stack_offset_bytes ||
+      !reload->source_memory->byte_offset_is_prepared_snapshot ||
+      reload->source_memory->size_bytes != preserved.stack_size_bytes ||
+      reload->source_memory->align_bytes != preserved.stack_align_bytes ||
+      reload->source_memory->result_value_id != preserved.value_id) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected stack-to-register republication to consume prepared "
+                "endpoint stack slot 77 at offset 96, not the preserved source "
+                "slot 44 at offset 32: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  if (reload->destination_register->reg != aarch64_module::abi::x_register(22)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected endpoint-driven stack-to-register republication to seed x22: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
 
