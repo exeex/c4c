@@ -8,13 +8,12 @@ Current Step Title: Expose Current-Block Join And Producer Routing Facts
 
 ## Just Finished
 
-Step 3 - Expose Current-Block Join And Producer Routing Facts moved one compact
-current-block join instruction-routing fact into shared prepared lookup
-authority.
+Step 3 - Expose Current-Block Join And Producer Routing Facts completed two
+compact target-neutral prepared lookup sub-slices.
 
 - Added public
   `prepare::prepare_current_block_join_parallel_copy_instruction_routing`.
-- The new helper consumes the existing
+- The current-block join helper consumes the existing
   `PreparedCurrentBlockJoinParallelCopySourceQueryInputs`, reuses prepared
   current-block join source facts, resolves instruction results through
   prepared names, regalloc, and value homes, and returns instruction-position
@@ -25,12 +24,22 @@ authority.
 - Updated AArch64 `build_current_block_join_prepared_query_routing` to consume
   the shared prepared routing bits instead of locally building value-id sets
   and membership checks in `dispatch_producers.cpp`.
-- Kept AArch64 lowering-context assembly local and did not move register
-  parsing, machine-register alias checks, target lowering context assembly, or
-  fallback emission decisions into prepare.
+- Exposed existing
+  `prepare::find_prepared_direct_global_select_chain_dependency` through the
+  shared prepared lookup header.
+- Updated AArch64 `select_chain_contains_direct_global_load` to assemble
+  prepared source-producer lookups from `BlockLoweringContext` and consume the
+  shared prepared dependency fact instead of recursively walking select/cast/
+  binary producers in `dispatch_producers.cpp`.
+- Kept AArch64 register-read hazard policy, physical register parsing,
+  lowering-context assembly, and fallback emission decisions out of prepare.
 - Extended `backend_prepared_lookup_helper` coverage for current-block join
   instruction routing over incoming-expression and source result positions,
   including a result value discoverable through regalloc fallback only.
+- Reused existing focused `backend_prepared_lookup_helper` coverage for the
+  direct-global select-chain query, including select-root, direct-load-root,
+  scalar materialization, call-argument facade, and fail-closed missing-root
+  behavior.
 
 Retained Step 2 summary:
 
@@ -50,24 +59,25 @@ Retained Step 2 summary:
 
 ## Suggested Next
 
-Delegate the next Step 3 packet around a same-block/select-chain producer fact
-only if it can be exposed as a target-neutral prepared query without moving
-AArch64 register hazard policy. If the desired next cleanup is about physical
-register clobber/read behavior, route to plan review or Step 4 boundary audit.
+Delegate Step 4 boundary audit for the remaining producer logic in
+`dispatch_producers.cpp`, especially `value_publication_may_read_register_index`,
+because the remaining same-block producer recursion is tied to AArch64
+register hazard policy and physical register read checks.
 
 ## Watchouts
 
 - No predecessor rescans, BIR-name matching, same-block named-case shortcuts,
   expectation downgrades, or AArch64 register-policy moves were added.
-- AArch64 still assembles query inputs from `BlockLoweringContext`; the moved
-  fact is the target-neutral instruction-result routing from prepared join
-  source facts.
-- `prepared_instruction_result_value_ref` in prepared lookups now recognizes
-  call results to preserve the old AArch64 local routing surface.
+- AArch64 still assembles prepared lookup inputs from `BlockLoweringContext`;
+  the moved Step 3 facts are target-neutral current-block join instruction
+  routing and direct-global select-chain dependency.
 - Query callers that need AArch64-equivalent instruction-result resolution
   should pass the prepared regalloc function through the shared query inputs;
   passing indexed value-home lookups alone intentionally keeps the indexed
   lookup fail-closed behavior.
+- The remaining `value_publication_may_read_register_index` recursion should
+  not move to prepare without a separate design because it depends on current
+  block-entry publication semantics and AArch64 register alias/read policy.
 
 ## Proof
 

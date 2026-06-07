@@ -901,6 +901,15 @@ find_prepared_same_block_scalar_producer(
     const bir::Value& value,
     std::size_t before_instruction_index);
 
+[[nodiscard]] PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
 [[nodiscard]] std::optional<std::int64_t>
 evaluate_prepared_same_block_integer_constant(
     const PreparedNameTables& names,
