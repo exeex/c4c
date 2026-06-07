@@ -89,3 +89,30 @@ and selected call-boundary machine record construction after the call.
   frame-slot result paths remain unexamined.
 - The old result/value lowering behavior remains in `calls.cpp` behind renamed
   helpers while the slice claims owner extraction progress.
+
+## Closure Note
+
+Closed after Step 5 acceptance review.
+
+The accepted route extracts the after-call result movement body into the
+AArch64-local `AfterCallMoveLocalOwner` surface. The wrapper still gathers the
+prepared destination home, call-boundary classification, prepared f128 carrier
+facts, and selected destination f128 carrier, then passes those facts into the
+owner. The owner translates those prepared facts into target register views,
+q/f128 rendering, memory operands, and call-boundary records without
+recomputing destination homes, stack frame slots, ABI result classification, or
+f128 carrier choices.
+
+File splitting was deliberately deferred because moving the owner out of
+`calls.cpp` would require exporting several private AArch64 helper surfaces
+without reducing the owner scope.
+
+The final reviewer report,
+`review/idea120_after_call_owner_final_review.md`, found no implementation
+drift or testcase overfit. Its only closure blocker was a missing
+`test_after.log`; the close proof was regenerated with the exact focused
+five-test backend/AArch64 command, and the regression guard passed with 5/5
+tests before, 5/5 tests after, and no new failures.
+
+Residual follow-up: ideas 121 through 123 remain open for separate
+preservation/publication and shared prepared-materializability contracts.
