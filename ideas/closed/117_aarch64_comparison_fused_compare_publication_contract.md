@@ -1,5 +1,17 @@
 # 117 AArch64 Comparison Fused-Compare Publication Contract
 
+## Closure Note
+
+Closed after Step 5 final boundary audit. The implemented route exposes and
+consumes shared prepared authority for fused-compare operand producer facts,
+materialized compare join/publication facts, and current-block publication
+register facts while keeping AArch64 condition spelling, compare opcode choice,
+branch emission, operand emission, and fallback shape target-local.
+
+Closure proof recorded in `todo.md` before archival: focused build plus
+backend contract subset passed 5/5, supervisor-accepted regression guard
+passed, and broader backend validation passed 179/179.
+
 ## Goal
 
 Make fused-compare and materialized-compare publication facts explicit enough
