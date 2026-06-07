@@ -4348,6 +4348,10 @@ std::optional<module::MachineInstruction> AfterCallMoveLocalOwner::instruction(
   const auto* destination_home = prepared.destination_home;
   const auto& classification = prepared.classification;
   const auto* result_plan = classification.result_plan;
+  const auto result_late_publication =
+      result_plan != nullptr
+          ? prepare::find_prepared_call_result_late_publication(*result_plan)
+          : prepare::PreparedCallResultLatePublicationFact{};
   const auto* binding = classification.abi_binding;
   const auto* destination_f128_carrier = prepared.destination_f128_carrier;
 
@@ -4394,10 +4398,10 @@ std::optional<module::MachineInstruction> AfterCallMoveLocalOwner::instruction(
       destination_home->register_name.has_value() &&
       result_plan != nullptr &&
       result_plan->instruction_index == instruction_index &&
-      result_plan->destination_value_id == std::optional<prepare::PreparedValueId>{move.to_value_id} &&
-      result_plan->source_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      result_late_publication.destination_value_id ==
+          std::optional<prepare::PreparedValueId>{move.to_value_id} &&
+      result_late_publication.source_register_publication_available &&
       result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
-      result_plan->source_register_name.has_value() &&
       result_plan->destination_register_name.has_value() &&
       (selected_gpr_result_move || selected_scalar_fpr_result_move ||
        selected_f128_result_move) &&
@@ -4501,10 +4505,9 @@ std::optional<module::MachineInstruction> AfterCallMoveLocalOwner::instruction(
         destination_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
         !destination_home->offset_bytes.has_value() ||
         result_plan->instruction_index != instruction_index ||
-        result_plan->destination_value_id !=
+        result_late_publication.destination_value_id !=
             std::optional<prepare::PreparedValueId>{move.to_value_id} ||
-        result_plan->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-        !result_plan->source_register_name.has_value() ||
+        !result_late_publication.source_register_publication_available ||
         (result_plan->source_register_bank != prepare::PreparedRegisterBank::Gpr &&
          result_plan->source_register_bank != prepare::PreparedRegisterBank::Fpr &&
          result_plan->source_register_bank != prepare::PreparedRegisterBank::Vreg)) {
@@ -5215,11 +5218,14 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
     }
   }
 
+  const auto result_late_publication =
+      call_plan.result.has_value()
+          ? prepare::find_prepared_call_result_late_publication(
+                *call_plan.result)
+          : prepare::PreparedCallResultLatePublicationFact{};
   if (call_plan.result.has_value() &&
-      call_plan.result->source_storage_kind == prepare::PreparedMoveStorageKind::Register &&
-      call_plan.result->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
-      call_plan.result->destination_value_id.has_value() &&
-      call_plan.result->source_register_name.has_value()) {
+      result_late_publication.source_register_publication_available &&
+      call_plan.result->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
     const bool bundle_already_publishes_result =
         bundle != nullptr &&
         std::any_of(bundle->moves.begin(),

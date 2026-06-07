@@ -3,46 +3,54 @@
 Status: Active
 Source Idea Path: ideas/open/123_prepared_call_result_late_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add FPR/VREG Store-Value Retargeting Visibility
+Current Step ID: 5
+Current Step Title: Convert AArch64 Calls To Consume The Shared Surface
 
 ## Just Finished
 
-Completed plan Step 4: converted FPR/VREG call-result store-value retarget
-availability to consult the shared `PreparedCallResultLatePublicationFact`
-where the target-neutral prepared identity is available.
+Completed plan Step 5: narrowed the remaining AArch64 call-result
+late-publication eligibility checks that were still rediscovering shared
+source-register publication facts.
 
 Changed files:
-- `src/backend/mir/aarch64/codegen/calls.cpp`: added a narrow
-  `call_result_store_value_retarget_available` bridge that builds the shared
-  late-publication query from an emitted CallAbi scalar register carrying
-  prepared value id and prepared bank. `retarget_fpr_call_result_store_value_to_emitted_scalar`
-  now consults that bridge before retargeting an FPR/VREG call-result store
-  value when the shared facts are present.
+- `src/backend/mir/aarch64/codegen/calls.cpp`: `AfterCallMoveLocalOwner`
+  now computes `PreparedCallResultLatePublicationFact` once and uses it for
+  selected after-call result register moves and stack-home result publication
+  eligibility. `lower_after_call_moves` also uses the shared fact before
+  synthesizing a stack-result home publication bundle.
 
-`MemoryInstructionRecord` mutation, AArch64 FpSimd bank checks, register view
-selection, q/vector spelling, and f128 handling remain local. The helper
-preserves the old fallback for emitted scalar records that do not carry enough
-prepared identity for the shared query to represent the target-neutral part.
+Already-converted Step 3/4 consumers still consume the shared surface for
+source-register recording, selected register-source-in-destination alias
+availability, and FPR/VREG store-value retarget availability. Target-specific
+emission, scalar-state mutation, scratch/register view choices, memory-store
+records, and call-boundary machine records remain AArch64-local.
+
+Current-block publication consumption remains explicitly not represented by
+`find_prepared_call_result_late_publication`. The existing prepared
+current-block/store/source-producer facts live in broader publication planning
+surfaces, not in `PreparedCallResultPlan`; representing that route accurately
+needs a fact/signature that accepts or references those existing publication
+facts instead of deriving authority from call-result destination identity.
 
 ## Suggested Next
 
-Execute the next packet by addressing the remaining current-block publication
-visibility gap with a surface that explicitly accepts or references existing
-prepared current-block publication/producer facts, without deriving that
-authority from call-result destination identity.
+Acceptance review is ready for the idea 123 shared late-publication surface
+slice. If the review requires current-block publication consumption to be
+represented in this plan, split or add a follow-up packet for a real
+publication-fact-backed query signature rather than extending
+`PreparedCallResultPlan` heuristics.
 
 ## Watchouts
 
 - `current_block_publication_consumption_available` is still intentionally
   unclaimed by `find_prepared_call_result_late_publication`; do not infer it
-  from `PreparedCallResultPlan` destination fields.
-- The FPR/VREG retarget bridge only gates availability. It does not move store
-  record mutation, register-bank/view validation, or f128/q-register spelling
-  into shared prepared code.
-- If a future packet wants to remove the fallback for missing prepared identity,
-  first prove every emitted CallAbi FPR/VREG scalar that reaches the store
-  retarget path carries a prepared value id and prepared bank.
+  from destination register/slot/stack-offset fields.
+- The local bridge fallbacks remain for selected machine records that lack
+  prepared identity. Removing those fallbacks requires first proving every
+  relevant emitted CallAbi register carries prepared value id and bank.
+- Memory-backed source-in-destination alias recording remains target-local;
+  the shared call-result late-publication fact covers register-backed
+  call-result publication, not arbitrary memory-source move aliases.
 
 ## Proof
 
