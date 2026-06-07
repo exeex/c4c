@@ -104,3 +104,33 @@ and call-boundary machine records.
   neighbors remain unexamined.
 - Target-specific FP/f128/GP materialization, scratch-register policy, or
   q/vector move spelling moves into shared prepared code.
+
+## Closure Note
+
+Closed on 2026-06-07.
+
+Acceptance review `review/idea_123_acceptance_r2.md` found no blocking issue,
+no route drift, and no testcase overfit. The earlier current-block publication
+blocker was resolved by the producer-fact-backed
+`PreparedCurrentBlockPublicationConsumption` /
+`find_prepared_current_block_publication_consumption` surface, which consumes
+prepared edge publication source-producer facts without deriving authority from
+`PreparedCallResultPlan` destination identity.
+
+The final route satisfies the source criteria: shared prepared code owns the
+target-neutral late-publication, source-register publication,
+source-in-destination alias, FPR/VREG store-value retargeting, and
+current-block publication-consumption decisions; AArch64 remains the
+target-local emission and recording consumer.
+
+Close proof regenerated the exact focused seven-test backend/AArch64 subset:
+
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_call_boundary_effect_plan|backend_aarch64_call_boundary_owner|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
+
+Result: 7/7 tests passed.
+
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS, 7/7 before and 7/7 after, with no new failures.
