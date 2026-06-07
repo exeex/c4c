@@ -4302,36 +4302,35 @@ find_immediate_argument_in_call_plan(
       make_call_boundary_move_instruction(std::move(move_record)));
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction> lower_after_call_move(
+struct PreparedAfterCallMoveOwnerInputs {
+  const prepare::PreparedValueHome* destination_home = nullptr;
+  prepare::PreparedCallBoundaryMoveClassification classification{};
+  const prepare::PreparedF128CarrierFunction* f128_carriers = nullptr;
+  const prepare::PreparedF128Carrier* destination_f128_carrier = nullptr;
+};
+
+struct AfterCallMoveLocalOwner {
+  [[nodiscard]] static std::optional<module::MachineInstruction> instruction(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedMoveBundle& bundle,
+      const prepare::PreparedMoveResolution& move,
+      const PreparedAfterCallMoveOwnerInputs& prepared,
+      std::size_t instruction_index,
+      module::ModuleLoweringDiagnostics& diagnostics);
+};
+
+std::optional<module::MachineInstruction> AfterCallMoveLocalOwner::instruction(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedMoveBundle& bundle,
     const prepare::PreparedMoveResolution& move,
+    const PreparedAfterCallMoveOwnerInputs& prepared,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  const auto* destination_home =
-      context.function.value_locations == nullptr
-          ? nullptr
-          : prepare::find_indexed_prepared_value_home(
-                context.function.value_home_lookups,
-                context.function.value_locations,
-                move.to_value_id);
-  const auto classification =
-      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* destination_home = prepared.destination_home;
+  const auto& classification = prepared.classification;
   const auto* result_plan = classification.result_plan;
   const auto* binding = classification.abi_binding;
-  const auto* f128_carriers =
-      context.function.prepared == nullptr
-          ? nullptr
-          : prepare::find_prepared_f128_carriers(
-                *context.function.prepared,
-                context.function.control_flow != nullptr
-                    ? context.function.control_flow->function_name
-                    : c4c::kInvalidFunctionName);
-  const auto* destination_f128_carrier =
-      f128_carriers != nullptr && destination_home != nullptr
-          ? prepare::find_prepared_f128_carrier(*f128_carriers, destination_home->value_name)
-          : nullptr;
+  const auto* destination_f128_carrier = prepared.destination_f128_carrier;
 
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow != nullptr
@@ -4660,6 +4659,49 @@ find_immediate_argument_in_call_plan(
       context,
       instruction_index,
       make_call_boundary_move_instruction(std::move(move_record)));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_after_call_move(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* destination_home =
+      context.function.value_locations == nullptr
+          ? nullptr
+          : prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.value_locations,
+                move.to_value_id);
+  auto classification =
+      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* f128_carriers =
+      context.function.prepared == nullptr
+          ? nullptr
+          : prepare::find_prepared_f128_carriers(
+                *context.function.prepared,
+                context.function.control_flow != nullptr
+                    ? context.function.control_flow->function_name
+                    : c4c::kInvalidFunctionName);
+  const auto* destination_f128_carrier =
+      f128_carriers != nullptr && destination_home != nullptr
+          ? prepare::find_prepared_f128_carrier(*f128_carriers, destination_home->value_name)
+          : nullptr;
+
+  return AfterCallMoveLocalOwner::instruction(
+      context,
+      bundle,
+      move,
+      PreparedAfterCallMoveOwnerInputs{
+          .destination_home = destination_home,
+          .classification = std::move(classification),
+          .f128_carriers = f128_carriers,
+          .destination_f128_carrier = destination_f128_carrier,
+      },
+      instruction_index,
+      diagnostics);
 }
 
 [[nodiscard]] bool move_source_aliases_destination(
