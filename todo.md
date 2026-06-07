@@ -1,16 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/118_aarch64_calls_deferred_cluster_post_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Cluster Dispositions
+Current Step ID: 5
+Current Step Title: Closure Readiness Package
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md` classified every idea-118 deferred calls cluster by current
-owner disposition using the Step 1 closed-route evidence and Step 2 function
-map.
+Step 4 of `plan.md` created bounded follow-up `ideas/open/` files for each
+actionable Step 3 disposition and recorded explicit no-new-idea rationale for
+clusters already closed, intentionally local, or not actionable as standalone
+work.
 
 ## Step 1 Closed-Route Evidence
 
@@ -193,11 +194,67 @@ map.
 
 ## Suggested Next
 
-Execute Step 4 by drafting bounded follow-up `ideas/open/` files only for the
-actionable Step 3 dispositions: local owners for before-call move bundle
-lowering and after-call result/value lowering, contract visibility for
-preservation/republication, and target-neutral fact/query movement for scalar
-producer dispatch and result recording/late publication.
+Execute Step 5 by preparing the closure readiness package for supervisor
+review. Confirm that this audit changed only lifecycle artifacts, list the
+generated follow-up ideas and intended proof routes, restate duplicate-work
+guardrails, and recommend lifecycle closure for idea 118 if the supervisor
+accepts the generated follow-up set.
+
+## Step 4 Follow-Up Ideas Created
+
+- `ideas/open/119_aarch64_calls_before_call_move_bundle_local_owner.md`:
+  local AArch64 owner for before-call move bundle lowering. Proof route:
+  focused backend/AArch64 coverage for register, stack, immediate, FP/f128,
+  and outgoing-stack-area argument movement while consuming ideas 93, 94, 95,
+  and 114 as closed authority.
+- `ideas/open/120_aarch64_calls_after_call_result_value_local_owner.md`:
+  local AArch64 owner for after-call result/value lowering. Proof route:
+  focused backend/AArch64 coverage for GP, FP, f128/vector-carrier, and
+  frame-slot result paths while consuming prepared result plans, destination
+  homes, and f128 carrier facts.
+- `ideas/open/121_aarch64_calls_preservation_republication_visibility_contract.md`:
+  route-visibility contract for preservation/republication before movement.
+  Proof route: focused dumps/tests for preserve-effect publication enabled and
+  disabled, prior stack-preserved argument consumption, and stack-to-register
+  republication.
+- `ideas/open/122_prepared_call_argument_producer_materializability_contract.md`:
+  shared prepared query/fact for call-argument producer materializability and
+  publication-source routing. Proof route: prepared visibility plus
+  backend/AArch64 coverage for scalar producer materialization, direct-global
+  select-chain call arguments, local aggregate address arguments, and missing
+  frame-slot publication.
+- `ideas/open/123_prepared_call_result_late_publication_contract.md`:
+  shared prepared query/fact for call-result late publication and retargeting.
+  Proof route: prepared visibility plus backend/AArch64 coverage for result
+  source-register recording, source-in-destination aliasing, FPR/VREG store
+  retargeting, and current-block publication consumption.
+
+## Step 4 No-New-Idea Rationale
+
+- No separate idea was created for the ordinary call-boundary move/binding
+  record construction cluster. Step 3 classified it as `keep-in-calls` where
+  it is pure call instruction or ABI record assembly. Later follow-ups may
+  touch those constructors only when coupled to their bounded
+  move/result/preservation owner boundary; a generic record-construction
+  extraction would be line-count-only work.
+- No idea was created for stack-frame-slot operand ownership. Ideas 119, 120,
+  121, and 123 must consume idea 93's closed authority instead of reselecting
+  stack homes, stack-preserved sources, endpoint stack storage, or memory
+  result frame-slot storage.
+- No idea was created for f128 carrier ownership. Ideas 119 and 120 must
+  consume idea 94's closed f128 carrier and q-register operand authority.
+- No idea was created for immediate scalar argument publication. Idea 119 must
+  consume idea 95's closed immediate argument publication owner.
+- No idea was created for outgoing stack argument area computation. Idea 119
+  must consume idea 114's prepared call-level outgoing stack area and keep
+  AArch64 `x16`, stack adjustment/restoration, and store ordering local.
+- No idea was created to reopen dispatch prepared producer/current-block or
+  select-chain contracts from idea 116. Idea 122 is limited to the calls-side
+  consumer gap: call-argument producer materializability and publication-source
+  routing.
+- No idea was created to reopen comparison fused-compare/current-block
+  publication contracts from idea 117. Idea 123 is limited to the calls-side
+  consumer gap: result late-publication and retargeting.
 
 ## Watchouts
 
@@ -223,4 +280,5 @@ producer dispatch and result recording/late publication.
 ## Proof
 
 Docs/analysis-only packet. No build or test proof was required because only
-`todo.md` changed; no `test_after.log` was generated for this packet.
+planning artifacts changed (`todo.md` plus new `ideas/open/` files); no
+`test_after.log` was generated for this packet.
