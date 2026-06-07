@@ -3718,6 +3718,134 @@ int check_call_argument_source_shape_contract() {
   return 0;
 }
 
+int check_call_argument_source_producer_materializability_contract() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
+  const auto loaded_name = names.value_names.intern("%loaded");
+  const auto sum_name = names.value_names.intern("%sum");
+  const auto shifted_name = names.value_names.intern("%shifted");
+
+  bir::Block block;
+  block.label = "entry";
+  block.label_id = block_label;
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_name = "slot",
+      .align_bytes = 4,
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .rhs = bir::Value::immediate_i32(9),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Shl,
+      .result = bir::Value::named(bir::TypeKind::I32, "%shifted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  block.insts.push_back(bir::CallInst{
+      .callee = "consume_i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "%sum")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type = bir::TypeKind::Void,
+  });
+
+  const auto* loaded = std::get_if<bir::LoadLocalInst>(&block.insts[0]);
+  const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[1]);
+  const auto* shifted = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = loaded,
+      });
+  source_producers.producers_by_value_name.emplace(
+      sum_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = sum,
+      });
+  source_producers.producers_by_value_name.emplace(
+      shifted_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = shifted,
+      });
+
+  const auto load_materialization =
+      prepare::find_prepared_call_argument_source_producer_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          3);
+  if (!load_materialization.has_value() ||
+      !load_materialization->materializable ||
+      load_materialization->producer.producer.kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      load_materialization->producer.instruction_index != 0 ||
+      load_materialization->producer.value_name != loaded_name) {
+    return fail(
+        "call-argument producer materializability contract: load-local source should be visible");
+  }
+
+  const auto sum_materialization =
+      prepare::find_prepared_call_argument_source_producer_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          3);
+  if (!sum_materialization.has_value() ||
+      !sum_materialization->materializable ||
+      sum_materialization->producer.producer.kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      sum_materialization->producer.producer.binary != sum ||
+      sum_materialization->producer.instruction_index != 1 ||
+      sum_materialization->producer.value_name != sum_name) {
+    return fail(
+        "call-argument producer materializability contract: ordinary binary producer should be visible");
+  }
+
+  if (prepare::find_prepared_call_argument_source_producer_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%shifted"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: non-covered binary producer should fail closed");
+  }
+  if (prepare::find_prepared_call_argument_source_producer_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          1)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: future producer should fail closed");
+  }
+
+  return 0;
+}
+
 int check_direct_global_select_chain_call_argument_contract() {
   const auto prepared =
       prepare_module(make_direct_global_select_chain_call_argument_module());
@@ -7566,6 +7694,11 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_call_argument_source_producer_materializability_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_direct_global_select_chain_call_argument_contract();

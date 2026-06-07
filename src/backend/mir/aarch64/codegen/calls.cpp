@@ -6253,30 +6253,26 @@ find_prepared_frame_slot_call_argument_move(
   };
 }
 
-[[nodiscard]] const prepare::PreparedEdgePublicationSourceProducer*
-find_prepared_scalar_call_argument_source_producer(
+[[nodiscard]] std::optional<prepare::PreparedCallArgumentSourceProducerMaterialization>
+find_prepared_scalar_call_argument_source_producer_materialization(
     const module::BlockLoweringContext& context,
     const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     const bir::Value& value,
     std::size_t before_instruction_index) {
   if (context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      context.function.prepared == nullptr ||
       value.kind != bir::Value::Kind::Named ||
       value.name.empty()) {
-    return nullptr;
+    return std::nullopt;
   }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return nullptr;
-  }
-  const auto* producer =
-      prepare::find_indexed_prepared_edge_publication_source_producer(
-          source_producers, *value_name);
-  if (producer == nullptr ||
-      producer->block_label != context.control_flow_block->block_label ||
-      producer->instruction_index >= before_instruction_index) {
-    return nullptr;
-  }
-  return producer;
+  return prepare::find_prepared_call_argument_source_producer_materialization(
+      context.function.prepared->names,
+      source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      value,
+      before_instruction_index);
 }
 
 [[nodiscard]] bool materialize_scalar_call_argument_value(
@@ -6319,9 +6315,10 @@ find_prepared_scalar_call_argument_source_producer(
   if (emitted_scalar_value_available(context, value, scalar_state)) {
     return true;
   }
-  const auto* producer = find_prepared_scalar_call_argument_source_producer(
-      context, source_producers, value, before_instruction_index);
-  if (producer == nullptr || context.bir_block == nullptr) {
+  const auto materialization =
+      find_prepared_scalar_call_argument_source_producer_materialization(
+          context, source_producers, value, before_instruction_index);
+  if (!materialization.has_value() || context.bir_block == nullptr) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -6330,12 +6327,12 @@ find_prepared_scalar_call_argument_source_producer(
     }
     return true;
   }
-  if (producer->kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+  const auto& producer = materialization->producer.producer;
+  if (producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
     return true;
   }
-  if (producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
-      producer->binary == nullptr ||
-      !is_scalar_call_argument_producer_opcode(producer->binary->opcode)) {
+  if (producer.kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      producer.binary == nullptr) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -6344,13 +6341,13 @@ find_prepared_scalar_call_argument_source_producer(
     }
     return true;
   }
-  const auto producer_index = producer->instruction_index;
+  const auto producer_index = materialization->producer.instruction_index;
   if (producer_index >= context.bir_block->insts.size()) {
     return false;
   }
   const auto* binary =
       std::get_if<bir::BinaryInst>(&context.bir_block->insts[producer_index]);
-  if (binary != producer->binary) {
+  if (binary != producer.binary) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,

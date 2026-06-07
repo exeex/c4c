@@ -339,6 +339,11 @@ struct PreparedSameBlockScalarProducer {
   ValueNameId value_name = kInvalidValueName;
 };
 
+struct PreparedCallArgumentSourceProducerMaterialization {
+  PreparedSameBlockScalarProducer producer;
+  bool materializable = false;
+};
+
 struct PreparedFusedCompareOperandProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -910,6 +915,18 @@ find_prepared_same_block_scalar_producer(
 
 [[nodiscard]] PreparedDirectGlobalSelectChainDependency
 find_prepared_direct_global_select_chain_dependency(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
+    bir::BinaryOpcode opcode);
+
+[[nodiscard]] std::optional<PreparedCallArgumentSourceProducerMaterialization>
+find_prepared_call_argument_source_producer_materialization(
     const PreparedNameTables& names,
     const PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockLabelId block_label,
