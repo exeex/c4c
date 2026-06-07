@@ -8,9 +8,11 @@ Current Step Title: Convert AArch64 Calls To Consume The Shared Surface
 
 ## Just Finished
 
-Completed plan Step 5: narrowed the remaining AArch64 call-result
-late-publication eligibility checks that were still rediscovering shared
-source-register publication facts.
+Plan Step 5 remains active after acceptance review. The last implementation
+packet narrowed the AArch64 call-result late-publication eligibility checks
+that were still rediscovering shared source-register publication facts, but
+review blocked closure because current-block publication consumption is still
+not represented by the shared surface.
 
 Changed files:
 - `src/backend/mir/aarch64/codegen/calls.cpp`: `AfterCallMoveLocalOwner`
@@ -32,19 +34,33 @@ surfaces, not in `PreparedCallResultPlan`; representing that route accurately
 needs a fact/signature that accepts or references those existing publication
 facts instead of deriving authority from call-result destination identity.
 
+Reviewer `review/idea_123_acceptance.md` judged the route on track and not
+testcase-overfit, but not closure-ready. The source idea and active plan both
+keep consumption of idea 117 current-block publication facts in scope, so the
+unimplemented `current_block_publication_consumption_available` gap must remain
+inside idea 123 rather than being treated as acceptance-ready.
+
 ## Suggested Next
 
-Acceptance review is ready for the idea 123 shared late-publication surface
-slice. If the review requires current-block publication consumption to be
-represented in this plan, split or add a follow-up packet for a real
-publication-fact-backed query signature rather than extending
-`PreparedCallResultPlan` heuristics.
+Execute a narrow Step 5 follow-up: add or route through a real
+publication-fact-backed query/signature for current-block publication
+consumption that accepts or references existing idea 117 prepared
+current-block publication/producer facts. Then convert only the matching
+AArch64 consumer path to consult that surface while keeping comparison
+publication authority, same-block producer discovery, scalar-state mutation,
+and machine-record emission local.
 
 ## Watchouts
 
 - `current_block_publication_consumption_available` is still intentionally
   unclaimed by `find_prepared_call_result_late_publication`; do not infer it
   from destination register/slot/stack-offset fields.
+- Do not close idea 123 until current-block publication consumption is either
+  implemented through existing idea 117 facts or deliberately split into a new
+  source idea by supervisor/lifecycle decision.
+- The next query shape should reference real current-block publication facts;
+  extending `PreparedCallResultPlan` destination heuristics would be route
+  drift.
 - The local bridge fallbacks remain for selected machine records that lack
   prepared identity. Removing those fallbacks requires first proving every
   relevant emitted CallAbi register carries prepared value id and bank.
