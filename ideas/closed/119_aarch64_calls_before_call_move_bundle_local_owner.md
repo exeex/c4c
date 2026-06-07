@@ -99,3 +99,70 @@ argument movement.
   immediate, FP, or f128 before-call paths remain unexamined.
 - The diff claims progress through line-count reduction, helper renames, or a
   broad file split while the old before-call authority remains in place.
+
+## Closure Note
+
+Closed after Step 5 acceptance review.
+
+Acceptance findings:
+
+- Before-call move translation is now behind the target-local
+  `BeforeCallMoveLocalOwner::instruction` surface in
+  `src/backend/mir/aarch64/codegen/calls.cpp`.
+- The wrapper remains the prepared-input collection surface and passes explicit
+  `PreparedBeforeCallMoveOwnerInputs` for source home, call-boundary
+  classification, f128 carrier facts, selected f128 carrier, and prepared
+  outgoing stack argument byte count.
+- No shared BIR/prealloc interfaces, headers, test expectations, or build
+  metadata were changed.
+- The final route-quality review found no blocking implementation issue, no
+  testcase overfit, and no expectation downgrade.
+- The reviewer-reported closure blocker was only the missing canonical
+  `test_after.log`; that blocker was resolved before closure.
+
+Reject-signal disposition:
+
+- No stack-home, stack-destination, or prior stack-preserved source reselecting
+  was introduced.
+- No new f128 carrier lookup, q-register transport authority, or module fallback
+  path was introduced.
+- No same-block immediate cast or immediate-publication rediscovery was
+  introduced.
+- Outgoing stack area handling consumes the prepared call-level byte count
+  instead of recomputing totals from per-argument destinations.
+- The proof covers neighboring register, stack, immediate, FP/f128, byval, and
+  outgoing-stack-area before-call routes rather than one named fixture.
+
+Reviewer report disposition:
+
+- `review/idea119_before_call_owner_review.md` judged the implementation as
+  matching the source idea, the route as on track, and technical debt as
+  acceptable.
+- Its only closure blocker, a missing `test_after.log`, was resolved by
+  regenerating the exact six-test focused proof and rerunning the regression
+  guard.
+
+Closure proof:
+
+```sh
+cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_prepare_frame_stack_call_contract|backend_prealloc_call_boundary_classification|backend_aarch64_target_instruction_records|backend_aarch64_call_boundary_owner)$' >> test_after.log 2>&1
+```
+
+Result: 6/6 focused backend/AArch64 tests passed in both `test_before.log` and
+`test_after.log`.
+
+Regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, with 6 passed before, 6 passed after, and no new failures.
+
+Residual follow-up:
+
+- No follow-up is required to complete idea 119.
+- A future cleanup may pass the prepared base home for the existing
+  `PointerBasePlusOffset` case through the owner input object, but this is not
+  a blocker because the current path performs a direct prepared-home lookup, not
+  stack-home re-selection.
