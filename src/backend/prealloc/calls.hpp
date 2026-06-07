@@ -439,6 +439,61 @@ struct PreparedCallResultPlan {
   std::optional<PreparedSpillSlotPlacement> destination_spill_slot_placement;
 };
 
+struct PreparedCallResultLatePublicationFact {
+  bool available = false;
+  bool source_register_publication_available = false;
+  bool source_in_destination_alias_available = false;
+  bool fpr_or_vreg_store_value_retarget_available = false;
+  bool current_block_publication_consumption_available = false;
+  PreparedRegisterBank value_bank = PreparedRegisterBank::None;
+  PreparedMoveStorageKind source_storage_kind = PreparedMoveStorageKind::None;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<PreparedValueId> destination_value_id;
+  std::optional<std::string> source_register_name;
+  std::optional<PreparedRegisterBank> source_register_bank;
+  std::optional<std::string> destination_register_name;
+  std::optional<PreparedRegisterBank> destination_register_bank;
+  std::optional<PreparedFrameSlotId> destination_slot_id;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+};
+
+[[nodiscard]] inline PreparedCallResultLatePublicationFact
+find_prepared_call_result_late_publication(const PreparedCallResultPlan& result) {
+  PreparedCallResultLatePublicationFact fact{
+      .value_bank = result.value_bank,
+      .source_storage_kind = result.source_storage_kind,
+      .destination_storage_kind = result.destination_storage_kind,
+      .destination_value_id = result.destination_value_id,
+      .source_register_name = result.source_register_name,
+      .source_register_bank = result.source_register_bank,
+      .destination_register_name = result.destination_register_name,
+      .destination_register_bank = result.destination_register_bank,
+      .destination_slot_id = result.destination_slot_id,
+      .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
+  };
+
+  fact.source_register_publication_available =
+      result.destination_value_id.has_value() &&
+      result.source_storage_kind == PreparedMoveStorageKind::Register &&
+      result.source_register_name.has_value() &&
+      result.source_register_bank.has_value();
+  fact.source_in_destination_alias_available =
+      fact.source_register_publication_available &&
+      result.destination_storage_kind == PreparedMoveStorageKind::Register &&
+      result.destination_register_name.has_value() &&
+      result.destination_register_bank.has_value() &&
+      *result.source_register_bank == *result.destination_register_bank &&
+      *result.source_register_name == *result.destination_register_name;
+  fact.fpr_or_vreg_store_value_retarget_available =
+      fact.source_register_publication_available &&
+      (*result.source_register_bank == PreparedRegisterBank::Fpr ||
+       *result.source_register_bank == PreparedRegisterBank::Vreg);
+  fact.available = fact.source_register_publication_available ||
+                   fact.source_in_destination_alias_available ||
+                   fact.fpr_or_vreg_store_value_retarget_available;
+  return fact;
+}
+
 struct PreparedClobberedRegister {
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::string register_name;

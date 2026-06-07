@@ -350,6 +350,23 @@ void append_missing_frame_slot_call_argument_publication_need(
       << (need.may_emit_local_aggregate_address_payload ? "yes" : "no");
 }
 
+void append_call_result_late_publication_fact(std::ostringstream& out,
+                                              const PreparedCallResultPlan& result) {
+  const auto fact = find_prepared_call_result_late_publication(result);
+  if (!fact.available) {
+    return;
+  }
+  out << " late_publication=yes"
+      << " late_source_register="
+      << (fact.source_register_publication_available ? "yes" : "no")
+      << " late_source_in_destination_alias="
+      << (fact.source_in_destination_alias_available ? "yes" : "no")
+      << " late_fpr_vreg_store_value_retarget="
+      << (fact.fpr_or_vreg_store_value_retarget_available ? "yes" : "no")
+      << " late_current_block_publication="
+      << (fact.current_block_publication_consumption_available ? "yes" : "no");
+}
+
 void append_aggregate_transport_plan(
     std::ostringstream& out,
     const PreparedAggregateTransportPlan& plan) {
@@ -563,6 +580,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (result.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *result.destination_stack_offset_bytes;
         }
+        append_call_result_late_publication_fact(out, result);
         out << "\n";
       }
       for (const auto& preserved : call.preserved_values) {

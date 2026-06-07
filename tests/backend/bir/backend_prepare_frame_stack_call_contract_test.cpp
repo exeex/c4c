@@ -3286,6 +3286,26 @@ int check_call_contract() {
       call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call contract: call_plans lost integer result ABI source");
   }
+  const auto result_late_publication =
+      prepare::find_prepared_call_result_late_publication(*call_plan.result);
+  if (!result_late_publication.source_register_publication_available ||
+      result_late_publication.current_block_publication_consumption_available) {
+    return fail("call contract: call result late-publication query overclaimed current-block visibility");
+  }
+  const prepare::PreparedCallResultPlan aliased_result{
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_value_id = prepare::PreparedValueId{1},
+      .source_register_name = std::string("rax"),
+      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .destination_register_name = std::string("rax"),
+      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+  };
+  const auto aliased_late_publication =
+      prepare::find_prepared_call_result_late_publication(aliased_result);
+  if (!aliased_late_publication.source_in_destination_alias_available) {
+    return fail("call contract: call result late-publication query lost alias visibility");
+  }
   if (!call_plan.result->source_register_placement.has_value() ||
       call_plan.result->source_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
       call_plan.result->source_register_placement->pool !=
@@ -3450,6 +3470,16 @@ int check_float_call_contract() {
       std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
     return fail("float-call contract: call_plans lost direct float result source identity");
   }
+  const auto result_late_publication =
+      prepare::find_prepared_call_result_late_publication(*call_plans->calls.front().result);
+  if (!result_late_publication.source_register_publication_available ||
+      !result_late_publication.fpr_or_vreg_store_value_retarget_available) {
+    return fail("float-call contract: call result late-publication query lost FPR retarget visibility");
+  }
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("late_fpr_vreg_store_value_retarget=yes") == std::string::npos) {
+    return fail("float-call contract: prepared dump no longer exposes FPR late-publication retargeting");
+  }
   return 0;
 }
 
@@ -3498,6 +3528,19 @@ int check_stack_result_slot_contract() {
   }
   if (result.destination_value_id != std::optional<prepare::PreparedValueId>{spilled_result->value_id}) {
     return fail("stack-result slot contract: call_plans lost direct spilled-result source identity");
+  }
+  const auto result_late_publication =
+      prepare::find_prepared_call_result_late_publication(result);
+  if (!result_late_publication.source_register_publication_available ||
+      result_late_publication.current_block_publication_consumption_available ||
+      result_late_publication.source_in_destination_alias_available ||
+      result_late_publication.fpr_or_vreg_store_value_retarget_available) {
+    return fail("stack-result slot contract: call result late-publication query drifted");
+  }
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("late_source_register=yes") == std::string::npos ||
+      prepared_dump.find("late_current_block_publication=no") == std::string::npos) {
+    return fail("stack-result slot contract: prepared dump no longer exposes late-publication fact");
   }
 
   return 0;
