@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/122_prepared_call_argument_producer_materializability_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Publication-Source And Select-Chain Dependency Visibility
+Current Step ID: 4
+Current Step Title: Add Missing Frame-Slot Argument Publication Visibility
 
 ## Just Finished
 
