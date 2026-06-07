@@ -7,6 +7,7 @@
 #include "src/backend/mir/aarch64/codegen/dispatch_edge_copies.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch_producers.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch_publication.hpp"
+#include "src/backend/mir/aarch64/codegen/effects.hpp"
 #include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/memory.hpp"
@@ -12861,6 +12862,66 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
   if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
           block.instructions.back().target.payload)) {
     return fail("expected return terminator to remain lowered after direct call");
+  }
+  return 0;
+}
+
+int preserve_effect_publication_scope_suppresses_call_node_payload_only() {
+  auto prepared = prepared_with_direct_call_plan();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  if (function_context.call_plans == nullptr ||
+      function_context.call_plans->calls.empty() ||
+      function_context.call_plans->calls.front().preserved_values.size() != 2) {
+    return fail("expected direct call fixture to carry prepared preserved values");
+  }
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  aarch64_codegen::ScopedPreparedCallPreserveEffectPublication suppress_preserve_effects(
+      false);
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected disabled preserve-effect publication to keep normal call dispatch");
+  }
+
+  const auto& call_instruction = block.instructions.front();
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &call_instruction.target.payload);
+  if (call == nullptr ||
+      call_instruction.target.opcode != aarch64_module::codegen::MachineOpcode::DirectCall ||
+      call->source_call != &function_context.call_plans->calls.front()) {
+    return fail("expected disabled preserve-effect publication to keep prepared source call");
+  }
+  if (call->source_call->preserved_values.size() != 2 ||
+      call->source_call->preserved_values.front().route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      call->source_call->preserved_values.back().route !=
+          prepare::PreparedCallPreservationRoute::StackSlot) {
+    return fail("expected source call plan to retain prepared preservation ownership");
+  }
+  if (!call->preserved_values.empty() || !call_instruction.target.preserves.empty()) {
+    return fail(
+        "expected disabled preserve-effect publication to suppress call-node "
+        "payload and effects only");
+  }
+  if (call->clobbered_registers.size() != 1 ||
+      call_instruction.target.clobbers.size() != 1 ||
+      call_instruction.target.side_effects.empty() ||
+      call_instruction.target.side_effects.front() !=
+          aarch64_module::codegen::MachineSideEffectKind::Call) {
+    return fail(
+        "expected disabled preserve-effect publication to leave call clobbers "
+        "and side effects intact");
   }
   return 0;
 }
@@ -33330,6 +33391,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          preserve_effect_publication_scope_suppresses_call_node_payload_only();
       status != 0) {
     return status;
   }
