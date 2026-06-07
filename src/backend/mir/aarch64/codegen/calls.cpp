@@ -1575,11 +1575,16 @@ StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index) {
   if (argument.source_selection.has_value()) {
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(argument);
+    if (routing.source_selection == nullptr) {
+      return std::nullopt;
+    }
     if (auto selected = selected_frame_slot_source(
             context,
             argument,
             nullptr,
-            *argument.source_selection,
+            *routing.source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
             true,
             instruction_index)) {
@@ -2752,9 +2757,9 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
   if (selected_prepared_register_argument_effect &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       argument != nullptr) {
-    const auto* source_selection = argument->source_selection.has_value()
-                                       ? &*argument->source_selection
-                                       : nullptr;
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
+    const auto* source_selection = routing.source_selection;
     const bool frame_slot_address_argument =
         source_home != nullptr &&
         argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
@@ -2784,16 +2789,16 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
         !structured_f128_register_argument_move && !register_byval_argument &&
         !indirect_byval_argument) {
       const auto* prior_selection =
-          argument->source_selection.has_value() &&
-                  argument->source_selection->kind ==
+          source_selection != nullptr &&
+                  source_selection->kind ==
                       prepare::PreparedCallArgumentSourceSelectionKind::
                           PriorPreservation
-              ? &*argument->source_selection
+              ? source_selection
               : nullptr;
       std::optional<PreservedCallArgumentSource> preserved_source;
       std::optional<ValueNameId> preserved_source_value_name;
-      if (prior_selection == nullptr && argument->source_selection.has_value() &&
-          argument->source_selection->kind ==
+      if (prior_selection == nullptr && source_selection != nullptr &&
+          source_selection->kind ==
               prepare::PreparedCallArgumentSourceSelectionKind::
                   LocalFrameAddressMaterialization) {
         append_call_diagnostic(
@@ -6128,8 +6133,10 @@ materialize_local_aggregate_address_call_argument(
     return diagnostic(
         "AArch64 local aggregate address call argument requires a prepared GPR result register");
   }
-  if (!argument.source_selection.has_value() ||
-      argument.source_selection->kind !=
+  const auto routing =
+      prepare::find_prepared_call_argument_publication_source_routing(argument);
+  if (routing.source_selection == nullptr ||
+      routing.source_selection->kind !=
           prepare::PreparedCallArgumentSourceSelectionKind::
               LocalFrameAddressMaterialization) {
     return diagnostic(
@@ -6150,7 +6157,7 @@ materialize_local_aggregate_address_call_argument(
       context,
       argument,
       source_home,
-      *argument.source_selection,
+      *routing.source_selection,
       prepare::PreparedCallArgumentSourceSelectionKind::
           LocalFrameAddressMaterialization,
       before_instruction_index);

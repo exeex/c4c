@@ -307,9 +307,10 @@ materialize_direct_global_select_chain_call_argument(
       value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
+  const auto routing =
+      prepare::find_prepared_call_argument_publication_source_routing(*argument_plan);
   const auto* call_argument_dependency =
-      prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
-          *argument_plan);
+      routing.direct_global_select_chain_dependency;
   if (call_argument_dependency == nullptr ||
       call_argument_dependency->source_value_name != *value_name) {
     return std::nullopt;

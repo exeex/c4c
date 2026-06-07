@@ -8,51 +8,50 @@ Current Step Title: Add Publication-Source And Select-Chain Dependency Visibilit
 
 ## Just Finished
 
-Completed plan Step 2: added shared prepared call-argument source-producer
-materializability query/fact coverage and wired AArch64 to consume it.
+Completed plan Step 3: added shared call-argument publication-source routing
+visibility and direct-global select-chain dependency visibility through the
+prepared call-argument surface without reopening idea 116 authority.
 
 Changed files:
-- `src/backend/prealloc/prepared_lookups.hpp`
-- `src/backend/prealloc/prepared_lookups.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch_lookup.cpp`
+- `src/backend/prealloc/calls.hpp`
 - `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/select_materialization.cpp`
 - `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
 
 Implemented shared prepared surface:
-- Added `PreparedCallArgumentSourceProducerMaterialization`.
-- Added `prepared_call_argument_binary_producer_opcode_is_materializable`.
-- Added `find_prepared_call_argument_source_producer_materialization`.
-- The query reuses prepared same-block source-producer identity, block,
-  instruction order, and result-name/type checks; it does not encode AArch64
-  register spelling, scratch selection, ABI register policy, or machine
-  instruction wrapping.
-- Materializable ordinary scalar routes are currently `LoadLocal` plus the
-  existing ordinary binary subset: add/sub/and/or/xor/mul/sdiv/srem.
+- Added `PreparedCallArgumentPublicationSourceRouting` and
+  `find_prepared_call_argument_publication_source_routing`.
+- The query exposes target-neutral call-argument source encoding, source value
+  and computed-address routing fields, prepared source-selection routing, and
+  the existing direct-global select-chain dependency pointer.
+- The query consumes existing idea 116 direct-global/select-chain dependency
+  facts through `PreparedCallArgumentDirectGlobalSelectChainDependency`; it
+  does not rescan producers, current blocks, joins, or select chains.
 
 AArch64 consumer update:
-- `dispatch_lookup.cpp` now delegates the old call-argument binary opcode
-  predicate to the shared prepared predicate.
-- `find_same_block_scalar_producer` consumes the shared materialization query
-  while preserving the existing prepared-lookup fallback path.
-- `calls.cpp` consumes the shared query before recursively emitting prepared
-  scalar call-argument producers; recursive operand lowering, register
-  retargeting, emitted-register recording, and machine instruction emission
+- `calls.cpp` now reads call-argument source-selection routing through the
+  shared publication-source query for sret/frame-slot, before-call move, and
+  local aggregate address paths.
+- `select_materialization.cpp` now reads direct-global select-chain dependency
+  through the shared publication-source query.
+- Register selection, scratch policy, select-chain assembler construction,
+  aggregate address payload construction, and machine instruction wrapping
   remain AArch64-local.
 
 Visibility proof:
 - `backend_prepare_frame_stack_call_contract` now has
-  `check_call_argument_source_producer_materializability_contract`, which
-  verifies shared query visibility for a load-local producer and an ordinary
-  binary call-argument producer, and verifies fail-closed behavior for a
-  non-covered binary producer and a future producer.
+  shared-query checks for symbol-address and computed-address call-argument
+  publication-source routing.
+- The direct-global select-chain call-argument contract now proves dependency
+  visibility through the shared routing query and the prepared dump.
 
 ## Suggested Next
 
-Execute Step 3: classify remaining call-argument producer gaps now that the
-shared materializability query exists. Recommended focus: decide whether
-publication-source routing should be folded into this shared surface or remain
-a separate prepared query, and separately classify direct-global select-chain,
-missing frame-slot publication need, and local aggregate address payloads.
+Execute Step 4: add or classify missing frame-slot argument publication
+visibility. Recommended focus: identify the target-neutral missing frame-slot
+publication need that still drives `materialize_missing_frame_slot_call_arguments`,
+keep local aggregate address payload construction AArch64-local, and prove the
+neighboring aggregate-address route remains covered.
 
 ## Watchouts
 
@@ -63,11 +62,13 @@ missing frame-slot publication need, and local aggregate address payloads.
 - Do not move AArch64 scalar instruction spelling, register retargeting,
   select-chain assembler lines, local aggregate address payloads, or machine
   instruction wrapping into shared code.
-- Remaining route gaps: direct-global select-chain still has a separate
-  prepared dependency query; missing frame-slot synthetic publication need is
-  still embedded in AArch64 iteration/filtering; local aggregate address
-  payload construction remains intentionally target-local; shift/unsigned
-  div/rem/comparison binary producers are not classified materializable by this
+- Direct-global select-chain dependency is now visible through the shared
+  call-argument publication-source routing query, but the existing dependency
+  authority remains the idea 116 call-plan fact.
+- Remaining route gaps: missing frame-slot synthetic publication need is still
+  embedded in AArch64 iteration/filtering; local aggregate address payload
+  construction remains intentionally target-local; shift/unsigned
+  div/rem/comparison binary producers are not classified materializable by the
   Step 2 shared query.
 - Treat expectation downgrades, unsupported-path rewrites, and widened target
   implementation edits as route failures.

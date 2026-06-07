@@ -107,6 +107,11 @@ struct PreparedCallArgumentSourceSelection {
   std::optional<std::size_t> byval_lane_source_instruction_index;
 };
 
+[[nodiscard]] constexpr bool prepared_call_argument_source_selection_available(
+    const PreparedCallArgumentSourceSelection& selection) {
+  return selection.kind != PreparedCallArgumentSourceSelectionKind::None;
+}
+
 enum class PreparedAggregateTransportKind {
   None,
   StackCopy,
@@ -276,6 +281,18 @@ struct PreparedCallArgumentPlan {
       direct_global_select_chain_dependency;
 };
 
+struct PreparedCallArgumentPublicationSourceRouting {
+  bool available = false;
+  PreparedStorageEncodingKind source_encoding = PreparedStorageEncodingKind::None;
+  std::optional<PreparedValueId> source_value_id;
+  std::optional<PreparedValueId> source_base_value_id;
+  std::optional<ValueNameId> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  const PreparedCallArgumentSourceSelection* source_selection = nullptr;
+  const PreparedCallArgumentDirectGlobalSelectChainDependency*
+      direct_global_select_chain_dependency = nullptr;
+};
+
 [[nodiscard]] constexpr const PreparedCallArgumentDirectGlobalSelectChainDependency*
 find_prepared_call_argument_direct_global_select_chain_dependency(
     const PreparedCallArgumentPlan& argument) {
@@ -285,6 +302,31 @@ find_prepared_call_argument_direct_global_select_chain_dependency(
                          .direct_global_dependency)
              ? &argument.direct_global_select_chain_dependency
              : nullptr;
+}
+
+[[nodiscard]] inline PreparedCallArgumentPublicationSourceRouting
+find_prepared_call_argument_publication_source_routing(
+    const PreparedCallArgumentPlan& argument) {
+  const auto* selection =
+      argument.source_selection.has_value() &&
+              prepared_call_argument_source_selection_available(
+                  *argument.source_selection)
+          ? &*argument.source_selection
+          : nullptr;
+  const auto* dependency =
+      find_prepared_call_argument_direct_global_select_chain_dependency(argument);
+  return PreparedCallArgumentPublicationSourceRouting{
+      .available = argument.source_encoding != PreparedStorageEncodingKind::None ||
+                   selection != nullptr ||
+                   dependency != nullptr,
+      .source_encoding = argument.source_encoding,
+      .source_value_id = argument.source_value_id,
+      .source_base_value_id = argument.source_base_value_id,
+      .source_base_value_name = argument.source_base_value_name,
+      .source_pointer_byte_delta = argument.source_pointer_byte_delta,
+      .source_selection = selection,
+      .direct_global_select_chain_dependency = dependency,
+  };
 }
 
 struct PreparedCallResultPlan {

@@ -3715,6 +3715,31 @@ int check_call_argument_source_shape_contract() {
         "call-argument source-shape contract: call_plans lost computed-address base identity authority");
   }
 
+  const auto symbol_routing =
+      prepare::find_prepared_call_argument_publication_source_routing(symbol_arg);
+  if (!symbol_routing.available ||
+      symbol_routing.source_encoding !=
+          prepare::PreparedStorageEncodingKind::SymbolAddress ||
+      symbol_routing.source_selection != nullptr ||
+      symbol_routing.direct_global_select_chain_dependency != nullptr) {
+    return fail(
+        "call-argument source-shape contract: symbol-address publication routing should be visible through shared query");
+  }
+
+  const auto computed_routing =
+      prepare::find_prepared_call_argument_publication_source_routing(computed_arg);
+  if (!computed_routing.available ||
+      computed_routing.source_encoding !=
+          prepare::PreparedStorageEncodingKind::ComputedAddress ||
+      computed_routing.source_base_value_id != computed_arg.source_base_value_id ||
+      computed_routing.source_base_value_name != computed_arg.source_base_value_name ||
+      computed_routing.source_pointer_byte_delta !=
+          std::optional<std::int64_t>{4} ||
+      computed_routing.direct_global_select_chain_dependency != nullptr) {
+    return fail(
+        "call-argument source-shape contract: computed-address publication routing should be visible through shared query");
+  }
+
   return 0;
 }
 
@@ -3858,10 +3883,13 @@ int check_direct_global_select_chain_call_argument_contract() {
   }
 
   const auto& argument = call_plans->calls.front().arguments.front();
+  const auto routing =
+      prepare::find_prepared_call_argument_publication_source_routing(argument);
   const auto* dependency =
-      prepare::find_prepared_call_argument_direct_global_select_chain_dependency(
-          argument);
+      routing.direct_global_select_chain_dependency;
   if (dependency == nullptr ||
+      !routing.available ||
+      routing.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
       dependency->source_value_name == c4c::kInvalidValueName ||
       prepare::prepared_value_name(prepared.names, dependency->source_value_name) !=
           "selected.global" ||
@@ -3871,6 +3899,19 @@ int check_direct_global_select_chain_call_argument_contract() {
           std::optional<std::size_t>{1}) {
     return fail(
         "direct-global select-chain call argument contract: call plan lost prepared dependency authority");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("direct_global_select_chain=yes") == std::string::npos ||
+      (prepared_dump.find("direct_global_source=%selected.global") ==
+           std::string::npos &&
+       prepared_dump.find("direct_global_source=selected.global") ==
+           std::string::npos) ||
+      prepared_dump.find("direct_global_root_is_select=yes") ==
+          std::string::npos ||
+      prepared_dump.find("direct_global_root_inst=1") == std::string::npos) {
+    return fail(
+        "direct-global select-chain call argument contract: prepared dump lost dependency visibility");
   }
 
   return 0;
