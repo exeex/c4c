@@ -1,118 +1,93 @@
 Status: Active
 Source Idea Path: ideas/open/115_aarch64_codegen_layout_post_prealloc_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Audit Inputs And Baseline Map
+Current Step ID: 2
+Current Step Title: Classify Large Owner Families
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Establish Audit Inputs And Baseline Map completed as an analysis-only
-inventory packet.
+Step 2 - Classify Large Owner Families completed as an analysis-only
+classification packet.
 
-Current owner-size inventory, counted with `wc -l` on 2026-06-07:
+Retained Step 1 audit baseline:
 
 | Area | Files | Total lines | Notes |
 | --- | ---: | ---: | --- |
-| `src/backend/mir/aarch64/codegen` | 74 | 51871 | C++/header owner surface after ideas 34-39, 113, and 114. |
-| `ref/claudes-c-compiler/src/backend/arm/codegen` | 20 | 7856 | Reference Rust layout; much smaller and centered on `emit.rs`, so line parity is not a useful goal. |
+| `src/backend/mir/aarch64/codegen` | 74 | 51871 | Current C++/header AArch64 codegen owner surface after ideas 34-39, 113, and 114. |
+| `ref/claudes-c-compiler/src/backend/arm/codegen` | 20 | 7856 | Reference Rust layout is smaller and centered on `emit.rs`; use it as an owner-boundary signal, not a line-count target. |
 
-Largest current AArch64 owner families, grouped by basename:
+Largest AArch64 owners from Step 1: `calls` 8665 lines, `memory` 5485,
+`alu` 4486, `instruction` 4033, `i128_ops` 2895, `comparison` 2731,
+`f128` 2559, and `machine_printer` 2201. Other large-tail context was
+`cast_ops` 1757, `globals` 1582, and `variadic` 1580.
 
-| Owner family | Lines | Step 2/3 relevance |
-| --- | ---: | --- |
-| `calls` | 8665 | Largest owner; must be classified after post-114 prepared outgoing-stack-area consumption, not from stale call-reservation assumptions. |
-| `memory` | 5485 | Store-source helper family has already folded back; classify remaining memory bulk as current local emission vs remaining shared fact gaps. |
-| `alu` | 4486 | Large target-local arithmetic surface; compare against reference `alu.rs`/`emit.rs` split before assuming move-forward debt. |
-| `instruction` | 4033 | Machine-record schema/validation surface; likely target representation, but Step 2 should verify whether any contract visibility is missing. |
-| `i128_ops` | 2895 | Large specialized lowering owner; compare against reference `i128_ops.rs` and current call/memory contracts. |
-| `comparison` | 2731 | Branch-fusion helper already folded back; classify the current combined owner rather than reopening idea 37. |
-| `f128` | 2559 | Large ABI/value transport owner; prior aggregate/HFA work means older missing-contract conclusions need current evidence. |
-| `machine_printer` | 2201 | Target machine printing/spelling surface; likely keep-local unless Step 2 finds dump/contract visibility gaps. |
-| `cast_ops` | 1757 | Outside Step 2 primary list, but part of current large-tail context. |
-| `globals` | 1582 | Outside Step 2 primary list; prior store-source/global publication work may already cover semantic source selection. |
-| `variadic` | 1580 | Outside Step 2 primary list; idea 113 found no duplicate aggregate `va_arg` follow-up needed. |
+Dispatch size notes for Step 3: `dispatch_edge_copies` 1391 lines,
+`dispatch` 1082, `dispatch_value_materialization` 762,
+`dispatch_producers` 642, `dispatch_publication` 435, and
+`dispatch_lookup` 226. Prior dispatch work says Step 3 should reject local
+rediscovery of prepared/publication facts through predecessor scans, BIR-name
+matching, or same-block producer matching.
 
-Dispatch-family size notes for Step 3:
+Reference comparison retained from Step 1: reference ARM's largest owner is
+`emit.rs` at 1999 lines, then `peephole.rs` at 1223. Feature files are much
+smaller than AArch64's large owners: `calls.rs` 263, `memory.rs` 252,
+`alu.rs` 229, `comparison.rs` 75, `f128.rs` 334, and `i128_ops.rs` 322.
 
-| Dispatch family | Lines | Current shape |
-| --- | ---: | --- |
-| `dispatch_edge_copies` | 1391 | Largest dispatch residue; prior shared-edge/publication work says avoid reintroducing predecessor-depth or BIR-name discovery. |
-| `dispatch` | 1082 | Dispatch orchestration/diagnostics owner after old diagnostics fold-back. |
-| `dispatch_value_materialization` | 762 | Target-local value materialization residue; compare with prepared value-home facts before classifying. |
-| `dispatch_producers` | 642 | Remaining producer/publication helper surface; check whether it is still a justified local helper or fold-back residue. |
-| `dispatch_publication` | 435 | Smaller current owner after publication-common fold-back; not in Step 3 primary list but relevant context. |
-| `dispatch_lookup` | 226 | Small lookup helper; not primary, but useful context for prepared lookup boundaries. |
+Prior-work and stale/covered map retained from Step 1:
 
-Reference comparison:
+- Idea 20 is stale as a current inventory but remains the non-duplication
+  guard: separate shared authority migration from mechanical fold-back.
+- Ideas 34, 39, and 39a covered the old memory store-source gap and folded the
+  deleted `memory_store_sources.*` helper family back into `memory.cpp`.
+- Idea 35 covered old calls helper file fold-back; idea 36 covered dispatch
+  diagnostics/publication-common fold-back; idea 37 covered comparison branch
+  fusion/prologue helper fold-back; idea 38 covered compatibility projection.
+- Idea 113 recorded no new idea for aggregate source selection, byval
+  transport, aggregate `va_arg` home preservation, and related aggregate
+  call-boundary details except for idea 114.
+- Idea 114 made outgoing stack argument area an explicit prepared call fact, so
+  stale notes about AArch64 deriving call-level stack reservation from
+  per-argument destinations are covered.
 
-- Reference ARM's largest owner is `emit.rs` at 1999 lines, followed by
-  `peephole.rs` at 1223 lines. Most feature files are far below the AArch64
-  large owners: `calls.rs` 263, `memory.rs` 252, `alu.rs` 229,
-  `comparison.rs` 75, `f128.rs` 334, and `i128_ops.rs` 322.
-- The reference backend centralizes emission differently, while AArch64 has
-  explicit machine-record, prepared-publication, and contract-consumer
-  surfaces. Treat reference layout as an owner-boundary signal, not as a
-  line-count target.
+Large-owner classification table, based on AST-backed function ownership
+queries with narrow text/reference context:
 
-Concise prior-work map:
+| Owner | Classification | Evidence | Follow-up disposition |
+| --- | --- | --- | --- |
+| `calls.cpp` | `keep-local`, `contract-needed` | The largest clusters consume prepared call facts instead of deriving the old reservation facts: `find_prepared_call_plan`/`require_prepared_call_plan`, `outgoing_stack_argument_bytes`, `make_outgoing_stack_base_instruction`, and `make_outgoing_stack_adjustment_instruction`. The rest is target call-boundary emission and ABI mechanics: `make_call_boundary_move_instruction`, `lower_before_call_move`, `lower_after_call_move`, `materialize_indirect_call_callee_to_prepared_register`, `record_call_result_source_register`, and `publish_stack_preserved_call_values`. | No new fold-back idea for old calls helper files; idea 35 already covered that. No new outgoing-stack-area idea; idea 114 made that a prepared fact. Candidate to draft later only if Step 4 wants contract visibility around call-boundary move/republication dumps, because the owner still has many prepared-consumer validation paths. |
+| `memory.cpp` | `keep-local`, `contract-needed` | Current bulk is AArch64 memory instruction construction, addressing, effects, and prepared-publication consumption: `make_memory_record_from_prepared_access`, `make_prepared_memory_operand_record`, `lower_memory_instruction`, `lower_f128_transport_instruction`, `lower_i128_transport_instruction`, `prepared_store_local_access`, `prepared_store_source_producer`, `lower_store_local_value_publication`, and `lower_store_global_value_publication_from_plan`. Store-source logic now appears as prepared-plan consumers, not the deleted `memory_store_sources.*` split. | No new store-source fold-back idea; ideas 34, 39, and 39a cover that prior gap. Candidate to draft later as contract-needed only if reviewer wants dump/tests for prepared store-local/global publication coverage before cleanup. |
+| `alu.cpp` | `keep-local`, `contract-needed` | The file is dominated by AArch64 scalar opcode selection, immediate encodability, scratch selection, and publication emission: `scalar_alu_operation_accepts_immediate`, `scalar_alu_opcode_semantic_facts`, `scalar_alu_stack_publication_lines`, `find_prepared_scalar_value_home`, `make_prepared_scalar_operand`, `make_scalar_alu_instruction_record`, `make_prepared_scalar_alu_record`, `lower_scalar_mul_with_distinct_rhs_scratch`, and `lower_scalar_instruction`. | No reference-layout parity idea; reference ARM keeps this smaller because it centralizes emission in `emit.rs`. Possible follow-up should be contract visibility for scalar-publication/prepared-home facts, not a mechanical split. |
+| `comparison.cpp` | `keep-local`, `move-forward`, `contract-needed` | Target-local branch and compare emission is clear in `make_prepared_conditional_branch_record`, `lower_prepared_branch_terminator`, `lower_prepared_i128_compare_instruction`, `lower_fused_compare_branch_from_emitted_cast`, and `lower_conditional_branch_from_emitted_condition`. Shared-authority residue is more plausible here than in the other owners because the file still locates prepared/current-block publication facts with `find_prepared_materialized_compare_join_targets`, `find_prepared_fused_compare_operand_producer_facts`, `collect_prepared_current_block_entry_publications`, and `prepared_current_block_entry_publication_register`. | No new branch-fusion fold-back idea; idea 37 already folded the old helper. Candidate to draft later: a bounded move-forward/contract idea for fused-compare prepared publication facts if Step 4 decides this should be shared instead of comparison-local lookup. |
+| `f128.cpp` | `keep-local`, `contract-needed` | The owner is specialized f128 transport/runtime-helper ABI machinery: `prepared_f128_full_width_carrier_facts`, `prepared_f128_memory_backed_carrier_facts`, `append_f128_helper_move_line`, `validate_f128_transport_instruction`, `validate_f128_runtime_helper_boundary_instruction`, `make_prepared_f128_carrier_transport_record`, `make_f128_helper_operand_record`, `make_prepared_f128_runtime_helper_boundary_record`, and `lower_f128_runtime_helper_instruction`. | No new aggregate/HFA call-boundary idea; idea 113 already found no current follow-up there. Candidate only for dump/test visibility around f128 runtime-helper boundary contracts before any cleanup. |
+| `i128_ops.cpp` | `keep-local`, `contract-needed` | The file owns i128 pair/lane transport, shift/compare semantics, and runtime helper boundary records: `validate_i128_div_rem_helper_marshaling_plan`, `append_i128_helper_move_line`, `make_prepared_i128_shift_record`, `make_prepared_i128_compare_record`, `make_i128_helper_carrier_lane_adapter`, `make_prepared_i128_runtime_helper_boundary_record`, `i128_*_selection_status`, and `lower_i128_pair_operation_instruction`. | No phoenix or fold-back idea justified from this pass; the bulk is specialized representation and ABI. Candidate only for contract visibility around i128 runtime helper marshaling and lane binding if Step 4 wants proof before cleanup. |
+| `machine_printer.cpp` | `keep-local` | This is target spelling/printing and final assembly line materialization: `register_name_with_view`, `print_memory`, `print_atomic_memory`, `print_frame`, `print_scalar`, `print_call_boundary_move`, `print_call`, `print_call_boundary_abi_binding`, and `print_machine_instruction_line_payloads`. The reference ARM comparison also points to centralized emit/printing rather than shared semantic authority. | No new idea from Step 2. Printing remains AArch64-local unless a later contract idea requires extra dump visibility. |
+| `instruction.cpp` | `keep-local`, `contract-needed` | The file is the target machine-record schema and validation/spelling layer: `machine_opcode_spelling`, `operand_kind_spelling`, `record_surface_kind_spelling`, `machine_node_selection_status_spelling`, `is_target_mir_record_surface`, `machine_opcode_from_scalar_instruction`, `branch_selection_status`, `scalar_selection_status`, `make_*_operand`, `make_*_instruction`, and `make_unsupported_machine_instruction`. | No mechanical cleanup idea from this pass. Candidate only if Step 4 decides machine-record selection-status/dump visibility is a prerequisite contract for later owner cleanup. |
 
-- Idea 20 created the original layout classification and follow-ups 34-39.
-  Its broad conclusion is stale as an inventory, but still useful as a
-  non-duplication rule: separate shared authority migration from mechanical
-  AArch64 fold-back.
-- Idea 34 moved a selected store-source decision out of AArch64 same-block
-  rediscovery into shared prepared store-source publication. Do not reopen it
-  unless current Step 2 finds a concrete remaining source-choice gap.
-- Idea 35 folded `calls_byval_aggregates`, `calls_common`,
-  `calls_dispatch_bridge`, and `calls_moves` into the calls owner. These files
-  are gone; Step 2 should classify today's `calls.cpp`, not recreate the old
-  calls fold-back.
-- Idea 36 folded `dispatch_diagnostics` and
-  `dispatch_publication_common` into dispatch/publication owners. These files
-  are gone; dispatch diagnostics/publication-common split ownership is covered.
-- Idea 37 folded `comparison_branch_fusion` and `prologue_entry_formals`.
-  These files are gone; comparison/prologue helper split ownership is covered.
-- Idea 38 folded `compatibility_projection` into `module_compile.cpp`.
-  The standalone files are gone; only module-private compatibility projection
-  helpers remain.
-- Idea 39 and 39a removed the semantic store-source blocker and then folded
-  `memory_store_sources.*` into `memory.cpp`. The old memory helper family is
-  gone; remaining memory bulk should be classified on current code evidence.
-- Idea 113 audited aggregate call-boundary repairs and created only idea 114.
-  It explicitly recorded "no new idea" for frame-slot aggregate address
-  materialization, local aggregate pointer operand selection, byval aggregate
-  transport, and aggregate `va_arg` home preservation.
-- Idea 114 closed on 2026-06-06. Prepared call planning now publishes an
-  explicit outgoing stack argument area; AArch64 consumes that shared prepared
-  area while retaining target-local `x16`, stack adjustment/restoration, and
-  store-order policy.
+Follow-up idea candidates to consider in Step 4:
 
-Stale or covered prior conclusions:
+- `comparison.cpp`: prepared fused-compare/current-block publication facts may
+  be a bounded `move-forward` plus `contract-needed` idea, with reject signals
+  against BIR-name matching or same-block producer rediscovery.
+- `calls.cpp`: call-boundary move/republication dump or test visibility may be
+  a bounded `contract-needed` idea, but not an outgoing-stack-area repair.
+- `memory.cpp`, `alu.cpp`, `f128.cpp`, `i128_ops.cpp`, and `instruction.cpp`:
+  only draft contract-visibility ideas if Step 4 can name concrete dumps/tests
+  and cleanup consumers; otherwise record no new idea.
 
-- Stale: any audit note saying AArch64 must derive outgoing stack reservation
-  from per-argument stack destinations. Idea 114 made the call-level area an
-  explicit prepared fact.
-- Covered: old mechanical split-file cleanup for calls, dispatch diagnostics,
-  branch/prologue entry helpers, compatibility projection, and memory
-  store-source helpers.
-- Covered unless current code disproves it: aggregate source selection, byval
-  transport, and aggregate `va_arg` home preservation were reviewed by idea
-  113 and did not receive new follow-up ideas.
-- Still live for classification: the current oversized owners may contain
-  target-local representation/emission bulk, missing dump/contract visibility,
-  phoenix-worthy tangles, or remaining shared-authority residue, but Step 2
-  should prove that from current code rather than pre-113/pre-114 notes.
+No phoenix-candidate classification was justified for any Step 2 owner in this
+pass. The files are large, but the observed clusters have identifiable target
+ABI, emission, record-schema, or prepared-contract consumer responsibilities
+rather than one tangled rewrite target.
 
 ## Suggested Next
 
-Delegate Step 2: classify the large owner families
-`calls.cpp`, `memory.cpp`, `alu.cpp`, `comparison.cpp`, `f128.cpp`,
-`i128_ops.cpp`, `machine_printer.cpp`, and `instruction.cpp` against current
-responsibility. Start with `calls.cpp` and `memory.cpp` because they have the
-largest current footprint and the highest risk of stale prior conclusions from
-ideas 113/114 and 34/39.
+Delegate Step 3: classify the dispatch-family residue in `dispatch.cpp`,
+`dispatch_edge_copies.cpp`, `dispatch_value_materialization.cpp`, and
+`dispatch_producers.cpp`. Focus on whether current dispatch helpers still
+rediscover prepared/publication facts locally or are now target-local
+materialization/edge-copy consumers.
 
 ## Watchouts
 
@@ -130,9 +105,17 @@ ideas 113/114 and 34/39.
 - For dispatch-family classification, prior closure notes reject AArch64-local
   rediscovery of prepared/publication facts through predecessor scans, BIR name
   matching, or same-block producer matching.
+- Step 2 found the strongest possible move-forward candidate in
+  `comparison.cpp`, where fused compare/current-block publication lookup still
+  looks more like shared prepared fact ownership than pure target spelling.
+- Do not draft new ideas for old calls helper splits, outgoing stack area,
+  memory store-source helpers, branch-fusion file folding, aggregate source
+  selection, byval transport, or aggregate `va_arg` preservation unless Step 3
+  or Step 4 finds concrete current evidence beyond the closed-work map.
 
 ## Proof
 
 No build/test proof required by the delegated packet because this slice was
-analysis-only. Verification performed by read-only inventory and historical
-mapping commands; no `test_after.log` was produced for this packet.
+analysis-only. Verification used read-only `c4c-clang-tool-ccdb`
+`list-symbols` and `function-signatures` queries plus narrow text/reference
+context; no `test_after.log` was produced for this packet.
