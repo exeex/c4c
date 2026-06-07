@@ -2683,23 +2683,37 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
   return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
+struct PreparedBeforeCallMoveOwnerInputs {
+  const prepare::PreparedValueHome* source_home = nullptr;
+  prepare::PreparedCallBoundaryMoveClassification classification{};
+  const prepare::PreparedF128CarrierFunction* f128_carriers = nullptr;
+  const prepare::PreparedF128Carrier* source_f128_carrier = nullptr;
+  std::size_t outgoing_stack_argument_bytes = 0;
+};
+
+struct BeforeCallMoveLocalOwner {
+  [[nodiscard]] static std::optional<module::MachineInstruction> instruction(
+      const module::BlockLoweringContext& context,
+      const prepare::PreparedCallPlan& call_plan,
+      const prepare::PreparedMoveBundle& bundle,
+      const prepare::PreparedCallBoundaryEffectPlan& effect,
+      const prepare::PreparedMoveResolution& move,
+      const PreparedBeforeCallMoveOwnerInputs& prepared,
+      std::size_t instruction_index,
+      module::ModuleLoweringDiagnostics& diagnostics);
+};
+
+std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedMoveBundle& bundle,
     const prepare::PreparedCallBoundaryEffectPlan& effect,
     const prepare::PreparedMoveResolution& move,
+    const PreparedBeforeCallMoveOwnerInputs& prepared,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  const auto* source_home =
-      context.function.value_locations == nullptr
-          ? nullptr
-          : prepare::find_indexed_prepared_value_home(
-                context.function.value_home_lookups,
-                context.function.value_locations,
-                move.from_value_id);
-  const auto classification =
-      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* source_home = prepared.source_home;
+  const auto& classification = prepared.classification;
   const bool selected_prepared_register_argument_effect =
       effect.effect_kind == prepare::PreparedCallBoundaryEffectKind::ExplicitMove &&
       effect.phase == prepare::PreparedMovePhase::BeforeCall &&
@@ -2710,29 +2724,8 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       &bundle.moves[effect.order_index] == &move;
   const auto* argument = classification.argument_plan;
   const auto* binding = classification.abi_binding;
-  const auto* f128_carriers =
-      context.function.prepared == nullptr
-          ? nullptr
-          : prepare::find_prepared_f128_carriers(
-                *context.function.prepared,
-                context.function.control_flow != nullptr
-                    ? context.function.control_flow->function_name
-                    : c4c::kInvalidFunctionName);
-  const auto* source_f128_carrier =
-      f128_carriers != nullptr && source_home != nullptr
-          ? prepare::find_prepared_f128_carrier(*f128_carriers, source_home->value_name)
-          : nullptr;
-  if (source_f128_carrier == nullptr && f128_carriers != nullptr && argument != nullptr &&
-      argument->source_value_id.has_value()) {
-    source_f128_carrier =
-        prepare::find_prepared_f128_carrier(*f128_carriers, *argument->source_value_id);
-  }
-  if (source_f128_carrier == nullptr && context.function.prepared != nullptr &&
-      argument != nullptr && argument->source_value_id.has_value()) {
-    source_f128_carrier =
-        F128CarrierCallOperandOwner::find_in_module(*context.function.prepared,
-                                                    *argument->source_value_id);
-  }
+  const auto* f128_carriers = prepared.f128_carriers;
+  const auto* source_f128_carrier = prepared.source_f128_carrier;
   const bool structured_f128_register_argument_move =
       argument != nullptr &&
       (argument->source_register_bank == prepare::PreparedRegisterBank::Vreg ||
@@ -3636,7 +3629,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     move_record.source_memory = source_memory_after_outgoing_stack_reservation(
-        *source, outgoing_stack_argument_bytes(call_plan));
+        *source, prepared.outgoing_stack_argument_bytes);
     move_record.source_memory_materializes_address = address_source.has_value();
     move_record.destination_register = *destination;
   }
@@ -3690,7 +3683,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
-        *source, outgoing_stack_argument_bytes(call_plan));
+        *source, prepared.outgoing_stack_argument_bytes);
     const auto destination = StackFrameSlotCallOperandOwner::stack_call_argument_destination(
         context, *argument, *source_home, move, binding, adjusted_source, instruction_index);
     if (!destination.has_value()) {
@@ -3824,7 +3817,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
-        *source, outgoing_stack_argument_bytes(call_plan));
+        *source, prepared.outgoing_stack_argument_bytes);
     return make_aggregate_stack_copy_instruction(
         context, instruction_index, adjusted_source, *destination);
   }
@@ -3873,7 +3866,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
-        *source, outgoing_stack_argument_bytes(call_plan));
+        *source, prepared.outgoing_stack_argument_bytes);
     if (auto materialized = materialize_f128_stack_call_argument_source(
             context, instruction_index, adjusted_source, *destination)) {
       return materialized;
@@ -3958,7 +3951,7 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       return std::nullopt;
     }
     const auto adjusted_source = source_memory_after_outgoing_stack_reservation(
-        *source, outgoing_stack_argument_bytes(call_plan));
+        *source, prepared.outgoing_stack_argument_bytes);
     if (auto materialized = materialize_fp_stack_call_argument_source(
             context, instruction_index, adjusted_source, *destination)) {
       return materialized;
@@ -4058,6 +4051,65 @@ ImmediateScalarCallArgumentPublicationOwner::instruction(
       context,
       instruction_index,
       make_call_boundary_move_instruction(std::move(move_record)));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedCallBoundaryEffectPlan& effect,
+    const prepare::PreparedMoveResolution& move,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* source_home =
+      context.function.value_locations == nullptr
+          ? nullptr
+          : prepare::find_indexed_prepared_value_home(
+                context.function.value_home_lookups,
+                context.function.value_locations,
+                move.from_value_id);
+  auto classification =
+      prepare::classify_prepared_call_boundary_move(call_plan, bundle, move);
+  const auto* argument = classification.argument_plan;
+  const auto* f128_carriers =
+      context.function.prepared == nullptr
+          ? nullptr
+          : prepare::find_prepared_f128_carriers(
+                *context.function.prepared,
+                context.function.control_flow != nullptr
+                    ? context.function.control_flow->function_name
+                    : c4c::kInvalidFunctionName);
+  const auto* source_f128_carrier =
+      f128_carriers != nullptr && source_home != nullptr
+          ? prepare::find_prepared_f128_carrier(*f128_carriers, source_home->value_name)
+          : nullptr;
+  if (source_f128_carrier == nullptr && f128_carriers != nullptr && argument != nullptr &&
+      argument->source_value_id.has_value()) {
+    source_f128_carrier =
+        prepare::find_prepared_f128_carrier(*f128_carriers, *argument->source_value_id);
+  }
+  if (source_f128_carrier == nullptr && context.function.prepared != nullptr &&
+      argument != nullptr && argument->source_value_id.has_value()) {
+    source_f128_carrier =
+        F128CarrierCallOperandOwner::find_in_module(*context.function.prepared,
+                                                    *argument->source_value_id);
+  }
+
+  return BeforeCallMoveLocalOwner::instruction(
+      context,
+      call_plan,
+      bundle,
+      effect,
+      move,
+      PreparedBeforeCallMoveOwnerInputs{
+          .source_home = source_home,
+          .classification = std::move(classification),
+          .f128_carriers = f128_carriers,
+          .source_f128_carrier = source_f128_carrier,
+          .outgoing_stack_argument_bytes = outgoing_stack_argument_bytes(call_plan),
+      },
+      instruction_index,
+      diagnostics);
 }
 
 [[nodiscard]] const prepare::PreparedCallArgumentPlan*
