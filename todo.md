@@ -3,47 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/120_aarch64_calls_after_call_result_value_local_owner.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Split File Boundary Only If The Owner Is Stable
+Current Step ID: 4
+Current Step Title: Prove Neighboring After-Call Result Routes
 
 ## Just Finished
 
-Step 2 extracted the after-call result/value emission body into the in-place
-AArch64-local `AfterCallMoveLocalOwner::instruction` surface in
-`src/backend/mir/aarch64/codegen/calls.cpp`.
+Step 3 deferred a separate helper-file split for the in-place
+`AfterCallMoveLocalOwner`.
 
 Changed files:
 
-- `src/backend/mir/aarch64/codegen/calls.cpp`
 - `todo.md`
 
-The `lower_after_call_move` wrapper is now the prepared-input collection
-surface. It gathers the destination home, call-boundary classification,
-prepared f128 carrier table, and selected destination f128 carrier, then passes
-those explicit inputs through `PreparedAfterCallMoveOwnerInputs` to the local
-owner. The owner preserves the existing AArch64-local register/result view
-selection, f128 q-register spelling, frame-slot store publication, record
-construction, diagnostics, and fallback FPR path without recomputing prepared
-destination homes, stack frame-slot facts, f128 carriers, or result
-classification.
+No code moved. The owner boundary is explicit and target-local, but the current
+implementation still depends on nearby private `calls.cpp` surfaces:
+`append_call_diagnostic`, `F128CarrierCallOperandOwner`,
+`make_register_operand_from_prepared_authority`, scalar register-view helpers,
+`register_name_with_expected_view`, call-boundary instruction wrapping, and
+frame-slot memory record spelling. Splitting now would require exporting or
+relocating those helper surfaces, or duplicating AArch64 register and memory
+policy in a new file. That would increase coupling and declaration surface
+without narrowing the after-call owner scope.
 
-The synthetic register-to-stack result publication path in
-`lower_after_call_moves` remains intact and still routes through
-`lower_after_call_move`, so synthetic result publication receives the same
-prepared-input wrapper and local-owner emission path as bundle moves.
-
-The hook-triggered review reminder was addressed by
-`review/idea120_after_call_owner_review.md`. The review found no blocking
-implementation drift, no testcase-overfit evidence, and no masked coverage
-claim; its only lifecycle blocker was the stale top-of-file metadata, now
-repaired to point at Step 3.
+The deferred split preserves the prepared-input contract from Step 2:
+`lower_after_call_move` remains the collection surface for destination home,
+call-boundary classification, prepared f128 carrier table, and selected
+destination f128 carrier, while `AfterCallMoveLocalOwner::instruction` owns the
+AArch64-local translation into register operands, q/f128 rendering,
+frame-slot store publication, call-boundary records, diagnostics, and fallback
+FPR handling.
 
 ## Suggested Next
 
-Execute Step 3: decide whether to defer or perform a file split for
-`AfterCallMoveLocalOwner`. The current extraction is in-place and still depends
-on nearby private AArch64 register, f128, memory, and record-construction
-helpers.
+Execute Step 4: prove neighboring after-call result routes across the focused
+backend/AArch64 subset. Confirm scalar integer, scalar FP, f128/vector-carrier,
+and frame-slot result storage coverage, and record any remaining coverage gap
+with the exact route that still needs a follow-up.
 
 ## Watchouts
 
@@ -60,17 +55,13 @@ helpers.
   is still present. Current proof covers f128 q-register result publication to
   a frame slot, while register-home after-call result coverage remains strongest
   for GPR and scalar FPR/HFA lanes.
+- Revisit file splitting only if a later helper extraction creates a smaller
+  target-local interface that does not require exporting the private calls
+  diagnostic, operand, f128, memory, and call-boundary record helpers together.
 
 ## Proof
 
-Ran exactly:
-
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_prepare_frame_stack_call_contract|backend_prealloc_call_boundary_classification|backend_aarch64_target_instruction_records)$' >> test_after.log 2>&1`
-
-Result: passed, 5/5 tests.
-
-Proof log: `test_after.log`.
-
-Supervisor regression guard:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-passed with 5/5 before and 5/5 after, no new failures.
+No build or test run was required for Step 3 because no code, build metadata,
+headers, or test expectations changed. The packet made a boundary decision and
+updated canonical execution state only; the previous `test_after.log` was left
+unchanged.
