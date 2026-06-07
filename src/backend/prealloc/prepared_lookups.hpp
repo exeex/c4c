@@ -748,6 +748,13 @@ prepared_edge_publication_matches_parallel_copy_move_source(
 [[nodiscard]] bool prepared_edge_copy_source_facts_have_materializable_producer(
     const PreparedEdgeCopySourceFacts& facts);
 
+[[nodiscard]] bool prepared_edge_publication_source_home_matches_source(
+    const PreparedEdgePublication& publication);
+
+[[nodiscard]] bool prepared_edge_publication_source_memory_matches_access(
+    const PreparedEdgePublication& publication,
+    const PreparedMemoryAccess& access);
+
 [[nodiscard]] PreparedAggregateStackSourceAuthority
 prepare_aggregate_stack_source_authority(
     const PreparedEdgePublication* publication);

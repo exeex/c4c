@@ -241,30 +241,6 @@ struct EdgeSelectChainState {
     const prepare::PreparedEdgePublication* prepared_publication,
     EdgeSelectChainState& select_chain_state);
 
-[[nodiscard]] bool prepared_publication_source_home_matches_source(
-    const prepare::PreparedEdgePublication& publication) {
-  return publication.source_home != nullptr &&
-         publication.source_home->value_name == publication.source_value_name &&
-         publication.source_home->kind == publication.source_home_kind;
-}
-[[nodiscard]] bool prepared_publication_source_memory_matches_access(
-    const prepare::PreparedEdgePublication& publication,
-    const prepare::PreparedMemoryAccess& access) {
-  return access.result_value_name.has_value() &&
-         *access.result_value_name == publication.source_value_name &&
-         publication.source_memory_base_kind == access.address.base_kind &&
-         publication.source_memory_frame_slot_id == access.address.frame_slot_id &&
-         publication.source_memory_symbol_name == access.address.symbol_name &&
-         publication.source_memory_pointer_value_name ==
-             access.address.pointer_value_name &&
-         publication.source_memory_byte_offset == access.address.byte_offset &&
-         publication.source_memory_size_bytes == access.address.size_bytes &&
-         publication.source_memory_align_bytes == access.address.align_bytes &&
-         publication.source_memory_address_space == access.address_space &&
-         publication.source_memory_is_volatile == access.is_volatile &&
-         publication.source_memory_can_use_base_plus_offset ==
-             access.address.can_use_base_plus_offset;
-}
 [[nodiscard]] const prepare::PreparedMemoryAccess*
 prepared_publication_source_memory_access(
     const module::BlockLoweringContext& context,
@@ -277,10 +253,11 @@ prepared_publication_source_memory_access(
       publication.source_memory_access_status !=
           prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available ||
       publication.source_memory_access == nullptr ||
-      !prepared_publication_source_home_matches_source(publication) ||
+      !prepare::prepared_edge_publication_source_home_matches_source(
+          publication) ||
       !prepared_memory_access_matches_instruction(
           context, publication.source_memory_access, load) ||
-      !prepared_publication_source_memory_matches_access(
+      !prepare::prepared_edge_publication_source_memory_matches_access(
           publication, *publication.source_memory_access)) {
     return nullptr;
   }
@@ -291,7 +268,8 @@ prepared_publication_source_register(
     const prepare::PreparedEdgePublication& publication,
     const bir::Value& value) {
   if (!prepared_edge_publication_source_matches_value(publication, value) ||
-      !prepared_publication_source_home_matches_source(publication) ||
+      !prepare::prepared_edge_publication_source_home_matches_source(
+          publication) ||
       publication.source_home == nullptr ||
       publication.source_home->kind != prepare::PreparedValueHomeKind::Register ||
       !publication.source_home->register_name.has_value()) {

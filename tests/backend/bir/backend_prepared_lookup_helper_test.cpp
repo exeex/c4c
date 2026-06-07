@@ -2180,6 +2180,45 @@ int verify_edge_publication_source_producer_facts() {
       load_publication->source_memory_access->result_value_name != loaded_name) {
     return fail("edge publication should expose prepared source-memory facts");
   }
+  if (!prepare::prepared_edge_publication_source_home_matches_source(
+          *load_publication)) {
+    return fail(
+        "edge publication helper should accept matching prepared source home");
+  }
+  auto mismatched_source_home_publication = *load_publication;
+  mismatched_source_home_publication.source_home_kind =
+      prepare::PreparedValueHomeKind::StackSlot;
+  if (prepare::prepared_edge_publication_source_home_matches_source(
+          mismatched_source_home_publication)) {
+    return fail(
+        "edge publication helper should reject mismatched source home kind");
+  }
+  mismatched_source_home_publication = *load_publication;
+  mismatched_source_home_publication.source_home = nullptr;
+  if (prepare::prepared_edge_publication_source_home_matches_source(
+          mismatched_source_home_publication)) {
+    return fail("edge publication helper should reject missing source home");
+  }
+  if (!prepare::prepared_edge_publication_source_memory_matches_access(
+          *load_publication, *load_publication->source_memory_access)) {
+    return fail(
+        "edge publication helper should accept matching prepared source memory");
+  }
+  auto mismatched_source_memory_publication = *load_publication;
+  mismatched_source_memory_publication.source_memory_byte_offset = 8;
+  if (prepare::prepared_edge_publication_source_memory_matches_access(
+          mismatched_source_memory_publication,
+          *load_publication->source_memory_access)) {
+    return fail(
+        "edge publication helper should reject mismatched source memory offset");
+  }
+  auto unnamed_source_memory_access = *load_publication->source_memory_access;
+  unnamed_source_memory_access.result_value_name.reset();
+  if (prepare::prepared_edge_publication_source_memory_matches_access(
+          *load_publication, unnamed_source_memory_access)) {
+    return fail(
+        "edge publication helper should reject source memory without result value");
+  }
   if (cast_publication == nullptr ||
       cast_publication->source_producer_kind !=
           prepare::PreparedEdgePublicationSourceProducerKind::Cast ||

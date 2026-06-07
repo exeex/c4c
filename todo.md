@@ -8,10 +8,11 @@ Current Step Title: Expose Edge-Publication And Parallel-Copy Prepared Facts
 
 ## Just Finished
 
-Step 2 - Expose Edge-Publication And Parallel-Copy Prepared Facts complete.
+Step 2 - Expose Edge-Publication And Parallel-Copy Prepared Facts complete
+across two compact sub-slices.
 
-Moved the lowest-risk local AArch64 edge-copy predicate into shared prepared
-lookup authority:
+Sub-slice 1, prior committed packet: moved the lowest-risk local AArch64
+edge-copy predicate into shared prepared lookup authority:
 
 - Added public
   `prepare::prepared_edge_copy_source_facts_have_materializable_producer`.
@@ -22,6 +23,24 @@ lookup authority:
 - Added focused prepared lookup helper coverage for materializable load-local
   facts and fail-closed immediate, unknown, unavailable, and publicationless
   facts.
+
+Sub-slice 2, current packet: moved one additional compact AArch64
+edge-publication validation fact into shared prepared lookup authority:
+
+- Added public
+  `prepare::prepared_edge_publication_source_home_matches_source`.
+- Added public
+  `prepare::prepared_edge_publication_source_memory_matches_access`.
+- Replaced the local AArch64 `dispatch_edge_copies.cpp` source-home and
+  source-memory consistency helpers with the shared prepared predicates.
+- Kept AArch64 register parsing, load-instruction matching, lowering context
+  assembly, and machine-register hazard checks local to AArch64 lowering.
+- Added focused prepared lookup helper coverage for matching and mismatched
+  source homes, matching source memory, mismatched source-memory offsets, and
+  unnamed prepared memory access results.
+- Extended AArch64 dispatch coverage so direct load edge publications fail
+  closed when the prepared publication memory fact no longer matches the
+  prepared access.
 
 Retained Step 1 characterization summary:
 
@@ -58,11 +77,10 @@ Retained Step 1 characterization summary:
 
 ## Suggested Next
 
-Delegate the next Step 2/3 packet to move one additional target-neutral
-edge-publication validation fact only if it can stay compact: likely
-source-home/source-memory consistency, or otherwise defer to Step 3 producer
-context cleanup. Keep AArch64 register parsing and lowering context assembly
-local.
+Delegate the next packet as Step 3 producer-context cleanup only if the
+remaining boundary is explicitly about target-neutral prepared producer
+instruction/context validation. Otherwise request plan-owner review before
+moving more AArch64 edge-copy logic.
 
 ## Watchouts
 
@@ -71,9 +89,12 @@ local.
   expectation downgrades were added.
 - `clang-format` is not installed in this environment; formatting was kept
   manual and local.
-- Remaining producer-context validation still depends on AArch64 lowering
-  contexts and should not be moved wholesale into `prepare` without an explicit
-  ownership boundary.
+- The remaining local AArch64 edge-copy helpers depend on BIR instruction
+  pointers, AArch64 register parsing, lowering contexts, or recursive hazard
+  checks; moving them wholesale would no longer be a compact Step 2 helper.
+- The new shared memory predicate compares already-prepared publication facts
+  against a supplied `PreparedMemoryAccess`; it does not discover memory
+  accesses or rescan predecessors.
 
 ## Proof
 

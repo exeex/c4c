@@ -2852,6 +2852,34 @@ validate_prepared_edge_copy_publication_source_facts(
              PreparedEdgePublicationSourceProducerKind::Immediate;
 }
 
+[[nodiscard]] bool prepared_edge_publication_source_home_matches_source(
+    const PreparedEdgePublication& publication) {
+  return publication.status == PreparedEdgePublicationLookupStatus::Available &&
+         publication.source_home != nullptr &&
+         publication.source_home->value_name == publication.source_value_name &&
+         publication.source_home->kind == publication.source_home_kind;
+}
+
+[[nodiscard]] bool prepared_edge_publication_source_memory_matches_access(
+    const PreparedEdgePublication& publication,
+    const PreparedMemoryAccess& access) {
+  return publication.status == PreparedEdgePublicationLookupStatus::Available &&
+         access.result_value_name.has_value() &&
+         *access.result_value_name == publication.source_value_name &&
+         publication.source_memory_base_kind == access.address.base_kind &&
+         publication.source_memory_frame_slot_id == access.address.frame_slot_id &&
+         publication.source_memory_symbol_name == access.address.symbol_name &&
+         publication.source_memory_pointer_value_name ==
+             access.address.pointer_value_name &&
+         publication.source_memory_byte_offset == access.address.byte_offset &&
+         publication.source_memory_size_bytes == access.address.size_bytes &&
+         publication.source_memory_align_bytes == access.address.align_bytes &&
+         publication.source_memory_address_space == access.address_space &&
+         publication.source_memory_is_volatile == access.is_volatile &&
+         publication.source_memory_can_use_base_plus_offset ==
+             access.address.can_use_base_plus_offset;
+}
+
 [[nodiscard]] PreparedEdgeCopySourceFacts prepare_edge_copy_source_facts(
     const PreparedEdgePublicationLookups* lookups,
     BlockLabelId predecessor_label,

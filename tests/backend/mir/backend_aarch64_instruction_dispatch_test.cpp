@@ -26453,6 +26453,23 @@ int predecessor_join_load_source_publication_uses_prepared_source_memory() {
       !lines.empty()) {
     return fail("expected direct load publication to fail closed without source memory");
   }
+  mutable_publication->source_memory_access_status =
+      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available;
+  mutable_publication->source_memory_access =
+      publication->source_memory_access;
+  mutable_publication->source_memory_byte_offset = 4;
+  lines.clear();
+  if (aarch64_codegen::emit_edge_load_local_to_register(pred_context,
+                                                        producer,
+                                                        *load,
+                                                        13,
+                                                        9,
+                                                        lines,
+                                                        mutable_publication) ||
+      !lines.empty()) {
+    return fail(
+        "expected direct load publication to fail closed with mismatched source memory");
+  }
   return 0;
 }
 
