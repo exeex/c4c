@@ -837,7 +837,30 @@ void collect_block_entry_republication_effects(
   if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
     return &select->result;
   }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+    return call->result.has_value() ? &*call->result : nullptr;
+  }
   return nullptr;
+}
+
+[[nodiscard]] std::optional<PreparedValueId> prepared_instruction_result_value_id(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Inst& inst) {
+  const auto* result = prepared_instruction_result_value_ref(inst);
+  if (result == nullptr) {
+    return std::nullopt;
+  }
+  const auto result_name = existing_prepared_value_name_id(names, *result);
+  if (!result_name.has_value()) {
+    return std::nullopt;
+  }
+  return find_indexed_prepared_value_id(value_home_lookups,
+                                       regalloc,
+                                       value_locations,
+                                       *result_name);
 }
 
 [[nodiscard]] bool prepared_result_matches_value_name(
@@ -3244,7 +3267,7 @@ prepare_current_block_join_parallel_copy_source_facts(
 
   for (const auto value_name : result.incoming_expression_value_names) {
     const auto value_id = find_indexed_prepared_value_id(inputs.value_home_lookups,
-                                                        nullptr,
+                                                        inputs.regalloc,
                                                         inputs.value_locations,
                                                         value_name);
     if (value_id.has_value()) {
@@ -3252,6 +3275,39 @@ prepare_current_block_join_parallel_copy_source_facts(
     }
   }
   return result;
+}
+
+[[nodiscard]] PreparedCurrentBlockJoinParallelCopyInstructionRouting
+prepare_current_block_join_parallel_copy_instruction_routing(
+    const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs) {
+  PreparedCurrentBlockJoinParallelCopyInstructionRouting routing;
+  const auto facts = prepare_current_block_join_parallel_copy_source_facts(inputs);
+  routing.status = facts.status;
+  if (facts.status != PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      inputs.names == nullptr ||
+      inputs.block == nullptr) {
+    return routing;
+  }
+
+  for (const auto& inst : inputs.block->insts) {
+    const auto result_value_id =
+        prepared_instruction_result_value_id(*inputs.names,
+                                             inputs.value_home_lookups,
+                                             inputs.regalloc,
+                                             inputs.value_locations,
+                                             inst);
+    routing.incoming_expression_instruction_results.push_back(
+        result_value_id.has_value() &&
+        std::find(facts.incoming_expression_value_ids.begin(),
+                  facts.incoming_expression_value_ids.end(),
+                  *result_value_id) != facts.incoming_expression_value_ids.end());
+    routing.source_instruction_results.push_back(
+        result_value_id.has_value() &&
+        std::find(facts.source_value_ids.begin(),
+                  facts.source_value_ids.end(),
+                  *result_value_id) != facts.source_value_ids.end());
+  }
+  return routing;
 }
 
 [[nodiscard]] const PreparedCallPreservedValue*

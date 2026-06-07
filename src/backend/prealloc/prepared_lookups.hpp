@@ -535,11 +535,19 @@ struct PreparedCurrentBlockJoinParallelCopySourceFacts {
 
 struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   const PreparedNameTables* names = nullptr;
+  const PreparedRegallocFunction* regalloc = nullptr;
   const PreparedValueLocationFunction* value_locations = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   const PreparedEdgePublicationLookups* edge_publications = nullptr;
   const bir::Block* block = nullptr;
   BlockLabelId successor_label = kInvalidBlockLabel;
+};
+
+struct PreparedCurrentBlockJoinParallelCopyInstructionRouting {
+  PreparedCurrentBlockJoinParallelCopySourceStatus status =
+      PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
+  std::vector<bool> incoming_expression_instruction_results;
+  std::vector<bool> source_instruction_results;
 };
 
 struct PreparedEdgePublicationSourceProducerLookups {
@@ -980,6 +988,10 @@ prepare_block_entry_parallel_copy_edge_source_facts(
 
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
+    const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs);
+
+[[nodiscard]] PreparedCurrentBlockJoinParallelCopyInstructionRouting
+prepare_current_block_join_parallel_copy_instruction_routing(
     const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs);
 
 [[nodiscard]] const PreparedCallPreservedValue*

@@ -1489,6 +1489,27 @@ int verify_current_block_join_parallel_copy_source_query() {
       .lhs = bir::Value::named(bir::TypeKind::I32, "%current.operand"),
       .rhs = bir::Value::immediate_i32(1),
   });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%current.operand"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.stack_source"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%current.operand"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.operand"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(4),
+      .rhs = bir::Value::immediate_i32(5),
+  });
 
   const prepare::PreparedControlFlowFunction control_flow{
       .function_name = function_name,
@@ -1555,13 +1576,6 @@ int verify_current_block_join_parallel_copy_source_query() {
               .value_name = incoming_name,
               .kind = prepare::PreparedValueHomeKind::Register,
               .register_name = std::string{"x10"},
-          },
-          prepare::PreparedValueHome{
-              .value_id = operand_id,
-              .function_name = function_name,
-              .value_name = operand_name,
-              .kind = prepare::PreparedValueHomeKind::Register,
-              .register_name = std::string{"x11"},
           },
           prepare::PreparedValueHome{
               .value_id = destination_id,
@@ -1650,6 +1664,17 @@ int verify_current_block_join_parallel_copy_source_query() {
           },
       },
   };
+  const prepare::PreparedRegallocFunction regalloc{
+      .function_name = function_name,
+      .values = {
+          prepare::PreparedRegallocValue{
+              .value_id = operand_id,
+              .function_name = function_name,
+              .value_name = operand_name,
+              .type = bir::TypeKind::I32,
+          },
+      },
+  };
 
   const auto value_home_lookups =
       prepare::make_prepared_value_home_lookups(&locations);
@@ -1660,8 +1685,8 @@ int verify_current_block_join_parallel_copy_source_query() {
       prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
               .names = &names,
+              .regalloc = &regalloc,
               .value_locations = &locations,
-              .value_home_lookups = &value_home_lookups,
               .edge_publications = &edge_publications,
               .block = &block,
               .successor_label = successor_label,
@@ -1697,7 +1722,7 @@ int verify_current_block_join_parallel_copy_source_query() {
   if (named_fact.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
       named_fact.source_value_id != incoming_id ||
       named_fact.source_home != &locations.value_homes[0] ||
-      named_fact.destination_home != &locations.value_homes[2] ||
+      named_fact.destination_home != &locations.value_homes[1] ||
       !named_fact.source_is_incoming_expression ||
       !named_fact.destination_is_source_value ||
       named_fact.source_is_source_value ||
@@ -1718,13 +1743,42 @@ int verify_current_block_join_parallel_copy_source_query() {
   if (stack_fact.status != prepare::PreparedEdgeCopySourceFactsStatus::Available ||
       !stack_fact.source_home_is_stack ||
       !stack_fact.source_is_source_value ||
-      stack_fact.source_home != &locations.value_homes[4] ||
-      stack_fact.destination_home != &locations.value_homes[5]) {
+      stack_fact.source_home != &locations.value_homes[3] ||
+      stack_fact.destination_home != &locations.value_homes[4]) {
     return fail("current-block join query should expose stack-source source facts");
   }
   if (query.facts[3].status !=
       prepare::PreparedEdgeCopySourceFactsStatus::UnsupportedMove) {
     return fail("current-block join query should fail closed for unsupported moves");
+  }
+  const auto routing =
+      prepare::prepare_current_block_join_parallel_copy_instruction_routing(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .block = &block,
+              .successor_label = successor_label,
+          });
+  if (routing.status !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      routing.incoming_expression_instruction_results.size() != block.insts.size() ||
+      routing.source_instruction_results.size() != block.insts.size()) {
+    return fail("current-block join instruction routing should mirror block size");
+  }
+  if (!routing.incoming_expression_instruction_results[0] ||
+      routing.incoming_expression_instruction_results[1] ||
+      !routing.incoming_expression_instruction_results[2] ||
+      !routing.incoming_expression_instruction_results[3]) {
+    return fail(
+        "current-block join routing should mark prepared incoming expression results");
+  }
+  if (routing.source_instruction_results[0] ||
+      !routing.source_instruction_results[1] ||
+      !routing.source_instruction_results[2] ||
+      routing.source_instruction_results[3]) {
+    return fail("current-block join routing should mark prepared source results");
   }
   if (prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
