@@ -114,3 +114,47 @@ Good follow-up idea shapes include:
 - It proposes moving AArch64-specific ABI spelling, scratch register policy, or
   machine-record emission into shared BIR/prealloc.
 - It creates vague follow-up ideas without a bounded proof route.
+
+## Closure Note
+
+Closed after the Step 5 readiness package. The audit remained analysis-only:
+no implementation files, test files, build metadata, or
+`src/backend/mir/aarch64/codegen/calls.cpp` were changed.
+
+Final cluster dispositions:
+
+- before-call move bundle lowering: `ready-local-owner`, tracked by
+  `ideas/open/119_aarch64_calls_before_call_move_bundle_local_owner.md`
+- after-call result/value lowering: `ready-local-owner`, tracked by
+  `ideas/open/120_aarch64_calls_after_call_result_value_local_owner.md`
+- preservation and republication lowering: `contract-needed`, tracked by
+  `ideas/open/121_aarch64_calls_preservation_republication_visibility_contract.md`
+- scalar producer dispatch bridge: `move-forward-needed`, tracked by
+  `ideas/open/122_prepared_call_argument_producer_materializability_contract.md`
+- result recording and late publication: `move-forward-needed`, tracked by
+  `ideas/open/123_prepared_call_result_late_publication_contract.md`
+- ordinary call-boundary move/binding record construction where coupled:
+  `keep-in-calls`, with no standalone follow-up because pure call instruction
+  and ABI record assembly should remain in calls lowering
+
+Duplicate-work guardrails for follow-up execution:
+
+- consume, do not reopen, stack/frame-slot operand ownership from idea 93
+- consume, do not reopen, f128 carrier ownership from idea 94
+- consume, do not reopen, immediate scalar argument publication from idea 95
+- consume, do not duplicate, outgoing stack argument area authority from idea
+  114
+- do not reopen dispatch prepared-producer/current-block publication,
+  join-routing, or select-chain contracts from idea 116
+- do not reopen comparison fused-compare/current-block publication contracts
+  from idea 117
+- reject monolithic `calls.cpp` shrink routes, line-count-only progress,
+  expectation downgrades, named-case producer shortcuts, and movement of
+  AArch64 ABI spelling, scratch-register policy, or machine-record emission
+  into shared BIR/prealloc
+
+Close-time regression guard passed using the existing five-test backend
+contract baseline in `test_before.log` and a matching generated
+`test_after.log`. The non-decreasing checker mode was used because this was a
+docs/lifecycle-only close: 5 passed before, 5 passed after, and no new failing
+tests.
