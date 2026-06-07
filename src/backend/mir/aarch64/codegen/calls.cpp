@@ -1574,12 +1574,9 @@ StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
     const prepare::PreparedCallPlan& call_plan,
     const prepare::PreparedCallArgumentPlan& argument,
     std::size_t instruction_index) {
-  if (argument.source_selection.has_value()) {
-    const auto routing =
-        prepare::find_prepared_call_argument_publication_source_routing(argument);
-    if (routing.source_selection == nullptr) {
-      return std::nullopt;
-    }
+  const auto routing =
+      prepare::find_prepared_call_argument_publication_source_routing(argument);
+  if (routing.source_selection != nullptr) {
     if (auto selected = selected_frame_slot_source(
             context,
             argument,
@@ -1590,6 +1587,9 @@ StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
             instruction_index)) {
       return selected;
     }
+    return std::nullopt;
+  }
+  if (argument.source_selection.has_value()) {
     return std::nullopt;
   }
   if (!call_plan.memory_return.has_value() ||
@@ -3076,19 +3076,22 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
       source = make_byval_register_lane_prepared_source(
           context, *argument, *source_home, *register_byval_size, call_plan.instruction_index);
     } else {
-      if (argument->source_selection.has_value()) {
+      const auto routing =
+          prepare::find_prepared_call_argument_publication_source_routing(*argument);
+      const auto* source_selection = routing.source_selection;
+      if (source_selection != nullptr) {
         address_source = make_selected_call_argument_source(
             context,
             *argument,
             source_home,
-            *argument->source_selection,
+            *source_selection,
             prepare::PreparedCallArgumentSourceSelectionKind::
                 LocalFrameAddressMaterialization,
             instruction_index);
       }
       source = address_source;
-      if (!source.has_value() && argument->source_selection.has_value() &&
-          argument->source_selection->kind ==
+      if (!source.has_value() && source_selection != nullptr &&
+          source_selection->kind ==
               prepare::PreparedCallArgumentSourceSelectionKind::
                   LocalFrameAddressMaterialization) {
         append_call_diagnostic(
@@ -3373,12 +3376,14 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Fpr &&
       binding != nullptr &&
       scalar_fp_view_from_register_name(binding->destination_register_name).has_value()) {
-    auto source = argument->source_selection.has_value()
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
+    auto source = routing.source_selection != nullptr
                       ? make_selected_call_argument_source(
                             context,
                             *argument,
                             source_home,
-                            *argument->source_selection,
+                            *routing.source_selection,
                             prepare::PreparedCallArgumentSourceSelectionKind::
                                 FrameSlotValue,
                             instruction_index)
@@ -3436,12 +3441,14 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
-    auto source = argument->source_selection.has_value()
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
+    auto source = routing.source_selection != nullptr
                       ? make_selected_call_argument_source(
                             context,
                             *argument,
                             source_home,
-                            *argument->source_selection,
+                            *routing.source_selection,
                             prepare::PreparedCallArgumentSourceSelectionKind::
                                 FrameSlotValue,
                             instruction_index)
@@ -3506,8 +3513,11 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
     std::optional<MemoryOperand> address_source;
     std::optional<MemoryOperand> source;
-    if (argument->source_selection.has_value()) {
-      switch (argument->source_selection->kind) {
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
+    const auto* source_selection = routing.source_selection;
+    if (source_selection != nullptr) {
+      switch (source_selection->kind) {
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
           address_source = StackFrameSlotCallOperandOwner::sret_memory_return_address_source(
               context, call_plan, *argument, instruction_index);
@@ -3516,7 +3526,7 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
                 context,
                 *argument,
                 source_home,
-                *argument->source_selection,
+                *source_selection,
                 prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
                 instruction_index);
           }
@@ -3527,19 +3537,19 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
               context,
               *argument,
               source_home,
-              *argument->source_selection,
+              *source_selection,
               prepare::PreparedCallArgumentSourceSelectionKind::
                   LocalFrameAddressMaterialization,
               instruction_index);
           break;
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
-          if (argument->source_selection->byval_lane_extent_bytes.has_value() &&
-              *argument->source_selection->byval_lane_extent_bytes > 16) {
+          if (source_selection->byval_lane_extent_bytes.has_value() &&
+              *source_selection->byval_lane_extent_bytes > 16) {
             address_source = StackFrameSlotCallOperandOwner::selected_frame_slot_source(
                 context,
                 *argument,
                 source_home,
-                *argument->source_selection,
+                *source_selection,
                 prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane,
                 true,
                 instruction_index);
@@ -3564,7 +3574,7 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
               context,
               *argument,
               source_home,
-              *argument->source_selection,
+              *source_selection,
               prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
               instruction_index);
           break;
@@ -3576,16 +3586,16 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
           context, call_plan, *argument, instruction_index);
     }
     if (!address_source.has_value() &&
-        argument->source_selection.has_value() &&
-        (argument->source_selection->kind ==
+        source_selection != nullptr &&
+        (source_selection->kind ==
              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
-         argument->source_selection->kind ==
+         source_selection->kind ==
              prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation)) {
       source = make_selected_call_argument_source(
           context,
           *argument,
           source_home,
-          *argument->source_selection,
+          *source_selection,
           prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
           instruction_index);
     } else {
@@ -3840,13 +3850,15 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
       argument->value_bank == prepare::PreparedRegisterBank::Vreg &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
     const auto source =
-        argument->source_selection.has_value()
+        routing.source_selection != nullptr
             ? make_selected_call_argument_source(
                   context,
                   *argument,
                   source_home,
-                  *argument->source_selection,
+                  *routing.source_selection,
                   prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
                   instruction_index)
             : std::optional<MemoryOperand>{};
@@ -3915,13 +3927,15 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto routing =
+        prepare::find_prepared_call_argument_publication_source_routing(*argument);
     const auto source =
-        argument->source_selection.has_value()
+        routing.source_selection != nullptr
             ? make_selected_call_argument_source(
                   context,
                   *argument,
                   source_home,
-                  *argument->source_selection,
+                  *routing.source_selection,
                   prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
                   instruction_index)
             : std::optional<MemoryOperand>{};

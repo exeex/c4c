@@ -3,54 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/122_prepared_call_argument_producer_materializability_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Missing Frame-Slot Argument Publication Visibility
+Current Step ID: 5
+Current Step Title: Convert AArch64 Calls To Consume The Shared Surface
 
 ## Just Finished
 
-Completed plan Step 4: added shared missing frame-slot call-argument
-publication visibility while keeping local aggregate address payload
-construction AArch64-local.
+Completed plan Step 5: converted remaining AArch64 call-argument
+source-selection consumers in `calls.cpp` to read through the shared prepared
+publication-source routing surface while preserving target-local emission.
 
 Changed files:
 - `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/prealloc/calls.hpp`
-- `src/backend/prealloc/prepared_printer/calls.cpp`
-- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
-
-Implemented shared prepared surface:
-- Added `PreparedMissingFrameSlotCallArgumentPublicationNeed` and
-  `find_prepared_missing_frame_slot_call_argument_publication_need`.
-- The query exposes the target-neutral eligibility for missing frame-slot
-  synthetic call-argument publication: frame-slot source encoding, source value
-  id, GPR single-register ABI destination, prepared source-selection kind, and
-  whether the selected source materializes an address.
-- The query rejects byval lanes, absent source selections, non-frame-slot
-  sources, non-GPR destinations, and multi-register destinations.
+- `todo.md`
 
 AArch64 consumer update:
-- `materialize_missing_frame_slot_call_arguments` now consumes the shared
-  missing-frame-slot publication need before doing local home lookup,
-  emitted-register checks, prepared before-call move selection, memory operand
-  construction, register conversion, optional aggregate-address payload
-  emission, and machine instruction wrapping.
-- Local aggregate address payload construction remains in
-  `materialize_local_aggregate_address_payload` and is only described by the
-  shared query as `may_emit_local_aggregate_address_payload`.
+- `StackFrameSlotCallOperandOwner::sret_memory_return_address_source` now uses
+  `find_prepared_call_argument_publication_source_routing` unconditionally
+  before falling back to the prepared sret memory-return plan, while preserving
+  the old fail-closed behavior when `argument.source_selection` is present but
+  the shared routing surface exposes no available source selection.
+- `BeforeCallMoveLocalOwner::instruction` now reads frame-slot value/address,
+  local-frame-address, prior-preservation, byval-lane, scalar FPR, binary128,
+  and stack-destination call-argument source selections through
+  `find_prepared_call_argument_publication_source_routing`.
+- The existing shared materializability query remains the scalar producer gate
+  through `find_prepared_scalar_call_argument_source_producer_materialization`.
+- Direct-global select-chain call arguments remain routed through the existing
+  shared dependency carried by the call-argument plan, and missing frame-slot
+  synthetic publication remains routed through the Step 4 shared need query.
 
-Visibility proof:
-- The prepared printer now emits `missing_frame_slot_arg_publication=yes`,
-  the missing-frame-slot publication kind, the source value id, and address
-  materialization/local-payload booleans.
-- `backend_prepare_frame_stack_call_contract` now proves the missing local
-  aggregate frame-slot address argument exposes the shared publication need
-  and prepared dump visibility.
+Kept target-local:
+- Same-block tracing inside byte/lane, FP, and F128 emission helpers remains
+  AArch64-local because those helpers assemble target instruction payloads,
+  choose scratch/register views, trace concrete frame bytes, and spell
+  selected machine lines. Those paths no longer own the call-argument
+  materializability or prepared source-selection decision.
 
 ## Suggested Next
 
-Execute Step 5: convert any remaining AArch64 calls rediscovery of
-target-neutral producer routes to the shared surfaces, then request acceptance
-review if no additional consumer work remains.
+Request acceptance review for idea 122. If review agrees, regenerate any
+required close proof and hand lifecycle closure to the plan owner.
 
 ## Watchouts
 
@@ -71,6 +63,12 @@ review if no additional consumer work remains.
 - Local aggregate address payload construction remains intentionally
   target-local because it creates AArch64 instruction payloads and stack-copy
   address spelling.
+- Remaining `find_same_block_named_producer` use in `calls.cpp` is in
+  target-local source emission/tracing helpers rather than call-argument
+  shared route selection; do not treat that as materializability authority
+  without a separate source idea.
+- Present-but-unavailable call-argument source selections must not gain a new
+  fallback path while consuming the shared routing query.
 - Remaining route gaps: shift/unsigned div/rem/comparison binary producers are
   not classified materializable by the Step 2 shared query.
 - Treat expectation downgrades, unsupported-path rewrites, and widened target
