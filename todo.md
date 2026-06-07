@@ -1,14 +1,14 @@
 Status: Active
 Source Idea Path: ideas/open/115_aarch64_codegen_layout_post_prealloc_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Large Owner Families
+Current Step ID: 3
+Current Step Title: Classify Dispatch-Family Residue
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Classify Large Owner Families completed as an analysis-only
+Step 3 - Classify Dispatch-Family Residue completed as an analysis-only
 classification packet.
 
 Retained Step 1 audit baseline:
@@ -81,13 +81,37 @@ pass. The files are large, but the observed clusters have identifiable target
 ABI, emission, record-schema, or prepared-contract consumer responsibilities
 rather than one tangled rewrite target.
 
+Dispatch-family residue classification table, based on AST-backed function
+ownership queries with narrow function-body reads:
+
+| Dispatch owner | Classification | Evidence | Step 4 disposition |
+| --- | --- | --- | --- |
+| `dispatch.cpp` | `keep-local`, `contract-needed` | The file is the central prepared-block orchestration loop and target-family router: `dispatch_prepared_block`, `make_block_lowering_context`, `classify_instruction`, `make_dispatch_branch_fusion_hooks`, `lower_store_local_with_address_materialization`, and `lower_scalar_with_address_materialization`. It also tracks local emission state with `before_return_publication_already_emitted`, `record_before_return_publication`, and `instruction_result_has_stack_home`. The notable residue is hook wiring from dispatch into prepared-publication consumers, not a standalone shared-fact owner. | No fold-back or phoenix idea. Step 4 may cite dispatch as a consumer when drafting contract visibility around prepared publication/materialization routing, but should not draft a `dispatch.cpp` cleanup idea by itself. |
+| `dispatch_edge_copies.cpp` | `move-forward`, `contract-needed` | This file still owns edge-copy producer-context reconstruction and publication/source matching: `prepared_edge_publication_producer_block_context`, `prepared_edge_publication_producer_context`, `prepared_edge_source_producer_context`, `prepared_edge_named_source_producer_context`, `prepared_publication_source_memory_access`, `prepared_publication_source_register`, `edge_value_publication_may_read_register_index`, and `lower_predecessor_select_parallel_copy_sources`. The callee query for `lower_predecessor_select_parallel_copy_sources` shows it now consumes `prepare::prepare_block_entry_parallel_copy_edge_source_facts`, `prepare::prepared_edge_publication_matches_parallel_copy_move_source`, and `prepare::find_prepared_move_bundle`, but the surrounding file still maps those prepared facts back to BIR producer contexts and AArch64 edge-copy emission. | Strong Step 4 follow-up candidate: draft a bounded prepared edge-publication/parallel-copy contract idea, with explicit reject signals against predecessor rescans and BIR-name matching. This is a `move-forward`/`contract-needed` candidate, not a mechanical fold-back. |
+| `dispatch_value_materialization.cpp` | `keep-local`, `contract-needed` | The public owner is `emit_value_publication_to_register`; it emits AArch64 register materialization from immediate, prepared home, current-block entry publication, same-block scalar producer, prepared memory/global access, select-chain materialization, and FP/scalar helper paths. The local helper evidence is `prepared_same_block_scalar_producer`, `prepared_scalar_select_chain_materialization`, and `prepared_same_block_integer_constant`, which call `prepare::find_prepared_same_block_scalar_producer`, `prepare::find_prepared_scalar_select_chain_materialization`, and `prepare::evaluate_prepared_same_block_integer_constant` instead of hand-scanning producers. | No move-forward idea unless Step 4 wants dump/test visibility for value-publication materialization contracts. Keep local as target materialization glue; do not draft a same-block rediscovery cleanup because the current path delegates lookup to `prepare`. |
+| `dispatch_producers.cpp` | `move-forward`, `contract-needed` | This is the strongest dispatch-family shared-fact residue. It builds and queries current-block join/source routing with `prepare_current_block_join_parallel_copy_source_facts`, `prepared_query_current_block_join_parallel_copy_source`, `build_current_block_join_prepared_query_routing`, `current_block_join_prepared_query_incoming_expression`, and `current_block_join_prepared_query_source`; it also owns same-block and select-chain producer wrappers: `find_prepared_same_block_select_producer`, `prepared_publication_source_producer_for_value`, `prepared_source_producer_instruction`, `prepared_select_chain_contains_direct_global_load`, `select_chain_contains_direct_global_load`, `block_entry_move_clobbers_current_join_publication`, and `value_publication_may_read_register_index`. The residue is not raw local scans everywhere, but AArch64 still owns prepared-query routing shape and fallback decisions. | Strong Step 4 follow-up candidate, possibly paired with `dispatch_edge_copies.cpp`: draft a prepared producer/join-routing contract idea that moves or exposes current-block join/publication facts before more dispatch cleanup. No phoenix candidate; the file has a coherent domain but the domain likely belongs closer to prepared lookup authority. |
+
+Dispatch Step 3 conclusion:
+
+- No `fold-back` classification is justified for the four dispatch owners in
+  this pass. The old helper-split cleanup work is not the current residue.
+- No `phoenix-candidate` classification is justified. The files have coherent
+  dispatch/materialization/edge-copy roles rather than one tangled replacement
+  target.
+- Step 4 should focus on one concrete follow-up idea around prepared
+  edge-publication/current-block producer and join-routing contracts, anchored
+  in `dispatch_edge_copies.cpp` plus `dispatch_producers.cpp`.
+- `dispatch.cpp` and `dispatch_value_materialization.cpp` should be recorded as
+  contract consumers/supporting evidence, not primary cleanup targets, unless
+  Step 4 can name a concrete dump/test consumer.
+
 ## Suggested Next
 
-Delegate Step 3: classify the dispatch-family residue in `dispatch.cpp`,
-`dispatch_edge_copies.cpp`, `dispatch_value_materialization.cpp`, and
-`dispatch_producers.cpp`. Focus on whether current dispatch helpers still
-rediscover prepared/publication facts locally or are now target-local
-materialization/edge-copy consumers.
+Draft Step 4 follow-up idea text for the bounded dispatch residue found in
+`dispatch_edge_copies.cpp` and `dispatch_producers.cpp`: prepared
+edge-publication/current-block producer and join-routing contract visibility or
+move-forward. Keep `dispatch.cpp` and `dispatch_value_materialization.cpp` as
+supporting consumer evidence unless a concrete dump/test need is named.
 
 ## Watchouts
 
@@ -102,9 +126,17 @@ materialization/edge-copy consumers.
   reservation/addressing as shared-authority residue.
 - For `memory.cpp`, do not treat the old `memory_store_sources.*` critique as
   current evidence; those files have been deleted and folded back.
-- For dispatch-family classification, prior closure notes reject AArch64-local
-  rediscovery of prepared/publication facts through predecessor scans, BIR name
-  matching, or same-block producer matching.
+- For Step 4 dispatch follow-up drafting, prior closure notes reject
+  AArch64-local rediscovery of prepared/publication facts through predecessor
+  scans, BIR name matching, or same-block producer matching.
+- Step 3 found no new idea for `dispatch.cpp` alone and no new idea for
+  `dispatch_value_materialization.cpp` alone; both are mostly target-local
+  orchestration/materialization consumers of prepared facts.
+- Step 3 found the strongest dispatch-family follow-up in
+  `dispatch_edge_copies.cpp` plus `dispatch_producers.cpp`, where edge
+  publication producer contexts, current-block join routing, select-chain
+  producer queries, and register-clobber/read checks still look like prepared
+  fact ownership leaking into AArch64 dispatch.
 - Step 2 found the strongest possible move-forward candidate in
   `comparison.cpp`, where fused compare/current-block publication lookup still
   looks more like shared prepared fact ownership than pure target spelling.
@@ -117,5 +149,7 @@ materialization/edge-copy consumers.
 
 No build/test proof required by the delegated packet because this slice was
 analysis-only. Verification used read-only `c4c-clang-tool-ccdb`
-`list-symbols` and `function-signatures` queries plus narrow text/reference
-context; no `test_after.log` was produced for this packet.
+`function-signatures` and `function-callees` queries for `dispatch.cpp`,
+`dispatch_edge_copies.cpp`, `dispatch_value_materialization.cpp`, and
+`dispatch_producers.cpp`, plus narrow text reads around the relevant helpers;
+no `test_after.log` was produced for this packet.
