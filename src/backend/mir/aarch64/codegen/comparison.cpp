@@ -1,5 +1,6 @@
 #include "comparison.hpp"
 #include "dispatch_lookup.hpp"
+#include "dispatch_publication.hpp"
 #include "instruction.hpp"
 #include "../../query.hpp"
 #include "alu.hpp"
@@ -1437,76 +1438,6 @@ namespace {
   return address;
 }
 
-[[nodiscard]] std::vector<prepare::PreparedBlockEntryPublication>
-collect_prepared_current_block_entry_publications(
-    const module::BlockLoweringContext& context) {
-  if (context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr) {
-    return {};
-  }
-  return prepare::collect_prepared_block_entry_publications(
-      context.function.value_locations, context.control_flow_block->block_label);
-}
-
-[[nodiscard]] bool prepared_value_has_current_block_entry_publication(
-    const module::BlockLoweringContext& context,
-    const prepare::PreparedValueHome& home) {
-  for (const auto& publication : collect_prepared_current_block_entry_publications(context)) {
-    if (prepare::prepared_block_entry_publication_available(publication) &&
-        publication.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
-        publication.destination_value_id == home.value_id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::optional<RegisterOperand>
-prepared_current_block_entry_publication_register(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    abi::RegisterView expected_view) {
-  if (context.function.value_locations == nullptr ||
-      context.control_flow_block == nullptr ||
-      value.kind != bir::Value::Kind::Named) {
-    return std::nullopt;
-  }
-  const auto value_name = prepared_named_value_id(context, value);
-  const auto* home =
-      value_name.has_value()
-          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                      context.function.regalloc,
-                                                      context.function.value_locations,
-                                                      *value_name)
-          : nullptr;
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-  for (const auto& publication : collect_prepared_current_block_entry_publications(context)) {
-    if (publication.destination_value_id != home->value_id ||
-        !prepare::prepared_block_entry_publication_available(publication) ||
-        !publication.destination_register_name.has_value()) {
-      continue;
-    }
-    const auto parsed =
-        abi::parse_aarch64_register_name(*publication.destination_register_name);
-    if (!parsed.has_value() ||
-        parsed->bank != abi::RegisterBank::GeneralPurpose) {
-      continue;
-    }
-    auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
-    reg.view = expected_view;
-    return RegisterOperand{
-        .reg = reg,
-        .role = RegisterOperandRole::StoragePlan,
-        .value_id = home->value_id,
-        .value_name = home->value_name,
-        .expected_view = expected_view,
-    };
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
     const module::BlockLoweringContext& context,
@@ -2249,7 +2180,7 @@ lower_current_block_entry_fused_compare_branch(
   auto lhs = branch_facts->lhs;
   lhs.type = branch_facts->compare_type;
   const auto published_lhs =
-      prepared_current_block_entry_publication_register(context, lhs, branch_facts->operand_view);
+      current_block_entry_publication_register(context, lhs, branch_facts->operand_view);
   if (!published_lhs.has_value() ||
       published_lhs->reg.bank != abi::RegisterBank::GeneralPurpose ||
       branch_facts->rhs.kind != bir::Value::Kind::Immediate ||
@@ -2307,7 +2238,7 @@ lower_constant_rhs_fused_compare_branch(
       rhs_producer->binary == nullptr ||
       rhs_home == nullptr ||
       rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-      prepared_value_has_current_block_entry_publication(context, *rhs_home)) {
+      value_has_current_block_entry_publication(context, *rhs_home)) {
     return std::nullopt;
   }
   if (!rhs_producer->integer_constant.has_value() ||

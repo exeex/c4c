@@ -3160,6 +3160,7 @@ prepare_current_block_join_parallel_copy_source_facts(
           .successor_label = inputs.successor_label,
           .destination_value_id = move.to_value_id,
           .destination_storage_kind = move.destination_storage_kind,
+          .destination_register_name = move.destination_register_name,
           .immediate_source = move.source_immediate_i32.has_value(),
       };
       if (bundle.source_parallel_copy_predecessor_label == std::nullopt) {
@@ -3190,6 +3191,7 @@ prepare_current_block_join_parallel_copy_source_facts(
       fact.destination_home_kind = source_facts.destination_home_kind;
       fact.destination_value_name = source_facts.destination_value_name;
       fact.destination_storage_kind = source_facts.destination_storage_kind;
+      fact.destination_register_name = move.destination_register_name;
 
       if (fact.destination_home == nullptr) {
         fact.destination_home =

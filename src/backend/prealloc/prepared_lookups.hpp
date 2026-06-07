@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -520,6 +521,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
   PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
   PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::string> destination_register_name;
   bool source_is_incoming_expression = false;
   bool destination_is_source_value = false;
   bool source_is_source_value = false;

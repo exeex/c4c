@@ -1,52 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/117_aarch64_comparison_fused_compare_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Expose Fused-Compare Operand Producer Facts
+Current Step ID: 4
+Current Step Title: Expose Materialized Compare And Current-Block Publication Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Expose Fused-Compare Operand Producer Facts has a shared prepared
-operand producer contract consumed by AArch64 comparison lowering.
+Step 4 - Expose Materialized Compare And Current-Block Publication Facts moved
+current-block entry-publication register lookup out of `comparison.cpp` and
+exposed the missing destination-register fact on the shared current-block join
+query.
 
 Migrated facts:
 
-- `prepare::PreparedFusedCompareOperandProducerFacts` now carries optional
-  lhs/rhs `PreparedFusedCompareOperandProducer` records.
-- `prepare::find_prepared_fused_compare_operand_producer_facts` exposes the
-  branch-condition-level prepared query by composing the existing single-operand
-  producer lookup and failing closed when neither side has facts.
-- `comparison.cpp` now consumes that shared prepared contract for branch record
-  construction instead of locally packaging lhs/rhs producer facts around
-  `find_prepared_fused_compare_operand_producer`.
-- `backend_prepared_lookup_helper` now proves the shared query exposes lhs/rhs
-  fused-compare facts and rejects non-fused branch conditions.
+- `prepare::PreparedCurrentBlockJoinParallelCopySourceFact` now carries the
+  block-entry move's `destination_register_name`, so shared prepared query
+  consumers can observe the current-block publication register spelling without
+  re-reading the move.
+- `backend_prepared_lookup_helper` proves the current-block join query exposes
+  the destination register name on an available block-entry fact.
+- `comparison.cpp` no longer collects or rematches current-block
+  `PreparedBlockEntryPublication` records locally; it delegates register lookup
+  and publication-presence checks to the reusable AArch64 dispatch-publication
+  adapter.
+- The existing AArch64 adapter remains the owner for parsing AArch64 register
+  names, coercing register views, and preserving the fallback contract for
+  prepared block-entry publication facts that do not have edge-publication
+  join-transfer lookups.
 
-Why this is not target-local:
+Keep-local decisions:
 
-- The new lhs/rhs producer grouping lives in shared prepared lookup code and is
-  keyed by `PreparedBranchCondition`, block label, BIR block, and producer
-  lookup tables before any AArch64 scalar view, condition suffix, compare opcode,
-  operand spelling, branch emission, or fallback policy is selected.
+- AArch64 register parsing, register-bank filtering, register view coercion,
+  compare/branch emission, and fallback policy stay target-local in the
+  dispatch-publication and comparison lowering code.
+- Materialized compare join-target lookup remains shared prepared-authority
+  based through the existing prepared conditional branch facts path.
 
 ## Suggested Next
 
-Delegate Step 4 to replace `comparison.cpp`'s current-block publication
-iteration/duplicate register helper with a shared prepared publication query or
-small shared AArch64 dispatch-publication adapter that consumes the already
-visible `PreparedBlockEntryPublication` fact.
+Delegate Step 5 as a final audit/closure package: check `comparison.cpp` for
+remaining prepared-contract ownership drift, verify the Step 1-4 facts line up
+with the source idea, run the supervisor-selected acceptance subset or
+regression guard, and either prepare closure notes or identify the smallest
+remaining route gap.
 
 ## Watchouts
 
-- `comparison.cpp` still has a context adapter for fallback construction of
-  `PreparedEdgePublicationSourceProducerLookups` when prebuilt function lookups
-  are not present; the lhs/rhs fact ownership itself is now shared prepared
-  code.
-- Step 4 should keep AArch64 register parsing and operand/register view
-  selection target-local while moving current-block publication fact selection
-  out of local iteration.
+- `comparison.cpp` still has context adapters for fallback construction of
+  prepared producer lookups when prebuilt function lookups are absent; those
+  adapters are fallback plumbing, not the fact ownership itself.
+- Do not force the dispatch-publication adapter through edge-publication
+  join-transfer lookups only: focused AArch64 dispatch coverage still relies on
+  the already-authoritative `PreparedBlockEntryPublication` facts when no
+  join-transfer lookup exists.
 
 ## Proof
 

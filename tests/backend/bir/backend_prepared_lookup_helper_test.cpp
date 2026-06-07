@@ -1622,6 +1622,7 @@ int verify_current_block_join_parallel_copy_source_query() {
                       .destination_kind = prepare::PreparedMoveDestinationKind::Value,
                       .destination_storage_kind =
                           prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w12"},
                       .source_parallel_copy_step_index = std::size_t{0},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                       .authority_kind =
@@ -1723,6 +1724,7 @@ int verify_current_block_join_parallel_copy_source_query() {
       named_fact.source_value_id != incoming_id ||
       named_fact.source_home != &locations.value_homes[0] ||
       named_fact.destination_home != &locations.value_homes[1] ||
+      named_fact.destination_register_name != std::optional<std::string>{"w12"} ||
       !named_fact.source_is_incoming_expression ||
       !named_fact.destination_is_source_value ||
       named_fact.source_is_source_value ||
