@@ -2983,6 +2983,25 @@ int verify_prepared_same_block_scalar_source_facts() {
       prepared_sum->value_name != sum_name) {
     return fail("value-based scalar source facade should expose prepared producer facts");
   }
+  const auto current_block_sum =
+      prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          sum_name,
+          4);
+  if (!current_block_sum.available ||
+      current_block_sum.source_producer == nullptr ||
+      current_block_sum.source_producer->binary != sum ||
+      current_block_sum.produced_value == nullptr ||
+      current_block_sum.produced_value->name != "%sum" ||
+      current_block_sum.instruction_index != 2 ||
+      current_block_sum.value_name != sum_name ||
+      current_block_sum.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+    return fail("current-block publication consumption query should expose prepared producer fact");
+  }
 
   const auto product_constant =
       prepare::evaluate_prepared_same_block_integer_constant(
@@ -3051,6 +3070,16 @@ int verify_prepared_same_block_scalar_source_facts() {
           .has_value()) {
     return fail("scalar source facade should fail closed for future producers");
   }
+  if (prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          product_name,
+          3)
+          .available) {
+    return fail("current-block publication consumption query should fail closed for future producers");
+  }
   if (prepare::evaluate_prepared_same_block_integer_constant(
           names,
           &source_producers,
@@ -3064,6 +3093,16 @@ int verify_prepared_same_block_scalar_source_facts() {
 
   auto mismatched_source_producers = source_producers;
   mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 1;
+  if (prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &mismatched_source_producers,
+          block_label,
+          &block,
+          sum_name,
+          4)
+          .available) {
+    return fail("current-block publication consumption query should fail closed on mismatched producer facts");
+  }
   if (prepare::evaluate_prepared_same_block_integer_constant(
           names,
           &mismatched_source_producers,

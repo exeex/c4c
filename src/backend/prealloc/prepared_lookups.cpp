@@ -877,6 +877,18 @@ void collect_block_entry_republication_effects(
   return names.value_names.find(result.name) == value_name;
 }
 
+[[nodiscard]] bool prepared_result_matches_value_name(
+    const PreparedNameTables& names,
+    const bir::Value& result,
+    ValueNameId value_name) {
+  if (result.kind != bir::Value::Kind::Named ||
+      result.name.empty() ||
+      value_name == kInvalidValueName) {
+    return false;
+  }
+  return names.value_names.find(result.name) == value_name;
+}
+
 [[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
 prepared_same_block_source_producer(
     const PreparedNameTables& names,
@@ -2459,6 +2471,52 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
   return it != lookups->next_operand_values_by_chain_value.end()
              ? it->second
              : kInvalidValueName;
+}
+
+PreparedCurrentBlockPublicationConsumption
+find_prepared_current_block_publication_consumption(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    ValueNameId value_name,
+    std::size_t before_instruction_index) {
+  if (source_producers == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      value_name == kInvalidValueName) {
+    return {};
+  }
+  const auto* producer =
+      find_indexed_prepared_edge_publication_source_producer(
+          source_producers, value_name);
+  if (producer == nullptr ||
+      producer->block_label != block_label ||
+      producer->instruction_index >= before_instruction_index ||
+      producer->instruction_index >= block->insts.size()) {
+    return {};
+  }
+  const auto& inst = block->insts[producer->instruction_index];
+  if (!prepared_source_producer_matches_instruction(*producer, inst)) {
+    return {};
+  }
+  const auto* producer_result = prepared_lookup_source_producer_result(*producer);
+  const auto* instruction_result = prepared_instruction_result_value_ref(inst);
+  if (producer_result == nullptr ||
+      instruction_result == nullptr ||
+      producer_result != instruction_result ||
+      !prepared_result_matches_value_name(names, *instruction_result, value_name)) {
+    return {};
+  }
+  return PreparedCurrentBlockPublicationConsumption{
+      .available = true,
+      .source_producer = producer,
+      .instruction = &inst,
+      .produced_value = instruction_result,
+      .instruction_index = producer->instruction_index,
+      .value_name = value_name,
+      .source_producer_kind = producer->kind,
+  };
 }
 
 std::optional<PreparedSameBlockScalarProducer>

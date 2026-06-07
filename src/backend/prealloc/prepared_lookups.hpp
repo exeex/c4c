@@ -339,6 +339,17 @@ struct PreparedSameBlockScalarProducer {
   ValueNameId value_name = kInvalidValueName;
 };
 
+struct PreparedCurrentBlockPublicationConsumption {
+  bool available = false;
+  const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
+  const bir::Inst* instruction = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+};
+
 struct PreparedCallArgumentSourceProducerMaterialization {
   PreparedSameBlockScalarProducer producer;
   bool materializable = false;
@@ -893,6 +904,15 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
 find_indexed_prepared_edge_publication_source_producer(
     const PreparedEdgePublicationSourceProducerLookups* lookups,
     ValueNameId value_name);
+
+[[nodiscard]] PreparedCurrentBlockPublicationConsumption
+find_prepared_current_block_publication_consumption(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    ValueNameId value_name,
+    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
 find_prepared_same_block_scalar_producer(

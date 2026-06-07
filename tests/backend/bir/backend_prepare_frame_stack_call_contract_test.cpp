@@ -3887,6 +3887,26 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: ordinary binary producer should be visible");
   }
+  const auto sum_current_block_publication =
+      prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          sum_name,
+          3);
+  if (!sum_current_block_publication.available ||
+      sum_current_block_publication.source_producer == nullptr ||
+      sum_current_block_publication.source_producer->binary != sum ||
+      sum_current_block_publication.produced_value == nullptr ||
+      sum_current_block_publication.produced_value->name != "%sum" ||
+      sum_current_block_publication.instruction_index != 1 ||
+      sum_current_block_publication.value_name != sum_name ||
+      sum_current_block_publication.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+    return fail(
+        "call-argument producer materializability contract: current-block publication consumption should be fact-backed");
+  }
 
   if (prepare::find_prepared_call_argument_source_producer_materialization(
           names,
@@ -3909,6 +3929,30 @@ int check_call_argument_source_producer_materializability_contract() {
           .has_value()) {
     return fail(
         "call-argument producer materializability contract: future producer should fail closed");
+  }
+  if (prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          sum_name,
+          1)
+          .available) {
+    return fail(
+        "call-argument producer materializability contract: current-block publication should fail closed for future producer");
+  }
+  auto mismatched_source_producers = source_producers;
+  mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 0;
+  if (prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &mismatched_source_producers,
+          block_label,
+          &block,
+          sum_name,
+          3)
+          .available) {
+    return fail(
+        "call-argument producer materializability contract: current-block publication should fail closed on mismatched producer fact");
   }
 
   return 0;
