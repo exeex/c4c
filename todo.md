@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/120_aarch64_calls_after_call_result_value_local_owner.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Local Owner Surface In Place
+Current Step ID: 3
+Current Step Title: Split File Boundary Only If The Owner Is Stable
 
 ## Just Finished
 
@@ -31,6 +31,12 @@ The synthetic register-to-stack result publication path in
 `lower_after_call_moves` remains intact and still routes through
 `lower_after_call_move`, so synthetic result publication receives the same
 prepared-input wrapper and local-owner emission path as bundle moves.
+
+The hook-triggered review reminder was addressed by
+`review/idea120_after_call_owner_review.md`. The review found no blocking
+implementation drift, no testcase-overfit evidence, and no masked coverage
+claim; its only lifecycle blocker was the stale top-of-file metadata, now
+repaired to point at Step 3.
 
 ## Suggested Next
 
