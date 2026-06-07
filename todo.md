@@ -1,60 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/117_aarch64_comparison_fused_compare_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Expose Materialized Compare And Current-Block Publication Facts
+Current Step ID: 5
+Current Step Title: Final Boundary Audit And Closure Package
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Expose Materialized Compare And Current-Block Publication Facts moved
-current-block entry-publication register lookup out of `comparison.cpp` and
-exposed the missing destination-register fact on the shared current-block join
-query.
+Step 5 - Final Boundary Audit And Closure Package completed the final boundary
+audit for idea 117 without implementation changes.
 
 Migrated facts:
 
-- `prepare::PreparedCurrentBlockJoinParallelCopySourceFact` now carries the
-  block-entry move's `destination_register_name`, so shared prepared query
-  consumers can observe the current-block publication register spelling without
-  re-reading the move.
-- `backend_prepared_lookup_helper` proves the current-block join query exposes
-  the destination register name on an available block-entry fact.
-- `comparison.cpp` no longer collects or rematches current-block
-  `PreparedBlockEntryPublication` records locally; it delegates register lookup
-  and publication-presence checks to the reusable AArch64 dispatch-publication
-  adapter.
-- The existing AArch64 adapter remains the owner for parsing AArch64 register
-  names, coercing register views, and preserving the fallback contract for
-  prepared block-entry publication facts that do not have edge-publication
-  join-transfer lookups.
+- Step 2 exposed prepared dump/test visibility for block-entry publication
+  sections and register facts without weakening supported expectations.
+- Step 3 moved fused-compare operand producer ownership behind shared
+  `prepare::find_prepared_fused_compare_operand_producer_facts` /
+  `PreparedFusedCompareOperandProducerFacts`; `comparison.cpp` now adapts that
+  shared fact to AArch64 operand emission.
+- Step 4 exposed the current-block publication destination register through
+  shared prepared facts and moved local collection/register lookup out of
+  `comparison.cpp` into the reusable AArch64 dispatch-publication adapter.
+- Materialized compare join targets are consumed through shared prepared
+  authority: authoritative branch-owned join transfer lookup, materialized
+  compare join context, and published compare-join continuation targets.
 
 Keep-local decisions:
 
-- AArch64 register parsing, register-bank filtering, register view coercion,
-  compare/branch emission, and fallback policy stay target-local in the
-  dispatch-publication and comparison lowering code.
-- Materialized compare join-target lookup remains shared prepared-authority
-  based through the existing prepared conditional branch facts path.
+- `comparison.cpp` retains AArch64 condition suffix spelling, compare opcode
+  and immediate encodability checks, branch assembly text, scratch/register
+  selection, operand view coercion, and target fallback emission.
+- The dispatch-publication adapter owns AArch64 register-name parsing and
+  register-bank filtering for prepared current-block publication facts; the
+  shared prepared contract remains target-neutral.
+- The remaining raw terminator checks in conditional branch lowering are
+  validation against prepared branch metadata, not source-route recovery.
 
 ## Suggested Next
 
-Delegate Step 5 as a final audit/closure package: check `comparison.cpp` for
-remaining prepared-contract ownership drift, verify the Step 1-4 facts line up
-with the source idea, run the supervisor-selected acceptance subset or
-regression guard, and either prepare closure notes or identify the smallest
-remaining route gap.
+Closure-ready for supervisor review. No executor blocker remains for idea 117.
 
 ## Watchouts
 
-- `comparison.cpp` still has context adapters for fallback construction of
-  prepared producer lookups when prebuilt function lookups are absent; those
-  adapters are fallback plumbing, not the fact ownership itself.
-- Do not force the dispatch-publication adapter through edge-publication
-  join-transfer lookups only: focused AArch64 dispatch coverage still relies on
-  the already-authoritative `PreparedBlockEntryPublication` facts when no
-  join-transfer lookup exists.
+- AST-backed audit of `comparison.cpp` confirmed the migrated helper families
+  call shared `prepare` lookup/query APIs or the dispatch-publication adapter.
+- No same-block rescans, BIR-name routing, raw-terminator recovery, named-case
+  shortcuts, expectation downgrades, or unsupported-path rewrites were used for
+  this closure package.
+- Proof coverage includes AArch64 instruction dispatch, authoritative join
+  ownership, block-entry publication facts, prepared lookup helper coverage,
+  and prepared BIR dump contract sections.
 
 ## Proof
 
@@ -62,8 +58,8 @@ Passed. Exact delegated proof command:
 
 `(cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_prepare_authoritative_join_ownership|backend_prealloc_block_entry_publications|backend_prepared_lookup_helper|backend_cli_dump_prepared_bir_exposes_contract_sections)$' --output-on-failure) > test_after.log 2>&1`
 
-Result: `100% tests passed, 0 tests failed out of 5`; proof log is
-`test_after.log`.
+Result: build succeeded, `100% tests passed, 0 tests failed out of 5`; proof
+log is `test_after.log`.
 
 Supervisor acceptance validation:
 
@@ -74,3 +70,5 @@ ctest --test-dir build -j --output-on-failure -R '^backend_'
 
 Result: monotonic focused regression guard passed with no pass/fail delta, and
 the broader backend subset passed `179/179`.
+
+Closure status: closure-ready; no exact blockers found.
