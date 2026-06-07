@@ -92,3 +92,17 @@ machine records once those facts are known.
   rewrites hide preservation side-effect changes.
 - The diff claims capability progress through helper renames or line-count
   reduction with no new route-visible preservation evidence.
+
+## Closure Note
+
+Closed after Step 5 acceptance review. The final route proved the visibility
+contract without owner extraction or authority movement: preserve-effect
+publication is visible in both enabled and disabled modes, prior
+stack-preserved argument consumption uses prepared preservation facts instead
+of local stack-source reselection, and stack-to-register republication is
+visible through prepared endpoint data. Reviewer report
+`review/idea121_preservation_visibility_review.md` found no drift or overfit;
+its missing-`test_after.log` blocker was resolved by regenerating the focused
+four-test proof and passing the matching regression guard with 4/4 before and
+4/4 after, no new failures. Follow-up ideas 122 and 123 remain open as
+separate shared prepared-query initiatives.
