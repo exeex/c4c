@@ -102,3 +102,28 @@ dispatch-bridge machine instruction wrapping.
   aggregate-address, and frame-slot publication routes remain unexamined.
 - Target-specific AArch64 scalar instruction spelling or register policy moves
   into shared prepared code.
+
+## Closure Note
+
+Closed on 2026-06-07.
+
+Acceptance review `review/idea_122_acceptance.md` found no implementation
+drift, no testcase overfit, and no reviewer reject signal. The reviewed route
+matches the source idea: shared prepared/prealloc code now exposes
+call-argument producer materializability, publication-source routing,
+direct-global select-chain dependency visibility, and missing frame-slot
+publication need queries, while AArch64 consumes those queries and keeps
+concrete emission local.
+
+The reviewer blocker was missing `test_after.log`. Close proof regenerated the
+exact focused five-test backend/AArch64 subset:
+
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_aarch64_target_instruction_records|backend_aarch64_prepared_memory_operand_records)$' >> test_after.log 2>&1`
+
+Result: 5/5 tests passed.
+
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS, 5/5 before and 5/5 after, with no new failures.
