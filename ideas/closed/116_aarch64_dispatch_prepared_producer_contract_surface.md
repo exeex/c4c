@@ -102,3 +102,14 @@ affect non-AArch64 backends.
   contract migration.
 - Target-local AArch64 instruction spelling or register policy is moved into
   shared prepared code.
+
+## Closure Note
+
+Closed after Step 5. AArch64 dispatch now consumes shared prepared facts for
+edge-copy materializable producer classification, edge-publication source
+consistency, current-block join instruction routing, and direct-global
+select-chain dependency lookup. Remaining AArch64-local helpers are limited to
+machine-register hazard policy and target emission glue. Focused prepared and
+AArch64 backend proof covered edge/publication and current-block routing paths,
+and supervisor acceptance included the monotonic narrow guard plus broader
+`^backend_` validation.
