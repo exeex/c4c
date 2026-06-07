@@ -450,7 +450,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-prepared-bir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
-          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|--- prepared-function-summaries ---|--- prepared-control-flow ---|--- prepared-value-locations ---|--- prepared-stack-layout ---|--- prepared-frame-plan ---|--- prepared-dynamic-stack-plan ---|--- prepared-call-plans ---|--- prepared-storage-plans ---|--- prepared-addressing ---"
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|--- prepared-function-summaries ---|--- prepared-control-flow ---|--- prepared-value-locations ---|--- prepared-block-entry-publications ---|block_entry_publication successor=logic.end.4 status=available to_value_id=9 to=%t8 home_kind=register destination_kind=value destination_storage=register reg=r11|--- prepared-stack-layout ---|--- prepared-frame-plan ---|--- prepared-dynamic-stack-plan ---|--- prepared-call-plans ---|--- prepared-storage-plans ---|--- prepared-addressing ---"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_exposes_contract_sections PROPERTIES

@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::prepare {
 
@@ -167,6 +168,63 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
         }
         if (abi.destination_stack_offset_bytes.has_value()) {
           out << " stack_offset=" << *abi.destination_stack_offset_bytes;
+        }
+        out << "\n";
+      }
+    }
+  }
+
+  out << "--- prepared-block-entry-publications ---\n";
+  for (const auto& function_locations : module.value_locations.functions) {
+    std::vector<BlockLabelId> successor_labels;
+    for (const auto& bundle : function_locations.move_bundles) {
+      if (bundle.phase != PreparedMovePhase::BlockEntry ||
+          !bundle.source_parallel_copy_successor_label.has_value()) {
+        continue;
+      }
+      const BlockLabelId successor_label = *bundle.source_parallel_copy_successor_label;
+      bool already_recorded = false;
+      for (const auto recorded_label : successor_labels) {
+        if (recorded_label == successor_label) {
+          already_recorded = true;
+          break;
+        }
+      }
+      if (!already_recorded) {
+        successor_labels.push_back(successor_label);
+      }
+    }
+
+    if (successor_labels.empty()) {
+      continue;
+    }
+
+    out << "prepared.func @" << maybe_function_name(module.names, function_locations.function_name)
+        << "\n";
+    for (const auto successor_label : successor_labels) {
+      const auto publications =
+          collect_prepared_block_entry_publications(&function_locations, successor_label);
+      for (const auto& publication : publications) {
+        out << "  block_entry_publication successor="
+            << maybe_block_label(module.names, successor_label)
+            << " status="
+            << prepared_block_entry_publication_status_name(publication.status)
+            << " to_value_id=" << publication.destination_value_id
+            << " to=" << maybe_value_name(module.names, publication.destination_value_name)
+            << " home_kind="
+            << (publication.home == nullptr
+                    ? std::string_view{"<none>"}
+                    : prepared_value_home_kind_name(publication.home->kind))
+            << " destination_kind="
+            << move_destination_kind_name(publication.destination_kind)
+            << " destination_storage="
+            << move_storage_kind_name(publication.destination_storage_kind);
+        if (publication.destination_register_name.has_value()) {
+          out << " reg=" << *publication.destination_register_name;
+        }
+        if (publication.bundle != nullptr) {
+          out << " block_index=" << publication.bundle->block_index
+              << " instruction_index=" << publication.bundle->instruction_index;
         }
         out << "\n";
       }
