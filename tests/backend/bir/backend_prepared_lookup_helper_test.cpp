@@ -2889,6 +2889,7 @@ int verify_direct_global_select_chain_dependency_query() {
 
 int verify_prepared_same_block_scalar_source_facts() {
   prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("source_facts");
   const auto block_label = names.block_labels.intern("entry");
   const auto lhs_name = names.value_names.intern("%lhs");
   const auto rhs_name = names.value_names.intern("%rhs");
@@ -2991,6 +2992,51 @@ int verify_prepared_same_block_scalar_source_facts() {
           4);
   if (!product_constant.has_value() || *product_constant != 42) {
     return fail("prepared integer constant query should fold prepared same-block producers");
+  }
+
+  const prepare::PreparedBranchCondition fused_compare_condition{
+      .function_name = function_name,
+      .block_label = block_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I1, "%condition"),
+      .predicate = bir::BinaryOpcode::Slt,
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .rhs = bir::Value::immediate_i64(7),
+      .can_fuse_with_branch = true,
+  };
+  const auto operand_producer_facts =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          fused_compare_condition,
+          4);
+  if (!operand_producer_facts.has_value() ||
+      !operand_producer_facts->lhs.has_value() ||
+      !operand_producer_facts->rhs.has_value() ||
+      operand_producer_facts->lhs->binary != sum ||
+      operand_producer_facts->lhs->instruction_index != 2 ||
+      operand_producer_facts->rhs->kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Immediate ||
+      !operand_producer_facts->rhs->integer_constant.has_value() ||
+      *operand_producer_facts->rhs->integer_constant != 7) {
+    return fail("fused compare operand producer query should expose lhs/rhs facts");
+  }
+
+  auto materialized_condition = fused_compare_condition;
+  materialized_condition.kind =
+      prepare::PreparedBranchConditionKind::MaterializedBool;
+  if (prepare::find_prepared_fused_compare_operand_producer_facts(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          materialized_condition,
+          4)
+          .has_value()) {
+    return fail("fused compare operand producer query should fail closed by kind");
   }
 
   if (prepare::find_prepared_same_block_scalar_producer(

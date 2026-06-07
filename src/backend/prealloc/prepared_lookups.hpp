@@ -352,6 +352,11 @@ struct PreparedFusedCompareOperandProducer {
   std::optional<std::int64_t> integer_constant;
 };
 
+struct PreparedFusedCompareOperandProducerFacts {
+  std::optional<PreparedFusedCompareOperandProducer> lhs;
+  std::optional<PreparedFusedCompareOperandProducer> rhs;
+};
+
 struct PreparedMaterializedConditionProducer {
   const bir::BinaryInst* binary = nullptr;
   std::size_t instruction_index = 0;
@@ -926,6 +931,15 @@ find_prepared_fused_compare_operand_producer(
     BlockLabelId block_label,
     const bir::Block* block,
     const bir::Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<PreparedFusedCompareOperandProducerFacts>
+find_prepared_fused_compare_operand_producer_facts(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const PreparedBranchCondition& branch_condition,
     std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedMaterializedConditionProducer>

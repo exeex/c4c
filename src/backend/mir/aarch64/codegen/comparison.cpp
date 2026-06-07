@@ -54,11 +54,6 @@ struct PreparedFusedCompareBranchFacts {
   abi::RegisterView operand_view = abi::RegisterView::W;
 };
 
-struct PreparedFusedCompareOperandProducerFacts {
-  std::optional<prepare::PreparedFusedCompareOperandProducer> lhs;
-  std::optional<prepare::PreparedFusedCompareOperandProducer> rhs;
-};
-
 [[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
     const module::BlockLoweringContext& context,
@@ -240,7 +235,7 @@ find_prepared_fused_compare_branch_facts(
   };
 }
 
-[[nodiscard]] std::optional<PreparedFusedCompareOperandProducerFacts>
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
 find_prepared_fused_compare_operand_producer_facts(
     const module::BlockLoweringContext& context,
     const prepare::PreparedBranchCondition& branch_condition) {
@@ -255,20 +250,26 @@ find_prepared_fused_compare_operand_producer_facts(
   }
 
   const auto before_instruction_index = context.bir_block->insts.size();
-  PreparedFusedCompareOperandProducerFacts facts{
-      .lhs =
-          find_prepared_fused_compare_operand_producer(context,
-                                                       *branch_condition.lhs,
-                                                       before_instruction_index),
-      .rhs =
-          find_prepared_fused_compare_operand_producer(context,
-                                                       *branch_condition.rhs,
-                                                       before_instruction_index),
-  };
-  if (!facts.lhs.has_value() && !facts.rhs.has_value()) {
-    return std::nullopt;
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_fused_compare_operand_producer_facts(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        branch_condition,
+        before_instruction_index);
   }
-  return facts;
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  return prepare::find_prepared_fused_compare_operand_producer_facts(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      branch_condition,
+      before_instruction_index);
 }
 
 void append_prepared_compare_branch_lines(
@@ -828,7 +829,7 @@ PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedControlFlowBlock& block,
     const prepare::PreparedBranchCondition& branch_condition,
-    const PreparedFusedCompareOperandProducerFacts* operand_producers) {
+    const prepare::PreparedFusedCompareOperandProducerFacts* operand_producers) {
   if (branch_condition.function_name == c4c::kInvalidFunctionName ||
       value_locations.function_name != branch_condition.function_name) {
     return branch_record_error(PreparedBranchRecordError::InvalidFunction);

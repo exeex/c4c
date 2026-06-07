@@ -1,56 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/117_aarch64_comparison_fused_compare_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Or Tighten Prepared Fact Visibility
+Current Step ID: 3
+Current Step Title: Expose Fused-Compare Operand Producer Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Add Or Tighten Prepared Fact Visibility has a reviewable
-current-block publication visibility surface.
+Step 3 - Expose Fused-Compare Operand Producer Facts has a shared prepared
+operand producer contract consumed by AArch64 comparison lowering.
 
-Chosen surface:
+Migrated facts:
 
-- `--dump-prepared-bir` now prints `--- prepared-block-entry-publications ---`
-  with resolved shared `prepare::collect_prepared_block_entry_publications`
-  facts: successor label, availability status, destination value id/name,
-  resolved destination home kind, destination role/storage, resolved register
-  spelling, and source bundle position.
-- `backend_cli_dump_prepared_bir_exposes_contract_sections` now requires the
-  new section and a representative available `logic.end.4` publication line
-  from `smoke_expr_branch_lifecycle.c`.
+- `prepare::PreparedFusedCompareOperandProducerFacts` now carries optional
+  lhs/rhs `PreparedFusedCompareOperandProducer` records.
+- `prepare::find_prepared_fused_compare_operand_producer_facts` exposes the
+  branch-condition-level prepared query by composing the existing single-operand
+  producer lookup and failing closed when neither side has facts.
+- `comparison.cpp` now consumes that shared prepared contract for branch record
+  construction instead of locally packaging lhs/rhs producer facts around
+  `find_prepared_fused_compare_operand_producer`.
+- `backend_prepared_lookup_helper` now proves the shared query exposes lhs/rhs
+  fused-compare facts and rejects non-fused branch conditions.
 
 Why this is not target-local:
 
-- The emitted fact is the target-neutral prepared publication contract before
-  any AArch64 register parsing, scalar view selection, branch opcode choice, or
-  emission fallback. It exposes the shared destination identity/home/status
-  that comparison and dispatch consumers were previously forced to re-match
-  locally.
-- The dump visibility is shared prepared-printer output, not a
-  `comparison.cpp` behavior move and not a named-case shortcut.
+- The new lhs/rhs producer grouping lives in shared prepared lookup code and is
+  keyed by `PreparedBranchCondition`, block label, BIR block, and producer
+  lookup tables before any AArch64 scalar view, condition suffix, compare opcode,
+  operand spelling, branch emission, or fallback policy is selected.
 
 ## Suggested Next
 
-Delegate Step 3 to expose fused-compare operand producer facts as a reusable
-branch-condition-level prepared query before moving ownership. Step 4 can then
-replace `comparison.cpp`'s current-block publication iteration/duplicate
-register helper with a shared prepared publication query or small shared
-AArch64 dispatch-publication adapter that consumes the now-visible
-`PreparedBlockEntryPublication` fact.
+Delegate Step 4 to replace `comparison.cpp`'s current-block publication
+iteration/duplicate register helper with a shared prepared publication query or
+small shared AArch64 dispatch-publication adapter that consumes the already
+visible `PreparedBlockEntryPublication` fact.
 
 ## Watchouts
 
-- Do not migrate ownership by rescanning same-block BIR, matching raw
-  terminators, matching BIR names, or adding a `comparison.cpp` named-case path.
-- The next Step 3 packet should not move AArch64 condition suffix selection,
-  scalar view selection, branch spelling, or branch emission into prepared
+- `comparison.cpp` still has a context adapter for fallback construction of
+  `PreparedEdgePublicationSourceProducerLookups` when prebuilt function lookups
+  are not present; the lhs/rhs fact ownership itself is now shared prepared
   code.
-- Fused-compare producer pair facts are still only indirectly visible through
-  existing branch-condition dump coverage; Step 3 should add or expose a
-  branch-condition-level lhs/rhs producer contract.
+- Step 4 should keep AArch64 register parsing and operand/register view
+  selection target-local while moving current-block publication fact selection
+  out of local iteration.
 
 ## Proof
 
@@ -60,3 +56,13 @@ Passed. Exact delegated proof command:
 
 Result: `100% tests passed, 0 tests failed out of 5`; proof log is
 `test_after.log`.
+
+Supervisor acceptance validation:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: monotonic focused regression guard passed with no pass/fail delta, and
+the broader backend subset passed `179/179`.

@@ -2567,6 +2567,40 @@ find_prepared_fused_compare_operand_producer(
   return result;
 }
 
+std::optional<PreparedFusedCompareOperandProducerFacts>
+find_prepared_fused_compare_operand_producer_facts(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const PreparedBranchCondition& branch_condition,
+    std::size_t before_instruction_index) {
+  if (branch_condition.kind != PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  PreparedFusedCompareOperandProducerFacts facts{
+      .lhs = find_prepared_fused_compare_operand_producer(names,
+                                                          source_producers,
+                                                          block_label,
+                                                          block,
+                                                          *branch_condition.lhs,
+                                                          before_instruction_index),
+      .rhs = find_prepared_fused_compare_operand_producer(names,
+                                                          source_producers,
+                                                          block_label,
+                                                          block,
+                                                          *branch_condition.rhs,
+                                                          before_instruction_index),
+  };
+  if (!facts.lhs.has_value() && !facts.rhs.has_value()) {
+    return std::nullopt;
+  }
+  return facts;
+}
+
 std::optional<PreparedMaterializedConditionProducer>
 find_prepared_materialized_condition_producer(
     const PreparedNameTables& names,
