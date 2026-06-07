@@ -8377,6 +8377,22 @@ void record_call_result_source_register(
   }
 }
 
+[[nodiscard]] bool call_result_store_value_retarget_available(
+    const RegisterOperand& emitted) {
+  if (!emitted.value_id.has_value() ||
+      emitted.prepared_bank == prepare::PreparedRegisterBank::None) {
+    return false;
+  }
+  const prepare::PreparedCallResultPlan result{
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_value_id = *emitted.value_id,
+      .source_register_name = std::string(abi::register_name(emitted.reg)),
+      .source_register_bank = emitted.prepared_bank,
+  };
+  return prepare::find_prepared_call_result_late_publication(result)
+      .fpr_or_vreg_store_value_retarget_available;
+}
+
 void retarget_fpr_call_result_store_value_to_emitted_scalar(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
@@ -8407,6 +8423,11 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
       (emitted->prepared_bank != prepare::PreparedRegisterBank::Fpr &&
        emitted->prepared_bank != prepare::PreparedRegisterBank::Vreg) ||
       emitted->reg.bank != abi::RegisterBank::FpSimd) {
+    return;
+  }
+  if (emitted->value_id.has_value() &&
+      emitted->prepared_bank != prepare::PreparedRegisterBank::None &&
+      !call_result_store_value_retarget_available(*emitted)) {
     return;
   }
   memory_record->value = make_register_operand(*emitted);

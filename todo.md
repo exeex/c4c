@@ -3,56 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/123_prepared_call_result_late_publication_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Source-In-Destination And Source-Register Visibility
+Current Step ID: 4
+Current Step Title: Add FPR/VREG Store-Value Retargeting Visibility
 
 ## Just Finished
 
-Completed plan Step 3: converted the AArch64 source-register recording and
-register-source-in-destination alias gates to consult the shared
-`PreparedCallResultLatePublicationFact` where the target-neutral facts are
-available.
+Completed plan Step 4: converted FPR/VREG call-result store-value retarget
+availability to consult the shared `PreparedCallResultLatePublicationFact`
+where the target-neutral prepared identity is available.
 
 Changed files:
-- `src/backend/mir/aarch64/codegen/calls.cpp`: `record_call_result_source_register`
-  now gates direct call-result ABI source-register recording through
-  `find_prepared_call_result_late_publication`; the selected register-source
-  alias path in `record_call_boundary_source_in_destination` uses a narrow
-  local bridge into the shared query before recording the source value in the
-  selected destination register.
-- `src/backend/prealloc/calls.hpp`: refined
-  `source_in_destination_alias_available` to describe a register-backed source
-  value that can be recorded in a prepared register destination with the same
-  prepared bank, instead of requiring identical physical register names.
-- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`:
-  adjusted the focused alias query fixture to cover a distinct source and
-  destination register in the same prepared bank.
+- `src/backend/mir/aarch64/codegen/calls.cpp`: added a narrow
+  `call_result_store_value_retarget_available` bridge that builds the shared
+  late-publication query from an emitted CallAbi scalar register carrying
+  prepared value id and prepared bank. `retarget_fpr_call_result_store_value_to_emitted_scalar`
+  now consults that bridge before retargeting an FPR/VREG call-result store
+  value when the shared facts are present.
 
-Scalar-state recording, register parsing/view selection, and concrete
-call-boundary machine records remain AArch64-local. Memory-backed
-source-in-destination recording remains target-local because the shared
-call-result late-publication query represents register-backed call-result
-publication, not arbitrary memory-source move aliases.
+`MemoryInstructionRecord` mutation, AArch64 FpSimd bank checks, register view
+selection, q/vector spelling, and f128 handling remain local. The helper
+preserves the old fallback for emitted scalar records that do not carry enough
+prepared identity for the shared query to represent the target-neutral part.
 
 ## Suggested Next
 
-Execute Step 4 by converting FPR/VREG call-result store-value retarget
-availability to consume the shared late-publication query while keeping
-`MemoryInstructionRecord` mutation, AArch64 register-bank/view checks, q/vector
-spelling, and f128 handling local.
+Execute the next packet by addressing the remaining current-block publication
+visibility gap with a surface that explicitly accepts or references existing
+prepared current-block publication/producer facts, without deriving that
+authority from call-result destination identity.
 
 ## Watchouts
 
-- The local alias bridge preserves the old fallback when the selected
-  `CallBoundaryMoveInstructionRecord` lacks prepared-bank identity; the shared
-  query cannot classify that target-neutral route without prepared source and
-  destination banks.
-- `current_block_publication_consumption_available` remains intentionally
-  unclaimed by this query. Do not derive it from destination identity; a future
-  surface needs to accept or reference the existing current-block
-  publication/producer facts.
-- Do not move scalar-state mutation or machine-record construction into shared
-  prepared code.
+- `current_block_publication_consumption_available` is still intentionally
+  unclaimed by `find_prepared_call_result_late_publication`; do not infer it
+  from `PreparedCallResultPlan` destination fields.
+- The FPR/VREG retarget bridge only gates availability. It does not move store
+  record mutation, register-bank/view validation, or f128/q-register spelling
+  into shared prepared code.
+- If a future packet wants to remove the fallback for missing prepared identity,
+  first prove every emitted CallAbi FPR/VREG scalar that reaches the store
+  retarget path carries a prepared value id and prepared bank.
 
 ## Proof
 
