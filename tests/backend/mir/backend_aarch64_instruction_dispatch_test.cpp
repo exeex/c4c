@@ -16071,6 +16071,11 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   const auto& preserved =
       prepared.call_plans.functions.front().calls.front().preserved_values.front();
   auto& argument = prepared.call_plans.functions.front().calls.back().arguments.front();
+  argument.source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  argument.source_register_name.reset();
+  argument.source_register_bank.reset();
+  argument.source_slot_id = prepare::PreparedFrameSlotId{91};
+  argument.source_stack_offset_bytes = std::size_t{120};
   argument.source_selection =
       prepare::PreparedCallArgumentSourceSelection{
           .kind =
@@ -16116,10 +16121,22 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
   if (populate == nullptr || reload == nullptr ||
       !reload->source_memory.has_value() ||
       !reload->destination_register.has_value() ||
+      reload->source_memory->support !=
+          aarch64_module::codegen::MemoryOperandSupportKind::Prepared ||
+      reload->source_memory->base_kind !=
+          aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      reload->source_memory->frame_slot_id != preserved.slot_id ||
+      reload->source_memory->frame_slot_id == prepare::PreparedFrameSlotId{91} ||
       reload->source_memory->byte_offset != 32 ||
+      reload->source_memory->byte_offset == 120 ||
+      !reload->source_memory->byte_offset_is_prepared_snapshot ||
+      reload->source_memory->size_bytes != std::size_t{8} ||
+      reload->source_memory->align_bytes != std::size_t{8} ||
+      reload->source_memory->result_value_id != preserved.value_id ||
+      reload->source_memory->result_value_name.has_value() ||
       reload->destination_register->reg != aarch64_module::abi::x_register(0)) {
     const auto printed = print_route_block(function_cf.function_name, block);
-    return fail("expected later call argument to reload stack-preserved home into x0: " +
+    return fail("expected later call argument to consume prepared stack-preserved selection, not local stack home: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
 
@@ -16134,14 +16151,17 @@ int stack_preserved_home_feeds_later_call_argument_after_clobber() {
       printed.assembly.find("str x1, [sp, #32]", first_call);
   const auto preserved_publish =
       printed.assembly.find("ldr x0, [sp, #32]", first_call);
+  const auto local_home_publish =
+      printed.assembly.find("ldr x0, [sp, #120]", first_call);
   const auto second_call = printed.assembly.find("bl consume_arg", preserved_publish);
   if (initial_publish == std::string::npos ||
       first_call == std::string::npos ||
       !(initial_publish < first_call) ||
       post_call_overwrite != std::string::npos ||
       preserved_publish == std::string::npos ||
+      local_home_publish != std::string::npos ||
       second_call == std::string::npos) {
-    return fail("expected later call argument to use stack home without post-call overwrite: " +
+    return fail("expected later call argument to use prior stack-preserved home without local stack-home reselection: " +
                 printed.assembly);
   }
   return 0;
