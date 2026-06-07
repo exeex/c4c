@@ -1,16 +1,16 @@
 Status: Active
 Source Idea Path: ideas/open/118_aarch64_calls_deferred_cluster_post_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build The Current Calls Cluster Map
+Current Step ID: 3
+Current Step Title: Classify Cluster Dispositions
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` mapped the current deferred calls clusters in
-`src/backend/mir/aarch64/codegen/calls.cpp` to function-level ownership, while
-preserving the Step 1 closed-route evidence needed for Step 3 classification.
+Step 3 of `plan.md` classified every idea-118 deferred calls cluster by current
+owner disposition using the Step 1 closed-route evidence and Step 2 function
+map.
 
 ## Step 1 Closed-Route Evidence
 
@@ -163,11 +163,41 @@ preserving the Step 1 closed-route evidence needed for Step 3 classification.
   memory-return storage handoff to the stack-frame owner, outgoing stack byte
   alignment/base selection, and target machine-origin metadata.
 
+## Step 3 Cluster Disposition Table
+
+| Cluster | Disposition | Evidence and prepared facts | Reject-risk notes |
+| --- | --- | --- | --- |
+| Before-call move bundle lowering | `ready-local-owner` | A bounded AArch64-local owner can consume `PreparedCallPlan`, `PreparedMoveBundle`, `PreparedCallBoundaryEffectPlan`, `PreparedMoveResolution`, prepared value homes, prepared ABI bindings, prepared source selections, prepared f128 carriers, indexed immediate argument lookups, and idea-114 `PreparedCallPlan::outgoing_stack_argument_area`. The safe boundary is the translation from already-prepared move authority into AArch64 register, memory, immediate, FP, and f128 machine records. | Reject any route that reselects stack homes, recomputes outgoing stack area totals, reopens f128 carrier lookup, or rediscover immediate argument publication. The owner must preserve `x16` base addressing, q-register rendering, inline-asm materialization, and target diagnostics as AArch64-local behavior. |
+| After-call result/value lowering | `ready-local-owner` | A local owner can consume the prepared call result plan from `prepare::classify_prepared_call_boundary_move`, prepared after-call ABI bindings, destination prepared value homes, and prepared f128 carriers. The safe boundary is AArch64 result-register/view conversion plus call-boundary move or frame-slot store record construction. | Reject routes that move ABI result-register spelling, scalar/FPR/VREG view selection, frame-slot memory operand spelling, or f128 carrier rendering into shared BIR/prealloc. Do not rederive destination homes or duplicate stack-frame-slot ownership from idea 93. |
+| Preservation and republication lowering | `contract-needed` | The cluster has prepared inputs (`PreparedCallPreservedValue`, prepared preservation routes, endpoint stack/register data, indexed first stack-preserved values, current prepared value homes, and current emitted registers), but it crosses before-call prior-preservation moves, call preserve-effect publication, and stack republication records. | Missing visibility: focused dumps/tests should show preserve-effect publication enabled and disabled, prior stack-preserved argument consumption, and stack-to-register republication through the same route. Until that exists, extraction risks hiding a behavior change in preservation side effects or reopening idea-93 stack-preserved source authority. |
+| Scalar producer dispatch bridge | `move-forward-needed` | The cluster already consumes idea-116 facts for edge-publication source-producer lookup, direct-global select-chain dependencies, call argument plans, prepared value homes, prepared move classifications, local aggregate address publication flags, and current block BIR producers. | Move first: a target-neutral query/fact for call-argument producer materializability and publication source routing, including direct-global select-chain dependencies and missing frame-slot argument publication needs. Reject an AArch64-only owner that rediscovers same producer classification, extends named-case select-chain matching, or masks gaps in shared dispatch facts. |
+| Result recording and late publication | `move-forward-needed` | This cluster consumes `PreparedCallPlan::result`, after-call result lane bindings, prepared value homes/regalloc, prepared edge-publication source producers, same-block BIR producers, idea-117 current-block publication facts, and live `BlockScalarLoweringState`. | Move first: a target-neutral result-publication query that describes when a call result source register, source-in-destination alias, or FPR/VREG store value can be retargeted to an already-emitted scalar. Reject a local-only contraction that rebuilds current-block publication facts, comparison publication routing, or same-block producer discovery inside calls lowering. |
+| Ordinary call-boundary move/binding record construction where coupled | `keep-in-calls` | The constructors consume prepared call plans, ABI bindings, move records, call clobber/preserve/result facts, indirect callee facts, and outgoing stack area facts, but their mutation is record assembly for the selected call-boundary or call machine node. | No new owner should extract generic instruction-record construction just to shrink `calls.cpp`. Reject routes that move call opcode choice, direct/indirect callee operand spelling, variadic checks, memory-return handoff, outgoing stack byte alignment/base selection, or machine-origin metadata away from AArch64 calls emission. |
+
+### Step 3 No-New-Idea Rationale
+
+- No new idea should reopen the closed stack-frame-slot, f128-carrier, or
+  immediate-publication owners from ideas 93, 94, and 95; the Step 3 actionable
+  boundaries only consume those owners.
+- No new idea should duplicate idea-114 outgoing stack area authority; the
+  before-call local owner can consume the prepared call-level area while
+  retaining AArch64 store/base emission.
+- No new idea should duplicate idea-116 or idea-117 shared prepared-producer or
+  comparison publication contracts; the two `move-forward-needed`
+  classifications require target-neutral query/fact movement first, not an
+  AArch64-only contraction.
+- The ordinary record-construction cluster is `keep-in-calls` where it is pure
+  call instruction or ABI record emission. It should only be mentioned by later
+  follow-up ideas when coupled to an actionable move/result/preservation
+  boundary.
+
 ## Suggested Next
 
-Execute Step 3 by classifying each mapped cluster as `ready-local-owner`,
-`move-forward-needed`, `keep-in-calls`, `contract-needed`, or `no-new-idea`
-using the Step 1 evidence and this Step 2 function map.
+Execute Step 4 by drafting bounded follow-up `ideas/open/` files only for the
+actionable Step 3 dispositions: local owners for before-call move bundle
+lowering and after-call result/value lowering, contract visibility for
+preservation/republication, and target-neutral fact/query movement for scalar
+producer dispatch and result recording/late publication.
 
 ## Watchouts
 
@@ -184,6 +214,11 @@ using the Step 1 evidence and this Step 2 function map.
   93, 94, and 95; Step 3 should classify those as duplicate-work guardrails,
   not as invitations to reopen stack-slot, f128-carrier, or immediate
   publication ownership.
+- Step 4 follow-up ideas should name concrete reject signals: no line-count-only
+  `calls.cpp` shrink, no expectation downgrades, no named-case producer
+  shortcuts, and no duplicate ownership of ideas 93, 94, 95, 114, 116, or 117.
+- The `contract-needed` preservation/republication slice should ask for
+  route-visible dumps/tests before movement, not implementation changes.
 
 ## Proof
 
