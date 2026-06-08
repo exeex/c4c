@@ -746,9 +746,9 @@ mir::TargetInstructionPrintResult print_i128_shift(
   }
   const auto* immediate = std::get_if<ImmediateOperand>(&shift.shift_count.payload);
   if (shift.shift_count.kind != OperandKind::Immediate || immediate == nullptr ||
-      immediate->signed_value < 0 || immediate->signed_value >= 64) {
+      immediate->signed_value < 0 || immediate->signed_value >= 128) {
     return target_unsupported(bad_header(instruction) +
-                              "i128 shift immediate is outside the printable 0..63 subset");
+                              "i128 shift immediate is outside the printable 0..127 subset");
   }
   const auto amount = immediate->signed_value;
   const auto result_low = pair_low_register_name(shift.result);
@@ -773,6 +773,60 @@ mir::TargetInstructionPrintResult print_i128_shift(
   if (amount == 0) {
     emit_mov_pair();
     return target_printed(std::move(lines));
+  }
+  auto emit_zero_low = [&]() {
+    std::ostringstream low;
+    low << "mov " << *result_low << ", xzr";
+    lines.push_back(low.str());
+  };
+  auto emit_zero_high = [&]() {
+    std::ostringstream high;
+    high << "mov " << *result_high << ", xzr";
+    lines.push_back(high.str());
+  };
+
+  if (amount >= 64) {
+    const auto lane_amount = amount - 64;
+    switch (shift.shift_kind) {
+      case I128ShiftKind::Left: {
+        emit_zero_low();
+        std::ostringstream high;
+        if (lane_amount == 0) {
+          high << "mov " << *result_high << ", " << *source_low;
+        } else {
+          high << "lsl " << *result_high << ", " << *source_low << ", #"
+               << lane_amount;
+        }
+        lines.push_back(high.str());
+        return target_printed(std::move(lines));
+      }
+      case I128ShiftKind::LogicalRight: {
+        std::ostringstream low;
+        if (lane_amount == 0) {
+          low << "mov " << *result_low << ", " << *source_high;
+        } else {
+          low << "lsr " << *result_low << ", " << *source_high << ", #"
+              << lane_amount;
+        }
+        lines.push_back(low.str());
+        emit_zero_high();
+        return target_printed(std::move(lines));
+      }
+      case I128ShiftKind::ArithmeticRight: {
+        std::ostringstream low;
+        if (lane_amount == 0) {
+          low << "mov " << *result_low << ", " << *source_high;
+        } else {
+          low << "asr " << *result_low << ", " << *source_high << ", #"
+              << lane_amount;
+        }
+        lines.push_back(low.str());
+        std::ostringstream high;
+        high << "asr " << *result_high << ", " << *source_high << ", #63";
+        lines.push_back(high.str());
+        return target_printed(std::move(lines));
+      }
+    }
   }
 
   switch (shift.shift_kind) {

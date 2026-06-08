@@ -4013,6 +4013,126 @@ int selected_i128_records_print_from_structured_fields() {
                          "i128 structured common-printer drift guard");
 }
 
+aarch64_codegen::InstructionRecord printable_i128_shift(
+    aarch64_codegen::I128ShiftKind kind,
+    aarch64_codegen::I128ShiftLaneSemantics semantics,
+    bir::BinaryOpcode opcode,
+    std::int64_t amount,
+    prepare::PreparedValueId result_id,
+    c4c::ValueNameId result_name,
+    unsigned result_low,
+    prepare::PreparedValueId source_id,
+    c4c::ValueNameId source_name,
+    unsigned source_low) {
+  return aarch64_codegen::make_i128_shift_instruction(
+      aarch64_codegen::I128ShiftRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .shift_kind = kind,
+          .lane_semantics = semantics,
+          .count_kind = aarch64_codegen::I128ShiftCountKind::Immediate,
+          .source_binary_opcode = opcode,
+          .result = i128_pair_operand(result_id, result_name, result_low),
+          .source = i128_pair_operand(source_id, source_name, source_low),
+          .shift_count =
+              aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = amount,
+              }),
+      });
+}
+
+int selected_i128_large_immediate_shifts_print_semantic_lane_routes() {
+  const auto shl64 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::Left,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft,
+      bir::BinaryOpcode::Shl,
+      64,
+      prepare::PreparedValueId{90},
+      c4c::ValueNameId{90},
+      2,
+      prepare::PreparedValueId{91},
+      c4c::ValueNameId{91},
+      4);
+  const auto shl73 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::Left,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft,
+      bir::BinaryOpcode::Shl,
+      73,
+      prepare::PreparedValueId{92},
+      c4c::ValueNameId{92},
+      6,
+      prepare::PreparedValueId{93},
+      c4c::ValueNameId{93},
+      8);
+  const auto lshr64 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::LogicalRight,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+      bir::BinaryOpcode::LShr,
+      64,
+      prepare::PreparedValueId{94},
+      c4c::ValueNameId{94},
+      10,
+      prepare::PreparedValueId{95},
+      c4c::ValueNameId{95},
+      12);
+  const auto lshr79 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::LogicalRight,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+      bir::BinaryOpcode::LShr,
+      79,
+      prepare::PreparedValueId{96},
+      c4c::ValueNameId{96},
+      14,
+      prepare::PreparedValueId{97},
+      c4c::ValueNameId{97},
+      16);
+  const auto ashr64 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::ArithmeticRight,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight,
+      bir::BinaryOpcode::AShr,
+      64,
+      prepare::PreparedValueId{98},
+      c4c::ValueNameId{98},
+      18,
+      prepare::PreparedValueId{99},
+      c4c::ValueNameId{99},
+      20);
+  const auto ashr127 = printable_i128_shift(
+      aarch64_codegen::I128ShiftKind::ArithmeticRight,
+      aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight,
+      bir::BinaryOpcode::AShr,
+      127,
+      prepare::PreparedValueId{100},
+      c4c::ValueNameId{100},
+      22,
+      prepare::PreparedValueId{101},
+      c4c::ValueNameId{101},
+      24);
+  const auto result =
+      print_common_instruction_nodes({shl64, shl73, lshr64, lshr79, ashr64, ashr127});
+  if (!result.ok) {
+    return fail("expected large immediate i128 shifts to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    mov x2, xzr\n"
+      "    mov x3, x4\n"
+      "    mov x6, xzr\n"
+      "    lsl x7, x8, #9\n"
+      "    mov x10, x13\n"
+      "    mov x11, xzr\n"
+      "    lsr x14, x17, #15\n"
+      "    mov x15, xzr\n"
+      "    mov x18, x21\n"
+      "    asr x19, x21, #63\n"
+      "    asr x22, x25, #63\n"
+      "    asr x23, x25, #63\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "large immediate i128 shift printer");
+}
+
 int selected_i128_helper_boundaries_print_from_structured_fields() {
   auto signed_helper = printable_i128_helper(bir::BinaryOpcode::SDiv,
                                              prepare::PreparedI128RuntimeHelperKind::SignedDiv,
@@ -7348,6 +7468,11 @@ int main() {
     return result;
   }
   if (const int result = selected_i128_records_print_from_structured_fields(); result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_i128_large_immediate_shifts_print_semantic_lane_routes();
+      result != 0) {
     return result;
   }
   if (const int result = selected_i128_helper_boundaries_print_from_structured_fields();

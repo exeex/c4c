@@ -4321,6 +4321,64 @@ int i128_pair_records_preserve_sources_result_and_lane_semantics() {
       shift_instruction.defs.size() != 2 || shift_instruction.uses.size() != 3) {
     return fail("expected selected i128 shift instruction effects");
   }
+  struct I128ShiftCase {
+    bir::BinaryOpcode opcode;
+    aarch64_codegen::I128ShiftKind kind;
+    aarch64_codegen::I128ShiftLaneSemantics semantics;
+    std::int64_t count;
+  };
+  const std::array<I128ShiftCase, 6> large_shift_cases{{
+      {bir::BinaryOpcode::Shl,
+       aarch64_codegen::I128ShiftKind::Left,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft,
+       64},
+      {bir::BinaryOpcode::Shl,
+       aarch64_codegen::I128ShiftKind::Left,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft,
+       73},
+      {bir::BinaryOpcode::LShr,
+       aarch64_codegen::I128ShiftKind::LogicalRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+       64},
+      {bir::BinaryOpcode::LShr,
+       aarch64_codegen::I128ShiftKind::LogicalRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+       79},
+      {bir::BinaryOpcode::AShr,
+       aarch64_codegen::I128ShiftKind::ArithmeticRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight,
+       64},
+      {bir::BinaryOpcode::AShr,
+       aarch64_codegen::I128ShiftKind::ArithmeticRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight,
+       127},
+  }};
+  for (const auto& shift_case : large_shift_cases) {
+    const bir::BinaryInst large_shift{
+        .opcode = shift_case.opcode,
+        .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+        .operand_type = bir::TypeKind::I128,
+        .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+        .rhs = bir::Value::immediate_i32(shift_case.count),
+    };
+    const auto large_shift_record = aarch64_codegen::make_prepared_i128_shift_record(
+        names, value_locations, storage_plan, carriers, large_shift);
+    const auto* immediate =
+        large_shift_record.record.has_value()
+            ? std::get_if<aarch64_codegen::ImmediateOperand>(
+                  &large_shift_record.record->shift_count.payload)
+            : nullptr;
+    if (!large_shift_record.record.has_value() ||
+        large_shift_record.error !=
+            aarch64_codegen::PreparedI128PairRecordError::None ||
+        large_shift_record.record->shift_kind != shift_case.kind ||
+        large_shift_record.record->lane_semantics != shift_case.semantics ||
+        large_shift_record.record->count_kind !=
+            aarch64_codegen::I128ShiftCountKind::Immediate ||
+        immediate == nullptr || immediate->signed_value != shift_case.count) {
+      return fail("expected large immediate i128 shift records to preserve supported contract");
+    }
+  }
 
   const bir::BinaryInst compare{
       .opcode = bir::BinaryOpcode::Slt,
