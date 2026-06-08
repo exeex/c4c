@@ -1,15 +1,22 @@
 Status: Active
 Source Idea Path: ideas/open/124_aarch64_memory_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Build the evidence inventory
+Current Step ID: Step 2
+Current Step Title: Classify the five boundary standards
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Build the evidence inventory is complete. Built the read-only
-inventory for `src/backend/mir/aarch64/codegen/memory.cpp` using
+Step 2 - Classify the five boundary standards is complete. Used the Step 1
+inventory plus targeted reads of `memory.cpp` identity, store-source
+publication, and store-global pending-publication helpers. No implementation
+files, tests, build metadata, `plan.md`, or idea files were changed.
+
+## Prior Evidence Archive
+
+Step 1 - Build the evidence inventory completed the read-only inventory for
+`src/backend/mir/aarch64/codegen/memory.cpp` using
 `c4c-clang-tool-ccdb function-signatures` plus targeted raw reads, and checked
 closed-route notes for ideas 34, 39, 39a, 50, 70, 86, 88, 89, 111, 114, 116,
 117, 122, and 123.
@@ -135,7 +142,7 @@ Function/helper cluster map for `memory.cpp`:
   producer instruction recovery that should be classified against idea 50/111
   evidence before any implementation route.
 
-Closed-route evidence for the next classification step:
+Closed-route evidence for classification:
 
 - Idea 34: Store-source semantic source selection had to move out of AArch64
   and into shared prepared/MIR/BIR planning; AArch64 must consume prepared
@@ -205,28 +212,36 @@ Closed-route evidence for the next classification step:
   remains the target-local emission and recording consumer; memory should not
   duplicate comparison/dispatch/current-block producer authority.
 
+Classification table:
+
+| Audit standard | Classification | Evidence | Result |
+| --- | --- | --- | --- |
+| 1. Prepared memory record and identity validation | Clean target-local consumer and validator | `make_memory_record_from_prepared_access`, `validate_memory_instruction_facts`, `validate_memory_base_identity`, `apply_load_identity`, and `apply_store_identity` consume `PreparedMemoryAccess`, prepared addressing, names, value locations, and indexed value-home lookups; they fail closed through `PreparedMemoryOperandRecordError` and keep diagnostic/record construction local. Closed ideas 70 and 86 explicitly keep prepared record construction, identity validation, diagnostics, opcode/support policy, and machine-record construction in AArch64 memory while moving address/value-home authority into prepared data. | No new idea. |
+| 2. Store-source and store-global publication consumption | Mostly prepared consumer with one unresolved shared-authority gap | Store-local paths now consume prepared source facts through `prepared_store_source_producer`, `prepared_recovered_narrow_store_source`, `plan_store_local_source_publication`, `lower_store_local_value_publication`, and `lower_store_global_value_publication_from_plan`. Those match ideas 34, 39a, 111, 116, 117, 122, and 123 because source-producer kind, direct-global select-chain fields, recovered narrow stores, byval classification, and current-block publication facts are prepared inputs. The gap is `lower_pending_store_global_stack_value_publications`: after `prepare::plan_pending_prepared_store_global_publications`, it still scans earlier `context.bir_block->insts` with `instruction_result_value` and matches `result->name == plan.source_value.name` plus type before calling `lower_published_store_global_stack_value_publication`. That is local producer rediscovery/name matching against the idea 50 and idea 111 boundary. | Unresolved shared-authority gap. Likely shared/prepared owner should make the pending producer instruction/index available in the pending publication result, leaving AArch64 to consume it and emit. Do not create the follow-up idea yet. |
+| 3. Frame-slot and pointer-base materialization residue | Clean prepared consumer and AArch64 materializer | `find_storage_plan_value`, `apply_frame_pointer_base_policy`, `prepared_store_local_access`, `emit_prepared_pointer_value_load_to_register`, `lower_stack_homed_pointer_value_load_publication`, `plan_stack_homed_pointer_store_writeback`, `lower_stack_homed_pointer_store_writeback`, `find_prepared_pointer_base_plus_offset_materialization`, `emit_pointer_base_plus_offset_to_register`, and `lower_pointer_base_plus_offset_store_local_publication` consume prepared value-home/storage/frame-address/materialization facts and keep scratch choice, register views, offset legality, address spelling, retargeting, and assembler lines local. Closed ideas 70, 88, and 89 cover the shared-vs-local split. | No new idea. |
+| 4. Variadic `va_list` field memory handling | Clean ABI-specific target-local handling | `find_va_list_field_address`, `make_va_list_field_memory_operand`, va-list field load/store record builders, cursor-update producer detection, and cursor-update machine instruction emission sit in the AArch64 ABI memory surface. Idea 86 explicitly left variadic field memory handling target-local, and no Step 1 evidence showed duplicate frame-slot/value-home/store-source authority in this cluster. | No new idea. |
+| 5. Physical split readiness | Local-clarity gap only, not semantic shared-authority drift | The file is still physically large, but the Step 1 inventory shows most clusters are already consumers of prepared facts or AArch64 emission/recording helpers. Concrete local-owner candidates are `make_memory_record_from_prepared_access` and identity validators, scalar load/store record builders (`make_load_memory_instruction_record`, `make_store_memory_instruction_record`), store-source publication emission (`lower_store_local_value_publication`, `lower_fixed_formal_store_local_publication`), pointer writeback/materialization (`lower_stack_homed_pointer_store_writeback`, `lower_pointer_base_plus_offset_store_local_publication`), and store-global publication emission (`lower_store_global_value_publication_from_plan`, `lower_published_store_global_stack_value_publication`). Closed idea 39 rejects line-count-only shrink work as semantic progress, and idea 86 already treated local-owner extraction as separate from shared authority. | Unresolved local-clarity gap only. If pursued, it should be an AArch64 memory-private split after resolving or explicitly scoping out the pending store-global shared-authority gap. Do not create the follow-up idea yet. |
+
 ## Suggested Next
 
-Execute Step 2 classification against this inventory. Start with the
-highest-risk clusters: store-source publication planning/emission
-(3530-4424), pointer-base-plus-offset publication (4575-4854), and
-store-global pending/publication handling (4858-5267). Classify each as
-target-local emission, prepared consumer, candidate local subowner, or
-move-forward/shared-authority risk using the closed-route evidence above.
+Execute Step 3 by drafting only proven follow-up ideas. The first candidate is
+a shared/prepared pending store-global publication producer-index follow-up for
+`lower_pending_store_global_stack_value_publications`. A second candidate is an
+AArch64 memory-private physical split/local-owner follow-up only if the
+supervisor wants local clarity work recorded separately from semantic boundary
+repair.
 
 ## Watchouts
 
-- Do not edit implementation files, tests, build metadata, or `ideas/closed/*`.
-- The cluster map is an evidence inventory, not an implementation plan.
-- Treat physical splitting as local clarity only when the helper is already a
-  prepared consumer; otherwise classify the missing shared fact first.
-- Reject any route that reintroduces same-block producer scans,
-  text/name/slot/value-id matching, or local direct-global select-chain
-  discovery as semantic authority.
-- The pending store-global cluster still has a producer-instruction search in
-  `lower_pending_store_global_stack_value_publications`; Step 2 should classify
-  it explicitly against idea 50 and idea 111 rather than assuming it is safe.
+- Do not create follow-up ideas until Step 3 is explicitly delegated.
+- The store-global pending-publication gap should not be repaired by another
+  local name/type scan, by testcase-shaped matching, or by expectation changes.
+- If the physical split is pursued, keep it local to AArch64 memory emission
+  helpers and do not move opcode choice, scratch policy, ABI layout, or machine
+  wrapping into shared prepared code.
+- No gap was found for prepared memory identity, frame-slot/pointer-base
+  materialization, or variadic `va_list` field memory handling.
 
 ## Proof
 
-No build/test proof required; analysis-only evidence inventory.
+No build/test proof required; analysis-only classification.
