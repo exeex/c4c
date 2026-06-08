@@ -1,16 +1,101 @@
 Status: Active
 Source Idea Path: ideas/open/127_aarch64_alu_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Audit Control-Source And Fallback Operand Materialization
+Current Step ID: 6
+Current Step Title: Decide Physical Split Readiness And Draft Outputs
 
 # Current Packet
 
 ## Just Finished
 
+Step 6 from `plan.md` synthesized the retained AArch64 ALU boundary audit
+evidence into closure-ready output without implementation edits or new idea
+files.
+
+Final classification table:
+
+| Audit standard | Classification | Closure decision |
+| --- | --- | --- |
+| Prepared scalar operand and result homes | `no-new-idea` | Covered by prepared value-home/storage/regalloc consumption in current ALU plus closed ideas 51, 55, 71, and 74. |
+| Scalar producer and publication consumption | `no-new-idea` | Covered by prepared same-block producer, load-local producer, current-block publication, stack-publication, and select-chain dependency surfaces plus closed ideas 116, 117, 122, and 123. |
+| Immediate and constant materialization policy | `no-new-idea` | Remaining decisions are AArch64 immediate encodability, UDiv/URem power-of-two instruction selection, scratch materialization, and assembler spelling. |
+| Control-source and fallback operand materialization | `no-new-idea` | Fallback/control paths consume prepared homes, prepared producers, prepared return facts, prepared select-chain materialization, prepared load sources, and local emitted-register state. |
+| Physical split readiness for local AArch64 ALU clarity | `no-new-idea` | A physical split is not required for this boundary audit. A future extraction would be purely mechanical and AArch64-local, not a shared-authority follow-up. |
+
+Explicit `no new idea` entries:
+
+- Prepared operand/result-home boundary: no new idea. Current ALU consumes
+  prepared home, storage, regalloc, return ABI, return-chain, stack-home, and
+  resolved-operand authority; remaining register views, scratch selection,
+  stack-address encodability, and record spelling are target-local.
+- Producer/publication boundary: no new idea. Current ALU consumes prepared
+  same-block producer, load-local producer, current-block publication,
+  stack-publication, and select-chain dependency surfaces; remaining logic is
+  AArch64 scratch-risk, emitted-register cache, memory operand, store, and
+  publication emission policy.
+- Immediate/constant boundary: no new idea. Current ALU owns only target
+  encodability, immediate spelling, power-of-two reduction instruction
+  selection, scratch setup, and `movz`/`movk` line emission after source
+  immediates or prepared rematerializable homes are known.
+- Control-source/fallback boundary: no new idea. Current ALU consumes prepared
+  homes, prepared load-source facts, prepared return facts, prepared
+  same-block binary/cast producer facts, and prepared select-chain
+  materialization; remaining operand preference, scratch avoidance, return
+  operand retargeting metadata, and instruction emission are AArch64-local.
+- Physical split readiness: no new idea. The helper/cluster map is retained
+  below and supports review visibility. There is no concrete unresolved
+  follow-up with a shared owner boundary, likely files, proof route, and
+  testcase-overfit reject signals.
+
+Physical split readiness decision:
+
+- Do not open a shared-boundary, contract-visibility, or closure-blocking
+  physical split idea from this audit. The five audited standards are clean
+  against the source idea's owner-boundary criteria.
+- A future local extraction may be reasonable only as a mechanical
+  AArch64-local maintainability task if review cost becomes the first-bad
+  evidence. Its likely scope would be to split existing clusters such as
+  operand preparation, producer/publication consumption, immediate
+  materialization, control/fallback materialization, arithmetic emission, and
+  machine-record emission under AArch64 codegen while preserving behavior.
+  That possible task is not needed for source-idea closure and does not
+  warrant a new idea in this packet.
+- No blocker or candidate follow-up was found. No new `ideas/open/` file was
+  created.
+
+The retained Step 1 helper/cluster map and full Step 2 through Step 5 evidence
+remain in this file for plan-owner closure review.
+
+## Suggested Next
+
+Supervisor should hand the completed audit to the plan owner for lifecycle
+closure review. No executor implementation packet is suggested from this
+audit.
+
+## Watchouts
+
+- Do not reopen closed ideas 51, 55, 71, 74, 116, 117, 122, or 123 without new
+  first-bad evidence.
+- Do not convert the non-blocking AArch64-local mechanical extraction option
+  into a shared-authority idea. It lacks a concrete unresolved owner-boundary
+  defect in this audit.
+- Any future split idea should reject testcase overfit by requiring unchanged
+  generated behavior, unchanged test expectations, and proof that the split is
+  mechanical rather than a narrow route to make one ALU case pass.
+
+## Proof
+
+Analysis-only packet. No build or tests were run by supervisor instruction, and
+no `test_after.log` was produced because this packet had no delegated
+build/test proof command. Validation: `git diff --check` passed, and
+`git status --short` verified that only `todo.md` changed.
+
+## Retained Step 5 Control-Source/Fallback Audit
+
 Step 5 from `plan.md` audited control-source and fallback operand
 materialization in
-`src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits.
+`src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits. This
+section is retained as stable audit evidence for Step 6 closure output.
 
 Classification for audit standard 4, control-source and fallback operand
 materialization: `no-new-idea`.
@@ -263,33 +348,6 @@ Remaining ALU-local authority that is acceptable for this standard:
 No follow-up idea is warranted for Step 3. The apparent local logic is either
 shared prepared producer/publication consumption or AArch64-local hazard,
 operand, stack-store, and emission policy.
-
-## Suggested Next
-
-Execute Step 6 from `plan.md`: decide physical split readiness and draft
-closure-ready outputs. Build the final classification table from Steps 1-5,
-preserve the retained helper/cluster map and audit evidence, and create
-follow-up ideas only if the Step 6 synthesis finds concrete unresolved scope.
-
-## Watchouts
-
-- Steps 2, 3, 4, and 5 are now classified `no-new-idea`. Do not reopen ideas
-  51, 55, 71, 74, 116, 117, 122, or 123 without new first-bad evidence.
-- Step 6 should distinguish a possible AArch64-local mechanical clarity split
-  from any shared-boundary follow-up. Current evidence does not warrant a new
-  shared-authority idea for prepared homes, producers/publications,
-  immediates/constants, or control-source/fallback materialization.
-- This route is analysis-only; do not edit implementation files, tests, build
-  metadata, `plan.md`, or source/closed ideas.
-
-## Proof
-
-Analysis-only packet. No build or tests were run by supervisor instruction, and
-no `test_after.log` was produced because this packet had no delegated
-build/test proof command. Used `c4c-clang-tool-ccdb` function signature and
-targeted function-callee queries for fallback/control helpers, plus targeted
-source inspection. Validation: `git diff --check` passed and
-`git status --short` shows only `M todo.md`.
 
 ## Retained Step 1 Helper/Cluster Map
 
