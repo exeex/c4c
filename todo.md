@@ -1,15 +1,99 @@
 Status: Active
 Source Idea Path: ideas/open/127_aarch64_alu_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Current ALU Helper Clusters
+Current Step ID: 2
+Current Step Title: Audit Prepared Operand And Result Home Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 from `plan.md` mapped the current helper clusters in
+Step 2 from `plan.md` audited prepared operand and result-home boundaries in
 `src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits.
+
+Classification for audit standard 1, prepared scalar operand and result homes:
+`no-new-idea`.
+
+Prepared-fact consumption evidence:
+
+- Structured ALU/unary record construction consumes prepared homes and storage:
+  `make_prepared_scalar_operand`,
+  `make_prepared_scalar_result_register_operand`,
+  `make_prepared_scalar_result_operand`,
+  `control_prepared_scalar_result_operand`,
+  `make_prepared_scalar_alu_record`, and
+  `make_prepared_scalar_unary_record` all flow through
+  `find_prepared_scalar_value_home` / `find_named_value_home`,
+  `find_prepared_scalar_storage`, and `make_prepared_scalar_register_operand`
+  before constructing operand/result records.
+- Register results and operands use prepared value ids/names, storage-plan
+  bank/encoding, prepared register placements or matching prepared
+  home/storage register names, then call `abi::convert_prepared_register`.
+  The remaining register-view conversion and display-name spelling are
+  AArch64-local emission policy, matching idea 74's closed boundary.
+- Stack-slot operands/results use prepared storage slot id,
+  `stack_offset_bytes`, `PreparedFrameSlot` offsets, prepared memory-access
+  lookups, or prepared stack-home facts to produce `MemoryOperand` records and
+  spill scratch registers. The scratch choice and address/offset encodability
+  are target-local; the home/offset authority is prepared input.
+- `make_named_scalar_operand` delegates to shared `resolve_value_operand`,
+  which decodes home/storage through `decode_prepared_home_storage` using
+  regalloc, storage plan, value locations, and value-home indexes. It records
+  the resulting `OperandAuthority` rather than rebuilding storage authority in
+  ALU.
+- Return result retargeting no longer scans raw move bundles or forward BIR
+  chains in ALU. `find_return_abi_register` consumes
+  `find_prepared_before_return_abi_move_by_source_and_destination_bank`, and
+  `find_return_chain_register` consumes prepared return-chain lookup facts plus
+  indexed value-home lookup before converting the destination register.
+- The publication fallback in `lower_scalar_instruction` reuses prepared
+  result-home/storage helpers when it cannot build the structured record,
+  then builds an AArch64 record only after it has a prepared result register,
+  prepared stack offset, and prepared/resolved operands.
+
+Remaining ALU-local authority that is acceptable for this standard:
+
+- AArch64 register view selection, register-name parsing/retargeting for view
+  compatibility, scratch-for-spill selection, occupied-register spelling, and
+  stack-address encodability.
+- Local emitted-register cache preference in fallback operand selection. This
+  is lowering-state reuse, not durable home authority; Step 3/5 can still audit
+  producer/publication ordering around it.
+- Iterating `storage_plan.values` inside `find_prepared_scalar_storage` is a
+  local lookup over the prepared storage plan, not raw storage recovery. It may
+  be a future clarity/indexing opportunity only if repeated lookup cost or
+  review visibility becomes a real problem.
+
+Closed-idea evidence:
+
+- Idea 51 directly required ALU structured records and operands/results to
+  consume `PreparedValueHome`, storage-plan value facts, prepared memory-access
+  lookup, before-return move lookup, return-chain lookup, and select-chain
+  materialization authority. Its closure note says no prepared-access
+  value-spelling scans, same-block alias scans, raw move-bundle scans, or
+  forward BIR return-chain walks remained in ALU.
+- Idea 55 closed the stale scalar cast/ALU publication home route by requiring
+  cast and ALU publication lowering to consume prepared source/home authority
+  for pointer-derived scalar publications instead of stale live registers or
+  raw BIR producer scans.
+- Idea 71 classified prepared scalar homes, storage plans, regalloc facts,
+  decoded home storage, prepared producers, computed values, and prepared
+  control-flow facts as `consume-shared`, while keeping AArch64 immediate
+  admissibility, materialization, condition-code spelling, and record
+  construction local.
+- Idea 74 closed the repeated register-view helper route by keeping BIR facts
+  and `abi::convert_prepared_register` as inputs and keeping AArch64
+  register-view/record/printer spelling local.
+
+No new prepared operand/result-home follow-up idea is warranted by Step 2.
+The remaining uncertain areas from Step 1 either consume prepared facts now
+or belong to later producer/publication and fallback/control-source audits.
+
+## Retained Step 1 Helper/Cluster Map
+
+Step 1 from `plan.md` mapped the current helper clusters in
+`src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits. This
+section is retained as stable audit evidence for Step 6 closure output.
 
 Helper/cluster map by responsibility:
 
@@ -29,11 +113,9 @@ Helper/cluster map by responsibility:
     operands, then spell AArch64 operand records. They do compute local
     register-view conversion, scratch-for-spill selection, and frame-slot
     load operand shape.
-  - Uncertain for Step 2: whether the fallback paths around
-    `make_named_scalar_operand`, `find_return_abi_register`,
-    `find_return_chain_register`, and stack-home load helpers are still pure
-    prepared-fact consumers or are rebuilding authority already covered by
-    ideas 51, 55, 71, and 74.
+  - Step 2 resolved the uncertainty around `make_named_scalar_operand`,
+    `find_return_abi_register`, `find_return_chain_register`, and stack-home
+    load helpers as prepared-fact consumption plus AArch64-local spelling.
 
 - Producer/publication:
   - Producer and publication lookup helpers:
@@ -151,27 +233,27 @@ Helper/cluster map by responsibility:
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: audit prepared operand and result-home
-boundaries, focusing on the operand-preparation and fallback result-register
-paths identified above. Compare uncertain areas against closed ideas 51, 55,
-71, and 74 before classifying.
+Execute Step 3 from `plan.md`: audit scalar producer and publication
+consumption, focusing on same-block scalar producer decisions, load-local
+source producers, current-block entry publication, stack publication, and
+select-chain dependency decisions. Compare against closed ideas 116, 117, 122,
+and 123 before classifying.
 
 ## Watchouts
 
-- This route is analysis-only; do not edit implementation files, tests, or
-  build metadata.
-- Do not treat `alu.cpp` line count as evidence of a boundary gap.
-- Follow-up ideas must be concrete and must not duplicate ideas 51, 55, 71,
-  74, 116, 117, 122, or 123.
-- Step 1 did not classify ownership boundaries; it only mapped helper
-  clusters and parked uncertain areas for Steps 2-5.
-- The most likely boundary-sensitive areas are fallback paths in
-  `lower_scalar_instruction`, same-block producer inspection in
-  `value_publication_may_write_scratch_register`, and control publication
-  source materialization.
+- Step 2 found `no-new-idea` for prepared scalar operand/result homes. Do not
+  reopen ideas 51, 55, 71, or 74 without new first-bad evidence.
+- Step 3 should not count prepared home/storage lookup loops as producer
+  authority by themselves. Focus on target-neutral producer/materializability
+  and publication facts, especially `value_publication_may_write_scratch_register`,
+  `find_prepared_load_local_source_producer`, publication stack-store paths,
+  and select/control publication dependencies.
+- This route is analysis-only; do not edit implementation files, tests, build
+  metadata, `plan.md`, or source/closed ideas.
 
 ## Proof
 
-Analysis-only packet. No build or test command required by the supervisor.
-Validation: confirm the only changed file is `todo.md`; no `test_after.log`
-was produced because this packet had no delegated proof command.
+Analysis-only correction. No build or test command required by the supervisor,
+and no `test_after.log` was produced because this packet had no delegated
+proof command. No clang-tools were needed for this todo-only evidence
+preservation fix. Validation: `git status --short` shows only `M todo.md`.
