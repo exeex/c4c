@@ -104,6 +104,21 @@ AArch64 memory lowering owns:
 - Focused tests pass without expectation downgrades.
 - Any new file or public declaration has a narrow reason tied to this owner.
 
+## Closure Notes
+
+Closed after implementation commit `85c17cfedbe42ec3e6c29d9e5c28a91da71ee099`
+grouped the helper cluster behind private/file-local `VaListFieldMemoryOwner`
+in `src/backend/mir/aarch64/codegen/memory.cpp`. The route kept prepared
+variadic authority unchanged, did not widen `memory.hpp`, did not add build
+metadata, and preserved ordinary memory fallback behavior.
+
+Focused close proof passed for the delegated AArch64/backend route subset, and
+the close-time regression guard passed comparing matching eight-test
+`test_before.log` and `test_after.log` scopes. Existing broader backend
+validation passed all 179 `^backend_` tests, and accepted full-suite baseline
+`test_baseline.log` records all 3427 tests passing for the implementation
+commit.
+
 ## Reviewer Reject Signals
 
 - The implementation reselects variadic homes, recomputes `va_list` layout, or
