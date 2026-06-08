@@ -1,17 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/124_aarch64_memory_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Classify the five boundary standards
+Current Step ID: Step 3
+Current Step Title: Draft concrete follow-up ideas if gaps remain
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Classify the five boundary standards is complete. Used the Step 1
-inventory plus targeted reads of `memory.cpp` identity, store-source
-publication, and store-global pending-publication helpers. No implementation
-files, tests, build metadata, `plan.md`, or idea files were changed.
+Step 3 - Draft concrete follow-up ideas if gaps remain is complete. Created
+one focused follow-up:
+`ideas/open/125_prepared_pending_store_global_publication_producer_contract.md`.
+It targets the proven shared/prepared gap where
+`lower_pending_store_global_stack_value_publications` rediscovered pending
+store-global publication producers by scanning earlier BIR instructions and
+matching result name/type after
+`prepare::plan_pending_prepared_store_global_publications`.
+
+Deferred the AArch64 memory-private physical split as local-clarity-only work.
+Do not create that follow-up until the shared pending store-global publication
+producer contract is resolved or explicitly scoped out.
 
 ## Prior Evidence Archive
 
@@ -224,16 +232,14 @@ Classification table:
 
 ## Suggested Next
 
-Execute Step 3 by drafting only proven follow-up ideas. The first candidate is
-a shared/prepared pending store-global publication producer-index follow-up for
-`lower_pending_store_global_stack_value_publications`. A second candidate is an
-AArch64 memory-private physical split/local-owner follow-up only if the
-supervisor wants local clarity work recorded separately from semantic boundary
-repair.
+Proceed to Step 4 by preparing closure evidence for idea 124. The closure note
+should list the generated follow-up above and record `no new idea` for the
+other clean audit standards.
 
 ## Watchouts
 
-- Do not create follow-up ideas until Step 3 is explicitly delegated.
+- Exactly one Step 3 follow-up was created; do not add the physical split
+  follow-up during this audit slice.
 - The store-global pending-publication gap should not be repaired by another
   local name/type scan, by testcase-shaped matching, or by expectation changes.
 - If the physical split is pursued, keep it local to AArch64 memory emission
@@ -244,4 +250,4 @@ repair.
 
 ## Proof
 
-No build/test proof required; analysis-only classification.
+No build/test proof required; lifecycle follow-up drafting only.
