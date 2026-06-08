@@ -640,7 +640,8 @@ plan_pending_prepared_store_global_publications(
     std::size_t instruction_index,
     const PreparedEdgePublicationSourceProducerLookups* source_producers) {
   std::vector<PreparedStoreGlobalPublicationCandidate> candidates;
-  if (block == nullptr ||
+  if (source_producers == nullptr ||
+      block == nullptr ||
       prepared_store_global_publication_run_has_prior_store(block, instruction_index)) {
     return candidates;
   }
@@ -664,24 +665,22 @@ plan_pending_prepared_store_global_publications(
     if (!prepared_store_source_publication_available(plan)) {
       continue;
     }
-    if (source_producers != nullptr) {
-      const auto* source_producer =
-          find_pending_store_global_source_producer(
-              source_producers, block_label, block, plan, *store, index);
-      if (source_producer == nullptr) {
-        continue;
-      }
-      plan = plan_prepared_store_source_publication({
-          .source_value = &store->value,
-          .destination_access = plan.destination_access,
-          .source_home = plan.source_home,
-          .intent = PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
-          .pending_publication = true,
-          .stack_homes_only = true,
-          .duplicate_publication = plan.duplicate_publication,
-          .source_producer = source_producer,
-      });
+    const auto* source_producer =
+        find_pending_store_global_source_producer(
+            source_producers, block_label, block, plan, *store, index);
+    if (source_producer == nullptr) {
+      continue;
     }
+    plan = plan_prepared_store_source_publication({
+        .source_value = &store->value,
+        .destination_access = plan.destination_access,
+        .source_home = plan.source_home,
+        .intent = PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+        .pending_publication = true,
+        .stack_homes_only = true,
+        .duplicate_publication = plan.duplicate_publication,
+        .source_producer = source_producer,
+    });
     if (plan.source_value_name != kInvalidValueName) {
       const auto [_, inserted] = published_source_names.insert(plan.source_value_name);
       if (!inserted) {

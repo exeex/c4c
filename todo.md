@@ -8,39 +8,32 @@ Current Step Title: Shared Prepared Producer Contract
 
 ## Just Finished
 
-Plan Step 2 - AArch64 Consumer Rewire: rewired
-`lower_pending_store_global_stack_value_publications` to pass prepared
-source-producer lookups into
-`plan_pending_prepared_store_global_publications`, validate the returned
-`store_source.source_producer_*` identity, and call the existing stack
-publication emitter using `plan.source_producer_instruction_index` instead of
-rescanning prior BIR instructions by result name/type. Updated
-`tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp` to
-prove the pending store-global stack publication path emits through the
-prepared producer fact and fails closed when that prepared authority is absent.
+Plan Step 1 - Shared Prepared Producer Contract: tightened
+`plan_pending_prepared_store_global_publications` so pending store-global
+candidates fail closed when no `PreparedEdgePublicationSourceProducerLookups`
+authority is supplied. Removed the public default `nullptr` argument, made the
+implementation return no candidates for absent authority before scanning, and
+kept all pending candidates tied to a matching prepared producer fact. Updated
+`tests/backend/mir/backend_store_source_publication_plan_test.cpp` to cover the
+null/no-authority path while preserving producer-present, missing-producer,
+ambiguous-producer, replay-suppression, and normal store-global planning
+coverage.
 
 ## Suggested Next
 
-Narrow follow-up before closure: tighten
-`plan_pending_prepared_store_global_publications` so shared planning fails
-closed when the caller lacks source-producer lookup authority. Prefer removing
-the public/default `source_producers == nullptr` producer-less mode if no real
-caller needs it; otherwise make the absent-authority path explicitly produce no
-pending store-global publication candidates. Keep this scoped to Plan Step 1's
-shared prepared producer contract and add focused shared-prepared proof for the
-null/no-authority case.
+Supervisor should review/commit this coherent Step 1 follow-up or route plan
+owner/reviewer closure if the source idea is now satisfied.
 
 ## Watchouts
 
-- Code review `review/idea125_code_review.md` judged the route on track and
-  matching source idea, with one medium watch item: shared planner behavior
-  still permits producer-less candidates when `source_producers == nullptr`.
-- The AArch64 pending store-global consumer no longer has a fallback producer
-  scan; contexts without `prepared_lookups` now fail closed for this path.
-- The planner still owns matching the producer fact to the store source; the
-  AArch64 consumer only validates the returned identity is same-block,
-  before-store, in-bounds, and instruction-backed before invoking the existing
-  publication emitter.
+- Changed files: `src/backend/prealloc/publication_plans.hpp`,
+  `src/backend/prealloc/publication_plans.cpp`, and
+  `tests/backend/mir/backend_store_source_publication_plan_test.cpp`.
+- `plan_pending_prepared_store_global_publications` still accepts `nullptr`
+  defensively at runtime, but callers must now pass the lookup argument
+  explicitly and null authority produces no candidates.
+- Untracked `review/idea125_code_review.md` was present before this packet and
+  was not touched.
 
 ## Proof
 

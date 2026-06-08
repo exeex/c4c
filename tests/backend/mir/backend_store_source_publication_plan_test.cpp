@@ -1073,6 +1073,17 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
   if (!missing_producer.empty()) {
     return fail("expected pending global publication candidates to require producers");
   }
+  const auto no_producer_authority =
+      prepare::plan_pending_prepared_store_global_publications(
+          &value_locations,
+          &addressing,
+          c4c::BlockLabelId{23},
+          &block,
+          1,
+          nullptr);
+  if (!no_producer_authority.empty()) {
+    return fail("expected pending global publication candidates to require producer lookup authority");
+  }
   auto ambiguous_source_producers = source_producers;
   ambiguous_source_producers.producers_by_value_name[selected_name] =
       prepare::PreparedEdgePublicationSourceProducer{};

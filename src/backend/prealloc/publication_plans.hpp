@@ -317,7 +317,7 @@ plan_pending_prepared_store_global_publications(
     BlockLabelId block_label,
     const bir::Block* block,
     std::size_t instruction_index,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr);
+    const PreparedEdgePublicationSourceProducerLookups* source_producers);
 
 void populate_store_source_publication_plans(PreparedBirModule& prepared);
 
