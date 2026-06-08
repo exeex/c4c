@@ -139,3 +139,27 @@ Good follow-up idea shapes include:
   machine-record emission policy into shared code.
 - It claims progress from physical file movement while the same mixed authority
   remains hidden behind new helper names.
+
+## Closure Note
+
+Closed 2026-06-08 as a completed analysis-only audit.
+
+Final audit result: no new follow-up idea is warranted for any of the five
+standards. `alu.cpp` remains large, but the audited responsibilities are
+target-local AArch64 emission policy or prepared-contract consumption rather
+than hidden shared authority.
+
+Classification table:
+
+| Audit standard | Classification | Closure decision |
+| --- | --- | --- |
+| Prepared scalar operand and result homes | `no-new-idea` | Current ALU consumes prepared value-home, storage, regalloc, return ABI, return-chain, stack-home, and resolved-operand facts. Closed ideas 51, 55, 71, and 74 already cover the relevant authority boundaries. |
+| Scalar producer and publication consumption | `no-new-idea` | Current ALU consumes prepared same-block producer, load-local producer, current-block publication, stack-publication, and select-chain dependency surfaces. Closed ideas 116, 117, 122, and 123 already cover the relevant producer/publication boundaries. |
+| Immediate and constant materialization policy | `no-new-idea` | Remaining decisions are AArch64 immediate encodability, power-of-two div/rem instruction selection, scratch materialization, and assembler spelling. |
+| Control-source and fallback operand materialization | `no-new-idea` | Fallback and control paths consume prepared homes, producers, return facts, select-chain materialization, load sources, and local emitted-register state. Remaining decisions are AArch64 operand ordering, scratch avoidance, retargeted register metadata, and instruction emission. |
+| Physical split readiness for local AArch64 ALU clarity | `no-new-idea` | No shared-boundary, contract-visibility, or closure-blocking physical split idea is needed. A future extraction would be a mechanical AArch64-local maintainability task only. |
+
+No implementation, test, or build metadata changes were made by this audit. No
+new `ideas/open/` file was created because no concrete unresolved gap met the
+required owner-boundary, likely-files, proof-route, and testcase-overfit reject
+signal bar.
