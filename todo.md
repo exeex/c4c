@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/126_aarch64_memory_va_list_field_local_owner.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract or Isolate the Helper Cluster
+Current Step ID: 4
+Current Step Title: Reconnect `lower_memory_instruction` and Fallback
 
 # Current Packet
 
