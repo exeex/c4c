@@ -1,16 +1,116 @@
-Status: Active
-Source Idea Path: ideas/open/128_aarch64_wide_value_owner_post_contract_audit.md
-Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Synthesize Closure Payload
+# 128 AArch64 wide value owner post-contract audit
 
-# Current Packet
+## Goal
 
-## Just Finished
+Audit `src/backend/mir/aarch64/codegen/i128_ops.cpp` and
+`src/backend/mir/aarch64/codegen/f128.cpp` after the recent BIR/prealloc,
+call-boundary, carrier, aggregate transport, and memory-contract cleanup.
 
-Step 6: Synthesize Closure Payload completed the closure-ready audit summary
-from the completed i128 and f128 evidence. No implementation files, tests,
-build metadata, `plan.md`, or source idea files were edited.
+This idea is analysis-only. It should classify the remaining wide-value
+lowering responsibilities and produce focused follow-up ideas only where there
+is concrete evidence that shared BIR/prealloc facts should own behavior that is
+still being rediscovered or duplicated in AArch64 codegen.
+
+## Background
+
+The AArch64 codegen layout is now much cleaner around calls, memory, ALU, and
+comparison boundaries, but `i128_ops.cpp` and `f128.cpp` remain two large
+special-width owners:
+
+- `i128_ops.cpp` owns i128 pair operations, shifts, compares, runtime helper
+  boundaries, transport record construction, and helper policy validation.
+- `f128.cpp` owns f128 transport records, memory-backed carrier handling,
+  runtime helper diagnostics, vector/Q-register spelling, and related
+  helper-policy validation.
+
+Earlier closure notes covered adjacent contracts:
+
+- special carrier policy cleanup
+- aggregate transport planning
+- f128 call carrier ownership
+- pointer-carrier provenance
+- call argument/result publication
+- memory-backed publication authority
+- ALU post-contract audit
+
+What is still missing is a post-contract pass over the wide-value owner files
+themselves. The important question is not whether these files are large. The
+question is whether they still contain shared lowering policy that should have
+been prepared before AArch64 codegen, or whether their size is mostly target
+local instruction emission and machine-record construction.
+
+## Required analysis
+
+Classify each major cluster in `i128_ops.cpp` and `f128.cpp` into one of these
+owners:
+
+1. Shared BIR/prealloc contract
+   - target-neutral carrier choice
+   - helper ABI/resource policy
+   - preservation/publication facts
+   - memory-backed transport authority
+   - call-boundary wide-value facts
+2. AArch64 codegen consumption
+   - validation that prepared facts are complete and unambiguous
+   - translation of prepared facts into AArch64 machine instructions
+   - AArch64 register spelling, Q/X pair spelling, lane/shift opcode spelling
+   - runtime helper call assembly after ownership is already selected
+3. Local organization only
+   - helper functions that are file-local and target-specific
+   - printer or diagnostic formatting that does not decide lowering policy
+   - candidate physical splits that do not change semantic ownership
+
+The audit must explicitly inspect:
+
+- i128 runtime helper ownership and div/rem ABI policy
+- i128 preserved value and selected-call ownership checks
+- i128 pair transport, shift, and compare record construction
+- f128 full-width and memory-backed carrier facts
+- f128 runtime helper resource/preservation checks
+- f128 transport construction and printable-address handling
+- overlap with `calls.cpp`, `memory.cpp`, `instruction.cpp`, and
+  `machine_printer.cpp`
+
+## Expected output
+
+The closure note must contain:
+
+- a short cluster map for `i128_ops.cpp`
+- a short cluster map for `f128.cpp`
+- a table of any remaining shared-policy rediscovery in AArch64 codegen
+- a table of target-local code that should stay in AArch64
+- zero or more follow-up ideas with precise filenames, proof routes, and reject
+  signals
+
+If no shared-policy gap remains, close with no follow-up ideas and explain why
+the remaining size is target-local emission or local organization.
+
+## Reject signals
+
+- Rewriting or splitting the two files only because they are large.
+- Moving AArch64 register spelling, Q-register spelling, lane/shift opcode
+  spelling, or helper call assembly into shared BIR/prealloc code.
+- Reopening closed carrier, transport, calls, or memory contracts without new
+  evidence from these two files.
+- Creating vague follow-up ideas such as "clean f128" or "shrink i128" without
+  a concrete ownership boundary and proof route.
+- Treating line count alone as evidence of architectural drift.
+- Weakening tests or expectations to make the audit easier.
+
+## Suggested proof route for follow-up ideas
+
+This idea itself is analysis-only. Follow-up implementation ideas should choose
+their own narrow proof, but likely candidates include:
+
+- `ctest --test-dir build -R '^backend_aarch64_' --output-on-failure`
+- targeted AArch64 backend internal tests covering i128/f128 transport and
+  helper lowering
+- a broader `^backend_` run when a shared BIR/prealloc contract changes
+
+## Close Note
+
+Closed on 2026-06-08. The analysis-only audit completed all six runbook steps
+and found no remaining shared-policy rediscovery in AArch64 wide-value codegen.
 
 ### `i128_ops.cpp` Closure Cluster Map
 
@@ -68,6 +168,8 @@ or scalar bridge ownership without prepared input.
 
 ### Follow-Up Idea Payloads
 
+No shared-policy follow-up idea is warranted by current evidence.
+
 | Proposed filename | Owner boundary | Exact files | Proof route | Reject signals |
 | --- | --- | --- | --- | --- |
 | `ideas/open/129_aarch64_i128_shift_support_completeness.md` | AArch64 i128 shift lowering/printing completeness; not shared BIR/prealloc policy. | `src/backend/mir/aarch64/codegen/i128_ops.cpp`; likely tests under the backend i128 shift coverage area if enabled by supervisor/plan-owner. | Add or enable backend coverage for i128 shift-by-64-or-more and variable-count shifts, then prove selected machine output or an explicit unsupported diagnostic with the narrow backend subset chosen by the supervisor. | Reject if the idea tries to move AArch64 shift opcode spelling, lane mechanics, or register-pair spelling into shared BIR/prealloc code; reject if it weakens expectations or only masks a named testcase. |
@@ -77,24 +179,3 @@ would need to show AArch64 inventing helper ABI/resource/preservation policy,
 selected-call ownership, carrier placement, scalar comparison consumption,
 stack-home/offset authority, or memory-backed publication without prepared
 input; this audit found the opposite.
-
-## Suggested Next
-
-Supervisor or plan-owner closure review for
-`ideas/open/128_aarch64_wide_value_owner_post_contract_audit.md`. If accepted,
-close the audit as analysis-only and optionally create the target-local i128
-shift support follow-up idea as a separate lifecycle action.
-
-## Watchouts
-
-- Do not treat `i128_ops.cpp` or `f128.cpp` size as evidence of a boundary gap.
-- Do not move AArch64 register spelling, Q-register spelling, lane/shift
-  opcode spelling, or helper call assembly into shared BIR/prealloc code.
-- The only precise follow-up payload is target-local i128 shift support
-  completeness. It is not evidence of shared-policy rediscovery.
-- Any future f128 follow-up must identify late AArch64 ownership selection, not
-  defensive validation or final assembly spelling over prepared facts.
-
-## Proof
-
-Proof: analysis-only, no build/test run.
