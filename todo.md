@@ -1,15 +1,104 @@
 Status: Active
 Source Idea Path: ideas/open/127_aarch64_alu_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Audit Immediate And Constant Materialization Policy
+Current Step ID: 5
+Current Step Title: Audit Control-Source And Fallback Operand Materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 from `plan.md` audited immediate and constant materialization policy in
+Step 5 from `plan.md` audited control-source and fallback operand
+materialization in
 `src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits.
+
+Classification for audit standard 4, control-source and fallback operand
+materialization: `no-new-idea`.
+
+Control-source/fallback evidence:
+
+- Fallback operand ordering is local lowering-state preference over prepared
+  facts, not authority reconstruction. `ScalarFallbackOperandSelector::select`
+  checks literal immediates first, then a local emitted-register cache keyed by
+  the prepared value home, then prepared unpublished load-local source operands,
+  then `make_named_scalar_operand`, then prepared scalar load sources. The
+  direct callee evidence for `lower_scalar_instruction` shows this path is used
+  only after structured prepared ALU record construction fails, while result
+  homes, return ABI registers, authoritative immediates, return-chain lookups,
+  prepared result operands, and publication opcode checks are still consumed
+  before constructing the fallback `ScalarAluRecord`.
+- Control publication operands consume prepared homes and prepared load-source
+  surfaces. `make_control_publication_operand` accepts only literal immediates,
+  emitted registers for a prepared home, `make_prepared_scalar_load_source`,
+  and `make_prepared_stack_home_load_source`; it rejects reserved MIR scratch
+  as the preferred emitted operand and falls back to prepared memory operands
+  when allowed. Its direct callees are immediate conversion, prepared-home
+  lookup, emitted-register lookup, prepared scalar/stack load-source helpers,
+  register wrapping, memory wrapping, and scratch-reservation checks.
+- Return ABI retargeting consumes prepared return facts. `find_return_abi_register`
+  calls `find_prepared_before_return_abi_move_by_source_and_destination_bank`
+  with prepared move-bundle/value-location state, then converts the prepared
+  destination placement to the AArch64 view. `find_return_chain_register` calls
+  `find_prepared_return_chain_terminal_value`, looks up the terminal prepared
+  home, calls `find_return_abi_register`, and then `retarget_register_operand`
+  only rewrites local register operand metadata to the current result value.
+  The extra return-chain conflict branch in `lower_scalar_instruction` uses
+  `find_prepared_return_chain_next_operand_value` plus indexed prepared homes
+  to avoid clobbering a following operand, then chooses an AArch64 scratch
+  register. It does not walk BIR return chains locally.
+- Materialized control-source helpers consume operand records and prepared
+  same-block producer facts, then emit AArch64 instructions. Direct callee
+  evidence shows `materialize_control_register_source` only names registers,
+  loads prepared memory operands, emits symbol/frame-slot address loads, or
+  moves immediates into scratch registers. `materialize_control_compare_rhs`
+  adds the AArch64 compare-immediate 0..4095 shortcut before delegating to the
+  same register-source materializer.
+- Binary/cast control-source reconstruction is bounded to prepared producers.
+  `materialize_control_binary_result_source` obtains a scratch register, calls
+  `find_prepared_control_same_block_scalar_producer`, and only emits a binary
+  or cast when the prepared producer kind carries the corresponding BIR
+  instruction pointer. `append_control_value_to_register` uses the same prepared
+  producer query, falls back to prepared stack-home/load-local sources when
+  materialization fails, and otherwise moves a control publication operand. The
+  AST callee set contains the prepared producer query and prepared load-source
+  helpers rather than raw producer scans.
+- Compare/select publication lowerers consume prepared result and select-chain
+  facts. `lower_scalar_compare_publication` calls
+  `control_prepared_scalar_result_operand`, uses control publication operands
+  for both sides, then emits `cmp`/`cset` and prepared stack publication lines.
+  `lower_scalar_select_publication` calls
+  `find_prepared_scalar_select_chain_materialization` before the direct-global
+  select-chain path and `emit_select_chain_value_to_register` only with that
+  prepared materialization/dependency record; its ordinary path uses control
+  publication operands plus materialized binary-result sources for compare
+  sides, then emits `cmp`/`csel` and stack publication.
+
+Remaining ALU-local authority that is acceptable for this standard:
+
+- Operand ordering prefers already emitted registers before prepared memory
+  homes, and control publication avoids reserved scratch registers where
+  possible. Those are AArch64 lowering-state and scratch-safety decisions, not
+  durable value-home or producer authority.
+- The materializers choose AArch64 scratch registers, register views,
+  compare-immediate admissibility, frame-slot/symbol load spelling, and
+  `cmp`/`cset`/`csel`/`mov`/binary/cast instruction text. These are target-local
+  emission mechanics explicitly outside the source idea's shared-authority
+  target.
+- The control-source helpers recurse through prepared same-block binary/cast
+  producers to avoid unnecessary stack loads, but the producer identity and
+  source-routing authority come from prepared lookup surfaces.
+
+No follow-up idea is warranted for Step 5. The audited control-source and
+fallback paths consume prepared homes, prepared producers, prepared return
+facts, prepared select-chain materialization, prepared load sources, and local
+emitted-register state. The remaining logic is AArch64 operand ordering,
+scratch avoidance, retargeted register operand metadata, and assembler emission.
+
+## Retained Step 4 Immediate/Constant Audit
+
+Step 4 from `plan.md` audited immediate and constant materialization policy in
+`src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits. This
+section is retained as stable audit evidence for Step 6 closure output.
 
 Classification for audit standard 3, immediate and constant materialization
 policy: `no-new-idea`.
@@ -177,20 +266,19 @@ operand, stack-store, and emission policy.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: audit control-source and fallback operand
-materialization. Focus on fallback operand ordering, control publication
-operands, return ABI retargeting, materialized control-source helpers, and
-whether those paths consume prepared facts without rebuilding producer or
-control-flow authority.
+Execute Step 6 from `plan.md`: decide physical split readiness and draft
+closure-ready outputs. Build the final classification table from Steps 1-5,
+preserve the retained helper/cluster map and audit evidence, and create
+follow-up ideas only if the Step 6 synthesis finds concrete unresolved scope.
 
 ## Watchouts
 
-- Steps 2, 3, and 4 are now classified `no-new-idea`. Do not reopen ideas 51,
-  55, 71, 74, 116, 117, 122, or 123 without new first-bad evidence.
-- Step 5 should distinguish target-local fallback emission and register
-  materialization from any hidden producer/control-flow authority. The main
-  unresolved cluster is control-source/fallback operand selection, not
-  immediate encodability or prepared value homes.
+- Steps 2, 3, 4, and 5 are now classified `no-new-idea`. Do not reopen ideas
+  51, 55, 71, 74, 116, 117, 122, or 123 without new first-bad evidence.
+- Step 6 should distinguish a possible AArch64-local mechanical clarity split
+  from any shared-boundary follow-up. Current evidence does not warrant a new
+  shared-authority idea for prepared homes, producers/publications,
+  immediates/constants, or control-source/fallback materialization.
 - This route is analysis-only; do not edit implementation files, tests, build
   metadata, `plan.md`, or source/closed ideas.
 
@@ -198,8 +286,9 @@ control-flow authority.
 
 Analysis-only packet. No build or tests were run by supervisor instruction, and
 no `test_after.log` was produced because this packet had no delegated
-build/test proof command. Used `c4c-clang-tool-ccdb` function signature,
-caller, and callee queries plus targeted source inspection. Validation:
+build/test proof command. Used `c4c-clang-tool-ccdb` function signature and
+targeted function-callee queries for fallback/control helpers, plus targeted
+source inspection. Validation: `git diff --check` passed and
 `git status --short` shows only `M todo.md`.
 
 ## Retained Step 1 Helper/Cluster Map
