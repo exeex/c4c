@@ -1,15 +1,90 @@
 Status: Active
 Source Idea Path: ideas/open/127_aarch64_alu_post_contract_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Audit Scalar Producer And Publication Consumption
+Current Step ID: 4
+Current Step Title: Audit Immediate And Constant Materialization Policy
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md` audited scalar producer and publication consumption in
+Step 4 from `plan.md` audited immediate and constant materialization policy in
 `src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits.
+
+Classification for audit standard 3, immediate and constant materialization
+policy: `no-new-idea`.
+
+Immediate/materialization evidence:
+
+- `value_power_of_two_shift` decides only whether an already known immediate or
+  same-block integer constant is a nonnegative power of two. `c4c-clang-tool`
+  caller evidence shows its only direct ALU caller is
+  `value_publication_may_write_scratch_register`, where it recognizes
+  multiply-by-power-of-two as a scratch-risk shortcut before recursively
+  checking the nonconstant operand. It does not decide durable scalar producer,
+  value-home, or target-neutral materializability authority.
+- Scalar immediate admissibility helpers are AArch64 encodability and spelling
+  checks. `scalar_immediate_name` spells `#<value>`,
+  `is_plain_add_sub_immediate` accepts nonnegative 12-bit add/sub immediates,
+  `is_plain_logical_immediate` currently returns false, `is_plain_mov_immediate`
+  accepts the local single-`mov` range, and
+  `scalar_alu_operation_accepts_immediate` maps those checks to AArch64 ALU
+  operation families. Direct callees of `make_scalar_alu_print_lines` include
+  these helpers plus `scalar_gp_scratch_register`, `abi::register_name`, and
+  `materialize_integer_constant_lines`, confirming the policy is print-time
+  operand choice and scratch mechanics.
+- Immediate operand construction is prepared-fact consumption or literal BIR
+  immediate conversion. `make_scalar_immediate_operand` only accepts BIR
+  immediate values with scalar register views and preserves source prepared
+  value id/name when supplied. `authoritative_immediate_storage` checks a
+  prepared `RematerializableImmediate` home against prepared storage-plan
+  immediate encoding before calling `make_scalar_immediate_operand`; it does
+  not invent immediate authority locally.
+- Unsigned div/rem reduction helpers are local AArch64 lowering mechanics for
+  a supported algebraic instruction selection. `scalar_alu_semantic_facts`
+  marks same-scalar-type `UDiv`/`URem` as reduction candidates,
+  `unsigned_power_of_two_log2` validates a typed power-of-two immediate divisor,
+  `unsigned_reduction_replacement_immediate` converts `UDiv` into an `lsr`
+  shift amount and `URem` into an `and` mask while preserving source immediate
+  identity, and `unsigned_reduction_operation` selects
+  `LogicalShiftRight`/`And`. `make_prepared_scalar_alu_record` uses that only
+  after prepared operands/results are already built, and rejects non-immediate
+  or out-of-width divisors instead of deriving broader target-neutral
+  divisibility facts.
+- `materialize_integer_constant_lines` is an AArch64 utility shared by multiple
+  AArch64 codegen files. It emits `movz`/`movk` halfword chunks for a requested
+  destination register and width. ALU uses it when an immediate cannot be used
+  directly in the selected AArch64 instruction, when stack/publication address
+  offsets need scratch materialization, and in fallback immediate-to-register
+  paths. Those uses decide scratch register setup and assembler lines, not
+  whether the source program value is a constant.
+
+Remaining ALU-local authority that is acceptable for this standard:
+
+- The local conversion of `UDiv` by a power-of-two immediate into `lsr`, and
+  `URem` by a power-of-two immediate into `and`, is target instruction
+  selection. It is visible in the ALU record as `source_binary_opcode` plus
+  chosen `ScalarAluOperationKind` and post-zero-extension bits, so it does not
+  hide a missing shared producer/materializability contract.
+- The immediate admissibility ranges are deliberately target-specific. Moving
+  them into prepared/BIR authority would violate the source idea's non-goal of
+  moving AArch64 opcode choice, immediate encodability, scratch policy, or
+  instruction spelling into shared code.
+- The materialization helper is already physically factored into
+  `constant_materialization.cpp`, but remains under AArch64 codegen. That is
+  the right owner boundary for `movz`/`movk` spelling.
+
+No follow-up idea is warranted for Step 4. The audited helpers decide
+AArch64-local immediate encodability, reduction, scratch materialization, and
+assembler spelling after prepared operands or literal BIR immediates are known.
+No target-neutral immediate semantics or constant-materializability authority
+needs to move to shared code.
+
+## Retained Step 3 Scalar Producer/Publication Audit
+
+Step 3 from `plan.md` audited scalar producer and publication consumption in
+`src/backend/mir/aarch64/codegen/alu.cpp` without implementation edits. This
+section is retained as stable audit evidence for Step 6 closure output.
 
 Classification for audit standard 2, scalar producer and publication
 consumption: `no-new-idea`.
@@ -99,6 +174,33 @@ Remaining ALU-local authority that is acceptable for this standard:
 No follow-up idea is warranted for Step 3. The apparent local logic is either
 shared prepared producer/publication consumption or AArch64-local hazard,
 operand, stack-store, and emission policy.
+
+## Suggested Next
+
+Execute Step 5 from `plan.md`: audit control-source and fallback operand
+materialization. Focus on fallback operand ordering, control publication
+operands, return ABI retargeting, materialized control-source helpers, and
+whether those paths consume prepared facts without rebuilding producer or
+control-flow authority.
+
+## Watchouts
+
+- Steps 2, 3, and 4 are now classified `no-new-idea`. Do not reopen ideas 51,
+  55, 71, 74, 116, 117, 122, or 123 without new first-bad evidence.
+- Step 5 should distinguish target-local fallback emission and register
+  materialization from any hidden producer/control-flow authority. The main
+  unresolved cluster is control-source/fallback operand selection, not
+  immediate encodability or prepared value homes.
+- This route is analysis-only; do not edit implementation files, tests, build
+  metadata, `plan.md`, or source/closed ideas.
+
+## Proof
+
+Analysis-only packet. No build or tests were run by supervisor instruction, and
+no `test_after.log` was produced because this packet had no delegated
+build/test proof command. Used `c4c-clang-tool-ccdb` function signature,
+caller, and callee queries plus targeted source inspection. Validation:
+`git status --short` shows only `M todo.md`.
 
 ## Retained Step 1 Helper/Cluster Map
 
@@ -325,32 +427,3 @@ Closed-idea evidence:
 No new prepared operand/result-home follow-up idea is warranted by Step 2.
 The remaining uncertain areas from Step 1 either consume prepared facts now
 or belong to later producer/publication and fallback/control-source audits.
-
-## Suggested Next
-
-Execute Step 4 from `plan.md`: audit immediate and constant materialization
-policy. Separate target-neutral immediate semantics from AArch64 immediate
-encodability, unsigned reduction, scratch materialization, and assembler
-spelling.
-
-## Watchouts
-
-- Step 2 found `no-new-idea` for prepared scalar operand/result homes, and
-  Step 3 found `no-new-idea` for scalar producer/publication consumption.
-  Do not reopen ideas 51, 55, 71, 74, 116, 117, 122, or 123 without new
-  first-bad evidence.
-- Step 4 should focus on `value_power_of_two_shift`, scalar immediate
-  admissibility helpers, unsigned div/rem reduction helpers, and
-  `materialize_integer_constant_lines` use. The main question is whether ALU
-  decides target-neutral semantic materializability or only AArch64
-  encodability/scratch mechanics.
-- This route is analysis-only; do not edit implementation files, tests, build
-  metadata, `plan.md`, or source/closed ideas.
-
-## Proof
-
-Analysis-only correction. No build or tests were run by supervisor
-instruction, and no `test_after.log` was produced because this packet had no
-delegated build/test proof command. No clang-tools were needed for this
-todo-only evidence preservation fix. Validation: `git status --short` shows
-only `M todo.md`.
