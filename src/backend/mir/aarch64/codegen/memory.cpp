@@ -4880,6 +4880,24 @@ find_prepared_store_global_stack_publication_home(
   return home;
 }
 
+[[nodiscard]] bool prepared_pending_store_global_source_producer_is_complete(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedStoreSourcePublicationPlan& plan,
+    std::size_t store_instruction_index) {
+  return context.control_flow_block != nullptr &&
+         context.bir_block != nullptr &&
+         plan.source_producer_kind !=
+             prepare::PreparedEdgePublicationSourceProducerKind::Unknown &&
+         plan.source_producer_kind !=
+             prepare::PreparedEdgePublicationSourceProducerKind::Immediate &&
+         plan.source_producer_block_label.has_value() &&
+         *plan.source_producer_block_label ==
+             context.control_flow_block->block_label &&
+         plan.source_producer_instruction_index.has_value() &&
+         *plan.source_producer_instruction_index < store_instruction_index &&
+         *plan.source_producer_instruction_index < context.bir_block->insts.size();
+}
+
 }  // namespace
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -4895,6 +4913,10 @@ void lower_pending_store_global_stack_value_publications(
     std::unordered_set<c4c::ValueNameId>& published_stack_values,
     module::MachineBlock& block) {
   const auto* addressing = prepared_store_global_addressing(context);
+  const auto* source_producers =
+      context.function.prepared_lookups != nullptr
+          ? &context.function.prepared_lookups->edge_publication_source_producers
+          : nullptr;
   const auto pending_publications =
       prepare::plan_pending_prepared_store_global_publications(
           context.function.value_locations,
@@ -4903,7 +4925,8 @@ void lower_pending_store_global_stack_value_publications(
               ? context.control_flow_block->block_label
               : c4c::kInvalidBlockLabel,
           context.bir_block,
-          instruction_index);
+          instruction_index,
+          source_producers);
   if (pending_publications.empty()) {
     return;
   }
@@ -4918,18 +4941,8 @@ void lower_pending_store_global_stack_value_publications(
         plan.source_value_name == c4c::kInvalidValueName) {
       continue;
     }
-    std::optional<std::size_t> producer_instruction_index;
-    for (std::size_t index = 0; index < pending.instruction_index; ++index) {
-      const auto result = instruction_result_value(context.bir_block->insts[index]);
-      if (result.has_value() &&
-          result->kind == bir::Value::Kind::Named &&
-          result->name == plan.source_value.name &&
-          result->type == plan.source_value.type) {
-        producer_instruction_index = index;
-        break;
-      }
-    }
-    if (!producer_instruction_index.has_value()) {
+    if (!prepared_pending_store_global_source_producer_is_complete(
+            context, plan, pending.instruction_index)) {
       continue;
     }
     std::unordered_set<c4c::ValueNameId> pending_published_stack_values{
@@ -4937,8 +4950,8 @@ void lower_pending_store_global_stack_value_publications(
     if (auto publication =
             lower_published_store_global_stack_value_publication(
                 context,
-                context.bir_block->insts[*producer_instruction_index],
-                *producer_instruction_index,
+                context.bir_block->insts[*plan.source_producer_instruction_index],
+                *plan.source_producer_instruction_index,
                 pending_published_stack_values)) {
       published_stack_values.insert(plan.source_value_name);
       block.instructions.push_back(std::move(*publication));

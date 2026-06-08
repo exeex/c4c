@@ -1,38 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/125_prepared_pending_store_global_publication_producer_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Shared Prepared Producer Contract
+Current Step ID: 2
+Current Step Title: AArch64 Consumer Rewire
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 1 - Shared Prepared Producer Contract: added an optional shared
-source-producer lookup input to
-`plan_pending_prepared_store_global_publications`, populated pending
-store-global candidate `store_source.source_producer_*` facts from unique
-same-block producers, and made the producer-authority path fail closed for
-missing or ambiguous producers. Updated
-`tests/backend/mir/backend_store_source_publication_plan_test.cpp` to cover
-producer kind/index publication plus missing/ambiguous producer rejection.
+Plan Step 2 - AArch64 Consumer Rewire: rewired
+`lower_pending_store_global_stack_value_publications` to pass prepared
+source-producer lookups into
+`plan_pending_prepared_store_global_publications`, validate the returned
+`store_source.source_producer_*` identity, and call the existing stack
+publication emitter using `plan.source_producer_instruction_index` instead of
+rescanning prior BIR instructions by result name/type. Updated
+`tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp` to
+prove the pending store-global stack publication path emits through the
+prepared producer fact and fails closed when that prepared authority is absent.
 
 ## Suggested Next
 
-Wire the AArch64 pending store-global planning call site to pass prepared
-source-producer lookups, then consume the shared producer identity instead of
-rediscovering producer instructions locally.
+Supervisor should review Step 2 for acceptance and choose the next lifecycle
+packet from the active plan.
 
 ## Watchouts
 
-- The new fail-closed behavior is active when a non-null
-  `PreparedEdgePublicationSourceProducerLookups` is passed. Existing callers
-  without that authority keep current behavior until their packet wires the
-  lookup in.
-- Ambiguous producer entries are represented by an `Unknown` producer in the
-  shared lookup map and are rejected by pending store-global planning.
-- A candidate producer must be in the same block, before the store, within the
-  block bounds, and match the stored value's named result/type.
+- The AArch64 pending store-global consumer no longer has a fallback producer
+  scan; contexts without `prepared_lookups` now fail closed for this path.
+- The planner still owns matching the producer fact to the store source; the
+  AArch64 consumer only validates the returned identity is same-block,
+  before-store, in-bounds, and instruction-backed before invoking the existing
+  publication emitter.
 
 ## Proof
 

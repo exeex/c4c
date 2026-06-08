@@ -2145,6 +2145,31 @@ int store_global_stack_publication_proves_selected_owner() {
     return fail("expected unpublished store-global stack value to fail closed");
   }
 
+  aarch64_module::FunctionLoweringContext no_authority_function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &control_flow,
+      .bir_function = &bir_function,
+      .value_locations = &locations,
+      .storage_plan = &storage,
+      .value_home_lookups = &lookups.value_homes,
+  };
+  const auto no_authority_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          no_authority_function_context, control_flow.blocks.front(), 0);
+  std::unordered_set<c4c::ValueNameId> no_authority_published_stack_values;
+  aarch64_module::MachineBlock no_authority_block;
+  aarch64_codegen::lower_pending_store_global_stack_value_publications(
+      no_authority_block_context,
+      1,
+      no_authority_published_stack_values,
+      no_authority_block);
+  if (!no_authority_block.instructions.empty() ||
+      !no_authority_published_stack_values.empty()) {
+    return fail("expected pending store-global publication without prepared producer "
+                "authority to fail closed");
+  }
+
   auto register_homed = make_store_global_stack_publication_module();
   auto& selected_home = register_homed.value_locations.functions.front().value_homes[1];
   selected_home.kind = prepare::PreparedValueHomeKind::Register;
