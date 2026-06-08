@@ -7656,7 +7656,8 @@ prepare::PreparedBirModule prepared_with_f128_comparison_helper_operation(
 
 prepare::PreparedBirModule prepared_with_i128_shift_operation(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::LShr,
-    std::int64_t count = 12) {
+    std::int64_t count = 12,
+    bool register_count = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -7667,6 +7668,7 @@ prepare::PreparedBirModule prepared_with_i128_shift_operation(
       prepared.module.names.block_labels.intern("dispatch.i128.shift.entry");
   const auto result_name = prepared.names.value_names.intern("%shifted.i128");
   const auto source_name = prepared.names.value_names.intern("%source.i128");
+  const auto count_name = prepared.names.value_names.intern("%shift.count");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.i128.shift",
@@ -7680,7 +7682,9 @@ prepare::PreparedBirModule prepared_with_i128_shift_operation(
                       .result = bir::Value::named(bir::TypeKind::I128, "%shifted.i128"),
                       .operand_type = bir::TypeKind::I128,
                       .lhs = bir::Value::named(bir::TypeKind::I128, "%source.i128"),
-                      .rhs = bir::Value::immediate_i32(count),
+                      .rhs = register_count
+                                 ? bir::Value::named(bir::TypeKind::I32, "%shift.count")
+                                 : bir::Value::immediate_i32(count),
                   }},
               .terminator = bir::Terminator{bir::ReturnTerminator{}},
               .label_id = bir_entry_label,
@@ -7694,12 +7698,25 @@ prepare::PreparedBirModule prepared_with_i128_shift_operation(
           .terminator_kind = bir::TerminatorKind::Return,
       }},
   });
-  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+  prepare::PreparedValueLocationFunction value_locations{
       .function_name = function_name,
-  });
-  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+  };
+  prepare::PreparedStoragePlanFunction storage_plan{
       .function_name = function_name,
-  });
+  };
+  if (register_count) {
+    value_locations.value_homes.push_back(prepare::PreparedValueHome{
+        .value_id = prepare::PreparedValueId{132},
+        .function_name = function_name,
+        .value_name = count_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = std::string{"w20"},
+    });
+    storage_plan.values.push_back(
+        register_storage(prepare::PreparedValueId{132}, count_name, "w20"));
+  }
+  prepared.value_locations.functions.push_back(std::move(value_locations));
+  prepared.storage_plans.functions.push_back(std::move(storage_plan));
   prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
       .function_name = function_name,
       .carriers =
@@ -31282,6 +31299,69 @@ int block_dispatch_lowers_large_immediate_i128_shifts_from_prepared_carriers() {
   return 0;
 }
 
+int block_dispatch_lowers_variable_count_i128_shift_records_from_prepared_carriers() {
+  struct I128ShiftCase {
+    bir::BinaryOpcode opcode;
+    aarch64_codegen::I128ShiftKind kind;
+    aarch64_codegen::I128ShiftLaneSemantics semantics;
+  };
+  const std::array<I128ShiftCase, 3> shift_cases{{
+      {bir::BinaryOpcode::Shl,
+       aarch64_codegen::I128ShiftKind::Left,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft},
+      {bir::BinaryOpcode::LShr,
+       aarch64_codegen::I128ShiftKind::LogicalRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight},
+      {bir::BinaryOpcode::AShr,
+       aarch64_codegen::I128ShiftKind::ArithmeticRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight},
+  }};
+  for (const auto& shift_case : shift_cases) {
+    auto prepared = prepared_with_i128_shift_operation(shift_case.opcode, 0, true);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    const auto* shift =
+        !block.instructions.empty()
+            ? std::get_if<aarch64_codegen::I128ShiftRecord>(
+                  &block.instructions.front().target.payload)
+            : nullptr;
+    const auto* count_register =
+        shift != nullptr
+            ? std::get_if<aarch64_codegen::RegisterOperand>(&shift->shift_count.payload)
+            : nullptr;
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || shift == nullptr ||
+        shift->shift_kind != shift_case.kind ||
+        shift->lane_semantics != shift_case.semantics ||
+        shift->count_kind != aarch64_codegen::I128ShiftCountKind::Register ||
+        count_register == nullptr ||
+        count_register->reg != aarch64_abi::w_register(20) ||
+        block.instructions.front().target.defs.size() != 2 ||
+        block.instructions.front().target.uses.size() != 3) {
+      return fail("expected dispatch to preserve variable-count i128 shift record contract");
+    }
+
+    const auto printed = print_route_block(
+        prepared.names.function_names.find("dispatch.i128.shift"), block);
+    if (printed.ok ||
+        printed.diagnostic.find("i128 variable-count shifts are not supported") ==
+            std::string::npos) {
+      return fail("expected variable-count i128 shift printer contract diagnostic");
+    }
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_i128_compare_from_prepared_carriers() {
   auto prepared = prepared_with_i128_compare_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -33348,6 +33428,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_large_immediate_i128_shifts_from_prepared_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_variable_count_i128_shift_records_from_prepared_carriers();
       status != 0) {
     return status;
   }

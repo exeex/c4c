@@ -742,7 +742,8 @@ mir::TargetInstructionPrintResult print_i128_shift(
     const I128ShiftRecord& shift) {
   if (shift.count_kind != I128ShiftCountKind::Immediate) {
     return target_unsupported(bad_header(instruction) +
-                              "i128 shift printer currently requires an immediate shift count");
+                              "i128 variable-count shifts are not supported by the "
+                              "current AArch64 i128 printer contract");
   }
   const auto* immediate = std::get_if<ImmediateOperand>(&shift.shift_count.payload);
   if (shift.shift_count.kind != OperandKind::Immediate || immediate == nullptr ||

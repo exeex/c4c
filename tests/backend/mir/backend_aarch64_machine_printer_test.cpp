@@ -4042,6 +4042,31 @@ aarch64_codegen::InstructionRecord printable_i128_shift(
       });
 }
 
+aarch64_codegen::InstructionRecord printable_i128_register_count_shift(
+    aarch64_codegen::I128ShiftKind kind,
+    aarch64_codegen::I128ShiftLaneSemantics semantics,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedValueId result_id,
+    c4c::ValueNameId result_name,
+    unsigned result_low,
+    prepare::PreparedValueId source_id,
+    c4c::ValueNameId source_name,
+    unsigned source_low,
+    unsigned count_register) {
+  return aarch64_codegen::make_i128_shift_instruction(
+      aarch64_codegen::I128ShiftRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .shift_kind = kind,
+          .lane_semantics = semantics,
+          .count_kind = aarch64_codegen::I128ShiftCountKind::Register,
+          .source_binary_opcode = opcode,
+          .result = i128_pair_operand(result_id, result_name, result_low),
+          .source = i128_pair_operand(source_id, source_name, source_low),
+          .shift_count =
+              aarch64_codegen::make_register_operand(wreg(count_register)),
+      });
+}
+
 int selected_i128_large_immediate_shifts_print_semantic_lane_routes() {
   const auto shl64 = printable_i128_shift(
       aarch64_codegen::I128ShiftKind::Left,
@@ -4131,6 +4156,59 @@ int selected_i128_large_immediate_shifts_print_semantic_lane_routes() {
                          expected,
                          expected,
                          "large immediate i128 shift printer");
+}
+
+int selected_i128_variable_count_shifts_reject_current_printer_contract() {
+  struct I128RegisterShiftCase {
+    aarch64_codegen::I128ShiftKind kind;
+    aarch64_codegen::I128ShiftLaneSemantics semantics;
+    bir::BinaryOpcode opcode;
+    unsigned result_low;
+    unsigned source_low;
+    unsigned count_register;
+  };
+  const std::vector<I128RegisterShiftCase> cases{
+      {aarch64_codegen::I128ShiftKind::Left,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLeft,
+       bir::BinaryOpcode::Shl,
+       2,
+       4,
+       6},
+      {aarch64_codegen::I128ShiftKind::LogicalRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+       bir::BinaryOpcode::LShr,
+       8,
+       10,
+       12},
+      {aarch64_codegen::I128ShiftKind::ArithmeticRight,
+       aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight,
+       bir::BinaryOpcode::AShr,
+       14,
+       16,
+       18},
+  };
+  for (std::size_t index = 0; index < cases.size(); ++index) {
+    const auto& test_case = cases[index];
+    const auto base_id = static_cast<unsigned>(120 + index * 3);
+    const auto shift = printable_i128_register_count_shift(
+        test_case.kind,
+        test_case.semantics,
+        test_case.opcode,
+        prepare::PreparedValueId{base_id},
+        c4c::ValueNameId{base_id},
+        test_case.result_low,
+        prepare::PreparedValueId{base_id + 1},
+        c4c::ValueNameId{base_id + 1},
+        test_case.source_low,
+        test_case.count_register);
+    const auto result = aarch64_codegen::print_machine_instruction_line_payloads(shift);
+    if (result.ok ||
+        result.diagnostic.find("i128 variable-count shifts are not supported") ==
+            std::string::npos) {
+      return fail("expected variable-count i128 shift printer contract diagnostic");
+    }
+  }
+  return 0;
 }
 
 int selected_i128_helper_boundaries_print_from_structured_fields() {
@@ -7472,6 +7550,11 @@ int main() {
   }
   if (const int result =
           selected_i128_large_immediate_shifts_print_semantic_lane_routes();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_i128_variable_count_shifts_reject_current_printer_contract();
       result != 0) {
     return result;
   }
