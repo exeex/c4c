@@ -1,101 +1,90 @@
 Status: Active
 Source Idea Path: ideas/open/128_aarch64_wide_value_owner_post_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Wide-Value Helper Clusters
+Current Step ID: 2
+Current Step Title: Audit i128 Helper And Call-Boundary Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Map Wide-Value Helper Clusters completed the initial read-only cluster
-map for the two AArch64 wide-value owner files.
+Step 2: Audit i128 Helper And Call-Boundary Ownership completed the read-only
+classification of i128 runtime helper ownership against
+`src/backend/mir/aarch64/codegen/calls.cpp`.
 
-`src/backend/mir/aarch64/codegen/i128_ops.cpp` cluster map:
+Classification:
 
-- Diagnostics/name helpers, printable register checks, and target print wrappers
-  (`append_i128_pair_diagnostic`, `*_error_message`, `target_*`, kind/error name
-  helpers): local-organization-only.
-- i128 runtime helper policy validation (`complete_preserved_value_route`,
-  `has_complete_live_preservation`, `has_complete_selected_call_ownership`,
-  `has_complete_i128_helper_resource_policy`,
-  `has_complete_i128_div_rem_abi_policy`,
-  `validate_i128_div_rem_helper_marshaling_plan`): appears to consume prepared
-  helper/resource/ABI facts, but uncertain pending `calls.cpp` overlap
-  inspection because it revalidates preservation, selected-call ownership, and
-  div/rem ABI shape locally.
-- i128 runtime helper printing (`append_i128_helper_move_line`,
-  `print_i128_runtime_helper`): aarch64-codegen-consumption for target `mov` and
-  `bl` assembly from prepared marshal facts.
-- carrier and transport record construction (`make_i128_lane_register_operand`,
-  `make_prepared_i128_carrier_transport_record`,
-  `make_prepared_i128_copy_transport_record`): mostly
-  aarch64-codegen-consumption of prepared i128 carrier facts; memory-backed
-  branches are uncertain pending `memory.cpp` overlap inspection.
-- pair operation record construction (`make_i128_pair_carrier_lane_adapter`,
-  `is_supported_i128_pair_opcode`, `i128_pair_*_from_binary_opcode`,
-  `make_prepared_i128_pair_operation_record`): aarch64-codegen-consumption for
-  AArch64 register-pair record shape and supported-opcode selection.
-- shift record construction (`is_i128_shift_opcode`,
-  `i128_shift_*_from_binary_opcode`, `is_supported_i128_shift_count`,
-  `make_prepared_i128_shift_record`): aarch64-codegen-consumption; count
-  storage uses prepared scalar/value-location facts, while lane semantics remain
-  target machine-record spelling.
-- compare record construction (`i128_compare_*_from_predicate`,
-  `make_prepared_i128_compare_record`): aarch64-codegen-consumption of prepared
-  i128 carriers and scalar result storage; uncertain only for overlap with
-  printer/instruction record shape.
-- machine instruction wrappers/status checks (`i128_*_selection_status`,
-  `make_i128_*_instruction`, lower entry points): aarch64-codegen-consumption;
-  validates prepared facts before building operands/defs/uses/clobbers and
-  dispatching lowering.
+- i128 runtime helper fact ownership:
+  `shared-bir-prealloc-contract`. `src/backend/prealloc/i128_runtime_helpers.cpp`
+  writes the helper resource, ABI, live-preservation, and selected-call
+  ownership facts: `populate_i128_runtime_helper_liveness_policy` builds
+  preserved values and sets `live_preservation_policy` plus
+  `selected_call_ownership` (lines 941-1073), while
+  `populate_i128_runtime_helper_boundary_policy` sets resource policy, clobbers,
+  and the div/rem direct register-pair ABI policy (lines 1075-1118). The shared
+  predicate `prepared_i128_runtime_helper_has_abi_contract` also encodes div/rem
+  ABI/result ownership requirements (lines 1355-1380).
+- i128 div/rem helper selection and helper-boundary record construction:
+  `aarch64-codegen-consumption`. `i128_ops.cpp` finds a
+  `PreparedI128RuntimeHelper` for the current binary instruction, errors when
+  it is missing, converts it into an `I128RuntimeHelperBoundaryRecord`, and then
+  creates an AArch64 machine instruction (lines 2620-2658). The record builder
+  rejects unsupported/missing prepared facts but copies the prepared callee,
+  result ownership, resource policy, ABI policy, live-preservation policy, and
+  selected-call ownership into the machine record (lines 1977-2051).
+- i128 helper resource and ABI validation:
+  `aarch64-codegen-consumption`. `i128_ops.cpp` checks that prepared resource
+  flags are populated (lines 169-175), delegates the ABI contract decision to
+  `prepare::prepared_i128_runtime_helper_has_abi_contract` in record building,
+  selection status, and printing (lines 2009-2011, 2474-2478, 943-946), and
+  never chooses the helper ABI from scratch. The local
+  `has_complete_i128_div_rem_abi_policy` duplicates the div/rem shape but is
+  unused in current code, so it is cleanup evidence only, not a shared-policy
+  gap.
+- i128 preserved value checks:
+  `aarch64-codegen-consumption`. `complete_preserved_value_route` and
+  `has_complete_live_preservation` only require prepared routes to contain
+  callee-saved register or stack-slot details (lines 121-156). The actual route
+  construction happens in prealloc through `build_call_preserved_values` and
+  `preserved_value_has_complete_route` before the policy is stored on the helper
+  (prealloc lines 953-981).
+- i128 selected-call ownership checks:
+  `aarch64-codegen-consumption`. `has_complete_selected_call_ownership` only
+  verifies that all prepared ownership booleans are true (lines 158-167).
+  Prealloc computes those booleans from callee identity, resource policy,
+  clobbers, ABI bindings, marshaling, and live preservation (prealloc lines
+  983-1048), with missing-fact diagnostics attached there (lines 1050-1071).
+- i128 runtime helper assembly:
+  `aarch64-codegen-consumption`. `print_i128_runtime_helper` validates prepared
+  provenance and policy consistency, emits the six prepared lane marshal/unmarshal
+  moves, and emits `bl <callee>` from the prepared callee name (lines 921-1015).
+  `append_i128_helper_move_line` emits target `mov` instructions using prepared
+  carrier-lane and ABI-register bindings (lines 360-380).
+- Generic call-boundary ownership in `calls.cpp`:
+  `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`, but
+  separate from i128 div/rem helper lowering. Ordinary BIR calls require a
+  `PreparedCallPlan` before lowering (lines 6542-6601), copy prepared arguments,
+  result, preserved values, clobbers, and callee facts into the call record
+  (lines 741-843), materialize selected call-boundary sources/destinations from
+  prepared move records (lines 6614-7710), record prepared call-result ABI
+  registers (lines 8145-8362), and publish stack-preserved call values from
+  prepared preservation routes (lines 8605-8690).
 
-`src/backend/mir/aarch64/codegen/f128.cpp` cluster map:
+Gap candidates:
 
-- Kind/error names, diagnostics, register spelling, Q/S/D/W/X display names,
-  and target print wrappers: local-organization-only.
-- f128 carrier facts (`prepared_f128_full_width_carrier_facts`,
-  `prepared_f128_memory_backed_carrier_facts`, `make_f128_register_operand`):
-  consumes prepared carrier facts; memory-backed carrier facts are uncertain
-  pending `memory.cpp`/`calls.cpp` overlap inspection because the file rebuilds
-  frame-slot memory operands for printable transport.
-- printable address and memory-backed transport helpers
-  (`f128_printable_memory_address`, `f128_memory_backed_carrier_memory`,
-  `print_f128_transport`): aarch64-codegen-consumption for printable address
-  assembly, but uncertain around memory-backed publication/authority and should
-  inspect `memory.cpp`.
-- helper resource/ABI/preservation checks (`has_complete_f128_*`,
-  `f128_*_matches`, `f128_helper_policies_match_record`,
-  `validate_f128_runtime_helper_source_policy`): appears to consume prepared
-  helper policy, but uncertain pending `calls.cpp` overlap inspection because it
-  deeply matches resource, ABI, clobber, preservation, selected-call ownership,
-  carrier binding, scalar bridge, and cmp-result consumption facts.
-- helper move and scalar bridge printing (`append_f128_helper_move_line`,
-  `append_f128_scalar_move_line`, `validate_f128_cmp_scalar_result`,
-  `print_f128_runtime_helper`): aarch64-codegen-consumption for target `mov`,
-  `fmov`, `cmp`, `cset`, and `bl` assembly from prepared marshal facts.
-- runtime helper record construction (`make_f128_abi_register_operand`,
-  `make_f128_scalar_register_operand`,
-  `make_f128_cmp_materialized_i1_register_operand`,
-  `make_f128_helper_operand_record`, `make_f128_helper_scalar_record`,
-  `make_prepared_f128_runtime_helper_boundary_record`):
-  aarch64-codegen-consumption of prepared helper/carrier/scalar facts; uncertain
-  around whether helper-family/result-ownership/ABI validation duplicates shared
-  helper policy.
-- transport and helper machine instruction wrappers/status checks
-  (`validate_f128_transport_instruction`,
-  `validate_f128_runtime_helper_boundary_instruction`,
-  `make_f128_transport_instruction`,
-  `make_f128_runtime_helper_boundary_instruction`,
-  `lower_f128_runtime_helper_instruction`): aarch64-codegen-consumption, with
-  uncertain overlap against `instruction.cpp`/`machine_printer.cpp` for
-  printable record shape and status diagnostics.
+- No Step 2 shared-policy gap is justified. The evidence shows i128 div/rem
+  helper ABI/resource/preservation/selected-call policy is prepared in
+  `src/backend/prealloc/i128_runtime_helpers.cpp`, while `i128_ops.cpp` performs
+  completeness checks and target assembly. A cleanup-only candidate exists for
+  the unused `has_complete_i128_div_rem_abi_policy` helper in `i128_ops.cpp`,
+  but it has no proof route as shared-policy movement and should not become a
+  follow-up idea for this audit.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: inspect i128 runtime helper ownership, div/rem
-ABI policy, preserved value checks, and selected-call ownership against
-`src/backend/mir/aarch64/codegen/calls.cpp`.
+Execute Step 3 from `plan.md`: audit i128 pair transport, shift, and compare
+record construction against `src/backend/mir/aarch64/codegen/instruction.cpp`
+and `src/backend/mir/aarch64/machine_printer.cpp`.
 
 ## Watchouts
 
@@ -106,9 +95,11 @@ ABI policy, preserved value checks, and selected-call ownership against
   opcode spelling, or helper call assembly into shared BIR/prealloc code.
 - Follow-up ideas must be concrete: owner boundary, filenames, proof route, and
   reject signals.
-- Step 2 should prioritize whether i128 helper resource/ABI, preservation, and
-  selected-call validation is duplicate policy or just completeness validation
-  for prepared facts.
+- Step 2 classified i128 helper resource/ABI, preservation, and selected-call
+  validation as completeness validation over prepared facts.
+- Do not promote the unused `has_complete_i128_div_rem_abi_policy` helper into a
+  shared-policy follow-up unless later evidence shows it affects behavior; today
+  it is an unused local cleanup note.
 - Later overlap checks should inspect f128 memory-backed carrier printable
   address handling against `memory.cpp`, and f128 helper policy matching against
   `calls.cpp`.
