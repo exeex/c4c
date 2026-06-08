@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/125_prepared_pending_store_global_publication_producer_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: AArch64 Consumer Rewire
+Current Step ID: 1
+Current Step Title: Shared Prepared Producer Contract
 
 # Current Packet
 
@@ -21,11 +21,20 @@ prepared producer fact and fails closed when that prepared authority is absent.
 
 ## Suggested Next
 
-Supervisor should review Step 2 for acceptance and choose the next lifecycle
-packet from the active plan.
+Narrow follow-up before closure: tighten
+`plan_pending_prepared_store_global_publications` so shared planning fails
+closed when the caller lacks source-producer lookup authority. Prefer removing
+the public/default `source_producers == nullptr` producer-less mode if no real
+caller needs it; otherwise make the absent-authority path explicitly produce no
+pending store-global publication candidates. Keep this scoped to Plan Step 1's
+shared prepared producer contract and add focused shared-prepared proof for the
+null/no-authority case.
 
 ## Watchouts
 
+- Code review `review/idea125_code_review.md` judged the route on track and
+  matching source idea, with one medium watch item: shared planner behavior
+  still permits producer-less candidates when `source_producers == nullptr`.
 - The AArch64 pending store-global consumer no longer has a fallback producer
   scan; contexts without `prepared_lookups` now fail closed for this path.
 - The planner still owns matching the producer fact to the store source; the
