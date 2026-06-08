@@ -39,6 +39,86 @@ namespace {
   return false;
 }
 
+[[nodiscard]] const bir::Value* prepared_source_producer_result_value(
+    const PreparedEdgePublicationSourceProducer& producer) {
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr ? &producer.load_local->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr ? &producer.load_global->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr ? &producer.cast->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr ? &producer.binary->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr ? &producer.select->result : nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_source_producer_matches_store_value(
+    const PreparedEdgePublicationSourceProducer& producer,
+    const bir::Value& value,
+    const bir::Inst& inst) {
+  const auto* result = prepared_source_producer_result_value(producer);
+  if (result == nullptr ||
+      result->kind != bir::Value::Kind::Named ||
+      value.kind != bir::Value::Kind::Named ||
+      result->name != value.name ||
+      result->type != value.type) {
+    return false;
+  }
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local == std::get_if<bir::LoadLocalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global == std::get_if<bir::LoadGlobalInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast == std::get_if<bir::CastInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary == std::get_if<bir::BinaryInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select == std::get_if<bir::SelectInst>(&inst);
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] const PreparedEdgePublicationSourceProducer*
+find_pending_store_global_source_producer(
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const PreparedStoreSourcePublicationPlan& plan,
+    const bir::StoreGlobalInst& store,
+    std::size_t instruction_index) {
+  if (source_producers == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      plan.source_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* producer =
+      find_indexed_prepared_edge_publication_source_producer(
+          source_producers, plan.source_value_name);
+  if (producer == nullptr ||
+      producer->kind == PreparedEdgePublicationSourceProducerKind::Unknown ||
+      producer->block_label != block_label ||
+      producer->instruction_index >= instruction_index ||
+      producer->instruction_index >= block->insts.size()) {
+    return nullptr;
+  }
+  return prepared_source_producer_matches_store_value(
+             *producer, store.value, block->insts[producer->instruction_index])
+             ? producer
+             : nullptr;
+}
+
 [[nodiscard]] const PreparedMemoryAccess* find_publication_memory_access(
     const PreparedAddressingFunction* addressing,
     BlockLabelId block_label,
@@ -557,7 +637,8 @@ plan_pending_prepared_store_global_publications(
     const PreparedAddressingFunction* addressing,
     BlockLabelId block_label,
     const bir::Block* block,
-    std::size_t instruction_index) {
+    std::size_t instruction_index,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers) {
   std::vector<PreparedStoreGlobalPublicationCandidate> candidates;
   if (block == nullptr ||
       prepared_store_global_publication_run_has_prior_store(block, instruction_index)) {
@@ -580,6 +661,27 @@ plan_pending_prepared_store_global_publications(
                                                        index,
                                                        true,
                                                        true);
+    if (!prepared_store_source_publication_available(plan)) {
+      continue;
+    }
+    if (source_producers != nullptr) {
+      const auto* source_producer =
+          find_pending_store_global_source_producer(
+              source_producers, block_label, block, plan, *store, index);
+      if (source_producer == nullptr) {
+        continue;
+      }
+      plan = plan_prepared_store_source_publication({
+          .source_value = &store->value,
+          .destination_access = plan.destination_access,
+          .source_home = plan.source_home,
+          .intent = PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+          .pending_publication = true,
+          .stack_homes_only = true,
+          .duplicate_publication = plan.duplicate_publication,
+          .source_producer = source_producer,
+      });
+    }
     if (plan.source_value_name != kInvalidValueName) {
       const auto [_, inserted] = published_source_names.insert(plan.source_value_name);
       if (!inserted) {

@@ -889,9 +889,12 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
                        .base_link_name_id = global_name,
                    },
            },
-           bir::LoadGlobalInst{
-               .result = bir::Value::named(bir::TypeKind::I32, "%old"),
-               .global_name_id = global_name,
+           bir::BinaryInst{
+               .opcode = bir::BinaryOpcode::Add,
+               .result = bir::Value::named(bir::TypeKind::I32, "%tail"),
+               .operand_type = bir::TypeKind::I32,
+               .lhs = bir::Value::immediate_i32(4),
+               .rhs = bir::Value::immediate_i32(5),
            },
            bir::StoreGlobalInst{
                .global_name_id = global_name,
@@ -920,6 +923,26 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
                    },
            }},
   };
+  const auto* selected_producer = std::get_if<bir::SelectInst>(&block.insts[0]);
+  const auto* tail_producer = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      selected_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = c4c::BlockLabelId{23},
+          .instruction_index = 0,
+          .select = selected_producer,
+      });
+  source_producers.producers_by_value_name.emplace(
+      tail_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = c4c::BlockLabelId{23},
+          .instruction_index = 2,
+          .binary = tail_producer,
+      });
   const prepare::PreparedValueLocationFunction value_locations{
       .function_name = 17,
       .value_homes =
@@ -1009,7 +1032,12 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
   };
 
   const auto pending = prepare::plan_pending_prepared_store_global_publications(
-      &value_locations, &addressing, c4c::BlockLabelId{23}, &block, 1);
+      &value_locations,
+      &addressing,
+      c4c::BlockLabelId{23},
+      &block,
+      1,
+      &source_producers);
   if (pending.size() != 3 ||
       pending[0].instruction_index != 1 ||
       pending[1].instruction_index != 3 ||
@@ -1018,13 +1046,55 @@ int plans_pending_global_publication_candidates_from_prepared_state() {
       !pending[0].store_source.stack_homes_only ||
       pending[0].store_source.duplicate_publication ||
       pending[0].store_source.source_value_name != selected_name ||
+      pending[0].store_source.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
+      pending[0].store_source.source_producer_instruction_index !=
+          std::optional<std::size_t>{0} ||
       pending[1].store_source.source_value_name != tail_name ||
+      pending[1].store_source.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      pending[1].store_source.source_producer_instruction_index !=
+          std::optional<std::size_t>{2} ||
       !pending[2].store_source.duplicate_publication ||
-      pending[2].store_source.source_value_name != tail_name) {
+      pending[2].store_source.source_value_name != tail_name ||
+      pending[2].store_source.source_producer_instruction_index !=
+          std::optional<std::size_t>{2}) {
     return fail("expected prepared pending global publication candidates");
   }
+  const prepare::PreparedEdgePublicationSourceProducerLookups empty_source_producers;
+  const auto missing_producer =
+      prepare::plan_pending_prepared_store_global_publications(
+          &value_locations,
+          &addressing,
+          c4c::BlockLabelId{23},
+          &block,
+          1,
+          &empty_source_producers);
+  if (!missing_producer.empty()) {
+    return fail("expected pending global publication candidates to require producers");
+  }
+  auto ambiguous_source_producers = source_producers;
+  ambiguous_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{};
+  const auto ambiguous_producer =
+      prepare::plan_pending_prepared_store_global_publications(
+          &value_locations,
+          &addressing,
+          c4c::BlockLabelId{23},
+          &block,
+          1,
+          &ambiguous_source_producers);
+  if (ambiguous_producer.size() != 2 ||
+      ambiguous_producer.front().store_source.source_value_name != tail_name) {
+    return fail("expected pending global publication candidates to reject ambiguous producers");
+  }
   const auto replay = prepare::plan_pending_prepared_store_global_publications(
-      &value_locations, &addressing, c4c::BlockLabelId{23}, &block, 3);
+      &value_locations,
+      &addressing,
+      c4c::BlockLabelId{23},
+      &block,
+      3,
+      &source_producers);
   if (!replay.empty()) {
     return fail("expected prepared pending global publication replay suppression");
   }

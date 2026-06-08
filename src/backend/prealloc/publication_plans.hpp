@@ -316,7 +316,8 @@ plan_pending_prepared_store_global_publications(
     const PreparedAddressingFunction* addressing,
     BlockLabelId block_label,
     const bir::Block* block,
-    std::size_t instruction_index);
+    std::size_t instruction_index,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr);
 
 void populate_store_source_publication_plans(PreparedBirModule& prepared);
 
