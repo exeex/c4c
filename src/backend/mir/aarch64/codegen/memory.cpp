@@ -2201,8 +2201,57 @@ PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_rec
       store.value);
 }
 
-std::optional<std::size_t> parse_va_list_field_suffix(std::string_view base,
-                                                      std::string_view slot_name) {
+class VaListFieldMemoryOwner final {
+ public:
+  [[nodiscard]] PreparedMemoryInstructionRecordResult load_record(
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index,
+      const bir::LoadLocalInst& load) const;
+
+  [[nodiscard]] PreparedMemoryInstructionRecordResult store_record(
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index,
+      const bir::StoreLocalInst& store) const;
+
+  [[nodiscard]] std::optional<module::MachineInstruction> cursor_update_instruction(
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index,
+      const bir::StoreLocalInst& store) const;
+
+ private:
+  struct FieldAddress {
+    RegisterOperand base_register;
+    std::size_t field_offset_bytes = 0;
+    std::size_t field_size_bytes = 0;
+    std::size_t field_align_bytes = 0;
+  };
+
+  [[nodiscard]] std::optional<std::size_t> parse_field_suffix(
+      std::string_view base,
+      std::string_view slot_name) const;
+
+  [[nodiscard]] std::size_t scalar_type_size_bytes(bir::TypeKind type) const;
+
+  [[nodiscard]] std::optional<FieldAddress> find_field_address(
+      const module::BlockLoweringContext& context,
+      std::string_view slot_name) const;
+
+  [[nodiscard]] MemoryOperand memory_operand(
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index,
+      const FieldAddress& field,
+      std::size_t size_bytes,
+      std::size_t align_bytes) const;
+
+  [[nodiscard]] const bir::BinaryInst* cursor_update_producer(
+      const module::BlockLoweringContext& context,
+      std::size_t instruction_index,
+      const bir::StoreLocalInst& store) const;
+};
+
+std::optional<std::size_t> VaListFieldMemoryOwner::parse_field_suffix(
+    std::string_view base,
+    std::string_view slot_name) const {
   if (slot_name.size() <= base.size() + 1 ||
       slot_name.substr(0, base.size()) != base ||
       slot_name[base.size()] != '.') {
@@ -2219,7 +2268,7 @@ std::optional<std::size_t> parse_va_list_field_suffix(std::string_view base,
   return value;
 }
 
-std::size_t scalar_type_size_bytes(bir::TypeKind type) {
+std::size_t VaListFieldMemoryOwner::scalar_type_size_bytes(bir::TypeKind type) const {
   switch (type) {
     case bir::TypeKind::I8:
       return 1;
@@ -2242,16 +2291,9 @@ std::size_t scalar_type_size_bytes(bir::TypeKind type) {
   return 0;
 }
 
-struct VaListFieldAddress {
-  RegisterOperand base_register;
-  std::size_t field_offset_bytes = 0;
-  std::size_t field_size_bytes = 0;
-  std::size_t field_align_bytes = 0;
-};
-
-std::optional<VaListFieldAddress> find_va_list_field_address(
+std::optional<VaListFieldMemoryOwner::FieldAddress> VaListFieldMemoryOwner::find_field_address(
     const module::BlockLoweringContext& context,
-    std::string_view slot_name) {
+    std::string_view slot_name) const {
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.function.storage_plan == nullptr) {
@@ -2274,7 +2316,7 @@ std::optional<VaListFieldAddress> find_va_list_field_address(
         prepare::prepared_value_name(context.function.prepared->names,
                                      va_list_home.value_name);
     const auto field_offset =
-        parse_va_list_field_suffix(base_name, slot_name);
+        parse_field_suffix(base_name, slot_name);
     if (!field_offset.has_value()) {
       continue;
     }
@@ -2307,7 +2349,7 @@ std::optional<VaListFieldAddress> find_va_list_field_address(
     if (!converted.has_value()) {
       continue;
     }
-    return VaListFieldAddress{
+    return FieldAddress{
         .base_register =
             RegisterOperand{
                 .reg = *converted.reg,
@@ -2330,12 +2372,12 @@ std::optional<VaListFieldAddress> find_va_list_field_address(
   return std::nullopt;
 }
 
-MemoryOperand make_va_list_field_memory_operand(
+MemoryOperand VaListFieldMemoryOwner::memory_operand(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const VaListFieldAddress& field,
+    const FieldAddress& field,
     std::size_t size_bytes,
-    std::size_t align_bytes) {
+    std::size_t align_bytes) const {
   return MemoryOperand{
       .support = MemoryOperandSupportKind::Prepared,
       .function_name = context.function.control_flow != nullptr
@@ -2355,18 +2397,18 @@ MemoryOperand make_va_list_field_memory_operand(
   };
 }
 
-PreparedMemoryInstructionRecordResult make_va_list_field_load_memory_instruction_record(
+PreparedMemoryInstructionRecordResult VaListFieldMemoryOwner::load_record(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const bir::LoadLocalInst& load) {
-  const auto field = find_va_list_field_address(context, load.slot_name);
+    const bir::LoadLocalInst& load) const {
+  const auto field = find_field_address(context, load.slot_name);
   if (!field.has_value() ||
       load.byte_offset != 0 ||
       field->field_size_bytes != scalar_type_size_bytes(load.result.type)) {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
   }
-  auto address = make_va_list_field_memory_operand(
+  auto address = memory_operand(
       context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
   const auto result_name = named_value_id(context.function.prepared->names, load.result);
   if (!result_name.has_value()) {
@@ -2389,18 +2431,18 @@ PreparedMemoryInstructionRecordResult make_va_list_field_load_memory_instruction
       load.result.type);
 }
 
-PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instruction_record(
+PreparedMemoryInstructionRecordResult VaListFieldMemoryOwner::store_record(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const bir::StoreLocalInst& store) {
-  const auto field = find_va_list_field_address(context, store.slot_name);
+    const bir::StoreLocalInst& store) const {
+  const auto field = find_field_address(context, store.slot_name);
   if (!field.has_value() ||
       store.byte_offset != 0 ||
       field->field_size_bytes != scalar_type_size_bytes(store.value.type)) {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
   }
-  auto address = make_va_list_field_memory_operand(
+  auto address = memory_operand(
       context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
   const auto stored_name = named_value_id(context.function.prepared->names, store.value);
   if (stored_name.has_value()) {
@@ -2421,10 +2463,10 @@ PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instructio
       store.value);
 }
 
-[[nodiscard]] const bir::BinaryInst* va_list_field_cursor_update_producer(
+const bir::BinaryInst* VaListFieldMemoryOwner::cursor_update_producer(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const bir::StoreLocalInst& store) {
+    const bir::StoreLocalInst& store) const {
   if (context.bir_block == nullptr ||
       instruction_index == 0 ||
       store.value.kind != bir::Value::Kind::Named ||
@@ -2455,14 +2497,13 @@ PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instructio
   return binary;
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction>
-make_va_list_field_cursor_update_machine_instruction(
+std::optional<module::MachineInstruction> VaListFieldMemoryOwner::cursor_update_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
-    const bir::StoreLocalInst& store) {
-  const auto field = find_va_list_field_address(context, store.slot_name);
+    const bir::StoreLocalInst& store) const {
+  const auto field = find_field_address(context, store.slot_name);
   const auto* producer =
-      va_list_field_cursor_update_producer(context, instruction_index, store);
+      cursor_update_producer(context, instruction_index, store);
   if (!field.has_value() ||
       producer == nullptr ||
       producer->rhs.immediate < 0 ||
@@ -2522,7 +2563,7 @@ make_va_list_field_cursor_update_machine_instruction(
   lines.push_back(std::string{*store_mnemonic} + " " + *scratch_name + ", " +
                   register_indirect_address(base_name, field->field_offset_bytes));
 
-  auto address = make_va_list_field_memory_operand(
+  auto address = memory_operand(
       context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
@@ -2753,11 +2794,11 @@ MemoryInstructionLoweringResult lower_memory_instruction(
       context.function.prepared_lookups != nullptr
           ? &context.function.prepared_lookups->edge_publications
           : nullptr;
+  const VaListFieldMemoryOwner va_list_fields;
 
   PreparedMemoryInstructionRecordResult prepared;
   if (load != nullptr) {
-    prepared =
-        make_va_list_field_load_memory_instruction_record(context, instruction_index, *load);
+    prepared = va_list_fields.load_record(context, instruction_index, *load);
     if (!prepared.record.has_value()) {
       prepared = make_prepared_load_memory_instruction_record(
           context.function.prepared->names,
@@ -2781,14 +2822,11 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         *global_load);
   } else if (local_store != nullptr) {
     if (auto va_list_cursor_update =
-            make_va_list_field_cursor_update_machine_instruction(
-                context, instruction_index, *local_store)) {
+            va_list_fields.cursor_update_instruction(context, instruction_index, *local_store)) {
       return MemoryInstructionLoweringResult{.handled = true,
                                              .instruction = std::move(va_list_cursor_update)};
     }
-    prepared =
-        make_va_list_field_store_memory_instruction_record(
-            context, instruction_index, *local_store);
+    prepared = va_list_fields.store_record(context, instruction_index, *local_store);
     if (!prepared.record.has_value()) {
       prepared = make_prepared_store_memory_instruction_record(
           context.function.prepared->names,
