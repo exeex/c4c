@@ -61,3 +61,32 @@ are complete enough for the current support contract.
   i128 shift behavior.
 - The diff expands into f128, helper ABI/resource policy, carrier ownership, or
   broad `i128_ops.cpp` cleanup outside the shift completeness scope.
+
+## Closure Note
+
+Closed after the active runbook completed the target-local AArch64 i128 shift
+support route.
+
+- Large immediate i128 shifts are supported through the immediate-count
+  AArch64 lowering/printing route, with focused coverage for representative
+  `== 64` and `> 64` cases.
+- Variable-count `Shl`, `LShr`, and `AShr` remain explicitly
+  printer-contracted: record/dispatch preserves register-count operands as
+  `I128ShiftCountKind::Register`, and printing rejects them with the narrow
+  diagnostic `i128 variable-count shifts are not supported by the current
+  AArch64 i128 printer contract`.
+- Touched route files were limited to
+  `src/backend/mir/aarch64/codegen/i128_ops.cpp`,
+  `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp`,
+  `tests/backend/mir/backend_aarch64_machine_printer_test.cpp`, and
+  `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, plus
+  canonical `todo.md` execution state.
+- Final proof command:
+  `cmake --build --preset default && ctest --test-dir build -R '^backend_aarch64_' --output-on-failure > test_after.log 2>&1`.
+  `test_after.log` recorded 28/28 passing `backend_aarch64_` tests.
+- Close-time regression guard compared canonical `test_before.log` and
+  `test_after.log` with `--allow-non-decreasing-passed`; both logs recorded
+  28/28 passing tests and 0 failures.
+- Reject-signal checks found no expectation downgrade, no named-testcase
+  shortcut, no f128/helper ABI/resource/carrier/shared BIR/prealloc policy
+  drift, and no broad `i128_ops.cpp` cleanup outside shift completeness scope.
