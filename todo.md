@@ -1,96 +1,124 @@
 Status: Active
 Source Idea Path: ideas/open/128_aarch64_wide_value_owner_post_contract_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Audit f128 Carrier And Memory-Backed Facts
+Current Step ID: 5
+Current Step Title: Audit f128 Helper Resources, Transport, And Printing
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Audit f128 Carrier And Memory-Backed Facts completed the read-only
-classification of f128 full-width carrier and memory-backed transport facts
-against `f128.cpp`, `memory.cpp`, and relevant `calls.cpp` overlap.
+Step 5: Audit f128 Helper Resources, Transport, And Printing completed the
+read-only classification of f128 helper resource policy, preservation checks,
+transport construction, printable-address handling, Q-register spelling, and
+printer-facing record fields against `f128.cpp`, `instruction.cpp/.hpp`,
+`machine_printer.cpp`, and helper-policy sources.
 
 Classification:
 
-- f128 full-width carrier facts:
+- f128 helper resource, ABI, clobber, preservation, and selected-call policy:
   `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`.
-  `prepared_f128_full_width_carrier_facts` accepts only complete prepared f128
-  carriers with `FullWidthRegister`, F128 source type, 16-byte size/alignment,
-  Vreg/vector class, contiguous width 1, and a prepared register name
-  (f128.cpp lines 234-272). `make_f128_register_operand` consumes those facts,
-  parses the prepared register through the AArch64 ABI view, and re-views it as
-  a Q register while preserving prepared value id/name, register class/bank, and
-  contiguous width in the `RegisterOperand` (lines 1658-1683). This validates
-  prepared carrier ownership and performs target register conversion; it does
-  not select the carrier authority.
-- f128 carrier transport record construction:
+  `populate_f128_runtime_helper_boundary_policy` creates the resource policy,
+  initial ABI policy, live-preservation policy, and clobber set in prealloc
+  (prealloc/f128_runtime_helpers.cpp lines 882-915). Prealloc then derives ABI
+  bindings (lines 628-724), marshaling moves (lines 762-880), live-preservation
+  facts through `build_call_preserved_values` (lines 917-960), and selected-call
+  ownership booleans (lines 963-1051). The public helper predicates
+  `prepared_f128_runtime_helper_has_scalar_cmp_result_bridge_contract` and
+  `prepared_f128_runtime_helper_has_abi_contract` encode arithmetic,
+  comparison, and f128/scalar cast ABI contracts (lines 1055-1154).
+- f128 helper-boundary record construction:
   `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`.
-  `make_prepared_f128_carrier_transport_record` finds the prepared f128 carrier,
-  rejects missing or incomplete carriers, copies prepared value, kind,
-  size/alignment, register placement, slot id, stack offset, and occupied
-  register names into `F128TransportRecord`, and then dispatches by prepared
-  carrier kind (f128.cpp lines 1781-1857). Full-width carriers must pass
-  `prepared_f128_full_width_carrier_facts` before getting a Q-register operand;
-  memory-backed carriers must pass `prepared_f128_memory_backed_carrier_facts`
-  before the record is accepted. The record is a target machine payload over
-  prepared authority, not a new shared transport decision.
-- f128 memory-backed carrier facts:
+  `make_prepared_f128_runtime_helper_boundary_record` rejects missing helper
+  facts, unsupported source operations, unsupported result ownership, missing
+  resource policy, missing prepared ABI policy, missing clobber policy, and
+  incomplete live-preservation or selected-call ownership before it creates a
+  `F128RuntimeHelperBoundaryRecord` (f128.cpp lines 1989-2114). The record then
+  copies prepared policy fields, clobbers, value ids/names, source/result types,
+  helper family/kind, callee identity, marshaling records, and `source_helper`
+  provenance (lines 2115-2263). This is a target machine payload over prepared
+  policy, not late helper-policy selection.
+- f128 helper operand/scalar conversion:
   `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`.
-  `prepared_f128_memory_backed_carrier_facts` accepts only complete prepared f128
-  carriers with `MemoryBacked`, F128 source type, 16-byte size/alignment, and
-  prepared slot id plus stack offset (f128.cpp lines 243-294). Its overload for
-  `F128TransportRecord` cross-checks the record against the original
-  `source_carrier`, then verifies the copied slot id and stack offset still
-  match the prepared facts (lines 297-317). This is explicit no-gap evidence:
-  AArch64 refuses to invent stack homes or offsets for f128 memory-backed
-  carriers.
-- f128 memory operand overlap:
+  `make_f128_helper_operand_record` requires prepared carrier binding, ABI
+  binding, marshaling move, matching value ids/names, full-width Vreg/vector
+  16-byte carrier facts, a matching prepared f128 carrier, and successful
+  AArch64 register conversion before accepting the operand (f128.cpp lines
+  1865-1946). `make_f128_helper_scalar_record` similarly consumes prepared
+  scalar ownership, ABI binding, and scalar marshaling facts for FPR 4/8-byte
+  scalar casts (lines 1949-1987). `make_f128_abi_register_operand`,
+  `make_f128_scalar_register_operand`, and
+  `make_f128_cmp_materialized_i1_register_operand` choose only the AArch64 view
+  used to spell prepared bindings as Q/W/S/D registers (lines 1686-1779).
+- f128 helper preservation/source-policy validation:
   `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`.
-  `lower_f128_transport_instruction` requires prepared function state, prepared
-  f128 carrier tables, and prepared addressing; it builds the load/store memory
-  operand through `make_prepared_memory_operand_record`, resolves prepared
-  frame-slot offsets and pointer bases when needed, then calls
-  `make_prepared_f128_carrier_transport_record` with the prepared carrier value
-  name and memory record (memory.cpp lines 2910-3067). The memory-backed helper
-  later reconstructs a `MemoryOperand` from prepared slot/offset/size/alignment
-  via `make_prepared_frame_slot_memory_operand` and attaches stored/result value
-  ids according to load/store direction (f128.cpp lines 362-385). Addressing and
-  stack-home authority remain prepared memory/prealloc facts.
-- f128 call-boundary overlap:
-  `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption`.
-  `F128CarrierCallOperandOwner::is_complete_full_width` performs the same
-  completeness gate for call moves: full-width f128 carrier, no missing facts,
-  16-byte size/alignment, Vreg/vector, contiguous width 1, and register name
-  present (calls.cpp lines 890-920). Argument and result call-boundary moves
-  require that complete prepared carrier and also check it agrees with prepared
-  value homes before creating Q-register operands (calls.cpp lines 2732-3039 and
-  4356-4495). Stack call-argument stores fall back to
-  `make_prepared_f128_carrier_transport_record` with prepared carrier facts and
-  a prepared destination memory operand (lines 3887-3917). This overlap consumes
-  and cross-validates prepared call/memory/carrier facts; it does not choose
-  target-neutral carrier placement late.
+  `has_complete_f128_live_preservation`,
+  `has_complete_f128_selected_call_ownership`, and
+  `has_complete_f128_helper_resource_policy` verify the presence of prepared
+  policy fields (f128.cpp lines 516-570). The source-policy matcher then checks
+  that the machine record still matches the exact `PreparedF128RuntimeHelper`
+  provenance, including resource policy, ABI policy, live preservation,
+  selected-call ownership, clobbered registers, carrier bindings, ABI bindings,
+  marshaling moves, scalar ownership, and comparison-result consumption (lines
+  626-1009). This is preservation/provenance validation, not a new preservation
+  authority.
+- f128 transport and printable-address handling:
+  `shared-bir-prealloc-contract` consumed by `aarch64-codegen-consumption` for
+  facts; `local-organization-only` for address spelling. `F128TransportRecord`
+  holds prepared value id/name, carrier kind, size/alignment, register
+  placement, slot id, stack offset, optional memory operand, and source-carrier
+  provenance (instruction.hpp lines 1084-1107). `f128_printable_memory_address`
+  either prints an already encodable frame-slot/direct memory operand or
+  materializes a frame-slot/symbol address with reserved AArch64 scratch
+  registers (f128.cpp lines 319-360). This is printer address materialization
+  over existing `MemoryOperand` facts; it does not select memory-backed carrier
+  authority or stack homes.
+- f128 Q/vector/scalar register spelling:
+  `local-organization-only` and `aarch64-codegen-consumption`.
+  `f128_q_register_name` only accepts Q-view Vreg/vector contiguous-width-1
+  operands and `f128_vector_register_name` spells the same prepared register as
+  `vN.16b` for helper `mov` instructions (f128.cpp lines 171-179 and
+  1376-1388). Scalar helper printing uses W/S/D views through
+  `f128_register_name_with_view` and `f128_scalar_fp_register_name` (lines
+  147-168 and 388-409). These are AArch64 spelling details and should stay
+  target-local.
+- f128 printer-facing record and machine effects:
+  `aarch64-codegen-consumption`. `make_f128_transport_instruction` builds
+  operands, defs/uses, memory side effects, selection status, and an
+  `F128TransportRecord` payload (f128.cpp lines 2266-2323).
+  `make_f128_runtime_helper_boundary_instruction` builds operands, defs/uses,
+  clobbers from prepared call clobbers, call side effects, and a
+  `F128RuntimeHelperBoundaryRecord` payload (lines 2326-2381). The global
+  machine printer simply dispatches `F128TransportRecord` and
+  `F128RuntimeHelperBoundaryRecord` payloads to `print_f128_transport` and
+  `print_f128_runtime_helper` (machine_printer.cpp lines 2106-2165).
+- f128 helper invocation printing:
+  `aarch64-codegen-consumption` and `local-organization-only`.
+  `print_f128_runtime_helper` first revalidates prepared source policy, then
+  prints marshaling `mov`/`fmov` lines, `bl <callee>`, comparison `cmp`/`cset`,
+  and scalar/f128 cast moves according to the prepared helper family and ABI
+  transition (f128.cpp lines 1486-1640). `print_f128_transport` prints comments
+  for carrier snapshots and `ldr`/`str` sequences for full-width or
+  memory-backed f128 transports using printable memory addresses and scratch Q
+  registers (lines 1391-1484). These are final AArch64 assembly details.
 
 Gap candidates:
 
-- No Step 4 shared-policy gap is justified. Full-width f128 carriers,
-  memory-backed carriers, memory operands, and call-boundary f128 moves all
-  consume prepared facts and reject missing or inconsistent authority. The only
-  duplication observed is local completeness validation in `f128.cpp` and
-  `calls.cpp`; the validation checks prepared facts and then performs AArch64
-  Q-register/memory-record conversion, so it is not evidence that shared
-  BIR/prealloc policy is being rediscovered.
-- No precise shared-policy follow-up candidate is warranted from Step 4. A valid
-  future candidate would need to show AArch64 selecting f128 register-vs-memory
-  carrier ownership, stack slot, stack offset, or call-boundary publication
-  authority without prepared input. Current evidence shows the opposite.
+- No Step 5 shared-policy gap is justified. Helper resource policy, ABI
+  contract, clobber policy, live preservation, selected-call ownership,
+  carrier/ABI bindings, scalar bridge ownership, and marshaling moves are all
+  prepared before AArch64 lowering and then cross-checked in `f128.cpp`.
+- No precise follow-up idea is warranted from Step 5. A valid future candidate
+  would need to show AArch64 inventing helper ABI/resource/preservation policy,
+  selected-call ownership, carrier binding, scalar comparison consumption, or
+  stack/publication authority without prepared input. Current evidence shows
+  AArch64 rejects missing or inconsistent prepared facts and limits itself to
+  machine-record construction plus printable AArch64 assembly.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: audit f128 helper resources, preservation
-checks, transport construction, printable-address handling, Q-register spelling,
-and printer-facing record fields.
+Execute Step 6 from `plan.md`: synthesize the closure payload from the completed
+i128 and f128 audit evidence without starting implementation work.
 
 ## Watchouts
 
@@ -101,13 +129,16 @@ and printer-facing record fields.
   opcode spelling, or helper call assembly into shared BIR/prealloc code.
 - Follow-up ideas must be concrete: owner boundary, filenames, proof route, and
   reject signals.
-- Step 4 found no shared-policy gap for f128 full-width carrier or memory-backed
-  carrier facts. The no-gap evidence depends on prepared carrier, prepared
-  addressing, prepared value-home, and prepared call-boundary facts being
-  present before AArch64 record construction.
-- Step 5 should keep printable-address materialization and Q-register spelling
-  local unless the code proves target-neutral helper/preservation policy is
-  being selected late.
+- Step 5 found no shared-policy gap for f128 helper resources, preservation,
+  transport construction, printable addresses, Q-register spelling, or
+  printer-facing records.
+- Keep printable-address materialization, Q/vector/scalar register spelling,
+  `mov`/`fmov`/`ldr`/`str`/`bl` emission, machine-effect construction, and
+  payload dispatch target-local.
+- Closure synthesis should separate prepared helper policy in
+  `src/backend/prealloc/f128_runtime_helpers.cpp` from AArch64 consumption in
+  `src/backend/mir/aarch64/codegen/f128.cpp`; the apparent duplication in
+  `f128.cpp` is provenance/completeness cross-checking.
 
 ## Proof
 
