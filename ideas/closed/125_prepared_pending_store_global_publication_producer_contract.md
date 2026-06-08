@@ -104,3 +104,55 @@ producer instruction, and spelling the resulting AArch64 machine instruction.
   emission rewrites.
 - The same producer-rediscovery failure mode remains hidden behind a new helper
   name in `memory.cpp`.
+
+## Closure Evidence
+
+Closed on 2026-06-08.
+
+Pending store-global candidates now carry prepared source producer authority:
+the shared pending publication plan records producer kind, block label, and
+instruction index for valid prepared store-source plans. Shared planning rejects
+missing, ambiguous, and no-authority producer cases before publishing
+candidates, including the reviewer follow-up that removed the public default
+null-authority path.
+
+AArch64 pending store-global publication lowering now consumes the prepared
+producer instruction index instead of scanning earlier BIR instructions by
+source name and type. It keeps target-local responsibility for availability
+checks, stack publication state, publication emission, and machine instruction
+spelling.
+
+Evidence commits:
+
+- `0772e0b6a` added shared prepared producer facts for pending store-global
+  publication candidates.
+- `92dd73bb1` rewired the AArch64 consumer to use the prepared producer fact.
+- `14588a9a4` recorded reviewer follow-up for the remaining no-authority
+  shared-planner contract leak.
+- `c8b0809cd` tightened shared planning to fail closed without producer lookup
+  authority.
+
+Reviewer report `review/idea125_code_review.md` judged the implementation route
+on track; the medium watch item was addressed by `c8b0809cd`.
+
+Proof:
+
+- Backend proof after each code packet used
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+  and was accepted into the canonical baseline.
+- Close-time backend proof regenerated `test_after.log` with the same command:
+  `100% tests passed, 0 tests failed out of 179`.
+- Close-time regression guard compared `test_before.log` and `test_after.log`
+  with `--allow-non-decreasing-passed`: before 179 passed / 0 failed, after 179
+  passed / 0 failed, no new failing tests, result `PASS`.
+
+Completion criteria satisfied:
+
+- `lower_pending_store_global_stack_value_publications` no longer rediscovers
+  pending producers by local name/type scan.
+- The prepared pending store-global result carries enough producer information
+  for AArch64 emission or shared fail-closed rejection.
+- Duplicate-publication, stack-home-only, and pending-publication behavior is
+  preserved.
+- Tests cover shared prepared producer publication, missing/ambiguous/no-
+  authority fail-closed behavior, and AArch64 prepared consumer behavior.
