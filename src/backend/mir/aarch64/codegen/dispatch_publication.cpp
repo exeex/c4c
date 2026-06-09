@@ -24,22 +24,6 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
-namespace {
-
-[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.function.prepared == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return std::nullopt;
-  }
-  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
-                                                 value.name);
-}
-
-}  // namespace
-
 [[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -230,30 +214,16 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
 current_block_entry_publication_home(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
+  if (context.function.prepared == nullptr) {
     return nullptr;
   }
 
-  std::optional<prepare::PreparedValueId> value_id;
-  if (context.function.value_home_lookups != nullptr) {
-    const auto value_id_it =
-        context.function.value_home_lookups->value_ids.find(*value_name);
-    if (value_id_it == context.function.value_home_lookups->value_ids.end()) {
-      return nullptr;
-    }
-    value_id = value_id_it->second;
-  } else {
-    value_id = prepare::find_prepared_value_id(context.function.regalloc,
-                                               context.function.value_locations,
-                                               *value_name);
-  }
-  return value_id.has_value()
-             ? prepare::find_indexed_prepared_value_home(
-                   context.function.value_home_lookups,
-                   context.function.value_locations,
-                   *value_id)
-             : nullptr;
+  return prepare::find_prepared_value_home_for_bir_value(
+      context.function.prepared->names,
+      context.function.value_home_lookups,
+      context.function.regalloc,
+      context.function.value_locations,
+      value);
 }
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,

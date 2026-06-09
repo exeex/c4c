@@ -2035,15 +2035,13 @@ lower_materialized_compare_condition_branch(
     return std::nullopt;
   }
   const auto& branch_condition = *branch_facts->branch_condition;
-  const auto condition_name =
-      prepared_named_value_id(context, branch_condition.condition_value);
   const auto* condition_home =
-      condition_name.has_value() && context.function.value_locations != nullptr
-          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                      context.function.regalloc,
-                                                      context.function.value_locations,
-                                                      *condition_name)
-          : nullptr;
+      prepare::find_prepared_value_home_for_bir_value(
+          context.function.prepared->names,
+          context.function.value_home_lookups,
+          context.function.regalloc,
+          context.function.value_locations,
+          branch_condition.condition_value);
   if (condition_home == nullptr) {
     return std::nullopt;
   }
@@ -2225,14 +2223,13 @@ lower_constant_rhs_fused_compare_branch(
       find_prepared_fused_compare_operand_producer(context,
                                                    rhs,
                                                    context.bir_block->insts.size());
-  const auto rhs_name = prepared_named_value_id(context, rhs);
   const auto* rhs_home =
-      rhs_name.has_value() && context.function.value_locations != nullptr
-          ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                      context.function.regalloc,
-                                                      context.function.value_locations,
-                                                      *rhs_name)
-          : nullptr;
+      prepare::find_prepared_value_home_for_bir_value(
+          context.function.prepared->names,
+          context.function.value_home_lookups,
+          context.function.regalloc,
+          context.function.value_locations,
+          rhs);
   if (!rhs_producer.has_value() ||
       rhs_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
       rhs_producer->binary == nullptr ||
@@ -2320,12 +2317,12 @@ lower_conditional_branch_from_emitted_condition(
       return std::nullopt;
     }
     const auto* home =
-        context.function.value_locations != nullptr
-            ? prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                        context.function.regalloc,
-                                                        context.function.value_locations,
-                                                        *condition_name)
-            : nullptr;
+        prepare::find_prepared_value_home_for_bir_value(
+            context.function.prepared->names,
+            context.function.value_home_lookups,
+            context.function.regalloc,
+            context.function.value_locations,
+            branch_condition.condition_value);
     condition_register = RegisterOperand{
         .reg = *reg,
         .role = RegisterOperandRole::ReservedMirScratch,

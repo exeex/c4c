@@ -298,10 +298,12 @@ materialize_direct_global_select_chain_call_argument(
     return std::nullopt;
   }
   const auto* value_home =
-      prepare::find_indexed_prepared_value_home(context.function.value_home_lookups,
-                                                context.function.regalloc,
-                                                context.function.value_locations,
-                                                *value_name);
+      prepare::find_prepared_value_home_for_bir_value(
+          context.function.prepared->names,
+          context.function.value_home_lookups,
+          context.function.regalloc,
+          context.function.value_locations,
+          value);
   if (value_home == nullptr ||
       value_home->value_id != *argument_plan->source_value_id ||
       value_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
