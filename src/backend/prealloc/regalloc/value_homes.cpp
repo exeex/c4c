@@ -3,6 +3,7 @@
 #include "../control_flow.hpp"
 #include "../frame.hpp"
 #include "../names.hpp"
+#include "../stack_layout/stack_layout.hpp"
 #include "../target_register_profile.hpp"
 
 #include <cstdint>
@@ -71,17 +72,6 @@ namespace {
   return register_index;
 }
 
-[[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
-    const PreparedStackLayout& stack_layout,
-    PreparedFrameSlotId slot_id) {
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.slot_id == slot_id) {
-      return &slot;
-    }
-  }
-  return nullptr;
-}
-
 [[nodiscard]] const PreparedFrameSlot* find_stack_passed_f128_formal_local_home(
     const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
@@ -98,7 +88,9 @@ namespace {
         !access.address.frame_slot_id.has_value()) {
       continue;
     }
-    const auto* slot = find_frame_slot_by_id(*stack_layout, *access.address.frame_slot_id);
+    const auto* slot =
+        c4c::backend::prepare::find_frame_slot_by_id(*stack_layout,
+                                                     *access.address.frame_slot_id);
     if (slot == nullptr) {
       continue;
     }

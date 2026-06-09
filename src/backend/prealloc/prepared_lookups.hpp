@@ -18,13 +18,6 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
-[[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
-    const PreparedStackLayout& stack_layout,
-    PreparedFrameSlotId slot_id);
-
-[[nodiscard]] const PreparedStackObject* find_stack_object_by_id(
-    const PreparedStackLayout& stack_layout,
-    PreparedObjectId object_id);
 
 struct PreparedAfterCallResultLaneBinding {
   const PreparedMoveBundle* move_bundle = nullptr;

@@ -2,6 +2,7 @@
 
 #include "constant_materialization.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/stack_layout/stack_layout.hpp"
 
 #include <cstdint>
 #include <limits>
