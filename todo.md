@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/133_shared_prepared_fact_query_surface_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract One Shared Prepared Fact Query
+Current Step ID: 3
+Current Step Title: Examine Nearby Same-Feature Cases
 
 # Current Packet
 
@@ -26,4 +26,4 @@ Execute the next narrow shared prepared-fact extraction selected by the supervis
 
 Ran exactly `(cmake --build --preset default && ctest --test-dir build -R '^backend_' --output-on-failure) > test_after.log 2>&1`.
 
-Result: passed, 179/179 backend tests passed. Proof log: `test_after.log`.
+Result: passed, 179/179 backend tests passed. The supervisor has since rolled that accepted proof forward to the current canonical baseline log, `test_before.log`, so this scratchpad no longer names `test_after.log` as a present artifact.
