@@ -16,6 +16,7 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
+struct PreparedEdgePublicationSourceProducerLookups;
 
 struct PreparedPriorPreservedValueEntry {
   std::size_t block_index = 0;
@@ -337,6 +338,14 @@ struct PreparedSameBlockScalarProducer {
   const bir::Inst* instruction = nullptr;
   std::size_t instruction_index = 0;
   ValueNameId value_name = kInvalidValueName;
+};
+
+struct PreparedSameBlockValueMaterializationQuery {
+  const PreparedNameTables* names = nullptr;
+  const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  const bir::Block* block = nullptr;
+  std::size_t before_instruction_index = 0;
 };
 
 struct PreparedCurrentBlockPublicationConsumption {
@@ -933,6 +942,11 @@ find_prepared_same_block_scalar_producer(
     const bir::Value& value,
     std::size_t before_instruction_index);
 
+[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedSameBlockValueMaterializationQuery& query,
+    const bir::Value& value);
+
 [[nodiscard]] PreparedDirectGlobalSelectChainDependency
 find_prepared_direct_global_select_chain_dependency(
     const PreparedNameTables& names,
@@ -962,6 +976,11 @@ evaluate_prepared_same_block_integer_constant(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::int64_t>
+evaluate_prepared_same_block_integer_constant(
+    const PreparedSameBlockValueMaterializationQuery& query,
+    const bir::Value& value);
 
 [[nodiscard]] std::optional<PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(

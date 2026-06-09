@@ -37,16 +37,23 @@ namespace prepare = c4c::backend::prepare;
 
 namespace {
 
-[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
+[[nodiscard]] std::optional<prepare::PreparedSameBlockValueMaterializationQuery>
+prepared_same_block_value_materialization_query(
     const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.function.prepared == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
+      context.function.prepared == nullptr ||
+      context.function.prepared_lookups == nullptr) {
     return std::nullopt;
   }
-  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
-                                                 value.name);
+  return prepare::PreparedSameBlockValueMaterializationQuery{
+      .names = &context.function.prepared->names,
+      .source_producers =
+          &context.function.prepared_lookups->edge_publication_source_producers,
+      .block_label = context.control_flow_block->block_label,
+      .block = context.bir_block,
+      .before_instruction_index = before_instruction_index,
+  };
 }
 
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
@@ -54,25 +61,15 @@ prepared_same_block_scalar_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr ||
-      context.function.prepared_lookups == nullptr ||
-      context.function.control_flow == nullptr ||
-      value.kind != bir::Value::Kind::Named || value.name.empty()) {
+  if (context.function.control_flow == nullptr) {
     return std::nullopt;
   }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
+  const auto query =
+      prepared_same_block_value_materialization_query(context, before_instruction_index);
+  if (!query.has_value()) {
     return std::nullopt;
   }
-  return prepare::find_prepared_same_block_scalar_producer(
-      context.function.prepared->names,
-      &context.function.prepared_lookups->edge_publication_source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      *value_name,
-      value.type,
-      before_instruction_index);
+  return prepare::find_prepared_same_block_scalar_producer(*query, value);
 }
 
 [[nodiscard]] prepare::PreparedScalarSelectChainMaterialization
@@ -102,19 +99,12 @@ prepared_same_block_integer_constant(
   if (value.kind == bir::Value::Kind::Immediate) {
     return value.immediate;
   }
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr ||
-      context.function.prepared_lookups == nullptr ||
-      value.kind != bir::Value::Kind::Named || value.name.empty()) {
+  const auto query =
+      prepared_same_block_value_materialization_query(context, before_instruction_index);
+  if (!query.has_value()) {
     return std::nullopt;
   }
-  return prepare::evaluate_prepared_same_block_integer_constant(
-      context.function.prepared->names,
-      &context.function.prepared_lookups->edge_publication_source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      value,
-      before_instruction_index);
+  return prepare::evaluate_prepared_same_block_integer_constant(*query, value);
 }
 
 }  // namespace

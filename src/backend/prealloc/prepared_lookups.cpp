@@ -2558,6 +2558,21 @@ find_prepared_same_block_scalar_producer(
                                                  before_instruction_index);
 }
 
+std::optional<PreparedSameBlockScalarProducer>
+find_prepared_same_block_scalar_producer(
+    const PreparedSameBlockValueMaterializationQuery& query,
+    const bir::Value& value) {
+  if (query.names == nullptr) {
+    return std::nullopt;
+  }
+  return find_prepared_same_block_scalar_producer(*query.names,
+                                                 query.source_producers,
+                                                 query.block_label,
+                                                 query.block,
+                                                 value,
+                                                 query.before_instruction_index);
+}
+
 bool prepared_call_argument_binary_producer_opcode_is_materializable(
     bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -2640,6 +2655,21 @@ std::optional<std::int64_t> evaluate_prepared_same_block_integer_constant(
                                                        block,
                                                        value,
                                                        before_instruction_index,
+                                                       0U);
+}
+
+std::optional<std::int64_t> evaluate_prepared_same_block_integer_constant(
+    const PreparedSameBlockValueMaterializationQuery& query,
+    const bir::Value& value) {
+  if (query.names == nullptr) {
+    return std::nullopt;
+  }
+  return evaluate_prepared_same_block_integer_constant(*query.names,
+                                                       query.source_producers,
+                                                       query.block_label,
+                                                       query.block,
+                                                       value,
+                                                       query.before_instruction_index,
                                                        0U);
 }
 
