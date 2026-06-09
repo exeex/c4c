@@ -14,6 +14,7 @@
 #include "select_materialization.hpp"
 
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/select_chain_lookups.hpp"
 
 #include <algorithm>
 #include <cstdint>

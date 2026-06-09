@@ -6,7 +6,6 @@
 #include "frame.hpp"
 #include "names.hpp"
 #include "prepared_lookups.hpp"
-#include "select_chain_lookups.hpp"
 #include "value_locations.hpp"
 
 #include "../bir/bir.hpp"

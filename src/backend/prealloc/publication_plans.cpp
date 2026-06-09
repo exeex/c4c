@@ -1,6 +1,7 @@
 #include "publication_plans.hpp"
 
 #include "module.hpp"
+#include "select_chain_lookups.hpp"
 
 #include <algorithm>
 #include <unordered_set>

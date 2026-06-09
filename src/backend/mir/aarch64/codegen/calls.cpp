@@ -20,6 +20,7 @@
 #include "globals.hpp"
 #include "memory_dynamic_stack.hpp"
 #include "select_materialization.hpp"
+#include "../../../prealloc/select_chain_lookups.hpp"
 
 #include <algorithm>
 #include <array>

@@ -20,6 +20,7 @@
 #include "select_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/select_chain_lookups.hpp"
 
 #include <algorithm>
 #include <array>
