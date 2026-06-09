@@ -3,6 +3,7 @@
 #include "addressing.hpp"
 #include "calls.hpp"
 #include "control_flow.hpp"
+#include "stack_layout/stack_layout.hpp"
 #include "value_locations.hpp"
 
 #include <cstddef>
@@ -18,19 +19,6 @@ namespace c4c::backend::prepare {
 struct PreparedBirModule;
 struct PreparedEdgePublicationSourceProducerLookups;
 
-struct PreparedAddressMaterializationLookups {
-  std::unordered_map<BlockLabelId, std::vector<const PreparedAddressMaterialization*>>
-      materializations_by_block;
-};
-
-struct PreparedMemoryAccessLookups {
-  std::unordered_map<std::size_t, const PreparedMemoryAccess*> accesses_by_position;
-  std::unordered_map<ValueNameId, std::vector<const PreparedMemoryAccess*>>
-      accesses_by_result_value_name;
-  std::unordered_map<PreparedValueId, std::vector<const PreparedMemoryAccess*>>
-      accesses_by_result_value_id;
-};
-
 [[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
     const PreparedStackLayout& stack_layout,
     PreparedFrameSlotId slot_id);
@@ -38,14 +26,6 @@ struct PreparedMemoryAccessLookups {
 [[nodiscard]] const PreparedStackObject* find_stack_object_by_id(
     const PreparedStackLayout& stack_layout,
     PreparedObjectId object_id);
-
-struct PreparedFrameAddressOffset {
-  const PreparedAddressMaterialization* materialization = nullptr;
-  PreparedFrameSlotId frame_slot_id = 0;
-  PreparedObjectId object_id = 0;
-  std::size_t stack_offset_bytes = 0;
-  std::int64_t materialization_byte_offset = 0;
-};
 
 struct PreparedAfterCallResultLaneBinding {
   const PreparedMoveBundle* move_bundle = nullptr;
@@ -399,11 +379,6 @@ struct PreparedSameBlockLoadLocalStoredValueSource {
   const PreparedMemoryAccess* store_access = nullptr;
 };
 
-struct PreparedSameBlockGlobalLoadAccess {
-  const bir::LoadGlobalInst* load_global = nullptr;
-  const PreparedMemoryAccess* access = nullptr;
-};
-
 struct PreparedEdgePublication {
   PreparedEdgePublicationLookupStatus status =
       PreparedEdgePublicationLookupStatus::MissingDestinationValue;
@@ -714,22 +689,11 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_return_chain_value_key(std::size_t block_index,
                                                           std::size_t instruction_index,
                                                           ValueNameId value_name);
-[[nodiscard]] std::size_t prepared_memory_access_position_key(
-    BlockLabelId block_label,
-    std::size_t instruction_index);
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
     PreparedValueId destination_value_id);
-
-[[nodiscard]] PreparedAddressMaterializationLookups
-make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
-                                              FunctionNameId function_name);
-
-[[nodiscard]] PreparedMemoryAccessLookups make_prepared_memory_access_lookups(
-    const PreparedAddressingFunction* addressing,
-    const PreparedValueHomeLookups* value_home_lookups = nullptr);
 
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations);
@@ -805,58 +769,6 @@ prepare_aggregate_stack_source_authority(
 [[nodiscard]] PreparedTypedStackSourcePublication
 prepare_same_width_i32_stack_source_publication(
     const PreparedEdgePublication* publication);
-
-[[nodiscard]] const std::vector<const PreparedAddressMaterialization*>*
-find_indexed_prepared_address_materializations(
-    const PreparedAddressMaterializationLookups* lookups,
-    BlockLabelId block_label);
-
-[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
-find_indexed_prepared_memory_accesses_by_result_value_name(
-    const PreparedMemoryAccessLookups* lookups,
-    ValueNameId result_value_name);
-
-[[nodiscard]] const PreparedMemoryAccess* find_indexed_prepared_memory_access(
-    const PreparedMemoryAccessLookups* lookups,
-    BlockLabelId block_label,
-    std::size_t instruction_index);
-
-[[nodiscard]] const PreparedMemoryAccess*
-find_unique_indexed_prepared_memory_access_by_result_value_name(
-    const PreparedMemoryAccessLookups* lookups,
-    ValueNameId result_value_name);
-
-[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
-find_indexed_prepared_memory_accesses_by_result_value_id(
-    const PreparedMemoryAccessLookups* lookups,
-    PreparedValueId result_value_id);
-
-[[nodiscard]] const PreparedMemoryAccess*
-find_unique_indexed_prepared_memory_access_by_result_value_id(
-    const PreparedMemoryAccessLookups* lookups,
-    PreparedValueId result_value_id);
-
-[[nodiscard]] std::vector<const PreparedAddressMaterialization*>
-collect_prepared_address_materializations_for_block(
-    const PreparedAddressingFunction& addressing,
-    BlockLabelId block_label);
-
-[[nodiscard]] std::optional<PreparedFrameAddressOffset>
-find_indexed_prepared_frame_address_offset_for_value(
-    const PreparedStackLayout& stack_layout,
-    const PreparedAddressMaterializationLookups* lookups,
-    BlockLabelId block_label,
-    ValueNameId value_name,
-    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
-
-[[nodiscard]] std::optional<PreparedFrameAddressOffset>
-find_indexed_prepared_frame_address_offset_for_value_id(
-    const PreparedStackLayout& stack_layout,
-    const PreparedAddressMaterializationLookups* lookups,
-    const PreparedValueHomeLookups* value_home_lookups,
-    BlockLabelId block_label,
-    PreparedValueId value_id,
-    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
 
 [[nodiscard]] PreparedCurrentBlockEntryPublication
 find_prepared_current_block_entry_publication(
@@ -999,20 +911,6 @@ find_prepared_materialized_condition_producer(
     const bir::Block* block,
     const bir::Value& condition_value,
     std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
-find_prepared_global_load_access(
-    const PreparedNameTables& names,
-    const PreparedAddressingFunction* addressing,
-    BlockLabelId block_label,
-    std::size_t instruction_index,
-    const bir::LoadGlobalInst& load_global);
-
-[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
-find_prepared_same_block_global_load_access(
-    const PreparedNameTables& names,
-    const PreparedAddressingFunction* addressing,
-    const PreparedSameBlockScalarProducer& producer);
 
 [[nodiscard]] std::optional<PreparedSameBlockLoadLocalStoredValueSource>
 find_prepared_same_block_load_local_stored_value_source(

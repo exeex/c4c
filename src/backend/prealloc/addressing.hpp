@@ -10,9 +10,14 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::prepare {
+
+struct PreparedBirModule;
+struct PreparedSameBlockScalarProducer;
+struct PreparedValueHomeLookups;
 
 enum class PreparedAddressBaseKind {
   None,
@@ -191,6 +196,11 @@ struct PreparedMemoryAccess {
   PreparedAddress address;
 };
 
+struct PreparedSameBlockGlobalLoadAccess {
+  const bir::LoadGlobalInst* load_global = nullptr;
+  const PreparedMemoryAccess* access = nullptr;
+};
+
 struct PreparedAddressingFunction {
   FunctionNameId function_name = kInvalidFunctionName;
   std::size_t frame_size_bytes = 0;
@@ -308,5 +318,79 @@ find_prepared_address_materialization(
   }
   return nullptr;
 }
+
+struct PreparedAddressMaterializationLookups {
+  std::unordered_map<BlockLabelId, std::vector<const PreparedAddressMaterialization*>>
+      materializations_by_block;
+};
+
+struct PreparedMemoryAccessLookups {
+  std::unordered_map<std::size_t, const PreparedMemoryAccess*> accesses_by_position;
+  std::unordered_map<ValueNameId, std::vector<const PreparedMemoryAccess*>>
+      accesses_by_result_value_name;
+  std::unordered_map<PreparedValueId, std::vector<const PreparedMemoryAccess*>>
+      accesses_by_result_value_id;
+};
+
+[[nodiscard]] std::size_t prepared_memory_access_position_key(
+    BlockLabelId block_label,
+    std::size_t instruction_index);
+
+[[nodiscard]] PreparedAddressMaterializationLookups
+make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
+                                              FunctionNameId function_name);
+
+[[nodiscard]] PreparedMemoryAccessLookups make_prepared_memory_access_lookups(
+    const PreparedAddressingFunction* addressing,
+    const PreparedValueHomeLookups* value_home_lookups = nullptr);
+
+[[nodiscard]] const std::vector<const PreparedAddressMaterialization*>*
+find_indexed_prepared_address_materializations(
+    const PreparedAddressMaterializationLookups* lookups,
+    BlockLabelId block_label);
+
+[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
+find_indexed_prepared_memory_accesses_by_result_value_name(
+    const PreparedMemoryAccessLookups* lookups,
+    ValueNameId result_value_name);
+
+[[nodiscard]] const PreparedMemoryAccess* find_indexed_prepared_memory_access(
+    const PreparedMemoryAccessLookups* lookups,
+    BlockLabelId block_label,
+    std::size_t instruction_index);
+
+[[nodiscard]] const PreparedMemoryAccess*
+find_unique_indexed_prepared_memory_access_by_result_value_name(
+    const PreparedMemoryAccessLookups* lookups,
+    ValueNameId result_value_name);
+
+[[nodiscard]] const std::vector<const PreparedMemoryAccess*>*
+find_indexed_prepared_memory_accesses_by_result_value_id(
+    const PreparedMemoryAccessLookups* lookups,
+    PreparedValueId result_value_id);
+
+[[nodiscard]] const PreparedMemoryAccess*
+find_unique_indexed_prepared_memory_access_by_result_value_id(
+    const PreparedMemoryAccessLookups* lookups,
+    PreparedValueId result_value_id);
+
+[[nodiscard]] std::vector<const PreparedAddressMaterialization*>
+collect_prepared_address_materializations_for_block(
+    const PreparedAddressingFunction& addressing,
+    BlockLabelId block_label);
+
+[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global);
+
+[[nodiscard]] std::optional<PreparedSameBlockGlobalLoadAccess>
+find_prepared_same_block_global_load_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    const PreparedSameBlockScalarProducer& producer);
 
 }  // namespace c4c::backend::prepare

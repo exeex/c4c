@@ -6,8 +6,42 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 #include <vector>
+
+namespace c4c::backend::prepare {
+
+struct PreparedAddressMaterialization;
+struct PreparedAddressMaterializationLookups;
+struct PreparedValueHomeLookups;
+
+struct PreparedFrameAddressOffset {
+  const PreparedAddressMaterialization* materialization = nullptr;
+  PreparedFrameSlotId frame_slot_id = 0;
+  PreparedObjectId object_id = 0;
+  std::size_t stack_offset_bytes = 0;
+  std::int64_t materialization_byte_offset = 0;
+};
+
+[[nodiscard]] std::optional<PreparedFrameAddressOffset>
+find_indexed_prepared_frame_address_offset_for_value(
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterializationLookups* lookups,
+    BlockLabelId block_label,
+    ValueNameId value_name,
+    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
+
+[[nodiscard]] std::optional<PreparedFrameAddressOffset>
+find_indexed_prepared_frame_address_offset_for_value_id(
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterializationLookups* lookups,
+    const PreparedValueHomeLookups* value_home_lookups,
+    BlockLabelId block_label,
+    PreparedValueId value_id,
+    std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
+
+}  // namespace c4c::backend::prepare
 
 namespace c4c::backend::prepare::stack_layout {
 
