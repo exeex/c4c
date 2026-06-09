@@ -55,3 +55,12 @@ prepared lookup facade.
 - The aggregate builder is removed or multiple targets lose the one-pass
   preparation path.
 - Return-chain helpers are swept into the move without a concrete owner.
+
+## Closure Note
+
+Closed after moving value-home declarations, core move-bundle declarations,
+ABI/result-lane/current-block-entry-publication lookup declarations, and direct
+consumer includes to value-location ownership while preserving
+`PreparedFunctionLookups` aggregate wiring. Backend proof passed with
+`cmake --build --preset default` and
+`ctest --test-dir build -R '^backend_' --output-on-failure`.
