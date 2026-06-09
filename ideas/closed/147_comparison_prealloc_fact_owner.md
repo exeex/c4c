@@ -41,6 +41,19 @@ boundary instead of vaguely moving "comparison lookups."
   `ctest --test-dir build -R '^backend_' --output-on-failure`.
 - Escalate to full CTest if shared branch/comparison semantics change.
 
+## Closure Note
+
+Closed after the active runbook established
+`src/backend/prealloc/comparison.hpp` and
+`src/backend/prealloc/comparison.cpp` as the comparison owner for
+fused-compare operand producer facts, materialized-condition producer facts,
+and their lookup helpers. Backend validation passed for the required build and
+`^backend_` CTest subset, with no shared branch/comparison semantic changes
+reported. No separate follow-up idea was created because the remaining
+`prepared_lookups.hpp` ownership for `PreparedFunctionLookups`, return-chain
+helpers, edge-publication lookups, and same-block load-local source helpers is
+outside this idea's comparison-fact scope.
+
 ## Reviewer Reject Signals
 
 - Follow-up fails to name a concrete owner and only says "clean comparison
