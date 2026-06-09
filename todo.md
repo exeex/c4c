@@ -65,4 +65,4 @@ Supervisor regression guard: strict mode rejected equal pass count, then
 maintenance non-decreasing mode passed with before=28/28 and after=28/28, no
 new failures.
 
-Proof log path: `test_after.log`.
+Proof log path before supervisor roll-forward: `test_after.log`.
