@@ -76,6 +76,23 @@ single domain owner instead of depending on accidental facade headers.
 - Broaden to full `ctest --test-dir build -j --output-on-failure` only if the
   implementation changes select-chain facts rather than include/API ownership.
 
+## Closure Note
+
+Closed on 2026-06-09. The implementation introduced
+`src/backend/prealloc/select_chain_lookups.hpp` as the public owner for
+select-chain query declarations and types, removed transitive exposure from
+`prepared_lookups.hpp` and `publication_plans.hpp`, updated direct prealloc,
+prepared-printer, and AArch64 consumers to include the owner, and preserved
+`module.hpp` as the justified aggregate prepared-module surface. The final
+packet confirmed no select-chain fact semantics, result fields, tests, or
+expectations were changed.
+
+Proof: `cmake --build --preset default` plus
+`ctest --test-dir build -R '^backend_' --output-on-failure` passed with 179/179
+backend tests. Close-time regression guard over canonical `test_before.log` and
+`test_after.log` passed in maintenance mode with 179 before, 179 after, and no
+new failures.
+
 ## Reviewer Reject Signals
 
 - Reject if the diff changes result fields such as
