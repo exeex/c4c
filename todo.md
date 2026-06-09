@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/145_current_block_join_fact_routing_split.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Move Reusable Join-copy Source Facts
+Current Step ID: 3
+Current Step Title: Localize AArch64 Routing Convenience
 
 # Current Packet
 
@@ -45,7 +45,8 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 Result: passed. `ctest` reported 179/179 backend tests passed.
-Proof log: `test_after.log`.
+Proof log: accepted after-proof was rolled forward to `test_before.log`;
+there is no current root `test_after.log`.
 
 Supervisor follow-up:
 
@@ -55,4 +56,5 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 ```
 
 Result: full CTest passed, 3427/3427 tests. Regression guard passed with
-179/179 backend tests before and after, no new failures.
+179/179 backend tests before and after, no new failures, then the accepted
+after-log was rolled forward to `test_before.log`.
