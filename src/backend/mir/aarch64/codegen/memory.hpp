@@ -3,6 +3,7 @@
 #include "instruction.hpp"
 #include "alu.hpp"
 #include "../module/module.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 
 #include <cstddef>
 #include <cstdint>

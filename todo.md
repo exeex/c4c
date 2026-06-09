@@ -1,57 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/140_edge_copy_facade_split.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move or rename routing-oriented facade declarations
+Current Step ID: 3
+Current Step Title: Adjust definitions and consumers to the split facade
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 declaration-boundary split.
+Completed `plan.md` Step 3 implementation/include alignment for the split
+edge-copy facade.
 
-Reusable edge publication/source facts now have their primary declarations in
-`src/backend/prealloc/publication_plans.hpp`: edge publication/source producer
-statuses and facts, aggregate stack source authority, edge publication keys and
-lookup tables, edge copy source facts, typed stack source publication records,
-and shared edge/publication query declarations including
-`prepare_same_width_i32_stack_source_publication`.
+Moved target-neutral reusable edge-publication definitions from
+`src/backend/prealloc/prepared_lookups.cpp` to
+`src/backend/prealloc/publication_plans.cpp`: edge publication key/hash helpers,
+block-entry parallel-copy publication matching helpers, aggregate stack source
+authority, same-width i32 stack-source publication, indexed edge-publication
+queries, edge-copy source facts, and their private validation/copy predicates.
+The small scalar/aggregate width predicate used by aggregate stack source
+authority moved with that helper.
 
-`src/backend/prealloc/prepared_lookups.hpp` now includes
-`publication_plans.hpp` for those reusable types while keeping
-`PreparedMoveBundleLookups`, cached edge publication lookup builders, and
-`PreparedFunctionLookups` wiring declarations in the prepared lookup facade.
-`src/backend/mir/aarch64/codegen/dispatch_producers.hpp` now depends on
-`publication_plans.hpp` for `PreparedEdgePublicationSourceProducer`.
+Kept cached construction and aggregate wiring in `prepared_lookups.cpp`:
+`make_prepared_edge_publication_lookups`, `make_prepared_function_lookups`,
+`PreparedFunctionLookups::edge_publications`, and current-block join routing
+definitions remain there.
 
-Current-block join routing declarations remain in `prepared_lookups.hpp` and
-are documented there as AArch64 current-block routing conveniences because the
-definitions still live in `prepared_lookups.cpp`, which this packet could not
-touch.
+Narrowed `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` away from
+`prepared_lookups.hpp` because it only needs the publication facade for this
+slice. Made `src/backend/mir/aarch64/codegen/memory.hpp` explicitly include
+`publication_plans.hpp` for the publication types in its public signatures.
+Verified `dispatch_producers.cpp` and `memory.cpp` still need
+`prepared_lookups.hpp` because they use prepared aggregate builders,
+value-home lookups, or current-block routing helpers.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: move implementation ownership for reusable edge
-publication/source helper definitions out of `prepared_lookups.cpp` only where
-the dependency graph stays shared and target-neutral; keep cached construction
-and `PreparedFunctionLookups` aggregate wiring in `prepared_lookups.*`.
+Execute Step 4 from `plan.md`: validate the facade split by searching for
+leftover generic ownership leaks, duplicate wrapper surfaces, or consumers that
+rescan predecessors/BIR/value locations instead of using prepared facts, then
+run the required backend proof.
 
 ## Watchouts
 
-- `publication_plans.hpp` no longer includes `prepared_lookups.hpp`; maintain
-  that direction if Step 3 moves definitions.
-- `make_prepared_edge_publication_lookups`, `make_prepared_function_lookups`,
-  and `PreparedFunctionLookups::edge_publications` remain cached prepared
-  lookup wiring and should not be moved as part of reusable query helper
-  cleanup.
-- `prepare_same_width_i32_stack_source_publication` remains shared because
-  RISC-V consumes it.
-- Current-block join routing was not moved to `dispatch_producers.hpp` because
-  its definitions remain in `prepared_lookups.cpp`; moving those declarations
-  target-local should be paired with implementation ownership changes.
+- `publication_plans.cpp` now owns reusable edge/publication query definitions
+  but still does not build cached `PreparedEdgePublicationLookups`; those maps
+  remain prepared lookup wiring.
+- Current-block join routing definitions still remain in `prepared_lookups.cpp`
+  with the documented shared-header declarations, because they depend on
+  `PreparedValueHomeLookups`, cached edge-publication lookup construction, and
+  AArch64 current-block routing shape.
+- `dispatch_producers.cpp` and `memory.cpp` retained broad prepared includes for
+  real aggregate/builder dependencies; do not narrow those includes without
+  moving or splitting the underlying prepared lookup APIs.
+- No consumer was changed to rescan predecessors, BIR producers, or local value
+  locations in place of prepared facts.
 
 ## Proof
 
-`cmake --build --preset default` succeeded. No root-level proof log was
-created because this packet explicitly listed root-level logs under
-Do Not Touch.
+`cmake --build --preset default` succeeded. No root-level proof log was created
+because this packet explicitly said not to create test logs.

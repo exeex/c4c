@@ -15,7 +15,6 @@
 #include "prepared_value_home_materialization.hpp"
 #include "select_materialization.hpp"
 #include "variadic.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/publication_plans.hpp"
 
 #include <cstddef>
