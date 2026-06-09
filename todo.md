@@ -3,52 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/148_same_block_load_local_stored_value_owner.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rewire consumers to the narrow owner
+Current Step ID: 4
+Current Step Title: Prove the owner move
 
 ## Just Finished
 
-Step 3 rewired the direct AArch64 consumer to include the narrow addressing
-owner for the moved same-block load-local stored-value API.
+Step 4 validated the same-block load-local stored-value owner move without
+touching implementation files.
 
-- `src/backend/mir/aarch64/codegen/calls.cpp` now includes
-  `../../../prealloc/addressing.hpp` directly for
-  `PreparedSameBlockLoadLocalStoredValueSource` and
-  `find_prepared_same_block_load_local_stored_value_source`.
-- `../../../prealloc/prepared_lookups.hpp` remains included because
-  `calls.cpp` still consumes unrelated prepared lookup state through
-  `PreparedFunctionLookups` / `prepared_lookups`.
-- No AArch64 emission, register, scratch, extension, or prepared memory-access
-  construction behavior changed.
+- Final owner status: the narrow same-block load-local stored-value API is
+  owned from `src/backend/prealloc/addressing.hpp`, and the direct AArch64
+  consumer already includes that owner header.
+- The delegated build plus backend subset passed after the owner move.
+- Full CTest is not required by this proof-only executor packet; supervisor may
+  still choose broader validation before lifecycle closeout or commit.
 
 ## Suggested Next
 
-Supervisor should decide whether the Step 4 proof-only closeout is already
-satisfied by this packet's delegated build plus backend subset proof, or whether
-to send a lifecycle/review packet before closing the runbook.
+Supervisor should decide lifecycle closeout for the active runbook, or run a
+broader validation packet if treating this as a milestone.
 
 ## Watchouts
 
-- `prepared_lookups.hpp` still transitively includes `addressing.hpp`, so the
-  direct include is an ownership/documentation fix as well as compile hygiene.
-- This packet did not move the finder definition out of
-  `prepared_lookups.cpp`; Step 2 intentionally left behavior identical there.
+- This packet was validation and proof recording only; no implementation files,
+  `plan.md`, source idea files, or closed idea files were touched.
+- `test_after.log` is the current proof artifact and should be preserved until
+  the supervisor handles regression-log policy.
 
 ## Proof
 
-AST checks:
-
-- `c4c-clang-tool-ccdb type-refs` confirmed the
-  `PreparedSameBlockLoadLocalStoredValueSource` type reference in
-  `calls.cpp`.
-- `c4c-clang-tool-ccdb function-callees` confirmed
-  `find_prepared_indirect_callee_stored_value_source` resolves
-  `find_prepared_same_block_load_local_stored_value_source` from
-  `src/backend/prealloc/addressing.hpp`.
-
 Ran delegated proof:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-Result: passed, 179/179 backend tests. Regression guard passed with 179/179
-backend tests before and after, no new failures.
+Result: passed. Build reported no work to do; CTest passed 179/179 backend
+tests with 0 failures.
+Regression guard passed with 179/179 backend tests before and after, no new
+failures.
 Proof log: accepted after-proof was rolled forward to `test_before.log`;
 there is no current root `test_after.log`.
