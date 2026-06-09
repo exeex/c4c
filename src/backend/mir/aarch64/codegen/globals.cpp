@@ -1,6 +1,7 @@
 #include "globals.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/calls.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/stack_layout/stack_layout.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
 #include "dispatch_lookup.hpp"

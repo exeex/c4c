@@ -19,8 +19,10 @@
 #include "operands.hpp"
 #include "select_materialization.hpp"
 #include "variadic.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
+#include "../../../prealloc/stack_layout/stack_layout.hpp"
 
 #include <algorithm>
 #include <array>

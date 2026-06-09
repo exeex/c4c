@@ -1,4 +1,5 @@
 #include "../module.hpp"
+#include "../addressing.hpp"
 #include "stack_layout.hpp"
 
 #include <algorithm>

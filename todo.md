@@ -8,30 +8,39 @@ Current Step Title: Adjust consumers to the narrowest stable ownership boundary
 
 ## Just Finished
 
-Step 2 moved the addressing/frame lookup declaration boundary to domain
-headers without moving definitions or cached aggregate wiring.
+Step 3 adjusted/verified direct consumers against the new domain-header
+boundary without changing lookup semantics.
 
-- `src/backend/prealloc/addressing.hpp` now declares
-  `PreparedAddressMaterializationLookups`, `PreparedMemoryAccessLookups`,
-  `prepared_memory_access_position_key`, the two addressing lookup builders,
-  indexed address-materialization and memory-access queries,
-  `collect_prepared_address_materializations_for_block`,
-  `PreparedSameBlockGlobalLoadAccess`, and the global-load access queries.
-- `src/backend/prealloc/stack_layout/stack_layout.hpp` now declares
-  `PreparedFrameAddressOffset` and the two indexed frame-address-offset
-  queries in the parent `c4c::backend::prepare` namespace.
-- `src/backend/prealloc/prepared_lookups.hpp` keeps
-  `PreparedFunctionLookups`, `make_prepared_function_lookups`, and broad
-  aggregate declarations, and includes the domain headers so existing broad
-  consumers still compile.
-- Definitions and `PreparedFunctionLookups` aggregate construction remain in
-  `src/backend/prealloc/prepared_lookups.cpp`.
+- `src/backend/prealloc/stack_layout/coordinator.cpp` now directly includes
+  `src/backend/prealloc/addressing.hpp` for the addressing facts it builds.
+- `src/backend/mir/aarch64/codegen/globals.cpp` now directly includes
+  `addressing.hpp` and `stack_layout/stack_layout.hpp`; its broad
+  `prepared_lookups.hpp` include was removed because it only needs
+  addressing/frame lookup queries through the new domain headers.
+- `src/backend/mir/aarch64/codegen/memory.cpp` and
+  `src/backend/mir/aarch64/codegen/alu.cpp` now directly include
+  `addressing.hpp`, while retaining `prepared_lookups.hpp` because both still
+  access broad cached aggregate fields such as memory accesses, edge
+  publication/source-producer lookups, return chains, and/or
+  `PreparedFunctionLookups` fallback construction.
+- `src/backend/mir/aarch64/codegen/memory_store_retargeting.cpp` now directly
+  includes `stack_layout/stack_layout.hpp`, while retaining
+  `prepared_lookups.hpp` for `PreparedValueHomeLookups` and stack-object/frame
+  helper APIs that still live in the broad lookup header.
+- Verified `src/backend/prealloc/publication_plans.hpp` already directly
+  includes `addressing.hpp` and still needs `prepared_lookups.hpp` for edge
+  publication/source-producer lookup types and builders.
+- Verified `src/backend/mir/aarch64/module/module.hpp`,
+  `dispatch_value_materialization.cpp`, and `fp_value_materialization.cpp`
+  still require broad prepared lookup declarations or aggregate source-producer
+  APIs rather than only addressing/frame lookup facts.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: adjust direct consumers/includes to prefer the
-new domain headers where they no longer need broad `prepared_lookups.hpp`,
-without changing lookup definitions or prepared aggregate construction.
+Execute Step 4 from `plan.md`: run the final ownership-boundary audit and
+acceptance proof for the addressing/frame lookup cleanup, checking that
+remaining broad `prepared_lookups.hpp` includes are justified and that no
+consumer rebuilt lookup maps or replaced prepared queries with local scans.
 
 ## Watchouts
 
@@ -39,16 +48,13 @@ without changing lookup definitions or prepared aggregate construction.
   or store-source publication semantics.
 - Do not replace prepared addressing facts with local scans or name matching.
 - Keep `PreparedFunctionLookups` cached aggregate access intact.
-- `PreparedSameBlockGlobalLoadAccess` moved to `addressing.hpp` because
-  `std::optional<PreparedSameBlockGlobalLoadAccess>` requires a complete result
-  type at the declaration site; `PreparedSameBlockScalarProducer` remains
-  forward-declared there.
-- `stack_layout/stack_layout.hpp` forward-declares
-  `PreparedAddressMaterializationLookups` and `PreparedValueHomeLookups` to
-  avoid pulling broad prepared lookup ownership into the frame-domain header.
-- `prepared_lookups.hpp` still includes the new domain headers for
-  compatibility, so Step 3 should remove broad includes only where a file's
-  real dependencies are now narrower.
+- `memory_store_retargeting.cpp` cannot drop `prepared_lookups.hpp` yet because
+  `PreparedValueHomeLookups`, `find_frame_slot_by_id`, and
+  `find_stack_object_by_id` still live there.
+- `memory.cpp`, `alu.cpp`, `dispatch_value_materialization.cpp`, and
+  `fp_value_materialization.cpp` still use broad aggregate/source-producer
+  lookup APIs; dropping `prepared_lookups.hpp` there would require a separate
+  declaration-ownership change outside this packet.
 
 ## Proof
 

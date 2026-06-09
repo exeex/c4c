@@ -4,6 +4,7 @@
 #include "dispatch_lookup.hpp"
 #include "../../../prealloc/control_flow.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/stack_layout/stack_layout.hpp"
 
 #include <optional>
 #include <variant>
