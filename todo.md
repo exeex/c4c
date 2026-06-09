@@ -8,44 +8,45 @@ Current Step Title: Move Core Move-Bundle Lookup APIs To Value-Location Ownershi
 
 ## Just Finished
 
-Step 2 moved the public value-home lookup API declarations to value-location
-ownership.
+Step 3 moved the public core move-bundle lookup API declarations to
+value-location ownership.
 
-`PreparedValueHomeLookups` and `make_prepared_value_home_lookups` now live in
-`src/backend/prealloc/value_locations.hpp` beside the existing inline indexed
-value-home/id helpers. `src/backend/prealloc/prepared_lookups.hpp` no longer
-declares those value-home lookup APIs directly, but its existing
-`value_locations.hpp` include preserves include compatibility for current
-prepared-lookup consumers.
+`PreparedMoveBundleLookups`, `prepared_move_bundle_position_key`,
+`make_prepared_move_bundle_lookups`, and `find_indexed_prepared_move_bundle`
+now live publicly in `src/backend/prealloc/value_locations.hpp`.
+`src/backend/prealloc/prepared_lookups.hpp` no longer declares those core
+move-bundle lookup APIs directly, while its existing `value_locations.hpp`
+include preserves include compatibility for current prepared-lookup consumers.
 
-`PreparedFunctionLookups` aggregate wiring and the
-`make_prepared_value_home_lookups` definition in
-`src/backend/prealloc/prepared_lookups.cpp` were left behaviorally unchanged.
+The after-call result-lane binding declaration remains in
+`src/backend/prealloc/prepared_lookups.hpp`. `PreparedMoveBundleLookups` uses
+out-of-line special members defined in
+`src/backend/prealloc/prepared_lookups.cpp` so `value_locations.hpp` can own
+the lookup type without moving result-lane binding ownership.
 
 ## Suggested Next
 
-Execute rewritten Step 3 from `plan.md`: move the core move-bundle lookup API
-declarations to value-location ownership while keeping ABI helper,
-after-call result-lane binding, and current-block publication ownership
-decisions for Step 4.
+Execute Step 4 from `plan.md`: make the remaining ABI helper, after-call
+result-lane binding, current-block entry publication, and related residual
+prepared lookup ownership decisions without changing test expectations.
 
 ## Watchouts
 
-- This slice only moved value-home lookup public declarations; do not mix
-  current-block entry-publication or move-bundle ownership into its commit.
 - `prepared_lookups.hpp` still owns `PreparedFunctionLookups`, return-chain
-  lookups, and residual prepared lookup APIs, and it still includes
-  `value_locations.hpp` for compatibility.
-- `value_locations.hpp` now includes `<unordered_map>` for
-  `PreparedValueHomeLookups`.
+  lookups, ABI helper declarations, after-call result-lane binding
+  declarations, and current-block entry publication declarations.
+- `PreparedMoveBundleLookups` still contains after-call/result-lane lookup
+  fields; only the result-lane binding declaration itself was left in
+  `prepared_lookups.hpp` for Step 4.
+- The self-contained include probe for `value_locations.hpp` required
+  out-of-line `PreparedMoveBundleLookups` special members because the
+  result-lane binding type is intentionally forward-declared there.
 - No direct consumers needed explicit include changes during this packet.
-- Step 3 was split after review: keep this next packet to
-  `PreparedMoveBundleLookups`, move-bundle key builders, move-bundle builder
-  declarations, and indexed move-bundle helper declarations. Leave
-  before-call/before-return ABI helpers, after-call result-lane binding, and
-  current-block entry publication decisions to Step 4.
 
 ## Proof
+
+Compiled a self-contained `value_locations.hpp` include probe that instantiates
+`PreparedMoveBundleLookups`: passed.
 
 Ran `cmake --build --preset default` from the repo root: passed.
 

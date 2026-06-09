@@ -9,6 +9,18 @@
 #include <variant>
 
 namespace c4c::backend::prepare {
+
+PreparedMoveBundleLookups::PreparedMoveBundleLookups() = default;
+PreparedMoveBundleLookups::PreparedMoveBundleLookups(const PreparedMoveBundleLookups&) =
+    default;
+PreparedMoveBundleLookups::PreparedMoveBundleLookups(PreparedMoveBundleLookups&&) =
+    default;
+PreparedMoveBundleLookups& PreparedMoveBundleLookups::operator=(
+    const PreparedMoveBundleLookups&) = default;
+PreparedMoveBundleLookups& PreparedMoveBundleLookups::operator=(
+    PreparedMoveBundleLookups&&) = default;
+PreparedMoveBundleLookups::~PreparedMoveBundleLookups() = default;
+
 namespace {
 
 [[nodiscard]] std::optional<std::size_t> prepared_block_index_by_label(

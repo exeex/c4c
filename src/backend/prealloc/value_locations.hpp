@@ -15,6 +15,8 @@
 
 namespace c4c::backend::prepare {
 
+struct PreparedAfterCallResultLaneBinding;
+
 enum class PreparedValueHomeKind {
   None,
   Register,
@@ -120,6 +122,31 @@ struct PreparedValueHomeLookups {
 };
 
 [[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
+    const PreparedValueLocationFunction* value_locations);
+
+struct PreparedMoveBundleLookups {
+  PreparedMoveBundleLookups();
+  PreparedMoveBundleLookups(const PreparedMoveBundleLookups&);
+  PreparedMoveBundleLookups(PreparedMoveBundleLookups&&);
+  PreparedMoveBundleLookups& operator=(const PreparedMoveBundleLookups&);
+  PreparedMoveBundleLookups& operator=(PreparedMoveBundleLookups&&);
+  ~PreparedMoveBundleLookups();
+
+  std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
+  std::unordered_map<std::size_t, const PreparedMoveResolution*>
+      before_call_argument_moves_by_position_and_abi;
+  std::unordered_map<std::size_t, const PreparedMoveResolution*>
+      before_return_abi_moves_by_source_and_bank;
+  std::vector<PreparedAfterCallResultLaneBinding> after_call_result_lane_bindings;
+  std::unordered_map<std::size_t, const PreparedAfterCallResultLaneBinding*>
+      after_call_result_lane_bindings_by_position_and_value;
+};
+
+[[nodiscard]] std::size_t prepared_move_bundle_position_key(PreparedMovePhase phase,
+                                                            std::size_t block_index,
+                                                            std::size_t instruction_index);
+
+[[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations);
 
 enum class PreparedBlockEntryPublicationStatus {
@@ -370,6 +397,13 @@ find_prepared_out_of_ssa_parallel_copy_move_for_step(
   }
   return match;
 }
+
+[[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
+    const PreparedMoveBundleLookups* lookups,
+    const PreparedValueLocationFunction* value_locations,
+    PreparedMovePhase phase,
+    std::size_t block_index,
+    std::size_t instruction_index);
 
 [[nodiscard]] inline bool prepared_block_entry_publication_available(
     const PreparedBlockEntryPublication& publication) {

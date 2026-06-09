@@ -30,17 +30,6 @@ struct PreparedAfterCallResultLaneBinding {
   std::size_t lane_index = 0;
 };
 
-struct PreparedMoveBundleLookups {
-  std::unordered_map<std::size_t, const PreparedMoveBundle*> bundles_by_position;
-  std::unordered_map<std::size_t, const PreparedMoveResolution*>
-      before_call_argument_moves_by_position_and_abi;
-  std::unordered_map<std::size_t, const PreparedMoveResolution*>
-      before_return_abi_moves_by_source_and_bank;
-  std::vector<PreparedAfterCallResultLaneBinding> after_call_result_lane_bindings;
-  std::unordered_map<std::size_t, const PreparedAfterCallResultLaneBinding*>
-      after_call_result_lane_bindings_by_position_and_value;
-};
-
 struct PreparedReturnChainLookups {
   std::unordered_map<std::size_t, ValueNameId> terminal_return_values_by_chain_value;
   std::unordered_map<std::size_t, ValueNameId> next_operand_values_by_chain_value;
@@ -231,9 +220,6 @@ struct PreparedFunctionLookups {
   PreparedEdgePublicationSourceProducerLookups edge_publication_source_producers;
 };
 
-[[nodiscard]] std::size_t prepared_move_bundle_position_key(PreparedMovePhase phase,
-                                                            std::size_t block_index,
-                                                            std::size_t instruction_index);
 [[nodiscard]] std::size_t prepared_after_call_result_lane_position_key(
     std::size_t block_index,
     std::size_t instruction_index,
@@ -245,9 +231,6 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_return_chain_value_key(std::size_t block_index,
                                                           std::size_t instruction_index,
                                                           ValueNameId value_name);
-
-[[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
-    const PreparedValueLocationFunction* value_locations);
 
 [[nodiscard]] PreparedReturnChainLookups make_prepared_return_chain_lookups(
     const PreparedBirModule& prepared,
@@ -293,13 +276,6 @@ find_prepared_current_block_entry_publication(
 find_prepared_current_block_entry_publication(
     const PreparedCurrentBlockEntryPublicationQueryInputs& query,
     const bir::Value& destination_value);
-
-[[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
-    const PreparedMoveBundleLookups* lookups,
-    const PreparedValueLocationFunction* value_locations,
-    PreparedMovePhase phase,
-    std::size_t block_index,
-    std::size_t instruction_index);
 
 [[nodiscard]] const PreparedMoveResolution*
 find_indexed_prepared_before_call_argument_move(
