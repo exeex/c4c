@@ -1,35 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/132_aarch64_dispatch_lookup_thin_helper_surface_trim.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Privatize Or Remove Proven Local Lookup Helpers
+Current Step ID: 3-5
+Current Step Title: Rehome, Build Metadata, And Final Surface Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Privatize Or Remove Proven Local Lookup Helpers completed for `src/backend/mir/aarch64/codegen/dispatch_lookup.hpp` and `src/backend/mir/aarch64/codegen/dispatch_lookup.cpp`.
+Steps 3-5 completed the no-op/finalization checks for the dispatch lookup surface runbook.
 
-Removed the proven no-direct-caller public lookup declarations:
+Step 3 found no clearer owner/rehome need for the two retained public hooks:
 
-- `is_scalar_call_argument_producer_opcode`
-- `find_same_block_scalar_producer`
-- `has_same_block_load_local_producer`
+- `make_named_prepared_result_register`: remains a dispatch lookup query used by calls, globals, memory, memory store retargeting, comparison, and ALU lowering.
+- `emitted_scalar_value_available`: remains a dispatch lookup query used by call lowering availability checks.
 
-Removed the matching dead definitions from `dispatch_lookup.cpp`. Removing `find_same_block_scalar_producer` also made the private `prepared_call_argument_source_producer_materialization` helper dead, so that helper and the now-unused `publication_plans.hpp` include were removed in the same slice.
+Step 4 found no translation-unit or build metadata cleanup needed. `dispatch_lookup.cpp` remains active, contains the retained hook definitions plus the file-local `prepared_named_value_id` helper, and still belongs in `src/backend/CMakeLists.txt`.
 
-Preserved the externally used public lookup hooks:
+Step 5 final surface summary:
 
-- `make_named_prepared_result_register`
-- `emitted_scalar_value_available`
+- Final public declarations: `make_named_prepared_result_register` and `emitted_scalar_value_available`.
+- Removed/private helpers from the earlier surface trim: `is_scalar_call_argument_producer_opcode`, `find_same_block_scalar_producer`, `has_same_block_load_local_producer`, and the now-dead private `prepared_call_argument_source_producer_materialization`.
+- No BIR-name rescans, same-block named-case matching, test expectation weakening, or implementation/source/header edits were introduced in this finalization packet.
 
 ## Suggested Next
 
-Supervisor should review the Step 2 slice for commit readiness and decide whether the active runbook needs another lookup-surface pass or lifecycle review.
+Supervisor should review the completed Steps 3-5 finalization packet for commit readiness and decide whether to hand the active runbook to plan-owner for lifecycle closure or replacement.
 
 ## Watchouts
 
-The retained public hooks still have known external users in AArch64 lowering files, so they should remain public unless a later packet proves and implements a replacement owner. No test expectations or CMake translation-unit lists were changed.
+This packet intentionally made no implementation, expectation, or build metadata edits. Any broader shared-query work belongs outside this runbook, including follow-on shared-query initiatives, rather than being folded into the dispatch lookup surface trim.
 
 ## Proof
 
