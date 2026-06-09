@@ -60,3 +60,20 @@ translation-unit shape changes.
 - Prepared edge-copy or publication facts are replaced by local rescans.
 - Expectations are weakened or supported edge-copy behavior is marked
   unsupported.
+
+## Closure Note
+
+Closed on 2026-06-09.
+
+The public `dispatch_edge_copies.hpp` surface was narrowed to the two retained
+cross-file orchestration hooks used by `dispatch.cpp` and focused AArch64
+dispatch tests. The file-local edge-copy producer/publication helpers were
+privatized in `dispatch_edge_copies.cpp`, the orchestration hooks were kept in
+that file with an explicit no-move rationale because their bodies depend on the
+private helper cluster, and stale includes were removed from implementation
+files that no longer use the header. No translation unit was removed, so build
+metadata stayed unchanged.
+
+Close-time proof used matching canonical logs for the AArch64 backend subset:
+`test_before.log` and `test_after.log` both report 28/28 passing tests, and
+the regression guard passed in maintenance non-decreasing mode.
