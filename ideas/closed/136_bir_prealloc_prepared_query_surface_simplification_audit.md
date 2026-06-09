@@ -124,3 +124,31 @@ their proof by touched owner:
 - `ctest --test-dir build -R '^backend_' --output-on-failure`
 - a broader suite only when shared semantics change enough to affect frontend
   lowering or full backend behavior
+
+## Closure Note
+
+Closed on 2026-06-09 after the active runbook assembled the required analysis
+package in `todo.md`.
+
+The audit classified the prepared-query surface by domain, produced the
+prepared-query table, domain ownership map, AArch64 consumer map, explicit
+no-new-idea decisions, and the `prepared_lookups.*` recommendation requested by
+the source idea. The conclusion is that `prepared_lookups.*` should shrink by
+moving or re-exporting ownership to domain owners, not by mechanical line-count
+splitting or by deleting reusable prepared facts.
+
+The audit found four bounded follow-up implementation ideas and left them open:
+
+- `ideas/open/137_select_chain_public_owner_cleanup.md`
+- `ideas/open/138_call_plan_lookup_ownership_cleanup.md`
+- `ideas/open/139_addressing_lookup_ownership_cleanup.md`
+- `ideas/open/140_edge_copy_facade_split.md`
+
+No separate ideas were created for value-home/storage lookup as a whole,
+current-block entry publication, same-block producer/materialization facts,
+broad control-flow/join/compare cleanup, standalone runtime-helper cleanup, or
+obsolete/deletion work. Those groups were accepted as coherent shared semantics
+or covered by the bounded follow-ups above.
+
+Close-time regression guard passed against canonical logs:
+`test_before.log` and `test_after.log` both reported 179 passed, 0 failed.
