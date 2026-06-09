@@ -46,11 +46,6 @@ struct PreparedReturnChainLookups {
   std::unordered_map<std::size_t, ValueNameId> next_operand_values_by_chain_value;
 };
 
-struct PreparedValueHomeLookups {
-  std::unordered_map<PreparedValueId, const PreparedValueHome*> homes_by_id;
-  std::unordered_map<ValueNameId, PreparedValueId> value_ids;
-};
-
 enum class PreparedCurrentBlockJoinParallelCopySourceStatus {
   Available,
   MissingNames,
@@ -257,9 +252,6 @@ struct PreparedFunctionLookups {
 [[nodiscard]] PreparedReturnChainLookups make_prepared_return_chain_lookups(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
-
-[[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
-    const PreparedValueLocationFunction* value_locations);
 
 [[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
     const PreparedNameTables& names,

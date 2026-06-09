@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -112,6 +113,14 @@ struct PreparedValueLocationFunction {
   std::vector<PreparedValueHome> value_homes;
   std::vector<PreparedMoveBundle> move_bundles;
 };
+
+struct PreparedValueHomeLookups {
+  std::unordered_map<PreparedValueId, const PreparedValueHome*> homes_by_id;
+  std::unordered_map<ValueNameId, PreparedValueId> value_ids;
+};
+
+[[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
+    const PreparedValueLocationFunction* value_locations);
 
 enum class PreparedBlockEntryPublicationStatus {
   Available,
