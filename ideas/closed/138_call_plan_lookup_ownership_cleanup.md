@@ -88,3 +88,9 @@ global prepared-lookup facade to find ABI and preservation lookup ownership.
   consumers are forced to rebuild lookup maps manually.
 - Reject if the patch claims capability progress while only renaming helpers or
   moving comments.
+
+## Closure Note
+
+Closed after the active runbook moved call-plan lookup declarations to the
+call-owned boundary, kept `PreparedFunctionLookups` aggregate construction
+cheap, updated known consumers, and passed the backend regression guard.
