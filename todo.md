@@ -193,11 +193,24 @@ layout evidence, not a mandate to collapse public AArch64 hook boundaries.
 
 ## Suggested Next
 
-Supervisor should review this completed audit artifact and route to
-plan-owner for lifecycle decision: close the active source idea if these
-materials satisfy the audit, or convert selected drafts into separate
-`ideas/open/*.md` follow-up initiatives. No implementation packet is pending
-inside this runbook.
+Plan-owner disposition: close rejected for this delegation because
+`c4c-plan-owner` close rules require a close-time regression guard with
+canonical `test_before.log` / `test_after.log`, while the delegated packet
+explicitly listed root proof logs under `Do Not Touch`.
+
+The audit itself is complete. Plan-owner materialized the bounded follow-up
+drafts as separate source ideas:
+
+- `ideas/open/131_aarch64_dispatch_edge_copy_helper_surface_privatization.md`
+- `ideas/open/132_aarch64_dispatch_lookup_thin_helper_surface_trim.md`
+- `ideas/open/133_shared_prepared_fact_query_surface_extraction.md`
+- `ideas/open/134_shared_select_chain_same_block_dependency_queries.md`
+- `ideas/open/135_shared_current_block_entry_publication_query.md`
+
+No implementation packet is pending inside this runbook. Supervisor can either
+delegate a close with permission to run the required close-time regression
+guard, or explicitly choose deactivation while preserving the completed audit
+material.
 
 ## Watchouts
 
