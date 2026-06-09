@@ -51,3 +51,17 @@ with `select_chain_lookups.cpp` and publication/source-producer ownership.
 - AArch64 consumers are rewritten around local rediscovery.
 - The implementation expands into call, comparison, or memory policy before the
   shared same-block API boundary is stable.
+
+## Closure Note
+
+Closed after implementation commit `b30d4ea7a`. The same-block/source-producer
+APIs now have the narrow public owner, consumers were updated where they directly
+use those declarations, and `prepared_lookups.hpp` remains only as aggregate
+wiring compatibility where residual prepared lookup declarations still require
+the moved types by value.
+
+Close proof used the executor build plus backend CTest logs:
+`cmake --build --preset default` and
+`ctest --test-dir build -R '^backend_' --output-on-failure`.
+Close-time regression guard passed with `test_before.log` and `test_after.log`:
+179 passed / 0 failed / 179 total before and after.
