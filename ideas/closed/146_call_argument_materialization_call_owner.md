@@ -41,3 +41,20 @@ materialization owner rather than remain as a residual prepared lookup API.
   depending on the shared owner.
 - The route turns call-argument lookup into an AArch64-only shortcut.
 - ABI move-bundle work is mixed in without a clear staged boundary.
+
+## Closure Notes
+
+Closed after moving the call-argument materialization declarations to
+`src/backend/prealloc/calls.hpp` and the implementation under call ownership in
+`src/backend/prealloc/call_plans.cpp`, while continuing to reuse shared
+same-block/source-producer materialization facts.
+
+Close proof used `cmake --build --preset default` and
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`, with 179/179
+backend tests passing. Regression guard compared the accepted rolled-forward
+backend baseline against a fresh backend after-log with 179/179 before and
+after, no new failures.
+
+No residual include-cleanup follow-up was created. The remaining
+`prepared_lookups.hpp` includes observed during handoff still cover prepared
+lookup state or shared lookup helpers outside this idea's moved API.
