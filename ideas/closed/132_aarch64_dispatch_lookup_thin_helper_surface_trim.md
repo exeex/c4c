@@ -59,6 +59,23 @@ the real query contract.
 Use matching `test_before.log` and `test_after.log` if public header or
 translation-unit shape changes.
 
+## Closure Note
+
+Closed after Steps 1-5 completed the dispatch lookup surface trim. The final
+public surface is limited to `make_named_prepared_result_register` and
+`emitted_scalar_value_available`; no clearer owner was found for either retained
+hook, no translation-unit removal was needed, and no broader shared-query work
+was folded into this idea.
+
+Close proof used matching canonical logs for:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -R '^backend_aarch64_' --output-on-failure
+```
+
+Both before and after runs reported 28/28 passing backend AArch64 tests with no
+new failures.
+
 ## Reviewer Reject Signals
 
 - Externally used lookup hooks are deleted instead of replaced by a real owner.
