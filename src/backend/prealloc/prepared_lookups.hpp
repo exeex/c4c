@@ -2,7 +2,6 @@
 
 #include "addressing.hpp"
 #include "calls.hpp"
-#include "comparison.hpp"
 #include "control_flow.hpp"
 #include "publication_plans.hpp"
 #include "select_chain_lookups.hpp"

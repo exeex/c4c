@@ -1,3 +1,4 @@
+#include "src/backend/prealloc/comparison.hpp"
 #include "src/backend/prealloc/module.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"

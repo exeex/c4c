@@ -1,61 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/147_comparison_prealloc_fact_owner.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Establish The Comparison Owner
+Current Step ID: Step 3
+Current Step Title: Move Lookup Helpers And Consumers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Establish The Comparison Owner completed.
+Step 3 - Move Lookup Helpers And Consumers completed.
 
-Created `src/backend/prealloc/comparison.hpp` and
-`src/backend/prealloc/comparison.cpp` as the shared prealloc comparison owner.
-Moved these facts there:
+Removed the temporary compatibility include of `comparison.hpp` from
+`src/backend/prealloc/prepared_lookups.hpp`.
 
-- `PreparedFusedCompareOperandProducer`
-- `PreparedFusedCompareOperandProducerFacts`
-- `PreparedMaterializedConditionProducer`
+Kept unrelated prepared lookup consumers on `prepared_lookups.hpp`.
+`src/backend/mir/aarch64/codegen/comparison.cpp` already includes
+`../../../prealloc/comparison.hpp` for the moved comparison facts/helpers and
+still keeps `../../../prealloc/prepared_lookups.hpp` because it dereferences
+`PreparedFunctionLookups` through `context.function.prepared_lookups`.
 
-Moved these shared helper declarations and definitions there:
+Added an explicit `src/backend/prealloc/comparison.hpp` include to
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, the remaining
+direct consumer that calls the moved fused-compare helper while also testing
+other prepared lookup APIs.
 
-- `find_prepared_fused_compare_operand_producer`
-- `find_prepared_fused_compare_operand_producer_facts`
-- `find_prepared_materialized_condition_producer`
-
-`src/backend/prealloc/prepared_lookups.hpp/.cpp` no longer declare or define
-the moved facts/helpers. `prepared_lookups.hpp` includes the new owner as a
-temporary compatibility include for existing prepared-lookup consumers.
-
-`src/backend/mir/aarch64/codegen/comparison.cpp` now includes
-`../../../prealloc/comparison.hpp`; target-local compare instruction selection,
-condition-code emission, and branch lowering behavior were left in place.
-
-AST-backed checks confirmed the moved helper declarations in
-`comparison.hpp`, the moved helper definitions in `comparison.cpp`, the
-same-block helper callees in `select_chain_lookups.hpp`, and the AArch64
-wrapper/consumer caller path.
+AST-backed checks confirmed AArch64 wrapper callees for
+`find_prepared_fused_compare_operand_producer`,
+`find_prepared_fused_compare_operand_producer_facts`, and
+`find_prepared_materialized_condition_producer` resolve through
+`src/backend/prealloc/comparison.hpp`. The focused prepared lookup helper test
+callee check also resolves
+`find_prepared_fused_compare_operand_producer_facts` through
+`src/backend/prealloc/comparison.hpp`.
 
 ## Suggested Next
 
-Step 3 - Move Lookup Helpers And Consumers should audit remaining include sites
-that get comparison facts/helpers through `prepared_lookups.hpp`, update direct
-consumers to include `prealloc/comparison.hpp` where appropriate, and decide
-whether the temporary compatibility include in `prepared_lookups.hpp` can be
-removed.
+Step 4 - Validate And Record Proof should review the completed owner move and
+decide whether the active plan is ready for lifecycle close/deactivation or
+needs any supervisor-selected broader validation.
 
 ## Watchouts
 
-- `prepared_lookups.hpp` still owns `PreparedFunctionLookups`,
-  return-chain helpers, edge-publication lookups, and
-  `PreparedSameBlockLoadLocalStoredValueSource`; do not move those with the
+- `prepared_lookups.hpp` still owns `PreparedFunctionLookups`, return-chain
+  helpers, edge-publication lookups, and
+  `PreparedSameBlockLoadLocalStoredValueSource`; those remain separate from the
   comparison owner.
-- `prepared_lookups.hpp` currently includes `comparison.hpp` only to keep
-  existing prepared-lookup consumers compiling after the ownership move.
-  Step 3 should avoid turning that into the long-term comparison access path if
-  direct includes are more appropriate.
-- `src/backend/prealloc/comparison.cpp` duplicates the small file-local
+- `src/backend/mir/aarch64/codegen/comparison.cpp` still needs
+  `prepared_lookups.hpp` for `PreparedFunctionLookups` member access; do not
+  remove that include as part of comparison-owner cleanup unless the function
+  context ownership changes.
+- `src/backend/prealloc/comparison.cpp` still duplicates the small file-local
   `existing_prepared_value_name_id` helper because the existing
   `prepared_lookups.cpp` helper is anonymous-namespace state and still serves
   unrelated prepared lookup APIs.
@@ -65,11 +59,12 @@ removed.
 
 ## Proof
 
-Ran the delegated proof command:
+Ran the delegated proof command for Step 3:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: passed. The backend CTest subset passed 179/179 tests.
+Result: passed. Build completed and the backend CTest subset passed 179/179
+tests.
 
 Regression guard passed with 179/179 backend tests before and after, no new
 failures.
