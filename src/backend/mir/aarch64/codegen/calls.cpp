@@ -20,6 +20,7 @@
 #include "globals.hpp"
 #include "memory_dynamic_stack.hpp"
 #include "select_materialization.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/calls.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
