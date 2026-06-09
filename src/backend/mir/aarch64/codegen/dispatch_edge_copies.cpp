@@ -16,6 +16,7 @@
 #include "select_materialization.hpp"
 #include "variadic.hpp"
 #include "../../../prealloc/publication_plans.hpp"
+#include "../../../prealloc/select_chain_lookups.hpp"
 
 #include <cstddef>
 #include <cstdint>

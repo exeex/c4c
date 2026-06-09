@@ -4,6 +4,7 @@
 #include "calls.hpp"
 #include "control_flow.hpp"
 #include "publication_plans.hpp"
+#include "select_chain_lookups.hpp"
 #include "stack_layout/stack_layout.hpp"
 #include "value_locations.hpp"
 
@@ -113,32 +114,6 @@ prepared_current_block_entry_publication_status_name(
   }
   return "unknown";
 }
-
-struct PreparedSameBlockScalarProducer {
-  PreparedEdgePublicationSourceProducer producer;
-  const bir::Inst* instruction = nullptr;
-  std::size_t instruction_index = 0;
-  ValueNameId value_name = kInvalidValueName;
-};
-
-struct PreparedSameBlockValueMaterializationQuery {
-  const PreparedNameTables* names = nullptr;
-  const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
-  BlockLabelId block_label = kInvalidBlockLabel;
-  const bir::Block* block = nullptr;
-  std::size_t before_instruction_index = 0;
-};
-
-struct PreparedCurrentBlockPublicationConsumption {
-  bool available = false;
-  const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
-  const bir::Inst* instruction = nullptr;
-  const bir::Value* produced_value = nullptr;
-  std::size_t instruction_index = 0;
-  ValueNameId value_name = kInvalidValueName;
-  PreparedEdgePublicationSourceProducerKind source_producer_kind =
-      PreparedEdgePublicationSourceProducerKind::Unknown;
-};
 
 struct PreparedCallArgumentSourceProducerMaterialization {
   PreparedSameBlockScalarProducer producer;
@@ -298,11 +273,6 @@ struct PreparedFunctionLookups {
     const PreparedValueLocationFunction* value_locations,
     const PreparedValueHomeLookups* value_home_lookups = nullptr);
 
-[[nodiscard]] PreparedEdgePublicationSourceProducerLookups
-make_prepared_edge_publication_source_producer_lookups(
-    const PreparedBirModule& prepared,
-    const PreparedControlFlowFunction& function);
-
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
@@ -373,44 +343,6 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
     std::size_t instruction_index,
     ValueNameId value_name);
 
-[[nodiscard]] const PreparedEdgePublicationSourceProducer*
-find_indexed_prepared_edge_publication_source_producer(
-    const PreparedEdgePublicationSourceProducerLookups* lookups,
-    ValueNameId value_name);
-
-[[nodiscard]] PreparedCurrentBlockPublicationConsumption
-find_prepared_current_block_publication_consumption(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    ValueNameId value_name,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
-find_prepared_same_block_scalar_producer(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    ValueNameId value_name,
-    bir::TypeKind value_type,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
-find_prepared_same_block_scalar_producer(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
-find_prepared_same_block_scalar_producer(
-    const PreparedSameBlockValueMaterializationQuery& query,
-    const bir::Value& value);
-
 [[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
     bir::BinaryOpcode opcode);
 
@@ -422,20 +354,6 @@ find_prepared_call_argument_source_producer_materialization(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::int64_t>
-evaluate_prepared_same_block_integer_constant(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] std::optional<std::int64_t>
-evaluate_prepared_same_block_integer_constant(
-    const PreparedSameBlockValueMaterializationQuery& query,
-    const bir::Value& value);
 
 [[nodiscard]] std::optional<PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
