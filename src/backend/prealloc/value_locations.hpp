@@ -285,6 +285,28 @@ template <typename PreparedValueHomeIndexes>
              : nullptr;
 }
 
+template <typename PreparedValueHomeIndexes>
+[[nodiscard]] inline const PreparedValueHome* find_prepared_value_home_for_bir_value(
+    const PreparedNameTables& names,
+    const PreparedValueHomeIndexes* value_home_indexes,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    const bir::Value& value) {
+  if (function_locations == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const ValueNameId value_name = names.value_names.find(value.name);
+  if (value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  return find_indexed_prepared_value_home(value_home_indexes,
+                                          regalloc,
+                                          function_locations,
+                                          value_name);
+}
+
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_move_bundle(
     const PreparedValueLocationFunction& function_locations,
     PreparedMovePhase phase,

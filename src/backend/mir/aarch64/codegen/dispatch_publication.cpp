@@ -194,17 +194,16 @@ namespace {
 [[nodiscard]] const prepare::PreparedValueHome* prepared_value_home_for_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
-  if (context.function.value_locations == nullptr) {
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr) {
     return nullptr;
   }
-  const auto value_name = prepared_named_value_id(context, value);
-  return value_name.has_value()
-             ? prepare::find_indexed_prepared_value_home(
-                   context.function.value_home_lookups,
-                   context.function.regalloc,
-                   context.function.value_locations,
-                   *value_name)
-             : nullptr;
+  return prepare::find_prepared_value_home_for_bir_value(
+      context.function.prepared->names,
+      context.function.value_home_lookups,
+      context.function.regalloc,
+      context.function.value_locations,
+      value);
 }
 [[nodiscard]] std::vector<prepare::PreparedBlockEntryPublication>
 collect_current_block_entry_publications(const module::BlockLoweringContext& context) {

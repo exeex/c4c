@@ -29,15 +29,14 @@ std::optional<RegisterOperand> make_named_prepared_result_register(
   if (context.function.value_locations == nullptr) {
     return std::nullopt;
   }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto* home = prepare::find_indexed_prepared_value_home(
-      context.function.value_home_lookups,
-      context.function.regalloc,
-      context.function.value_locations,
-      *value_name);
+  const auto* home = context.function.prepared == nullptr
+                         ? nullptr
+                         : prepare::find_prepared_value_home_for_bir_value(
+                               context.function.prepared->names,
+                               context.function.value_home_lookups,
+                               context.function.regalloc,
+                               context.function.value_locations,
+                               value);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::Register ||
       !home->register_name.has_value()) {
