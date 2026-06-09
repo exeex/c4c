@@ -1,40 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/135_shared_current_block_entry_publication_query.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Replace the AArch64 Rediscovery Path
+Current Step ID: 4
+Current Step Title: Prove the Backend Path
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 AArch64 replacement slice. Replaced the local
-`current_block_entry_publication_register` value-home rediscovery plus
-current-block block-entry publication scan with
-`prepare::find_prepared_current_block_entry_publication(...)`.
+Completed Step 4 backend proof checkpoint for the shared current-block entry
+publication query route. The delegated proof rebuilt the default preset and ran
+the backend CTest subset into `test_after.log`.
 
-The AArch64 path now accepts only
-`PreparedCurrentBlockEntryPublicationStatus::Available` with an available
-publication, a destination home, and a destination register spelling. Register
-name parsing, GP-bank filtering, expected-view coercion, and `RegisterOperand`
-construction remain local to AArch64. The now-unused
-`current_block_entry_publication_home` helper was removed.
+No implementation files were changed in this packet. Matching
+`test_before.log` and `test_after.log` now exist for the supervisor-owned
+regression comparison.
 
 ## Suggested Next
 
-Step 4 should run the supervisor-selected backend proof review/acceptance path
-for the shared current-block entry publication query route, including
-regression-log comparison if the supervisor treats this as acceptance-ready.
+Step 5 should run the final route review for alignment with the active plan and
+source idea, then let the supervisor decide whether to close or continue the
+lifecycle state.
 
 ## Watchouts
 
-- `value_has_current_block_entry_publication`,
-  `record_current_block_entry_publication_registers`, and
-  `block_entry_move_clobbers_current_join_publication` remain separate possible
-  follow-on consumers; this packet intentionally did not alter them.
-- `current_block_entry_publication_register` now depends on the shared query's
-  named-value overload and still returns `std::nullopt` for unavailable,
-  unparseable, or non-GP prepared publications.
+- Regression comparison remains supervisor-owned; this packet only refreshed
+  `test_after.log` with the delegated proof command.
+- No code or test source files were modified during this proof checkpoint.
 
 ## Proof
 
