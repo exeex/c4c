@@ -25,14 +25,6 @@ struct PreparedReturnChainLookups {
   std::unordered_map<std::size_t, ValueNameId> next_operand_values_by_chain_value;
 };
 
-struct PreparedSameBlockLoadLocalStoredValueSource {
-  bir::Value stored_value;
-  std::size_t store_instruction_index = 0;
-  const PreparedEdgePublicationSourceProducer* load_producer = nullptr;
-  const PreparedMemoryAccess* load_access = nullptr;
-  const PreparedMemoryAccess* store_access = nullptr;
-};
-
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
@@ -79,16 +71,5 @@ struct PreparedFunctionLookups {
     std::size_t block_index,
     std::size_t instruction_index,
     ValueNameId value_name);
-
-[[nodiscard]] std::optional<PreparedSameBlockLoadLocalStoredValueSource>
-find_prepared_same_block_load_local_stored_value_source(
-    const PreparedNameTables& names,
-    const PreparedStackLayout& stack_layout,
-    const PreparedAddressingFunction* addressing,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
 
 }  // namespace c4c::backend::prepare

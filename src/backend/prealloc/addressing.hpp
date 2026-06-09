@@ -16,6 +16,8 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
+struct PreparedEdgePublicationSourceProducer;
+struct PreparedEdgePublicationSourceProducerLookups;
 struct PreparedSameBlockScalarProducer;
 struct PreparedValueHomeLookups;
 
@@ -199,6 +201,14 @@ struct PreparedMemoryAccess {
 struct PreparedSameBlockGlobalLoadAccess {
   const bir::LoadGlobalInst* load_global = nullptr;
   const PreparedMemoryAccess* access = nullptr;
+};
+
+struct PreparedSameBlockLoadLocalStoredValueSource {
+  bir::Value stored_value;
+  std::size_t store_instruction_index = 0;
+  const PreparedEdgePublicationSourceProducer* load_producer = nullptr;
+  const PreparedMemoryAccess* load_access = nullptr;
+  const PreparedMemoryAccess* store_access = nullptr;
 };
 
 struct PreparedAddressingFunction {
@@ -392,5 +402,16 @@ find_prepared_same_block_global_load_access(
     const PreparedNameTables& names,
     const PreparedAddressingFunction* addressing,
     const PreparedSameBlockScalarProducer& producer);
+
+[[nodiscard]] std::optional<PreparedSameBlockLoadLocalStoredValueSource>
+find_prepared_same_block_load_local_stored_value_source(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressingFunction* addressing,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
 
 }  // namespace c4c::backend::prepare
