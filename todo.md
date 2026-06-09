@@ -2,8 +2,7 @@ Status: Active
 Source Idea Path: ideas/open/142_value_home_move_bundle_lookup_ownership.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Adjust consumers to the narrowest stable ownership boundary
-你該做code review了
+Current Step Title: Move Core Move-Bundle Lookup APIs To Value-Location Ownership
 
 # Current Packet
 
@@ -25,9 +24,10 @@ prepared-lookup consumers.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: move the move-bundle lookup API declarations to
-value-location ownership while keeping aggregate construction and after-call
-lane binding publication intact.
+Execute rewritten Step 3 from `plan.md`: move the core move-bundle lookup API
+declarations to value-location ownership while keeping ABI helper,
+after-call result-lane binding, and current-block publication ownership
+decisions for Step 4.
 
 ## Watchouts
 
@@ -39,6 +39,11 @@ lane binding publication intact.
 - `value_locations.hpp` now includes `<unordered_map>` for
   `PreparedValueHomeLookups`.
 - No direct consumers needed explicit include changes during this packet.
+- Step 3 was split after review: keep this next packet to
+  `PreparedMoveBundleLookups`, move-bundle key builders, move-bundle builder
+  declarations, and indexed move-bundle helper declarations. Leave
+  before-call/before-return ABI helpers, after-call result-lane binding, and
+  current-block entry publication decisions to Step 4.
 
 ## Proof
 

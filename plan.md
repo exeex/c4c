@@ -151,10 +151,11 @@ Completion check:
 - Implementations compile from the selected owner arrangement.
 - The move does not introduce local rescans or behavior changes.
 
-## Step 3: Move Move-Bundle Lookup APIs To Value-Location Ownership
+## Step 3: Move Core Move-Bundle Lookup APIs To Value-Location Ownership
 
-Goal: make value-location ownership the public home for move-bundle lookup
-declarations and helper APIs.
+Goal: make value-location ownership the public home for the core move-bundle
+lookup declarations without mixing ABI helper or publication-boundary
+decisions into the same packet.
 
 Primary targets:
 
@@ -168,11 +169,10 @@ Actions:
 - Move `PreparedMoveBundleLookups`, move-bundle key builders, move-bundle
   builder declarations, and indexed move-bundle helper declarations to the
   selected value-location owner.
-- Move before-call and before-return ABI move helper declarations where they
-  are value-location lookup helpers rather than target emission policy.
-- Move after-call result-lane binding lookup helper declarations where they are
-  value-location lookup helpers.
 - Keep return-chain lookup helpers out of this route.
+- Keep before-call, before-return, after-call result-lane binding, and
+  current-block entry publication helper declarations for the next ownership
+  decision step.
 - Keep target-specific ABI register spelling, scratch, hazard, and final
   instruction emission policy out of shared prealloc ownership.
 
@@ -182,10 +182,45 @@ Completion check:
   `prepared_lookups.hpp` facade unless an aggregate dependency still requires
   compatibility.
 - Implementations compile from the selected owner arrangement.
-- The move preserves existing call/return lookup behavior and does not absorb
+- The move preserves existing move-bundle lookup behavior and does not absorb
+  ABI helper, publication, or target-local emission policy.
+
+## Step 4: Decide ABI, Result-Lane, And Publication Helper Ownership
+
+Goal: move only the helper declarations that are value-location lookup helpers
+while leaving target policy and unrelated block-routing state in their existing
+owners.
+
+Primary targets:
+
+- `src/backend/prealloc/value_locations.hpp`
+- selected value-location implementation file
+- `src/backend/prealloc/prepared_lookups.hpp`
+- `src/backend/prealloc/prepared_lookups.cpp`
+
+Actions:
+
+- Move before-call and before-return ABI move helper declarations only where
+  they are value-location lookup helpers rather than target emission policy.
+- Move after-call result-lane binding lookup helper declarations only where
+  they are value-location lookup helpers.
+- Inspect current-block entry publication status/query declarations and either
+  move them if they are directly tied to value homes and block-entry
+  publication collection, or record in `todo.md` why they remain out of this
+  route.
+- Keep return-chain lookup helpers out of this route.
+- Keep target-specific ABI register spelling, scratch, hazard, and final
+  instruction emission policy out of shared prealloc ownership.
+
+Completion check:
+
+- ABI move helper, after-call result-lane binding, and current-block entry
+  publication ownership decisions are recorded in `todo.md`.
+- Any moved declarations compile from the selected owner arrangement.
+- The diff does not change call/return behavior, publication behavior, or
   target-local emission policy.
 
-## Step 4: Update Consumers And Narrow Includes
+## Step 5: Update Consumers And Narrow Includes
 
 Goal: point consumers at the value-location owner without performing broad
 residual include cleanup.
@@ -207,7 +242,7 @@ Completion check:
 - No consumer loses required aggregate prepared lookup declarations.
 - The diff does not change lowering behavior.
 
-## Step 5: Prove And Record The Ownership Move
+## Step 6: Prove And Record The Ownership Move
 
 Goal: validate the behavior-preserving ownership move and leave executor state
 ready for supervisor review.
