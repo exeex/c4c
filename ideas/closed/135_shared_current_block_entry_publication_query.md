@@ -60,3 +60,13 @@ prealloc query code is in scope.
 - Local scans or BIR-name matching are retained behind a new API name.
 - Test expectations are weakened or supported current-block publication
   behavior is marked unsupported.
+
+## Closure
+
+Closed after adding a shared current-block entry publication query in the
+prepared/prealloc query surface, routing the selected AArch64 publication
+register lookup through it, and preserving AArch64 register-view and operand
+spelling locally. Backend proof was refreshed with matching `test_before.log`
+and `test_after.log` runs of `cmake --build --preset default` plus
+`ctest --test-dir build -R '^backend_' --output-on-failure`; the regression
+guard passed with 179/179 before and 179/179 after.
