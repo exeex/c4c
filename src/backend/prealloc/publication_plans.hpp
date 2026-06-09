@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -103,6 +104,15 @@ enum class PreparedEdgeCopySourceFactsStatus {
   IncompleteSourceMemoryAccess,
 };
 
+enum class PreparedCurrentBlockJoinParallelCopySourceStatus {
+  Available,
+  MissingNames,
+  MissingValueLocations,
+  MissingEdgePublicationLookups,
+  MissingBlock,
+  MissingSuccessorLabel,
+};
+
 [[nodiscard]] constexpr std::string_view prepared_edge_copy_source_facts_status_name(
     PreparedEdgeCopySourceFactsStatus status) {
   switch (status) {
@@ -140,6 +150,26 @@ enum class PreparedEdgeCopySourceFactsStatus {
       return "missing_source_memory_access";
     case PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
       return "incomplete_source_memory_access";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr std::string_view
+prepared_current_block_join_parallel_copy_source_status_name(
+    PreparedCurrentBlockJoinParallelCopySourceStatus status) {
+  switch (status) {
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::Available:
+      return "available";
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::MissingNames:
+      return "missing_names";
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations:
+      return "missing_value_locations";
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::MissingEdgePublicationLookups:
+      return "missing_edge_publication_lookups";
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::MissingBlock:
+      return "missing_block";
+    case PreparedCurrentBlockJoinParallelCopySourceStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
   }
   return "unknown";
 }
@@ -346,6 +376,52 @@ struct PreparedEdgeCopySourceFacts {
   bool source_memory_requires_address_materialization = false;
 };
 
+struct PreparedCurrentBlockJoinParallelCopySourceFact {
+  PreparedEdgeCopySourceFactsStatus status =
+      PreparedEdgeCopySourceFactsStatus::MissingPublication;
+  const PreparedMoveBundle* bundle = nullptr;
+  const PreparedMoveResolution* move = nullptr;
+  const PreparedEdgePublication* publication = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  const PreparedValueHome* source_home = nullptr;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::string> destination_register_name;
+  bool source_is_incoming_expression = false;
+  bool destination_is_source_value = false;
+  bool source_is_source_value = false;
+  bool source_shares_destination_register = false;
+  bool source_home_is_stack = false;
+  bool immediate_source = false;
+};
+
+struct PreparedCurrentBlockJoinParallelCopySourceFacts {
+  PreparedCurrentBlockJoinParallelCopySourceStatus status =
+      PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
+  std::vector<PreparedCurrentBlockJoinParallelCopySourceFact> facts;
+  std::vector<PreparedValueId> incoming_expression_value_ids;
+  std::vector<ValueNameId> incoming_expression_value_names;
+  std::vector<PreparedValueId> source_value_ids;
+  std::vector<ValueNameId> source_value_names;
+};
+
+struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedRegallocFunction* regalloc = nullptr;
+  const PreparedValueLocationFunction* value_locations = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  const PreparedEdgePublicationLookups* edge_publications = nullptr;
+  const bir::Block* block = nullptr;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+};
+
 enum class PreparedTypedStackSourcePublicationStatus {
   Available,
   MissingPublication,
@@ -455,6 +531,21 @@ prepared_edge_publication_matches_parallel_copy_move_source(
     const PreparedEdgePublication& publication,
     const PreparedMemoryAccess& access);
 
+[[nodiscard]] bool prepared_value_homes_share_register_name(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs);
+
+[[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_register_destination_matches_value(
+    const PreparedMoveResolution& move,
+    PreparedValueId value_id);
+
+[[nodiscard]] bool
+prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
+    const PreparedMoveResolution& move,
+    const PreparedValueHome& source_home,
+    const PreparedValueHome& destination_home);
+
 [[nodiscard]] PreparedAggregateStackSourceAuthority
 prepare_aggregate_stack_source_authority(
     const PreparedEdgePublication* publication);
@@ -495,6 +586,10 @@ prepare_block_entry_parallel_copy_edge_source_facts(
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
     const PreparedMoveResolution& move);
+
+[[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
+prepare_current_block_join_parallel_copy_source_facts(
+    const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs);
 
 enum class PreparedScalarPublicationStatus {
   Available,
