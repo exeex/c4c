@@ -3,6 +3,7 @@
 #include "addressing.hpp"
 #include "calls.hpp"
 #include "control_flow.hpp"
+#include "publication_plans.hpp"
 #include "stack_layout/stack_layout.hpp"
 #include "value_locations.hpp"
 
@@ -17,8 +18,6 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
-struct PreparedEdgePublicationSourceProducerLookups;
-
 [[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
     const PreparedStackLayout& stack_layout,
     PreparedFrameSlotId slot_id);
@@ -57,129 +56,6 @@ struct PreparedValueHomeLookups {
   std::unordered_map<PreparedValueId, const PreparedValueHome*> homes_by_id;
   std::unordered_map<ValueNameId, PreparedValueId> value_ids;
 };
-
-enum class PreparedEdgePublicationLookupStatus {
-  Available,
-  MissingPredecessorLabel,
-  MissingSuccessorLabel,
-  MissingDestinationValue,
-  MissingDestinationHome,
-};
-
-enum class PreparedEdgePublicationSourceProducerKind {
-  Unknown,
-  Immediate,
-  LoadLocal,
-  LoadGlobal,
-  Cast,
-  Binary,
-  SelectMaterialization,
-};
-
-[[nodiscard]] constexpr std::string_view prepared_edge_publication_source_producer_kind_name(
-    PreparedEdgePublicationSourceProducerKind kind) {
-  switch (kind) {
-    case PreparedEdgePublicationSourceProducerKind::Unknown:
-      return "unknown";
-    case PreparedEdgePublicationSourceProducerKind::Immediate:
-      return "immediate";
-    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
-      return "load_local";
-    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
-      return "load_global";
-    case PreparedEdgePublicationSourceProducerKind::Cast:
-      return "cast";
-    case PreparedEdgePublicationSourceProducerKind::Binary:
-      return "binary";
-    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
-      return "select_materialization";
-  }
-  return "unknown";
-}
-
-enum class PreparedEdgePublicationSourceMemoryAccessStatus {
-  Unavailable,
-  Available,
-  MissingPreparedMemoryAccess,
-  IncompletePreparedMemoryAccess,
-};
-
-[[nodiscard]] constexpr std::string_view
-prepared_edge_publication_source_memory_access_status_name(
-    PreparedEdgePublicationSourceMemoryAccessStatus status) {
-  switch (status) {
-    case PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable:
-      return "unavailable";
-    case PreparedEdgePublicationSourceMemoryAccessStatus::Available:
-      return "available";
-    case PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess:
-      return "missing_prepared_memory_access";
-    case PreparedEdgePublicationSourceMemoryAccessStatus::IncompletePreparedMemoryAccess:
-      return "incomplete_prepared_memory_access";
-  }
-  return "unknown";
-}
-
-enum class PreparedEdgeCopySourceFactsStatus {
-  Available,
-  MissingPreparedLookups,
-  MissingPredecessorLabel,
-  MissingSuccessorLabel,
-  MissingDestinationValue,
-  MissingPublication,
-  AmbiguousPublication,
-  PublicationUnavailable,
-  EdgeMismatch,
-  UnsupportedMove,
-  MoveEdgeMismatch,
-  PublicationMoveMismatch,
-  MissingSourceValue,
-  MissingSourceHome,
-  MissingSourceProducer,
-  MissingSourceMemoryAccess,
-  IncompleteSourceMemoryAccess,
-};
-
-[[nodiscard]] constexpr std::string_view prepared_edge_copy_source_facts_status_name(
-    PreparedEdgeCopySourceFactsStatus status) {
-  switch (status) {
-    case PreparedEdgeCopySourceFactsStatus::Available:
-      return "available";
-    case PreparedEdgeCopySourceFactsStatus::MissingPreparedLookups:
-      return "missing_prepared_lookups";
-    case PreparedEdgeCopySourceFactsStatus::MissingPredecessorLabel:
-      return "missing_predecessor_label";
-    case PreparedEdgeCopySourceFactsStatus::MissingSuccessorLabel:
-      return "missing_successor_label";
-    case PreparedEdgeCopySourceFactsStatus::MissingDestinationValue:
-      return "missing_destination_value";
-    case PreparedEdgeCopySourceFactsStatus::MissingPublication:
-      return "missing_publication";
-    case PreparedEdgeCopySourceFactsStatus::AmbiguousPublication:
-      return "ambiguous_publication";
-    case PreparedEdgeCopySourceFactsStatus::PublicationUnavailable:
-      return "publication_unavailable";
-    case PreparedEdgeCopySourceFactsStatus::EdgeMismatch:
-      return "edge_mismatch";
-    case PreparedEdgeCopySourceFactsStatus::UnsupportedMove:
-      return "unsupported_move";
-    case PreparedEdgeCopySourceFactsStatus::MoveEdgeMismatch:
-      return "move_edge_mismatch";
-    case PreparedEdgeCopySourceFactsStatus::PublicationMoveMismatch:
-      return "publication_move_mismatch";
-    case PreparedEdgeCopySourceFactsStatus::MissingSourceValue:
-      return "missing_source_value";
-    case PreparedEdgeCopySourceFactsStatus::MissingSourceHome:
-      return "missing_source_home";
-    case PreparedEdgeCopySourceFactsStatus::MissingSourceProducer:
-      return "missing_source_producer";
-    case PreparedEdgeCopySourceFactsStatus::MissingSourceMemoryAccess:
-      return "missing_source_memory_access";
-    case PreparedEdgeCopySourceFactsStatus::IncompleteSourceMemoryAccess:
-      return "incomplete_source_memory_access";
-  }
-  return "unknown";
-}
 
 enum class PreparedCurrentBlockJoinParallelCopySourceStatus {
   Available,
@@ -245,76 +121,6 @@ prepared_current_block_entry_publication_status_name(
   return "unknown";
 }
 
-enum class PreparedAggregateStackSourceAuthorityStatus {
-  Unavailable,
-  Available,
-  UnsupportedPublication,
-  IncompleteConcreteStackSource,
-  UnsupportedDestinationStorage,
-  UnsupportedMoveAuthority,
-  IncompleteDestinationMapping,
-  MissingAggregateCopyAuthority,
-};
-
-[[nodiscard]] constexpr std::string_view
-prepared_aggregate_stack_source_authority_status_name(
-    PreparedAggregateStackSourceAuthorityStatus status) {
-  switch (status) {
-    case PreparedAggregateStackSourceAuthorityStatus::Unavailable:
-      return "unavailable";
-    case PreparedAggregateStackSourceAuthorityStatus::Available:
-      return "available";
-    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedPublication:
-      return "unsupported_publication";
-    case PreparedAggregateStackSourceAuthorityStatus::IncompleteConcreteStackSource:
-      return "incomplete_concrete_stack_source";
-    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedDestinationStorage:
-      return "unsupported_destination_storage";
-    case PreparedAggregateStackSourceAuthorityStatus::UnsupportedMoveAuthority:
-      return "unsupported_move_authority";
-    case PreparedAggregateStackSourceAuthorityStatus::IncompleteDestinationMapping:
-      return "incomplete_destination_mapping";
-    case PreparedAggregateStackSourceAuthorityStatus::MissingAggregateCopyAuthority:
-      return "missing_aggregate_copy_authority";
-  }
-  return "unknown";
-}
-
-struct PreparedAggregateStackSourceAuthority {
-  PreparedAggregateStackSourceAuthorityStatus status =
-      PreparedAggregateStackSourceAuthorityStatus::Unavailable;
-  PreparedValueId source_value_id = 0;
-  PreparedValueId destination_value_id = 0;
-  ValueNameId source_value_name = kInvalidValueName;
-  ValueNameId destination_value_name = kInvalidValueName;
-  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::bir::TypeKind destination_type = c4c::backend::bir::TypeKind::Void;
-  std::optional<PreparedFrameSlotId> source_slot_id;
-  std::optional<std::size_t> source_stack_offset_bytes;
-  std::optional<std::size_t> source_stack_size_bytes;
-  std::optional<std::size_t> source_stack_align_bytes;
-  std::optional<std::size_t> copy_width_bytes;
-  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
-  std::optional<PreparedRegisterPlacement> destination_register_placement;
-  bool has_destination_lane_mapping = false;
-  bool has_lane_widths_and_offsets = false;
-  bool partial_copy_allowed = false;
-  bool has_abi_layout_reference = false;
-  bool has_scratch_ownership = false;
-};
-
-struct PreparedEdgePublicationSourceProducer {
-  PreparedEdgePublicationSourceProducerKind kind =
-      PreparedEdgePublicationSourceProducerKind::Unknown;
-  BlockLabelId block_label = kInvalidBlockLabel;
-  std::size_t instruction_index = 0;
-  const bir::LoadLocalInst* load_local = nullptr;
-  const bir::LoadGlobalInst* load_global = nullptr;
-  const bir::CastInst* cast = nullptr;
-  const bir::BinaryInst* binary = nullptr;
-  const bir::SelectInst* select = nullptr;
-};
-
 struct PreparedSameBlockScalarProducer {
   PreparedEdgePublicationSourceProducer producer;
   const bir::Inst* instruction = nullptr;
@@ -379,133 +185,8 @@ struct PreparedSameBlockLoadLocalStoredValueSource {
   const PreparedMemoryAccess* store_access = nullptr;
 };
 
-struct PreparedEdgePublication {
-  PreparedEdgePublicationLookupStatus status =
-      PreparedEdgePublicationLookupStatus::MissingDestinationValue;
-  BlockLabelId predecessor_label = kInvalidBlockLabel;
-  BlockLabelId successor_label = kInvalidBlockLabel;
-  bir::Value destination_value;
-  bir::Value source_value;
-  PreparedValueId destination_value_id = 0;
-  ValueNameId destination_value_name = kInvalidValueName;
-  std::optional<PreparedValueId> source_value_id;
-  ValueNameId source_value_name = kInvalidValueName;
-  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
-  PreparedEdgePublicationSourceProducerKind source_producer_kind =
-      PreparedEdgePublicationSourceProducerKind::Unknown;
-  std::optional<BlockLabelId> source_producer_block_label;
-  std::optional<std::size_t> source_producer_instruction_index;
-  const bir::LoadLocalInst* source_load_local = nullptr;
-  const bir::LoadGlobalInst* source_load_global = nullptr;
-  const bir::CastInst* source_cast = nullptr;
-  const bir::BinaryInst* source_binary = nullptr;
-  const bir::SelectInst* source_select = nullptr;
-  PreparedEdgePublicationSourceMemoryAccessStatus source_memory_access_status =
-      PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable;
-  const PreparedMemoryAccess* source_memory_access = nullptr;
-  PreparedAddressBaseKind source_memory_base_kind = PreparedAddressBaseKind::None;
-  std::optional<PreparedFrameSlotId> source_memory_frame_slot_id;
-  std::optional<LinkNameId> source_memory_symbol_name;
-  std::optional<ValueNameId> source_memory_pointer_value_name;
-  std::int64_t source_memory_byte_offset = 0;
-  std::size_t source_memory_size_bytes = 0;
-  std::size_t source_memory_align_bytes = 0;
-  bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
-  bool source_memory_is_volatile = false;
-  bool source_memory_can_use_base_plus_offset = false;
-  bool source_memory_requires_address_materialization = false;
-  PreparedAggregateStackSourceAuthority aggregate_stack_source_authority;
-  const PreparedValueHome* source_home = nullptr;
-  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
-  const PreparedValueHome* destination_home = nullptr;
-  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
-  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
-  bool source_and_destination_same_value_id = false;
-  bool matching_move_coalesced_by_assigned_storage = false;
-  bool matching_move_redundant_by_assigned_storage = false;
-  PreparedMovePhase phase = PreparedMovePhase::BlockEntry;
-  PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
-  std::optional<std::size_t> parallel_copy_step_index;
-  PreparedParallelCopyStepKind parallel_copy_step_kind =
-      PreparedParallelCopyStepKind::Move;
-  bool parallel_copy_step_uses_cycle_temp_source = false;
-  bool parallel_copy_bundle_has_cycle = false;
-  PreparedParallelCopyExecutionSite parallel_copy_execution_site =
-      PreparedParallelCopyExecutionSite::PredecessorTerminator;
-  std::optional<BlockLabelId> parallel_copy_execution_block_label;
-  const PreparedJoinTransfer* join_transfer = nullptr;
-  const PreparedEdgeValueTransfer* edge_transfer = nullptr;
-  const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
-  const PreparedMoveBundle* move_bundle = nullptr;
-  const PreparedMoveResolution* move = nullptr;
-};
-
-struct PreparedEdgePublicationKey {
-  BlockLabelId predecessor_label = kInvalidBlockLabel;
-  BlockLabelId successor_label = kInvalidBlockLabel;
-  PreparedValueId destination_value_id = 0;
-};
-
-[[nodiscard]] bool operator==(const PreparedEdgePublicationKey& lhs,
-                              const PreparedEdgePublicationKey& rhs);
-
-struct PreparedEdgePublicationKeyHash {
-  [[nodiscard]] std::size_t operator()(const PreparedEdgePublicationKey& key) const;
-};
-
-struct PreparedEdgePublicationLookups {
-  std::vector<PreparedEdgePublication> publications;
-  std::unordered_map<PreparedEdgePublicationKey,
-                     std::vector<const PreparedEdgePublication*>,
-                     PreparedEdgePublicationKeyHash>
-      publications_by_edge_destination;
-};
-
-struct PreparedEdgeCopySourceFacts {
-  PreparedEdgeCopySourceFactsStatus status =
-      PreparedEdgeCopySourceFactsStatus::MissingPublication;
-  const PreparedEdgePublication* publication = nullptr;
-  BlockLabelId predecessor_label = kInvalidBlockLabel;
-  BlockLabelId successor_label = kInvalidBlockLabel;
-  PreparedValueId destination_value_id = 0;
-  const PreparedMoveResolution* move = nullptr;
-  bir::Value destination_value;
-  bir::Value source_value;
-  PreparedValueId resolved_destination_value_id = 0;
-  ValueNameId destination_value_name = kInvalidValueName;
-  std::optional<PreparedValueId> source_value_id;
-  ValueNameId source_value_name = kInvalidValueName;
-  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
-  const PreparedValueHome* source_home = nullptr;
-  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
-  const PreparedValueHome* destination_home = nullptr;
-  PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
-  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
-  PreparedEdgePublicationSourceProducerKind source_producer_kind =
-      PreparedEdgePublicationSourceProducerKind::Unknown;
-  std::optional<BlockLabelId> source_producer_block_label;
-  std::optional<std::size_t> source_producer_instruction_index;
-  const bir::LoadLocalInst* source_load_local = nullptr;
-  const bir::LoadGlobalInst* source_load_global = nullptr;
-  const bir::CastInst* source_cast = nullptr;
-  const bir::BinaryInst* source_binary = nullptr;
-  const bir::SelectInst* source_select = nullptr;
-  PreparedEdgePublicationSourceMemoryAccessStatus source_memory_access_status =
-      PreparedEdgePublicationSourceMemoryAccessStatus::Unavailable;
-  const PreparedMemoryAccess* source_memory_access = nullptr;
-  PreparedAddressBaseKind source_memory_base_kind = PreparedAddressBaseKind::None;
-  std::optional<PreparedFrameSlotId> source_memory_frame_slot_id;
-  std::optional<LinkNameId> source_memory_symbol_name;
-  std::optional<ValueNameId> source_memory_pointer_value_name;
-  std::int64_t source_memory_byte_offset = 0;
-  std::size_t source_memory_size_bytes = 0;
-  std::size_t source_memory_align_bytes = 0;
-  bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
-  bool source_memory_is_volatile = false;
-  bool source_memory_can_use_base_plus_offset = false;
-  bool source_memory_requires_address_materialization = false;
-};
-
+// AArch64 current-block join routing convenience. These declarations stay in
+// this shared header while their definitions remain in prepared_lookups.cpp.
 struct PreparedCurrentBlockJoinParallelCopySourceFact {
   PreparedEdgeCopySourceFactsStatus status =
       PreparedEdgeCopySourceFactsStatus::MissingPublication;
@@ -576,94 +257,6 @@ struct PreparedCurrentBlockJoinParallelCopyInstructionRouting {
   std::vector<bool> source_instruction_results;
 };
 
-struct PreparedEdgePublicationSourceProducerLookups {
-  std::unordered_map<ValueNameId, PreparedEdgePublicationSourceProducer>
-      producers_by_value_name;
-};
-
-enum class PreparedTypedStackSourcePublicationStatus {
-  Available,
-  MissingPublication,
-  UnsupportedPublication,
-  UnsupportedSourceHome,
-  MissingConcreteStackSource,
-  MissingSameWidthI32Type,
-  UnsupportedDestinationStorage,
-  UnsupportedMoveAuthority,
-  MissingDestinationRegisterPlacement,
-  MissingDestinationGprBank,
-  MissingDestinationRegisterView,
-};
-
-[[nodiscard]] constexpr std::string_view
-prepared_typed_stack_source_publication_status_name(
-    PreparedTypedStackSourcePublicationStatus status) {
-  switch (status) {
-    case PreparedTypedStackSourcePublicationStatus::Available:
-      return "available";
-    case PreparedTypedStackSourcePublicationStatus::MissingPublication:
-      return "missing_publication";
-    case PreparedTypedStackSourcePublicationStatus::UnsupportedPublication:
-      return "unsupported_publication";
-    case PreparedTypedStackSourcePublicationStatus::UnsupportedSourceHome:
-      return "unsupported_source_home";
-    case PreparedTypedStackSourcePublicationStatus::MissingConcreteStackSource:
-      return "missing_concrete_stack_source";
-    case PreparedTypedStackSourcePublicationStatus::MissingSameWidthI32Type:
-      return "missing_same_width_i32_type";
-    case PreparedTypedStackSourcePublicationStatus::UnsupportedDestinationStorage:
-      return "unsupported_destination_storage";
-    case PreparedTypedStackSourcePublicationStatus::UnsupportedMoveAuthority:
-      return "unsupported_move_authority";
-    case PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterPlacement:
-      return "missing_destination_register_placement";
-    case PreparedTypedStackSourcePublicationStatus::MissingDestinationGprBank:
-      return "missing_destination_gpr_bank";
-    case PreparedTypedStackSourcePublicationStatus::MissingDestinationRegisterView:
-      return "missing_destination_register_view";
-  }
-  return "unknown";
-}
-
-enum class PreparedTypedStackSourceExtensionPolicy {
-  None,
-  SameWidthNoExtension,
-};
-
-[[nodiscard]] constexpr std::string_view
-prepared_typed_stack_source_extension_policy_name(
-    PreparedTypedStackSourceExtensionPolicy policy) {
-  switch (policy) {
-    case PreparedTypedStackSourceExtensionPolicy::None:
-      return "none";
-    case PreparedTypedStackSourceExtensionPolicy::SameWidthNoExtension:
-      return "same_width_no_extension";
-  }
-  return "unknown";
-}
-
-struct PreparedTypedStackSourcePublication {
-  PreparedTypedStackSourcePublicationStatus status =
-      PreparedTypedStackSourcePublicationStatus::MissingPublication;
-  const PreparedEdgePublication* publication = nullptr;
-  const PreparedValueHome* source_home = nullptr;
-  const PreparedMoveResolution* move = nullptr;
-  PreparedValueId source_value_id = 0;
-  PreparedValueId destination_value_id = 0;
-  ValueNameId source_value_name = kInvalidValueName;
-  ValueNameId destination_value_name = kInvalidValueName;
-  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::bir::TypeKind destination_type = c4c::backend::bir::TypeKind::Void;
-  PreparedTypedStackSourceExtensionPolicy extension_policy =
-      PreparedTypedStackSourceExtensionPolicy::None;
-  std::optional<PreparedFrameSlotId> source_slot_id;
-  std::optional<std::size_t> source_stack_offset_bytes;
-  std::optional<std::size_t> source_stack_size_bytes;
-  std::optional<std::size_t> source_stack_align_bytes;
-  PreparedRegisterBank destination_register_bank = PreparedRegisterBank::None;
-  std::optional<PreparedRegisterPlacement> destination_register_placement;
-};
-
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
@@ -689,11 +282,6 @@ struct PreparedFunctionLookups {
 [[nodiscard]] std::size_t prepared_return_chain_value_key(std::size_t block_index,
                                                           std::size_t instruction_index,
                                                           ValueNameId value_name);
-
-[[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    PreparedValueId destination_value_id);
 
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations);
@@ -740,35 +328,6 @@ prepared_out_of_ssa_parallel_copy_source_shares_destination_register(
     const PreparedMoveResolution& move,
     const PreparedValueHome& source_home,
     const PreparedValueHome& destination_home);
-
-[[nodiscard]] bool
-prepared_edge_publication_redundant_block_entry_parallel_copy_move(
-    const PreparedEdgePublication& publication,
-    const PreparedMoveResolution* move);
-
-[[nodiscard]] bool
-prepared_edge_publication_matches_parallel_copy_move_source(
-    const PreparedEdgePublication& publication,
-    const PreparedMoveResolution& move,
-    const PreparedValueHome& source_home);
-
-[[nodiscard]] bool prepared_edge_copy_source_facts_have_materializable_producer(
-    const PreparedEdgeCopySourceFacts& facts);
-
-[[nodiscard]] bool prepared_edge_publication_source_home_matches_source(
-    const PreparedEdgePublication& publication);
-
-[[nodiscard]] bool prepared_edge_publication_source_memory_matches_access(
-    const PreparedEdgePublication& publication,
-    const PreparedMemoryAccess& access);
-
-[[nodiscard]] PreparedAggregateStackSourceAuthority
-prepare_aggregate_stack_source_authority(
-    const PreparedEdgePublication* publication);
-
-[[nodiscard]] PreparedTypedStackSourcePublication
-prepare_same_width_i32_stack_source_publication(
-    const PreparedEdgePublication* publication);
 
 [[nodiscard]] PreparedCurrentBlockEntryPublication
 find_prepared_current_block_entry_publication(
@@ -922,39 +481,6 @@ find_prepared_same_block_load_local_stored_value_source(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
-
-[[nodiscard]] const std::vector<const PreparedEdgePublication*>*
-find_indexed_prepared_edge_publications(
-    const PreparedEdgePublicationLookups* lookups,
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    PreparedValueId destination_value_id);
-
-[[nodiscard]] const PreparedEdgePublication* find_unique_indexed_prepared_edge_publication(
-    const PreparedEdgePublicationLookups* lookups,
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    PreparedValueId destination_value_id);
-
-[[nodiscard]] PreparedEdgeCopySourceFacts prepare_edge_copy_source_facts(
-    const PreparedEdgePublicationLookups* lookups,
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    PreparedValueId destination_value_id);
-
-[[nodiscard]] const PreparedEdgePublication*
-find_unique_indexed_block_entry_parallel_copy_edge_publication(
-    const PreparedEdgePublicationLookups* lookups,
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    const PreparedMoveResolution& move);
-
-[[nodiscard]] PreparedEdgeCopySourceFacts
-prepare_block_entry_parallel_copy_edge_source_facts(
-    const PreparedEdgePublicationLookups* lookups,
-    BlockLabelId predecessor_label,
-    BlockLabelId successor_label,
-    const PreparedMoveResolution& move);
 
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(

@@ -2,7 +2,7 @@
 
 #include "../module/module.hpp"
 #include "../../query.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 
 #include <cstddef>
 #include <cstdint>
