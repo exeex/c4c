@@ -19,6 +19,8 @@ namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
 struct PreparedControlFlowFunction;
+struct PreparedEdgePublicationSourceProducerLookups;
+struct PreparedSameBlockScalarProducer;
 
 enum class PreparedStorageEncodingKind {
   None,
@@ -247,6 +249,27 @@ struct PreparedDirectGlobalSelectChainDependency {
   return dependency.contains_direct_global_load &&
          dependency.root_instruction_index.has_value();
 }
+
+template <typename Producer>
+struct PreparedCallArgumentSourceProducerMaterializationFor {
+  Producer producer;
+  bool materializable = false;
+};
+
+using PreparedCallArgumentSourceProducerMaterialization =
+    PreparedCallArgumentSourceProducerMaterializationFor<PreparedSameBlockScalarProducer>;
+
+[[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
+    bir::BinaryOpcode opcode);
+
+[[nodiscard]] std::optional<PreparedCallArgumentSourceProducerMaterialization>
+find_prepared_call_argument_source_producer_materialization(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
 
 struct PreparedCallArgumentDirectGlobalSelectChainDependency {
   bool available = false;

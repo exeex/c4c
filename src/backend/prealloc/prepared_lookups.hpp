@@ -25,11 +25,6 @@ struct PreparedReturnChainLookups {
   std::unordered_map<std::size_t, ValueNameId> next_operand_values_by_chain_value;
 };
 
-struct PreparedCallArgumentSourceProducerMaterialization {
-  PreparedSameBlockScalarProducer producer;
-  bool materializable = false;
-};
-
 struct PreparedFusedCompareOperandProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -109,18 +104,6 @@ struct PreparedFunctionLookups {
     std::size_t block_index,
     std::size_t instruction_index,
     ValueNameId value_name);
-
-[[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
-    bir::BinaryOpcode opcode);
-
-[[nodiscard]] std::optional<PreparedCallArgumentSourceProducerMaterialization>
-find_prepared_call_argument_source_producer_materialization(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedFusedCompareOperandProducer>
 find_prepared_fused_compare_operand_producer(
