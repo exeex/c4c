@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/139_addressing_lookup_ownership_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move addressing/frame lookup declarations to domain headers
+Current Step ID: 3
+Current Step Title: Adjust consumers to the narrowest stable ownership boundary
 
 # Current Packet
 
