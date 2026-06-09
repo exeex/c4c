@@ -51,6 +51,15 @@ materialization emission.
 Use matching `test_before.log` and `test_after.log` because shared query code
 is in scope.
 
+## Completion Note
+
+Closed after the same-block materialization and select-chain dependency
+relationships were exposed through shared prepared query facades and the AArch64
+call sites were routed through those shared surfaces while keeping target
+emission, hazard, scratch, and materialization-order policy local. Backend
+regression guard passed with matching `^backend_` scope at 179/179 passing
+tests and no new failures.
+
 ## Reviewer Reject Signals
 
 - The route adds named-case select-chain or direct-global shortcuts.
