@@ -8,6 +8,7 @@
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/call_plans.hpp"
+#include "src/backend/prealloc/calls.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
