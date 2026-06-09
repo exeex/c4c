@@ -39,3 +39,12 @@ not the residual prepared lookup facade.
   reducing the facade.
 - AArch64 wrapper behavior changes instead of only moving ownership.
 - Stack id lookup becomes target-specific.
+
+## Closure Note
+
+Closed 2026-06-09 after implementation commit `e9b79506a` moved the helper
+declarations and definitions to stack-layout ownership, updated direct
+consumers, preserved behavior, and passed the required build plus backend CTest
+proof. Close-time regression guard passed using matching
+`ctest --test-dir build -R '^backend_' --output-on-failure` logs:
+179 passed / 0 failed before and after.
