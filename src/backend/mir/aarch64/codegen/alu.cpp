@@ -3,7 +3,6 @@
 #include "dispatch.hpp"
 
 #include "constant_materialization.hpp"
-#include "dispatch_edge_copies.hpp"
 #include "dispatch_lookup.hpp"
 #include "dispatch_producers.hpp"
 #include "dispatch_publication.hpp"

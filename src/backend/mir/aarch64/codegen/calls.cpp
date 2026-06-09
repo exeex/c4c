@@ -14,7 +14,6 @@
 #include "../../query.hpp"
 #include "alu.hpp"
 #include "comparison.hpp"
-#include "dispatch_edge_copies.hpp"
 #include "dispatch_publication.hpp"
 #include "dispatch_value_materialization.hpp"
 #include "fp_value_materialization.hpp"
