@@ -1,68 +1,105 @@
 Status: Active
 Source Idea Path: ideas/open/141_prepared_lookups_residual_owner_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Map definitions and construction wiring
+Current Step ID: 3
+Current Step Title: Map consumers and include pressure
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 definition and construction-wiring map completed for the residual
-public groups from Step 1.
+Step 3 consumer and include-pressure map completed for the residual
+`prepared_lookups.hpp` APIs. Search covered the AArch64 files named in
+`plan.md`, extra AArch64/prealloc/backend consumers discovered by `rg`, and
+the source-idea revisit points for current-block join-copy facts/routing plus
+stack-source publication helper ownership.
 
-| Group | Definition location and wiring | Implementation character and visible narrower owner |
+| Consumer | Residual API groups used | Include/API pressure |
 | --- | --- | --- |
-| Stack-layout id lookup helpers | `find_frame_slot_by_id` and `find_stack_object_by_id` are simple scans in `prepared_lookups.cpp:1045` and `prepared_lookups.cpp:1056`. They are used by prepared memory/address helpers in the same file, including frame-address checks around `prepared_lookups.cpp:638`, `prepared_lookups.cpp:646`, and indexed frame-address offsets around `prepared_lookups.cpp:1906`. | Central convenience over `PreparedStackLayout`, not construction logic. Narrow owner visible: `stack_layout/stack_layout.hpp` owns stack layout declarations and frame-address helpers. |
-| Move-bundle index facts and maps | `PreparedMoveBundleLookups` is built by `make_prepared_move_bundle_lookups` at `prepared_lookups.cpp:1297`, indexing `PreparedValueLocationFunction::move_bundles`. It populates `bundles_by_position`, before-call ABI moves, and before-return ABI moves; after-call result-lane bindings are added separately by `publish_prepared_after_call_result_lane_bindings` at `prepared_lookups.cpp:295` from BIR call results plus value homes. `make_prepared_function_lookups` wires both at `prepared_lookups.cpp:1712` and `prepared_lookups.cpp:1713`. | Mostly central cached lookup construction. ABI-specific pieces touch call/return routing semantics, but data source is `value_locations.hpp`; call plan owner exists in `calls.hpp`. |
-| Return-chain index maps | `PreparedReturnChainLookups` is built by `make_prepared_return_chain_lookups` at `prepared_lookups.cpp:1416`; it scans return blocks for scalar binary chains reaching the return terminator, publishes keys via `publish_prepared_return_chain` at `prepared_lookups.cpp:1388`, and is wired into `PreparedFunctionLookups` at `prepared_lookups.cpp:1728`. | Domain semantic logic over control-flow/BIR return chains, not just indexing. Narrow owner visible: `control_flow.hpp` owns prepared control-flow and branch/return context helpers, but no return-chain owner is currently visible in Read First headers. |
-| Value-home index maps | `PreparedValueHomeLookups` is built by `make_prepared_value_home_lookups` at `prepared_lookups.cpp:1504` from `PreparedValueLocationFunction::value_homes`, then reused by memory access indexing, edge publications, move-bundle lane binding, entry publication, and join-copy facts. `make_prepared_function_lookups` wires it first at `prepared_lookups.cpp:1709`. | Pure central cached reverse-index construction over value-location data. Narrow owner visible: `value_locations.hpp` owns `PreparedValueHome`, `PreparedValueLocationFunction`, inline indexed value-home/value-id fallback helpers. |
-| Current-block join source status naming | Enum/string function are inline declarations only in `prepared_lookups.hpp:60` and `prepared_lookups.hpp:69`. The status is assigned by `prepare_current_block_join_parallel_copy_source_facts` at `prepared_lookups.cpp:2722` and propagated by instruction routing at `prepared_lookups.cpp:2950`. | Status is coupled to current-block join-copy fact/routing query, not aggregate construction. Narrow owner visible: `publication_plans.hpp` owns `PreparedEdgeCopySourceFactsStatus`; `control_flow.hpp` owns parallel-copy bundle helpers. |
-| Current-block entry publication status naming | Enum/string function are inline declarations only in `prepared_lookups.hpp:89` and `prepared_lookups.hpp:100`. Status is assigned by both `find_prepared_current_block_entry_publication` overloads at `prepared_lookups.cpp:2041` and `prepared_lookups.cpp:2104`. | Query-result status over value locations and block-entry publication data. Narrow owner visible: `value_locations.hpp` owns `PreparedBlockEntryPublicationStatus`, `PreparedBlockEntryPublication`, and `collect_prepared_block_entry_publications`. |
-| Same-block producer query facts | Structs are declarations in `prepared_lookups.hpp:124`, `prepared_lookups.hpp:131`, and `prepared_lookups.hpp:139`. Shared validation lives in private helpers `prepared_same_block_source_producer` at `prepared_lookups.cpp:852`, `prepared_source_producer_matches_instruction` at `prepared_lookups.cpp:762`, and `prepared_lookup_source_producer_result` at `prepared_lookups.cpp:742`. Public wrappers start at `prepared_lookups.cpp:2279` and `prepared_lookups.cpp:2325`. | Domain semantic query over source-producer facts and same-block instruction order. Narrow owner visible: `publication_plans.hpp` owns source-producer facts; `select_chain_lookups.hpp` already exposes source-producer lookup APIs. |
-| Call-argument materialization facts | `prepared_call_argument_binary_producer_opcode_is_materializable` is at `prepared_lookups.cpp:2379`; `find_prepared_call_argument_source_producer_materialization` is at `prepared_lookups.cpp:2411` and delegates first to same-block scalar producer lookup. | Domain semantic logic for call-argument materialization, not lookup construction. Narrow owner visible: `calls.hpp` owns call-plan lookup structures; same-block producer dependency points toward publication/source-producer ownership. |
-| Fused-compare and condition producer facts | `find_prepared_fused_compare_operand_producer` at `prepared_lookups.cpp:2479` accepts immediates, then delegates to same-block scalar producer and integer constant evaluation. `find_prepared_fused_compare_operand_producer_facts` is at `prepared_lookups.cpp:2530`; `find_prepared_materialized_condition_producer` is at `prepared_lookups.cpp:2564`. | Comparison/materialized-condition semantic logic over source producers, not central aggregate construction. Narrow owner visible: `control_flow.hpp` owns `PreparedBranchCondition`; no dedicated comparison owner appears in Read First headers. |
-| Same-block load-local stored-value facts | `find_prepared_same_block_load_local_stored_value_source` at `prepared_lookups.cpp:2645` resolves a same-block load-local producer, retrieves addressing facts, then walks prior stores and stack-layout ranges using private helpers at `prepared_lookups.cpp:638` through `prepared_lookups.cpp:697`. | Domain semantic logic crossing same-block producer, addressing, and stack layout. Narrow owners visible: `addressing.hpp` owns memory-access lookups; `publication_plans.hpp` already has `find_prepared_same_block_load_local_source_producer` using memory-access lookups. |
-| Current-block join parallel-copy source facts | `prepare_current_block_join_parallel_copy_source_facts` is at `prepared_lookups.cpp:2722`. It scans block-entry out-of-SSA move bundles, calls `prepare_block_entry_parallel_copy_edge_source_facts`, fills reusable publication/source/home facts, and also derives source/destination routing flags and instruction-value sets. | Mixed reusable fact extraction plus target-facing routing convenience. Narrow owners visible: `publication_plans.hpp` owns edge-copy source facts; `control_flow.hpp` owns parallel-copy bundle/step helpers; `value_locations.hpp` owns move bundles and homes. |
-| Current-block entry publication query result | Structs are declarations in `prepared_lookups.hpp:236` and `prepared_lookups.hpp:244`. The `PreparedValueId` overload at `prepared_lookups.cpp:2041` uses indexed homes plus `collect_prepared_block_entry_publications`; the `bir::Value` overload at `prepared_lookups.cpp:2104` resolves the value name/id before delegating. | Publication/value-home semantic query, not aggregate construction. Narrow owner visible: `value_locations.hpp` owns block-entry publication collection and status. |
-| Current-block join instruction routing convenience | `prepare_current_block_join_parallel_copy_instruction_routing` is at `prepared_lookups.cpp:2950`; it calls source-fact preparation, then marks instruction results whose value ids appear in incoming-expression or source-value sets. | Target-facing routing convenience layered on reusable join-copy facts. Narrow owner visible: `publication_plans.hpp` for facts and `control_flow.hpp` for parallel-copy execution context. |
-| Function-level lookup aggregate | `PreparedFunctionLookups` is declared at `prepared_lookups.hpp:260`. `make_prepared_function_lookups` at `prepared_lookups.cpp:1702` wires existing owner builders: call plans, address materializations, memory accesses, move bundles, return chains, value homes, edge publications, and source producers. | Central aggregate construction/wiring facade. Narrow owners already visible for several fields: `calls.hpp`, `addressing.hpp`, `publication_plans.hpp`, `select_chain_lookups.hpp`, and `value_locations.hpp`. |
-| Key helper functions | `prepared_move_bundle_position_key` is at `prepared_lookups.cpp:1072`, `prepared_after_call_result_lane_position_key` at `prepared_lookups.cpp:1090`, `prepared_before_return_abi_move_source_bank_key` at `prepared_lookups.cpp:1101`, and `prepared_return_chain_value_key` at `prepared_lookups.cpp:1110`. | Central hash-key construction for lookup maps. Related narrower owners: `value_locations.hpp` for move bundles and a potential return/control-flow owner for return-chain keys. |
-| Lookup preparation helpers | `make_prepared_move_bundle_lookups` is at `prepared_lookups.cpp:1297`; `make_prepared_return_chain_lookups` at `prepared_lookups.cpp:1416`; `make_prepared_value_home_lookups` at `prepared_lookups.cpp:1504`; edge-publication overloads at `prepared_lookups.cpp:1521`, `prepared_lookups.cpp:1684`, and `prepared_lookups.cpp:1693`; source-producer builder is declared in `prepared_lookups.hpp:308` but defined in `select_chain_lookups.cpp:216` and called from `prepared_lookups.cpp:1536` and `prepared_lookups.cpp:1719`. | Mostly aggregate/index construction, with edge-publication/source-producer pieces already showing narrower publication/select-chain ownership. |
-| Value-home and out-of-SSA helper predicates | `prepared_value_homes_share_register_name` is at `prepared_lookups.cpp:1735`; `prepared_out_of_ssa_parallel_copy_register_destination_matches_value` at `prepared_lookups.cpp:1745`; `prepared_out_of_ssa_parallel_copy_source_shares_destination_register` at `prepared_lookups.cpp:1756`. They are used by join-copy source facts around `prepared_lookups.cpp:2857` and `prepared_lookups.cpp:2866`. | Domain predicate/routing support for out-of-SSA parallel-copy facts, not aggregate construction. Narrow owners visible: `value_locations.hpp` for homes/move resolutions and `control_flow.hpp` for out-of-SSA parallel-copy helpers. |
-| Indexed move-bundle query helpers | `find_indexed_prepared_move_bundle` is at `prepared_lookups.cpp:2136` and falls back to `find_prepared_move_bundle` in `value_locations.hpp`. `find_indexed_prepared_before_call_argument_move` is at `prepared_lookups.cpp:2158`; `find_indexed_prepared_after_call_result_lane_binding` at `prepared_lookups.cpp:2174`; `find_prepared_before_return_abi_move_by_source_and_destination_bank` at `prepared_lookups.cpp:2201`, with fallback scan through value-location move bundles. | Central indexed accessors over move-bundle maps, with ABI-specific convenience. Narrow owners visible: `value_locations.hpp` for move bundles and `calls.hpp` for call ABI context. |
-| Return-chain query helpers | `find_prepared_return_chain_terminal_value` is at `prepared_lookups.cpp:2249`; `find_prepared_return_chain_next_operand_value` at `prepared_lookups.cpp:2264`. Both read maps built by `make_prepared_return_chain_lookups`. | Accessors over semantic return-chain maps. Narrow owner remains unclear from Read First headers; closest visible owner is `control_flow.hpp`. |
-| Publication source-producer lookup helper | `find_indexed_prepared_edge_publication_source_producer` is declared in `prepared_lookups.hpp:383`, but its definition is in `select_chain_lookups.cpp:317`. It is consumed by prepared edge publications, same-block producer queries, publication planning, and select-chain helpers. | Source-producer accessor already implemented outside `prepared_lookups.cpp`, suggesting existing narrower ownership. Narrow owner visible: `select_chain_lookups.hpp` plus `publication_plans.hpp` source-producer structs. |
-| Current-block publication consumption query | `find_prepared_current_block_publication_consumption` is at `prepared_lookups.cpp:2279`; it validates source-producer lookup, same-block position, instruction identity, and result-name match. | Same-block materialization/publication semantic query. Narrow owner visible: `publication_plans.hpp` source-producer facts and `select_chain_lookups.hpp` source-producer lookup helpers. |
-| Same-block scalar and integer-constant query helpers | Public same-block scalar overloads are at `prepared_lookups.cpp:2325`, `prepared_lookups.cpp:2343`, and `prepared_lookups.cpp:2364`; public integer-constant overloads are at `prepared_lookups.cpp:2448` and `prepared_lookups.cpp:2464`, backed by private recursive evaluator at `prepared_lookups.cpp:899`. | Same-block materialization semantic logic over source producers, not construction wiring. Narrow owner visible: `select_chain_lookups.hpp` already has related select-chain source-producer queries; `publication_plans.hpp` owns source-producer facts. |
-| Stack-source publication helpers absent from this header | Step 2 confirms no same-width stack-source or aggregate stack-source helper definitions in `prepared_lookups.cpp` beyond consumers of `prepare_aggregate_stack_source_authority` at `prepared_lookups.cpp:1665`. The actual helpers are declared in `publication_plans.hpp:458` and `publication_plans.hpp:462`, and defined in `publication_plans.cpp:516` and `publication_plans.cpp:598`. | Clear publication-plan domain logic, not residual `prepared_lookups.cpp` construction. Narrow owner already visible: `publication_plans.hpp`. |
+| `src/backend/mir/aarch64/codegen/dispatch.cpp` | No direct `prepared_lookups.hpp` include and no direct residual calls found. It routes through local AArch64 dispatch headers. | No direct pressure from this file. Keep it out of any follow-up unless transitive AArch64 headers change. |
+| `src/backend/mir/aarch64/codegen/dispatch_edge_copies.cpp` | Calls `find_indexed_prepared_edge_publication_source_producer` at `dispatch_edge_copies.cpp:214` while including `publication_plans.hpp`, not `prepared_lookups.hpp`. Also consumes `context.function.prepared_lookups->edge_publications` later in the file. | Strong evidence that source-producer lookup declarations want a publication/select-chain owner header. This consumer already points at the narrower publication header and relies on transitive exposure for the residual declaration. |
+| `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` | Includes `prepared_lookups.hpp`. Uses value-home indexes (`find_indexed_prepared_value_id`, local `PreparedValueHomeLookups`, `make_prepared_value_home_lookups`), same-block scalar producer queries, source-producer lookup helpers, and both current-block join APIs: `prepare_current_block_join_parallel_copy_source_facts` and `prepare_current_block_join_parallel_copy_instruction_routing`. | Mixed pressure. Value-home indexes point toward `value_locations.hpp`; source-producer lookups point toward `select_chain_lookups.hpp`/`publication_plans.hpp`; join-copy facts point toward publication/control-flow. The instruction-routing call is AArch64-local routing convenience layered on reusable facts and is the clearest split-fact-from-routing consumer. |
+| `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` | Includes `prepared_lookups.hpp`. Uses `find_prepared_current_block_entry_publication`, `PreparedCurrentBlockEntryPublicationQueryInputs`, and `PreparedCurrentBlockEntryPublicationStatus` around `dispatch_publication.cpp:222`. | Current-block entry publication is publication/value-home semantics. Existing owner pressure points to `value_locations.hpp` for block-entry publication collection/status and `publication_plans.hpp` for publication facts; the broad facade is heavier than this consumer needs. |
+| `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` | Includes `prepared_lookups.hpp`. Builds `PreparedSameBlockValueMaterializationQuery`, calls `find_prepared_same_block_scalar_producer` and `evaluate_prepared_same_block_integer_constant`, and also includes `select_chain_lookups.hpp`. | Same-block materialization query/fact APIs are the narrow pressure point. This file already separately includes select-chain ownership, so residual same-block scalar/integer materialization declarations could move to a narrower same-block/source-producer owner without changing target emission policy. |
+| `src/backend/mir/aarch64/codegen/comparison.cpp` | Includes `prepared_lookups.hpp`. Uses fused-compare operand facts, fused-compare operand producer queries, materialized-condition producer queries, and `find_frame_slot_by_id`. | Comparison facts are reusable prepared semantics consumed by AArch64 comparison lowering. Candidate owner pressure is a comparison/materialized-condition helper or control-flow comparison area; stack slot id lookup is separate pressure toward `stack_layout/stack_layout.hpp`. AArch64-specific compare instruction selection remains local. |
+| `src/backend/mir/aarch64/codegen/alu.cpp` | Includes `prepared_lookups.hpp`. Uses before-return ABI move lookup, return-chain terminal/next operand lookups, indexed value homes, same-block scalar producer queries, and fallback `make_prepared_function_lookups` construction. | Broadest named AArch64 pressure. Return-chain lookups currently have no obvious owner except the prepared aggregate/control-flow neighborhood. Same-block scalar producer pressure is separate from return-chain pressure. Fallback aggregate construction supports keeping `PreparedFunctionLookups` as a central aggregate even if query declarations move. |
+| `src/backend/mir/aarch64/codegen/calls.cpp` | Does not include `prepared_lookups.hpp` directly, but reaches residual declarations through `module.hpp`/other transitive includes. Uses indexed value homes, indexed move bundle and before-call move lookups, frame-slot id lookup, call-argument source-producer materialization, current-block publication consumption, source-producer lookup helper, and same-block load-local stored-value source. | High API pressure but not direct include pressure. Call-specific pieces point to `calls.hpp` plus value-location indexes; same-block publication/indirect-callee facts point to publication/source-producer ownership; same-block load-local stored-value crosses source-producer, addressing, and stack-layout owners. |
+| `src/backend/mir/aarch64/codegen/memory.cpp` | Includes `prepared_lookups.hpp`. Uses before-return ABI move lookup, indexed value id/home helpers, local `PreparedValueHomeLookups`, source-producer lookup helper, prepared aggregate fields, and typed stack-source publication emission from `publication_plans.hpp`. | Value-home index and move-bundle pressure dominate. Typed stack-source publication is already publication-plan API; AArch64 owns final load/store emission, register views, scratch use, and extension policy interpretation. |
+| Extra AArch64: `select_materialization.cpp` | Includes `prepared_lookups.hpp`; search only found use of `context.function.value_home_lookups` from the function context. | Likely include-cleanup pressure rather than residual API ownership pressure; value-home type can come from narrower declarations if context/header layering permits. |
+| Extra AArch64: `memory_store_retargeting.cpp` | Includes `prepared_lookups.hpp`. Uses `find_stack_object_by_id`, `find_frame_slot_by_id`, `PreparedValueHomeLookups`, and addressing/value-home frame-address helpers. | Stack id helpers should be considered for `stack_layout/stack_layout.hpp`; value-home type pressure points to `value_locations.hpp`; addressing helper calls already have an addressing owner. |
+| Extra AArch64: `frame_slot_address.cpp` | Includes `prepared_lookups.hpp`. Thin wrappers call `find_frame_slot_by_id` and `find_stack_object_by_id`. | Clean stack-layout include/API pressure. These are not prepared aggregate queries and would fit `stack_layout/stack_layout.hpp`. |
+| Extra AArch64: `fp_value_materialization.cpp` | Includes `prepared_lookups.hpp`. Uses same-block scalar producer query with generated source-producer lookups fallback. | Same-block materialization/source-producer owner pressure, analogous to `dispatch_value_materialization.cpp`. |
+| Extra AArch64: `dispatch_lookup.cpp` | Includes `prepared_lookups.hpp`, but observed use is `find_prepared_value_home_for_bir_value` from value-location helpers rather than a residual prepared-lookup declaration. | Include-cleanup pressure toward `value_locations.hpp`; not a residual owner blocker. |
+| Extra AArch64 module: `module.hpp` / `module.cpp` | Header includes `prepared_lookups.hpp` to expose `PreparedFunctionLookups`, `PreparedMoveBundleLookups`, and `PreparedValueHomeLookups` pointers in `FunctionLoweringContext`; `module.cpp` calls `find_indexed_prepared_after_call_result_lane_binding`. | Central aggregate and index type pressure. If value-home/move-bundle types move to narrower owner headers, this context can include those. The `PreparedFunctionLookups` pointer still justifies a central aggregate declaration somewhere. |
+| Extra AArch64 traversal: `traversal.cpp` | Calls `make_prepared_function_lookups`, then stores pointers to aggregate fields: call-plan, address-materialization, move-bundle, and value-home lookups. | Strong keep-core-aggregate evidence for `PreparedFunctionLookups` wiring. Consumers want one preparation pass and field projections, not independent domain rescans. |
+| Prealloc: `formal_publications.cpp` / `.hpp` | Includes `prepared_lookups.hpp` in the `.cpp`; uses `PreparedValueHomeLookups`, `find_indexed_prepared_value_id`, and `find_indexed_prepared_value_home`. | Narrow value-home/index pressure toward `value_locations.hpp`; this is not a broad prepared facade consumer. |
+| Prealloc: `decoded_home_storage.hpp` / `.cpp` | Header includes `prepared_lookups.hpp` only to name `PreparedValueHomeLookups`; `.cpp` calls `find_indexed_prepared_value_home`. | Strong include-cleanup pressure: declarations fit the value-location owner and would avoid a broad header in a reusable prealloc helper header. |
+| Prealloc: `select_chain_lookups.cpp` and `prepared_printer/select_chains.cpp` | `select_chain_lookups.cpp` includes `prepared_lookups.hpp` and defines `find_indexed_prepared_edge_publication_source_producer`; the printer includes the facade and calls that helper. | Existing implementation location already says source-producer lookup ownership is not really `prepared_lookups.cpp`. Declarations should likely live with `select_chain_lookups.hpp` or publication/source-producer declarations rather than requiring the facade. |
+| Prealloc: `publication_plans.cpp` | Calls `find_indexed_prepared_edge_publication_source_producer` while owning publication-plan structs and same-width/aggregate stack-source helpers. | Publication/source-producer owner pressure. This file is a natural declaration home for publication facts, while select-chain remains a candidate for direct-global/select-chain lookup helpers. |
+| Prealloc: `call_plans.cpp` | Includes `prepared_lookups.hpp`, but search found no residual Step-3 target calls; uses module/value-location/addressing/control-flow helpers and `find_prepared_move_bundle` from value locations. | Include-cleanup pressure only. It should not drive residual API moves unless a direct dependency appears. |
+| Prealloc: `module.hpp` | Includes `prepared_lookups.hpp` as part of the broad `PreparedBirModule` aggregate header. | Coarse include pressure from central module aggregation. Keep separate from query ownership: this may remain a broad module convenience even if residual query declarations move. |
+| Other backend: `src/backend/mir/riscv/codegen/emit.*` and `src/backend/mir/x86/x86.hpp` | RISC-V and x86 consume `PreparedFunctionLookups` and `make_prepared_function_lookups`; RISC-V also reads edge publication lookups from the aggregate. | Cross-target evidence for keeping a central function-level aggregate and builder. Follow-up moves must not assume AArch64 is the only consumer of the aggregate. |
+
+Current-block join parallel-copy revisit:
+
+- `dispatch_producers.cpp` consumes both reusable source facts and
+  instruction-routing booleans. The fact query publishes predecessor/successor,
+  move/publication/home, incoming-expression, source-value, stack/immediate, and
+  register-sharing facts that are reusable prepared information. Those facts
+  are not just AArch64 emission policy.
+- `PreparedCurrentBlockJoinParallelCopyInstructionRouting` is different: it
+  converts value-id sets into per-instruction result boolean vectors for the
+  current AArch64 block walk. That is target-facing routing convenience. A
+  follow-up should split or relocate it separately from reusable join-copy
+  source facts.
+- Owner pressure for reusable facts points toward `publication_plans.hpp`
+  because they build on `PreparedEdgeCopySourceFactsStatus`,
+  `PreparedEdgePublication`, and edge-copy source facts. Parallel-copy bundle
+  discovery also depends on `control_flow.hpp`, so a follow-up must name the
+  boundary between publication facts and control-flow bundle traversal instead
+  of hiding both behind another facade.
+
+Same-width and aggregate stack-source publication helper revisit:
+
+- No same-width typed stack-source or aggregate stack-source helper remains as
+  a residual public declaration in `prepared_lookups.hpp`.
+- The aggregate authority helper is declared in `publication_plans.hpp:458` and
+  defined in `publication_plans.cpp:516`; the typed same-width stack-source
+  helper is declared in `publication_plans.hpp:462` and defined in
+  `publication_plans.cpp:598`.
+- `prepared_lookups.cpp` only consumes `prepare_aggregate_stack_source_authority`
+  while building edge publications. AArch64 `memory.cpp` consumes
+  `PreparedTypedStackSourcePublication` for emission, and AArch64 owns final
+  register view, scratch, load/store line emission, and extension handling.
+  Publication-plan ownership is already clear; no residual prepared-lookup
+  owner move is needed for these helpers.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: map AArch64 and prealloc consumers for the
-residual APIs, with special attention to whether consumers can include
-`publication_plans.hpp`, `value_locations.hpp`, `calls.hpp`, `addressing.hpp`,
-`control_flow.hpp`, or `select_chain_lookups.hpp` instead of the broad
-`prepared_lookups.hpp` facade.
+Execute Step 4 from `plan.md`: classify each residual group using the Step 1
+inventory, Step 2 definition map, and this Step 3 consumer map. Keep
+`PreparedFunctionLookups`/`make_prepared_function_lookups` separate from the
+domain query declarations when deciding ownership.
 
 ## Watchouts
 
-- Some source-producer declarations still live in `prepared_lookups.hpp`, but
-  their definitions are already in `select_chain_lookups.cpp`; Step 3 should
-  treat that as existing include/API pressure evidence rather than a missing
-  implementation.
-- Return-chain helpers have semantic logic in `prepared_lookups.cpp`, but no
-  obvious narrow owner appeared in the Read First headers beyond
-  `control_flow.hpp`.
-- Current-block join-copy facts and routing are mixed: reusable publication
-  facts come from `publication_plans.hpp`, while instruction-result marking is
-  routing convenience.
-- Stack-source publication helpers already have a publication-plan home; they
-  are not standalone residual declarations in `prepared_lookups.hpp`.
+- Do not classify every broad include as proof of a move. Some files include
+  `prepared_lookups.hpp` only through `module.hpp` or only to name aggregate
+  field types.
+- `find_indexed_prepared_edge_publication_source_producer` has its declaration
+  in `prepared_lookups.hpp` but its definition in `select_chain_lookups.cpp`;
+  classify that as concrete owner/API pressure, not as missing implementation.
+- Return-chain consumers are concentrated in AArch64 `alu.cpp`, but no narrow
+  owner was obvious beyond control-flow/return semantics. Avoid inventing a
+  vague follow-up if Step 4 cannot name a concrete owner file.
+- Stack-source publication helpers already have a publication-plan home. Do
+  not reopen idea 140 for those helpers unless Step 4 finds a residual facade
+  declaration, which this packet did not.
 
 ## Proof
 
-Inspection-only analysis slice. Read `prepared_lookups.cpp`,
-`prepared_lookups.hpp`, and the Read First owner headers/implementations needed
-to locate definitions and construction wiring. No build or test command was
-run, and no `test_after.log` was required by the delegated packet.
+Inspection-only analysis slice. Ran targeted `rg` and file reads over the
+AArch64 files named in `plan.md`, additional AArch64/prealloc/backend consumers
+found by search, `prepared_lookups.hpp`, and the relevant prealloc owner files.
+No build or test command was run, and no `test_after.log` was required by the
+delegated packet.
