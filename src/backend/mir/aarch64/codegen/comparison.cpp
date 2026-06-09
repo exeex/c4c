@@ -6,6 +6,7 @@
 #include "alu.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
+#include "../../../prealloc/comparison.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
