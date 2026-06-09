@@ -1,8 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/142_value_home_move_bundle_lookup_ownership.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move Value-Home Lookup APIs To Value-Location Ownership
+Current Step ID: 3
+Current Step Title: Adjust consumers to the narrowest stable ownership boundary
+你該做code review了
 
 # Current Packet
 
