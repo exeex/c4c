@@ -1,70 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/147_comparison_prealloc_fact_owner.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Move Lookup Helpers And Consumers
+Current Step ID: Step 4
+Current Step Title: Validate And Record Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Move Lookup Helpers And Consumers completed.
+Step 4 - Validate And Record Proof completed.
 
-Removed the temporary compatibility include of `comparison.hpp` from
+Validated the completed comparison owner move with the supervisor-delegated
+build plus backend CTest subset.
+
+Final comparison owner status: fused-compare operand producer facts,
+materialized-condition producer facts, and their lookup helpers are owned by
+`src/backend/prealloc/comparison.hpp` with definitions in
+`src/backend/prealloc/comparison.cpp`. The prepared lookup owner no longer
+provides a compatibility include for those declarations, while consumers that
+still dereference `PreparedFunctionLookups` remain on
 `src/backend/prealloc/prepared_lookups.hpp`.
-
-Kept unrelated prepared lookup consumers on `prepared_lookups.hpp`.
-`src/backend/mir/aarch64/codegen/comparison.cpp` already includes
-`../../../prealloc/comparison.hpp` for the moved comparison facts/helpers and
-still keeps `../../../prealloc/prepared_lookups.hpp` because it dereferences
-`PreparedFunctionLookups` through `context.function.prepared_lookups`.
-
-Added an explicit `src/backend/prealloc/comparison.hpp` include to
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, the remaining
-direct consumer that calls the moved fused-compare helper while also testing
-other prepared lookup APIs.
-
-AST-backed checks confirmed AArch64 wrapper callees for
-`find_prepared_fused_compare_operand_producer`,
-`find_prepared_fused_compare_operand_producer_facts`, and
-`find_prepared_materialized_condition_producer` resolve through
-`src/backend/prealloc/comparison.hpp`. The focused prepared lookup helper test
-callee check also resolves
-`find_prepared_fused_compare_operand_producer_facts` through
-`src/backend/prealloc/comparison.hpp`.
 
 ## Suggested Next
 
-Step 4 - Validate And Record Proof should review the completed owner move and
-decide whether the active plan is ready for lifecycle close/deactivation or
-needs any supervisor-selected broader validation.
+Supervisor should decide whether to call plan-owner for lifecycle
+close/deactivation of the active plan, or run any milestone-level validation
+before commit.
 
 ## Watchouts
 
+- Full CTest was not required by Step 4 execution because this packet made no
+  implementation edits and the completed owner move did not report shared
+  branch/comparison semantic changes. Supervisor still owns any broader
+  milestone validation decision.
 - `prepared_lookups.hpp` still owns `PreparedFunctionLookups`, return-chain
   helpers, edge-publication lookups, and
   `PreparedSameBlockLoadLocalStoredValueSource`; those remain separate from the
   comparison owner.
 - `src/backend/mir/aarch64/codegen/comparison.cpp` still needs
-  `prepared_lookups.hpp` for `PreparedFunctionLookups` member access; do not
-  remove that include as part of comparison-owner cleanup unless the function
-  context ownership changes.
-- `src/backend/prealloc/comparison.cpp` still duplicates the small file-local
-  `existing_prepared_value_name_id` helper because the existing
-  `prepared_lookups.cpp` helper is anonymous-namespace state and still serves
-  unrelated prepared lookup APIs.
-- Do not move AArch64 compare instruction selection or condition-code emission
-  into shared prealloc ownership.
-- Do not change branch-condition semantics.
+  `prepared_lookups.hpp` for `PreparedFunctionLookups` member access.
 
 ## Proof
 
-Ran the delegated proof command for Step 3:
+Ran the delegated proof command for Step 4:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: passed. Build completed and the backend CTest subset passed 179/179
-tests.
+Result: passed. Build completed with no work to do and the backend CTest subset
+passed 179/179 tests.
 
 Regression guard passed with 179/179 backend tests before and after, no new
 failures.
