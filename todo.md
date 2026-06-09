@@ -1,28 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/146_call_argument_materialization_call_owner.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Update Consumers and Includes
+Current Step ID: 5
+Current Step Title: Validate and Hand Back
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 consumer include routing for the call-owned materialization API.
+Completed Step 5 validation and handoff recording for the call-argument
+materialization ownership move.
 
-- Direct test consumer
-  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp` now
-  includes `src/backend/prealloc/calls.hpp` where it names
-  `find_prepared_call_argument_source_producer_materialization`.
-- Existing direct implementation consumers already included `calls.hpp`.
-- No `prepared_lookups.hpp` include was removed because the owned files that
-  still include it have unrelated prepared lookup dependencies.
+- `cmake --build --preset default` completed with no rebuild work needed.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed with
+  179/179 backend tests green.
+- The current packet touched no implementation files.
 
 ## Suggested Next
 
-Next packet: supervisor-selected Step 5 validation/lifecycle handoff for
-deciding whether this runbook is exhausted or needs a separate residual include
-cleanup idea.
+Next packet: supervisor lifecycle decision for closing, deactivating, or
+replacing the exhausted runbook state.
 
 ## Watchouts
 
@@ -36,8 +33,8 @@ cleanup idea.
 - `src/backend/prealloc/call_plans.cpp` still uses shared producer lookup
   types/helpers; its `prepared_lookups.hpp` include is not solely for the moved
   API.
-- Do not start broad residual prepared-lookup include cleanup inside this
-  ownership route.
+- Residual prepared-lookup include cleanup, if desired, should be routed as a
+  separate follow-up and not claimed as part of this ownership move.
 
 ## Proof
 
