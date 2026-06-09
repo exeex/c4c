@@ -19139,6 +19139,8 @@ int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
       prepared.names.value_names.intern("%edge.scaled.pointer.offset");
   const auto address_name =
       prepared.names.value_names.intern("%edge.scaled.pointer.address");
+  const auto join_address_name =
+      prepared.names.value_names.intern("%edge.scaled.pointer.join.address");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.edge.scaled.pointer",
@@ -19198,6 +19200,25 @@ int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::Ptr,
+                                    "%edge.scaled.pointer.join.address"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::Ptr,
+                                            "%edge.scaled.pointer.address"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::Ptr,
+                                            "%edge.scaled.pointer.join.address"),
+                  }},
+          }},
   });
   prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
       .slot_id = prepare::PreparedFrameSlotId{601},
@@ -19246,7 +19267,43 @@ int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
                .value_name = address_name,
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x9"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{605},
+               .function_name = function_name,
+               .value_name = join_address_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
            }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{604},
+                      .to_value_id = prepare::PreparedValueId{605},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_scaled_pointer_edge_publication",
+                  }},
+          }},
   });
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
@@ -19258,12 +19315,52 @@ int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
                               36),
            register_storage(prepare::PreparedValueId{602}, extended_name, "x10"),
            register_storage(prepare::PreparedValueId{603}, offset_name, "x10"),
-           register_storage(prepare::PreparedValueId{604}, address_name, "x9")},
+           register_storage(prepare::PreparedValueId{604}, address_name, "x9"),
+           register_storage(prepare::PreparedValueId{605}, join_address_name, "x0")},
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto prepared_lookups =
+  auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& scaled_cast =
+      std::get<bir::CastInst>(prepared.module.functions.front().blocks.front().insts[0]);
+  const auto& scaled_offset =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  const auto& scaled_address =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[extended_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{0},
+          .cast = &scaled_cast,
+      };
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[offset_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{1},
+          .binary = &scaled_offset,
+      };
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[address_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{2},
+          .binary = &scaled_address,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{605}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{2};
+      publication.source_binary = &scaled_address;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -19271,55 +19368,26 @@ int predecessor_scaled_pointer_publication_keeps_base_and_index_distinct() {
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  const auto join_context =
-      aarch64_codegen::make_block_lowering_context(function_context,
-                                                   function_cf.blocks.back(),
-                                                   1);
 
-  const auto source =
-      bir::Value::named(bir::TypeKind::Ptr, "%edge.scaled.pointer.address");
-  const auto& pred_binary =
-      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
-  prepare::PreparedEdgePublication publication{
-      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
-      .predecessor_label = pred_label,
-      .successor_label = join_label,
-      .destination_value = source,
-      .source_value = source,
-      .source_value_name = address_name,
-      .source_value_kind = bir::Value::Kind::Named,
-      .source_producer_kind =
-          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
-      .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{2},
-      .source_binary = &pred_binary,
-  };
-  std::vector<std::string> lines;
-  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
-                                                                join_context,
-                                                                source,
-                                                                1,
-                                                                0,
-                                                                9,
-                                                                lines,
-                                                                &publication)) {
-    return fail("expected scaled pointer edge publication to materialize");
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected scaled pointer edge publication to lower through public hook");
   }
-  if (lines != std::vector<std::string>{"ldr w9, [sp, #36]",
-                                        "sxtw x9, w9",
-                                        "lsl x9, x9, #2",
-                                        "add x0, x0, x9"}) {
-    std::string actual;
-    for (const auto& line : lines) {
-      actual += line + "\n";
-    }
-    return fail("expected scaled pointer publication to keep base and index carriers distinct:\n" +
-                actual);
-  }
-  for (const auto& line : lines) {
-    if (line == "mov x9, #4" || line == "mul x10, x10, x9") {
-      return fail("expected scaled index publication not to clobber the base carrier");
-    }
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("ldr w9, [sp, #36]") == std::string::npos ||
+      printed.assembly.find("sxtw x9, w9") == std::string::npos ||
+      printed.assembly.find("lsl x9, x9, #2") == std::string::npos ||
+      printed.assembly.find("add x0, x0, x9") == std::string::npos ||
+      printed.assembly.find("mov x9, #4") != std::string::npos ||
+      printed.assembly.find("mul x10, x10, x9") != std::string::npos) {
+    return fail("expected scaled pointer publication to keep base and index carriers distinct: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
   return 0;
 }
@@ -19340,6 +19408,8 @@ int edge_publication_dependency_uses_prepared_root_producer() {
   const auto bir_join_label =
       prepared.module.names.block_labels.intern("dispatch.edge.prepared.dependency.join");
   const auto edge_sum_name = prepared.names.value_names.intern("%edge.prepared.sum");
+  const auto join_sum_name =
+      prepared.names.value_names.intern("%edge.prepared.join.sum");
   const auto prepared_lhs_name = prepared.names.value_names.intern("%edge.prepared.lhs");
   const auto decoy_rhs_name = prepared.names.value_names.intern("%edge.decoy.rhs");
 
@@ -19394,6 +19464,23 @@ int edge_publication_dependency_uses_prepared_root_producer() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I64, "%edge.prepared.join.sum"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.join.sum"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -19407,6 +19494,13 @@ int edge_publication_dependency_uses_prepared_root_producer() {
                .offset_bytes = std::size_t{64},
                .size_bytes = std::size_t{8},
                .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{523},
+               .function_name = function_name,
+               .value_name = join_sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
            },
            prepare::PreparedValueHome{
                .value_id = prepare::PreparedValueId{521},
@@ -19425,11 +19519,75 @@ int edge_publication_dependency_uses_prepared_root_producer() {
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x0"},
            }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{520},
+                      .to_value_id = prepare::PreparedValueId{523},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_prepared_root_dependency_publication",
+                  }},
+          }},
   });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{520},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{521},
+      .function_name = function_name,
+      .offset_bytes = 72,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 96;
+  prepared.stack_layout.frame_alignment_bytes = 16;
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto prepared_lookups =
+  auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& pred_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts.front());
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[edge_sum_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{0},
+          .binary = &pred_binary,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{523}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{0};
+      publication.source_binary = &pred_binary;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -19437,45 +19595,29 @@ int edge_publication_dependency_uses_prepared_root_producer() {
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  const auto join_context =
-      aarch64_codegen::make_block_lowering_context(function_context,
-                                                   function_cf.blocks.back(),
-                                                   1);
 
-  const auto source = bir::Value::named(bir::TypeKind::I64, "%edge.prepared.sum");
-  if (aarch64_codegen::edge_value_publication_may_read_register_index(
-          pred_context,
-          join_context,
-          source,
-          1,
-          0)) {
-    return fail("expected prepared source-producer lookup to ignore successor decoy");
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected prepared source-producer publication to lower through public hook: lowered=" +
+                std::to_string(lowered.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
   }
-
-  const auto& pred_binary =
-      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts.front());
-  prepare::PreparedEdgePublication publication{
-      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
-      .predecessor_label = pred_label,
-      .successor_label = join_label,
-      .destination_value = source,
-      .source_value = source,
-      .source_value_name = edge_sum_name,
-      .source_value_kind = bir::Value::Kind::Named,
-      .source_producer_kind =
-          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
-      .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{0},
-      .source_binary = &pred_binary,
-  };
-  if (aarch64_codegen::edge_value_publication_may_read_register_index(
-          pred_context,
-          join_context,
-          source,
-          1,
-          0,
-          &publication)) {
-    return fail("expected prepared edge dependency check to ignore successor decoy producer");
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("ldr x0, [sp, #72]") == std::string::npos ||
+      printed.assembly.find("mov x9, #1") == std::string::npos ||
+      printed.assembly.find("add x0, x0, x9") == std::string::npos ||
+      printed.assembly.find("mov x0, #7") != std::string::npos) {
+    return fail("expected prepared source-producer publication to ignore successor decoy: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
   return 0;
 }
@@ -19496,6 +19638,8 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   const auto bir_join_label =
       prepared.module.names.block_labels.intern("dispatch.edge.prepared.emit.join");
   const auto sum_name = prepared.names.value_names.intern("%edge.prepared.emit.sum");
+  const auto join_sum_name =
+      prepared.names.value_names.intern("%edge.prepared.emit.join.sum");
   const auto child_name =
       prepared.names.value_names.intern("%edge.prepared.emit.child");
   const auto lhs_name = prepared.names.value_names.intern("%edge.prepared.emit.lhs");
@@ -19570,6 +19714,25 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I64,
+                                    "%edge.prepared.emit.join.sum"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.emit.sum"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.emit.join.sum"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -19596,12 +19759,48 @@ int prepared_root_emission_uses_producer_context_for_operands() {
                .register_name = std::string{"x0"},
            },
            prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{544},
+               .function_name = function_name,
+               .value_name = join_sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
                .value_id = prepare::PreparedValueId{542},
                .function_name = function_name,
                .value_name = unrelated_name,
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x0"},
            }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{541},
+                      .to_value_id = prepare::PreparedValueId{544},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_prepared_root_emission_publication",
+                  }},
+          }},
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -19617,6 +19816,25 @@ int prepared_root_emission_uses_producer_context_for_operands() {
           .instruction_index = std::size_t{1},
           .binary = &pred_child_binary,
       };
+  const auto& pred_sum_binary =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[sum_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{2},
+          .binary = &pred_sum_binary,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{544}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{2};
+      publication.source_binary = &pred_sum_binary;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -19624,80 +19842,25 @@ int prepared_root_emission_uses_producer_context_for_operands() {
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  const auto join_context =
-      aarch64_codegen::make_block_lowering_context(function_context,
-                                                   function_cf.blocks.back(),
-                                                   1);
 
-  const auto source =
-      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.emit.sum");
-  const auto& pred_binary =
-      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[2]);
-  prepare::PreparedEdgePublication publication{
-      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
-      .predecessor_label = pred_label,
-      .successor_label = join_label,
-      .destination_value = source,
-      .source_value = source,
-      .source_value_name = sum_name,
-      .source_value_kind = bir::Value::Kind::Named,
-      .source_producer_kind =
-          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
-      .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{2},
-      .source_binary = &pred_binary,
-  };
-  std::vector<std::string> lines;
-  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
-                                                                join_context,
-                                                                source,
-                                                                1,
-                                                                0,
-                                                                9,
-                                                                lines,
-                                                                &publication)) {
-    return fail("expected prepared root emission to materialize from producer context");
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected prepared root emission to lower through public hook");
   }
-  if (lines != std::vector<std::string>{"mov x0, x3",
-                                        "mov x9, #2",
-                                        "add x0, x0, x9",
-                                        "mov x9, #1",
-                                        "add x0, x0, x9"}) {
-    return fail("expected nested prepared source producer to ignore successor decoy");
-  }
-  if (aarch64_codegen::edge_value_publication_may_read_register_index(
-          pred_context,
-          join_context,
-          source,
-          1,
-          0,
-          &publication)) {
-    return fail("expected nested prepared source hazard check to ignore successor decoy");
-  }
-  auto mismatched_publication = publication;
-  mismatched_publication.source_value =
-      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.emit.unrelated");
-  mismatched_publication.source_value_name = unrelated_name;
-  std::vector<std::string> mismatched_lines;
-  if (aarch64_codegen::emit_edge_value_publication_to_register(
-          pred_context,
-          join_context,
-          source,
-          1,
-          0,
-          9,
-          mismatched_lines,
-          &mismatched_publication)) {
-    return fail("expected mismatched prepared root emission to fail closed");
-  }
-  if (aarch64_codegen::edge_value_publication_may_read_register_index(
-          pred_context,
-          join_context,
-          source,
-          1,
-          3,
-          &mismatched_publication)) {
-    return fail("expected mismatched prepared root dependency check to fail closed");
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("mov x0, x3") == std::string::npos ||
+      printed.assembly.find("mov x9, #2") == std::string::npos ||
+      printed.assembly.find("add x0, x0, x9") == std::string::npos ||
+      printed.assembly.find("mov x9, #1") == std::string::npos ||
+      printed.assembly.find("mov x0, #5") != std::string::npos) {
+    return fail("expected nested prepared source producer to ignore successor decoy: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
   return 0;
 }
@@ -19719,6 +19882,8 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
       prepared.module.names.block_labels.intern("dispatch.edge.prepared.select.join");
   const auto select_name =
       prepared.names.value_names.intern("%edge.prepared.select.root");
+  const auto join_select_name =
+      prepared.names.value_names.intern("%edge.prepared.select.join.root");
   const auto lhs_name =
       prepared.names.value_names.intern("%edge.prepared.select.lhs");
   const auto true_name =
@@ -19783,6 +19948,25 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I64,
+                                    "%edge.prepared.select.join.root"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.select.root"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.select.join.root"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -19791,6 +19975,13 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
                .value_id = prepare::PreparedValueId{550},
                .function_name = function_name,
                .value_name = select_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{555},
+               .function_name = function_name,
+               .value_name = join_select_name,
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x0"},
            },
@@ -19825,6 +20016,35 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x7"},
            }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{550},
+                      .to_value_id = prepare::PreparedValueId{555},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_prepared_select_root_publication",
+                  }},
+          }},
   });
   prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
       .slot_id = prepare::PreparedFrameSlotId{553},
@@ -19835,8 +20055,28 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto prepared_lookups =
+  auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& pred_select =
+      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts.front());
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[select_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{0},
+          .select = &pred_select,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{555}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{0};
+      publication.source_select = &pred_select;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -19844,40 +20084,6 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  const auto join_context =
-      aarch64_codegen::make_block_lowering_context(function_context,
-                                                   function_cf.blocks.back(),
-                                                   1);
-
-  const auto source =
-      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.select.root");
-  const auto& pred_select =
-      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts.front());
-  prepare::PreparedEdgePublication publication{
-      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
-      .predecessor_label = pred_label,
-      .successor_label = join_label,
-      .destination_value = source,
-      .source_value = source,
-      .source_value_name = select_name,
-      .source_value_kind = bir::Value::Kind::Named,
-      .source_producer_kind =
-          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
-      .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{0},
-      .source_select = &pred_select,
-  };
-  std::vector<std::string> lines;
-  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
-                                                                join_context,
-                                                                source,
-                                                                1,
-                                                                0,
-                                                                9,
-                                                                lines,
-                                                                &publication)) {
-    return fail("expected prepared select root emission to use producer context");
-  }
   const auto true_label =
       aarch64_codegen::select_chain_local_label_reference(0, "true");
   const auto true_definition =
@@ -19886,15 +20092,29 @@ int prepared_select_root_emission_uses_prepared_producer_boundary() {
       aarch64_codegen::select_chain_local_label_reference(0, "end");
   const auto end_definition =
       aarch64_codegen::select_chain_local_label_definition(0, "end");
-  if (lines != std::vector<std::string>{"mov x0, x3",
-                                        "cmp x0, #0",
-                                        "b.eq " + true_label,
-                                        "ldr x0, [sp, #88]",
-                                        "b " + end_label,
-                                        true_definition,
-                                        "mov x0, x4",
-                                        end_definition}) {
-    return fail("expected prepared select root emission to avoid generic fallback rediscovery");
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected prepared select root emission to lower through public hook");
+  }
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("mov x0, x3") == std::string::npos ||
+      printed.assembly.find("cmp x0, #0") == std::string::npos ||
+      printed.assembly.find("b.eq " + true_label) == std::string::npos ||
+      printed.assembly.find("ldr x0, [sp, #88]") == std::string::npos ||
+      printed.assembly.find("b " + end_label) == std::string::npos ||
+      printed.assembly.find(true_definition) == std::string::npos ||
+      printed.assembly.find("mov x0, x4") == std::string::npos ||
+      printed.assembly.find(end_definition) == std::string::npos ||
+      printed.assembly.find("mov x0, x7") != std::string::npos) {
+    return fail("expected prepared select root emission to avoid generic fallback rediscovery: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
   return 0;
 }
@@ -19918,6 +20138,8 @@ int prepared_select_root_nested_select_uses_chain_labels() {
       prepared.names.value_names.intern("%edge.prepared.select.nested");
   const auto root_name =
       prepared.names.value_names.intern("%edge.prepared.select.root");
+  const auto join_root_name =
+      prepared.names.value_names.intern("%edge.prepared.select.join.root");
   const auto nested_lhs_name =
       prepared.names.value_names.intern("%edge.prepared.select.nested.lhs");
   const auto nested_true_name =
@@ -19993,6 +20215,25 @@ int prepared_select_root_nested_select_uses_chain_labels() {
                .block_label = join_label,
                .terminator_kind = bir::TerminatorKind::Return,
            }},
+      .join_transfers =
+          {prepare::PreparedJoinTransfer{
+              .function_name = function_name,
+              .join_block_label = join_label,
+              .result =
+                  bir::Value::named(bir::TypeKind::I64,
+                                    "%edge.prepared.select.join.root"),
+              .edge_transfers =
+                  {prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = pred_label,
+                      .successor_label = join_label,
+                      .incoming_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.select.root"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I64,
+                                            "%edge.prepared.select.join.root"),
+                  }},
+          }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -20008,6 +20249,13 @@ int prepared_select_root_nested_select_uses_chain_labels() {
                .value_id = prepare::PreparedValueId{561},
                .function_name = function_name,
                .value_name = root_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{566},
+               .function_name = function_name,
+               .value_name = join_root_name,
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x0"},
            },
@@ -20039,11 +20287,71 @@ int prepared_select_root_nested_select_uses_chain_labels() {
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"x4"},
            }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{561},
+                      .to_value_id = prepare::PreparedValueId{566},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_prepared_nested_select_root_publication",
+                  }},
+          }},
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto prepared_lookups =
+  auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& nested_select =
+      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts[0]);
+  const auto& root_select =
+      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[nested_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{0},
+          .select = &nested_select,
+      };
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[root_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{1},
+          .select = &root_select,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{566}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{1};
+      publication.source_select = &root_select;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -20051,40 +20359,6 @@ int prepared_select_root_nested_select_uses_chain_labels() {
       aarch64_codegen::make_block_lowering_context(function_context,
                                                    function_cf.blocks.front(),
                                                    0);
-  const auto join_context =
-      aarch64_codegen::make_block_lowering_context(function_context,
-                                                   function_cf.blocks.back(),
-                                                   1);
-
-  const auto source =
-      bir::Value::named(bir::TypeKind::I64, "%edge.prepared.select.root");
-  const auto& pred_select =
-      std::get<bir::SelectInst>(prepared.module.functions.front().blocks.front().insts[1]);
-  prepare::PreparedEdgePublication publication{
-      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
-      .predecessor_label = pred_label,
-      .successor_label = join_label,
-      .destination_value = source,
-      .source_value = source,
-      .source_value_name = root_name,
-      .source_value_kind = bir::Value::Kind::Named,
-      .source_producer_kind =
-          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
-      .source_producer_block_label = pred_label,
-      .source_producer_instruction_index = std::size_t{1},
-      .source_select = &pred_select,
-  };
-  std::vector<std::string> lines;
-  if (!aarch64_codegen::emit_edge_value_publication_to_register(pred_context,
-                                                                join_context,
-                                                                source,
-                                                                1,
-                                                                0,
-                                                                9,
-                                                                lines,
-                                                                &publication)) {
-    return fail("expected prepared select root emission to lower nested select");
-  }
   const auto root_true_label =
       aarch64_codegen::select_chain_local_label_reference(0, "true");
   const auto root_true_definition =
@@ -20101,22 +20375,35 @@ int prepared_select_root_nested_select_uses_chain_labels() {
       aarch64_codegen::select_chain_local_label_reference(1, "end");
   const auto nested_end_definition =
       aarch64_codegen::select_chain_local_label_definition(1, "end");
-  if (lines != std::vector<std::string>{"mov x0, x3",
-                                        "cmp x0, #0",
-                                        "b.eq " + root_true_label,
-                                        "mov x0, x5",
-                                        "cmp x0, #1",
-                                        "b.eq " + nested_true_label,
-                                        "mov x0, #7",
-                                        "b " + nested_end_label,
-                                        nested_true_definition,
-                                        "mov x0, x6",
-                                        nested_end_definition,
-                                        "b " + root_end_label,
-                                        root_true_definition,
-                                        "mov x0, x4",
-                                        root_end_definition}) {
-    return fail("expected nested prepared select to share root label sequence");
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected prepared nested select root emission to lower through public hook");
+  }
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("mov x0, x3") == std::string::npos ||
+      printed.assembly.find("cmp x0, #0") == std::string::npos ||
+      printed.assembly.find("b.eq " + root_true_label) == std::string::npos ||
+      printed.assembly.find("mov x0, x5") == std::string::npos ||
+      printed.assembly.find("cmp x0, #1") == std::string::npos ||
+      printed.assembly.find("b.eq " + nested_true_label) == std::string::npos ||
+      printed.assembly.find("mov x0, #7") == std::string::npos ||
+      printed.assembly.find("b " + nested_end_label) == std::string::npos ||
+      printed.assembly.find(nested_true_definition) == std::string::npos ||
+      printed.assembly.find("mov x0, x6") == std::string::npos ||
+      printed.assembly.find(nested_end_definition) == std::string::npos ||
+      printed.assembly.find("b " + root_end_label) == std::string::npos ||
+      printed.assembly.find(root_true_definition) == std::string::npos ||
+      printed.assembly.find("mov x0, x4") == std::string::npos ||
+      printed.assembly.find(root_end_definition) == std::string::npos) {
+    return fail("expected nested prepared select to share root label sequence: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
   return 0;
 }
@@ -26519,6 +26806,25 @@ int predecessor_join_load_source_publication_uses_prepared_source_memory() {
   const auto& function_cf = prepared.control_flow.functions.front();
   auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& loaded_inst =
+      std::get<bir::LoadLocalInst>(prepared.module.functions.front().blocks.front().insts.front());
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[loaded_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = pred_label,
+          .instruction_index = std::size_t{0},
+          .load_local = &loaded_inst,
+      };
+  for (auto& publication : prepared_lookups.edge_publications.publications) {
+    if (publication.destination_value_id == prepare::PreparedValueId{602}) {
+      publication.source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+      publication.source_producer_block_label = pred_label;
+      publication.source_producer_instruction_index = std::size_t{0};
+      publication.source_load_local = &loaded_inst;
+    }
+  }
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   attach_prepared_function_lookups(function_context, prepared_lookups);
@@ -26527,76 +26833,31 @@ int predecessor_join_load_source_publication_uses_prepared_source_memory() {
                                                    function_cf.blocks.front(),
                                                    0);
 
-  const auto* publication =
-      prepare::find_unique_indexed_prepared_edge_publication(
-          &prepared_lookups.edge_publications,
-          pred_label,
-          join_label,
-          prepare::PreparedValueId{602});
-  const auto* load = pred_context.bir_block != nullptr
-                         ? std::get_if<bir::LoadLocalInst>(
-                               &pred_context.bir_block->insts.front())
-                         : nullptr;
-  if (publication == nullptr || load == nullptr) {
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &prepared_lookups.edge_publications,
+      pred_label,
+      join_label,
+      prepare::PreparedValueId{602});
+  if (publication == nullptr) {
     return fail("expected prepared direct load publication fixture");
   }
-  aarch64_codegen::EdgeProducerContext producer{
-      .context = pred_context,
-      .producer = &pred_context.bir_block->insts.front(),
-      .instruction_index = 0,
-  };
-  std::vector<std::string> lines;
-  if (!aarch64_codegen::emit_edge_load_local_to_register(pred_context,
-                                                         producer,
-                                                         *load,
-                                                         13,
-                                                         9,
-                                                         lines,
-                                                         publication) ||
-      lines != std::vector<std::string>{"ldr w13, [sp, #64]"}) {
-    return fail("expected direct load publication to consume prepared source memory");
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_predecessor_select_parallel_copy_sources(
+      pred_context, scalar_state, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected direct load publication to lower through public hook");
+  }
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("ldr w13, [sp, #64]") == std::string::npos) {
+    return fail("expected direct load publication to consume prepared source memory: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
   }
 
-  auto* mutable_publication =
-      &prepared_lookups.edge_publications.publications.front();
-  for (auto& candidate : prepared_lookups.edge_publications.publications) {
-    if (candidate.destination_value_id == prepare::PreparedValueId{602}) {
-      mutable_publication = &candidate;
-      break;
-    }
-  }
-  mutable_publication->source_memory_access_status =
-      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
-          MissingPreparedMemoryAccess;
-  mutable_publication->source_memory_access = nullptr;
-  lines.clear();
-  if (aarch64_codegen::emit_edge_load_local_to_register(pred_context,
-                                                        producer,
-                                                        *load,
-                                                        13,
-                                                        9,
-                                                        lines,
-                                                        mutable_publication) ||
-      !lines.empty()) {
-    return fail("expected direct load publication to fail closed without source memory");
-  }
-  mutable_publication->source_memory_access_status =
-      prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available;
-  mutable_publication->source_memory_access =
-      publication->source_memory_access;
-  mutable_publication->source_memory_byte_offset = 4;
-  lines.clear();
-  if (aarch64_codegen::emit_edge_load_local_to_register(pred_context,
-                                                        producer,
-                                                        *load,
-                                                        13,
-                                                        9,
-                                                        lines,
-                                                        mutable_publication) ||
-      !lines.empty()) {
-    return fail(
-        "expected direct load publication to fail closed with mismatched source memory");
-  }
   return 0;
 }
 

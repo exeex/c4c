@@ -54,6 +54,14 @@ namespace {
     const module::FunctionLoweringContext& function,
     const prepare::PreparedControlFlowBlock& block);
 
+namespace {
+
+struct EdgeProducerContext {
+  module::BlockLoweringContext context;
+  const bir::Inst* producer = nullptr;
+  std::size_t instruction_index = 0;
+};
+
 [[nodiscard]] std::optional<module::BlockLoweringContext>
 prepared_edge_publication_producer_block_context(
     const module::BlockLoweringContext& context,
@@ -1056,8 +1064,6 @@ prepared_publication_source_register(
                                             scratch_index,
                                             lines);
 }
-
-namespace {
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_predecessor_join_source_publication(
