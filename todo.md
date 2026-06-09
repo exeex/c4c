@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/135_shared_current_block_entry_publication_query.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the Shared Query
+Current Step ID: none
+Current Step Title: none
 
 # Current Packet
 
