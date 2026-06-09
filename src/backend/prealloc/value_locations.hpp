@@ -15,8 +15,6 @@
 
 namespace c4c::backend::prepare {
 
-struct PreparedAfterCallResultLaneBinding;
-
 enum class PreparedValueHomeKind {
   None,
   Register,
@@ -100,6 +98,16 @@ struct PreparedMoveBundle {
   std::vector<PreparedAbiBinding> abi_bindings;
 };
 
+struct PreparedAfterCallResultLaneBinding {
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedAbiBinding* abi_binding = nullptr;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t lane_index = 0;
+};
+
 [[nodiscard]] inline bool prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(
     const PreparedMoveResolution& move) {
   return move.authority_kind == PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
@@ -149,6 +157,16 @@ struct PreparedMoveBundleLookups {
 [[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
     const PreparedValueLocationFunction* value_locations);
 
+[[nodiscard]] std::size_t prepared_after_call_result_lane_position_key(
+    std::size_t block_index,
+    std::size_t instruction_index,
+    PreparedValueId value_id);
+
+[[nodiscard]] std::size_t prepared_before_return_abi_move_source_bank_key(
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank);
+
 enum class PreparedBlockEntryPublicationStatus {
   Available,
   UnsupportedOperation,
@@ -188,6 +206,58 @@ struct PreparedBlockEntryPublication {
   PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::string> destination_register_name;
+};
+
+enum class PreparedCurrentBlockEntryPublicationStatus {
+  Available,
+  MissingNames,
+  MissingValueLocations,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingDestinationHome,
+  MissingPublication,
+  PublicationUnavailable,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_current_block_entry_publication_status_name(
+    PreparedCurrentBlockEntryPublicationStatus status) {
+  switch (status) {
+    case PreparedCurrentBlockEntryPublicationStatus::Available:
+      return "available";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingNames:
+      return "missing_names";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingValueLocations:
+      return "missing_value_locations";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingDestinationValue:
+      return "missing_destination_value";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingDestinationHome:
+      return "missing_destination_home";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedCurrentBlockEntryPublicationStatus::PublicationUnavailable:
+      return "publication_unavailable";
+  }
+  return "unknown";
+}
+
+struct PreparedCurrentBlockEntryPublicationQueryInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedRegallocFunction* regalloc = nullptr;
+  const PreparedValueLocationFunction* value_locations = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+};
+
+struct PreparedCurrentBlockEntryPublication {
+  PreparedCurrentBlockEntryPublicationStatus status =
+      PreparedCurrentBlockEntryPublicationStatus::MissingPublication;
+  PreparedBlockEntryPublication publication;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
 };
 
 struct PreparedValueLocations {
@@ -405,6 +475,28 @@ find_prepared_out_of_ssa_parallel_copy_move_for_step(
     std::size_t block_index,
     std::size_t instruction_index);
 
+[[nodiscard]] const PreparedMoveResolution*
+find_indexed_prepared_before_call_argument_move(
+    const PreparedMoveBundleLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t abi_index);
+
+[[nodiscard]] const PreparedAfterCallResultLaneBinding*
+find_indexed_prepared_after_call_result_lane_binding(
+    const PreparedMoveBundleLookups* lookups,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    PreparedValueId value_id);
+
+[[nodiscard]] const PreparedMoveResolution*
+find_prepared_before_return_abi_move_by_source_and_destination_bank(
+    const PreparedMoveBundleLookups* lookups,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t block_index,
+    PreparedValueId source_value_id,
+    PreparedRegisterBank destination_bank);
+
 [[nodiscard]] inline bool prepared_block_entry_publication_available(
     const PreparedBlockEntryPublication& publication) {
   return publication.status == PreparedBlockEntryPublicationStatus::Available;
@@ -467,5 +559,15 @@ collect_prepared_block_entry_publications(
   }
   return publications;
 }
+
+[[nodiscard]] PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    PreparedValueId destination_value_id);
+
+[[nodiscard]] PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    const bir::Value& destination_value);
 
 }  // namespace c4c::backend::prepare
