@@ -1,30 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/134_shared_select_chain_same_block_dependency_queries.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Cover The Companion Same-Block Or Select-Chain Relationship
+Current Step ID: 4
+Current Step Title: Run Backend Regression Guard
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added `PreparedSelectChainDependencyQuery` in
-`src/backend/prealloc/prepared_lookups.hpp` with shared-query overloads for
-direct-global select-chain dependency and scalar select-chain materialization
-in `src/backend/prealloc/select_chain_lookups.cpp`.
+Step 4 ran the backend regression guard after the same-block and select-chain
+shared query facades landed.
 
-`src/backend/mir/aarch64/codegen/dispatch_producers.cpp` now routes
-`select_chain_contains_direct_global_load` through the shared query object for
-both prepared lookup storage and its existing local fallback lookup build.
-`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now routes
-scalar select-chain materialization through the same query shape. AArch64
-emission, hazard, scratch, and materialization-order policy were left local and
-unchanged.
+The finalized shared surfaces are `PreparedSameBlockValueMaterializationQuery`
+for same-block materialization inputs and
+`PreparedSelectChainDependencyQuery` for select-chain dependency inputs. AArch64
+emission, hazard, scratch, and materialization-order policy stayed local to the
+target call sites; the shared facades only package dependency/materialization
+query inputs.
 
 ## Suggested Next
 
-Step 4 should run the backend regression guard with matching before/after logs
-and compare them before closure.
+Supervisor should compare the canonical regression logs and decide whether this
+completed runbook is ready for lifecycle closure or follow-up planning.
 
 ## Watchouts
 
@@ -34,9 +31,10 @@ and compare them before closure.
 - Do not weaken test expectations or mark supported paths unsupported.
 - The query overloads intentionally package dependency inputs only; target
   policy remains in the AArch64 call sites.
-- Other call sites in `alu.cpp`, `calls.cpp`, `call_plans.cpp`, and prepared
-  printer code still use the lower-level parameterized APIs because they were
-  outside this packet or already target/shared-owner specific.
+- Lower-level parameterized and shared-owner-specific call sites remain
+  deferred where the current shared facades are not yet the right ownership
+  shape, including `alu.cpp`, `calls.cpp`, `call_plans.cpp`, and prepared
+  printer code.
 
 ## Proof
 
