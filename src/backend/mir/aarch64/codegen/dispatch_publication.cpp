@@ -210,21 +210,6 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
   }
   return false;
 }
-[[nodiscard]] const prepare::PreparedValueHome*
-current_block_entry_publication_home(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value) {
-  if (context.function.prepared == nullptr) {
-    return nullptr;
-  }
-
-  return prepare::find_prepared_value_home_for_bir_value(
-      context.function.prepared->names,
-      context.function.value_home_lookups,
-      context.function.regalloc,
-      context.function.value_locations,
-      value);
-}
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -234,33 +219,40 @@ current_block_entry_publication_home(
       value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
-  const auto* home = current_block_entry_publication_home(context, value);
-  if (home == nullptr) {
+  const auto publication = prepare::find_prepared_current_block_entry_publication(
+      prepare::PreparedCurrentBlockEntryPublicationQueryInputs{
+          .names = context.function.prepared != nullptr
+                       ? &context.function.prepared->names
+                       : nullptr,
+          .regalloc = context.function.regalloc,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = context.function.value_home_lookups,
+          .successor_label = context.control_flow_block->block_label,
+      },
+      value);
+  if (publication.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      !prepare::prepared_block_entry_publication_available(
+          publication.publication) ||
+      publication.destination_home == nullptr ||
+      !publication.publication.destination_register_name.has_value()) {
     return std::nullopt;
   }
-  for (const auto& publication : collect_current_block_entry_publications(context)) {
-    if (publication.destination_value_id != home->value_id ||
-        !prepare::prepared_block_entry_publication_available(publication) ||
-        !publication.destination_register_name.has_value()) {
-      continue;
-    }
-    const auto parsed = abi::parse_aarch64_register_name(
-        *publication.destination_register_name);
-    if (!parsed.has_value() ||
-        parsed->bank != abi::RegisterBank::GeneralPurpose) {
-      continue;
-    }
-    auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
-    reg.view = expected_view;
-    return RegisterOperand{
-        .reg = reg,
-        .role = RegisterOperandRole::StoragePlan,
-        .value_id = home->value_id,
-        .value_name = home->value_name,
-        .expected_view = expected_view,
-    };
+  const auto parsed = abi::parse_aarch64_register_name(
+      *publication.publication.destination_register_name);
+  if (!parsed.has_value() ||
+      parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  auto reg = abi::gp_register(parsed->index, expected_view).value_or(*parsed);
+  reg.view = expected_view;
+  return RegisterOperand{
+      .reg = reg,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = publication.destination_home->value_id,
+      .value_name = publication.destination_home->value_name,
+      .expected_view = expected_view,
+  };
 }
 void record_current_block_entry_publication_registers(
     const module::BlockLoweringContext& context,
