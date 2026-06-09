@@ -1,5 +1,7 @@
 #include "private.hpp"
 
+#include "../calls.hpp"
+
 #include <iomanip>
 #include <optional>
 #include <sstream>

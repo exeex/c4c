@@ -1,4 +1,5 @@
 #include "globals.hpp"
+#include "../../../prealloc/calls.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
