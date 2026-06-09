@@ -1753,35 +1753,6 @@ int verify_current_block_join_parallel_copy_source_query() {
       prepare::PreparedEdgeCopySourceFactsStatus::UnsupportedMove) {
     return fail("current-block join query should fail closed for unsupported moves");
   }
-  const auto routing =
-      prepare::prepare_current_block_join_parallel_copy_instruction_routing(
-          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
-              .names = &names,
-              .regalloc = &regalloc,
-              .value_locations = &locations,
-              .edge_publications = &edge_publications,
-              .block = &block,
-              .successor_label = successor_label,
-          });
-  if (routing.status !=
-          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
-      routing.incoming_expression_instruction_results.size() != block.insts.size() ||
-      routing.source_instruction_results.size() != block.insts.size()) {
-    return fail("current-block join instruction routing should mirror block size");
-  }
-  if (!routing.incoming_expression_instruction_results[0] ||
-      routing.incoming_expression_instruction_results[1] ||
-      !routing.incoming_expression_instruction_results[2] ||
-      !routing.incoming_expression_instruction_results[3]) {
-    return fail(
-        "current-block join routing should mark prepared incoming expression results");
-  }
-  if (routing.source_instruction_results[0] ||
-      !routing.source_instruction_results[1] ||
-      !routing.source_instruction_results[2] ||
-      routing.source_instruction_results[3]) {
-    return fail("current-block join routing should mark prepared source results");
-  }
   if (prepare::prepare_current_block_join_parallel_copy_source_facts(
           prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
               .names = &names,

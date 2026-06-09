@@ -8,33 +8,32 @@ Current Step Title: Localize AArch64 Routing Convenience
 
 ## Just Finished
 
-Step 2 moved the reusable current-block join-copy source status, source fact
-structs, query inputs, and `prepare_current_block_join_parallel_copy_source_facts`
-from `prepared_lookups` ownership into `publication_plans` ownership.
-The reusable value-home/out-of-SSA source predicates moved with the source fact
-query. `PreparedCurrentBlockJoinParallelCopyInstructionRouting` and
-`prepare_current_block_join_parallel_copy_instruction_routing` remain in
-`prepared_lookups` as the existing instruction-routing convenience.
+Step 3 localized the remaining current-block join parallel-copy instruction
+routing convenience into AArch64 dispatch producer code. The shared
+`PreparedCurrentBlockJoinParallelCopyInstructionRouting` type and
+`prepare_current_block_join_parallel_copy_instruction_routing` function were
+removed from `prepared_lookups`, while AArch64 now builds its
+`CurrentBlockJoinPreparedQueryRouting` vectors directly from
+`prepare_current_block_join_parallel_copy_source_facts`.
 
-AST-backed checks confirmed the source-fact producer definition is now in
-`src/backend/prealloc/publication_plans.cpp`, while the routing wrapper
-definition remains in `src/backend/prealloc/prepared_lookups.cpp`.
+AST-backed checks confirmed `build_current_block_join_prepared_query_routing`
+now calls the shared source-fact query from `publication_plans.hpp`, and that
+the removed shared routing function no longer has a declaration in
+`prepared_lookups.cpp`.
 
 ## Suggested Next
 
-Proceed with the next packet by making the remaining current-block instruction
-routing convenience target-local in AArch64, or by doing the plan-owner-selected
-Step 3 packet if lifecycle state chooses a narrower intermediate slice.
+Proceed to Step 4 by reviewing the remaining value-home/out-of-SSA predicate
+roles and separating reusable facts from any AArch64 routing-only use.
 
 ## Watchouts
 
-- `source_is_source_value` still carries existing shared fact naming that is
-  close to AArch64 skip policy; review before exposing stronger shared policy
-  names.
-- `prepared_lookups.hpp` still declares the routing wrapper for compatibility;
-  moving that wrapper should stay separate from this completed source-fact move.
-- Supervisor escalated to full CTest because shared publication ownership
-  changed.
+- `dispatch_producers.cpp` intentionally keeps per-instruction routing vectors
+  target-local; shared prealloc exposes only the source-fact query.
+- The prealloc helper test now verifies the shared source facts only. AArch64
+  routing behavior is covered through the backend/AArch64 dispatch tests in the
+  delegated proof.
+- The pre-existing untracked `review/145_step2_route_review.md` was not touched.
 
 ## Proof
 
@@ -45,16 +44,7 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 Result: passed. `ctest` reported 179/179 backend tests passed.
+Regression guard passed with 179/179 backend tests before and after, no new
+failures.
 Proof log: accepted after-proof was rolled forward to `test_before.log`;
 there is no current root `test_after.log`.
-
-Supervisor follow-up:
-
-```sh
-ctest --test-dir build -j --output-on-failure
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
-```
-
-Result: full CTest passed, 3427/3427 tests. Regression guard passed with
-179/179 backend tests before and after, no new failures, then the accepted
-after-log was rolled forward to `test_before.log`.

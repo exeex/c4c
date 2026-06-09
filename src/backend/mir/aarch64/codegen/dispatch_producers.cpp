@@ -59,6 +59,7 @@ namespace {
 [[nodiscard]] std::optional<prepare::PreparedValueId>
 instruction_result_prepared_value_id(
     const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHomeLookups* value_home_lookups,
     const bir::Inst& inst) {
   const auto* result = instruction_result_value_ref(inst);
   if (result == nullptr ||
@@ -70,10 +71,18 @@ instruction_result_prepared_value_id(
   if (!result_value_name.has_value()) {
     return std::nullopt;
   }
-  return prepare::find_indexed_prepared_value_id(context.function.value_home_lookups,
+  return prepare::find_indexed_prepared_value_id(value_home_lookups,
                                                 context.function.regalloc,
                                                 context.function.value_locations,
                                                 *result_value_name);
+}
+
+[[nodiscard]] std::optional<prepare::PreparedValueId>
+instruction_result_prepared_value_id(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst) {
+  return instruction_result_prepared_value_id(
+      context, context.function.value_home_lookups, inst);
 }
 
 [[nodiscard]] prepare::PreparedCurrentBlockJoinParallelCopySourceFacts
@@ -378,25 +387,41 @@ build_current_block_join_prepared_query_routing(
     edge_publications = &*local_edge_publications;
   }
 
-  const auto prepared_routing =
-      prepare::prepare_current_block_join_parallel_copy_instruction_routing(
-          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
-              .names = context.function.prepared != nullptr
+  const auto facts = prepare::prepare_current_block_join_parallel_copy_source_facts(
+      prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+          .names = context.function.prepared != nullptr
                        ? &context.function.prepared->names
                        : nullptr,
-              .regalloc = context.function.regalloc,
-              .value_locations = context.function.value_locations,
-              .value_home_lookups = value_home_lookups,
-              .edge_publications = edge_publications,
-              .block = context.bir_block,
-              .successor_label =
-                  context.control_flow_block != nullptr
-                      ? context.control_flow_block->block_label
-                      : c4c::kInvalidBlockLabel,
-          });
-  routing.incoming_expressions =
-      prepared_routing.incoming_expression_instruction_results;
-  routing.sources = prepared_routing.source_instruction_results;
+          .regalloc = context.function.regalloc,
+          .value_locations = context.function.value_locations,
+          .value_home_lookups = value_home_lookups,
+          .edge_publications = edge_publications,
+          .block = context.bir_block,
+          .successor_label =
+              context.control_flow_block != nullptr
+                  ? context.control_flow_block->block_label
+                  : c4c::kInvalidBlockLabel,
+      });
+  if (facts.status !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      context.bir_block == nullptr) {
+    return routing;
+  }
+
+  for (const auto& inst : context.bir_block->insts) {
+    const auto result_value_id =
+        instruction_result_prepared_value_id(context, value_home_lookups, inst);
+    routing.incoming_expressions.push_back(
+        result_value_id.has_value() &&
+        std::find(facts.incoming_expression_value_ids.begin(),
+                  facts.incoming_expression_value_ids.end(),
+                  *result_value_id) != facts.incoming_expression_value_ids.end());
+    routing.sources.push_back(
+        result_value_id.has_value() &&
+        std::find(facts.source_value_ids.begin(),
+                  facts.source_value_ids.end(),
+                  *result_value_id) != facts.source_value_ids.end());
+  }
   return routing;
 }
 

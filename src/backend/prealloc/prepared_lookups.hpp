@@ -63,13 +63,6 @@ struct PreparedSameBlockLoadLocalStoredValueSource {
   const PreparedMemoryAccess* store_access = nullptr;
 };
 
-struct PreparedCurrentBlockJoinParallelCopyInstructionRouting {
-  PreparedCurrentBlockJoinParallelCopySourceStatus status =
-      PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
-  std::vector<bool> incoming_expression_instruction_results;
-  std::vector<bool> source_instruction_results;
-};
-
 struct PreparedFunctionLookups {
   PreparedCallPlanLookups call_plans;
   PreparedAddressMaterializationLookups address_materializations;
@@ -166,9 +159,5 @@ find_prepared_same_block_load_local_stored_value_source(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
-
-[[nodiscard]] PreparedCurrentBlockJoinParallelCopyInstructionRouting
-prepare_current_block_join_parallel_copy_instruction_routing(
-    const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs);
 
 }  // namespace c4c::backend::prepare
