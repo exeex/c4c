@@ -50,3 +50,19 @@ residual prepared lookup surface obscures owner boundaries.
 - The route deletes facts that RISC-V/x86 could reuse.
 - The proof only shows one dispatch case while nearby join-copy cases are
   unexamined.
+
+## Closure Note
+
+Closed after Step 5 validation. Reusable current-block join parallel-copy source
+facts now live under shared prealloc publication-plan ownership, and the old
+prepared-lookup instruction-routing surface is gone. AArch64 keeps its routing
+adapter locally in dispatch code while consuming the shared source facts.
+
+The value-home and out-of-SSA helper predicates used by the split are reusable
+publication facts rather than target routing policy. No leftover scope remains
+for this source idea.
+
+Validation recorded by the active runbook passed `cmake --build --preset
+default`, the backend subset, and full CTest. The close gate regenerated the
+backend after log and passed the regression guard with 179/179 tests before and
+after, no new failures.
