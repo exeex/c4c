@@ -1,36 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/134_shared_select_chain_same_block_dependency_queries.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The First Shared Prepared Query
+Current Step ID: 3
+Current Step Title: Cover The Companion Same-Block Or Select-Chain Relationship
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added `PreparedSameBlockValueMaterializationQuery` in
-`src/backend/prealloc/prepared_lookups.hpp` with query-based overloads for
-same-block scalar producer lookup and same-block integer-constant evaluation in
-`src/backend/prealloc/prepared_lookups.cpp`.
+Step 3 added `PreparedSelectChainDependencyQuery` in
+`src/backend/prealloc/prepared_lookups.hpp` with shared-query overloads for
+direct-global select-chain dependency and scalar select-chain materialization
+in `src/backend/prealloc/select_chain_lookups.cpp`.
 
-`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now builds
-one shared prepared same-block value materialization query from the lowering
-context and routes its same-block scalar producer and integer constant adapters
-through the shared facade. AArch64 publication order, register selection,
-scratch hazard checks, and select-chain materialization logic were left
+`src/backend/mir/aarch64/codegen/dispatch_producers.cpp` now routes
+`select_chain_contains_direct_global_load` through the shared query object for
+both prepared lookup storage and its existing local fallback lookup build.
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now routes
+scalar select-chain materialization through the same query shape. AArch64
+emission, hazard, scratch, and materialization-order policy were left local and
 unchanged.
-
-Follow-up guard preservation applied: the local scalar-producer adapter now
-retains its prior `context.function.control_flow == nullptr` fail-closed guard
-before constructing the shared query. The integer-constant adapter still uses
-the shared query builder without that additional guard, preserving its Step 2
-behavior.
 
 ## Suggested Next
 
-Step 3 should extend the shared prepared-query pattern to the next planned
-dependency query family without moving target-specific emission, hazard,
-scratch, or materialization-order policy out of AArch64 codegen.
+Step 4 should run the backend regression guard with matching before/after logs
+and compare them before closure.
 
 ## Watchouts
 
@@ -38,11 +32,11 @@ scratch, or materialization-order policy out of AArch64 codegen.
 - Do not move AArch64 emission, hazard, scratch, or materialization-order
   policy into shared code.
 - Do not weaken test expectations or mark supported paths unsupported.
-- The new facade currently wraps only same-block value materialization facts;
-  select-chain direct-global query consolidation remains separate.
-- `dispatch_value_materialization.cpp` still keeps thin local callback wrappers
-  because `value_publication_may_write_scratch_register` uses AArch64-local
-  function pointer callbacks.
+- The query overloads intentionally package dependency inputs only; target
+  policy remains in the AArch64 call sites.
+- Other call sites in `alu.cpp`, `calls.cpp`, `call_plans.cpp`, and prepared
+  printer code still use the lower-level parameterized APIs because they were
+  outside this packet or already target/shared-owner specific.
 
 ## Proof
 

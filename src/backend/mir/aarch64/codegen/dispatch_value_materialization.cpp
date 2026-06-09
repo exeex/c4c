@@ -83,12 +83,15 @@ prepared_scalar_select_chain_materialization(
     return prepare::PreparedScalarSelectChainMaterialization{};
   }
   return prepare::find_prepared_scalar_select_chain_materialization(
-      context.function.prepared->names,
-      &context.function.prepared_lookups->edge_publication_source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      value,
-      before_instruction_index);
+      prepare::PreparedSelectChainDependencyQuery{
+          .names = &context.function.prepared->names,
+          .source_producers =
+              &context.function.prepared_lookups->edge_publication_source_producers,
+          .block_label = context.control_flow_block->block_label,
+          .block = context.bir_block,
+          .before_instruction_index = before_instruction_index,
+      },
+      value);
 }
 
 [[nodiscard]] std::optional<std::int64_t>

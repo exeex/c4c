@@ -348,6 +348,14 @@ struct PreparedSameBlockValueMaterializationQuery {
   std::size_t before_instruction_index = 0;
 };
 
+struct PreparedSelectChainDependencyQuery {
+  const PreparedNameTables* names = nullptr;
+  const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  const bir::Block* block = nullptr;
+  std::size_t before_instruction_index = 0;
+};
+
 struct PreparedCurrentBlockPublicationConsumption {
   bool available = false;
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
@@ -955,6 +963,11 @@ find_prepared_direct_global_select_chain_dependency(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
+
+[[nodiscard]] PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
+    const PreparedSelectChainDependencyQuery& query,
+    const bir::Value& value);
 
 [[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
     bir::BinaryOpcode opcode);

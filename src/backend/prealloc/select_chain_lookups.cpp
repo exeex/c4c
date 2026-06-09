@@ -393,6 +393,22 @@ find_prepared_direct_global_select_chain_dependency(
   return dependency;
 }
 
+PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
+    const PreparedSelectChainDependencyQuery& query,
+    const bir::Value& value) {
+  if (query.names == nullptr) {
+    return {};
+  }
+  return find_prepared_direct_global_select_chain_dependency(
+      *query.names,
+      query.source_producers,
+      query.block_label,
+      query.block,
+      value,
+      query.before_instruction_index);
+}
+
 PreparedStoreSourceDirectGlobalSelectChainDependency
 find_prepared_store_source_direct_global_select_chain_dependency(
     const PreparedNameTables& names,
@@ -446,6 +462,22 @@ find_prepared_scalar_select_chain_materialization(
   materialization.root_instruction_index = root->instruction_index;
   materialization.direct_global_dependency = dependency;
   return materialization;
+}
+
+PreparedScalarSelectChainMaterialization
+find_prepared_scalar_select_chain_materialization(
+    const PreparedSelectChainDependencyQuery& query,
+    const bir::Value& value) {
+  if (query.names == nullptr) {
+    return {};
+  }
+  return find_prepared_scalar_select_chain_materialization(
+      *query.names,
+      query.source_producers,
+      query.block_label,
+      query.block,
+      value,
+      query.before_instruction_index);
 }
 
 }  // namespace c4c::backend::prepare

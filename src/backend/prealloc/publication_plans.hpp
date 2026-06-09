@@ -353,6 +353,11 @@ find_prepared_direct_global_select_chain_dependency(
     const bir::Value& value,
     std::size_t before_instruction_index);
 
+[[nodiscard]] PreparedDirectGlobalSelectChainDependency
+find_prepared_direct_global_select_chain_dependency(
+    const PreparedSelectChainDependencyQuery& query,
+    const bir::Value& value);
+
 [[nodiscard]] const PreparedEdgePublicationSourceProducer*
 find_prepared_select_chain_source_producer(
     const PreparedNameTables& names,
@@ -379,6 +384,11 @@ find_prepared_scalar_select_chain_materialization(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index);
+
+[[nodiscard]] PreparedScalarSelectChainMaterialization
+find_prepared_scalar_select_chain_materialization(
+    const PreparedSelectChainDependencyQuery& query,
+    const bir::Value& value);
 
 [[nodiscard]] std::optional<PreparedScalarLoadLocalSourceProducer>
 find_prepared_same_block_load_local_source_producer(
