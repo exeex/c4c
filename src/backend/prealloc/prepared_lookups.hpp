@@ -3,6 +3,7 @@
 #include "addressing.hpp"
 #include "calls.hpp"
 #include "control_flow.hpp"
+#include "select_chain_lookups.hpp"
 #include "value_locations.hpp"
 
 #include <cstddef>
@@ -376,14 +377,6 @@ struct PreparedSameBlockScalarProducer {
 };
 
 struct PreparedSameBlockValueMaterializationQuery {
-  const PreparedNameTables* names = nullptr;
-  const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
-  BlockLabelId block_label = kInvalidBlockLabel;
-  const bir::Block* block = nullptr;
-  std::size_t before_instruction_index = 0;
-};
-
-struct PreparedSelectChainDependencyQuery {
   const PreparedNameTables* names = nullptr;
   const PreparedEdgePublicationSourceProducerLookups* source_producers = nullptr;
   BlockLabelId block_label = kInvalidBlockLabel;
@@ -1015,20 +1008,6 @@ find_prepared_same_block_scalar_producer(
 [[nodiscard]] std::optional<PreparedSameBlockScalarProducer>
 find_prepared_same_block_scalar_producer(
     const PreparedSameBlockValueMaterializationQuery& query,
-    const bir::Value& value);
-
-[[nodiscard]] PreparedDirectGlobalSelectChainDependency
-find_prepared_direct_global_select_chain_dependency(
-    const PreparedNameTables& names,
-    const PreparedEdgePublicationSourceProducerLookups* source_producers,
-    BlockLabelId block_label,
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index);
-
-[[nodiscard]] PreparedDirectGlobalSelectChainDependency
-find_prepared_direct_global_select_chain_dependency(
-    const PreparedSelectChainDependencyQuery& query,
     const bir::Value& value);
 
 [[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
