@@ -30,6 +30,7 @@ struct Fixture {
   c4c::ValueNameId fallback_register_value_name = 12;
   c4c::ValueNameId stack_value_name = 13;
   c4c::ValueNameId missing_register_value_name = 14;
+  c4c::ValueNameId unpublished_register_value_name = 15;
   prepare::PreparedValueLocationFunction locations;
 };
 
@@ -64,6 +65,13 @@ Fixture make_fixture() {
           .function_name = fixture.function_name,
           .value_name = fixture.missing_register_value_name,
           .kind = prepare::PreparedValueHomeKind::Register,
+      },
+      prepare::PreparedValueHome{
+          .value_id = 5,
+          .function_name = fixture.function_name,
+          .value_name = fixture.unpublished_register_value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"r7"},
       },
   };
   fixture.locations.move_bundles = {
@@ -305,6 +313,106 @@ int check_fallback_and_missing_inputs() {
   return 0;
 }
 
+int check_current_block_entry_publication_query() {
+  auto fixture = make_fixture();
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const prepare::PreparedCurrentBlockEntryPublicationQueryInputs query{
+      .value_locations = &fixture.locations,
+      .value_home_lookups = &value_home_lookups,
+      .successor_label = fixture.successor_label,
+  };
+
+  const auto available = prepare::find_prepared_current_block_entry_publication(
+      query, prepare::PreparedValueId{1});
+  if (!expect(available.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "current-block entry publication query should find available publication") ||
+      !expect(available.destination_home == &fixture.locations.value_homes[0] &&
+                  available.publication.home == &fixture.locations.value_homes[0],
+              "current-block entry publication query should preserve value-home facts") ||
+      !expect(available.publication.move ==
+                  &fixture.locations.move_bundles[0].moves[0],
+              "current-block entry publication query should preserve move fact") ||
+      !expect(available.publication.destination_register_name ==
+                  std::optional<std::string>{"r9"},
+              "current-block entry publication query should not parse register spelling")) {
+    return 1;
+  }
+
+  const auto unsupported_storage =
+      prepare::find_prepared_current_block_entry_publication(
+          query, prepare::PreparedValueId{3});
+  if (!expect(unsupported_storage.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      PublicationUnavailable,
+              "unsupported storage should be reported as an unavailable publication") ||
+      !expect(unsupported_storage.publication.status ==
+                  prepare::PreparedBlockEntryPublicationStatus::
+                      UnsupportedDestinationStorage,
+              "unsupported storage should preserve collector classification") ||
+      !expect(unsupported_storage.destination_home ==
+                  &fixture.locations.value_homes[2],
+              "unsupported storage should preserve destination home")) {
+    return 1;
+  }
+
+  const auto missing_register =
+      prepare::find_prepared_current_block_entry_publication(
+          query, prepare::PreparedValueId{4});
+  if (!expect(missing_register.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      PublicationUnavailable,
+              "missing register name should be reported as an unavailable publication") ||
+      !expect(missing_register.publication.status ==
+                  prepare::PreparedBlockEntryPublicationStatus::MissingRegisterName,
+              "missing register name should preserve collector classification")) {
+    return 1;
+  }
+
+  const auto missing_home = prepare::find_prepared_current_block_entry_publication(
+      query, prepare::PreparedValueId{99});
+  if (!expect(missing_home.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      MissingDestinationHome,
+              "publication query should require a prepared destination home identity")) {
+    return 1;
+  }
+
+  const auto missing_publication =
+      prepare::find_prepared_current_block_entry_publication(
+          query, prepare::PreparedValueId{5});
+  if (!expect(missing_publication.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::MissingPublication,
+              "publication query should not fabricate current-block publications")) {
+    return 1;
+  }
+
+  prepare::PreparedNameTables names;
+  const auto published_value_name = names.value_names.intern("%published");
+  fixture.locations.value_homes[0].value_name = published_value_name;
+  const auto named_value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const prepare::PreparedCurrentBlockEntryPublicationQueryInputs named_query{
+      .names = &names,
+      .value_locations = &fixture.locations,
+      .value_home_lookups = &named_value_home_lookups,
+      .successor_label = fixture.successor_label,
+  };
+  const auto by_bir_value = prepare::find_prepared_current_block_entry_publication(
+      named_query, bir::Value::named(bir::TypeKind::I32, "%published"));
+  if (!expect(by_bir_value.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "current-block entry publication query should resolve BIR named values") ||
+      !expect(by_bir_value.destination_value_id == prepare::PreparedValueId{1} &&
+                  by_bir_value.destination_value_name == published_value_name,
+              "BIR value query should preserve resolved prepared value identity")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_edge_publication_lookup_reuses_block_entry_publication_data() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("edge_publication");
@@ -438,6 +546,10 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto status = check_fallback_and_missing_inputs(); status != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto status = check_current_block_entry_publication_query();
+      status != 0) {
     return EXIT_FAILURE;
   }
   if (const auto status =

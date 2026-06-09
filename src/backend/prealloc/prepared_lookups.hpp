@@ -263,6 +263,41 @@ prepared_current_block_join_parallel_copy_source_status_name(
   return "unknown";
 }
 
+enum class PreparedCurrentBlockEntryPublicationStatus {
+  Available,
+  MissingNames,
+  MissingValueLocations,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingDestinationHome,
+  MissingPublication,
+  PublicationUnavailable,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_current_block_entry_publication_status_name(
+    PreparedCurrentBlockEntryPublicationStatus status) {
+  switch (status) {
+    case PreparedCurrentBlockEntryPublicationStatus::Available:
+      return "available";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingNames:
+      return "missing_names";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingValueLocations:
+      return "missing_value_locations";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingDestinationValue:
+      return "missing_destination_value";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingDestinationHome:
+      return "missing_destination_home";
+    case PreparedCurrentBlockEntryPublicationStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedCurrentBlockEntryPublicationStatus::PublicationUnavailable:
+      return "publication_unavailable";
+  }
+  return "unknown";
+}
+
 enum class PreparedAggregateStackSourceAuthorityStatus {
   Unavailable,
   Available,
@@ -583,6 +618,23 @@ struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   BlockLabelId successor_label = kInvalidBlockLabel;
 };
 
+struct PreparedCurrentBlockEntryPublicationQueryInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedRegallocFunction* regalloc = nullptr;
+  const PreparedValueLocationFunction* value_locations = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+};
+
+struct PreparedCurrentBlockEntryPublication {
+  PreparedCurrentBlockEntryPublicationStatus status =
+      PreparedCurrentBlockEntryPublicationStatus::MissingPublication;
+  PreparedBlockEntryPublication publication;
+  const PreparedValueHome* destination_home = nullptr;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+};
+
 struct PreparedCurrentBlockJoinParallelCopyInstructionRouting {
   PreparedCurrentBlockJoinParallelCopySourceStatus status =
       PreparedCurrentBlockJoinParallelCopySourceStatus::MissingValueLocations;
@@ -875,6 +927,16 @@ find_indexed_prepared_frame_address_offset_for_value_id(
     BlockLabelId block_label,
     PreparedValueId value_id,
     std::optional<std::size_t> before_or_at_instruction_index = std::nullopt);
+
+[[nodiscard]] PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    PreparedValueId destination_value_id);
+
+[[nodiscard]] PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    const bir::Value& destination_value);
 
 [[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
     const PreparedMoveBundleLookups* lookups,

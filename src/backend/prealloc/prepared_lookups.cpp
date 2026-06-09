@@ -2330,6 +2330,101 @@ find_indexed_prepared_frame_address_offset_for_value_id(
   };
 }
 
+PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    PreparedValueId destination_value_id) {
+  PreparedCurrentBlockEntryPublication result{
+      .destination_value_id = destination_value_id,
+  };
+  if (query.value_locations == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingValueLocations;
+    return result;
+  }
+  if (query.successor_label == kInvalidBlockLabel) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingSuccessorLabel;
+    return result;
+  }
+  if (destination_value_id == PreparedValueId{0}) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingDestinationValue;
+    return result;
+  }
+
+  const auto* destination_home =
+      find_indexed_prepared_value_home(query.value_home_lookups,
+                                       query.value_locations,
+                                       destination_value_id);
+  result.destination_home = destination_home;
+  if (destination_home != nullptr) {
+    result.destination_value_name = destination_home->value_name;
+  } else {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingDestinationHome;
+    return result;
+  }
+
+  std::optional<PreparedBlockEntryPublication> first_matching_publication;
+  for (const auto& publication :
+       collect_prepared_block_entry_publications(query.value_locations,
+                                                 query.successor_label)) {
+    if (publication.destination_value_id != destination_value_id) {
+      continue;
+    }
+    if (!first_matching_publication.has_value()) {
+      first_matching_publication = publication;
+    }
+    if (prepared_block_entry_publication_available(publication)) {
+      result.status = PreparedCurrentBlockEntryPublicationStatus::Available;
+      result.publication = publication;
+      result.destination_home = publication.home;
+      result.destination_value_name = publication.destination_value_name;
+      return result;
+    }
+  }
+
+  if (first_matching_publication.has_value()) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::PublicationUnavailable;
+    result.publication = *first_matching_publication;
+    result.destination_home = first_matching_publication->home;
+    result.destination_value_name = first_matching_publication->destination_value_name;
+    return result;
+  }
+
+  result.status = PreparedCurrentBlockEntryPublicationStatus::MissingPublication;
+  return result;
+}
+
+PreparedCurrentBlockEntryPublication
+find_prepared_current_block_entry_publication(
+    const PreparedCurrentBlockEntryPublicationQueryInputs& query,
+    const bir::Value& destination_value) {
+  PreparedCurrentBlockEntryPublication result;
+  if (query.names == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingNames;
+    return result;
+  }
+  const auto destination_value_name =
+      existing_prepared_value_name_id(*query.names, destination_value);
+  if (!destination_value_name.has_value()) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingDestinationValue;
+    return result;
+  }
+  result.destination_value_name = *destination_value_name;
+  if (query.value_locations == nullptr) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingValueLocations;
+    return result;
+  }
+  const auto destination_value_id =
+      find_indexed_prepared_value_id(query.value_home_lookups,
+                                     query.regalloc,
+                                     query.value_locations,
+                                     *destination_value_name);
+  if (!destination_value_id.has_value()) {
+    result.status = PreparedCurrentBlockEntryPublicationStatus::MissingDestinationHome;
+    return result;
+  }
+  return find_prepared_current_block_entry_publication(query, *destination_value_id);
+}
+
 [[nodiscard]] const PreparedMoveBundle* find_indexed_prepared_move_bundle(
     const PreparedMoveBundleLookups* lookups,
     const PreparedValueLocationFunction* value_locations,
