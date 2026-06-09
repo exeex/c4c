@@ -16,6 +16,7 @@
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <algorithm>
 #include <cstdint>

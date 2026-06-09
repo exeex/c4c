@@ -1,7 +1,7 @@
 #include "module.hpp"
 
 #include "../codegen/module_compile.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 namespace c4c::backend::aarch64::module {
 

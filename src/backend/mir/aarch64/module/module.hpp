@@ -4,6 +4,7 @@
 #include "../codegen/instruction.hpp"
 #include "../../mir.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <cstddef>
 #include <cstdint>

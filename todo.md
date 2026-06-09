@@ -1,57 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/142_value_home_move_bundle_lookup_ownership.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Decide ABI, Result-Lane, And Publication Helper Ownership
+Current Step ID: 5
+Current Step Title: Update Consumers And Narrow Includes
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 moved the remaining value-location-owned ABI/result-lane/current-block
-entry publication declarations to value-location ownership.
+Step 5 updated direct AArch64 consumers of the moved value-location declarations
+without broad residual include cleanup.
 
-`PreparedAfterCallResultLaneBinding`,
-`prepared_after_call_result_lane_position_key`,
-`prepared_before_return_abi_move_source_bank_key`,
-`find_indexed_prepared_before_call_argument_move`,
-`find_indexed_prepared_after_call_result_lane_binding`, and
-`find_prepared_before_return_abi_move_by_source_and_destination_bank` now live
-publicly in `src/backend/prealloc/value_locations.hpp` because they are lookup
-keys/accessors over `PreparedMoveBundleLookups` and `PreparedValueLocationFunction`
-move-bundle data.
+`src/backend/mir/aarch64/module/module.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch_publication.cpp`, and
+`src/backend/mir/aarch64/codegen/memory.cpp` now include
+`src/backend/prealloc/value_locations.hpp` for moved value-location APIs instead
+of relying on `src/backend/prealloc/prepared_lookups.hpp`.
 
-`PreparedCurrentBlockEntryPublicationStatus`,
-`prepared_current_block_entry_publication_status_name`,
-`PreparedCurrentBlockEntryPublicationQueryInputs`,
-`PreparedCurrentBlockEntryPublication`, and both
-`find_prepared_current_block_entry_publication` overload declarations also now
-live publicly in `src/backend/prealloc/value_locations.hpp` because they query
-value homes plus block-entry publication collection. The current-block join
-parallel-copy routing declarations remain in `src/backend/prealloc/prepared_lookups.hpp`
-as out-of-scope routing state.
+`src/backend/mir/aarch64/module/module.hpp`,
+`src/backend/mir/aarch64/codegen/alu.cpp`, and
+`src/backend/mir/aarch64/codegen/calls.cpp` now include
+`src/backend/prealloc/value_locations.hpp` explicitly while preserving existing
+residual prepared-lookup access where the file still needs
+`PreparedFunctionLookups`, `make_prepared_function_lookups`, or producer query
+helpers.
 
-Return-chain declarations/helpers and target-local policy declarations were not
-touched. `src/backend/prealloc/prepared_lookups.cpp` definitions remain in
-place; this packet only changed declaration ownership.
+No behavior or test expectation files changed.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: update direct consumers to include the
-value-location owner where they need only moved declarations, while preserving
-`prepared_lookups.hpp` includes for aggregate or residual lookup users.
+Supervisor should decide whether the Step 6 proof already run for this packet is
+sufficient for review/commit, or delegate any final lifecycle recording needed
+for idea 142.
 
 ## Watchouts
 
-- `prepared_lookups.hpp` still owns `PreparedFunctionLookups`, return-chain
-  lookups, call-argument/comparison/load-local producer queries, and
-  current-block join-routing declarations.
-- The moved declarations are still available to existing prepared-lookup
-  consumers through the residual header's `value_locations.hpp` include, so no
-  direct consumer include edits were required in this packet.
-- `PreparedMoveBundleLookups` still keeps out-of-line special members in
-  `prepared_lookups.cpp`; that remains compatible now that the result-lane
-  binding type is complete in `value_locations.hpp`.
+- `src/backend/mir/aarch64/codegen/alu.cpp` still needs
+  `prepared_lookups.hpp` for `PreparedFunctionLookups` and
+  `make_prepared_function_lookups`.
+- `src/backend/mir/aarch64/codegen/calls.cpp` still includes
+  `prepared_lookups.hpp` for residual producer query helpers while including
+  `value_locations.hpp` for moved move-bundle access.
+- Broader residual prepared-lookup include cleanup remains deferred to idea 149.
 
 ## Proof
 
