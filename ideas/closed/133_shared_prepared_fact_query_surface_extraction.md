@@ -54,6 +54,29 @@ This idea exists to move query authority, not target-local emission.
 Use matching `test_before.log` and `test_after.log` because shared backend
 query code is in scope.
 
+## Closure Note
+
+Closed after extracting the shared prepared value-home query
+`prepare::find_prepared_value_home_for_bir_value(...)` and converting concrete
+AArch64 rediscovery sites in dispatch publication, select materialization,
+comparison, and ALU handling to that target-neutral surface. AArch64 emission
+policy, register/scratch choices, branch fusion, relocation operands,
+instruction spelling, stack/publication policy, and materialization decisions
+remain local.
+
+Nearby same-feature cases were examined. Indexed-home lookups that start from
+prepared ids, return-chain ids, move bundles, call plans, memory-access plans,
+preserved values, emitted-register availability, edge-publication producers,
+select-chain relationships, memory-access relationships, and call-plan
+relationships were intentionally deferred as distinct fact surfaces rather
+than widened into this local BIR-value-to-home helper.
+
+Close proof used matching backend logs:
+`cmake --build --preset default && ctest --test-dir build -R '^backend_' --output-on-failure`.
+The close-time regression guard passed in non-decreasing mode with 179/179
+backend tests passing before and after, because the accepted backend proof had
+already been rolled forward into `test_before.log`.
+
 ## Reviewer Reject Signals
 
 - Target-local AArch64 emission policy moves into shared prepared/prealloc
