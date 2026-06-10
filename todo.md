@@ -1,44 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/166_bir_annotation_lookup_index_schema.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate A Low-Risk Consumer Facade
+Current Step ID: 5
+Current Step Title: Broaden Validation And Prepare Closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
-added a non-durable `RouteIndexReferenceFacade` over existing Route 4 and Route
-7 typed index handles and migrated the low-risk BIR
-`find_materialized_condition_producer_identity(...)` helper through the Route 7
-facade validation path. The facade stores only pointers to typed route indexes
-and delegates to existing Route 4/Route 7 reference validators; it does not
-store semantic payloads or target/prealloc policy.
+Step 5 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
+broadened validation from the focused Step 4 proof to the full backend CTest
+scope and prepared closure readiness notes. The broad backend after-run matched
+the delegated `^backend_` scope and passed 179/179 tests.
 
 ## Suggested Next
 
-Execute Step 5: broaden backend validation and prepare closure if the active
-plan is otherwise complete. Confirm that the facade remains non-durable,
-typed-index-only, and not a `PreparedFunctionLookups` clone.
+Supervisor can run the regression guard against the existing matching
+`test_before.log` baseline and decide whether to close or archive the active
+plan.
 
-Delegated Step 4 proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log`
+Delegated Step 5 proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
 Also run `git diff --check`.
 
 ## Watchouts
 
-- Keep typed Route 1 through Route 7 annotation records as the semantic source
-  of truth.
-- Do not create a durable BIR-owned `PreparedFunctionLookups` clone.
-- Do not add ABI, layout, register allocation, move scheduling, call plan,
-  memory-addressing, frame, dynamic-stack, helper, final-emission,
-  storage-home, or target lowering policy data to function-local indexes.
-- Do not duplicate semantic payload fields in indexes when typed annotations
-  already own those payloads.
-- Preserve explicit divergence, stale-reference, duplicate-key, missing-record,
-  wrong-relationship, and no-match cases where applicable.
+- Closure readiness: Route 4 and Route 7 have shared reference/validation
+  contracts, and the private `RouteIndexReferenceFacade` remains a
+  non-durable typed-index handle bundle.
+- The accepted route did not create a durable BIR-owned
+  `PreparedFunctionLookups` clone.
+- The accepted route did not move semantic payloads into indexes or the facade;
+  typed Route 4/Route 7 records remain the semantic payload owners.
+- The accepted route did not import target, ABI, layout, register allocation,
+  move scheduling, call plan, memory-addressing, frame, dynamic-stack, helper,
+  final-emission, storage-home, condition-code, or target lowering policy into
+  the BIR index/facade schema.
+- The accepted route did not switch target, codegen, or prealloc production
+  consumers.
+- No expectation downgrades or helper-only reshuffles were accepted; the facade
+  is exercised through focused Route 4/Route 7 validation and a migrated
+  low-risk BIR materialized-condition helper.
+- Residual risk: Route 1, Route 2, Route 3, Route 5, and Route 6 still use
+  rebuilt record snapshot indexes without the shared reference/validation
+  facade. Route 4 validation intentionally treats copied blocks outside the
+  indexed function as stale, even though legacy public lookup helpers may still
+  match some external blocks by stable label/id.
 - Route 4 and Route 7 now have shared reference/validation contracts. Other
   route indexes still store rebuilt record snapshots without the validation
   facade.
@@ -55,10 +63,10 @@ Also run `git diff --check`.
 ## Proof
 
 Proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
 Result: passed. `test_after.log` reports
-`1/1 Test #117: backend_prepared_lookup_helper ... Passed` and
-`100% tests passed, 0 tests failed out of 1`.
+`100% tests passed, 0 tests failed out of 179`; backend label summary reports
+`backend = 15.15 sec*proc (179 tests)`.
 
 Additional validation: `git diff --check`.
