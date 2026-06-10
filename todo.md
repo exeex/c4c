@@ -1,46 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/177_aarch64_selected_f64_global_readback_dispatch_debt.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce And Localize Selected F64 Readback Failure
+Current Step ID: 2
+Current Step Title: Select The Minimal Semantic Repair
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 (`Reproduce And Localize Selected F64 Readback Failure`): reproduced the
-monolithic dispatch failure with the delegated proof command. The failure is:
-`expected selected f64 global readback to feed call ABI move`, with printed
-assembly showing the two `g.f64.call` reloads, then `fmov d0, d20`, then
-`bl consume_f64`, but no preceding `fcsel d20`.
+Step 2 (`Select The Minimal Semantic Repair`): selected the narrow semantic
+repair boundary for the selected f64 global readback dispatch debt. Repair
+`src/backend/mir/aarch64/codegen/select_materialization.cpp` in
+`materialize_direct_global_select_chain_call_argument(...)`: before calling
+`prepare::find_prepared_value_home_for_bir_value(...)`, create a local
+`std::optional<prepare::PreparedValueHomeLookups>` fallback when
+`context.function.value_home_lookups` is null but
+`context.function.value_locations` exists, assign it from
+`prepare::make_prepared_value_home_lookups(context.function.value_locations)`,
+and pass the resulting lookup pointer into
+`find_prepared_value_home_for_bir_value(...)`.
 
-Localized failing test/helper region:
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`:
-`prepared_with_f64_select_global_call_argument()` feeds
-`block_dispatch_publishes_f64_select_before_call_argument_move()`. The fixture
-loads `%lhs/%rhs` from `g.f64.call`, selects `%selected` into prepared FPR home
-`d20`, and has a prepared before-call move from `%selected` to ABI register
-`d0`.
+This keeps ownership inside the helper that already decides whether a
+direct-global select chain can be materialized as a call argument. The helper
+currently has enough `value_locations` data to identify `%selected`'s prepared
+FPR home, but a null `value_home_lookups` pointer makes the home lookup fail
+early, so no `fcsel d20` is emitted before the existing `fmov d0, d20` ABI
+move. Nearby AArch64 helpers already use the same local
+`make_prepared_value_home_lookups(...)` fallback pattern when prepared lookup
+attachments are absent.
 
-Suspected repair owners:
-`src/backend/mir/aarch64/codegen/select_materialization.cpp`
-(`materialize_direct_global_select_chain_call_argument`) and
-`src/backend/mir/aarch64/codegen/calls.cpp`
-(`lower_scalar_call_argument_producers`,
-`materialize_call_boundary_source_to_destination`,
-`fp_call_boundary_value_traces_to_global`). The selected F64 call argument
-materialization path appears to fall through before emitting the FPR select
-chain; the later call-boundary fallback preserves the stale prepared-home move
-`fmov d0, d20`.
+This is preferred over changing the test because the Step 1 failure shows a
+real missing materialization, not an invalid expectation. It is preferred over
+broad call lowering or call ABI move routing because the ABI move already
+exists; the missing behavior is source materialization into the prepared home.
+It is preferred over Route 5 because join-source records should not carry call
+ABI or layout policy for this local direct-global select materialization gap.
 
 ## Suggested Next
 
-Step 2 should choose the minimal semantic repair that lets the direct-global
-selected F32/F64 call-argument path materialize the selected value before the
-ABI move. Start by checking whether `materialize_direct_global_select_chain_call_argument`
-needs local/fallback value-home lookups when the block context lacks attached
-`PreparedFunctionLookups`, or whether the call-boundary global-trace helper
-must recognize select producers whose arms trace to global loads.
+Step 3 should implement only the local fallback in
+`materialize_direct_global_select_chain_call_argument(...)`, preserving the
+existing direct-global select-chain and FPR materialization behavior. After the
+code change, run:
+
+```bash
+(cmake --build build --target backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^backend_aarch64_instruction_dispatch$' --output-on-failure) > test_after.log 2>&1
+```
 
 ## Watchouts
 
@@ -58,13 +63,20 @@ must recognize select producers whose arms trace to global loads.
 - Nearby i32 selected global call-argument tests attach prepared lookups in the
   test harness; this f64 fixture currently does not. Treat that as localization
   evidence, not approval to solve the bug by weakening or reshaping the test.
+- Keep the fallback local to the direct-global select call-argument helper.
+  Do not broaden source-selection policy, call ABI routing, or Route 5 state
+  unless implementation proves this selected boundary is impossible.
 
 ## Proof
 
-Ran:
+No new test run required for this todo-only Step 2 repair selection. Existing
+Step 1 reproduction evidence remains in `test_after.log` from:
 
 ```bash
 (cmake --build build --target backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^backend_aarch64_instruction_dispatch$' --output-on-failure) > test_after.log 2>&1
 ```
 
-Result: failed as expected for Step 1. Proof log: `test_after.log`.
+Result: failed as expected for Step 1 with `expected selected f64 global
+readback to feed call ABI move`; printed assembly includes the two
+`g.f64.call` reloads and `fmov d0, d20`, but no preceding `fcsel d20`. Proof
+log: `test_after.log`.
