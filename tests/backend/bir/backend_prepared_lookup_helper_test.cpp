@@ -7290,6 +7290,38 @@ int verify_bir_block_entry_publication_identity_lookup() {
     return fail("BIR block-entry publication identity should fail closed for wrong successor");
   }
 
+  const auto bir_missing_destination_key =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &successor,
+              .successor_label = successor.label,
+              .successor_label_id = successor_label,
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (bir_missing_destination_key.available ||
+      bir_missing_destination_key.status !=
+          mir::BirBlockEntryPublicationStatus::MissingDestinationValue) {
+    return fail("BIR block-entry publication identity should reject missing destination keys");
+  }
+
+  const auto bir_destination_type_mismatch =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &successor,
+              .successor_label = successor.label,
+              .successor_label_id = successor_label,
+              .destination_value_name = "%entry.dst",
+              .destination_value_name_id = destination_name,
+              .destination_value_type = bir::TypeKind::I64,
+          });
+  if (bir_destination_type_mismatch.available ||
+      bir_destination_type_mismatch.status !=
+          mir::BirBlockEntryPublicationStatus::MissingDestinationValue ||
+      bir_destination_type_mismatch.destination_value_name != "%entry.dst" ||
+      bir_destination_type_mismatch.destination_value_type != bir::TypeKind::I64) {
+    return fail("BIR block-entry publication identity should fail closed for destination type mismatch");
+  }
+
   const auto bir_wrong_value = mir::find_bir_block_entry_publication_identity(
       mir::BirBlockEntryPublicationIdentityRequest{
           .successor_block = &successor,
