@@ -1,7 +1,7 @@
 # Phase B BIR Annotation Schema Candidates
 
 Source idea: `ideas/open/152_phase_b_bir_annotation_schema_candidate_audit.md`
-Status: Step 4 follow-up schema ideas created.
+Status: Finalized for lifecycle closure review.
 
 This artifact is the durable Phase B analysis surface for deciding which
 `Prepared*` facts should become BIR-owned annotations after Phase A established
@@ -245,3 +245,50 @@ change in this analysis phase.
 | Function-local annotation lookup indexes | `ideas/open/166_bir_annotation_lookup_index_schema.md` | Step 2 and Step 3 both found that accepted relationships need cheap lookup by function, block, value, instruction index, call-site position, edge key, and relationship kind. | Indexes may point at typed annotation payloads, but must not duplicate payloads or become a BIR-owned `PreparedFunctionLookups` lowering-plan container. |
 | Module-level lowering metadata | No follow-up idea justified by Phase A. | Step 2 found no accepted Phase A route fact that requires durable module-level metadata. | Keep module-level schema rejected unless a later phase proves a genuinely module-scoped, target-neutral relationship. |
 | Return-chain helper facts | No follow-up idea justified by Phase A. | Step 3 found no standalone return-chain semantic route among the seven accepted Phase A groups. | Keep return-chain helper data private/cache-only until a separate source idea proves a target-neutral return relationship. |
+
+## AArch64 Stability Migration Constraints
+
+Introducing BIR-owned annotations must not change AArch64 output merely because
+the query source moved from `Prepared*` records to BIR. Future schema prototype
+work should use these constraints as closure gates:
+
+| Constraint | Required migration behavior |
+| --- | --- |
+| Keep prepared queries as oracles until each replacement proves equivalence. | For every switched consumer, compare the BIR annotation answer against the existing prepared same-block, select-chain, memory, publication, edge, call, or comparison query over representative positive and negative cases before deleting the prepared path. |
+| Preserve cheap lookup identity. | Typed annotations may be indexed at function scope, but consumers must retain the same key shapes they rely on today: function, block label, value/name, before-instruction index, call-site ordinal, edge key, and relationship kind. Migration must not replace indexed prepared reads with broad scans. |
+| Move only target-neutral identity first. | Switch producer, source, value/name/type, block/edge, instruction-index, address-space/volatile, semantic base/source, direct-global, and comparison provenance facts before any AArch64 lowering policy. |
+| Keep target and ABI policy downstream. | Physical registers, homes, frame slots, stack offsets, ABI argument/result placement, outgoing stack size, variadic counts, helper/carrier protocols, branch spelling, memory operand legality, and move scheduling must continue to come from prealloc/MIR/codegen structures. |
+| Preserve emission order and record-error behavior. | Annotation introduction must not reorder final instructions, alter fused-compare legality, change condition-code selection, create or suppress spill/reload pseudos, or rewrite record-error decisions. |
+| Bridge one relationship family at a time. | Each follow-up idea should switch a bounded query family with prepared fallback still available, then remove the fallback only after AArch64 behavior and negative-case answers match. |
+| Keep cross-target schema shape neutral. | Schema fields should be expressible without AArch64 register names, relocation spelling, instruction mnemonics, scratch policy, or addressing-mode names so later x86/riscv consumers can reuse the same payload. |
+
+## Closure Readiness Checklist
+
+| Required output | Artifact location | Status |
+| --- | --- | --- |
+| Link to this Phase B artifact. | This document: `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`. | Present. |
+| Phase A route coverage table for all seven routes. | `## Phase A Route Coverage Table` and `## Placement Summary By Phase A Route`. | Present; every route has evidence, closed-route source, accepted relationship, prepared surface, boundary, and classification status. |
+| Candidate BIR annotation schema map. | `## Candidate BIR Annotation Schema Map`. | Present across value, instruction, terminator, block, edge, function, and module-level placement decisions. |
+| Private/cache-only `Prepared*` classifications. | `### Whole Prepared Struct Copy Rejects` and `### Private Or Cache-Only Data`. | Present; whole prepared structs are rejected and caches are separated from durable payloads. |
+| Bridge/oracle data. | `### Bridge And Oracle Data`. | Present; old prepared query families remain comparison/fallback surfaces during migration. |
+| Target-facing fields that must not enter BIR. | `### Target-Facing Data That Must Stay Outside BIR`. | Present; register, frame, ABI, addressing, move, branch, helper, and final-instruction policy is excluded. |
+| Blockers and deferred schema questions. | `### Blockers And Deferred Schema Questions`. | Present; blocker domains are tied to required follow-up shape or explicit no-follow-up decisions. |
+| Follow-up schema prototype ideas. | `## Follow-Up Schema Ideas`. | Present; eight justified follow-ups are linked and module-level/return-chain non-follow-ups are recorded. |
+| Migration constraints for AArch64 stability. | `## AArch64 Stability Migration Constraints`. | Present; future prototypes must preserve prepared-oracle equivalence, lookup cost, target neutrality, and AArch64 emission behavior. |
+| Traceability back to Phase A. | `## Provenance`, `## Evidence Source List`, per-route table rows, schema-map traceability cells, and follow-up idea justifications. | Present; every accepted schema candidate points to a Phase A route and closure note. |
+
+## Closure Summary
+
+Phase B classifies the seven Phase A BIR-owned semantic routes into durable BIR
+annotation candidates, non-schema prepared/cache data, bridge/oracle data,
+target-facing rejects, and follow-up schema prototype domains. The accepted
+schema surface is intentionally narrow: value, instruction, terminator, block,
+edge, and function-local index annotations may own target-neutral relationship
+facts, while module-level lowering metadata remains rejected for this evidence
+set.
+
+The audit rejects copying whole `Prepared*` structures into BIR. Future work
+should prototype the eight linked schema ideas, preserving the prepared query
+families as AArch64 equivalence oracles until each relationship-specific switch
+proves identical answers and preserves cheap lookup identity. No implementation
+or schema code changes are required to close this Phase B analysis plan.
