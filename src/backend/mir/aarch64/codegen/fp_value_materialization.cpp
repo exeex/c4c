@@ -13,6 +13,7 @@
 #include "memory.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
+#include "../../query.hpp"
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/control_flow.hpp"
 #include "../../../prealloc/names.hpp"
@@ -47,55 +48,6 @@ namespace {
   }
   return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
                                                  value.name);
-}
-
-[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
-prepared_same_block_scalar_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr ||
-      value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return std::nullopt;
-  }
-  const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value()) {
-    return std::nullopt;
-  }
-  if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_same_block_scalar_producer(
-        context.function.prepared->names,
-        &context.function.prepared_lookups->edge_publication_source_producers,
-        context.control_flow_block->block_label,
-        context.bir_block,
-        *value_name,
-        value.type,
-        before_instruction_index);
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  return prepare::find_prepared_same_block_scalar_producer(
-      context.function.prepared->names,
-      &source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      *value_name,
-      value.type,
-      before_instruction_index);
-}
-
-[[nodiscard]] const prepare::PreparedAddressingFunction* prepared_addressing_function(
-    const module::BlockLoweringContext& context) {
-  if (context.function.prepared == nullptr ||
-      context.function.control_flow == nullptr) {
-    return nullptr;
-  }
-  return prepare::find_prepared_addressing(
-      *context.function.prepared, context.function.control_flow->function_name);
 }
 
 [[nodiscard]] bool emit_prepared_fp_global_load_to_register(
@@ -353,24 +305,35 @@ prepared_same_block_scalar_producer(
   if (const auto* load_global =
           producer != nullptr ? std::get_if<bir::LoadGlobalInst>(producer) : nullptr;
       load_global != nullptr) {
-    const auto prepared_producer =
-        prepared_same_block_scalar_producer(context, value, before_instruction_index);
-    const auto* addressing = prepared_addressing_function(context);
-    const auto prepared_access =
-        context.function.prepared != nullptr && prepared_producer.has_value()
-            ? prepare::find_prepared_same_block_global_load_access(
-                  context.function.prepared->names,
-                  addressing,
-                  *prepared_producer)
-            : std::nullopt;
-    if (prepared_access.has_value() &&
-        prepared_access->access != nullptr &&
-        emit_prepared_fp_global_load_to_register(context,
-                                                 *prepared_access->access,
-                                                 *destination_view,
-                                                 gp_scratch_index,
-                                                 lines)) {
-      return true;
+    const auto global_load_identity =
+        mir::find_bir_same_block_global_load_access_identity(
+            mir::BirSameBlockGlobalLoadAccessRequest{
+                .block = context.bir_block,
+                .block_label = context.bir_block != nullptr
+                                   ? std::string_view{context.bir_block->label}
+                                   : std::string_view{},
+                .root_value = &value,
+                .before_instruction_index = before_instruction_index,
+            });
+    if (global_load_identity) {
+      const auto* prepared_access =
+          prepared_memory_access(context,
+                                 global_load_identity.producer.instruction_index);
+      if (!prepared_memory_access_matches_instruction(
+              context, prepared_access, *global_load_identity.producer.inst)) {
+        return false;
+      }
+      if (emit_prepared_fp_global_load_to_register(context,
+                                                   *prepared_access,
+                                                   *destination_view,
+                                                   gp_scratch_index,
+                                                   lines)) {
+        return true;
+      }
+    }
+
+    if (context.function.prepared != nullptr) {
+      return false;
     }
 
     const auto address = abi::gp_register(gp_scratch_index, abi::RegisterView::X);
