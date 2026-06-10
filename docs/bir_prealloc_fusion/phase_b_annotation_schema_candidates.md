@@ -1,7 +1,7 @@
 # Phase B BIR Annotation Schema Candidates
 
 Source idea: `ideas/open/152_phase_b_bir_annotation_schema_candidate_audit.md`
-Status: Step 3 non-schema classification complete.
+Status: Step 4 follow-up schema ideas created.
 
 This artifact is the durable Phase B analysis surface for deciding which
 `Prepared*` facts should become BIR-owned annotations after Phase A established
@@ -226,3 +226,22 @@ shapes into BIR.
 | 5. CFG edge publication and join-source identity | Edge/block predecessor-successor-destination-source identity. | Reject move order, cycle temporaries, execution site, phase/carrier policy, coalescing/redundancy, destination registers, storage-sharing checks, and prepared moves. Prepared edge/join queries remain oracles. |
 | 6. Call-boundary semantic source facts | `CallInst` argument/result source facts plus value/index references. | Reject ABI register/stack placement, outgoing stack sizing, variadic FPR count, preservation/clobber sets, byval lanes, scratch requirements, destination homes, helper/carrier protocols, and aggregate transport layout. Prepared call plans remain oracles for ABI-bound behavior. |
 | 7. Comparison and materialized-condition producer identity | Instruction/terminator comparison and branch-condition provenance. | Reject fused-compare legality, condition-code selection, branch strategy, final instruction records/errors, hazard handling, emitted-register state, and AArch64 compare/branch instruction selection. Prepared comparison queries remain oracles. |
+
+## Follow-Up Schema Ideas
+
+Step 4 turns only Phase A-proven relationships and Step 3 blockers into later
+schema work. Each linked idea is a prototype contract, not an implementation
+change in this analysis phase.
+
+| Domain | Follow-up idea | Phase A / Phase B justification | Boundary to preserve |
+| --- | --- | --- | --- |
+| Producer/source identity foundation | `ideas/open/159_bir_producer_identity_annotation_schema.md` | Route 1 proved same-block producer, constant, value/name/type, producer index, materialization, and producer-kind relationships. Step 3 recorded that producer-kind authority is still a schema blocker. | Do not import homes, registers, storage state, emitted-register availability, spill/reload behavior, frame slots, or final instruction order. |
+| Select-chain and direct-global dependency identity | `ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md` | Route 2 proved select-root, root instruction/index, direct `LoadGlobalInst`, scalar eligibility, and combined lookup relationships. | Do not import target materialization cost, hazards, register availability, publication routing, call ABI behavior, or final move/branch choices. |
+| Memory/access semantic identity | `ideas/open/161_bir_memory_access_identity_annotation_schema.md` | Route 3 proved direct memory access, same-block global-load, load-local source, result/stored value, address-space/volatile, semantic base, and source identity relationships. | Do not import `PreparedAddress` wholesale, frame slots, offsets, size/align, relocation spelling, target addressing legality, or AArch64 memory operand policy. |
+| Block-entry and current-block publication identity | `ideas/open/162_bir_publication_availability_annotation_schema.md` | Route 4 proved block/current value availability, source producer, produced value/name, producer index, and source-producer kind relationships. | Do not import hooks, destination homes, storage encoding, stack-source extension policy, register-view conversion, immediate payload spelling, emitted storage state, or emission order. |
+| CFG edge publication and join-source identity | `ideas/open/163_bir_edge_join_source_annotation_schema.md` | Route 5 proved predecessor/successor/destination/source identity, source producer block/instruction, optional memory source, no-source marker, and current-block join-source relationships. | Do not import move bundle order, cycle temporary routing, execution-site policy, carrier/phase policy, coalescing/redundancy flags, destination registers, storage sharing, or prepared move records. |
+| Call-boundary semantic source facts | `ideas/open/164_bir_call_use_source_annotation_schema.md` | Route 6 proved call argument/result semantic source facts for source-producer and direct-global dependency families. Step 3 recorded ABI/layout-bound reads as non-schema. | Do not import ABI register/stack placement, outgoing-stack sizing, variadic FPR count, clobbers, byval lanes, scratch, destination homes, helper/carrier protocols, or aggregate transport layout. |
+| Comparison and materialized-condition producer identity | `ideas/open/165_bir_comparison_condition_annotation_schema.md` | Route 7 proved comparison producer, branch condition, lhs/rhs producer or integer constant, `BinaryInst`, condition value, instruction index, fused-operand, and materialized-condition provenance. | Do not import fused-compare legality, condition-code selection, branch strategy, final instruction records/errors, hazard handling, emitted-register state, or target compare/branch spelling. |
+| Function-local annotation lookup indexes | `ideas/open/166_bir_annotation_lookup_index_schema.md` | Step 2 and Step 3 both found that accepted relationships need cheap lookup by function, block, value, instruction index, call-site position, edge key, and relationship kind. | Indexes may point at typed annotation payloads, but must not duplicate payloads or become a BIR-owned `PreparedFunctionLookups` lowering-plan container. |
+| Module-level lowering metadata | No follow-up idea justified by Phase A. | Step 2 found no accepted Phase A route fact that requires durable module-level metadata. | Keep module-level schema rejected unless a later phase proves a genuinely module-scoped, target-neutral relationship. |
+| Return-chain helper facts | No follow-up idea justified by Phase A. | Step 3 found no standalone return-chain semantic route among the seven accepted Phase A groups. | Keep return-chain helper data private/cache-only until a separate source idea proves a target-neutral return relationship. |
