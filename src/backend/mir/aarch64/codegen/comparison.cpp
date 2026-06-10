@@ -1548,14 +1548,12 @@ preferred_fused_compare_operand_publication_target(
   if (scratches.size() <= 1U) {
     return std::nullopt;
   }
-  const auto producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   value,
-                                                   before_instruction_index);
-  if (!producer.has_value() ||
-      producer->kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
-      producer->select == nullptr) {
+  if (context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto producer = bir::find_comparison_operand_producer(
+      *context.bir_block, value, before_instruction_index);
+  if (!fused_compare_operand_has_select_producer(producer)) {
     return std::nullopt;
   }
   return scratches[1].index;

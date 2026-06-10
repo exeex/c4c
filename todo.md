@@ -8,21 +8,15 @@ Current Step Title: Switch comparison and branch provenance consumers
 
 ## Just Finished
 
-Step 5 switched the materialized-condition producer identity read in
-`lower_materialized_compare_condition_branch` from the prepared materialized
-condition producer helper to
-`bir::find_materialized_condition_producer_identity`.
+Step 5 switched the select-materialization provenance read in
+`preferred_fused_compare_operand_publication_target` from the prepared fused
+compare operand producer helper to `bir::find_comparison_operand_producer`.
 
-`comparison.cpp` now reads the comparison-producing `BinaryInst` and producer
-instruction index for `branch_condition.condition_value` from the BIR block at
-`context.bir_block->insts.size()`. Prepared branch facts, condition value-home
-checks, target selection, condition suffix mapping, value publication hooks,
-branch emission, final instruction records, hazards, and emitted-register state
-remain on their existing paths.
-
-Prepared/BIR equivalence coverage remains in place, and the existing
-materialized compare branch regression still covers the recompute-before-branch
-behavior.
+`comparison.cpp` now identifies select producers through
+`bir::ComparisonProducerKind::Select` and the existing BIR select-producer
+predicate before choosing the second reserved scratch register. Register target
+policy, publication callers, branch legality, prepared/BIR equivalence coverage,
+and selected global-load fused-branch behavior remain on their existing paths.
 
 ## Suggested Next
 
@@ -32,11 +26,12 @@ switch is desired for this idea.
 
 ## Watchouts
 
-- The materialized-compare branch recompute now reads BIR producer identity, but
-  the downstream publication and branch lowering helpers still intentionally use
-  prepared/AArch64 authority.
-- Do not combine the next provenance read with branch legality, condition-code,
-  emission, final-record, hazard, or emitted-register changes.
+- The preferred fused compare operand publication target now reads BIR producer
+  identity, but the remaining prepared helper call sites in `comparison.cpp`
+  still belong to separate provenance consumers.
+- Do not combine the next provenance read with register target policy, branch
+  legality, condition-code, emission, final-record, hazard, or emitted-register
+  changes.
 - Keep prepared-oracle equivalence checks green while switching consumers one
   at a time.
 - Do not claim progress through expectation rewrites, testcase-shaped
