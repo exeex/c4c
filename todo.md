@@ -3,48 +3,41 @@
 Status: Active
 Source Idea Path: ideas/open/158_bir_comparison_condition_producer_identity.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the BIR comparison producer relationship surface
+Current Step ID: 3
+Current Step Title: Bridge prepared answers to BIR comparison queries
 
 ## Just Finished
 
-Step 2 added a BIR-owned comparison/condition producer query surface without
-changing AArch64 compare/branch lowering.
+Step 3 added prepared/BIR equivalence coverage for comparison producer facts
+without switching consumers or changing AArch64 compare/branch lowering.
 
-New BIR query surface:
+Equivalence coverage added in `backend_prepared_lookup_helper_test.cpp`:
 
-- `bir::find_comparison_operand_producer` exposes immediate operands,
-  same-block load-local/load-global/cast/binary/select producers,
-  producer instruction indexes, produced values, and folded integer constants.
-- `bir::find_fused_compare_operand_producer_facts` returns optional lhs/rhs
-  semantic producer facts for a fused compare operand pair.
-- `bir::find_materialized_condition_producer_identity` exposes a
-  comparison-producing `BinaryInst`, condition value name, producer instruction
-  index, and lhs/rhs semantic producer facts for named condition values.
+- prepared `find_prepared_fused_compare_operand_producer_facts` now compares
+  against BIR `find_fused_compare_operand_producer_facts` for select and
+  folded-constant operands;
+- immediate fused-compare operands compare as semantic integer constants;
+- rhs-only availability matches when the lhs producer is unavailable;
+- non-fused/materialized-bool and fully unavailable paths fail closed;
+- prepared `find_prepared_materialized_condition_producer` now compares
+  against BIR `find_materialized_condition_producer_identity` for binary
+  condition producers, condition value name identity, instruction index, and
+  lhs/rhs producer availability.
 
-The implementation fails closed for missing producers, producers after the
-query index, duplicate same-block producers, non-named condition values, and
-non-comparison binary condition producers. It does not carry
-`can_fuse_with_branch`, target labels, condition suffixes, immediate
-encodability, scratch choices, hazards, emitted-register state, diagnostics, or
-final instruction records.
-
-`backend_prepared_lookup_helper_test.cpp` now covers BIR fixture queries for
-immediate constants, folded same-block constants, load/cast/binary/select
-producers, materialized comparison binary identity, missing and after-index
-producers, duplicate producers, and non-comparison condition producers.
+Prepared helpers remain the oracle. BIR equivalence is still fixture-backed;
+normal production comparison/branch extraction is not proven until Step 4.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add prepared/BIR equivalence checks for fused
-compare operand producer answers and materialized-condition producer answers.
-Keep prepared helpers as the oracle and do not switch consumers.
+Execute Step 4 from `plan.md`: populate or extract BIR comparison producer
+facts from normal production comparison/branch paths and prove them against the
+prepared semantic oracle. Do not switch AArch64 consumers yet.
 
 ## Watchouts
 
 - `integer_constant` is a semantic producer fact, but AArch64 immediate
   encodability remains target policy.
-- The Step 2 BIR query is fixture-backed only; production-lowered comparison
+- The Step 3 BIR query proof is fixture-backed only; production-lowered comparison
   coverage belongs to Step 4.
 - `can_fuse_with_branch` is prepared/AArch64 legality, not BIR provenance.
 - Keep fused-compare legality, condition-code selection, branch emission
@@ -58,7 +51,7 @@ Keep prepared helpers as the oracle and do not switch consumers.
 
 ## Proof
 
-Focused proof passed:
+Focused proof passed after Step 3:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
 
 Full backend proof passed:

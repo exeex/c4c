@@ -215,6 +215,61 @@ bool prepared_and_bir_call_argument_source_producer_materialization_match(
              names.value_names.find(call.args[arg_index].name);
 }
 
+bir::ComparisonProducerKind expected_bir_comparison_producer_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return bir::ComparisonProducerKind::Immediate;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::ComparisonProducerKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return bir::ComparisonProducerKind::LoadGlobal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return bir::ComparisonProducerKind::Cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::ComparisonProducerKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::
+        SelectMaterialization:
+      return bir::ComparisonProducerKind::Select;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return bir::ComparisonProducerKind::Unknown;
+  }
+  return bir::ComparisonProducerKind::Unknown;
+}
+
+bool prepared_and_bir_comparison_operand_producer_match(
+    const prepare::PreparedNameTables& names,
+    const bir::Block& block,
+    const std::optional<prepare::PreparedFusedCompareOperandProducer>& prepared,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto bir =
+      bir::find_comparison_operand_producer(block, value, before_instruction_index);
+  if (prepared.has_value() != bir.has_value()) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return true;
+  }
+  if (!bir.has_value() ||
+      bir->producer_kind !=
+          expected_bir_comparison_producer_kind(prepared->kind) ||
+      bir->integer_constant != prepared->integer_constant) {
+    return false;
+  }
+  if (prepared->kind == prepare::PreparedEdgePublicationSourceProducerKind::
+                            Immediate) {
+    return bir->producer_instruction == nullptr &&
+           bir->produced_value == nullptr;
+  }
+  return bir->producer_instruction == prepared->instruction &&
+         bir->producer_instruction_index == prepared->instruction_index &&
+         bir->produced_value != nullptr &&
+         bir->produced_value->name == value.name &&
+         bir->produced_value->type == value.type &&
+         prepared->value_name == names.value_names.find(value.name);
+}
+
 bool prepared_and_bir_call_result_source_identity_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedCallResultPlan& prepared_result,
@@ -6086,6 +6141,199 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
   return 0;
 }
 
+int verify_prepared_bir_comparison_condition_producer_equivalence() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
+  const auto selected_name = names.value_names.intern("%selected");
+  const auto folded_name = names.value_names.intern("%folded");
+  const auto cond_name = names.value_names.intern("%cond");
+  const auto missing_name = names.value_names.intern("%missing");
+
+  bir::Block block{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I64, "%loaded"),
+                  .slot_name = "slot0",
+                  .slot_id = c4c::SlotNameId{21},
+                  .byte_offset = 0,
+                  .align_bytes = 8,
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::I64, "%folded"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::immediate_i64(10),
+                  .rhs = bir::Value::immediate_i64(2),
+              },
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::I64, "%selected"),
+                  .compare_type = bir::TypeKind::I1,
+                  .lhs = bir::Value::named(bir::TypeKind::I1, "%flag"),
+                  .rhs = bir::Value::immediate_i1(false),
+                  .true_value = bir::Value::named(bir::TypeKind::I64, "%loaded"),
+                  .false_value = bir::Value::named(bir::TypeKind::I64, "%folded"),
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sge,
+                  .result = bir::Value::named(bir::TypeKind::I1, "%cond"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::named(bir::TypeKind::I64, "%selected"),
+                  .rhs = bir::Value::named(bir::TypeKind::I64, "%folded"),
+              },
+          },
+      .label_id = block_label,
+  };
+
+  const auto* folded = std::get_if<bir::BinaryInst>(&block.insts[1]);
+  const auto* selected = std::get_if<bir::SelectInst>(&block.insts[2]);
+  const auto* condition_binary = std::get_if<bir::BinaryInst>(&block.insts[3]);
+  if (folded == nullptr || selected == nullptr || condition_binary == nullptr) {
+    return fail("prepared/BIR comparison producer fixture is malformed");
+  }
+
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      folded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = folded,
+      });
+  source_producers.producers_by_value_name.emplace(
+      selected_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::
+              SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .select = selected,
+      });
+  source_producers.producers_by_value_name.emplace(
+      cond_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 3,
+          .binary = condition_binary,
+      });
+  source_producers.producers_by_value_name.emplace(
+      missing_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Unknown,
+          .block_label = block_label,
+      });
+
+  const prepare::PreparedBranchCondition fused_condition{
+      .function_name = c4c::FunctionNameId{7},
+      .block_label = block_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .predicate = bir::BinaryOpcode::Sge,
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%selected"),
+      .rhs = bir::Value::named(bir::TypeKind::I64, "%folded"),
+      .can_fuse_with_branch = true,
+      .true_label = c4c::BlockLabelId{30},
+      .false_label = c4c::BlockLabelId{31},
+  };
+  const auto prepared_fused =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          names, &source_producers, block_label, &block, fused_condition, 3);
+  const auto bir_fused = bir::find_fused_compare_operand_producer_facts(
+      block, *fused_condition.lhs, *fused_condition.rhs, 3);
+  if (!prepared_fused.has_value() ||
+      !bir_fused.available ||
+      !prepared_and_bir_comparison_operand_producer_match(
+          names, block, prepared_fused->lhs, *fused_condition.lhs, 3) ||
+      !prepared_and_bir_comparison_operand_producer_match(
+          names, block, prepared_fused->rhs, *fused_condition.rhs, 3) ||
+      !bir_fused.lhs.has_value() ||
+      bir_fused.lhs->producer_kind != bir::ComparisonProducerKind::Select ||
+      !bir_fused.rhs.has_value() ||
+      bir_fused.rhs->integer_constant != std::optional<std::int64_t>{12}) {
+    return fail(
+        "prepared and BIR fused compare operand producer facts should match for select and folded-constant operands");
+  }
+
+  auto immediate_condition = fused_condition;
+  immediate_condition.lhs = bir::Value::immediate_i64(9);
+  const auto prepared_immediate =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          names, &source_producers, block_label, &block, immediate_condition, 3);
+  const auto bir_immediate = bir::find_fused_compare_operand_producer_facts(
+      block, *immediate_condition.lhs, *immediate_condition.rhs, 3);
+  if (!prepared_immediate.has_value() ||
+      !prepared_and_bir_comparison_operand_producer_match(
+          names, block, prepared_immediate->lhs, *immediate_condition.lhs, 3) ||
+      !bir_immediate.lhs.has_value() ||
+      bir_immediate.lhs->producer_kind != bir::ComparisonProducerKind::Immediate ||
+      bir_immediate.lhs->integer_constant != std::optional<std::int64_t>{9}) {
+    return fail(
+        "prepared and BIR fused compare operand producer facts should match immediate operands");
+  }
+
+  auto rhs_only_condition = fused_condition;
+  rhs_only_condition.lhs = bir::Value::named(bir::TypeKind::I64, "%missing");
+  const auto prepared_rhs_only =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          names, &source_producers, block_label, &block, rhs_only_condition, 3);
+  const auto bir_rhs_only = bir::find_fused_compare_operand_producer_facts(
+      block, *rhs_only_condition.lhs, *rhs_only_condition.rhs, 3);
+  if (!prepared_rhs_only.has_value() ||
+      prepared_rhs_only->lhs.has_value() ||
+      !prepared_rhs_only->rhs.has_value() ||
+      !bir_rhs_only.available ||
+      bir_rhs_only.lhs.has_value() ||
+      !bir_rhs_only.rhs.has_value()) {
+    return fail(
+        "prepared and BIR fused compare producer facts should match rhs-only availability");
+  }
+
+  auto materialized_bool = fused_condition;
+  materialized_bool.kind = prepare::PreparedBranchConditionKind::MaterializedBool;
+  const auto prepared_materialized_bool =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          names, &source_producers, block_label, &block, materialized_bool, 3);
+  if (prepared_materialized_bool.has_value() ||
+      bir::find_fused_compare_operand_producer_facts(
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          bir::Value::named(bir::TypeKind::I64, "%also.missing"),
+          3)
+          .available) {
+    return fail(
+        "prepared and BIR fused compare producer facts should fail closed for unavailable/non-fused paths");
+  }
+
+  const auto prepared_condition =
+      prepare::find_prepared_materialized_condition_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          block.insts.size());
+  const auto bir_condition = bir::find_materialized_condition_producer_identity(
+      block, bir::Value::named(bir::TypeKind::I1, "%cond"), block.insts.size());
+  if (!prepared_condition.has_value() ||
+      !bir_condition.available ||
+      bir_condition.binary != prepared_condition->binary ||
+      bir_condition.instruction_index != prepared_condition->instruction_index ||
+      names.value_names.find(bir_condition.condition_value_name) !=
+          prepared_condition->condition_value_name ||
+      !bir_condition.lhs.has_value() ||
+      !bir_condition.rhs.has_value()) {
+    return fail(
+        "prepared and BIR materialized condition producer facts should match binary condition producers");
+  }
+
+  return 0;
+}
+
 int verify_bir_call_result_source_identity_lookup() {
   prepare::PreparedNameTables names;
   const auto block_label = names.block_labels.intern("entry");
@@ -6300,6 +6548,11 @@ int main() {
   }
   if (const int result =
           verify_bir_comparison_condition_producer_identity_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_prepared_bir_comparison_condition_producer_equivalence();
       result != 0) {
     return result;
   }
