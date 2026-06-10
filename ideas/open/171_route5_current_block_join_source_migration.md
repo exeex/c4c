@@ -39,6 +39,24 @@ This idea comes from Phase C:
 Run edge publication and join-source oracle tests, then the edge-copy/join or
 publication target subset that observes the migrated helper.
 
+## Retired Runbook Outcome
+
+The active Route 5 current-block join-source migration runbook was exhausted
+after Step 6 validation handoff. The selected Route 5 helper and isolated
+consumer proof are green for `backend_prepared_lookup_helper` and
+`backend_aarch64_current_block_join_routing`.
+
+No prepared current-block join-source helper surface was proven private enough
+to contract in this runbook. The remaining prepared public seams should move
+through the broader prepared aggregate/privacy work instead of reopening this
+Route 5 route.
+
+Close-level confidence is still blocked by an ambient
+`backend_aarch64_instruction_dispatch` failure at
+`expected selected f64 global readback to feed call ABI move`, before the
+selected Route 5 consumer. That failure is outside Route 5 current-block
+join-source scope and is tracked separately.
+
 ## Reviewer Reject Signals
 
 - Encoding parallel-copy scheduling or register-sharing decisions in BIR.
