@@ -1,7 +1,7 @@
 #include "frame_slot_address.hpp"
 
 #include "constant_materialization.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
 
 #include <cstdint>

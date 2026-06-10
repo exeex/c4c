@@ -1,7 +1,8 @@
 #include "dispatch_lookup.hpp"
 
 #include "../abi/abi.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/control_flow.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 namespace c4c::backend::aarch64::codegen {
 namespace abi = c4c::backend::aarch64::abi;

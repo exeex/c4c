@@ -6,10 +6,13 @@
 #include "alu.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/comparison.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/control_flow.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <cstdint>
 #include <optional>

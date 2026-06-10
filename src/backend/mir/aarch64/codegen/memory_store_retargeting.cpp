@@ -2,9 +2,10 @@
 
 #include "../abi/abi.hpp"
 #include "dispatch_lookup.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/control_flow.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <optional>
 #include <variant>

@@ -8,7 +8,9 @@
 #include "fp_value_materialization.hpp"
 #include "instruction.hpp"
 #include "operands.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/calls.hpp"
+#include "../../../prealloc/control_flow.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <cstddef>
 #include <cstdint>

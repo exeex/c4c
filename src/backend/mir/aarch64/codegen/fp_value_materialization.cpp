@@ -13,8 +13,11 @@
 #include "memory.hpp"
 #include "operands.hpp"
 #include "select_materialization.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/control_flow.hpp"
+#include "../../../prealloc/names.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
+#include "../../../prealloc/value_locations.hpp"
 
 #include <cstddef>
 #include <cstdint>

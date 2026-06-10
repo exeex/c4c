@@ -17,7 +17,7 @@
 #include "prepared_value_home_materialization.hpp"
 #include "select_materialization.hpp"
 #include "variadic.hpp"
-#include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 
 #include <algorithm>
