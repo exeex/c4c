@@ -5436,6 +5436,34 @@ int verify_direct_global_select_chain_dependency_query() {
     return fail("BIR select-chain Route 2 lookup should honor explicit mismatched request types");
   }
 
+  const auto immediate_root = bir::Value::immediate_i32(7);
+  const auto immediate_request = mir::BirSelectChainIdentityRequest{
+      .block = &block,
+      .block_label = block.label,
+      .root_value = &immediate_root,
+      .before_instruction_index = before_end,
+  };
+  const auto immediate_identity =
+      mir::find_bir_select_chain_identity(immediate_request);
+  if (!prepared_and_bir_select_chain_answers_match(
+          names, source_producers, block_label, block, immediate_root,
+          before_end) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_end_query,
+          immediate_root) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query, route2_end_query, immediate_root) ||
+      mir::find_bir_select_chain_source_producer(immediate_request) ||
+      mir::find_bir_select_chain_direct_global_dependency(immediate_request) ||
+      mir::find_bir_select_chain_scalar_materialization_eligibility(
+          immediate_request) ||
+      immediate_identity ||
+      immediate_identity.direct_global_dependency ||
+      immediate_identity.scalar_materialization_available ||
+      immediate_identity.root_instruction_index.has_value()) {
+    return fail("BIR select-chain Route 2 lookup should reject scalar-ineligible immediate roots");
+  }
+
   const auto missing_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
           names,
