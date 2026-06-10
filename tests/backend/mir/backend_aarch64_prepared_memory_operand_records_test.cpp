@@ -2,6 +2,7 @@
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/memory.hpp"
+#include "src/backend/mir/query.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -18,6 +19,7 @@ namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -27,6 +29,89 @@ int fail(const char* message) {
 
 bir::Value named_value(bir::TypeKind type, const char* name) {
   return bir::Value::named(type, name);
+}
+
+template <typename Inst>
+bir::Block block_with_instruction(std::string_view label,
+                                  std::size_t instruction_index,
+                                  Inst inst) {
+  bir::Block block;
+  block.label = std::string(label);
+  block.insts.resize(instruction_index + 1);
+  block.insts[instruction_index] = std::move(inst);
+  return block;
+}
+
+mir::BirMemoryAccessBaseKind expected_bir_base_kind(
+    prepare::PreparedAddressBaseKind kind) {
+  switch (kind) {
+    case prepare::PreparedAddressBaseKind::FrameSlot:
+      return mir::BirMemoryAccessBaseKind::LocalSlot;
+    case prepare::PreparedAddressBaseKind::GlobalSymbol:
+      return mir::BirMemoryAccessBaseKind::GlobalSymbol;
+    case prepare::PreparedAddressBaseKind::PointerValue:
+      return mir::BirMemoryAccessBaseKind::PointerValue;
+    case prepare::PreparedAddressBaseKind::StringConstant:
+      return mir::BirMemoryAccessBaseKind::StringConstant;
+    case prepare::PreparedAddressBaseKind::None:
+      return mir::BirMemoryAccessBaseKind::None;
+  }
+  return mir::BirMemoryAccessBaseKind::None;
+}
+
+bool prepared_and_bir_direct_memory_identity_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    std::size_t instruction_index,
+    mir::BirMemoryAccessNodeKind node_kind) {
+  const auto* prepared =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  const auto bir = mir::find_bir_memory_access_identity(
+      mir::BirMemoryAccessIdentityRequest{
+          .block = &block,
+          .block_label = block.label,
+          .instruction_index = instruction_index,
+          .node_kind = node_kind,
+      });
+  if (prepared == nullptr || !bir) {
+    return false;
+  }
+  const auto result_name =
+      bir.result_value_name.empty() ? c4c::kInvalidValueName
+                                    : names.value_names.find(bir.result_value_name);
+  const auto stored_name =
+      bir.stored_value_name.empty() ? c4c::kInvalidValueName
+                                    : names.value_names.find(bir.stored_value_name);
+  if (bir.block_label != block.label ||
+      bir.instruction_index != instruction_index ||
+      bir.node_kind != node_kind ||
+      bir.address_space != prepared->address_space ||
+      bir.is_volatile != prepared->is_volatile ||
+      bir.base_kind != expected_bir_base_kind(prepared->address.base_kind) ||
+      prepared->result_value_name.value_or(c4c::kInvalidValueName) != result_name ||
+      prepared->stored_value_name.value_or(c4c::kInvalidValueName) != stored_name) {
+    return false;
+  }
+  switch (prepared->address.base_kind) {
+    case prepare::PreparedAddressBaseKind::GlobalSymbol:
+      return prepared->address.symbol_name.has_value() &&
+             bir.global_name_id == *prepared->address.symbol_name;
+    case prepare::PreparedAddressBaseKind::PointerValue:
+      return prepared->address.pointer_value_name.has_value() &&
+             names.value_names.find(bir.pointer_value_name) ==
+                 *prepared->address.pointer_value_name;
+    case prepare::PreparedAddressBaseKind::StringConstant:
+      return prepared->address.symbol_name.has_value() &&
+             names.link_names.find(bir.string_constant_name) ==
+                 *prepared->address.symbol_name;
+    case prepare::PreparedAddressBaseKind::FrameSlot:
+      return bir.local_slot_id != c4c::kInvalidSlotName;
+    case prepare::PreparedAddressBaseKind::None:
+      return true;
+  }
+  return false;
 }
 
 prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,
@@ -437,6 +522,16 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
       !memory.can_use_base_plus_offset) {
     return fail("expected frame-slot record to preserve address facts");
   }
+  const auto block = block_with_instruction("entry", 2, load);
+  if (!prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          block,
+          2,
+          mir::BirMemoryAccessNodeKind::LoadLocal)) {
+    return fail("expected BIR load-local identity to match prepared semantic memory facts");
+  }
 
   const auto selected =
       aarch64_codegen::make_prepared_load_memory_instruction_record(
@@ -534,6 +629,16 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
       !memory.can_use_base_plus_offset) {
     return fail("expected global-symbol record to preserve prepared and BIR facts");
   }
+  const auto block = block_with_instruction("entry", 3, store);
+  if (!prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          block,
+          3,
+          mir::BirMemoryAccessNodeKind::StoreGlobal)) {
+    return fail("expected BIR store-global identity to match prepared semantic memory facts");
+  }
   return 0;
 }
 
@@ -573,6 +678,16 @@ int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
       memory.address_space != bir::AddressSpace::Tls || memory.is_volatile ||
       !memory.can_use_base_plus_offset) {
     return fail("expected pointer-value record to preserve prepared and BIR facts");
+  }
+  const auto block = block_with_instruction("entry", 4, store);
+  if (!prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          block,
+          4,
+          mir::BirMemoryAccessNodeKind::StoreLocal)) {
+    return fail("expected BIR store-local pointer identity to match prepared semantic memory facts");
   }
 
   const auto selected = aarch64_codegen::make_prepared_store_memory_instruction_record(
@@ -778,6 +893,16 @@ int frame_slot_store_conversion_selects_structured_register_source() {
       store_record.value->kind != aarch64_codegen::OperandKind::Register) {
     return fail("expected frame-slot store record to preserve address and source facts");
   }
+  const auto block = block_with_instruction("entry", 6, store);
+  if (!prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          block,
+          6,
+          mir::BirMemoryAccessNodeKind::StoreLocal)) {
+    return fail("expected BIR store-local frame identity to match prepared semantic memory facts");
+  }
 
   fixture.storage.values.clear();
   const auto missing_storage = aarch64_codegen::make_prepared_store_memory_instruction_record(
@@ -928,6 +1053,16 @@ int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
       !memory.can_use_base_plus_offset) {
     return fail("expected string-constant record to preserve prepared and BIR facts");
   }
+  const auto block = block_with_instruction("entry", 5, load);
+  if (!prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          block,
+          5,
+          mir::BirMemoryAccessNodeKind::LoadGlobal)) {
+    return fail("expected BIR load-global string identity to match prepared semantic memory facts");
+  }
   return 0;
 }
 
@@ -1021,6 +1156,16 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
           "missing_prepared_memory_access") {
     return fail("expected missing prepared memory access to fail closed");
   }
+  const auto missing_block = block_with_instruction("entry", 99, load);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          missing_block,
+          99,
+          mir::BirMemoryAccessNodeKind::LoadLocal)) {
+    return fail("expected prepared/BIR memory comparison to reject missing prepared access");
+  }
 
   fixture.addressing.accesses[0].address.base_kind =
       prepare::PreparedAddressBaseKind::PointerValue;
@@ -1040,6 +1185,16 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
       result_mismatch.error !=
           aarch64_codegen::PreparedMemoryOperandRecordError::ResultValueMismatch) {
     return fail("expected mismatched load result identity to fail closed");
+  }
+  const auto result_mismatch_block = block_with_instruction("entry", 2, load);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          result_mismatch_block,
+          2,
+          mir::BirMemoryAccessNodeKind::LoadLocal)) {
+    return fail("expected prepared/BIR memory comparison to reject result-name mismatch");
   }
 
   fixture = make_fixture();
@@ -1096,6 +1251,16 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
       stored_mismatch.error !=
           aarch64_codegen::PreparedMemoryOperandRecordError::StoredValueMismatch) {
     return fail("expected mismatched store value identity to fail closed");
+  }
+  const auto stored_mismatch_block = block_with_instruction("entry", 3, store);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          stored_mismatch_block,
+          3,
+          mir::BirMemoryAccessNodeKind::StoreGlobal)) {
+    return fail("expected prepared/BIR memory comparison to reject stored-name mismatch");
   }
 
   fixture = make_fixture();

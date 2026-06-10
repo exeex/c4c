@@ -20,6 +20,53 @@ enum class SameBlockProducerKind {
   LoadGlobal,
 };
 
+enum class BirMemoryAccessNodeKind {
+  Unknown,
+  LoadLocal,
+  LoadGlobal,
+  StoreLocal,
+  StoreGlobal,
+};
+
+enum class BirMemoryAccessBaseKind {
+  None,
+  LocalSlot,
+  GlobalSymbol,
+  PointerValue,
+  StringConstant,
+};
+
+struct BirMemoryAccessIdentityRequest {
+  const bir::Block* block = nullptr;
+  std::string_view block_label;
+  std::size_t instruction_index = 0;
+  BirMemoryAccessNodeKind node_kind = BirMemoryAccessNodeKind::Unknown;
+
+  [[nodiscard]] explicit operator bool() const {
+    return block != nullptr && node_kind != BirMemoryAccessNodeKind::Unknown;
+  }
+};
+
+struct BirMemoryAccessIdentity {
+  const bir::Inst* inst = nullptr;
+  std::string_view block_label;
+  std::size_t instruction_index = 0;
+  BirMemoryAccessNodeKind node_kind = BirMemoryAccessNodeKind::Unknown;
+  std::string_view result_value_name;
+  std::string_view stored_value_name;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
+  bool is_volatile = false;
+  BirMemoryAccessBaseKind base_kind = BirMemoryAccessBaseKind::None;
+  std::string_view local_slot_name;
+  c4c::SlotNameId local_slot_id = c4c::kInvalidSlotName;
+  std::string_view global_name;
+  c4c::LinkNameId global_name_id = c4c::kInvalidLinkName;
+  std::string_view pointer_value_name;
+  std::string_view string_constant_name;
+
+  [[nodiscard]] explicit operator bool() const { return inst != nullptr; }
+};
+
 struct SameBlockProducerIdentityRequest {
   const bir::Block* block = nullptr;
   std::string_view block_label;
@@ -152,6 +199,12 @@ find_bir_select_chain_direct_global_dependency(
 
 [[nodiscard]] BirSelectChainIdentity find_bir_select_chain_identity(
     BirSelectChainIdentityRequest request);
+
+[[nodiscard]] BirMemoryAccessNodeKind bir_memory_access_node_kind(
+    const bir::Inst& inst);
+
+[[nodiscard]] BirMemoryAccessIdentity find_bir_memory_access_identity(
+    BirMemoryAccessIdentityRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

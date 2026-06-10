@@ -2887,6 +2887,142 @@ int verify_prepared_memory_access_lookup() {
   return 0;
 }
 
+int verify_bir_direct_memory_access_identity_lookup() {
+  prepare::PreparedNameTables names;
+  const auto block_label_id = names.block_labels.intern("entry");
+  const auto loaded_name = names.value_names.intern("%loaded");
+  const auto stored_name = names.value_names.intern("%stored");
+  const auto global_name = names.link_names.intern("g.value");
+
+  const prepare::PreparedAddressingFunction addressing{
+      .function_name = names.function_names.intern("memory_identity"),
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .block_label = block_label_id,
+                  .inst_index = 0,
+                  .result_value_name = loaded_name,
+                  .address_space = bir::AddressSpace::Fs,
+                  .is_volatile = true,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .block_label = block_label_id,
+                  .inst_index = 1,
+                  .stored_value_name = stored_name,
+                  .address_space = bir::AddressSpace::Gs,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                          .symbol_name = global_name,
+                      },
+              },
+          },
+  };
+  bir::Block block;
+  block.label = "entry";
+  block.insts = {
+      bir::LoadLocalInst{
+          .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          .slot_name = "local",
+          .slot_id = c4c::SlotNameId{7},
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                  .base_name = "local",
+                  .address_space = bir::AddressSpace::Fs,
+                  .is_volatile = true,
+                  .base_slot_id = c4c::SlotNameId{7},
+              },
+      },
+      bir::StoreGlobalInst{
+          .global_name = "g.value",
+          .global_name_id = global_name,
+          .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                  .base_name = "g.value",
+                  .address_space = bir::AddressSpace::Gs,
+                  .base_link_name_id = global_name,
+              },
+      },
+  };
+
+  const auto load = mir::find_bir_memory_access_identity(
+      mir::BirMemoryAccessIdentityRequest{
+          .block = &block,
+          .block_label = "entry",
+          .instruction_index = 0,
+          .node_kind = mir::BirMemoryAccessNodeKind::LoadLocal,
+      });
+  const auto* prepared_load =
+      prepare::find_prepared_memory_access(addressing, block_label_id, 0);
+  if (!load || prepared_load == nullptr ||
+      names.value_names.find(load.result_value_name) !=
+          prepared_load->result_value_name.value_or(c4c::kInvalidValueName) ||
+      load.stored_value_name != std::string_view{} ||
+      load.address_space != prepared_load->address_space ||
+      !load.is_volatile ||
+      load.base_kind != mir::BirMemoryAccessBaseKind::LocalSlot ||
+      load.local_slot_id != c4c::SlotNameId{7}) {
+    return fail("BIR load-local memory identity should match prepared semantic fields");
+  }
+
+  const auto store = mir::find_bir_memory_access_identity(
+      mir::BirMemoryAccessIdentityRequest{
+          .block = &block,
+          .block_label = "entry",
+          .instruction_index = 1,
+          .node_kind = mir::BirMemoryAccessNodeKind::StoreGlobal,
+      });
+  const auto* prepared_store =
+      prepare::find_prepared_memory_access(addressing, block_label_id, 1);
+  if (!store || prepared_store == nullptr ||
+      names.value_names.find(store.stored_value_name) !=
+          prepared_store->stored_value_name.value_or(c4c::kInvalidValueName) ||
+      store.result_value_name != std::string_view{} ||
+      store.address_space != prepared_store->address_space ||
+      store.is_volatile ||
+      store.base_kind != mir::BirMemoryAccessBaseKind::GlobalSymbol ||
+      store.global_name_id != global_name) {
+    return fail("BIR store-global memory identity should match prepared semantic fields");
+  }
+
+  if (mir::find_bir_memory_access_identity(
+          mir::BirMemoryAccessIdentityRequest{
+              .block = &block,
+              .block_label = "entry",
+              .instruction_index = 0,
+              .node_kind = mir::BirMemoryAccessNodeKind::StoreLocal,
+          })) {
+    return fail("BIR memory identity should reject node-kind mismatches");
+  }
+  if (mir::find_bir_memory_access_identity(
+          mir::BirMemoryAccessIdentityRequest{
+              .block = &block,
+              .block_label = "other",
+              .instruction_index = 0,
+              .node_kind = mir::BirMemoryAccessNodeKind::LoadLocal,
+          })) {
+    return fail("BIR memory identity should reject block-label mismatches");
+  }
+  if (mir::find_bir_memory_access_identity(
+          mir::BirMemoryAccessIdentityRequest{
+              .block = &block,
+              .block_label = "entry",
+              .instruction_index = 9,
+              .node_kind = mir::BirMemoryAccessNodeKind::LoadLocal,
+          })) {
+    return fail("BIR memory identity should reject missing instruction indexes");
+  }
+
+  return 0;
+}
+
 int verify_direct_global_select_chain_dependency_query() {
   prepare::PreparedNameTables names;
   const auto block_label = names.block_labels.intern("query.entry");
@@ -3793,6 +3929,10 @@ int main() {
     return result;
   }
   if (const int result = verify_prepared_memory_access_lookup(); result != 0) {
+    return result;
+  }
+  if (const int result = verify_bir_direct_memory_access_identity_lookup();
+      result != 0) {
     return result;
   }
   if (const int result = verify_direct_global_select_chain_dependency_query();

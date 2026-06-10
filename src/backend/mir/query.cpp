@@ -8,6 +8,26 @@
 
 namespace c4c::backend::mir {
 
+[[nodiscard]] BirMemoryAccessNodeKind bir_memory_access_node_kind(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
+          return BirMemoryAccessNodeKind::LoadLocal;
+        } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
+          return BirMemoryAccessNodeKind::LoadGlobal;
+        } else if constexpr (std::is_same_v<T, bir::StoreLocalInst>) {
+          return BirMemoryAccessNodeKind::StoreLocal;
+        } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst>) {
+          return BirMemoryAccessNodeKind::StoreGlobal;
+        } else {
+          return BirMemoryAccessNodeKind::Unknown;
+        }
+      },
+      inst);
+}
+
 [[nodiscard]] SameBlockProducerKind same_block_producer_kind(const bir::Inst& inst) {
   return std::visit(
       [](const auto& typed_inst) {
@@ -58,6 +78,61 @@ namespace c4c::backend::mir {
 }
 
 namespace {
+
+[[nodiscard]] BirMemoryAccessBaseKind bir_memory_access_base_kind(
+    bir::MemoryAddress::BaseKind kind) {
+  switch (kind) {
+    case bir::MemoryAddress::BaseKind::LocalSlot:
+      return BirMemoryAccessBaseKind::LocalSlot;
+    case bir::MemoryAddress::BaseKind::GlobalSymbol:
+      return BirMemoryAccessBaseKind::GlobalSymbol;
+    case bir::MemoryAddress::BaseKind::PointerValue:
+      return BirMemoryAccessBaseKind::PointerValue;
+    case bir::MemoryAddress::BaseKind::StringConstant:
+      return BirMemoryAccessBaseKind::StringConstant;
+    case bir::MemoryAddress::BaseKind::None:
+    case bir::MemoryAddress::BaseKind::Label:
+      return BirMemoryAccessBaseKind::None;
+  }
+  return BirMemoryAccessBaseKind::None;
+}
+
+[[nodiscard]] std::string_view named_value_name(const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named) {
+    return {};
+  }
+  return value.name;
+}
+
+void populate_bir_memory_address_identity(
+    BirMemoryAccessIdentity& identity,
+    const bir::MemoryAddress* address) {
+  if (address == nullptr) {
+    return;
+  }
+  identity.address_space = address->address_space;
+  identity.is_volatile = address->is_volatile;
+  identity.base_kind = bir_memory_access_base_kind(address->base_kind);
+  switch (address->base_kind) {
+    case bir::MemoryAddress::BaseKind::LocalSlot:
+      identity.local_slot_name = address->base_name;
+      identity.local_slot_id = address->base_slot_id;
+      break;
+    case bir::MemoryAddress::BaseKind::GlobalSymbol:
+      identity.global_name = address->base_name;
+      identity.global_name_id = address->base_link_name_id;
+      break;
+    case bir::MemoryAddress::BaseKind::PointerValue:
+      identity.pointer_value_name = named_value_name(address->base_value);
+      break;
+    case bir::MemoryAddress::BaseKind::StringConstant:
+      identity.string_constant_name = address->base_name;
+      break;
+    case bir::MemoryAddress::BaseKind::None:
+    case bir::MemoryAddress::BaseKind::Label:
+      break;
+  }
+}
 
 [[nodiscard]] const bir::Value* produced_value_for_same_block_identity(
     const bir::Inst& inst) {
@@ -184,6 +259,63 @@ find_bir_select_chain_direct_global_dependency(
 }
 
 }  // namespace
+
+[[nodiscard]] BirMemoryAccessIdentity find_bir_memory_access_identity(
+    BirMemoryAccessIdentityRequest request) {
+  if (!request || request.instruction_index >= request.block->insts.size()) {
+    return {};
+  }
+  if (!request.block_label.empty() && request.block_label != request.block->label) {
+    return {};
+  }
+  const auto& inst = request.block->insts[request.instruction_index];
+  const auto node_kind = bir_memory_access_node_kind(inst);
+  if (node_kind != request.node_kind) {
+    return {};
+  }
+
+  BirMemoryAccessIdentity identity{
+      .inst = &inst,
+      .block_label = normalized_block_label(*request.block, request.block_label),
+      .instruction_index = request.instruction_index,
+      .node_kind = node_kind,
+  };
+  std::visit(
+      [&identity](const auto& typed_inst) {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
+          identity.result_value_name = named_value_name(typed_inst.result);
+          identity.local_slot_name = typed_inst.slot_name;
+          identity.local_slot_id = typed_inst.slot_id;
+          populate_bir_memory_address_identity(
+              identity,
+              typed_inst.address.has_value() ? &*typed_inst.address : nullptr);
+        } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
+          identity.result_value_name = named_value_name(typed_inst.result);
+          identity.global_name = typed_inst.global_name;
+          identity.global_name_id = typed_inst.global_name_id;
+          populate_bir_memory_address_identity(
+              identity,
+              typed_inst.address.has_value() ? &*typed_inst.address : nullptr);
+        } else if constexpr (std::is_same_v<T, bir::StoreLocalInst>) {
+          identity.stored_value_name = named_value_name(typed_inst.value);
+          identity.local_slot_name = typed_inst.slot_name;
+          identity.local_slot_id = typed_inst.slot_id;
+          populate_bir_memory_address_identity(
+              identity,
+              typed_inst.address.has_value() ? &*typed_inst.address : nullptr);
+        } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst>) {
+          identity.stored_value_name = named_value_name(typed_inst.value);
+          identity.global_name = typed_inst.global_name;
+          identity.global_name_id = typed_inst.global_name_id;
+          populate_bir_memory_address_identity(
+              identity,
+              typed_inst.address.has_value() ? &*typed_inst.address : nullptr);
+        }
+      },
+      inst);
+  return identity;
+}
 
 [[nodiscard]] SameBlockBinaryProducer find_same_block_binary_producer(
     const bir::Block* block,
