@@ -67,26 +67,74 @@ same_block_scalar_producer(
   return mir::find_same_block_scalar_producer(*query, value);
 }
 
-[[nodiscard]] prepare::PreparedScalarSelectChainMaterialization
-prepared_scalar_select_chain_materialization(
+struct Route2ScalarSelectChainMaterialization {
+  c4c::ValueNameId root_value_name = c4c::kInvalidValueName;
+  std::optional<std::size_t> root_instruction_index;
+  prepare::PreparedDirectGlobalSelectChainDependency direct_global_dependency;
+
+  [[nodiscard]] explicit operator bool() const {
+    return root_value_name != c4c::kInvalidValueName &&
+           root_instruction_index.has_value();
+  }
+};
+
+[[nodiscard]] std::optional<mir::BirSelectChainIdentity>
+route2_select_chain_identity(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.function.prepared == nullptr ||
-      context.function.prepared_lookups == nullptr ||
-      context.control_flow_block == nullptr) {
-    return prepare::PreparedScalarSelectChainMaterialization{};
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
   }
-  return prepare::find_prepared_scalar_select_chain_materialization(
-      prepare::PreparedSelectChainDependencyQuery{
-          .names = &context.function.prepared->names,
-          .source_producers =
-              &context.function.prepared_lookups->edge_publication_source_producers,
-          .block_label = context.control_flow_block->block_label,
+  const auto identity = mir::find_bir_select_chain_identity(
+      mir::BirSelectChainIdentityRequest{
           .block = context.bir_block,
+          .block_label = std::string_view{context.bir_block->label},
+          .root_value = &value,
           .before_instruction_index = before_instruction_index,
-      },
-      value);
+      });
+  if (!identity ||
+      !identity.root_is_select ||
+      !identity.root_instruction_index.has_value() ||
+      !identity.scalar_materialization_available) {
+    return std::nullopt;
+  }
+  return identity;
+}
+
+[[nodiscard]] Route2ScalarSelectChainMaterialization
+route2_scalar_select_chain_materialization(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr) {
+    return {};
+  }
+  const auto identity =
+      route2_select_chain_identity(context, value, before_instruction_index);
+  if (!identity.has_value()) {
+    return {};
+  }
+  const auto root_value_name =
+      !identity->root_value_name.empty() ? identity->root_value_name : value.name;
+  const auto root_value_name_id =
+      context.function.prepared->names.value_names.find(root_value_name);
+  if (root_value_name_id == c4c::kInvalidValueName) {
+    return {};
+  }
+  return Route2ScalarSelectChainMaterialization{
+      .root_value_name = root_value_name_id,
+      .root_instruction_index = identity->root_instruction_index,
+      .direct_global_dependency =
+          prepare::PreparedDirectGlobalSelectChainDependency{
+              .contains_direct_global_load =
+                  static_cast<bool>(identity->direct_global_dependency),
+              .root_is_select = identity->root_is_select,
+              .root_instruction_index = identity->root_instruction_index,
+          },
+  };
 }
 
 [[nodiscard]] std::optional<std::int64_t>
@@ -214,11 +262,8 @@ same_block_scalar_producer_for_scratch_hazard(
       producer_context.has_value() ? producer_context->instruction : nullptr;
   if (producer != nullptr &&
       std::get_if<bir::SelectInst>(producer) != nullptr) {
-    const auto select_chain_materialization =
-        prepared_scalar_select_chain_materialization(
-            context, value, before_instruction_index);
-    if (!select_chain_materialization.available ||
-        !select_chain_materialization.root_instruction_index.has_value()) {
+    if (!route2_select_chain_identity(context, value, before_instruction_index)
+             .has_value()) {
       producer_context.reset();
       producer = nullptr;
     }
@@ -481,10 +526,9 @@ same_block_scalar_producer_for_scratch_hazard(
 
   if (std::get_if<bir::SelectInst>(producer) != nullptr) {
     const auto select_chain_materialization =
-        prepared_scalar_select_chain_materialization(
+        route2_scalar_select_chain_materialization(
             context, value, before_instruction_index);
-    if (!select_chain_materialization.available ||
-        !select_chain_materialization.root_instruction_index.has_value()) {
+    if (!select_chain_materialization) {
       return false;
     }
     const auto* direct_global_dependency =
