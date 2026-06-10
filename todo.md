@@ -8,28 +8,28 @@ Current Step Title: Switch one call-source consumer at a time
 
 ## Just Finished
 
-Step 6 completed the first call-source consumer switch. The AArch64
-direct-global select-chain call-argument materialization path now reads the
-semantic direct-global dependency from `bir::find_call_argument_publication_source_routing`
-for the matching call argument when BIR publishes it, and falls back to the
-prepared call-argument routing dependency when BIR facts are unavailable.
+Step 6 completed the next call-source consumer switch. The AArch64 scalar
+call-argument source-producer materialization path now reads the semantic
+producer fact from `bir::find_call_argument_source_producer_materialization`
+for the matching call argument when a BIR call-argument relationship is
+available, and falls back to the prepared source-producer lookup when BIR facts
+are unavailable.
 
-The switch is scoped to that single direct-global dependency read. Prepared
-call plans still provide call instruction identity, source value id checks,
-value-home/register authority, argument package index, and all ABI placement
-facts.
+The switch is scoped to that single scalar call-argument producer read.
+Prepared call plans still provide call instruction identity, argument index
+iteration, prepared value-home/register authority, recursive operand fallback,
+and all ABI placement/final call lowering facts.
 
 `backend_aarch64_instruction_dispatch_test.cpp` now covers the switched path by
-removing the prepared direct-global dependency from an existing dynamic selected
-global call-argument fixture, seeding the equivalent BIR call-argument
-relationship, and proving the selected value is still materialized before the
-call.
+clearing the prepared source-producer lookup for a scalar call argument,
+seeding the matching BIR call-argument relationship, and proving the existing
+pre-call scalar add materialization is emitted from the BIR fact.
 
 ## Suggested Next
 
-Supervisor should review this first Step 6 consumer switch and then decide the
-next single consumer packet, likely either source-producer materialization or
-publication-source routing, with the same prepared fallback/ABI-authority
+Supervisor should review this source-producer switch and then decide the next
+single Step 6 consumer packet, likely publication-source routing or another
+remaining call-source read, with the same prepared fallback/ABI-authority
 boundary.
 
 ## Watchouts
@@ -37,13 +37,12 @@ boundary.
 - BIR production lowering still does not mint prepared numeric value ids;
   consumers that require `PreparedValueId` must continue to resolve ids through
   prepared name/value-location tables or add an explicit parity bridge.
-- This Step 6 switch converts the BIR direct-global dependency into the
-  existing prepared-shaped dependency payload only at the local AArch64
-  materialization boundary; do not treat that as BIR ownership of ABI placement
-  or prepared numeric ids.
-- `find_call_argument_source_producer_materialization` remains a producer query
-  gated by relationship uniqueness and call identity, not by publication-routing
-  availability.
+- This Step 6 switch converts the BIR source-producer fact into a local
+  AArch64 materialization payload only at the scalar call-argument boundary; do
+  not treat that as BIR ownership of ABI placement or prepared numeric ids.
+- Recursive operand materialization intentionally keeps using the prepared
+  fallback path because those operands are not themselves call arguments with
+  argument-index relationships.
 - The result identity surface from Step 4 remains value-identity-only and must
   not be treated as result ABI placement authority.
 

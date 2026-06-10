@@ -33087,6 +33087,161 @@ int direct_global_select_chain_call_argument_reads_bir_dependency() {
   return 0;
 }
 
+int scalar_call_argument_source_producer_reads_bir_materialization() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.bir.producer");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.bir.producer.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.bir.producer.entry");
+  const auto callee_link = prepared.names.link_names.intern("consume_i32");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto sum_name = prepared.names.value_names.intern("%sum.arg");
+  constexpr prepare::PreparedValueId kLhsValue{430};
+  constexpr prepare::PreparedValueId kRhsValue{431};
+  constexpr prepare::PreparedValueId kSumValue{432};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.bir.producer",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.call.bir.producer.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%sum.arg"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                       .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                   },
+                   bir::CallInst{
+                       .callee = "consume_i32",
+                       .callee_link_name_id = callee_link,
+                       .args = {bir::Value::named(bir::TypeKind::I32, "%sum.arg")},
+                       .arg_types = {bir::TypeKind::I32},
+                       .arg_sources =
+                           {bir::CallArgumentSourceRelationship{
+                               .arg_index = 0,
+                               .source_encoding =
+                                   bir::CallArgumentSourceEncodingKind::Register,
+                               .source_value_name = std::string{"%sum.arg"},
+                           }},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = kLhsValue,
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w2"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kRhsValue,
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w3"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kSumValue,
+               .function_name = function_name,
+               .value_name = sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w9"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(kLhsValue, lhs_name, "w2"),
+           register_storage(kRhsValue, rhs_name, "w3"),
+           register_storage(kSumValue, sum_name, "w9")},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 1,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_i32"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 1,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+              .source_value_id = kSumValue,
+              .source_register_name = std::string{"w9"},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"w0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"w0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+      }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  prepared_lookups.edge_publication_source_producers.producers_by_value_name.clear();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+  const auto& bir_block = prepared.module.functions.front().blocks.front();
+  const auto* call = std::get_if<bir::CallInst>(&bir_block.insts[1]);
+  if (call == nullptr) {
+    return fail("expected scalar producer fixture to retain BIR call instruction");
+  }
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered = aarch64_codegen::lower_scalar_call_argument_producers(
+      block_context,
+      prepared.call_plans.functions.front().calls.front(),
+      call->args,
+      1,
+      scalar_state,
+      diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected BIR source-producer fact to materialize scalar call argument without prepared producer lookup");
+  }
+  aarch64_module::MachineBlock block;
+  block.instructions = lowered;
+  const auto printed = print_route_block(function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("add w9, w2, w3") == std::string::npos) {
+    return fail("expected BIR source-producer materialization to emit the scalar add before the call: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
   auto prepared = prepared_with_f64_scalar_alu(bir::BinaryOpcode::Add, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -34209,6 +34364,11 @@ int main() {
   }
   if (const int status =
           direct_global_select_chain_call_argument_reads_bir_dependency();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          scalar_call_argument_source_producer_reads_bir_materialization();
       status != 0) {
     return status;
   }

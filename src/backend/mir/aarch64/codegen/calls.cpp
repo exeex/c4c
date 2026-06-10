@@ -6308,8 +6308,75 @@ find_prepared_scalar_call_argument_source_producer_materialization(
       before_instruction_index);
 }
 
+struct ScalarCallArgumentSourceProducerMaterialization {
+  prepare::PreparedEdgePublicationSourceProducerKind producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  const bir::Inst* producer_instruction = nullptr;
+  const bir::BinaryInst* binary = nullptr;
+  std::size_t producer_instruction_index = 0;
+  bool materializable = false;
+};
+
+[[nodiscard]] std::optional<ScalarCallArgumentSourceProducerMaterialization>
+find_scalar_call_argument_source_producer_materialization(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst* call_inst,
+    std::optional<std::size_t> call_argument_index,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block != nullptr && call_inst != nullptr &&
+      call_argument_index.has_value()) {
+    const auto bir_materialization =
+        bir::find_call_argument_source_producer_materialization(
+            *context.bir_block,
+            *call_inst,
+            before_instruction_index,
+            *call_argument_index);
+    if (bir_materialization.available) {
+      const auto prepared_kind =
+          bir_materialization.producer_kind ==
+                  bir::CallArgumentSourceProducerKind::LoadLocal
+              ? prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal
+              : bir_materialization.producer_kind ==
+                        bir::CallArgumentSourceProducerKind::Binary
+                    ? prepare::PreparedEdgePublicationSourceProducerKind::Binary
+                    : prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+      return ScalarCallArgumentSourceProducerMaterialization{
+          .producer_kind = prepared_kind,
+          .producer_instruction = bir_materialization.producer_instruction,
+          .binary =
+              bir_materialization.producer_instruction != nullptr
+                  ? std::get_if<bir::BinaryInst>(
+                        bir_materialization.producer_instruction)
+                  : nullptr,
+          .producer_instruction_index =
+              bir_materialization.producer_instruction_index,
+          .materializable = bir_materialization.materializable,
+      };
+    }
+  }
+
+  const auto prepared_materialization =
+      find_prepared_scalar_call_argument_source_producer_materialization(
+          context, source_producers, value, before_instruction_index);
+  if (!prepared_materialization.has_value()) {
+    return std::nullopt;
+  }
+  return ScalarCallArgumentSourceProducerMaterialization{
+      .producer_kind = prepared_materialization->producer.producer.kind,
+      .producer_instruction = prepared_materialization->producer.instruction,
+      .binary = prepared_materialization->producer.producer.binary,
+      .producer_instruction_index =
+          prepared_materialization->producer.instruction_index,
+      .materializable = prepared_materialization->materializable,
+  };
+}
+
 [[nodiscard]] bool materialize_scalar_call_argument_value(
     const module::BlockLoweringContext& context,
+    const bir::CallInst* call_inst,
+    std::optional<std::size_t> call_argument_index,
     const bir::Value& value,
     std::size_t before_instruction_index,
     const prepare::PreparedCallArgumentPlan* local_aggregate_address_argument,
@@ -6349,9 +6416,15 @@ find_prepared_scalar_call_argument_source_producer_materialization(
     return true;
   }
   const auto materialization =
-      find_prepared_scalar_call_argument_source_producer_materialization(
-          context, source_producers, value, before_instruction_index);
-  if (!materialization.has_value() || context.bir_block == nullptr) {
+      find_scalar_call_argument_source_producer_materialization(
+          context,
+          call_inst,
+          call_argument_index,
+          source_producers,
+          value,
+          before_instruction_index);
+  if (!materialization.has_value() || !materialization->materializable ||
+      context.bir_block == nullptr) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -6360,12 +6433,13 @@ find_prepared_scalar_call_argument_source_producer_materialization(
     }
     return true;
   }
-  const auto& producer = materialization->producer.producer;
-  if (producer.kind == prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+  if (materialization->producer_kind ==
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
     return true;
   }
-  if (producer.kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
-      producer.binary == nullptr) {
+  if (materialization->producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      materialization->binary == nullptr) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -6374,13 +6448,13 @@ find_prepared_scalar_call_argument_source_producer_materialization(
     }
     return true;
   }
-  const auto producer_index = materialization->producer.instruction_index;
+  const auto producer_index = materialization->producer_instruction_index;
   if (producer_index >= context.bir_block->insts.size()) {
     return false;
   }
   const auto* binary =
       std::get_if<bir::BinaryInst>(&context.bir_block->insts[producer_index]);
-  if (binary != producer.binary) {
+  if (binary != materialization->binary) {
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
@@ -6402,6 +6476,8 @@ find_prepared_scalar_call_argument_source_producer_materialization(
   active_values.push_back(value.name);
   const bool lhs_ready =
       materialize_scalar_call_argument_value(context,
+                                             nullptr,
+                                             std::nullopt,
                                              binary->lhs,
                                              producer_index,
                                              nullptr,
@@ -6412,6 +6488,8 @@ find_prepared_scalar_call_argument_source_producer_materialization(
                                              active_values);
   const bool rhs_ready =
       materialize_scalar_call_argument_value(context,
+                                             nullptr,
+                                             std::nullopt,
                                              binary->rhs,
                                              producer_index,
                                              nullptr,
@@ -6511,6 +6589,11 @@ lower_scalar_call_argument_producers(
             *context.function.control_flow);
     source_producers = &*fallback_source_producers;
   }
+  const bir::CallInst* call_inst = nullptr;
+  if (context.bir_block != nullptr && instruction_index < context.bir_block->insts.size()) {
+    call_inst =
+        std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  }
   for (std::size_t argument_index = 0; argument_index < arguments.size(); ++argument_index) {
     const auto& argument = arguments[argument_index];
     std::vector<std::string_view> active_values;
@@ -6531,6 +6614,8 @@ lower_scalar_call_argument_producers(
             ? argument_plan
             : nullptr;
     if (!materialize_scalar_call_argument_value(context,
+                                                call_inst,
+                                                argument_index,
                                                 argument,
                                                 instruction_index,
                                                 local_aggregate_address_argument,
