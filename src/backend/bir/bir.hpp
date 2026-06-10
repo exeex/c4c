@@ -13,6 +13,7 @@
 namespace c4c::backend::bir {
 
 struct Module;
+struct Function;
 struct Block;
 
 struct NameTables {
@@ -1583,6 +1584,15 @@ struct Route4PublicationValueRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route4PublicationAvailabilityIndex {
+  const Function* function = nullptr;
+  std::vector<Route4CurrentBlockPublicationRecord> current_block_records;
+  std::vector<Route4BlockEntryPublicationRecord> block_entry_records;
+  std::vector<Route4PublicationValueRecord> value_records;
+
+  [[nodiscard]] explicit operator bool() const { return function != nullptr; }
+};
+
 [[nodiscard]] Route4PublicationSourceKind
 route4_publication_source_kind(Route1ProducerKind kind);
 
@@ -1609,6 +1619,22 @@ route4_block_entry_publication_value_record(
     const Block* successor_block,
     const Value& destination_value,
     ValueNameId destination_value_name_id = kInvalidValueName);
+
+[[nodiscard]] Route4PublicationAvailabilityIndex
+route4_build_publication_availability_index(const Function& function);
+
+[[nodiscard]] Route4CurrentBlockPublicationRecord
+route4_find_current_block_publication(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] Route4BlockEntryPublicationRecord
+route4_find_block_entry_publication(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value);
 
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;

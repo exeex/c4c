@@ -1111,6 +1111,178 @@ Route4PublicationValueRecord route4_block_entry_publication_value_record(
 
 namespace {
 
+[[nodiscard]] bool route4_record_matches_block(
+    const Function& function,
+    const Block* record_block,
+    std::string_view record_label,
+    BlockLabelId record_label_id,
+    const Block& block) {
+  const auto block_is_indexed =
+      std::any_of(function.blocks.begin(),
+                  function.blocks.end(),
+                  [&](const Block& indexed_block) {
+                    return &indexed_block == &block;
+                  });
+  if (block_is_indexed) {
+    return record_block == &block;
+  }
+  if (record_label_id != kInvalidBlockLabel &&
+      block.label_id != kInvalidBlockLabel) {
+    return record_label_id == block.label_id;
+  }
+  return !record_label.empty() && record_label == block.label;
+}
+
+}  // namespace
+
+Route4PublicationAvailabilityIndex route4_build_publication_availability_index(
+    const Function& function) {
+  Route4PublicationAvailabilityIndex index{
+      .function = &function,
+  };
+  for (const auto& block : function.blocks) {
+    const auto route1_index = route1_build_producer_index(block);
+    for (const auto& producer : route1_index.records) {
+      if (!producer ||
+          !producer.source_value ||
+          producer.source_value.value == nullptr ||
+          producer.source_value.value_kind != Value::Kind::Named ||
+          producer.source_value.name.empty()) {
+        continue;
+      }
+      const auto before = producer.producer_instruction.instruction_index + 1U;
+      const auto query = Route1SameBlockProducerQuery{
+          .index = &route1_index,
+          .before_instruction_index = before,
+      };
+      const auto current =
+          route4_current_block_publication_record(
+              query, *producer.source_value.value, producer.source_value.name_id);
+      index.current_block_records.push_back(current);
+      index.value_records.push_back(
+          route4_current_block_publication_value_record(
+              query, *producer.source_value.value, producer.source_value.name_id));
+    }
+
+    for (const auto& inst : block.insts) {
+      const auto* phi = std::get_if<PhiInst>(&inst);
+      if (phi == nullptr) {
+        break;
+      }
+      if (phi->result.kind != Value::Kind::Named || phi->result.name.empty()) {
+        continue;
+      }
+      const auto block_entry =
+          route4_block_entry_publication_record(&block, phi->result);
+      index.block_entry_records.push_back(block_entry);
+      index.value_records.push_back(
+          route4_block_entry_publication_value_record(&block, phi->result));
+    }
+  }
+  return index;
+}
+
+Route4CurrentBlockPublicationRecord route4_find_current_block_publication(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  Route4CurrentBlockPublicationRecord result{
+      .status = Route4PublicationAvailabilityStatus::Unavailable,
+      .value = route1_source_value_identity(value),
+      .value_name = value.kind == Value::Kind::Named ? std::string_view{value.name}
+                                                     : std::string_view{},
+      .value_type = value.type,
+      .before_instruction_index = before_instruction_index,
+  };
+  if (!index) {
+    result.status = Route4PublicationAvailabilityStatus::MissingBlock;
+    return result;
+  }
+  result.block = &block;
+  result.block_label = block.label;
+  result.block_label_id = block.label_id;
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    result.status = Route4PublicationAvailabilityStatus::MissingValue;
+    return result;
+  }
+  const Route4CurrentBlockPublicationRecord* type_mismatch = nullptr;
+  for (auto it = index.current_block_records.rbegin();
+       it != index.current_block_records.rend();
+       ++it) {
+    const auto& candidate = *it;
+    if (!candidate ||
+        !route4_record_matches_block(*index.function,
+                                     candidate.block,
+                                     candidate.block_label,
+                                     candidate.block_label_id,
+                                     block) ||
+        candidate.value_name != value.name ||
+        candidate.source_producer_instruction_index >= before_instruction_index) {
+      continue;
+    }
+    if (candidate.value_type != value.type) {
+      type_mismatch = &candidate;
+      continue;
+    }
+    return candidate;
+  }
+  result.status = type_mismatch != nullptr
+                      ? Route4PublicationAvailabilityStatus::NoMatch
+                      : Route4PublicationAvailabilityStatus::MissingPublication;
+  return result;
+}
+
+Route4BlockEntryPublicationRecord route4_find_block_entry_publication(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value) {
+  Route4BlockEntryPublicationRecord result{
+      .status = Route4PublicationAvailabilityStatus::Unavailable,
+      .successor_block = &successor_block,
+      .successor_label = successor_block.label,
+      .successor_label_id = successor_block.label_id,
+      .destination_value = route1_source_value_identity(destination_value),
+      .destination_value_name =
+          destination_value.kind == Value::Kind::Named
+              ? std::string_view{destination_value.name}
+              : std::string_view{},
+      .destination_value_type = destination_value.type,
+  };
+  if (!index) {
+    result.status = Route4PublicationAvailabilityStatus::MissingBlock;
+    return result;
+  }
+  if (destination_value.kind != Value::Kind::Named ||
+      destination_value.name.empty()) {
+    result.status = Route4PublicationAvailabilityStatus::MissingValue;
+    return result;
+  }
+  const Route4BlockEntryPublicationRecord* type_mismatch = nullptr;
+  for (const auto& candidate : index.block_entry_records) {
+    if (!candidate ||
+        !route4_record_matches_block(*index.function,
+                                     candidate.successor_block,
+                                     candidate.successor_label,
+                                     candidate.successor_label_id,
+                                     successor_block) ||
+        candidate.destination_value_name != destination_value.name) {
+      continue;
+    }
+    if (candidate.destination_value_type != destination_value.type) {
+      type_mismatch = &candidate;
+      continue;
+    }
+    return candidate;
+  }
+  result.status = type_mismatch != nullptr
+                      ? Route4PublicationAvailabilityStatus::NoMatch
+                      : Route4PublicationAvailabilityStatus::MissingPublication;
+  return result;
+}
+
+namespace {
+
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
 route1_evaluate_same_block_integer_constant_impl(
     Route1SameBlockProducerQuery query,
