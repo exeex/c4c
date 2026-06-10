@@ -1852,6 +1852,7 @@ lower_fused_compare_branch_from_emitted_cast(
   if (context.function.control_flow == nullptr ||
       context.function.prepared == nullptr ||
       context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
       context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
     return std::nullopt;
   }
@@ -1862,25 +1863,29 @@ lower_fused_compare_branch_from_emitted_cast(
   }
 
   const auto before_instruction_index =
-      context.bir_block != nullptr ? context.bir_block->insts.size() : std::size_t{0};
+      context.bir_block->insts.size();
+  auto producer_cast =
+      [](const std::optional<bir::ComparisonOperandProducer>& producer)
+          -> const bir::CastInst* {
+    if (!producer.has_value() ||
+        producer->producer_kind != bir::ComparisonProducerKind::Cast ||
+        producer->producer_instruction == nullptr) {
+      return nullptr;
+    }
+    return std::get_if<bir::CastInst>(producer->producer_instruction);
+  };
   const bir::Value* cast_value = &branch_facts->lhs;
   const bir::Value* other_value = &branch_facts->rhs;
-  auto cast_producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   *cast_value,
-                                                   before_instruction_index);
-  if (!cast_producer.has_value() || cast_producer->cast == nullptr) {
+  auto cast_producer = bir::find_comparison_operand_producer(
+      *context.bir_block, *cast_value, before_instruction_index);
+  if (producer_cast(cast_producer) == nullptr) {
     cast_value = &branch_facts->rhs;
     other_value = &branch_facts->lhs;
-    cast_producer =
-        find_prepared_fused_compare_operand_producer(context,
-                                                     *cast_value,
-                                                     before_instruction_index);
+    cast_producer = bir::find_comparison_operand_producer(
+        *context.bir_block, *cast_value, before_instruction_index);
   }
-  const bir::CastInst* cast =
-      cast_producer.has_value() ? cast_producer->cast : nullptr;
+  const bir::CastInst* cast = producer_cast(cast_producer);
   if (cast == nullptr ||
-      cast_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Cast ||
       cast->opcode != bir::CastOpcode::SExt ||
       cast->operand.kind != bir::Value::Kind::Named) {
     return std::nullopt;
@@ -1912,7 +1917,7 @@ lower_fused_compare_branch_from_emitted_cast(
     const auto load_producer =
         find_prepared_fused_compare_operand_producer(context,
                                                      cast->operand,
-                                                     cast_producer->instruction_index);
+                                                     cast_producer->producer_instruction_index);
     const auto load_address =
         load_producer.has_value() && load_producer->load_local != nullptr
             ? branch_fusion_prepared_frame_slot_load_address(context,
