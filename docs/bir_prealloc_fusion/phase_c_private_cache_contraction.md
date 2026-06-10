@@ -1,7 +1,7 @@
 # Phase C Private Cache Contraction
 
 Source idea: `ideas/open/153_phase_c_prealloc_private_cache_contraction_audit.md`
-Status: Step 3 route contraction status classified.
+Status: Step 5 final closure summary complete.
 
 This artifact is the durable Phase C audit surface for deciding which
 remaining prealloc lookup, index, plan, and query surfaces can become private
@@ -219,3 +219,124 @@ producer-identity cleanup and not a Route 7 comparison/condition cleanup.
   reads, or non-materializable values are untested.
 - Reject any return-chain contraction that is justified by Route 1 or Route 7
   without a new explicit return-chain ownership/schema decision.
+
+## Step 5 Final Closure Summary
+
+Phase C is complete as an analysis artifact. The contraction pass found no
+prepared public surface that can be deleted or hidden immediately without a
+follow-up consumer migration. The actionable result is a categorized handoff:
+future work should migrate one semantic consumer group at a time to the
+implemented BIR route records or narrow route facades, keep prepared answers as
+oracles while equivalence is proven, and only then contract the now-unused cache
+or API surface.
+
+### Private-Cache Candidates
+
+- `PreparedFunctionLookups` is the main private-cache candidate, but only as
+  per-function aggregate construction and projection wiring in AArch64
+  traversal or a private target context. It cannot become a BIR-owned
+  lowering-plan aggregate.
+- Route-specific semantic lookup caches can become private only after their
+  consumers move: Route 1 producer/constant lookups, Route 2 select-chain and
+  direct-global indexes, Route 3 pure memory/access identity lookups, Route 4
+  publication availability lookups, Route 5 edge/join source lookups, Route 6
+  call-use semantic source lookups, and Route 7 comparison/condition semantic
+  lookups.
+- Selected route-index facade internals are private-cache candidates only for
+  the narrow Route 4 and Route 7 reference-validation categories already
+  covered. The facade is not a universal replacement for typed route indexes.
+
+### Temporarily Public Migration Oracles And Blockers
+
+- Routes 1, 2, 4, 5, 6, and 7 should keep their prepared helper families public
+  as migration oracles until all listed residual consumers read BIR-backed
+  records or thin facades.
+- Route 3 should keep semantic prepared answers public for comparison while
+  memory/source consumers migrate, but its target address records are not
+  oracle-only; they are durable target policy surfaces.
+- The concrete blockers are the residual block-entry Route 4 consumer, the
+  current-block join-source Route 5 helper, unswitched call argument/result
+  classes for Route 6, branch/comparison consumers for Route 7, higher-route and
+  materialization users for Routes 1 and 2, and direct aggregate field consumers
+  in AArch64 lowering.
+
+### Permanently Public Or Out-Of-Scope Target Policy
+
+- Homes, registers, stack slots, frame offsets, stack objects, relocation/TLS,
+  base-plus-offset legality, ABI register/stack assignment, outgoing stack
+  sizing, variadic/byval/clobber/scratch details, publication emission records,
+  move scheduling, carrier/phase policy, branch spelling, fused-compare
+  legality, condition-code selection, hazards, emitted storage, final
+  instruction records, and final instruction order remain outside BIR.
+- `PreparedBirModule`, domain plan records, stack layout records, call plans,
+  address materialization records, value-home records, move-bundle records, and
+  public AArch64 APIs that need those target facts are not Phase C contraction
+  targets. Later work may thin semantic lookup dependencies around them, but
+  should not privatize the durable target products themselves.
+
+### Blocked BIR-Route Migrations
+
+- Route 1 needs selected producer/constant/materialization consumers moved to
+  `Route1ProducerIndex` or an equivalent thin facade with negative coverage.
+- Route 2 needs select-chain/direct-global users in call, publication,
+  materialization, or source-producer paths migrated independently.
+- Route 3 needs pure memory/source consumers migrated to
+  `Route3MemoryAccessIndex` without copying prepared addressing payloads into
+  BIR.
+- Route 4 needs the residual block-entry publication consumer moved from the
+  older semantic PHI scan to `Route4PublicationAvailabilityIndex` or a
+  BIR-backed facade.
+- Route 5 needs `mir::find_bir_current_block_join_source_identity(...)` and any
+  selected join-source consumers moved to `Route5EdgeJoinSourceIndex`.
+- Route 6 needs one call argument/result class at a time moved to
+  `Route6CallUseSourceIndex` while ABI/layout records stay prepared-owned.
+- Route 7 needs one comparison or branch semantic consumer at a time moved to
+  `Route7ComparisonConditionIndex` or selected route-index validation.
+- Route index facade expansion requires route-specific typed validators before
+  it can support any new consumer boundary.
+
+### Return-Chain No-Route Follow-Up
+
+Return-chain lookup helpers remain blocked and public because Phase A/B did not
+define a route for terminal and next-operand return-chain identity. The next
+work should be a separate owner/schema decision: either define a target-neutral
+BIR route with accepted/rejected cases, keep a target-local AArch64 owner, or
+explicitly preserve a public prepared API. Return-chain must not be hidden by
+folding it into Route 1 producer identity or Route 7 comparison provenance.
+
+### Required BIR Annotation Prerequisites
+
+- Every migration needs route-owned records/indexes for the selected semantic
+  facts, fail-closed negative answers, and consumer-specific equivalence checks
+  against prepared answers while the prepared helper remains public.
+- BIR prerequisites must remain semantic: they may name producer identity,
+  direct-global dependency, memory/source identity, publication availability,
+  edge/join source identity, call-use source identity, comparison operands, and
+  branch condition provenance, but not target layout or emission policy.
+- Any facade expansion must validate stable typed route references rather than
+  duplicating route payloads or creating a generic BIR lowering-plan container.
+
+### Proof-Route Recommendations
+
+- Start each follow-up with focused oracle-equivalence tests for the migrated
+  semantic family, including negative cases such as no producer, no dependency,
+  no publication, no source, ABI-bound reads, non-materializable values, and
+  missing predecessor/reference cases.
+- Pair oracle tests with the narrow migrated consumer subset: producer or
+  materialization lowering for Routes 1 and 2, memory/global/store-retargeting
+  for Route 3, publication/query subsets for Route 4, edge-copy/join subsets
+  for Route 5, call-lowering subsets for Route 6, and comparison/branch subsets
+  for Route 7.
+- Escalate to broad backend regression when a follow-up changes public headers,
+  AArch64 context projection, `PreparedFunctionLookups`, module/context include
+  boundaries, call APIs, or any target-facing plan projection.
+
+### Closure Handoff Recommendation
+
+The active Phase C runbook appears complete for plan-owner closure review. The
+artifact now separates private-cache candidates, temporary public migration
+oracles and blockers, permanently public target-policy surfaces, blocked BIR
+route migrations, the return-chain no-route gap, required BIR annotation
+prerequisites, and proof routes. Closure should preserve the artifact as the
+Phase D/E input and split future implementation into bounded follow-up ideas
+instead of extending this analysis runbook.

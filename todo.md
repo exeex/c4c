@@ -1,53 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/153_phase_c_prealloc_private_cache_contraction_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Draft Follow-Up Ideas And Proof Routes
+Current Step ID: Step 5
+Current Step Title: Finalize Phase C Artifact And Closure Summary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 of `plan.md` completed bounded follow-up idea and proof-route synthesis
-in `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`.
+Step 5 of `plan.md` completed the final Phase C artifact consistency pass and
+closure-oriented summary in
+`docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`.
 
-The artifact now contains concrete follow-up boundaries for Routes 1-7, the
-route-index facade, `PreparedFunctionLookups` aggregate privacy, and a separate
-return-chain no-route follow-up. Each route records which cache/index group can
-eventually become private, which prepared or target-policy surfaces must remain
-public temporarily, required BIR/index prerequisites, consumer migration
-requirements, proof-route recommendations, and reviewer reject signals.
+The artifact now has a final summary suitable for plan-owner closure review and
+Phase D/E handoff. It explicitly separates private-cache candidates,
+temporarily public migration oracles and blockers, permanently public or
+out-of-scope target-policy surfaces, blocked BIR-route migrations, the
+return-chain no-route follow-up, required BIR annotation prerequisites, and
+proof-route recommendations.
 
 ## Suggested Next
 
-Step 5 packet: perform the final Phase C consistency pass, still analysis-only.
-Verify that the artifact cleanly separates private-cache candidates,
-temporary public migration oracles, permanently public target-policy surfaces,
-blocked BIR-route migrations, and the return-chain no-route gap. Then prepare
-the plan-owner handoff recommendation for whether this runbook is complete,
-blocked, or should become follow-up source ideas.
+Plan-owner closure review. The active Phase C runbook appears complete for
+closure review rather than needing another executor packet. Future
+implementation should be split into bounded follow-up ideas from the Phase C
+artifact instead of extending this analysis runbook.
 
 ## Watchouts
 
-- This plan is analysis-only; do not perform implementation changes during
-  Phase C.
-- `PreparedFunctionLookups` is a private-cache candidate only as an aggregate
-  construction detail. It is not a replacement BIR route-index abstraction, and
-  AArch64 still projects its fields directly.
-- Return-chain lookup helpers are explicitly kept as a separate no-route
-  follow-up; the consistency pass should preserve that boundary and not fold it
-  into Route 1 producer identity or Route 7 comparison provenance.
-- Route 3 remains split between BIR-ready semantic memory/access identity and
-  target/layout address materialization policy.
-- The route index facade is partial coverage for selected Route 4 and Route 7
-  references, not a universal contraction surface for Routes 1, 2, 3, 5, or 6.
-- Follow-up implementation ideas should migrate one consumer group at a time
-  and keep prepared APIs as oracles until equivalence and negative cases are
-  proven.
+- This plan is analysis-only; no implementation source changes were made or
+  needed for Step 5.
+- The closure handoff should preserve return-chain as a separate no-route
+  follow-up. It should not be folded into Route 1 producer identity or Route 7
+  comparison provenance.
+- The closure handoff should split later work into follow-up ideas for route
+  consumer migrations, aggregate privacy, route-index facade expansion, and the
+  return-chain owner/schema decision as needed.
+- `PreparedFunctionLookups` remains a private-cache candidate only as
+  construction/projection wiring after direct consumers move; it is not a BIR
+  lowering-plan aggregate.
+- Target/layout/codegen policy surfaces remain out of Phase C contraction
+  scope and should stay public or target-owned.
 
 ## Proof
 
-Command: `printf 'analysis-only Step 4; no build/test required\n' > test_after.log`
+Command: `printf 'analysis-only Step 5; no build/test required\n' > test_after.log`
 
 Result: passed. This was an analysis-only packet; no build or test was required
 by the delegated proof. Proof log path: `test_after.log`.
