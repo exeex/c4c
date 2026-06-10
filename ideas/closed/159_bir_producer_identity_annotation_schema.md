@@ -58,3 +58,25 @@ a BIR-owned vocabulary before schema consumers depend on it.
   progress without a typed BIR annotation container and oracle comparison.
 - Reject broad rewrites of unrelated storage, register allocation, or AArch64
   emission paths.
+
+## Closure Note
+
+Closed after implementing the Route 1 producer identity schema as typed BIR
+producer vocabulary, value/instruction producer records, same-block
+producer/constant/materialization query APIs, and a function-local
+`Route1ProducerIndex` lookup aid. Prepared producer and integer-constant
+queries remain available as migration oracles, with oracle-equivalence coverage
+in `backend_prepared_lookup_helper`.
+
+The permitted low-risk consumer switch moved the generic MIR same-block
+producer and integer-constant identity layer onto the BIR Route 1 query
+surface without changing AArch64 emission paths, storage/register policy,
+publication hooks, or expectation contracts.
+
+Validation: narrow producer proof passed for
+`backend_prepared_lookup_helper` and `backend_x86_shared_producer_query`.
+Closure validation used canonical `test_before.log` and `test_after.log` for
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_'`; regression guard passed with
+`--allow-non-decreasing-passed` at 179/179 before and 179/179 after, with no
+new failures.
