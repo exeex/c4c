@@ -1120,6 +1120,34 @@ struct Route1ProducerRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route1ProducerIndex {
+  const Block* block = nullptr;
+  std::vector<Route1ProducerRecord> records;
+
+  [[nodiscard]] explicit operator bool() const { return block != nullptr; }
+};
+
+struct Route1SameBlockProducerQuery {
+  const Route1ProducerIndex* index = nullptr;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return index != nullptr && *index;
+  }
+};
+
+struct Route1SameBlockScalarProducer {
+  const Route1ProducerRecord* record = nullptr;
+  const Inst* instruction = nullptr;
+  const Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+  Route1MaterializationAvailability materialization;
+
+  [[nodiscard]] explicit operator bool() const {
+    return record != nullptr && instruction != nullptr && produced_value != nullptr;
+  }
+};
+
 [[nodiscard]] Route1ProducerKind route1_producer_kind(const Inst& inst);
 
 [[nodiscard]] const Value* route1_produced_value(const Inst& inst);
@@ -1131,6 +1159,24 @@ struct Route1ProducerRecord {
 [[nodiscard]] Route1ProducerRecord route1_producer_record(
     const Block& block,
     std::size_t instruction_index);
+
+[[nodiscard]] Route1ProducerIndex route1_build_producer_index(
+    const Block& block);
+
+[[nodiscard]] std::optional<Route1SameBlockScalarProducer>
+route1_find_same_block_scalar_producer(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
+
+[[nodiscard]] Route1MaterializationAvailability
+route1_find_materialization_availability(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
+
+[[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
+route1_evaluate_same_block_integer_constant(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
 
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;

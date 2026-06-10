@@ -290,6 +290,312 @@ Route1ProducerRecord route1_producer_record(const Block& block,
   };
 }
 
+Route1ProducerIndex route1_build_producer_index(const Block& block) {
+  Route1ProducerIndex index{
+      .block = &block,
+  };
+  index.records.reserve(block.insts.size());
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto record = route1_producer_record(block, instruction_index);
+    if (record) {
+      index.records.push_back(record);
+    }
+  }
+  return index;
+}
+
+std::optional<Route1SameBlockScalarProducer>
+route1_find_same_block_scalar_producer(
+    Route1SameBlockProducerQuery query,
+    const Value& value) {
+  if (!query ||
+      value.kind != Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& record = *it;
+    if (!record ||
+        !record.producer_instruction ||
+        record.producer_instruction.instruction_index >=
+            query.before_instruction_index ||
+        !record.source_value ||
+        record.source_value.value == nullptr ||
+        record.source_value.value_kind != Value::Kind::Named ||
+        record.source_value.name != value.name ||
+        record.source_value.type != value.type) {
+      continue;
+    }
+    return Route1SameBlockScalarProducer{
+        .record = &record,
+        .instruction = record.producer_instruction.instruction,
+        .produced_value = record.source_value.value,
+        .instruction_index = record.producer_instruction.instruction_index,
+        .materialization = record.materialization,
+    };
+  }
+  return std::nullopt;
+}
+
+Route1MaterializationAvailability route1_find_materialization_availability(
+    Route1SameBlockProducerQuery query,
+    const Value& value) {
+  const auto producer = route1_find_same_block_scalar_producer(query, value);
+  if (!producer.has_value()) {
+    return {};
+  }
+  return producer->materialization;
+}
+
+namespace {
+
+[[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
+route1_evaluate_same_block_integer_constant(
+    Route1SameBlockProducerQuery query,
+    const Value& value,
+    unsigned depth) {
+  const auto immediate = route1_immediate_integer_constant(value, depth);
+  if (immediate) {
+    return immediate;
+  }
+  if (!query ||
+      depth > 4U ||
+      value.kind != Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto producer = route1_find_same_block_scalar_producer(query, value);
+  if (!producer.has_value() ||
+      producer->record == nullptr ||
+      producer->record->kind != Route1ProducerKind::Binary ||
+      producer->instruction == nullptr) {
+    return std::nullopt;
+  }
+  const auto* binary = std::get_if<BinaryInst>(producer->instruction);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto nested_query = Route1SameBlockProducerQuery{
+      .index = query.index,
+      .before_instruction_index = producer->instruction_index,
+  };
+  const auto lhs =
+      route1_evaluate_same_block_integer_constant(nested_query, binary->lhs, depth + 1);
+  const auto rhs =
+      route1_evaluate_same_block_integer_constant(nested_query, binary->rhs, depth + 1);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_value = lhs->value;
+  const auto rhs_value = rhs->value;
+  switch (binary->opcode) {
+    case BinaryOpcode::Add:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) +
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Sub:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) -
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Mul:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) *
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::And:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) &
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Or:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) |
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Xor:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) ^
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Shl:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) <<
+              static_cast<unsigned>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::LShr:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) >>
+              static_cast<unsigned>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::AShr:
+      if (rhs_value < 0 || rhs_value >= 64) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value >> static_cast<unsigned>(rhs_value),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::SDiv:
+      if (rhs_value == 0) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value / rhs_value,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::UDiv:
+      if (rhs_value == 0) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) /
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::SRem:
+      if (rhs_value == 0) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value % rhs_value,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::URem:
+      if (rhs_value == 0) {
+        return std::nullopt;
+      }
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(lhs_value) %
+              static_cast<std::uint64_t>(rhs_value)),
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Eq:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value == rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Ne:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value != rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Slt:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value < rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Sle:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value <= rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Sgt:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value > rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Sge:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = lhs_value >= rhs_value ? 1 : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Ult:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::uint64_t>(lhs_value) <
+                           static_cast<std::uint64_t>(rhs_value)
+                       ? 1
+                       : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Ule:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::uint64_t>(lhs_value) <=
+                           static_cast<std::uint64_t>(rhs_value)
+                       ? 1
+                       : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Ugt:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::uint64_t>(lhs_value) >
+                           static_cast<std::uint64_t>(rhs_value)
+                       ? 1
+                       : 0,
+          .type = binary->result.type,
+          .depth = depth};
+    case BinaryOpcode::Uge:
+      return Route1ImmediateIntegerConstant{
+          .available = true,
+          .value = static_cast<std::uint64_t>(lhs_value) >=
+                           static_cast<std::uint64_t>(rhs_value)
+                       ? 1
+                       : 0,
+          .type = binary->result.type,
+          .depth = depth};
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<Route1ImmediateIntegerConstant>
+route1_evaluate_same_block_integer_constant(
+    Route1SameBlockProducerQuery query,
+    const Value& value) {
+  return route1_evaluate_same_block_integer_constant(query, value, 0U);
+}
+
 Value Value::immediate_i1(bool value) {
   Value result;
   result.kind = Kind::Immediate;

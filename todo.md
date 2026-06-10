@@ -1,56 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/159_bir_producer_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define The BIR Producer Vocabulary And Records
+Current Step ID: 3
+Current Step Title: Add BIR Same-Block Producer Queries And Indexes
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Define The BIR Producer Vocabulary And Records completed as the first
-code-changing packet.
+Step 3 - Add BIR Same-Block Producer Queries And Indexes completed.
 
-Added BIR-owned Route 1 schema surface in `src/backend/bir/bir.hpp` /
-`src/backend/bir/bir.cpp`:
+Added BIR-owned Route 1 same-block query/index surfaces in
+`src/backend/bir/bir.hpp` / `src/backend/bir/bir.cpp`:
 
-- `Route1ProducerKind` with `Unknown`, `Immediate`, `LoadLocal`, `LoadGlobal`,
-  `Cast`, `Binary`, and `SelectMaterialization`.
-- `Route1SourceValueIdentity` for BIR value pointer, kind, name, name id, type,
-  immediate integer constant, and pointer-symbol identity.
-- `Route1ProducerInstructionIdentity` for producer instruction pointer,
-  instruction index, producer kind, block label, and block label id.
-- `Route1ImmediateIntegerConstant` and `Route1MaterializationAvailability` as
-  typed annotation payloads.
-- `Route1ProducerRecord` plus BIR-local helpers to derive records from a block
-  instruction without calling prepared producer authority.
+- `Route1ProducerIndex` as a cheap function-local index over typed
+  `Route1ProducerRecord` payloads.
+- `Route1SameBlockProducerQuery` and `Route1SameBlockScalarProducer` for
+  same-block scalar producer lookup by named BIR value before a given
+  instruction index.
+- `route1_find_materialization_availability` over the Route 1 record payload.
+- `route1_evaluate_same_block_integer_constant` for immediates and recursive
+  same-block binary constants, using Route 1 producer records rather than
+  prepared producer-kind authority.
 
-Extended `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` to cover
-the new records in the existing same-block scalar producer fixture: immediate
-constant identity, producer instruction/index, source name/type identity,
-materialization availability, and fail-closed behavior for missing/non-producer
-instructions. No production consumers were switched.
+Extended `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` so the
+existing same-block scalar fixture compares Route 1 BIR-backed answers with
+prepared oracle answers for supported producer kinds, materialization
+availability, immediate/binary integer constants, future producers, missing
+facts, and mismatched value types. No production consumers were switched.
 
 ## Suggested Next
 
-Execute Step 3 as the next code-changing packet:
+Execute Step 4 as the next packet:
 
-- Add BIR same-block producer query APIs and cheap lookup/index surfaces that
-  point at the new `Route1ProducerRecord` / typed annotation records.
-- Keep prepared helpers as oracle checks only; do not switch AArch64 or broad
+- Broaden oracle-equivalence coverage around the Route 1 APIs without switching
   production consumers.
-- Compare BIR-backed query answers with prepared same-block producer,
-  integer-constant, and materialization-oracle answers in
-  `backend_prepared_lookup_helper`.
+- Add representative coverage for remaining supported producer/fail-closed
+  shapes if the supervisor wants Step 4 separated from the Step 3 fixture
+  extension.
+- Keep prepared helpers as oracle checks only.
 
 ## Watchouts
 
-- Step 2 intentionally did not move existing MIR same-block queries onto the
-  new BIR records; Step 3 owns query/index integration.
-- `Route1ProducerRecord` currently derives from individual BIR instructions and
-  does not yet represent immediate values as standalone producer records.
-  Immediate constants are represented by `Route1SourceValueIdentity` and
-  `Route1ImmediateIntegerConstant`.
+- Step 3 added a BIR-owned Route 1 index API but intentionally did not replace
+  existing MIR/prepared query call sites or AArch64 consumers.
+- `Route1ProducerIndex` stores record copies with pointers into the source
+  `bir::Block`; rebuild the index after mutating a block.
+- Immediate constants remain value facts, not standalone instruction producer
+  records.
 - Keep materialization payload semantic only. Do not add prepared homes,
   registers, storage, frame slots, emitted availability, spill/reload behavior,
   operand views, or final instruction records.

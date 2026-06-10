@@ -221,6 +221,40 @@ bool prepared_and_bir_scalar_producers_match(
          bir->produced_value->type == value.type;
 }
 
+bool prepared_and_route1_scalar_producers_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    bir::Route1SameBlockProducerQuery route1_query,
+    const bir::Value& value,
+    prepare::PreparedEdgePublicationSourceProducerKind expected_kind) {
+  const auto prepared =
+      prepare::find_prepared_same_block_scalar_producer(
+          names, &source_producers, block_label, &block, value,
+          route1_query.before_instruction_index);
+  const auto route1 =
+      bir::route1_find_same_block_scalar_producer(route1_query, value);
+  if (!prepared.has_value() || !route1.has_value()) {
+    return false;
+  }
+  const auto expected_route1_kind =
+      expected_bir_route1_producer_kind(expected_kind);
+  return prepared->producer.kind == expected_kind &&
+         route1->record != nullptr &&
+         route1->record->kind == expected_route1_kind &&
+         route1->record->producer_instruction.kind == expected_route1_kind &&
+         route1->instruction == prepared->instruction &&
+         route1->instruction_index == prepared->instruction_index &&
+         route1->produced_value != nullptr &&
+         route1->produced_value->name == value.name &&
+         route1->produced_value->type == value.type &&
+         route1->materialization.available &&
+         route1->materialization.producer_kind == expected_route1_kind &&
+         route1->materialization.scalar_materialization_available ==
+             bir::route1_producer_kind_has_materialization(expected_route1_kind);
+}
+
 bool prepared_and_bir_call_argument_source_producer_materialization_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
@@ -685,6 +719,41 @@ bool prepared_and_bir_integer_constants_both_fail(
               bir_query.before_instruction_index)
               .has_value() &&
          !mir::evaluate_same_block_integer_constant(bir_query, value).has_value();
+}
+
+bool prepared_and_route1_integer_constants_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    bir::Route1SameBlockProducerQuery route1_query,
+    const bir::Value& value,
+    std::int64_t expected) {
+  const auto prepared =
+      prepare::evaluate_prepared_same_block_integer_constant(
+          names, &source_producers, block_label, &block, value,
+          route1_query.before_instruction_index);
+  const auto route1 =
+      bir::route1_evaluate_same_block_integer_constant(route1_query, value);
+  return prepared.has_value() &&
+         route1.has_value() &&
+         *prepared == expected &&
+         route1->value == *prepared;
+}
+
+bool prepared_and_route1_integer_constants_both_fail(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    bir::Route1SameBlockProducerQuery route1_query,
+    const bir::Value& value) {
+  return !prepare::evaluate_prepared_same_block_integer_constant(
+              names, &source_producers, block_label, &block, value,
+              route1_query.before_instruction_index)
+              .has_value() &&
+         !bir::route1_evaluate_same_block_integer_constant(route1_query, value)
+              .has_value();
 }
 
 bool prepared_and_bir_select_chain_answers_match(
@@ -4862,6 +4931,15 @@ int verify_prepared_same_block_scalar_source_facts() {
       .block_label = "entry",
       .before_instruction_index = block.insts.size(),
   };
+  const auto route1_index = bir::route1_build_producer_index(block);
+  const auto route1_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = block.insts.size(),
+  };
+  if (!route1_index ||
+      route1_index.records.size() != 8U) {
+    return fail("BIR Route 1 producer index should contain one record per scalar producer instruction");
+  }
   const auto memory_accesses =
       prepare::make_prepared_memory_access_lookups(&addressing);
   const auto bir_sum =
@@ -4875,6 +4953,27 @@ int verify_prepared_same_block_scalar_source_facts() {
       bir_sum->produced_value == nullptr ||
       bir_sum->produced_value->name != "%sum") {
     return fail("BIR same-block scalar producer query should match prepared scalar producer oracle");
+  }
+  const auto route1_sum =
+      bir::route1_find_same_block_scalar_producer(
+          route1_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
+  if (!route1_sum.has_value() ||
+      route1_sum->record == nullptr ||
+      route1_sum->record->kind != bir::Route1ProducerKind::Binary ||
+      route1_sum->instruction != prepared_sum->instruction ||
+      route1_sum->instruction_index != prepared_sum->instruction_index ||
+      route1_sum->produced_value == nullptr ||
+      route1_sum->produced_value->name != "%sum") {
+    return fail("BIR Route 1 same-block scalar producer query should match prepared scalar producer oracle");
+  }
+  const auto route1_sum_materialization =
+      bir::route1_find_materialization_availability(
+          route1_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
+  if (!route1_sum_materialization ||
+      !route1_sum_materialization.scalar_materialization_available ||
+      route1_sum_materialization.producer_kind !=
+          bir::Route1ProducerKind::Binary) {
+    return fail("BIR Route 1 materialization query should use producer record payloads");
   }
   if (!prepared_and_bir_scalar_producers_match(
           names,
@@ -4933,6 +5032,65 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir::Value::named(bir::TypeKind::I64, "%product"),
           prepare::PreparedEdgePublicationSourceProducerKind::Binary)) {
     return fail("BIR scalar producer query should match prepared oracle across supported producer kinds");
+  }
+  if (!prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%lhs"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%rhs"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%wide"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot"),
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_global"),
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%choice"),
+          prepare::PreparedEdgePublicationSourceProducerKind::
+              SelectMaterialization) ||
+      !prepared_and_route1_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%product"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary)) {
+    return fail("BIR Route 1 scalar producer query should match prepared oracle across supported producer kinds");
   }
   if (!prepared_and_bir_same_block_global_load_access_match(
           names,
@@ -5169,6 +5327,15 @@ int verify_prepared_same_block_scalar_source_facts() {
       bir_product_constant->depth != 0U) {
     return fail("BIR same-block integer constant query should match prepared oracle");
   }
+  const auto route1_product_constant =
+      bir::route1_evaluate_same_block_integer_constant(
+          route1_query, bir::Value::named(bir::TypeKind::I64, "%product"));
+  if (!route1_product_constant.has_value() ||
+      route1_product_constant->value != *product_constant ||
+      route1_product_constant->type != bir::TypeKind::I64 ||
+      route1_product_constant->depth != 0U) {
+    return fail("BIR Route 1 integer constant query should match prepared oracle");
+  }
   if (!prepared_and_bir_integer_constants_match(
           names,
           source_producers,
@@ -5203,6 +5370,40 @@ int verify_prepared_same_block_scalar_source_facts() {
           21)) {
     return fail("BIR integer constant query should match prepared oracle for immediate and binary constants");
   }
+  if (!prepared_and_route1_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::immediate_i64(7),
+          7) ||
+      !prepared_and_route1_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%lhs"),
+          5) ||
+      !prepared_and_route1_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%rhs"),
+          16) ||
+      !prepared_and_route1_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          21)) {
+    return fail("BIR Route 1 integer constant query should match prepared oracle for immediate and binary constants");
+  }
   if (!prepared_and_bir_integer_constants_both_fail(
           names,
           source_producers,
@@ -5232,6 +5433,36 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir_query,
           bir::Value::named(bir::TypeKind::I64, "%choice"))) {
     return fail("integer constant equivalence should fail closed for nonconstant scalar producers");
+  }
+  if (!prepared_and_route1_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%wide")) ||
+      !prepared_and_route1_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot")) ||
+      !prepared_and_route1_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_global")) ||
+      !prepared_and_route1_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I64, "%choice"))) {
+    return fail("Route 1 integer constant equivalence should fail closed for nonconstant scalar producers");
   }
 
   const prepare::PreparedBranchCondition fused_compare_condition{
@@ -5294,6 +5525,10 @@ int verify_prepared_same_block_scalar_source_facts() {
       .block_label = "entry",
       .before_instruction_index = 7,
   };
+  const auto route1_before_product_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = 7,
+  };
   if (mir::find_same_block_scalar_producer(
           before_product_query, bir::Value::named(bir::TypeKind::I64, "%product"))
           .has_value() ||
@@ -5301,6 +5536,19 @@ int verify_prepared_same_block_scalar_source_facts() {
           before_product_query, bir::Value::named(bir::TypeKind::I64, "%product"))
           .has_value()) {
     return fail("BIR same-block queries should fail closed for future producers like prepared oracle");
+  }
+  if (bir::route1_find_same_block_scalar_producer(
+          route1_before_product_query,
+          bir::Value::named(bir::TypeKind::I64, "%product"))
+          .has_value() ||
+      bir::route1_find_materialization_availability(
+          route1_before_product_query,
+          bir::Value::named(bir::TypeKind::I64, "%product")) ||
+      bir::route1_evaluate_same_block_integer_constant(
+          route1_before_product_query,
+          bir::Value::named(bir::TypeKind::I64, "%product"))
+          .has_value()) {
+    return fail("BIR Route 1 same-block queries should fail closed for future producers like prepared oracle");
   }
   if (prepare::find_prepared_current_block_publication_consumption(
           names,
@@ -5345,10 +5593,23 @@ int verify_prepared_same_block_scalar_source_facts() {
           .has_value()) {
     return fail("same-block scalar producer queries should both fail closed for missing facts");
   }
+  if (bir::route1_find_same_block_scalar_producer(
+          route1_query, bir::Value::named(bir::TypeKind::I64, "%missing"))
+          .has_value() ||
+      bir::route1_evaluate_same_block_integer_constant(
+          route1_query, bir::Value::named(bir::TypeKind::I64, "%missing"))
+          .has_value()) {
+    return fail("Route 1 same-block scalar producer queries should fail closed for missing facts");
+  }
   if (mir::find_same_block_scalar_producer(
           bir_query, bir::Value::named(bir::TypeKind::I32, "%sum"))
           .has_value()) {
     return fail("BIR scalar producer query should fail closed for mismatched value type");
+  }
+  if (bir::route1_find_same_block_scalar_producer(
+          route1_query, bir::Value::named(bir::TypeKind::I32, "%sum"))
+          .has_value()) {
+    return fail("BIR Route 1 scalar producer query should fail closed for mismatched value type");
   }
 
   auto mismatched_source_producers = source_producers;
