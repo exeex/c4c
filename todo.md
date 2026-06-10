@@ -3,13 +3,14 @@ Source Idea Path: ideas/open/170_route4_block_entry_publication_migration.md
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Validate And Handoff
+Lifecycle State: Blocked pending broader backend validation decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 validation and handoff bookkeeping completed for the Route 4
-block-entry publication migration.
+Plan-owner lifecycle decision completed for Step 5 of the Route 4 block-entry
+publication migration.
 
 Completed migration state:
 - Step 1 selected `mir::find_bir_block_entry_publication_identity(...)` in
@@ -27,12 +28,25 @@ Completed migration state:
 Focused Route 4 proof passed 3/3 before the Step 3 commit, and regression
 guard with `--allow-non-decreasing-passed` passed.
 
+Lifecycle decision:
+- Keep `plan.md` and `todo.md` active and mapped to
+  `ideas/open/170_route4_block_entry_publication_migration.md`.
+- Do not close or move the source idea while broader backend validation has a
+  current-state blocker.
+- Do not retire or replace the runbook from plan-owner state alone; the
+  blocker is outside the Route 4 migration packet and needs supervisor
+  decision or a separate investigation route.
+
 ## Suggested Next
 
-Do not close the active plan as fully validated in this executor packet. Leave
-closure or blocked-state handling to the supervisor/plan-owner lifecycle
-decision because broader backend validation is blocked by the current
-`backend_aarch64_instruction_dispatch` failure.
+The supervisor should decide whether the
+`backend_aarch64_instruction_dispatch` failure is an unrelated ambient backend
+blocker that can be handled separately, or whether to delegate a focused
+investigation before re-running close-level validation.
+
+Closure can be reconsidered only after the close gate has clean enough
+regression evidence for the chosen scope. Until then, the active lifecycle
+state is blocked, not closed.
 
 ## Watchouts
 
@@ -43,12 +57,13 @@ decision because broader backend validation is blocked by the current
   `ctest --test-dir build --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`
   also failed with `expected selected f64 global readback to feed call ABI move`.
 - The Route 4 migration itself has focused green proof, but the active plan
-  should remain blocked pending supervisor/plan-owner lifecycle decision unless
-  the supervisor accepts the broader backend blocker as unrelated.
+  remains blocked pending supervisor decision unless the supervisor accepts the
+  broader backend blocker as unrelated and supplies acceptable close-gate
+  evidence.
 
 ## Proof
 
-No new test run required in this Step 5 bookkeeping packet.
+No new test run required in this lifecycle decision packet.
 
 Recorded supervisor validation facts:
 - Focused Route 4 proof command
