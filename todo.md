@@ -3,65 +3,65 @@
 Status: Complete
 Source Idea Path: ideas/open/149_residual_prepared_lookup_include_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Clean prealloc residual includes
+Current Step ID: 4
+Current Step Title: Prove cleanup and remaining facade uses
 
 ## Just Finished
 
-Step 3 finished cleaning the removable prealloc residual
-`prepared_lookups.hpp` includes identified by the Step 1 map.
+Step 4 proved the residual include cleanup and classified the remaining
+`prepared_lookups.hpp` includes.
 
-- `src/backend/prealloc/call_plans.cpp` now relies on its existing concrete
-  owner includes and no longer includes `prepared_lookups.hpp`.
-- `src/backend/prealloc/prepared_printer/select_chains.cpp` now relies on its
-  existing `private.hpp`, `publication_plans.hpp`, and
-  `select_chain_lookups.hpp` includes.
-- `src/backend/prealloc/select_chain_lookups.cpp` now relies on
-  `select_chain_lookups.hpp` and `module.hpp`.
-- `src/backend/prealloc/formal_publications.cpp` now uses the narrow owners
-  `control_flow.hpp` for `resolve_prepared_value_name_id` and
-  `value_locations.hpp` for value-home lookup declarations.
-- `src/backend/prealloc/decoded_home_storage.hpp` now relies on its existing
-  `regalloc.hpp`, `storage.hpp`, and `value_locations.hpp` includes.
-- `src/backend/mir/riscv/codegen/emit.hpp` and
-  `src/backend/mir/x86/x86.hpp` now include `prepared_lookups.hpp` directly
-  because they name `PreparedFunctionLookups` and/or
+Remaining direct includes are justified:
+
+- `src/backend/mir/aarch64/module/module.hpp`: stores a
+  `prepare::PreparedFunctionLookups*`.
+- `src/backend/mir/aarch64/codegen/alu.cpp`: constructs
+  `PreparedFunctionLookups` and calls return-chain helpers that still live in
+  the facade.
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`: still calls
+  `make_prepared_edge_publication_lookups`, which remains declared only by
+  `prepared_lookups.hpp`.
+- `src/backend/mir/riscv/codegen/emit.hpp`: directly accepts
+  `PreparedFunctionLookups*`.
+- `src/backend/mir/x86/x86.hpp`: stores `PreparedFunctionLookups` and calls
   `make_prepared_function_lookups`.
-- `src/backend/prealloc/module.hpp` no longer includes
-  `prepared_lookups.hpp`; it only keeps the narrow owners needed by
-  `PreparedBirModule` and inline helpers.
+- `src/backend/prealloc/prepared_lookups.cpp`: owning implementation include.
+
+No removable AArch64 or prealloc cleanup target still includes
+`prepared_lookups.hpp`.
 
 ## Suggested Next
 
-Execute Step 4 validation: search the AArch64/prealloc target sets for residual
-`prepared_lookups.hpp` includes, confirm remaining matches are keep/blocked or
-true direct facade users, and rerun the supervisor-selected backend proof.
+The active runbook steps are complete. Ask the plan owner to close idea 149 or
+decide whether the remaining `dispatch_producers.cpp` declaration-owner
+blocker should become a separate source idea.
 
 ## Watchouts
 
-- The initial Step 1 map for `formal_publications.cpp` missed
-  `control_flow.hpp`; the compile failure showed that
-  `resolve_prepared_value_name_id` is also used there.
-- Leave `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` alone until
-  the missing narrow declaration owner for
-  `make_prepared_edge_publication_lookups` is resolved or explicitly accepted.
-- Continue to keep `prepared_lookups.hpp` in files that name
-  `PreparedFunctionLookups`, `make_prepared_function_lookups`, or the
-  return-chain helpers that still have no narrow owner header.
+- `dispatch_producers.cpp` remains a real blocker to complete removal from all
+  AArch64 cleanup targets because `make_prepared_edge_publication_lookups` has
+  no narrow declaration owner yet.
+- Return-chain helpers are also still facade-only and justify keeping
+  `prepared_lookups.hpp` in `alu.cpp`.
 
 ## Proof
 
-Proof command run:
+Residual include search:
+
+`rg -n '#include .*prepared_lookups\.hpp' src/backend/mir/aarch64 src/backend/prealloc src/backend/mir/riscv src/backend/mir/x86`
+
+Result: matches only in the six justified files listed above.
+
+Facade-use confirmation:
+
+`rg -n 'PreparedFunctionLookups|make_prepared_function_lookups|make_prepared_edge_publication_lookups|PreparedReturnChainLookups|find_prepared_return_chain' src/backend/mir/aarch64/module/module.hpp src/backend/mir/aarch64/codegen/alu.cpp src/backend/mir/aarch64/codegen/dispatch_producers.cpp src/backend/mir/riscv/codegen/emit.hpp src/backend/mir/x86/x86.hpp src/backend/prealloc/prepared_lookups.cpp`
+
+Result: every remaining include maps to direct facade use, owning
+implementation, or the recorded `dispatch_producers.cpp` blocker.
+
+Build and backend proof:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: green. `test_after.log` records the fresh delegated proof: build
-succeeded and 179/179 backend tests passed, 0 failed.
-
-Additional include check:
-
-`rg -n '#include .*prepared_lookups\.hpp|PreparedFunctionLookups|make_prepared_function_lookups' src/backend/prealloc/module.hpp src/backend/mir/riscv/codegen/emit.hpp src/backend/mir/x86/x86.hpp`
-
-Result: `module.hpp` has no match. The direct matches are in
-`emit.hpp` and `x86.hpp`, which now include `prepared_lookups.hpp`
-themselves.
+Result: green. `test_after.log` records 179/179 backend tests passed, 0
+failed.
