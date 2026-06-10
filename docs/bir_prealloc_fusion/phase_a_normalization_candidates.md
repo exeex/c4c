@@ -1,7 +1,7 @@
 # Phase A BIR Normalization Candidates
 
 Source idea: `ideas/open/151_phase_a_bir_normalization_candidate_audit.md`
-Status: Step 4 dependency order complete.
+Status: Step 6 close-ready payload assembled.
 
 This artifact is the durable Phase A handoff for classifying which
 `Prepared*` facts are target-neutral BIR normalization relationships and which

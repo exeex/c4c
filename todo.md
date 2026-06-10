@@ -8,11 +8,25 @@ Current Step Title: Assemble Closure Payload
 
 ## Just Finished
 
-Step 5 of `plan.md` replaced the Follow-Up Idea Payloads scaffold in
-`docs/bir_prealloc_fusion/phase_a_normalization_candidates.md` with concrete
-route-sized follow-up payload rows.
+Step 6 of `plan.md` assembled the close-ready payload for source idea
+`ideas/open/151_phase_a_bir_normalization_candidate_audit.md`.
 
-The payloads now cover seven accepted routes:
+Close-ready artifact:
+`docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`.
+
+The artifact is complete for the Phase A analysis-only contract:
+
+- `## BIR-Normalization Candidates` contains the accepted candidate table.
+- `## Facts Rejected From BIR Normalization` contains the reject table and
+  non-BIR owner boundaries.
+- `## Dependency Order` records the ordered route groups, dependencies, switch
+  timing rule, and schema rule.
+- `## Follow-Up Idea Payloads` contains seven route-sized follow-up idea
+  payload rows.
+- `## Proof-Route Recommendations` records route-specific proof guidance with
+  query-equivalence expectations.
+
+The seven accepted follow-up routes are:
 
 - producer/source identity foundation
 - select-chain and direct-global dependency identity
@@ -22,24 +36,19 @@ The payloads now cover seven accepted routes:
 - call-boundary semantic source facts
 - comparison/materialized-condition producer identity
 
-Each row records a proposed `ideas/open/` filename prefix, route scope,
-out-of-scope guardrails, acceptance criteria, proof route, and reviewer reject
-signals. The proof-route recommendations are now route-specific and include
-query-equivalence expectations against the existing prepared query surfaces.
+No implementation files, backend expectations, or source idea files were
+changed by this closure packet.
 
 ## Suggested Next
 
-Execute Step 6: assemble the close-ready payload in `todo.md`. Summarize the
-artifact link, candidate table, reject table, dependency order, follow-up idea
-payloads, and proof-route recommendations, then verify the run remained
-analysis-only.
+Supervisor should treat this runbook as exhausted and ask the plan owner to
+decide whether to close the active lifecycle state or file/split the follow-up
+ideas from the completed artifact.
 
 ## Watchouts
 
 - This plan remains analysis-only; do not edit implementation files or test
   expectations.
-- Step 6 is closure packaging only; avoid reclassifying routes unless a concrete
-  missing artifact requirement is found.
 - The follow-up ideas are route-sized; consumer switches should wait for
   equivalent BIR-owned queries and use existing prepared queries as comparison
   oracles.
@@ -49,11 +58,15 @@ analysis-only.
 
 ## Proof
 
-Analysis-only/docs packet; no build required. Verification for this packet:
-the Follow-Up Idea Payloads table has concrete proposed idea filename prefixes,
-route scopes, out-of-scope guardrails, acceptance criteria, proof routes, and
-reviewer reject signals for all seven accepted route groups; the Proof-Route
-Recommendations section has route-specific query-equivalence and subset
-guidance; `todo.md` records Step 5 completion and recommends Step 6. No
-`test_after.log` was created because the delegated proof explicitly required no
-build.
+Analysis-only/docs packet; no build required and no `test_after.log` created.
+
+Verification for this packet:
+
+- confirmed the artifact has linkable sections for candidate table, reject
+  table, dependency order, follow-up idea payloads, and proof-route
+  recommendations
+- confirmed the follow-up payloads cover all seven accepted routes
+- confirmed the proof-route recommendations are route-specific and include
+  query-equivalence guidance
+- confirmed `git diff --name-only` touches only owned files
+- confirmed no implementation files or backend test expectations changed
