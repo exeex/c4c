@@ -1850,6 +1850,173 @@ struct CallArgumentSourceProducerMaterialization {
   bool materializable = false;
 };
 
+enum class Route6CallUseStatus : unsigned char {
+  Unavailable,
+  Available,
+  MissingCall,
+  WrongCall,
+  MissingArgument,
+  MissingResult,
+  MissingSourceRelationship,
+  MissingSourceValue,
+  MissingSourceProducer,
+  MissingDirectGlobal,
+  MissingMemorySource,
+  MissingPublicationSource,
+  AbiBoundExcluded,
+  DuplicateRelationship,
+  DuplicateResultLane,
+  NoMatch,
+};
+
+[[nodiscard]] constexpr std::string_view route6_call_use_status_name(
+    Route6CallUseStatus status) {
+  switch (status) {
+    case Route6CallUseStatus::Unavailable:
+      return "unavailable";
+    case Route6CallUseStatus::Available:
+      return "available";
+    case Route6CallUseStatus::MissingCall:
+      return "missing_call";
+    case Route6CallUseStatus::WrongCall:
+      return "wrong_call";
+    case Route6CallUseStatus::MissingArgument:
+      return "missing_argument";
+    case Route6CallUseStatus::MissingResult:
+      return "missing_result";
+    case Route6CallUseStatus::MissingSourceRelationship:
+      return "missing_source_relationship";
+    case Route6CallUseStatus::MissingSourceValue:
+      return "missing_source_value";
+    case Route6CallUseStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case Route6CallUseStatus::MissingDirectGlobal:
+      return "missing_direct_global";
+    case Route6CallUseStatus::MissingMemorySource:
+      return "missing_memory_source";
+    case Route6CallUseStatus::MissingPublicationSource:
+      return "missing_publication_source";
+    case Route6CallUseStatus::AbiBoundExcluded:
+      return "abi_bound_excluded";
+    case Route6CallUseStatus::DuplicateRelationship:
+      return "duplicate_relationship";
+    case Route6CallUseStatus::DuplicateResultLane:
+      return "duplicate_result_lane";
+    case Route6CallUseStatus::NoMatch:
+      return "no_match";
+  }
+  return "unknown";
+}
+
+enum class Route6CallUseSourceKind : unsigned char {
+  Unknown,
+  Immediate,
+  ArgumentValue,
+  BaseValue,
+  LoadLocal,
+  LoadGlobal,
+  Binary,
+  DirectGlobalSelectChain,
+  MemorySource,
+  PublicationSource,
+  AbiBoundExcluded,
+};
+
+enum class Route6CallUseValueRole : unsigned char {
+  None,
+  ArgumentSource,
+  ArgumentBase,
+  Result,
+  ResultLane,
+  PublicationSource,
+};
+
+struct Route6CallArgumentSourceRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  const CallInst* call = nullptr;
+  std::size_t call_instruction_index = 0;
+  std::string_view callee;
+  LinkNameId callee_link_name_id = kInvalidLinkName;
+  std::size_t arg_index = 0;
+  const Value* argument_value = nullptr;
+  Route1SourceValueIdentity source_value;
+  std::optional<std::size_t> source_value_id;
+  std::optional<std::string_view> source_value_name;
+  std::optional<std::size_t> source_base_value_id;
+  std::optional<std::string_view> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  CallArgumentSourceEncodingKind source_encoding =
+      CallArgumentSourceEncodingKind::None;
+  Route6CallUseSourceKind source_kind = Route6CallUseSourceKind::Unknown;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallArgumentSourceProducerRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  Route6CallArgumentSourceRecord argument_source;
+  Route1ProducerRecord producer;
+  Route1MaterializationAvailability materialization;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallArgumentDirectGlobalDependencyRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  Route6CallArgumentSourceRecord argument_source;
+  Route2SelectChainDirectGlobalDependencyRecord direct_global_dependency;
+  std::string_view source_value_name;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallArgumentPublicationSourceRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  Route6CallArgumentSourceRecord argument_source;
+  Route6CallUseSourceKind source_kind = Route6CallUseSourceKind::Unknown;
+  std::optional<std::size_t> source_value_id;
+  std::optional<std::size_t> source_base_value_id;
+  std::optional<std::string_view> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  Route3MemoryAccessRecord memory_source;
+  Route4CurrentBlockPublicationRecord current_block_publication_source;
+  Route5CfgEdgePublicationRecord edge_publication_source;
+  bool abi_bound_excluded = false;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallResultSourceRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  const CallInst* call = nullptr;
+  std::size_t call_instruction_index = 0;
+  std::string_view callee;
+  LinkNameId callee_link_name_id = kInvalidLinkName;
+  const Value* result_value = nullptr;
+  Route1SourceValueIdentity result_identity;
+  Route6CallUseValueRole value_role = Route6CallUseValueRole::Result;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallResultLaneSourceRecord {
+  bool available = false;
+  Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
+  Route6CallResultSourceRecord result_source;
+  std::size_t lane_index = 0;
+  const Value* lane_value = nullptr;
+  Route1SourceValueIdentity lane_identity;
+  bool aliases_primary_result = false;
+  Route6CallUseValueRole value_role = Route6CallUseValueRole::ResultLane;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
 enum class ComparisonProducerKind : unsigned char {
   Unknown,
   Immediate,
@@ -2096,6 +2263,41 @@ find_call_argument_source_producer_materialization(
     const CallInst& call,
     std::size_t call_instruction_index,
     std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentSourceRecord route6_call_argument_source_record(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentSourceProducerRecord
+route6_call_argument_source_producer_record(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentDirectGlobalDependencyRecord
+route6_call_argument_direct_global_dependency_record(
+    Route1SameBlockProducerQuery query,
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentPublicationSourceRecord
+route6_call_argument_publication_source_record(
+    Route1SameBlockProducerQuery query,
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallResultSourceRecord route6_call_result_source_record(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index);
+[[nodiscard]] Route6CallResultLaneSourceRecord
+route6_call_result_lane_source_record(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    const Value& value);
 std::optional<ComparisonOperandProducer> find_comparison_operand_producer(
     const Block& block,
     const Value& value,

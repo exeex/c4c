@@ -7259,6 +7259,63 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
         "BIR call-argument source routing should match prepared semantic source oracle fields");
   }
 
+  bir::Block route6_call_block{
+      .label = "entry",
+      .insts = {call},
+      .label_id = block_label,
+  };
+  const auto* route6_call =
+      std::get_if<bir::CallInst>(&route6_call_block.insts[0]);
+  if (route6_call == nullptr) {
+    return fail("Route 6 call-source fixture is malformed");
+  }
+  const auto route6_producer_index =
+      bir::route1_build_producer_index(route6_call_block);
+  const auto route6_query = bir::Route1SameBlockProducerQuery{
+      .index = &route6_producer_index,
+      .before_instruction_index = 0,
+  };
+  const auto route6_direct_global =
+      bir::route6_call_argument_direct_global_dependency_record(
+          route6_query, route6_call_block, *route6_call, 0, 3);
+  if (!route6_direct_global ||
+      route6_direct_global.status != bir::Route6CallUseStatus::Available ||
+      route6_direct_global.argument_source.source_kind !=
+          bir::Route6CallUseSourceKind::DirectGlobalSelectChain ||
+      route6_direct_global.source_value_name != "%selected.global" ||
+      !route6_direct_global.direct_global_dependency.available ||
+      !route6_direct_global.direct_global_dependency
+           .contains_direct_global_load ||
+      !route6_direct_global.direct_global_dependency.root_is_select ||
+      route6_direct_global.direct_global_dependency.root_instruction_index !=
+          std::optional<std::size_t>{5}) {
+    return fail(
+        "Route 6 call argument record should expose direct-global dependency facts");
+  }
+  const auto route6_frame_argument_source =
+      bir::route6_call_argument_source_record(
+          route6_call_block, *route6_call, 0, 2);
+  if (route6_frame_argument_source ||
+      route6_frame_argument_source.status !=
+          bir::Route6CallUseStatus::AbiBoundExcluded ||
+      route6_frame_argument_source.source_kind !=
+          bir::Route6CallUseSourceKind::AbiBoundExcluded) {
+    return fail(
+        "Route 6 call argument source record should explicitly exclude ABI-bound source selection facts");
+  }
+  const auto route6_frame_source =
+      bir::route6_call_argument_publication_source_record(
+          route6_query, route6_call_block, *route6_call, 0, 2);
+  if (route6_frame_source ||
+      route6_frame_source.status !=
+          bir::Route6CallUseStatus::AbiBoundExcluded ||
+      route6_frame_source.source_kind !=
+          bir::Route6CallUseSourceKind::AbiBoundExcluded ||
+      !route6_frame_source.abi_bound_excluded) {
+    return fail(
+        "Route 6 call argument record should explicitly exclude ABI-bound source selection facts");
+  }
+
   auto duplicate_call = call;
   duplicate_call.arg_sources.push_back(call.arg_sources.front());
   if (bir::find_call_argument_source_relationship(duplicate_call, 0) !=
@@ -7268,12 +7325,38 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
     return fail(
         "BIR call-argument source routing should fail closed for duplicate argument source records");
   }
+  auto route6_duplicate_block = route6_call_block;
+  auto* route6_duplicate_call =
+      std::get_if<bir::CallInst>(&route6_duplicate_block.insts[0]);
+  if (route6_duplicate_call == nullptr) {
+    return fail("Route 6 duplicate call-source fixture is malformed");
+  }
+  route6_duplicate_call->arg_sources.push_back(
+      route6_duplicate_call->arg_sources.front());
+  const auto route6_duplicate_source =
+      bir::route6_call_argument_source_record(
+          route6_duplicate_block, *route6_duplicate_call, 0, 0);
+  if (route6_duplicate_source ||
+      route6_duplicate_source.status !=
+          bir::Route6CallUseStatus::DuplicateRelationship) {
+    return fail(
+        "Route 6 call argument source record should fail closed for duplicate argument source records");
+  }
 
   if (bir::find_call_argument_source_relationship(call, 99) != nullptr ||
       bir::find_call_argument_publication_source_routing(call, 99)
           .available) {
     return fail(
         "BIR call-argument source routing should fail closed for out-of-range argument indexes");
+  }
+  const auto route6_missing_argument =
+      bir::route6_call_argument_source_record(
+          route6_call_block, *route6_call, 0, 99);
+  if (route6_missing_argument ||
+      route6_missing_argument.status !=
+          bir::Route6CallUseStatus::MissingArgument) {
+    return fail(
+        "Route 6 call argument source record should fail closed for missing arguments");
   }
 
   bir::CallInst unavailable_call{
@@ -7318,6 +7401,16 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
                   .slot_id = c4c::SlotNameId{3},
                   .byte_offset = 0,
                   .align_bytes = 8,
+                  .address =
+                      bir::MemoryAddress{
+                          .base_kind =
+                              bir::MemoryAddress::BaseKind::LocalSlot,
+                          .base_name = "slot0",
+                          .byte_offset = 0,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .base_slot_id = c4c::SlotNameId{3},
+                      },
               },
               bir::BinaryInst{
                   .opcode = bir::BinaryOpcode::Add,
@@ -7456,9 +7549,50 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
     return fail(
         "BIR call-argument source-producer materialization should match prepared load-local and materializable binary oracle facts");
   }
+  const auto route6_producer_index = bir::route1_build_producer_index(block);
+  const auto route6_query = bir::Route1SameBlockProducerQuery{
+      .index = &route6_producer_index,
+      .before_instruction_index = call_instruction_index,
+  };
+  const auto route6_load_producer =
+      bir::route6_call_argument_source_producer_record(
+          block, *call, call_instruction_index, 0);
+  const auto route6_sum_producer =
+      bir::route6_call_argument_source_producer_record(
+          block, *call, call_instruction_index, 1);
+  if (!route6_load_producer ||
+      route6_load_producer.status != bir::Route6CallUseStatus::Available ||
+      route6_load_producer.producer.kind != bir::Route1ProducerKind::LoadLocal ||
+      route6_load_producer.producer.producer_instruction.instruction !=
+          &block.insts[0] ||
+      !route6_load_producer.materialization.scalar_materialization_available ||
+      !route6_sum_producer ||
+      route6_sum_producer.producer.kind != bir::Route1ProducerKind::Binary ||
+      route6_sum_producer.producer.producer_instruction.instruction !=
+          &block.insts[1] ||
+      !route6_sum_producer.materialization.scalar_materialization_available) {
+    return fail(
+        "Route 6 call argument producer records should expose source producer and materialization facts");
+  }
+  const auto route6_load_publication =
+      bir::route6_call_argument_publication_source_record(
+          route6_query, block, *call, call_instruction_index, 0);
+  if (!route6_load_publication ||
+      route6_load_publication.status != bir::Route6CallUseStatus::Available ||
+      route6_load_publication.source_kind !=
+          bir::Route6CallUseSourceKind::MemorySource ||
+      route6_load_publication.memory_source.instruction != &block.insts[0] ||
+      route6_load_publication.memory_source.node_kind !=
+          bir::Route3MemoryAccessNodeKind::LoadLocal) {
+    return fail(
+        "Route 6 call argument source record should reuse Route 3 memory source identity");
+  }
 
   const auto nonmaterializable =
       bir::find_call_argument_source_producer_materialization(
+          block, *call, call_instruction_index, 2);
+  const auto route6_nonmaterializable =
+      bir::route6_call_argument_source_producer_record(
           block, *call, call_instruction_index, 2);
   if (!prepared_and_bir_call_argument_source_producer_materialization_match(
           names, source_producers, block_label, block, *call,
@@ -7466,7 +7600,9 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
       !nonmaterializable.available ||
       nonmaterializable.producer_kind !=
           bir::CallArgumentSourceProducerKind::Binary ||
-      nonmaterializable.materializable) {
+      nonmaterializable.materializable ||
+      !route6_nonmaterializable ||
+      route6_nonmaterializable.materialization.scalar_materialization_available) {
     return fail(
         "BIR call-argument materialization should expose nonmaterializable binary producer eligibility");
   }
@@ -7488,6 +7624,21 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
     return fail(
         "BIR call-argument materialization should fail closed for missing and producer-after-call paths");
   }
+  const auto route6_missing_producer =
+      bir::route6_call_argument_source_producer_record(
+          block, *call, call_instruction_index, 3);
+  const auto route6_after_producer =
+      bir::route6_call_argument_source_producer_record(
+          block, *call, call_instruction_index, 4);
+  if (route6_missing_producer ||
+      route6_missing_producer.status !=
+          bir::Route6CallUseStatus::MissingSourceProducer ||
+      route6_after_producer ||
+      route6_after_producer.status !=
+          bir::Route6CallUseStatus::MissingSourceProducer) {
+    return fail(
+        "Route 6 call argument producer records should explicitly report missing source producers");
+  }
 
   auto duplicate_block = block;
   auto* duplicate_call =
@@ -7501,6 +7652,15 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           .available) {
     return fail(
         "BIR call-argument materialization should fail closed for duplicate argument source records");
+  }
+  const auto route6_duplicate_producer =
+      bir::route6_call_argument_source_producer_record(
+          duplicate_block, *duplicate_call, call_instruction_index, 0);
+  if (route6_duplicate_producer ||
+      route6_duplicate_producer.status !=
+          bir::Route6CallUseStatus::DuplicateRelationship) {
+    return fail(
+        "Route 6 call argument producer record should fail closed for duplicate source records");
   }
 
   return 0;
@@ -8057,6 +8217,17 @@ int verify_bir_call_result_source_identity_lookup() {
     return fail(
         "BIR call-result source identity should match prepared destination value identity only");
   }
+  const auto route6_result =
+      bir::route6_call_result_source_record(block, *call, call_instruction_index);
+  if (!route6_result ||
+      route6_result.status != bir::Route6CallUseStatus::Available ||
+      route6_result.call != call ||
+      route6_result.result_value != &*call->result ||
+      route6_result.result_identity.name != "%call.result" ||
+      route6_result.value_role != bir::Route6CallUseValueRole::Result) {
+    return fail(
+        "Route 6 call-result record should expose result value provenance without ABI placement");
+  }
 
   const prepare::PreparedAfterCallResultLaneBinding primary_lane{
       .value_id = prepare::PreparedValueId{700},
@@ -8081,6 +8252,23 @@ int verify_bir_call_result_source_identity_lookup() {
     return fail(
         "BIR call-result lane identity should match prepared after-call result lane bindings");
   }
+  const auto route6_primary_lane =
+      bir::route6_call_result_lane_source_record(
+          block, *call, call_instruction_index, result_value);
+  const auto route6_high_lane =
+      bir::route6_call_result_lane_source_record(
+          block, *call, call_instruction_index, high_lane);
+  if (!route6_primary_lane ||
+      route6_primary_lane.lane_index != 0 ||
+      !route6_primary_lane.aliases_primary_result ||
+      route6_primary_lane.lane_identity.name != "%call.result" ||
+      !route6_high_lane ||
+      route6_high_lane.lane_index != 1 ||
+      route6_high_lane.aliases_primary_result ||
+      route6_high_lane.lane_identity.name != "%call.result.high") {
+    return fail(
+        "Route 6 call-result lane records should expose primary and high lane provenance");
+  }
 
   auto duplicate_lane_block = block;
   auto* duplicate_lane_call =
@@ -8095,6 +8283,18 @@ int verify_bir_call_result_source_identity_lookup() {
           .available) {
     return fail(
         "BIR call-result lane identity should fail closed for duplicate lane value identities");
+  }
+  const auto route6_duplicate_lane =
+      bir::route6_call_result_lane_source_record(
+          duplicate_lane_block,
+          *duplicate_lane_call,
+          call_instruction_index,
+          high_lane);
+  if (route6_duplicate_lane ||
+      route6_duplicate_lane.status !=
+          bir::Route6CallUseStatus::DuplicateResultLane) {
+    return fail(
+        "Route 6 call-result lane record should explicitly report duplicate lane identities");
   }
 
   bir::Block no_result_block{
@@ -8120,6 +8320,17 @@ int verify_bir_call_result_source_identity_lookup() {
     return fail(
         "BIR call-result source identity should require a result value, not result ABI placement");
   }
+  const auto route6_missing_result =
+      no_result_call == nullptr
+          ? bir::Route6CallResultSourceRecord{}
+          : bir::route6_call_result_source_record(
+                no_result_block, *no_result_call, 0);
+  if (route6_missing_result ||
+      route6_missing_result.status !=
+          bir::Route6CallUseStatus::MissingResult) {
+    return fail(
+        "Route 6 call-result record should explicitly report missing result values");
+  }
   auto detached_call = *call;
   if (bir::find_call_result_source_identity(
           block, detached_call, call_instruction_index)
@@ -8127,6 +8338,18 @@ int verify_bir_call_result_source_identity_lookup() {
       bir::find_call_result_source_identity(block, *call, 1).available) {
     return fail(
         "BIR call-result source identity should fail closed for mismatched call boundaries");
+  }
+  const auto route6_detached_result =
+      bir::route6_call_result_source_record(
+          block, detached_call, call_instruction_index);
+  const auto route6_missing_call =
+      bir::route6_call_result_source_record(block, *call, 1);
+  if (route6_detached_result ||
+      route6_detached_result.status != bir::Route6CallUseStatus::WrongCall ||
+      route6_missing_call ||
+      route6_missing_call.status != bir::Route6CallUseStatus::MissingCall) {
+    return fail(
+        "Route 6 call-result record should distinguish wrong-call and missing-call boundaries");
   }
 
   return 0;
