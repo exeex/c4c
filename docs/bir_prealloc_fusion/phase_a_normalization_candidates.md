@@ -1,7 +1,7 @@
 # Phase A BIR Normalization Candidates
 
 Source idea: `ideas/open/151_phase_a_bir_normalization_candidate_audit.md`
-Status: Step 3 reject classification complete.
+Status: Step 4 dependency order complete.
 
 This artifact is the durable Phase A handoff for classifying which
 `Prepared*` facts are target-neutral BIR normalization relationships and which
@@ -115,16 +115,34 @@ target-neutral relationship instead.
 
 ## Dependency Order
 
-Step 4 will replace this scaffold with accepted route order.
+Step 4 orders accepted candidate rows into route groups that can become Phase B
+implementation ideas without importing Step 3 reject payloads. Each route
+should first add a BIR-owned schema/query surface, then bridge the matching
+prepared query to that surface, and only then switch individual MIR consumers.
 
-1. Establish BIR-owned producer/source identity relationships before consumer
-   switch work.
-2. Add BIR-owned publication/edge relationship surfaces only after producer
-   identity has a stable schema.
-3. Add call, memory, and comparison relationships on top of producer and
-   publication identity.
-4. Switch MIR consumers only after each equivalent BIR-owned query exists and
-   rejects target-local policy migration.
+| Order | Route group | Must exist before this route | BIR-owned schema or annotation decision | Earliest consumer switch point | Step 3 reject boundary |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Producer/source identity foundation | Raw `bir::Function`, `bir::Block`, instruction order, value/name/type ids, and existing integer-constant evaluation rules. | Add a target-neutral producer-kind vocabulary and per-function or analysis-cache relationship index keyed by `{block_label, before_instruction_index, value_name/value, type}`. The schema may name same-block producer nodes, immediate constants, source value/name, producer instruction index, and materialization availability. Do not reuse publication-owned enum names as the BIR authority. | After the BIR query can answer the same semantic subset as `find_prepared_same_block_scalar_producer` and `evaluate_prepared_same_block_integer_constant`, switch low-risk value/materialization consumers that only need producer/value identity. | Excludes register spelling, register availability, operand views, final instruction order, spill/reload policy, storage encoding, and emitted-register state. |
+| 2 | Select-chain and direct-global dependency identity | Route 1 producer/source identity plus BIR `SelectInst`, `LoadGlobalInst`, root value, and instruction index data. | Add select-chain analysis keyed by `{block_label, root_value, before_instruction_index}`. Store root producer value/name, whether the root is a BIR select, root instruction index, direct global-load dependency, and scalar materialization eligibility as semantic dataflow annotations. | After BIR queries match `find_prepared_select_chain_source_producer`, `find_prepared_direct_global_select_chain_dependency`, and `find_prepared_scalar_select_chain_materialization`, switch select-materialization and direct-global dependency consumers before call-specific consumers. | Excludes target materialization cost, hazard decisions, register availability, publication routing policy, and final AArch64 move/branch choices. |
+| 3 | Memory/access semantic identity | Route 1 producer/source identity and BIR memory nodes (`LoadLocal`, `LoadGlobal`, `StoreLocal`, `StoreGlobal`, address materialization values), with target-neutral local/global/pointer/string identity. Route 2 is optional only for memory rows that cite direct global select-chain structure. | Add a BIR memory-access identity surface attached to memory/address nodes. Store result/stored value names, address space, volatile flag, semantic base kind, pointer/global/local/string source identity, same-block global-load access, and load-local stored-value source links. Use BIR slot/name identity for locals, not prepared frame slot ids. | After BIR memory queries match same-block global-load and load-local stored-value relationships, switch memory retargeting and store-source consumers that only need access/source identity. Keep target addressing owners in prealloc/AArch64 until later MIR lowering. | Excludes frame slot ids, byte offsets, size/align layout, `can_use_base_plus_offset`, TLS register/relocation spelling, GOT/direct/page-low policy, and AArch64 memory operand legality. |
+| 4 | Block-entry and current-block publication identity | Route 1 producer/source identity. Route 3 if publication rows need source memory-access identity. Stable BIR block labels, predecessor/successor ids, entry values, and before-instruction positions. | Add block-entry/current-block publication relationship keyed by `{block_label, value_name, before_instruction_index}`. Store source producer identity, produced BIR value/name, producer instruction/index, and source-producer kind. Model this as a BIR value-availability/publication relationship, not as a hook or home. | After the BIR query matches `PreparedCurrentBlockPublicationConsumption` for source/value/producer identity, switch current-block publication consumers and scalar publication planning reads that only ask "which semantic source is available?". | Excludes hook kind, destination home, storage encoding, stack-source extension policy, register view conversion, immediate publication payloads, and emitted storage availability. |
+| 5 | CFG edge publication and join-source identity | Routes 1 and 4, plus Route 3 for edge/load-local source cases. Stable BIR predecessor/successor labels and destination value/name ids. | Add CFG edge publication surface keyed by `{predecessor_label, successor_label, destination_value_id/name}`. Store source BIR value/name/kind, source producer block/instruction, optional source memory-access identity, and current-block join incoming-expression/source identity. | After BIR edge queries match semantic parts of `PreparedEdgePublication`, `PreparedEdgeCopySourceFacts`, and current-block join source facts, switch edge-copy source discovery and publication-source producer lookups. Keep parallel-copy execution planning downstream. | Excludes move bundle/step order, cycle temporary routing, execution site/block placement, phase/carrier policy, coalescing/redundancy flags, destination register names, storage-sharing checks, and prepared move records. |
+| 6 | Call-boundary semantic source facts | Routes 1, 2, 3, and 4. Route 5 only for call paths that explicitly reuse edge/publication-source identity. Existing `bir::CallInst` argument/result ids and call metadata. | Add call-use source relationships attached to `bir::CallInst` arguments/results. Store source value/base value/name, semantic pointer delta when target-neutral, materializable same-block producer, direct global select-chain dependency, memory/access source link, and publication-source route identity. | After BIR call queries match `PreparedCallArgumentSourceProducerMaterialization`, `PreparedCallArgumentDirectGlobalSelectChainDependency`, and `PreparedCallArgumentPublicationSourceRouting` for semantic fields, switch call materialization/routing reads one argument/result class at a time. | Excludes ABI register/stack placement, outgoing stack area sizing, variadic FPR count, preservation/clobber sets, byval aggregate lanes, scratch requirements, destination homes, and helper/carrier protocols. |
+| 7 | Comparison and materialized-condition producer identity | Route 1 producer/source identity and integer-constant evaluation; Route 2 only when comparison operands depend on select/global-load roots. | Add comparison relationship keyed by branch condition or condition value. Store lhs/rhs producer nodes or integer constants, comparison-producing `BinaryInst`, condition value name, and producer instruction index. | After BIR comparison queries match `find_prepared_fused_compare_operand_producer*` and `find_prepared_materialized_condition_producer`, switch comparison and branch consumers that need operand/condition provenance. | Excludes fused-compare legality, condition-code selection, branch emission strategy, final instruction records/errors, hazard handling, and emitted-register state. |
+
+Switch timing rule: no MIR consumer should switch until the corresponding BIR
+query can answer the same semantic subset as the prepared query and the old
+prepared surface remains available as a comparison oracle for before/after
+proof. Route groups may be implemented as separate ideas, but consumer switches
+inside each group should be small and query-equivalence driven.
+
+Schema rule: BIR schemas may record stable BIR ids, value/name/type identity,
+block/edge ids, producer instruction indexes, semantic base/source kinds,
+address-space/volatile bits, direct global-load dependency, and integer
+constants. They must not record homes, stack offsets, frame slots, physical
+registers, ABI placements, target addressing legality, relocation spelling,
+parallel-copy execution policy, storage hooks, scratch resources, or final
+instruction records.
 
 ## Follow-Up Idea Payloads
 

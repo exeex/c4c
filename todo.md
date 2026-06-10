@@ -1,61 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/151_phase_a_bir_normalization_candidate_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Rejected Prepared Facts
+Current Step ID: 4
+Current Step Title: Order Safe Normalization Routes
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 of `plan.md` classified the facts rejected from BIR normalization in
-`docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`.
+Step 4 of `plan.md` replaced the dependency-order scaffold in
+`docs/bir_prealloc_fusion/phase_a_normalization_candidates.md` with concrete
+route groups for Phase B and future implementation ideas.
 
-Completed reject groups:
+Ordered route groups now cover:
 
-- ABI register/stack placement
-- stack offsets, frame slots, and saved-register placement
-- register spelling, banks, views, occupied registers, and operand conversion
-- scratch policy and aggregate transport lanes
-- target addressing modes, TLS relocations, and base-plus-offset legality
-- parallel-copy execution and publication routing policy
-- publication hook, storage encoding, and typed stack-source emission payloads
-- final instruction routing, ordering, hazards, and record/error payloads
-- runtime helper, special-carrier, variadic, and dynamic-stack resource policy
-- mixed publication/call/memory payloads from Step 2 candidate rows
+- producer/source identity foundation
+- select-chain and direct-global dependency identity
+- memory/access semantic identity
+- block-entry and current-block publication identity
+- CFG edge publication and join-source identity
+- call-boundary semantic source facts
+- comparison and materialized-condition producer identity
 
-Each reject row now names current owners and examples, the concrete rejection
-reason, the required non-BIR owner, and the cross-check that the Step 2
-candidate rows do not rely on smuggling target-local payloads into BIR.
+Each route records prerequisites, BIR schema/annotation decisions, earliest
+consumer switch timing, and Step 3 reject boundaries. The ordering keeps
+producer/source identity before publication/edge, call, memory, and comparison
+consumers, while placing memory identity before edge/call rows that may cite
+memory-access source facts.
 
 ## Suggested Next
 
-Execute Step 4: order safe normalization routes in the artifact. Group the
-accepted Step 2 candidate rows into route-sized implementation sequences, then
-order them so producer/source identity precedes publication/edge, call, memory,
-and comparison consumers.
+Execute Step 5: draft follow-up idea payloads in the artifact. Convert the
+ordered Step 4 route groups into concrete `ideas/open/` payload rows with
+scope, out-of-scope boundaries, acceptance criteria, proof routes, and reviewer
+reject signals.
 
 ## Watchouts
 
-- This plan is analysis-only; do not edit implementation files or test
+- This plan remains analysis-only; do not edit implementation files or test
   expectations.
-- Step 3 rejects are not dead code; they are required prealloc, ABI, stack,
-  regalloc, MIR, or AArch64 ownership boundaries.
-- Step 4 should preserve the split: BIR routes may depend on target-neutral
-  producer/source/access identity, but not on homes, stack offsets, register
-  spelling, ABI placement, TLS relocations, parallel-copy schedule, scratch
-  policy, or final instruction records.
-- Any route that imports a whole mixed `Prepared*Plan`, `Prepared*Publication`,
-  `PreparedAddress`, or `PreparedValueHome` shape into BIR should be treated as
-  route drift.
+- Step 5 should preserve Step 4 ordering and Step 3 reject boundaries when
+  drafting follow-up payloads.
+- Follow-up ideas should be route-sized; consumer switches should wait for
+  equivalent BIR-owned queries and use existing prepared queries as comparison
+  oracles.
+- Any payload that imports a whole mixed `Prepared*Plan`,
+  `Prepared*Publication`, `PreparedAddress`, or `PreparedValueHome` shape into
+  BIR should be treated as route drift.
 
 ## Proof
 
 Analysis-only/docs packet; no build required. Verification for this packet:
-used `c4c-clang-tools` symbol inventories for the call, addressing,
-publication, and value-location headers; inspected targeted owner snippets for
-call plans, frame/register placement, address materialization, publication
-plans, control-flow copy routing, and AArch64 instruction records; artifact
-reject table has concrete owner/reason/cross-check entries; `todo.md` records
-Step 3 completion. No `test_after.log` was created because the delegated proof
-explicitly required no build.
+the Dependency Order section was replaced with ordered route groups,
+dependencies, switch timing, and schema/annotation decisions; the route
+boundaries preserve Step 3 rejects for homes, stack offsets, register spelling,
+ABI placement, target addressing, TLS relocations, parallel-copy schedule,
+scratch policy, storage hooks, and final instruction records; `todo.md`
+records Step 4 completion and recommends Step 5. No `test_after.log` was
+created because the delegated proof explicitly required no build.
