@@ -2500,6 +2500,8 @@ Route6CallArgumentSourceRecord route6_call_argument_source_record(
       .status = Route6CallUseStatus::Unavailable,
       .call = &call,
       .call_instruction_index = call_instruction_index,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
       .callee = call.callee,
       .callee_link_name_id = call.callee_link_name_id,
       .arg_index = arg_index,
@@ -2743,6 +2745,8 @@ Route6CallResultSourceRecord route6_call_result_source_record(
       .status = Route6CallUseStatus::Unavailable,
       .call = &call,
       .call_instruction_index = call_instruction_index,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
       .callee = call.callee,
       .callee_link_name_id = call.callee_link_name_id,
   };
@@ -2787,6 +2791,7 @@ Route6CallResultLaneSourceRecord route6_call_result_lane_source_record(
     record.status = route6_duplicate_lane_match(call, value)
                         ? Route6CallUseStatus::DuplicateResultLane
                         : Route6CallUseStatus::NoMatch;
+    record.lane_identity = route1_source_value_identity(value);
     return record;
   }
   record.available = true;
@@ -2796,6 +2801,274 @@ Route6CallResultLaneSourceRecord route6_call_result_lane_source_record(
   record.lane_identity = route1_source_value_identity(*identity.lane_value);
   record.aliases_primary_result = identity.aliases_primary_result;
   return record;
+}
+
+namespace {
+
+[[nodiscard]] bool route6_block_matches(std::string_view record_label,
+                                        BlockLabelId record_label_id,
+                                        const Block& block) {
+  if (record_label_id != kInvalidBlockLabel &&
+      block.label_id != kInvalidBlockLabel) {
+    return record_label_id == block.label_id;
+  }
+  return !record_label.empty() && record_label == block.label;
+}
+
+[[nodiscard]] bool route6_call_key_matches(std::string_view record_block_label,
+                                           BlockLabelId record_block_label_id,
+                                           std::size_t record_call_index,
+                                           std::string_view record_callee,
+                                           const Block& block,
+                                           std::size_t call_instruction_index,
+                                           std::string_view callee) {
+  return route6_block_matches(record_block_label, record_block_label_id, block) &&
+         record_call_index == call_instruction_index &&
+         record_callee == callee;
+}
+
+[[nodiscard]] Route6CallUseStatus route6_missing_call_status(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee) {
+  bool block_seen = false;
+  bool instruction_seen = false;
+  for (const auto& record : index.argument_source_records) {
+    if (!route6_block_matches(record.block_label, record.block_label_id, block)) {
+      continue;
+    }
+    block_seen = true;
+    if (record.call_instruction_index == call_instruction_index) {
+      instruction_seen = true;
+      if (record.callee != callee) {
+        return Route6CallUseStatus::WrongCall;
+      }
+    }
+  }
+  for (const auto& record : index.result_records) {
+    if (!route6_block_matches(record.block_label, record.block_label_id, block)) {
+      continue;
+    }
+    block_seen = true;
+    if (record.call_instruction_index == call_instruction_index) {
+      instruction_seen = true;
+      if (record.callee != callee) {
+        return Route6CallUseStatus::WrongCall;
+      }
+    }
+  }
+  return block_seen && instruction_seen ? Route6CallUseStatus::NoMatch
+                                        : Route6CallUseStatus::MissingCall;
+}
+
+}  // namespace
+
+Route6CallUseSourceIndex route6_build_call_use_source_index(
+    const Function& function) {
+  Route6CallUseSourceIndex index{.function = &function};
+  for (const auto& block : function.blocks) {
+    const auto producer_index = route1_build_producer_index(block);
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto* call = std::get_if<CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr) {
+        continue;
+      }
+      const auto query = Route1SameBlockProducerQuery{
+          .index = &producer_index,
+          .before_instruction_index = instruction_index,
+      };
+      for (std::size_t arg_index = 0; arg_index < call->args.size();
+           ++arg_index) {
+        index.argument_source_records.push_back(
+            route6_call_argument_source_record(block, *call, instruction_index,
+                                               arg_index));
+        index.argument_producer_records.push_back(
+            route6_call_argument_source_producer_record(
+                block, *call, instruction_index, arg_index));
+        index.direct_global_records.push_back(
+            route6_call_argument_direct_global_dependency_record(
+                query, block, *call, instruction_index, arg_index));
+        index.publication_source_records.push_back(
+            route6_call_argument_publication_source_record(
+                query, block, *call, instruction_index, arg_index));
+      }
+      index.result_records.push_back(
+          route6_call_result_source_record(block, *call, instruction_index));
+      if (call->result.has_value()) {
+        index.result_lane_records.push_back(
+            route6_call_result_lane_source_record(
+                block, *call, instruction_index, *call->result));
+      }
+      for (const auto& lane : call->result_lanes) {
+        index.result_lane_records.push_back(
+            route6_call_result_lane_source_record(
+                block, *call, instruction_index, lane));
+      }
+    }
+  }
+  return index;
+}
+
+Route6CallArgumentSourceRecord route6_find_call_argument_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index) {
+  for (const auto& record : index.argument_source_records) {
+    if (route6_call_key_matches(record.block_label, record.block_label_id,
+                                record.call_instruction_index, record.callee,
+                                block, call_instruction_index, callee) &&
+        record.arg_index == arg_index) {
+      return record;
+    }
+  }
+  return Route6CallArgumentSourceRecord{
+      .status = route6_missing_call_status(
+          index, block, call_instruction_index, callee),
+      .call_instruction_index = call_instruction_index,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .callee = callee,
+      .arg_index = arg_index,
+  };
+}
+
+Route6CallArgumentSourceProducerRecord
+route6_find_call_argument_source_producer(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index) {
+  for (const auto& record : index.argument_producer_records) {
+    const auto& source = record.argument_source;
+    if (route6_call_key_matches(source.block_label, source.block_label_id,
+                                source.call_instruction_index, source.callee,
+                                block, call_instruction_index, callee) &&
+        source.arg_index == arg_index) {
+      return record;
+    }
+  }
+  return Route6CallArgumentSourceProducerRecord{
+      .status = route6_find_call_argument_source(
+                    index, block, call_instruction_index, callee, arg_index)
+                    .status,
+  };
+}
+
+Route6CallArgumentDirectGlobalDependencyRecord
+route6_find_call_argument_direct_global_dependency(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index) {
+  for (const auto& record : index.direct_global_records) {
+    const auto& source = record.argument_source;
+    if (route6_call_key_matches(source.block_label, source.block_label_id,
+                                source.call_instruction_index, source.callee,
+                                block, call_instruction_index, callee) &&
+        source.arg_index == arg_index) {
+      return record;
+    }
+  }
+  return Route6CallArgumentDirectGlobalDependencyRecord{
+      .status = route6_find_call_argument_source(
+                    index, block, call_instruction_index, callee, arg_index)
+                    .status,
+  };
+}
+
+Route6CallArgumentPublicationSourceRecord
+route6_find_call_argument_publication_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index) {
+  for (const auto& record : index.publication_source_records) {
+    const auto& source = record.argument_source;
+    if (route6_call_key_matches(source.block_label, source.block_label_id,
+                                source.call_instruction_index, source.callee,
+                                block, call_instruction_index, callee) &&
+        source.arg_index == arg_index) {
+      return record;
+    }
+  }
+  return Route6CallArgumentPublicationSourceRecord{
+      .status = route6_find_call_argument_source(
+                    index, block, call_instruction_index, callee, arg_index)
+                    .status,
+  };
+}
+
+Route6CallResultSourceRecord route6_find_call_result_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& result_value) {
+  for (const auto& record : index.result_records) {
+    if (route6_call_key_matches(record.block_label, record.block_label_id,
+                                record.call_instruction_index, record.callee,
+                                block, call_instruction_index, callee)) {
+      if (record.result_value != nullptr &&
+          route6_values_match(*record.result_value, result_value)) {
+        return record;
+      }
+      auto no_match = record;
+      no_match.available = false;
+      no_match.status = Route6CallUseStatus::NoMatch;
+      return no_match;
+    }
+  }
+  return Route6CallResultSourceRecord{
+      .status = route6_missing_call_status(
+          index, block, call_instruction_index, callee),
+      .call_instruction_index = call_instruction_index,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .callee = callee,
+  };
+}
+
+Route6CallResultLaneSourceRecord route6_find_call_result_lane_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& lane_value) {
+  for (const auto& record : index.result_lane_records) {
+    const auto& source = record.result_source;
+    if (route6_call_key_matches(source.block_label, source.block_label_id,
+                                source.call_instruction_index, source.callee,
+                                block, call_instruction_index, callee)) {
+      if (record.status == Route6CallUseStatus::DuplicateResultLane &&
+          record.lane_value == nullptr &&
+          record.lane_identity.name == lane_value.name &&
+          record.lane_identity.type == lane_value.type &&
+          record.lane_identity.value_kind == lane_value.kind) {
+        return record;
+      }
+      if (record.lane_value != nullptr &&
+          route6_values_match(*record.lane_value, lane_value)) {
+        return record;
+      }
+    }
+  }
+  return Route6CallResultLaneSourceRecord{
+      .status = route6_missing_call_status(
+          index, block, call_instruction_index, callee),
+      .result_source =
+          Route6CallResultSourceRecord{.call_instruction_index =
+                                           call_instruction_index,
+                                       .block_label = block.label,
+                                       .block_label_id = block.label_id,
+                                       .callee = callee},
+  };
 }
 
 std::optional<ComparisonOperandProducer> find_comparison_operand_producer(

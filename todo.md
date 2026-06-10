@@ -1,48 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/164_bir_call_use_source_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add BIR Annotation Records
+Current Step ID: 3
+Current Step Title: Add Lookup/Index Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for
+Completed Step 3 for
 `ideas/open/164_bir_call_use_source_annotation_schema.md`.
-Added typed Route 6 BIR call-use annotation records and construction helpers
-without switching production consumers:
+Added function-local Route 6 lookup/index helpers over the Step 2 BIR
+call-use annotation records without switching production consumers:
 
-- Added Route 6 status/source-kind/value-role vocabularies plus typed records
-  for call argument source identity, argument producer/materialization,
-  argument direct-global dependency, argument publication/memory source,
-  result provenance, and result-lane provenance.
-- Added construction helpers over `CallInst` and BIR block context:
-  `route6_call_argument_source_record(...)`,
-  `route6_call_argument_source_producer_record(...)`,
-  `route6_call_argument_direct_global_dependency_record(...)`,
-  `route6_call_argument_publication_source_record(...)`,
-  `route6_call_result_source_record(...)`, and
-  `route6_call_result_lane_source_record(...)`.
-- Reused Route 1 producer/value/materialization records, Route 2 direct-global
-  dependency records, Route 3 memory access records, and Route 4/5 publication
-  record slots where applicable instead of duplicating producer, memory, or
-  publication schemas.
-- Explicit statuses now cover wrong/missing call, missing argument/result,
-  duplicate argument relationship, duplicate result lane, missing source
-  producer, missing direct-global, missing memory/publication source,
-  no-match, and ABI-bound exclusion.
+- Added `Route6CallUseSourceIndex`, rebuilt from BIR `Function`/`Block`
+  `CallInst` payloads and value records.
+- The index groups argument source, argument producer/materialization,
+  direct-global, publication/memory source, result, and result-lane records.
+- Added lookup helpers keyed by stable BIR block label/id, call instruction
+  index, callee spelling, argument index, result value name/type, and
+  result-lane value name/type.
+- The helpers remain target-neutral indexes over Route 6 records, not
+  prepared call-plan containers.
 
-Focused test additions keep prepared/BIR helper reads as oracles and cover
-argument producer/materialization, direct-global dependency, Route 3 memory
-source reuse, result/result-lane provenance, ABI-bound exclusion, duplicate
-relationship/lane, missing argument/result, wrong call, and missing producer
-cases.
+Focused test additions now prove indexed argument success, direct-global
+dependency success, Route 3 memory-source reuse, result provenance success,
+result-lane success/no-match, wrong-call behavior, missing-source behavior,
+duplicate relationship/lane behavior, and ABI-bound exclusion behavior.
 
 ## Suggested Next
 
-Execute Step 3 by adding function-local Route 6 lookup/index helpers over the
-new call-use annotation records.
+Execute Step 4 by migrating the narrowest shared Route 6 query consumer to
+read Route 6 BIR records/index helpers while preserving prepared/BIR oracle
+checks.
 
 ## Watchouts
 
@@ -59,14 +49,15 @@ new call-use annotation records.
 - Existing `CallArgumentSourceSelection` still contains quarantine fields for
   prepared-only layout comparisons. Route 6 records keep those ABI/layout
   fields out of the schema and use them only to report `AbiBoundExcluded`.
-- Step 2 intentionally did not switch MIR, target/codegen, ABI assignment, call
+- Step 3 intentionally did not switch MIR, target/codegen, ABI assignment, call
   lowering, aggregate transport, or prealloc production consumers.
-- Step 3 indexes should be rebuilt from Route 6 records and should not become
-  prepared call-plan containers.
+- Route 6 indexes are rebuilt from BIR records and must remain target-neutral;
+  do not add prepared call-plan, ABI placement, outgoing-stack, aggregate
+  transport, or register/storage fields to the index payload.
 
 ## Proof
 
-Exact delegated Step 2 proof passed:
+Exact delegated Step 3 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log

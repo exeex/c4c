@@ -1936,6 +1936,8 @@ struct Route6CallArgumentSourceRecord {
   Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
   const CallInst* call = nullptr;
   std::size_t call_instruction_index = 0;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
   std::string_view callee;
   LinkNameId callee_link_name_id = kInvalidLinkName;
   std::size_t arg_index = 0;
@@ -1995,6 +1997,8 @@ struct Route6CallResultSourceRecord {
   Route6CallUseStatus status = Route6CallUseStatus::Unavailable;
   const CallInst* call = nullptr;
   std::size_t call_instruction_index = 0;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
   std::string_view callee;
   LinkNameId callee_link_name_id = kInvalidLinkName;
   const Value* result_value = nullptr;
@@ -2015,6 +2019,20 @@ struct Route6CallResultLaneSourceRecord {
   Route6CallUseValueRole value_role = Route6CallUseValueRole::ResultLane;
 
   [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route6CallUseSourceIndex {
+  const Function* function = nullptr;
+  std::vector<Route6CallArgumentSourceRecord> argument_source_records;
+  std::vector<Route6CallArgumentSourceProducerRecord> argument_producer_records;
+  std::vector<Route6CallArgumentDirectGlobalDependencyRecord>
+      direct_global_records;
+  std::vector<Route6CallArgumentPublicationSourceRecord>
+      publication_source_records;
+  std::vector<Route6CallResultSourceRecord> result_records;
+  std::vector<Route6CallResultLaneSourceRecord> result_lane_records;
+
+  [[nodiscard]] explicit operator bool() const { return function != nullptr; }
 };
 
 enum class ComparisonProducerKind : unsigned char {
@@ -2298,6 +2316,49 @@ route6_call_result_lane_source_record(
     const CallInst& call,
     std::size_t call_instruction_index,
     const Value& value);
+[[nodiscard]] Route6CallUseSourceIndex route6_build_call_use_source_index(
+    const Function& function);
+[[nodiscard]] Route6CallArgumentSourceRecord
+route6_find_call_argument_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentSourceProducerRecord
+route6_find_call_argument_source_producer(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentDirectGlobalDependencyRecord
+route6_find_call_argument_direct_global_dependency(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallArgumentPublicationSourceRecord
+route6_find_call_argument_publication_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    std::size_t arg_index);
+[[nodiscard]] Route6CallResultSourceRecord route6_find_call_result_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& result_value);
+[[nodiscard]] Route6CallResultLaneSourceRecord
+route6_find_call_result_lane_source(
+    const Route6CallUseSourceIndex& index,
+    const Block& block,
+    std::size_t call_instruction_index,
+    std::string_view callee,
+    const Value& lane_value);
 std::optional<ComparisonOperandProducer> find_comparison_operand_producer(
     const Block& block,
     const Value& value,
