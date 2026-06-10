@@ -1,30 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/166_bir_annotation_lookup_index_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Shared Index Reference Contracts
+Current Step ID: 3
+Current Step Title: Normalize Route-Specific Lookup Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
-defined the first shared index reference/validation contract and applied it to
-Route 7 comparison/condition indexes. The new reference metadata identifies the
-route, record category, owner scope, stable BIR keys, relationship kind, and
-typed Route 7 record pointer without copying prepared payloads or target
-policy. Route 7 validation helpers now fail closed for stale block owners,
-missing records, wrong operand relationships, wrong keys, duplicate references,
-absent provenance/no-match statuses, and record/key divergence.
+Step 3 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
+normalized Route 4 publication availability indexes to the shared
+route-reference validation pattern. Route 4 now has current-block and
+block-entry publication reference validators using the shared route/category,
+owner-scope, stable BIR key, relationship, and record-index metadata while
+keeping semantic payloads in the typed Route 4 records. The validators preserve
+existing public lookup answer shapes and fail closed for missing records,
+stale function/block ownership, wrong keys/type mismatches, wrong
+relationships through value-link scope, duplicate index references, no-match,
+and record-pointer divergence.
 
 ## Suggested Next
 
-Execute Step 3: extend the shared reference/validation pattern beyond the
-Route 7 first target, preferably by adding the next narrow route index contract
-while keeping the existing typed Route records as the semantic payload owners.
-Keep any aggregate facade private and rebuildable from route-specific indexes.
+Execute Step 4: add the private aggregate facade or next normalization slice
+only if the active plan calls for it. Keep the facade non-durable and limited
+to typed Route index/reference handles; do not turn it into a BIR-owned
+`PreparedFunctionLookups` clone.
 
-Delegated Step 2 proof command:
+Delegated Step 3 proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log`
 
 Also run `git diff --check`.
@@ -41,12 +43,15 @@ Also run `git diff --check`.
   already own those payloads.
 - Preserve explicit divergence, stale-reference, duplicate-key, missing-record,
   wrong-relationship, and no-match cases where applicable.
-- Route 7 is the only route with the shared reference contract so far. Other
-  route indexes still store rebuilt record snapshots without the new validation
+- Route 4 and Route 7 now have shared reference/validation contracts. Other
+  route indexes still store rebuilt record snapshots without the validation
   facade.
 - The Route 7 contract intentionally validates function/block ownership and
   record pointers; copied blocks with matching labels are rejected as stale
   owners for the block-backed path.
+- The Route 4 contract intentionally treats copied blocks outside the indexed
+  function as stale for validation, even though legacy public lookup helpers
+  may still match some external blocks by stable label/id.
 
 ## Proof
 

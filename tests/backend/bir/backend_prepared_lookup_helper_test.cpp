@@ -6271,6 +6271,12 @@ int verify_prepared_same_block_scalar_source_facts() {
           route4_current_block,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
           route4_current_block.insts.size());
+  const auto indexed_current_sum_ref =
+      bir::route4_validate_current_block_publication_reference(
+          route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          route4_current_block.insts.size());
   if (!route4_publications ||
       !indexed_current_sum ||
       indexed_current_sum.status !=
@@ -6280,8 +6286,22 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir::Route4PublicationSourceKind::Binary ||
       indexed_current_sum.source_producer_instruction !=
           &route4_current_block.insts[2] ||
-      indexed_current_sum.source_producer_instruction_index != std::size_t{2}) {
-    return fail("Route 4 current-block publication index should find available BIR record");
+      indexed_current_sum.source_producer_instruction_index != std::size_t{2} ||
+      !indexed_current_sum_ref ||
+      indexed_current_sum_ref.status !=
+          bir::RouteIndexValidationStatus::Valid ||
+      indexed_current_sum_ref.reference.route !=
+          bir::RouteIndexRoute::Route4PublicationAvailability ||
+      indexed_current_sum_ref.reference.owner_scope !=
+          bir::RouteIndexOwnerScope::Function ||
+      indexed_current_sum_ref.reference.record_category !=
+          bir::RouteIndexRecordCategory::Route4CurrentBlockPublication ||
+      indexed_current_sum_ref.reference.relationship !=
+          bir::RouteIndexRelationshipKind::Route4CurrentBlockPublication ||
+      indexed_current_sum_ref.current_block_record == nullptr ||
+      indexed_current_sum_ref.current_block_record->source_producer_instruction !=
+          &route4_current_block.insts[2]) {
+    return fail("Route 4 current-block publication index/reference should find available BIR record");
   }
   const auto bir_current_sum_from_route4 =
       mir::find_bir_current_block_publication_identity(
@@ -6322,10 +6342,57 @@ int verify_prepared_same_block_scalar_source_facts() {
           route4_current_block,
           bir::Value::named(bir::TypeKind::I32, "%sum"),
           route4_current_block.insts.size());
+  const auto indexed_current_type_mismatch_ref =
+      bir::route4_validate_current_block_publication_reference(
+          route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          route4_current_block.insts.size());
+  const auto indexed_current_missing_ref =
+      bir::route4_validate_current_block_publication_reference(
+          route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          route4_current_block.insts.size());
+  const auto indexed_current_stale_ref =
+      bir::route4_validate_current_block_publication_reference(
+          route4_publications,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          block.insts.size());
+  auto duplicate_route4_publications = route4_publications;
+  duplicate_route4_publications.current_block_records.push_back(
+      indexed_current_sum);
+  const auto indexed_current_duplicate_ref =
+      bir::route4_validate_current_block_publication_reference(
+          duplicate_route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          route4_current_block.insts.size());
+  const auto indexed_block_entry_wrong_relationship_ref =
+      bir::route4_validate_block_entry_publication_reference(
+          route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"));
   if (indexed_current_type_mismatch ||
       indexed_current_type_mismatch.status !=
-          bir::Route4PublicationAvailabilityStatus::NoMatch) {
-    return fail("Route 4 current-block publication index should fail closed for type mismatch");
+          bir::Route4PublicationAvailabilityStatus::NoMatch ||
+      indexed_current_type_mismatch_ref ||
+      indexed_current_type_mismatch_ref.status !=
+          bir::RouteIndexValidationStatus::WrongKey ||
+      indexed_current_missing_ref ||
+      indexed_current_missing_ref.status !=
+          bir::RouteIndexValidationStatus::MissingRecord ||
+      indexed_current_stale_ref ||
+      indexed_current_stale_ref.status !=
+          bir::RouteIndexValidationStatus::StaleOwner ||
+      indexed_current_duplicate_ref ||
+      indexed_current_duplicate_ref.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference ||
+      indexed_block_entry_wrong_relationship_ref ||
+      indexed_block_entry_wrong_relationship_ref.status !=
+          bir::RouteIndexValidationStatus::WrongRelationship) {
+    return fail("Route 4 current-block publication index/reference should fail closed for type, missing, stale, duplicate, and wrong-relationship cases");
   }
 
   const auto product_constant =
@@ -6918,14 +6985,29 @@ int verify_bir_block_entry_publication_identity_lookup() {
       bir::route4_find_block_entry_publication(route4_entry_publications,
                                                route4_entry_successor,
                                                available_destination);
+  const auto indexed_entry_available_ref =
+      bir::route4_validate_block_entry_publication_reference(
+          route4_entry_publications,
+          route4_entry_successor,
+          available_destination);
   if (!route4_entry_publications ||
       !indexed_entry_available ||
       indexed_entry_available.status !=
           bir::Route4PublicationAvailabilityStatus::Available ||
       indexed_entry_available.destination_value_name != "%entry.dst" ||
       indexed_entry_available.destination_value_type != bir::TypeKind::I32 ||
-      indexed_entry_available.destination_instruction_index != std::size_t{0}) {
-    return fail("Route 4 block-entry publication index should find available PHI record");
+      indexed_entry_available.destination_instruction_index != std::size_t{0} ||
+      !indexed_entry_available_ref ||
+      indexed_entry_available_ref.status !=
+          bir::RouteIndexValidationStatus::Valid ||
+      indexed_entry_available_ref.reference.record_category !=
+          bir::RouteIndexRecordCategory::Route4BlockEntryPublication ||
+      indexed_entry_available_ref.reference.relationship !=
+          bir::RouteIndexRelationshipKind::Route4BlockEntryPublication ||
+      indexed_entry_available_ref.block_entry_record == nullptr ||
+      indexed_entry_available_ref.block_entry_record->destination_instruction !=
+          &route4_entry_successor.insts[0]) {
+    return fail("Route 4 block-entry publication index/reference should find available PHI record");
   }
   const auto indexed_entry_missing =
       bir::route4_find_block_entry_publication(route4_entry_publications,
@@ -6941,10 +7023,35 @@ int verify_bir_block_entry_publication_identity_lookup() {
           route4_entry_publications,
           route4_entry_successor,
           bir::Value::named(bir::TypeKind::I64, "%entry.dst"));
+  const auto indexed_entry_type_mismatch_ref =
+      bir::route4_validate_block_entry_publication_reference(
+          route4_entry_publications,
+          route4_entry_successor,
+          bir::Value::named(bir::TypeKind::I64, "%entry.dst"));
+  const auto indexed_entry_stale_ref =
+      bir::route4_validate_block_entry_publication_reference(
+          route4_entry_publications, successor, available_destination);
+  auto duplicate_route4_entry_publications = route4_entry_publications;
+  duplicate_route4_entry_publications.block_entry_records.push_back(
+      indexed_entry_available);
+  const auto indexed_entry_duplicate_ref =
+      bir::route4_validate_block_entry_publication_reference(
+          duplicate_route4_entry_publications,
+          route4_entry_successor,
+          available_destination);
   if (indexed_entry_type_mismatch ||
       indexed_entry_type_mismatch.status !=
-          bir::Route4PublicationAvailabilityStatus::NoMatch) {
-    return fail("Route 4 block-entry publication index should fail closed for type mismatch");
+          bir::Route4PublicationAvailabilityStatus::NoMatch ||
+      indexed_entry_type_mismatch_ref ||
+      indexed_entry_type_mismatch_ref.status !=
+          bir::RouteIndexValidationStatus::WrongKey ||
+      indexed_entry_stale_ref ||
+      indexed_entry_stale_ref.status !=
+          bir::RouteIndexValidationStatus::StaleOwner ||
+      indexed_entry_duplicate_ref ||
+      indexed_entry_duplicate_ref.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference) {
+    return fail("Route 4 block-entry publication index/reference should fail closed for type, stale, and duplicate cases");
   }
 
   const auto prepared_missing =

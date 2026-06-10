@@ -2212,6 +2212,7 @@ struct Route7ComparisonConditionIndex {
 
 enum class RouteIndexRoute : unsigned char {
   Unknown,
+  Route4PublicationAvailability,
   Route7ComparisonCondition,
 };
 
@@ -2223,6 +2224,8 @@ enum class RouteIndexOwnerScope : unsigned char {
 
 enum class RouteIndexRecordCategory : unsigned char {
   Unknown,
+  Route4CurrentBlockPublication,
+  Route4BlockEntryPublication,
   Route7ComparisonInstruction,
   Route7ComparisonOperand,
   Route7BranchCondition,
@@ -2230,6 +2233,8 @@ enum class RouteIndexRecordCategory : unsigned char {
 
 enum class RouteIndexRelationshipKind : unsigned char {
   None,
+  Route4CurrentBlockPublication,
+  Route4BlockEntryPublication,
   Route7Instruction,
   Route7Operand,
   Route7MaterializedCondition,
@@ -2267,6 +2272,19 @@ struct RouteIndexRecordReference {
   Route7ComparisonOperandRole operand_role =
       Route7ComparisonOperandRole::None;
   std::size_t record_index = 0;
+};
+
+struct Route4IndexReferenceValidation {
+  bool valid = false;
+  RouteIndexValidationStatus status =
+      RouteIndexValidationStatus::Unavailable;
+  Route4PublicationAvailabilityStatus route_status =
+      Route4PublicationAvailabilityStatus::Unavailable;
+  RouteIndexRecordReference reference;
+  const Route4CurrentBlockPublicationRecord* current_block_record = nullptr;
+  const Route4BlockEntryPublicationRecord* block_entry_record = nullptr;
+
+  [[nodiscard]] explicit operator bool() const { return valid; }
 };
 
 struct Route7IndexReferenceValidation {
@@ -2600,6 +2618,17 @@ route7_find_materialized_condition(
 [[nodiscard]] Route7BranchConditionRecord route7_find_branch_condition(
     const Route7ComparisonConditionIndex& index,
     const Block& block);
+[[nodiscard]] Route4IndexReferenceValidation
+route4_validate_current_block_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+[[nodiscard]] Route4IndexReferenceValidation
+route4_validate_block_entry_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value);
 [[nodiscard]] Route7IndexReferenceValidation
 route7_validate_comparison_instruction_reference(
     const Route7ComparisonConditionIndex& index,

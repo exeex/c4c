@@ -1133,6 +1133,103 @@ namespace {
   return !record_label.empty() && record_label == block.label;
 }
 
+[[nodiscard]] bool route4_index_contains_block(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block) {
+  if (index.function == nullptr) {
+    return false;
+  }
+  return std::any_of(index.function->blocks.begin(),
+                     index.function->blocks.end(),
+                     [&](const Block& indexed_block) {
+                       return &indexed_block == &block;
+                     });
+}
+
+[[nodiscard]] RouteIndexValidationStatus route4_reference_status(
+    Route4PublicationAvailabilityStatus status) {
+  switch (status) {
+    case Route4PublicationAvailabilityStatus::Available:
+      return RouteIndexValidationStatus::Valid;
+    case Route4PublicationAvailabilityStatus::MissingBlock:
+    case Route4PublicationAvailabilityStatus::MissingValue:
+    case Route4PublicationAvailabilityStatus::MissingPublication:
+      return RouteIndexValidationStatus::MissingRecord;
+    case Route4PublicationAvailabilityStatus::AlternateSource:
+      return RouteIndexValidationStatus::WrongRelationship;
+    case Route4PublicationAvailabilityStatus::NoMatch:
+      return RouteIndexValidationStatus::NoMatch;
+    case Route4PublicationAvailabilityStatus::Unavailable:
+      return RouteIndexValidationStatus::Unavailable;
+  }
+  return RouteIndexValidationStatus::Unavailable;
+}
+
+[[nodiscard]] RouteIndexRecordReference route4_reference_key(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    RouteIndexRecordCategory category,
+    RouteIndexRelationshipKind relationship,
+    std::size_t instruction_index,
+    std::size_t before_instruction_index,
+    const Route1SourceValueIdentity& value,
+    std::size_t record_index) {
+  return RouteIndexRecordReference{
+      .route = RouteIndexRoute::Route4PublicationAvailability,
+      .owner_scope = index.function != nullptr ? RouteIndexOwnerScope::Function
+                                               : RouteIndexOwnerScope::None,
+      .record_category = category,
+      .relationship = relationship,
+      .function = index.function,
+      .block = &block,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .instruction_index = instruction_index,
+      .before_instruction_index = before_instruction_index,
+      .value = value,
+      .record_index = record_index,
+  };
+}
+
+[[nodiscard]] Route4IndexReferenceValidation route4_missing_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    RouteIndexRecordCategory category,
+    RouteIndexRelationshipKind relationship,
+    std::size_t instruction_index,
+    std::size_t before_instruction_index,
+    const Route1SourceValueIdentity& value,
+    RouteIndexValidationStatus status,
+    Route4PublicationAvailabilityStatus route_status) {
+  return Route4IndexReferenceValidation{
+      .valid = false,
+      .status = status,
+      .route_status = route_status,
+      .reference = route4_reference_key(index,
+                                        block,
+                                        category,
+                                        relationship,
+                                        instruction_index,
+                                        before_instruction_index,
+                                        value,
+                                        0),
+  };
+}
+
+[[nodiscard]] bool route4_value_record_matches(
+    const Route4PublicationValueRecord& record,
+    const Block& block,
+    const Value& value) {
+  const bool block_matches =
+      (record.block_label_id != kInvalidBlockLabel ||
+       block.label_id != kInvalidBlockLabel)
+          ? record.block_label_id == block.label_id
+          : (!record.block_label.empty() && record.block_label == block.label);
+  return block_matches && value.kind == Value::Kind::Named &&
+         record.value.name == value.name &&
+         record.value.type == value.type;
+}
+
 }  // namespace
 
 Route4PublicationAvailabilityIndex route4_build_publication_availability_index(
@@ -1279,6 +1376,280 @@ Route4BlockEntryPublicationRecord route4_find_block_entry_publication(
                       ? Route4PublicationAvailabilityStatus::NoMatch
                       : Route4PublicationAvailabilityStatus::MissingPublication;
   return result;
+}
+
+Route4IndexReferenceValidation
+route4_validate_current_block_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  const auto value_identity = route1_source_value_identity(value);
+  constexpr auto category =
+      RouteIndexRecordCategory::Route4CurrentBlockPublication;
+  constexpr auto relationship =
+      RouteIndexRelationshipKind::Route4CurrentBlockPublication;
+  if (!index) {
+    return route4_missing_reference(
+        index,
+        block,
+        category,
+        relationship,
+        before_instruction_index,
+        before_instruction_index,
+        value_identity,
+        RouteIndexValidationStatus::MissingRecord,
+        Route4PublicationAvailabilityStatus::MissingBlock);
+  }
+  if (!route4_index_contains_block(index, block)) {
+    return route4_missing_reference(
+        index,
+        block,
+        category,
+        relationship,
+        before_instruction_index,
+        before_instruction_index,
+        value_identity,
+        RouteIndexValidationStatus::StaleOwner,
+        Route4PublicationAvailabilityStatus::MissingBlock);
+  }
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    return route4_missing_reference(
+        index,
+        block,
+        category,
+        relationship,
+        before_instruction_index,
+        before_instruction_index,
+        value_identity,
+        RouteIndexValidationStatus::MissingRecord,
+        Route4PublicationAvailabilityStatus::MissingValue);
+  }
+
+  const Route4CurrentBlockPublicationRecord* match = nullptr;
+  std::size_t match_index = 0;
+  bool wrong_key = false;
+  for (std::size_t record_index = 0;
+       record_index < index.current_block_records.size();
+       ++record_index) {
+    const auto& candidate = index.current_block_records[record_index];
+    if (!candidate ||
+        !route4_record_matches_block(*index.function,
+                                     candidate.block,
+                                     candidate.block_label,
+                                     candidate.block_label_id,
+                                     block) ||
+        candidate.value_name != value.name) {
+      continue;
+    }
+    if (candidate.value_type != value.type ||
+        candidate.source_producer_instruction_index >= before_instruction_index) {
+      wrong_key = true;
+      continue;
+    }
+    if (match != nullptr) {
+      return route4_missing_reference(
+          index,
+          block,
+          category,
+          relationship,
+          candidate.source_producer_instruction_index,
+          before_instruction_index,
+          value_identity,
+          RouteIndexValidationStatus::DuplicateReference,
+          Route4PublicationAvailabilityStatus::NoMatch);
+    }
+    match = &candidate;
+    match_index = record_index;
+  }
+
+  if (match == nullptr) {
+    bool wrong_relationship = false;
+    for (const auto& value_record : index.value_records) {
+      if (value_record.scope != Route4PublicationScope::CurrentBlock &&
+          route4_value_record_matches(value_record, block, value)) {
+        wrong_relationship = true;
+        break;
+      }
+    }
+    const auto status =
+        wrong_relationship ? RouteIndexValidationStatus::WrongRelationship
+                           : (wrong_key ? RouteIndexValidationStatus::WrongKey
+                                        : RouteIndexValidationStatus::MissingRecord);
+    return route4_missing_reference(
+        index,
+        block,
+        category,
+        relationship,
+        before_instruction_index,
+        before_instruction_index,
+        value_identity,
+        status,
+        wrong_key ? Route4PublicationAvailabilityStatus::NoMatch
+                  : Route4PublicationAvailabilityStatus::MissingPublication);
+  }
+
+  auto status = route4_reference_status(match->status);
+  bool valid = status == RouteIndexValidationStatus::Valid;
+  if (valid &&
+      (match->source_producer_instruction == nullptr ||
+       match->source_producer_instruction_index >= block.insts.size() ||
+       match->source_producer_instruction !=
+           &block.insts[match->source_producer_instruction_index])) {
+    status = RouteIndexValidationStatus::Diverged;
+    valid = false;
+  }
+  return Route4IndexReferenceValidation{
+      .valid = valid,
+      .status = status,
+      .route_status = match->status,
+      .reference = route4_reference_key(index,
+                                        block,
+                                        category,
+                                        relationship,
+                                        match->source_producer_instruction_index,
+                                        before_instruction_index,
+                                        match->value,
+                                        match_index),
+      .current_block_record = match,
+  };
+}
+
+Route4IndexReferenceValidation
+route4_validate_block_entry_publication_reference(
+    const Route4PublicationAvailabilityIndex& index,
+    const Block& successor_block,
+    const Value& destination_value) {
+  const auto value_identity = route1_source_value_identity(destination_value);
+  constexpr auto category = RouteIndexRecordCategory::Route4BlockEntryPublication;
+  constexpr auto relationship =
+      RouteIndexRelationshipKind::Route4BlockEntryPublication;
+  if (!index) {
+    return route4_missing_reference(
+        index,
+        successor_block,
+        category,
+        relationship,
+        0,
+        0,
+        value_identity,
+        RouteIndexValidationStatus::MissingRecord,
+        Route4PublicationAvailabilityStatus::MissingBlock);
+  }
+  if (!route4_index_contains_block(index, successor_block)) {
+    return route4_missing_reference(
+        index,
+        successor_block,
+        category,
+        relationship,
+        0,
+        0,
+        value_identity,
+        RouteIndexValidationStatus::StaleOwner,
+        Route4PublicationAvailabilityStatus::MissingBlock);
+  }
+  if (destination_value.kind != Value::Kind::Named ||
+      destination_value.name.empty()) {
+    return route4_missing_reference(
+        index,
+        successor_block,
+        category,
+        relationship,
+        0,
+        0,
+        value_identity,
+        RouteIndexValidationStatus::MissingRecord,
+        Route4PublicationAvailabilityStatus::MissingValue);
+  }
+
+  const Route4BlockEntryPublicationRecord* match = nullptr;
+  std::size_t match_index = 0;
+  bool wrong_key = false;
+  for (std::size_t record_index = 0;
+       record_index < index.block_entry_records.size();
+       ++record_index) {
+    const auto& candidate = index.block_entry_records[record_index];
+    if (!candidate ||
+        !route4_record_matches_block(*index.function,
+                                     candidate.successor_block,
+                                     candidate.successor_label,
+                                     candidate.successor_label_id,
+                                     successor_block) ||
+        candidate.destination_value_name != destination_value.name) {
+      continue;
+    }
+    if (candidate.destination_value_type != destination_value.type) {
+      wrong_key = true;
+      continue;
+    }
+    if (match != nullptr) {
+      return route4_missing_reference(
+          index,
+          successor_block,
+          category,
+          relationship,
+          candidate.destination_instruction_index,
+          candidate.destination_instruction_index,
+          value_identity,
+          RouteIndexValidationStatus::DuplicateReference,
+          Route4PublicationAvailabilityStatus::NoMatch);
+    }
+    match = &candidate;
+    match_index = record_index;
+  }
+
+  if (match == nullptr) {
+    bool wrong_relationship = false;
+    for (const auto& value_record : index.value_records) {
+      if (value_record.scope != Route4PublicationScope::BlockEntry &&
+          route4_value_record_matches(
+              value_record, successor_block, destination_value)) {
+        wrong_relationship = true;
+        break;
+      }
+    }
+    const auto status =
+        wrong_relationship ? RouteIndexValidationStatus::WrongRelationship
+                           : (wrong_key ? RouteIndexValidationStatus::WrongKey
+                                        : RouteIndexValidationStatus::MissingRecord);
+    return route4_missing_reference(
+        index,
+        successor_block,
+        category,
+        relationship,
+        0,
+        0,
+        value_identity,
+        status,
+        wrong_key ? Route4PublicationAvailabilityStatus::NoMatch
+                  : Route4PublicationAvailabilityStatus::MissingPublication);
+  }
+
+  auto status = route4_reference_status(match->status);
+  bool valid = status == RouteIndexValidationStatus::Valid;
+  if (valid &&
+      (match->destination_instruction == nullptr ||
+       match->destination_instruction_index >= successor_block.insts.size() ||
+       match->destination_instruction !=
+           &successor_block.insts[match->destination_instruction_index])) {
+    status = RouteIndexValidationStatus::Diverged;
+    valid = false;
+  }
+  return Route4IndexReferenceValidation{
+      .valid = valid,
+      .status = status,
+      .route_status = match->status,
+      .reference = route4_reference_key(
+          index,
+          successor_block,
+          category,
+          relationship,
+          match->destination_instruction_index,
+          match->destination_instruction_index,
+          match->destination_value,
+          match_index),
+      .block_entry_record = match,
+  };
 }
 
 Route5PublicationSourceKind route5_publication_source_kind(
