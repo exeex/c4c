@@ -155,6 +155,12 @@ struct SameBlockComparisonProducer {
       return lhs_value | rhs_value;
     case BinaryOpcode::Xor:
       return lhs_value ^ rhs_value;
+    case BinaryOpcode::UDiv:
+      return rhs_value != 0
+                 ? std::optional<std::int64_t>{static_cast<std::int64_t>(
+                       static_cast<std::uint64_t>(lhs_value) /
+                       static_cast<std::uint64_t>(rhs_value))}
+                 : std::nullopt;
     default:
       return std::nullopt;
   }

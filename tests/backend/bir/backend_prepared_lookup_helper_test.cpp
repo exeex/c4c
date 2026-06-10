@@ -6161,10 +6161,10 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
                   .align_bytes = 8,
               },
               bir::BinaryInst{
-                  .opcode = bir::BinaryOpcode::Add,
+                  .opcode = bir::BinaryOpcode::UDiv,
                   .result = bir::Value::named(bir::TypeKind::I64, "%folded"),
                   .operand_type = bir::TypeKind::I64,
-                  .lhs = bir::Value::immediate_i64(10),
+                  .lhs = bir::Value::immediate_i64(24),
                   .rhs = bir::Value::immediate_i64(2),
               },
               bir::SelectInst{

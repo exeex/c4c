@@ -1902,10 +1902,8 @@ lower_fused_compare_branch_from_emitted_cast(
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
   auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
   if (!rhs_name.has_value()) {
-    const auto rhs_producer =
-        find_prepared_fused_compare_operand_producer(context,
-                                                     *other_value,
-                                                     before_instruction_index);
+    const auto rhs_producer = bir::find_comparison_operand_producer(
+        *context.bir_block, *other_value, before_instruction_index);
     if (rhs_producer.has_value() &&
         rhs_producer->integer_constant.has_value() &&
         is_cmp_immediate_encodable(*rhs_producer->integer_constant)) {
