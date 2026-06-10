@@ -55,3 +55,18 @@ files change.
   policy.
 - Proves only one edge-copy shape without nearby join-source and no-source
   coverage.
+
+## Closure Note
+
+Closed after the active runbook completed the BIR-owned CFG edge publication
+and current-block join-source semantic identity route. The route added the BIR
+edge query surface, proved prepared/BIR equivalence for normal edge,
+join-source, optional memory-source, and no-source paths, and switched the
+narrow `build_current_block_join_prepared_query_routing` consumer to read BIR
+identity when available.
+
+Parallel-copy scheduling, move execution, register/home/storage policy, and
+prepared availability guards remain owned by prealloc/MIR codegen. Closure
+proof used matched canonical logs `test_before.log` and `test_after.log` for
+`backend_prepared_lookup_helper` and `backend_aarch64_instruction_dispatch`,
+2/2 passing, with monotonic regression guard PASS.
