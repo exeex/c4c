@@ -1176,6 +1176,12 @@ route1_find_materialization_availability(
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
 route1_evaluate_same_block_integer_constant(
     Route1SameBlockProducerQuery query,
+    const Value& value,
+    unsigned depth);
+
+[[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
+route1_evaluate_same_block_integer_constant(
+    Route1SameBlockProducerQuery query,
     const Value& value);
 
 struct CallArgumentSourceProducerMaterialization {

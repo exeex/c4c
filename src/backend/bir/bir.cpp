@@ -353,7 +353,7 @@ Route1MaterializationAvailability route1_find_materialization_availability(
 namespace {
 
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
-route1_evaluate_same_block_integer_constant(
+route1_evaluate_same_block_integer_constant_impl(
     Route1SameBlockProducerQuery query,
     const Value& value,
     unsigned depth) {
@@ -383,9 +383,9 @@ route1_evaluate_same_block_integer_constant(
       .before_instruction_index = producer->instruction_index,
   };
   const auto lhs =
-      route1_evaluate_same_block_integer_constant(nested_query, binary->lhs, depth + 1);
+      route1_evaluate_same_block_integer_constant_impl(nested_query, binary->lhs, depth + 1);
   const auto rhs =
-      route1_evaluate_same_block_integer_constant(nested_query, binary->rhs, depth + 1);
+      route1_evaluate_same_block_integer_constant_impl(nested_query, binary->rhs, depth + 1);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
@@ -592,8 +592,16 @@ route1_evaluate_same_block_integer_constant(
 std::optional<Route1ImmediateIntegerConstant>
 route1_evaluate_same_block_integer_constant(
     Route1SameBlockProducerQuery query,
+    const Value& value,
+    unsigned depth) {
+  return route1_evaluate_same_block_integer_constant_impl(query, value, depth);
+}
+
+std::optional<Route1ImmediateIntegerConstant>
+route1_evaluate_same_block_integer_constant(
+    Route1SameBlockProducerQuery query,
     const Value& value) {
-  return route1_evaluate_same_block_integer_constant(query, value, 0U);
+  return route1_evaluate_same_block_integer_constant_impl(query, value, 0U);
 }
 
 Value Value::immediate_i1(bool value) {
