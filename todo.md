@@ -1,45 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate A Low-Risk Query Consumer
+Current Step ID: 5
+Current Step Title: Broaden Validation And Prepare Closure
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for
+Completed Step 5 for
 `ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md`.
-Migrated the narrow shared MIR select-chain query consumer in
-`src/backend/mir/query.cpp` to answer from rebuilt BIR Route 2
-`Route2SelectChainValueIndex` records:
+Ran broader backend acceptance validation for the Route 2 select-chain schema
+migration. The exact broad backend command completed successfully and
+`test_after.log` now records `179/179` backend tests passed with no failures.
 
-- `find_bir_select_chain_source_producer(...)` now maps the Route 2 root
-  producer record into the existing MIR same-block producer identity.
-- `find_bir_select_chain_direct_global_dependency(...)` now maps the Route 2
-  direct-global dependency record instead of walking select/cast/binary
-  producers recursively.
-- `find_bir_select_chain_scalar_materialization_eligibility(...)` now reads the
-  Route 2 scalar-materialization availability bit.
-- `find_bir_select_chain_identity(...)` now assembles the public MIR identity
-  from a single Route 2 value record.
+Closure readiness notes:
 
-Removed the old private recursive select-chain dependency walk from the shared
-query path. Corrected the Route 2 lookup key so an explicit non-void
-`BirSelectChainIdentityRequest::root_value_type` overrides
-`root_value->type` when building the BIR lookup value.
-
-Existing `backend_prepared_lookup_helper` coverage continues to use
-prepared/prealloc results as oracle checks for direct-global success, explicit
-no-dependency, select-root, non-select-root, before-boundary, type mismatch, and
-missing-root cases. Added a focused fail-closed case where `root_value` points
-at an existing root but `root_value_type` is an explicit mismatched type. No
-AArch64 codegen files or prealloc production helpers were edited.
+- Route 2 select-chain records and index helpers are covered by prepared/prealloc
+  oracle checks for direct-global success, explicit no-dependency, select-root,
+  non-select-root, before-boundary, type mismatch, explicit request-type
+  mismatch, and missing-root cases.
+- The shared MIR select-chain query consumer reads rebuilt BIR Route 2 index
+  records.
+- No implementation files were edited in Step 5.
+- No expectation downgrades were introduced in this validation packet.
+- No target-policy leaks were introduced; AArch64 behavior remains outside the
+  BIR Route 2 schema.
+- No helper-only reshuffle is being claimed as progress; the accepted route
+  remains BIR-owned typed annotation payload plus a migrated shared query
+  consumer.
 
 ## Suggested Next
 
-Execute Step 5 by adding any final target-neutral validation/cleanup needed for
-the Route 2 schema migration, or request review if the runbook is exhausted.
+Request reviewer/plan-owner closure for
+`ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md` using
+the current implementation diff, canonical `todo.md`, and broad backend
+`test_after.log` proof.
 
 ## Watchouts
 
@@ -67,14 +63,18 @@ the Route 2 schema migration, or request review if the runbook is exhausted.
   the absent/fail-closed state for missing roots or before-producer queries.
 - The shared MIR query consumer is now switched, but target/AArch64 policy
   remains outside the BIR Route 2 schema and was not edited in this packet.
+- Step 5 was validation/status only; implementation and tests were intentionally
+  left untouched.
 
 ## Proof
 
 Exact delegated proof passed:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$' > test_after.log
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
 ```
+
+Result: `179/179` backend tests passed, `0` failed.
 
 Additional local validation: `git diff --check` passed.
 
