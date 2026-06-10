@@ -60,6 +60,40 @@ mir::BirMemoryAccessBaseKind expected_bir_base_kind(
   return mir::BirMemoryAccessBaseKind::None;
 }
 
+bir::Route3MemoryAccessNodeKind expected_route3_node_kind(
+    mir::BirMemoryAccessNodeKind kind) {
+  switch (kind) {
+    case mir::BirMemoryAccessNodeKind::LoadLocal:
+      return bir::Route3MemoryAccessNodeKind::LoadLocal;
+    case mir::BirMemoryAccessNodeKind::LoadGlobal:
+      return bir::Route3MemoryAccessNodeKind::LoadGlobal;
+    case mir::BirMemoryAccessNodeKind::StoreLocal:
+      return bir::Route3MemoryAccessNodeKind::StoreLocal;
+    case mir::BirMemoryAccessNodeKind::StoreGlobal:
+      return bir::Route3MemoryAccessNodeKind::StoreGlobal;
+    case mir::BirMemoryAccessNodeKind::Unknown:
+      return bir::Route3MemoryAccessNodeKind::Unknown;
+  }
+  return bir::Route3MemoryAccessNodeKind::Unknown;
+}
+
+bir::Route3MemoryAccessBaseKind expected_route3_base_kind(
+    prepare::PreparedAddressBaseKind kind) {
+  switch (kind) {
+    case prepare::PreparedAddressBaseKind::FrameSlot:
+      return bir::Route3MemoryAccessBaseKind::LocalSlot;
+    case prepare::PreparedAddressBaseKind::GlobalSymbol:
+      return bir::Route3MemoryAccessBaseKind::GlobalSymbol;
+    case prepare::PreparedAddressBaseKind::PointerValue:
+      return bir::Route3MemoryAccessBaseKind::PointerValue;
+    case prepare::PreparedAddressBaseKind::StringConstant:
+      return bir::Route3MemoryAccessBaseKind::StringConstant;
+    case prepare::PreparedAddressBaseKind::None:
+      return bir::Route3MemoryAccessBaseKind::None;
+  }
+  return bir::Route3MemoryAccessBaseKind::None;
+}
+
 bool prepared_and_bir_direct_memory_identity_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedAddressingFunction& addressing,
@@ -69,46 +103,93 @@ bool prepared_and_bir_direct_memory_identity_match(
     mir::BirMemoryAccessNodeKind node_kind) {
   const auto* prepared =
       prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
-  const auto bir = mir::find_bir_memory_access_identity(
+  const auto mir_access = mir::find_bir_memory_access_identity(
       mir::BirMemoryAccessIdentityRequest{
           .block = &block,
           .block_label = block.label,
           .instruction_index = instruction_index,
           .node_kind = node_kind,
       });
-  if (prepared == nullptr || !bir) {
+  const auto route3 = bir::route3_memory_access_record(block, instruction_index);
+  if (prepared == nullptr || !mir_access) {
     return false;
   }
   const auto result_name =
-      bir.result_value_name.empty() ? c4c::kInvalidValueName
-                                    : names.value_names.find(bir.result_value_name);
+      mir_access.result_value_name.empty()
+          ? c4c::kInvalidValueName
+          : names.value_names.find(mir_access.result_value_name);
   const auto stored_name =
-      bir.stored_value_name.empty() ? c4c::kInvalidValueName
-                                    : names.value_names.find(bir.stored_value_name);
-  if (bir.block_label != block.label ||
-      bir.instruction_index != instruction_index ||
-      bir.node_kind != node_kind ||
-      bir.address_space != prepared->address_space ||
-      bir.is_volatile != prepared->is_volatile ||
-      bir.base_kind != expected_bir_base_kind(prepared->address.base_kind) ||
+      mir_access.stored_value_name.empty()
+          ? c4c::kInvalidValueName
+          : names.value_names.find(mir_access.stored_value_name);
+  if (mir_access.block_label != block.label ||
+      mir_access.instruction_index != instruction_index ||
+      mir_access.node_kind != node_kind ||
+      mir_access.address_space != prepared->address_space ||
+      mir_access.is_volatile != prepared->is_volatile ||
+      mir_access.base_kind != expected_bir_base_kind(prepared->address.base_kind) ||
+      !route3 ||
+      route3.instruction != &block.insts[instruction_index] ||
+      route3.instruction_index != instruction_index ||
+      route3.node_kind != expected_route3_node_kind(node_kind) ||
+      route3.block_label != block.label ||
+      route3.address_space != prepared->address_space ||
+      route3.is_volatile != prepared->is_volatile ||
+      route3.base_kind != expected_route3_base_kind(prepared->address.base_kind) ||
       prepared->result_value_name.value_or(c4c::kInvalidValueName) != result_name ||
       prepared->stored_value_name.value_or(c4c::kInvalidValueName) != stored_name) {
+    return false;
+  }
+  if (prepared->result_value_name.has_value()) {
+    const auto route3_result =
+        bir::route3_memory_access_result_value_record(block, instruction_index);
+    if (!route3_result ||
+        route3_result.role != bir::Route3MemoryAccessValueRole::Result ||
+        route3_result.access_instruction_index != instruction_index ||
+        route3_result.value.name != mir_access.result_value_name ||
+        names.value_names.find(route3_result.value.name) !=
+            *prepared->result_value_name) {
+      return false;
+    }
+  } else if (bir::route3_memory_access_result_value_record(block,
+                                                           instruction_index)) {
+    return false;
+  }
+  if (prepared->stored_value_name.has_value()) {
+    const auto route3_stored =
+        bir::route3_memory_access_stored_value_record(block, instruction_index);
+    if (!route3_stored ||
+        route3_stored.role != bir::Route3MemoryAccessValueRole::Stored ||
+        route3_stored.access_instruction_index != instruction_index ||
+        route3_stored.value.name != mir_access.stored_value_name ||
+        names.value_names.find(route3_stored.value.name) !=
+            *prepared->stored_value_name) {
+      return false;
+    }
+  } else if (bir::route3_memory_access_stored_value_record(block,
+                                                           instruction_index)) {
     return false;
   }
   switch (prepared->address.base_kind) {
     case prepare::PreparedAddressBaseKind::GlobalSymbol:
       return prepared->address.symbol_name.has_value() &&
-             bir.global_name_id == *prepared->address.symbol_name;
+             mir_access.global_name_id == *prepared->address.symbol_name &&
+             route3.global_name_id == *prepared->address.symbol_name;
     case prepare::PreparedAddressBaseKind::PointerValue:
       return prepared->address.pointer_value_name.has_value() &&
-             names.value_names.find(bir.pointer_value_name) ==
+             names.value_names.find(mir_access.pointer_value_name) ==
+                 *prepared->address.pointer_value_name &&
+             names.value_names.find(route3.pointer_value.name) ==
                  *prepared->address.pointer_value_name;
     case prepare::PreparedAddressBaseKind::StringConstant:
       return prepared->address.symbol_name.has_value() &&
-             names.link_names.find(bir.string_constant_name) ==
+             names.link_names.find(mir_access.string_constant_name) ==
+                 *prepared->address.symbol_name &&
+             names.link_names.find(route3.string_constant_name) ==
                  *prepared->address.symbol_name;
     case prepare::PreparedAddressBaseKind::FrameSlot:
-      return bir.local_slot_id != c4c::kInvalidSlotName;
+      return mir_access.local_slot_id != c4c::kInvalidSlotName &&
+             route3.local_slot_id != c4c::kInvalidSlotName;
     case prepare::PreparedAddressBaseKind::None:
       return true;
   }
@@ -136,7 +217,7 @@ bool prepared_and_bir_same_block_global_load_access_match(
           ? prepare::find_prepared_same_block_global_load_access(
                 names, &addressing, *prepared_producer)
           : std::nullopt;
-  const auto bir = mir::find_bir_same_block_global_load_access_identity(
+  const auto mir_identity = mir::find_bir_same_block_global_load_access_identity(
       mir::BirSameBlockGlobalLoadAccessRequest{
           .block = &block,
           .block_label = block.label,
@@ -145,28 +226,48 @@ bool prepared_and_bir_same_block_global_load_access_match(
           .root_value_type = value.type,
           .before_instruction_index = before_instruction_index,
       });
-  if (prepared.has_value() != static_cast<bool>(bir)) {
+  const auto route1_index = bir::route1_build_producer_index(block);
+  const auto route3 =
+      bir::route3_same_block_global_load_access_record(
+          bir::Route1SameBlockProducerQuery{
+              .index = &route1_index,
+              .before_instruction_index = before_instruction_index,
+          },
+          value);
+  if (prepared.has_value() != static_cast<bool>(mir_identity)) {
     return false;
   }
   if (!prepared.has_value()) {
-    return true;
+    return !route3;
   }
   const auto* access = prepared->access;
   return access != nullptr &&
-         bir.load_global == prepared->load_global &&
-         bir.producer.inst == prepared_producer->instruction &&
-         bir.producer.instruction_index == prepared_producer->instruction_index &&
-         bir.result_value.name == value.name &&
-         bir.result_value.type == value.type &&
-         bir.memory_access.block_label == block.label &&
-         bir.memory_access.instruction_index == prepared_producer->instruction_index &&
-         bir.memory_access.node_kind == mir::BirMemoryAccessNodeKind::LoadGlobal &&
-         bir.memory_access.result_value_name == value.name &&
-         bir.memory_access.global_name_id ==
+         route3 &&
+         mir_identity.load_global == prepared->load_global &&
+         route3.load_access.instruction == mir_identity.producer.inst &&
+         route3.load_access.node_kind ==
+             bir::Route3MemoryAccessNodeKind::LoadGlobal &&
+         route3.load_access.global_name_id ==
              access->address.symbol_name.value_or(c4c::kInvalidLinkName) &&
-         bir.memory_access.address_space == access->address_space &&
-         bir.memory_access.is_volatile == access->is_volatile &&
-         bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::GlobalSymbol;
+         route3.load_access.address_space == access->address_space &&
+         route3.load_access.is_volatile == access->is_volatile &&
+         mir_identity.producer.inst == prepared_producer->instruction &&
+         mir_identity.producer.instruction_index ==
+             prepared_producer->instruction_index &&
+         mir_identity.result_value.name == value.name &&
+         mir_identity.result_value.type == value.type &&
+         mir_identity.memory_access.block_label == block.label &&
+         mir_identity.memory_access.instruction_index ==
+             prepared_producer->instruction_index &&
+         mir_identity.memory_access.node_kind ==
+             mir::BirMemoryAccessNodeKind::LoadGlobal &&
+         mir_identity.memory_access.result_value_name == value.name &&
+         mir_identity.memory_access.global_name_id ==
+             access->address.symbol_name.value_or(c4c::kInvalidLinkName) &&
+         mir_identity.memory_access.address_space == access->address_space &&
+         mir_identity.memory_access.is_volatile == access->is_volatile &&
+         mir_identity.memory_access.base_kind ==
+             mir::BirMemoryAccessBaseKind::GlobalSymbol;
 }
 
 prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,

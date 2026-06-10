@@ -100,7 +100,7 @@ bool prepared_and_bir_load_local_source_match(
           &block,
           value,
           before_instruction_index);
-  const auto bir = mir::find_bir_same_block_load_local_source_identity(
+  const auto mir_identity = mir::find_bir_same_block_load_local_source_identity(
       mir::BirSameBlockLoadLocalSourceRequest{
           .block = &block,
           .block_label = block.label,
@@ -111,30 +111,45 @@ bool prepared_and_bir_load_local_source_match(
           .root_value_type = value.type,
           .before_instruction_index = before_instruction_index,
       });
-  if (prepared.has_value() != static_cast<bool>(bir)) {
+  const auto route1_index = bir::route1_build_producer_index(block);
+  const auto route3 =
+      bir::route3_same_block_load_local_source_record(
+          bir::Route1SameBlockProducerQuery{
+              .index = &route1_index,
+              .before_instruction_index = before_instruction_index,
+          },
+          value);
+  if (prepared.has_value() != static_cast<bool>(mir_identity)) {
     return false;
   }
   if (!prepared.has_value()) {
-    return true;
+    return !route3;
   }
   const auto prepared_slot =
       prepared->source_access != nullptr
           ? prepared->source_access->address.frame_slot_id
           : std::optional<prepare::PreparedFrameSlotId>{};
   return prepared->producer != nullptr &&
-         prepared->producer->load_local == bir.load_local &&
+         prepared->producer->load_local == mir_identity.load_local &&
          prepared->source_access != nullptr &&
-         bir.producer.kind == mir::SameBlockProducerKind::LoadLocal &&
-         bir.producer.instruction_index ==
+         route3 &&
+         route3.load_access.instruction == mir_identity.producer.inst &&
+         route3.load_access.node_kind == bir::Route3MemoryAccessNodeKind::LoadLocal &&
+         route3.load_access.base_kind == bir::Route3MemoryAccessBaseKind::LocalSlot &&
+         route3.load_access.result_value.name == value.name &&
+         mir_identity.producer.kind == mir::SameBlockProducerKind::LoadLocal &&
+         mir_identity.producer.instruction_index ==
              prepared->producer->instruction_index &&
-         bir.memory_access.node_kind == mir::BirMemoryAccessNodeKind::LoadLocal &&
-         bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::LocalSlot &&
-         bir.memory_access.result_value_name == value.name &&
+         mir_identity.memory_access.node_kind ==
+             mir::BirMemoryAccessNodeKind::LoadLocal &&
+         mir_identity.memory_access.base_kind ==
+             mir::BirMemoryAccessBaseKind::LocalSlot &&
+         mir_identity.memory_access.result_value_name == value.name &&
          (!prepared_slot.has_value() ||
-          bir.memory_access.local_slot_id ==
+          mir_identity.memory_access.local_slot_id ==
               static_cast<c4c::SlotNameId>(*prepared_slot)) &&
-         bir.result_value.name == value.name &&
-         bir.result_value.type == value.type;
+         mir_identity.result_value.name == value.name &&
+         mir_identity.result_value.type == value.type;
 }
 
 int records_local_store_source_identity() {

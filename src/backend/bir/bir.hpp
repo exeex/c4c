@@ -1290,6 +1290,152 @@ route2_find_select_chain_value_record(
     Route2SelectChainValueQuery query,
     const Value& value);
 
+enum class Route3MemoryAccessNodeKind : unsigned char {
+  Unknown,
+  LoadLocal,
+  LoadGlobal,
+  StoreLocal,
+  StoreGlobal,
+};
+
+[[nodiscard]] constexpr std::string_view route3_memory_access_node_kind_name(
+    Route3MemoryAccessNodeKind kind) {
+  switch (kind) {
+    case Route3MemoryAccessNodeKind::Unknown:
+      return "unknown";
+    case Route3MemoryAccessNodeKind::LoadLocal:
+      return "load_local";
+    case Route3MemoryAccessNodeKind::LoadGlobal:
+      return "load_global";
+    case Route3MemoryAccessNodeKind::StoreLocal:
+      return "store_local";
+    case Route3MemoryAccessNodeKind::StoreGlobal:
+      return "store_global";
+  }
+  return "unknown";
+}
+
+enum class Route3MemoryAccessBaseKind : unsigned char {
+  None,
+  LocalSlot,
+  GlobalSymbol,
+  PointerValue,
+  StringConstant,
+};
+
+[[nodiscard]] constexpr std::string_view route3_memory_access_base_kind_name(
+    Route3MemoryAccessBaseKind kind) {
+  switch (kind) {
+    case Route3MemoryAccessBaseKind::None:
+      return "none";
+    case Route3MemoryAccessBaseKind::LocalSlot:
+      return "local_slot";
+    case Route3MemoryAccessBaseKind::GlobalSymbol:
+      return "global_symbol";
+    case Route3MemoryAccessBaseKind::PointerValue:
+      return "pointer_value";
+    case Route3MemoryAccessBaseKind::StringConstant:
+      return "string_constant";
+  }
+  return "none";
+}
+
+enum class Route3MemoryAccessValueRole : unsigned char {
+  None,
+  Result,
+  Stored,
+};
+
+struct Route3MemoryAccessRecord {
+  bool available = false;
+  const Inst* instruction = nullptr;
+  std::size_t instruction_index = 0;
+  Route3MemoryAccessNodeKind node_kind = Route3MemoryAccessNodeKind::Unknown;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  Route1SourceValueIdentity result_value;
+  Route1SourceValueIdentity stored_value;
+  AddressSpace address_space = AddressSpace::Default;
+  bool is_volatile = false;
+  Route3MemoryAccessBaseKind base_kind = Route3MemoryAccessBaseKind::None;
+  std::string_view local_slot_name;
+  SlotNameId local_slot_id = kInvalidSlotName;
+  std::string_view global_name;
+  LinkNameId global_name_id = kInvalidLinkName;
+  Route1SourceValueIdentity pointer_value;
+  std::string_view string_constant_name;
+  LinkNameId string_constant_name_id = kInvalidLinkName;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route3MemoryAccessValueRecord {
+  bool available = false;
+  Route3MemoryAccessValueRole role = Route3MemoryAccessValueRole::None;
+  Route1SourceValueIdentity value;
+  std::size_t access_instruction_index = 0;
+  Route3MemoryAccessNodeKind node_kind = Route3MemoryAccessNodeKind::Unknown;
+  Route3MemoryAccessRecord access;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route3SameBlockGlobalLoadAccessRecord {
+  bool available = false;
+  bool access_available = false;
+  Route1SourceValueIdentity root_value;
+  std::optional<std::size_t> load_instruction_index;
+  Route3MemoryAccessRecord load_access;
+
+  [[nodiscard]] explicit operator bool() const {
+    return available && access_available && load_access;
+  }
+};
+
+struct Route3SameBlockLoadLocalSourceRecord {
+  bool available = false;
+  bool source_available = false;
+  Route1SourceValueIdentity root_value;
+  std::optional<std::size_t> load_instruction_index;
+  Route3MemoryAccessRecord load_access;
+  std::optional<std::size_t> invalidating_store_instruction_index;
+  Route3MemoryAccessRecord invalidating_store_access;
+
+  [[nodiscard]] explicit operator bool() const {
+    return available && source_available && load_access;
+  }
+};
+
+[[nodiscard]] Route3MemoryAccessNodeKind route3_memory_access_node_kind(
+    const Inst& inst);
+
+[[nodiscard]] Route3MemoryAccessBaseKind route3_memory_access_base_kind(
+    const MemoryAddress& address);
+
+[[nodiscard]] Route3MemoryAccessRecord route3_memory_access_record(
+    const Block& block,
+    std::size_t instruction_index);
+
+[[nodiscard]] Route3MemoryAccessValueRecord
+route3_memory_access_result_value_record(
+    const Block& block,
+    std::size_t instruction_index);
+
+[[nodiscard]] Route3MemoryAccessValueRecord
+route3_memory_access_stored_value_record(
+    const Block& block,
+    std::size_t instruction_index);
+
+[[nodiscard]] Route3SameBlockGlobalLoadAccessRecord
+route3_same_block_global_load_access_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
+
+[[nodiscard]] Route3SameBlockLoadLocalSourceRecord
+route3_same_block_load_local_source_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
+
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;
   std::size_t arg_index = 0;
