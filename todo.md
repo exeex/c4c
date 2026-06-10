@@ -1,41 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/165_bir_comparison_condition_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add BIR Annotation Records
+Current Step ID: 3
+Current Step Title: Add Lookup/Index Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for
+Completed Step 3 for
 `ideas/open/165_bir_comparison_condition_annotation_schema.md`.
-Added typed Route 7 BIR comparison/condition annotation records and
-construction helpers without switching production consumers.
+Added function-local Route 7 lookup/index helpers over the Step 2 BIR
+comparison/condition annotation records without switching production
+consumers.
 
-- Added explicit Route 7 statuses for available, missing block/instruction,
-  wrong instruction, non-comparison, missing condition value, missing operand
-  producer, duplicate producer, absent provenance, and no-match cases.
-- Added operand roles and branch-condition semantic categories.
-- Added `Route7ComparisonOperandRecord`,
-  `Route7ComparisonInstructionRecord`, and `Route7BranchConditionRecord`.
-- Added construction helpers:
-  `bir::route7_comparison_operand_record(...)`,
-  `bir::route7_comparison_instruction_record(...)`, and
-  `bir::route7_branch_condition_record(...)`.
-- Records reuse Route 1 source value identity and existing
-  `ComparisonProducerKind`; they do not copy prepared fused-compare or
-  materialized-condition producer records as BIR payloads.
-- Focused tests compare Route 7 records with prepared fused-operand and
-  materialized-condition oracles for select/folded operands, immediate
-  operands, materialized condition producers, branch-condition provenance,
-  non-comparison, missing/after-boundary producer, and duplicate producer
-  cases.
+- Added `Route7ComparisonConditionIndex`, rebuilt from BIR `Function` blocks
+  by collecting comparison instruction records, operand records, and
+  branch-condition records.
+- Added lookup helpers for comparison instruction, comparison operand,
+  materialized condition, and branch-condition provenance keyed by stable BIR
+  block label/id, instruction index, condition value, before-instruction
+  boundary, operand role/value identity, and block terminator identity.
+- Lookup helpers return Route 7 records with explicit statuses and remain
+  target-neutral BIR indexes, not prepared comparison-plan containers.
+- Focused tests prove indexed success for fused-operand/materialized-condition
+  and branch-condition paths, plus indexed non-comparison, no-match,
+  missing-producer, and duplicate-producer fail-closed statuses against the
+  existing prepared/BIR oracles.
 
 ## Suggested Next
 
-Execute Step 3 by adding function-local Route 7 lookup/index helpers over the
-new BIR comparison/condition records.
+Execute Step 4 by migrating the narrowest shared comparison/condition helper
+to read Route 7 BIR records/index helpers while preserving prepared/BIR oracle
+coverage.
 
 ## Watchouts
 
@@ -49,14 +46,15 @@ new BIR comparison/condition records.
 - Preserve explicit materialized-condition, integer-constant operand,
   non-comparison, missing producer, absent-provenance, non-materializable, and
   no-match cases where applicable.
-- Step 2 intentionally did not switch MIR, target/codegen, or prealloc
+- Step 3 intentionally did not switch MIR, target/codegen, or prealloc
   production consumers.
-- Step 3 should keep indexes rebuildable from BIR instruction/terminator
-  records and avoid prepared-owned lookup payloads.
+- There is no dedicated public MIR comparison-condition query yet; Step 4 may
+  need to migrate the narrowest existing BIR helper rather than inventing a
+  broad MIR API.
 
 ## Proof
 
-Exact delegated Step 2 proof passed:
+Exact delegated Step 3 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log

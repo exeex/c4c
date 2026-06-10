@@ -3302,6 +3302,185 @@ Route7BranchConditionRecord route7_branch_condition_record(const Block* block) {
   return record;
 }
 
+namespace {
+
+[[nodiscard]] bool route7_block_matches(std::string_view record_label,
+                                        BlockLabelId record_label_id,
+                                        const Block& block) {
+  if (record_label_id != kInvalidBlockLabel ||
+      block.label_id != kInvalidBlockLabel) {
+    return record_label_id == block.label_id;
+  }
+  return record_label == block.label;
+}
+
+[[nodiscard]] bool route7_value_matches(
+    const Route1SourceValueIdentity& identity,
+    const Value& value) {
+  if (identity.type != value.type || identity.value_kind != value.kind) {
+    return false;
+  }
+  if (value.kind == Value::Kind::Named) {
+    return identity.name == value.name;
+  }
+  if (value.kind == Value::Kind::Immediate) {
+    return identity.integer_constant.has_value() &&
+           *identity.integer_constant == value.immediate;
+  }
+  return identity.value != nullptr && *identity.value == value;
+}
+
+[[nodiscard]] Route7ComparisonStatus route7_missing_block_status(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block) {
+  if (!index) {
+    return Route7ComparisonStatus::MissingBlock;
+  }
+  for (const auto& record : index.comparison_records) {
+    if (route7_block_matches(record.block_label, record.block_label_id,
+                             block)) {
+      return Route7ComparisonStatus::NoMatch;
+    }
+  }
+  for (const auto& record : index.branch_condition_records) {
+    if (route7_block_matches(record.block_label, record.block_label_id,
+                             block)) {
+      return Route7ComparisonStatus::NoMatch;
+    }
+  }
+  return Route7ComparisonStatus::MissingBlock;
+}
+
+}  // namespace
+
+Route7ComparisonConditionIndex route7_build_comparison_condition_index(
+    const Function& function) {
+  Route7ComparisonConditionIndex index{
+      .function = &function,
+  };
+  for (const auto& block : function.blocks) {
+    index.comparison_records.reserve(index.comparison_records.size() +
+                                     block.insts.size());
+    for (std::size_t instruction_index = 0;
+         instruction_index < block.insts.size();
+         ++instruction_index) {
+      auto record = route7_comparison_instruction_record(
+          &block, instruction_index);
+      index.comparison_records.push_back(record);
+      if (record.status == Route7ComparisonStatus::Available ||
+          record.status == Route7ComparisonStatus::NonComparison) {
+        if (record.lhs.status != Route7ComparisonStatus::Unavailable) {
+          index.operand_records.push_back(record.lhs);
+        }
+        if (record.rhs.status != Route7ComparisonStatus::Unavailable) {
+          index.operand_records.push_back(record.rhs);
+        }
+      }
+    }
+    const auto branch_record = route7_branch_condition_record(&block);
+    if (branch_record.status != Route7ComparisonStatus::Unavailable) {
+      index.branch_condition_records.push_back(branch_record);
+    }
+  }
+  return index;
+}
+
+Route7ComparisonInstructionRecord route7_find_comparison_instruction(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    std::size_t instruction_index) {
+  for (const auto& record : index.comparison_records) {
+    if (route7_block_matches(record.block_label, record.block_label_id,
+                             block) &&
+        record.instruction_index == instruction_index) {
+      return record;
+    }
+  }
+  return Route7ComparisonInstructionRecord{
+      .status = route7_missing_block_status(index, block),
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .instruction_index = instruction_index,
+  };
+}
+
+Route7ComparisonOperandRecord route7_find_comparison_operand(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role) {
+  for (const auto& record : index.operand_records) {
+    if (route7_block_matches(record.block_label, record.block_label_id,
+                             block) &&
+        record.before_instruction_index == before_instruction_index &&
+        record.role == role &&
+        route7_value_matches(record.value, value)) {
+      return record;
+    }
+  }
+  return Route7ComparisonOperandRecord{
+      .status = route7_missing_block_status(index, block),
+      .role = role,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .before_instruction_index = before_instruction_index,
+      .value = route1_source_value_identity(value),
+  };
+}
+
+Route7ComparisonInstructionRecord route7_find_materialized_condition(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index) {
+  const Route7ComparisonInstructionRecord* match = nullptr;
+  for (const auto& record : index.comparison_records) {
+    if (!route7_block_matches(record.block_label, record.block_label_id,
+                              block) ||
+        record.instruction_index >= before_instruction_index ||
+        !route7_value_matches(record.condition_value, condition_value)) {
+      continue;
+    }
+    if (match != nullptr) {
+      return Route7ComparisonInstructionRecord{
+          .status = Route7ComparisonStatus::DuplicateProducer,
+          .block_label = block.label,
+          .block_label_id = block.label_id,
+          .instruction_index = record.instruction_index,
+          .condition_value = route1_source_value_identity(condition_value),
+      };
+    }
+    match = &record;
+  }
+  if (match != nullptr) {
+    return *match;
+  }
+  return Route7ComparisonInstructionRecord{
+      .status = route7_missing_block_status(index, block),
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+      .instruction_index = before_instruction_index,
+      .condition_value = route1_source_value_identity(condition_value),
+  };
+}
+
+Route7BranchConditionRecord route7_find_branch_condition(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block) {
+  for (const auto& record : index.branch_condition_records) {
+    if (route7_block_matches(record.block_label, record.block_label_id,
+                             block)) {
+      return record;
+    }
+  }
+  return Route7BranchConditionRecord{
+      .status = route7_missing_block_status(index, block),
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+  };
+}
+
 FusedCompareOperandProducerFacts find_fused_compare_operand_producer_facts(
     const Block& block,
     const Value& lhs,

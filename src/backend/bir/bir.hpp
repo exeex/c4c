@@ -2198,6 +2198,15 @@ struct Route7BranchConditionRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route7ComparisonConditionIndex {
+  const Function* function = nullptr;
+  std::vector<Route7ComparisonInstructionRecord> comparison_records;
+  std::vector<Route7ComparisonOperandRecord> operand_records;
+  std::vector<Route7BranchConditionRecord> branch_condition_records;
+
+  [[nodiscard]] explicit operator bool() const { return function != nullptr; }
+};
+
 struct CallResultSourceIdentity {
   bool available = false;
   std::size_t call_instruction_index = 0;
@@ -2491,6 +2500,28 @@ route7_comparison_instruction_record(
     std::size_t instruction_index);
 [[nodiscard]] Route7BranchConditionRecord route7_branch_condition_record(
     const Block* block);
+[[nodiscard]] Route7ComparisonConditionIndex
+route7_build_comparison_condition_index(const Function& function);
+[[nodiscard]] Route7ComparisonInstructionRecord
+route7_find_comparison_instruction(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    std::size_t instruction_index);
+[[nodiscard]] Route7ComparisonOperandRecord route7_find_comparison_operand(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role);
+[[nodiscard]] Route7ComparisonInstructionRecord
+route7_find_materialized_condition(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index);
+[[nodiscard]] Route7BranchConditionRecord route7_find_branch_condition(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block);
 CallResultSourceIdentity find_call_result_source_identity(
     const Block& block,
     const CallInst& call,
