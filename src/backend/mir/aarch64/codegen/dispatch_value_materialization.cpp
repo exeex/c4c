@@ -17,6 +17,7 @@
 #include "prepared_value_home_materialization.hpp"
 #include "select_materialization.hpp"
 #include "variadic.hpp"
+#include "../../query.hpp"
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 
@@ -39,39 +40,31 @@ namespace prepare = c4c::backend::prepare;
 
 namespace {
 
-[[nodiscard]] std::optional<prepare::PreparedSameBlockValueMaterializationQuery>
-prepared_same_block_value_materialization_query(
+[[nodiscard]] std::optional<mir::SameBlockValueMaterializationQuery>
+same_block_value_materialization_query(
     const module::BlockLoweringContext& context,
     std::size_t before_instruction_index) {
-  if (context.bir_block == nullptr || context.control_flow_block == nullptr ||
-      context.function.prepared == nullptr ||
-      context.function.prepared_lookups == nullptr) {
+  if (context.bir_block == nullptr) {
     return std::nullopt;
   }
-  return prepare::PreparedSameBlockValueMaterializationQuery{
-      .names = &context.function.prepared->names,
-      .source_producers =
-          &context.function.prepared_lookups->edge_publication_source_producers,
-      .block_label = context.control_flow_block->block_label,
+  return mir::SameBlockValueMaterializationQuery{
       .block = context.bir_block,
+      .block_label = std::string_view{context.bir_block->label},
       .before_instruction_index = before_instruction_index,
   };
 }
 
-[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
-prepared_same_block_scalar_producer(
+[[nodiscard]] std::optional<mir::SameBlockScalarProducer>
+same_block_scalar_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.function.control_flow == nullptr) {
-    return std::nullopt;
-  }
   const auto query =
-      prepared_same_block_value_materialization_query(context, before_instruction_index);
+      same_block_value_materialization_query(context, before_instruction_index);
   if (!query.has_value()) {
     return std::nullopt;
   }
-  return prepare::find_prepared_same_block_scalar_producer(*query, value);
+  return mir::find_same_block_scalar_producer(*query, value);
 }
 
 [[nodiscard]] prepare::PreparedScalarSelectChainMaterialization
@@ -97,7 +90,7 @@ prepared_scalar_select_chain_materialization(
 }
 
 [[nodiscard]] std::optional<std::int64_t>
-prepared_same_block_integer_constant(
+same_block_integer_constant(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index) {
@@ -105,11 +98,71 @@ prepared_same_block_integer_constant(
     return value.immediate;
   }
   const auto query =
-      prepared_same_block_value_materialization_query(context, before_instruction_index);
+      same_block_value_materialization_query(context, before_instruction_index);
   if (!query.has_value()) {
     return std::nullopt;
   }
-  return prepare::evaluate_prepared_same_block_integer_constant(*query, value);
+  const auto constant = mir::evaluate_same_block_integer_constant(*query, value);
+  if (!constant.has_value()) {
+    return std::nullopt;
+  }
+  return constant->value;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
+prepared_shape_same_block_scalar_producer(
+    const module::BlockLoweringContext& context,
+    const mir::SameBlockScalarProducer& producer) {
+  if (context.control_flow_block == nullptr || producer.instruction == nullptr) {
+    return std::nullopt;
+  }
+  prepare::PreparedEdgePublicationSourceProducer source{
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = producer.instruction_index,
+  };
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer.instruction);
+      load_local != nullptr) {
+    source.kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+    source.load_local = load_local;
+  } else if (const auto* load_global =
+                 std::get_if<bir::LoadGlobalInst>(producer.instruction);
+             load_global != nullptr) {
+    source.kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal;
+    source.load_global = load_global;
+  } else if (const auto* cast = std::get_if<bir::CastInst>(producer.instruction);
+             cast != nullptr) {
+    source.kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast;
+    source.cast = cast;
+  } else if (const auto* binary = std::get_if<bir::BinaryInst>(producer.instruction);
+             binary != nullptr) {
+    source.kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+    source.binary = binary;
+  } else if (const auto* select = std::get_if<bir::SelectInst>(producer.instruction);
+             select != nullptr) {
+    source.kind =
+        prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+    source.select = select;
+  } else {
+    return std::nullopt;
+  }
+  return prepare::PreparedSameBlockScalarProducer{
+      .producer = source,
+      .instruction = producer.instruction,
+      .instruction_index = producer.instruction_index,
+  };
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
+same_block_scalar_producer_for_scratch_hazard(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto producer =
+      same_block_scalar_producer(context, value, before_instruction_index);
+  if (!producer.has_value()) {
+    return std::nullopt;
+  }
+  return prepared_shape_same_block_scalar_producer(context, *producer);
 }
 
 }  // namespace
@@ -138,7 +191,7 @@ prepared_same_block_integer_constant(
     return false;
   }
   if (const auto constant =
-          prepared_same_block_integer_constant(context, value, before_instruction_index);
+          same_block_integer_constant(context, value, before_instruction_index);
       constant.has_value()) {
     lines.push_back("mov " + *target + ", #" + std::to_string(*constant));
     return true;
@@ -155,10 +208,21 @@ prepared_same_block_integer_constant(
     }
     return true;
   }
-  const auto producer_context =
-      prepared_same_block_scalar_producer(context, value, before_instruction_index);
+  auto producer_context =
+      same_block_scalar_producer(context, value, before_instruction_index);
   const auto* producer =
       producer_context.has_value() ? producer_context->instruction : nullptr;
+  if (producer != nullptr &&
+      std::get_if<bir::SelectInst>(producer) != nullptr) {
+    const auto select_chain_materialization =
+        prepared_scalar_select_chain_materialization(
+            context, value, before_instruction_index);
+    if (!select_chain_materialization.available ||
+        !select_chain_materialization.root_instruction_index.has_value()) {
+      producer_context.reset();
+      producer = nullptr;
+    }
+  }
   if (producer != nullptr &&
       prepared_query_current_block_join_parallel_copy_source(context, *producer)) {
     const auto* home = prepared_value_home_for_value(context, value);
@@ -311,10 +375,18 @@ prepared_same_block_integer_constant(
             : nullptr;
     const auto prepared_access =
         context.function.prepared != nullptr
-            ? prepare::find_prepared_same_block_global_load_access(
-                  context.function.prepared->names,
-                  addressing,
-                  *producer_context)
+            ? [&]() -> std::optional<prepare::PreparedSameBlockGlobalLoadAccess> {
+                const auto prepared_shape_producer =
+                    prepared_shape_same_block_scalar_producer(
+                        context, *producer_context);
+                if (!prepared_shape_producer.has_value()) {
+                  return std::nullopt;
+                }
+                return prepare::find_prepared_same_block_global_load_access(
+                    context.function.prepared->names,
+                    addressing,
+                    *prepared_shape_producer);
+              }()
             : std::nullopt;
     return prepared_access.has_value() &&
            prepared_access->load_global != nullptr &&
@@ -599,7 +671,7 @@ prepared_same_block_integer_constant(
     rhs.type = binary->operand_type;
     if (const auto shift = value_power_of_two_shift(
             rhs,
-            prepared_same_block_integer_constant(context, rhs, binary_index))) {
+            same_block_integer_constant(context, rhs, binary_index))) {
       if (!emit_value_publication_to_register(context,
                                               lhs,
                                               binary_index,
@@ -626,15 +698,15 @@ prepared_same_block_integer_constant(
             context,
             rhs,
             binary_index,
-            prepared_same_block_integer_constant,
-            prepared_same_block_scalar_producer);
+            same_block_integer_constant,
+            same_block_scalar_producer_for_scratch_hazard);
     const bool lhs_writes_scratch =
         value_publication_may_write_scratch_register(
             context,
             lhs,
             binary_index,
-            prepared_same_block_integer_constant,
-            prepared_same_block_scalar_producer);
+            same_block_integer_constant,
+            same_block_scalar_producer_for_scratch_hazard);
     if ((rhs_reads_target || rhs_writes_target) &&
         !lhs_reads_scratch && !lhs_writes_scratch) {
       if (!emit_value_publication_to_register(context,
@@ -696,15 +768,15 @@ prepared_same_block_integer_constant(
           context,
           rhs,
           binary_index,
-          prepared_same_block_integer_constant,
-          prepared_same_block_scalar_producer);
+          same_block_integer_constant,
+          same_block_scalar_producer_for_scratch_hazard);
   const bool lhs_writes_scratch =
       value_publication_may_write_scratch_register(
           context,
           lhs,
           binary_index,
-          prepared_same_block_integer_constant,
-          prepared_same_block_scalar_producer);
+          same_block_integer_constant,
+          same_block_scalar_producer_for_scratch_hazard);
   if ((rhs_reads_target || rhs_writes_target) &&
       !lhs_reads_scratch && !lhs_writes_scratch) {
     if (!emit_value_publication_to_register(context,
