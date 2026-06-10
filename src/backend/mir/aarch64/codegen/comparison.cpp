@@ -1912,19 +1912,21 @@ lower_fused_compare_branch_from_emitted_cast(
   }
   std::vector<std::string> lines;
   if (!source_name.has_value()) {
-    const auto load_producer =
-        find_prepared_fused_compare_operand_producer(context,
-                                                     cast->operand,
-                                                     cast_producer->producer_instruction_index);
+    const auto load_producer = bir::find_comparison_operand_producer(
+        *context.bir_block, cast->operand, cast_producer->producer_instruction_index);
+    const auto* load_local =
+        load_producer.has_value() && load_producer->producer_instruction != nullptr
+            ? std::get_if<bir::LoadLocalInst>(load_producer->producer_instruction)
+            : nullptr;
     const auto load_address =
-        load_producer.has_value() && load_producer->load_local != nullptr
-            ? branch_fusion_prepared_frame_slot_load_address(context,
-                                                             load_producer->instruction_index)
+        load_local != nullptr
+            ? branch_fusion_prepared_frame_slot_load_address(
+                  context, load_producer->producer_instruction_index)
             : std::optional<std::string>{};
     if (!load_producer.has_value() ||
-        load_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
-        load_producer->load_local == nullptr ||
-        load_producer->load_local->result.type != bir::TypeKind::I8 ||
+        load_producer->producer_kind != bir::ComparisonProducerKind::LoadLocal ||
+        load_local == nullptr ||
+        load_local->result.type != bir::TypeKind::I8 ||
         !load_address.has_value()) {
       return std::nullopt;
     }

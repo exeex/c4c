@@ -8,35 +8,32 @@ Current Step Title: Switch comparison and branch provenance consumers
 
 ## Just Finished
 
-Step 5 completed the RHS folded integer-constant fallback switch inside
+Step 5 completed the cast-operand load-producer read switch inside
 `lower_fused_compare_branch_from_emitted_cast` from
 `find_prepared_fused_compare_operand_producer` to
-`bir::find_comparison_operand_producer` for `other_value` at
-`before_instruction_index`.
+`bir::find_comparison_operand_producer` for `cast->operand` at
+`cast_producer->producer_instruction_index`.
 
-The packet also extended
-`bir::ComparisonOperandProducer::integer_constant` through BIR comparison
-producer identity to fold same-block `UDiv` integer constants with a
-zero-divisor guard. Prepared/BIR comparison-condition producer equivalence
-coverage now includes a folded same-block `UDiv` RHS producer fact, preserving
-the BIR RHS fallback needed by
-`direct_dispatch_lowers_i32_sext_i64_constant_udiv_bound_branch`.
+The BIR producer path now requires
+`bir::ComparisonProducerKind::LoadLocal`, recovers the `bir::LoadLocalInst`,
+keeps the existing `I8` source-load type check, and still uses the producer
+instruction index for `branch_fusion_prepared_frame_slot_load_address`.
 
 ## Suggested Next
 
 Supervisor can decide whether Step 5 needs another provenance-consumer packet
-or whether this slice is ready for the next plan step/acceptance validation.
+or whether the completed Step 5 slices are ready for the next plan
+step/acceptance validation.
 
 ## Watchouts
 
-- The requested `comparison.cpp` consumer switch remains on BIR producer
-  identity; do not restore the prepared RHS constant fallback in a later
-  cleanup.
+- The requested cast-operand load lookup now uses BIR producer identity; do not
+  restore the prepared load-producer read in a later cleanup.
 - Do not move branch legality, cast opcode/type checks, condition-code
   selection, compare emission, branch emission, final-record policy, hazards,
-  or emitted-register state while unblocking the BIR constant producer fact.
-- The same-block `UDiv` fold is semantic producer coverage, not a named-fixture
-  shortcut; expectations were not rewritten.
+  emitted-register state, RHS constant fallback, or load-address policy while
+  continuing Step 5.
+- This slice did not add or change test expectations.
 
 ## Proof
 
