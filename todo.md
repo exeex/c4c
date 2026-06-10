@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/159_bir_producer_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Oracle Equivalence
+Current Step ID: 6
+Current Step Title: Run acceptance validation and route review check
 
 # Current Packet
 
