@@ -8,22 +8,33 @@ Current Step Title: Build The Phase A Evidence Index
 
 ## Just Finished
 
-Activation only. No executor packet has run yet.
+Step 1 from `plan.md`: built the Phase A evidence index at
+`docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`.
+The artifact now contains provenance, the required source list, and a
+seven-route Phase A coverage table skeleton. Each row names its Phase A
+artifact evidence, closed route evidence, established BIR relationship,
+`Prepared*` surfaces to classify later, and closure boundaries to preserve.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: inspect the Phase A artifact and closure notes,
-then create `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`
-with provenance and a seven-route coverage table skeleton.
+Execute Step 2 from `plan.md`: classify the indexed route facts by BIR
+annotation placement, starting with value-home/storage-adjacent facts and then
+call, publication, edge, memory, comparison, and return-related facts.
 
 ## Watchouts
 
 - This is analysis-only; do not edit implementation or schema code.
-- Do not invent new Phase A normalization routes.
+- Do not invent new Phase A normalization routes; the seven rows in the Phase B
+  artifact are the allowed route set for this audit.
 - Preserve traceability from schema candidates back to Phase A candidate ids,
   sections, or closure notes.
-- Keep target-facing AArch64 details out of durable BIR schema.
+- Keep target-facing AArch64 details out of durable BIR schema. The Step 1
+  artifact records route-specific reject boundaries, especially register/home,
+  stack-layout, ABI, target-addressing, parallel-copy execution, scratch, and
+  final-instruction fields.
 
 ## Proof
 
-Lifecycle activation only. No build or test proof required.
+Docs-only analysis packet. No build or test proof was run because no code
+changed, per the delegated proof contract. No `test_after.log` was generated
+for this docs-only slice.
