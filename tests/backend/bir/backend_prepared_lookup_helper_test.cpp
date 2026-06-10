@@ -512,6 +512,75 @@ bool prepared_and_bir_cfg_edge_publication_source_identity_match(
                prepared.source_memory_is_volatile));
 }
 
+[[nodiscard]] bool bir_value_identities_contain_name(
+    const std::vector<mir::SameBlockValueIdentity>& values,
+    std::string_view value_name) {
+  return std::find_if(values.begin(), values.end(), [&](const auto& value) {
+           return value.name == value_name;
+         }) != values.end();
+}
+
+bool prepared_and_bir_current_block_join_source_identity_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedCurrentBlockJoinParallelCopySourceFacts& prepared,
+    const mir::BirCurrentBlockJoinSourceIdentity& bir) {
+  if (prepared.status !=
+      prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available) {
+    return !bir;
+  }
+  if (!bir ||
+      bir.facts.empty()) {
+    return false;
+  }
+  for (const auto& prepared_fact : prepared.facts) {
+    if (prepared_fact.status !=
+        prepare::PreparedEdgeCopySourceFactsStatus::Available) {
+      continue;
+    }
+    const auto destination_name =
+        prepare::prepared_value_name(names, prepared_fact.destination_value_name);
+    const auto source_name =
+        prepare::prepared_value_name(names, prepared_fact.source_value_name);
+    const auto matches_fact =
+        std::find_if(bir.facts.begin(), bir.facts.end(), [&](const auto& fact) {
+          if (!fact ||
+              fact.predecessor_label_id != prepared_fact.predecessor_label ||
+              fact.successor_label_id != prepared_fact.successor_label ||
+              fact.destination_value_name != destination_name) {
+            return false;
+          }
+          if (prepared_fact.immediate_source) {
+            return fact.source_value_kind == bir::Value::Kind::Immediate &&
+                   fact.source_value_identity.immediate_constant.has_value();
+          }
+          return !source_name.empty() &&
+                 fact.source_value_kind == bir::Value::Kind::Named &&
+                 fact.source_value_name == source_name &&
+                 fact.source_producer &&
+                 fact.source_producer_kind != mir::SameBlockProducerKind::Unknown &&
+                 fact.source_producer_instruction_index.has_value();
+        }) != bir.facts.end();
+    if (!matches_fact) {
+      return false;
+    }
+  }
+  for (const auto value_name : prepared.incoming_expression_value_names) {
+    const auto name = prepare::prepared_value_name(names, value_name);
+    if (!name.empty() &&
+        !bir_value_identities_contain_name(bir.incoming_expression_values, name)) {
+      return false;
+    }
+  }
+  for (const auto value_name : prepared.source_value_names) {
+    const auto name = prepare::prepared_value_name(names, value_name);
+    if (!name.empty() &&
+        !bir_value_identities_contain_name(bir.source_values, name)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 int verify_prepared_home_same_register_helper() {
   const prepare::PreparedValueHome source_register{
       .value_id = 1,
@@ -1939,6 +2008,40 @@ int verify_current_block_join_parallel_copy_source_query() {
   bir::Block block;
   block.label = "current_join.succ";
   block.label_id = successor_label;
+  block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "current_join.pred",
+              .value =
+                  bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32,
+                                  "%current.immediate_destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "current_join.pred",
+              .value = bir::Value::immediate_i32(9),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  block.insts.push_back(bir::PhiInst{
+      .result =
+          bir::Value::named(bir::TypeKind::I32, "%current.stack_destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "current_join.pred",
+              .value =
+                  bir::Value::named(bir::TypeKind::I32, "%current.stack_source"),
+              .label_id = predecessor_label,
+          },
+      },
+  });
   block.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "%current.incoming"),
@@ -2149,6 +2252,12 @@ int verify_current_block_join_parallel_copy_source_query() {
               .block = &block,
               .successor_label = successor_label,
           });
+  const auto bir_query = mir::find_bir_current_block_join_source_identity(
+      mir::BirCurrentBlockJoinSourceRequest{
+          .successor_block = &block,
+          .successor_label = "current_join.succ",
+          .successor_label_id = successor_label,
+      });
 
   auto contains_value_id = [](const std::vector<prepare::PreparedValueId>& values,
                               prepare::PreparedValueId value_id) {
@@ -2163,17 +2272,40 @@ int verify_current_block_join_parallel_copy_source_query() {
       query.facts.size() != 4) {
     return fail("current-block join query should expose all matching bundle facts");
   }
+  if (!prepared_and_bir_current_block_join_source_identity_match(names, query,
+                                                                bir_query)) {
+    return fail("BIR current-block join-source identity should match prepared semantic facts");
+  }
+  if (bir_query.facts.size() != 3) {
+    return fail("BIR current-block join-source identity should expose only PHI source facts");
+  }
   if (!contains_value_id(query.incoming_expression_value_ids, incoming_id) ||
       !contains_value_id(query.incoming_expression_value_ids, operand_id) ||
       !contains_value_name(query.incoming_expression_value_names, incoming_name) ||
       !contains_value_name(query.incoming_expression_value_names, operand_name)) {
     return fail("current-block join query should expose incoming expression closure");
   }
+  if (!bir_value_identities_contain_name(
+          bir_query.incoming_expression_values, "%current.incoming") ||
+      !bir_value_identities_contain_name(
+          bir_query.incoming_expression_values, "%current.operand")) {
+    return fail("BIR current-block join query should expose incoming expression closure");
+  }
   if (!contains_value_id(query.source_value_ids, destination_id) ||
       !contains_value_id(query.source_value_ids, immediate_destination_id) ||
       !contains_value_id(query.source_value_ids, stack_destination_id) ||
       !contains_value_id(query.source_value_ids, stack_source_id)) {
     return fail("current-block join query should expose source value identities");
+  }
+  if (!bir_value_identities_contain_name(bir_query.source_values,
+                                         "%current.destination") ||
+      !bir_value_identities_contain_name(bir_query.source_values,
+                                         "%current.immediate_destination") ||
+      !bir_value_identities_contain_name(bir_query.source_values,
+                                         "%current.stack_destination") ||
+      !bir_value_identities_contain_name(bir_query.source_values,
+                                         "%current.stack_source")) {
+    return fail("BIR current-block join query should expose source value identities");
   }
 
   const auto& named_fact = query.facts[0];
@@ -2221,6 +2353,55 @@ int verify_current_block_join_parallel_copy_source_query() {
       prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::
           MissingEdgePublicationLookups) {
     return fail("current-block join query should require shared edge publications");
+  }
+  bir::Block no_phi_block;
+  no_phi_block.label = "current_join.succ";
+  no_phi_block.label_id = successor_label;
+  if (mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &no_phi_block,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          })
+          .status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
+    return fail("BIR current-block join query should fail closed without PHIs");
+  }
+  if (mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &block,
+              .successor_label = "current_join.other",
+              .successor_label_id = successor_label,
+          })
+          .status != mir::BirCurrentBlockJoinSourceStatus::MissingSuccessorLabel) {
+    return fail("BIR current-block join query should reject mismatched successors");
+  }
+  bir::Block missing_source_block;
+  missing_source_block.label = "current_join.succ";
+  missing_source_block.label_id = successor_label;
+  missing_source_block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "current_join.pred",
+              .value = bir::Value::named(bir::TypeKind::I32,
+                                         "%current.missing_source"),
+              .label_id = predecessor_label,
+          },
+      },
+  });
+  const auto missing_source_query =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &missing_source_block,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          });
+  if (missing_source_query.status !=
+          mir::BirCurrentBlockJoinSourceStatus::MissingSourceProducer ||
+      missing_source_query.facts.size() != 1 ||
+      missing_source_query.facts.front().status !=
+          mir::BirCurrentBlockJoinSourceStatus::MissingSourceProducer) {
+    return fail("BIR current-block join query should diagnose missing named source producers");
   }
 
   return 0;

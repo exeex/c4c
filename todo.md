@@ -3,48 +3,49 @@
 Status: Active
 Source Idea Path: ideas/open/156_bir_cfg_edge_publication_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove prepared-oracle equivalence for edge sources
+Current Step ID: 4
+Current Step Title: Add and prove current-block join-source identity
 
 ## Just Finished
 
-Step 3 added focused prepared-oracle equivalence coverage for the
-target-neutral BIR CFG edge publication/source identity query in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+Step 4 added BIR current-block join-source semantic identity support in
+`src/backend/mir/query.hpp` and `src/backend/mir/query.cpp`, then proved it in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` against
+`PreparedCurrentBlockJoinParallelCopySourceFact(s)`.
 
-Completed test work item:
+Completed work item:
 
-- Added a reusable prepared-vs-BIR helper over
-  `find_bir_cfg_edge_publication_source_identity` keyed by predecessor,
-  successor, and destination identity.
-- Extended the producer-facts fixture so prepared binary/select edge
-  publications have matching BIR PHIs, keeping the oracle comparison semantic.
-- Covered available load-local, cast, binary, and select edge sources against
-  prepared edge-copy source facts.
-- Verified optional load-local source memory identity through
-  `BirMemoryAccessIdentity` fields while intentionally excluding prepared target
-  addressing policy such as base-plus-offset usability.
-- Covered missing destination publication, unavailable named source producer,
-  and negative predecessor/successor/destination key paths without switching
-  consumers or editing implementation code.
+- Added `find_bir_current_block_join_source_identity` over successor-block PHIs,
+  returning predecessor/successor labels, destination/source values,
+  same-block named source producer identity, incoming-expression identities, and
+  source-value identities.
+- Kept BIR identity free of prepared routing conveniences: no destination
+  register names, homes, stack-source policy flags, immediate-source move
+  details, storage-sharing fields, move bundles, or prepared move records.
+- Extended the focused current-block join test with PHI-backed named,
+  immediate, and stack-source paths, oracle comparison against prepared
+  semantic facts, and negative missing-PHI, successor mismatch, and missing
+  named source producer paths.
+- Did not switch MIR/AArch64 consumers or edit prealloc/codegen routing.
 
 ## Suggested Next
 
-Proposed Step 4 packet: add the remaining join-source coverage over current
-block/join publication behavior before any consumer switch. Keep the proof
-oracle-based and focused on source identity, not move-routing or target
-addressing policy.
+Proposed Step 5 packet: switch the first narrow MIR/AArch64 consumer from the
+prepared current-block join-source helper to the new BIR semantic identity only
+where the consumer needs source/destination expression identity. Keep prepared
+move routing, storage policy, homes, and register/stack decisions on the
+existing prepared path until a dedicated routing replacement exists.
 
 ## Watchouts
 
-- Step 3 stayed test-only and did not switch MIR/AArch64 consumers.
-- The prepared oracle can classify a named edge source as non-materializable
-  when no source producer exists; the BIR surface reports that same semantic
-  condition as `MissingSourceProducer`.
-- `BirCfgEdgePublicationSourceIdentity` remains a BIR semantic source-identity
-  surface. Homes, move records, destination register names, coalescing facts,
-  execution-site/phase/carrier facts, and parallel-copy scheduling remain out of
-  scope.
+- Step 4 adds a BIR semantic query but leaves all consumers on the existing
+  prepared helper.
+- `BirCurrentBlockJoinSourceIdentity` intentionally reports PHI source identity
+  and same-block source producers only. It does not replace prepared move
+  resolution or target storage/routing policy.
+- Step 5 should avoid treating the new BIR query as an authority for register
+  names, source/destination homes, stack-source routing, move bundles, or
+  immediate move materialization details.
 
 ## Proof
 

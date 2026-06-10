@@ -344,6 +344,20 @@ void populate_bir_memory_address_identity(
          request.successor_label == request.successor_block->label;
 }
 
+[[nodiscard]] bool successor_block_label_matches(
+    const BirCurrentBlockJoinSourceRequest& request) {
+  if (request.successor_block == nullptr) {
+    return false;
+  }
+  if (request.successor_label_id != c4c::kInvalidBlockLabel &&
+      request.successor_block->label_id != c4c::kInvalidBlockLabel &&
+      request.successor_label_id != request.successor_block->label_id) {
+    return false;
+  }
+  return request.successor_label.empty() ||
+         request.successor_label == request.successor_block->label;
+}
+
 [[nodiscard]] bool phi_incoming_label_matches(
     const bir::PhiIncoming& incoming,
     const BirCfgEdgePublicationSourceRequest& request) {
@@ -362,6 +376,50 @@ void populate_bir_memory_address_identity(
                                ? std::string_view{request.predecessor_block->label}
                                : std::string_view{};
   return !label.empty() && incoming.label == label;
+}
+
+void append_unique_value_identity(
+    std::vector<SameBlockValueIdentity>& values,
+    SameBlockValueIdentity value) {
+  if (!value) {
+    return;
+  }
+  const auto matches = [&](const SameBlockValueIdentity& existing) {
+    if (!value.name.empty() || !existing.name.empty()) {
+      return value.name == existing.name && value.type == existing.type;
+    }
+    return value.immediate_constant == existing.immediate_constant &&
+           value.type == existing.type;
+  };
+  if (std::find_if(values.begin(), values.end(), matches) == values.end()) {
+    values.push_back(value);
+  }
+}
+
+void append_bir_expression_operands(
+    std::vector<SameBlockValueIdentity>& pending,
+    const bir::Inst& producer) {
+  auto append_operand = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Named) {
+      append_unique_value_identity(pending, same_block_value_identity(value));
+    }
+  };
+  std::visit(
+      [&](const auto& typed_inst) {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+          append_operand(typed_inst.lhs);
+          append_operand(typed_inst.rhs);
+        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+          append_operand(typed_inst.operand);
+        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+          append_operand(typed_inst.lhs);
+          append_operand(typed_inst.rhs);
+          append_operand(typed_inst.true_value);
+          append_operand(typed_inst.false_value);
+        }
+      },
+      producer);
 }
 
 [[nodiscard]] bool same_local_slot_identity(
@@ -752,6 +810,133 @@ find_bir_cfg_edge_publication_source_identity(
   }
 
   result.status = BirCfgEdgePublicationSourceStatus::MissingPublication;
+  return result;
+}
+
+[[nodiscard]] BirCurrentBlockJoinSourceIdentity
+find_bir_current_block_join_source_identity(
+    BirCurrentBlockJoinSourceRequest request) {
+  BirCurrentBlockJoinSourceIdentity result;
+  if (request.successor_block != nullptr) {
+    result.successor_label =
+        normalized_block_label(*request.successor_block, request.successor_label);
+    result.successor_label_id =
+        request.successor_block->label_id != c4c::kInvalidBlockLabel
+            ? request.successor_block->label_id
+            : request.successor_label_id;
+  }
+  if (request.successor_block == nullptr) {
+    result.status = BirCurrentBlockJoinSourceStatus::MissingBlock;
+    return result;
+  }
+  if (!successor_block_label_matches(request)) {
+    result.status = BirCurrentBlockJoinSourceStatus::MissingSuccessorLabel;
+    return result;
+  }
+
+  bool saw_phi = false;
+  for (std::size_t index = 0; index < request.successor_block->insts.size();
+       ++index) {
+    const auto& inst = request.successor_block->insts[index];
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    saw_phi = true;
+    for (const auto& incoming : phi->incomings) {
+      BirCurrentBlockJoinSourceFact fact{
+          .predecessor_label = incoming.label,
+          .predecessor_label_id = incoming.label_id,
+          .successor_label = result.successor_label,
+          .successor_label_id = result.successor_label_id,
+          .destination_instruction = &inst,
+          .destination_phi = phi,
+          .destination_instruction_index = index,
+          .destination_value = &phi->result,
+          .destination_value_identity = same_block_value_identity(phi->result),
+          .destination_value_name = named_value_name(phi->result),
+          .destination_value_type = phi->result.type,
+          .source_value = &incoming.value,
+          .source_value_identity = same_block_value_identity(incoming.value),
+          .source_value_name = named_value_name(incoming.value),
+          .source_value_kind = incoming.value.kind,
+          .source_value_type = incoming.value.type,
+      };
+      append_unique_value_identity(result.source_values,
+                                   fact.destination_value_identity);
+      if (incoming.value.kind == bir::Value::Kind::Named) {
+        append_unique_value_identity(result.source_values,
+                                     fact.source_value_identity);
+        append_unique_value_identity(result.incoming_expression_values,
+                                     fact.source_value_identity);
+        const auto producer = find_same_block_producer_identity(
+            SameBlockProducerIdentityRequest{
+                .block = request.successor_block,
+                .block_label = result.successor_label,
+                .value_name = incoming.value.name,
+                .value_type = incoming.value.type,
+                .before_instruction_index =
+                    request.successor_block->insts.size(),
+            });
+        if (!producer) {
+          fact.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+          result.facts.push_back(fact);
+          continue;
+        }
+        fact.source_producer = producer;
+        fact.source_producer_kind = producer.kind;
+        fact.source_producer_instruction_index = producer.instruction_index;
+      }
+      fact.status = BirCurrentBlockJoinSourceStatus::Available;
+      result.facts.push_back(fact);
+    }
+  }
+
+  if (!saw_phi || result.facts.empty()) {
+    result.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
+    return result;
+  }
+
+  std::vector<SameBlockValueIdentity> pending =
+      result.incoming_expression_values;
+  std::vector<SameBlockValueIdentity> processed;
+  while (!pending.empty()) {
+    const auto value = pending.back();
+    pending.pop_back();
+    if (value.name.empty()) {
+      continue;
+    }
+    const auto already_processed =
+        std::find_if(processed.begin(), processed.end(),
+                     [&](const SameBlockValueIdentity& existing) {
+                       return existing.name == value.name &&
+                              existing.type == value.type;
+                     }) != processed.end();
+    if (already_processed) {
+      continue;
+    }
+    append_unique_value_identity(processed, value);
+    append_unique_value_identity(result.incoming_expression_values, value);
+    const auto producer = find_same_block_producer_identity(
+        SameBlockProducerIdentityRequest{
+            .block = request.successor_block,
+            .block_label = result.successor_label,
+            .value_name = value.name,
+            .value_type = value.type,
+            .before_instruction_index = request.successor_block->insts.size(),
+        });
+    if (producer.inst != nullptr) {
+      append_bir_expression_operands(pending, *producer.inst);
+    }
+  }
+
+  result.available =
+      std::all_of(result.facts.begin(), result.facts.end(), [](const auto& fact) {
+        return fact.status == BirCurrentBlockJoinSourceStatus::Available;
+      });
+  result.status = result.available
+                      ? BirCurrentBlockJoinSourceStatus::Available
+                      : BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
   return result;
 }
 

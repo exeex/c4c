@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::mir {
 
@@ -248,6 +249,65 @@ struct BirCfgEdgePublicationSourceIdentity {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+enum class BirCurrentBlockJoinSourceStatus {
+  Available,
+  MissingBlock,
+  MissingSuccessorLabel,
+  MissingPublication,
+  MissingSourceProducer,
+};
+
+struct BirCurrentBlockJoinSourceRequest {
+  const bir::Block* successor_block = nullptr;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+
+  [[nodiscard]] explicit operator bool() const {
+    return successor_block != nullptr;
+  }
+};
+
+struct BirCurrentBlockJoinSourceFact {
+  BirCurrentBlockJoinSourceStatus status =
+      BirCurrentBlockJoinSourceStatus::MissingPublication;
+  std::string_view predecessor_label;
+  c4c::BlockLabelId predecessor_label_id = c4c::kInvalidBlockLabel;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Inst* destination_instruction = nullptr;
+  const bir::PhiInst* destination_phi = nullptr;
+  std::size_t destination_instruction_index = 0;
+  const bir::Value* destination_value = nullptr;
+  SameBlockValueIdentity destination_value_identity;
+  std::string_view destination_value_name;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  const bir::Value* source_value = nullptr;
+  SameBlockValueIdentity source_value_identity;
+  std::string_view source_value_name;
+  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
+  bir::TypeKind source_value_type = bir::TypeKind::Void;
+  SameBlockProducerIdentity source_producer;
+  SameBlockProducerKind source_producer_kind = SameBlockProducerKind::Unknown;
+  std::optional<std::size_t> source_producer_instruction_index;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == BirCurrentBlockJoinSourceStatus::Available;
+  }
+};
+
+struct BirCurrentBlockJoinSourceIdentity {
+  bool available = false;
+  BirCurrentBlockJoinSourceStatus status =
+      BirCurrentBlockJoinSourceStatus::MissingPublication;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  std::vector<BirCurrentBlockJoinSourceFact> facts;
+  std::vector<SameBlockValueIdentity> incoming_expression_values;
+  std::vector<SameBlockValueIdentity> source_values;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
 struct BirSameBlockGlobalLoadAccessRequest {
   const bir::Block* block = nullptr;
   std::string_view block_label;
@@ -423,6 +483,10 @@ find_bir_block_entry_publication_identity(
 [[nodiscard]] BirCfgEdgePublicationSourceIdentity
 find_bir_cfg_edge_publication_source_identity(
     BirCfgEdgePublicationSourceRequest request);
+
+[[nodiscard]] BirCurrentBlockJoinSourceIdentity
+find_bir_current_block_join_source_identity(
+    BirCurrentBlockJoinSourceRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;
