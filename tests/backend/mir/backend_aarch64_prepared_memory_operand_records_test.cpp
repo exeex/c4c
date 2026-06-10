@@ -844,6 +844,7 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
 int same_block_global_load_access_identity_matches_prepared_oracle() {
   auto fixture = make_fixture();
   const bir::Value loaded = named_value(bir::TypeKind::I32, "%load");
+  const auto fp_loaded_name = fixture.names.value_names.intern("%fp.load");
   const bir::LoadGlobalInst load{
       .result = loaded,
       .global_name = "g.counter",
@@ -879,6 +880,23 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
               .can_use_base_plus_offset = true,
           },
   });
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = fixture.function_name,
+      .block_label = fixture.block_label,
+      .inst_index = 10,
+      .result_value_name = fp_loaded_name,
+      .address_space = bir::AddressSpace::Gs,
+      .is_volatile = true,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = fixture.global_name,
+              .byte_offset = 24,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+  });
   const auto block = block_with_instruction("entry", 8, load);
   const auto* load_global = std::get_if<bir::LoadGlobalInst>(&block.insts[8]);
   prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
@@ -890,6 +908,58 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
           .instruction_index = 8,
           .load_global = load_global,
       });
+
+  const bir::Value fp_loaded = named_value(bir::TypeKind::F64, "%fp.load");
+  const bir::LoadGlobalInst fp_load{
+      .result = fp_loaded,
+      .global_name = "g.counter",
+      .global_name_id = fixture.global_name,
+      .byte_offset = 0,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.counter",
+              .byte_offset = 24,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = true,
+              .base_link_name_id = fixture.global_name,
+          },
+  };
+  const auto fp_block = block_with_instruction("entry", 10, fp_load);
+  const auto* fp_load_global =
+      std::get_if<bir::LoadGlobalInst>(&fp_block.insts[10]);
+  prepare::PreparedEdgePublicationSourceProducerLookups fp_source_producers;
+  fp_source_producers.producers_by_value_name.emplace(
+      fp_loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = fixture.block_label,
+          .instruction_index = 10,
+          .load_global = fp_load_global,
+      });
+  if (!prepared_and_bir_same_block_global_load_access_match(
+          fixture.names,
+          fixture.addressing,
+          fp_source_producers,
+          fixture.block_label,
+          fp_block,
+          fp_loaded,
+          11)) {
+    return fail("expected FP BIR same-block global-load access identity to match prepared oracle");
+  }
+  if (!prepared_and_bir_same_block_global_load_access_match(
+          fixture.names,
+          fixture.addressing,
+          fp_source_producers,
+          fixture.block_label,
+          fp_block,
+          fp_loaded,
+          10)) {
+    return fail("expected FP BIR/prepared same-block global-load access to fail closed before producer");
+  }
 
   if (!prepared_and_bir_same_block_global_load_access_match(
           fixture.names,
@@ -930,6 +1000,14 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
           },
           named_value(bir::TypeKind::I64, "%load"))) {
     return fail("expected Route 3 global-load lookup to reject root type mismatch");
+  }
+  if (bir::route3_find_same_block_global_load_access(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = 9,
+          },
+          named_value(bir::TypeKind::I32, "%stored"))) {
+    return fail("expected Route 3 global-load lookup to reject non-global roots");
   }
 
   const bir::Value string_loaded = named_value(bir::TypeKind::I32, "%load");
