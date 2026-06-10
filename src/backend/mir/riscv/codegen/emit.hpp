@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/prealloc.hpp"
 
 #include <cstddef>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../prealloc/prealloc.hpp"
+#include "../../prealloc/prepared_lookups.hpp"
 #include "abi/abi.hpp"
 #include "debug/debug.hpp"
 #include "lowering/lowering.hpp"

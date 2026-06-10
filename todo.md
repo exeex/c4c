@@ -1,61 +1,53 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/149_residual_prepared_lookup_include_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Clean AArch64 residual includes
+Current Step ID: 3
+Current Step Title: Clean prealloc residual includes
 
 ## Just Finished
 
-Step 2 cleaned the removable AArch64 residual `prepared_lookups.hpp` includes
-identified by the Step 1 map, replacing the facade with narrow prealloc owner
-headers only:
+Step 3 finished cleaning the removable prealloc residual
+`prepared_lookups.hpp` includes identified by the Step 1 map.
 
-- `src/backend/mir/aarch64/codegen/dispatch_lookup.cpp` now uses
-  `control_flow.hpp` and `value_locations.hpp`.
-- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now uses
-  `addressing.hpp` and its existing `select_chain_lookups.hpp`.
-- `src/backend/mir/aarch64/codegen/frame_slot_address.cpp` now uses
-  `addressing.hpp` plus its existing stack-layout header.
-- `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp` now uses
-  `addressing.hpp`, `control_flow.hpp`, `names.hpp`, `value_locations.hpp`,
-  and its existing `select_chain_lookups.hpp`.
-- `src/backend/mir/aarch64/codegen/memory_store_retargeting.cpp` now uses
-  `addressing.hpp`, `control_flow.hpp`, `value_locations.hpp`, and its
-  existing stack-layout header.
-- `src/backend/mir/aarch64/codegen/select_materialization.cpp` now uses
-  `calls.hpp`, `control_flow.hpp`, and `value_locations.hpp`.
-- `src/backend/mir/aarch64/codegen/comparison.cpp` now uses
-  `addressing.hpp`, `control_flow.hpp`, `publication_plans.hpp`,
-  `value_locations.hpp`, and its existing comparison/select-chain/stack-layout
-  headers.
-- `src/backend/mir/aarch64/codegen/calls.cpp` now uses `control_flow.hpp` and
-  `publication_plans.hpp` while keeping its existing concrete prealloc headers.
-
-No lowering logic, expectations, kept AArch64 files, or blocked
-`dispatch_producers.cpp` include were changed. The remaining AArch64
-`prepared_lookups.hpp` includes are only in the Step 1 keep/blocked set:
-`alu.cpp`, `module/module.hpp`, and `dispatch_producers.cpp`.
+- `src/backend/prealloc/call_plans.cpp` now relies on its existing concrete
+  owner includes and no longer includes `prepared_lookups.hpp`.
+- `src/backend/prealloc/prepared_printer/select_chains.cpp` now relies on its
+  existing `private.hpp`, `publication_plans.hpp`, and
+  `select_chain_lookups.hpp` includes.
+- `src/backend/prealloc/select_chain_lookups.cpp` now relies on
+  `select_chain_lookups.hpp` and `module.hpp`.
+- `src/backend/prealloc/formal_publications.cpp` now uses the narrow owners
+  `control_flow.hpp` for `resolve_prepared_value_name_id` and
+  `value_locations.hpp` for value-home lookup declarations.
+- `src/backend/prealloc/decoded_home_storage.hpp` now relies on its existing
+  `regalloc.hpp`, `storage.hpp`, and `value_locations.hpp` includes.
+- `src/backend/mir/riscv/codegen/emit.hpp` and
+  `src/backend/mir/x86/x86.hpp` now include `prepared_lookups.hpp` directly
+  because they name `PreparedFunctionLookups` and/or
+  `make_prepared_function_lookups`.
+- `src/backend/prealloc/module.hpp` no longer includes
+  `prepared_lookups.hpp`; it only keeps the narrow owners needed by
+  `PreparedBirModule` and inline helpers.
 
 ## Suggested Next
 
-Execute Step 3 as a prealloc include cleanup packet for the prealloc files
-classified removable in the Step 1 map:
-`call_plans.cpp`, `prepared_printer/select_chains.cpp`,
-`select_chain_lookups.cpp`, `formal_publications.cpp`,
-`decoded_home_storage.hpp`, and `module.hpp`.
+Execute Step 4 validation: search the AArch64/prealloc target sets for residual
+`prepared_lookups.hpp` includes, confirm remaining matches are keep/blocked or
+true direct facade users, and rerun the supervisor-selected backend proof.
 
 ## Watchouts
 
+- The initial Step 1 map for `formal_publications.cpp` missed
+  `control_flow.hpp`; the compile failure showed that
+  `resolve_prepared_value_name_id` is also used there.
 - Leave `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` alone until
   the missing narrow declaration owner for
   `make_prepared_edge_publication_lookups` is resolved or explicitly accepted.
 - Continue to keep `prepared_lookups.hpp` in files that name
   `PreparedFunctionLookups`, `make_prepared_function_lookups`, or the
   return-chain helpers that still have no narrow owner header.
-- Keep Step 3 include-focused and behavior-preserving; do not move factory
-  declarations or cleanup the blocked AArch64 case unless delegated.
 
 ## Proof
 
@@ -63,13 +55,13 @@ Proof command run:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: green. `test_after.log` records the build and backend test proof:
-179/179 backend tests passed, 0 failed.
+Result: green. `test_after.log` records the fresh delegated proof: build
+succeeded and 179/179 backend tests passed, 0 failed.
 
 Additional include check:
 
-`rg -n '#include .*prepared_lookups\.hpp' <owned AArch64 files plus keep/blocked files>`
+`rg -n '#include .*prepared_lookups\.hpp|PreparedFunctionLookups|make_prepared_function_lookups' src/backend/prealloc/module.hpp src/backend/mir/riscv/codegen/emit.hpp src/backend/mir/x86/x86.hpp`
 
-Result: no matches in the eight owned removable AArch64 files; matches remain
-only in `alu.cpp`, `module/module.hpp`, and `dispatch_producers.cpp` as
-expected.
+Result: `module.hpp` has no match. The direct matches are in
+`emit.hpp` and `x86.hpp`, which now include `prepared_lookups.hpp`
+themselves.
