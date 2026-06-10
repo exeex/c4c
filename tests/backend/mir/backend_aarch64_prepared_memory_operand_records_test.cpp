@@ -1404,6 +1404,17 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
           aarch64_codegen::PreparedMemoryOperandRecordError::SymbolMismatch) {
     return fail("expected mismatched global symbol identity to fail closed");
   }
+  const auto symbol_mismatch_block =
+      block_with_instruction("entry", 3, store_mismatch);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          symbol_mismatch_block,
+          3,
+          mir::BirMemoryAccessNodeKind::StoreGlobal)) {
+    return fail("expected prepared/BIR memory comparison to reject symbol mismatch");
+  }
 
   fixture = make_fixture();
   fixture.addressing.accesses[1].stored_value_name = fixture.load_name;
@@ -1502,6 +1513,17 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
           aarch64_codegen::PreparedMemoryOperandRecordError::AddressFactMismatch) {
     return fail("expected BIR/prepared address-space mismatch to fail closed");
   }
+  const auto address_space_mismatch_block =
+      block_with_instruction("entry", 3, address_space_mismatch_store);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          address_space_mismatch_block,
+          3,
+          mir::BirMemoryAccessNodeKind::StoreGlobal)) {
+    return fail("expected prepared/BIR memory comparison to reject address-space mismatch");
+  }
 
   fixture = make_fixture();
   const bir::StoreGlobalInst volatility_mismatch_store{
@@ -1531,6 +1553,17 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
       volatility_mismatch.error !=
           aarch64_codegen::PreparedMemoryOperandRecordError::AddressFactMismatch) {
     return fail("expected BIR/prepared volatility mismatch to fail closed");
+  }
+  const auto volatility_mismatch_block =
+      block_with_instruction("entry", 3, volatility_mismatch_store);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          volatility_mismatch_block,
+          3,
+          mir::BirMemoryAccessNodeKind::StoreGlobal)) {
+    return fail("expected prepared/BIR memory comparison to reject volatility mismatch");
   }
 
   fixture = make_fixture();
@@ -1631,6 +1664,17 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
           aarch64_codegen::PreparedMemoryOperandRecordError::PointerValueMismatch) {
     return fail("expected BIR/prepared pointer value mismatch to fail closed");
   }
+  const auto pointer_mismatch_block =
+      block_with_instruction("entry", 4, pointer_mismatch_store);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          pointer_mismatch_block,
+          4,
+          mir::BirMemoryAccessNodeKind::StoreLocal)) {
+    return fail("expected prepared/BIR memory comparison to reject pointer value mismatch");
+  }
 
   fixture = make_fixture();
   const bir::LoadGlobalInst string_mismatch_load{
@@ -1661,6 +1705,17 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
       aarch64_codegen::prepared_memory_operand_record_error_name(string_mismatch.error) !=
           "string_identity_mismatch") {
     return fail("expected BIR/prepared string identity mismatch to fail closed");
+  }
+  const auto string_mismatch_block =
+      block_with_instruction("entry", 5, string_mismatch_load);
+  if (prepared_and_bir_direct_memory_identity_match(
+          fixture.names,
+          fixture.addressing,
+          fixture.block_label,
+          string_mismatch_block,
+          5,
+          mir::BirMemoryAccessNodeKind::LoadGlobal)) {
+    return fail("expected prepared/BIR memory comparison to reject string identity mismatch");
   }
 
   return 0;
