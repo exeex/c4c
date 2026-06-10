@@ -36,6 +36,24 @@ This idea comes from Phase C:
 - Cache/API contraction only affects semantic identity surfaces no longer
   publicly consumed.
 
+## Completion Note
+
+Closed after migrating the selected AArch64 FP same-block global-load value
+materialization family to Route 3 semantic same-block global-load identity.
+Prepared `PreparedMemoryAccess` remains the target-addressing and
+address-policy source for that consumer.
+
+No public prepared same-block global-load helper contraction was made because
+direct non-FP consumers remain in
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` and
+`src/backend/mir/aarch64/codegen/globals.cpp`. That residual work is outside
+this closed idea's one-selected-consumer acceptance scope and should be handled
+by a future bounded Route 3 candidate if continued.
+
+Close proof used the existing matching narrow logs for:
+`backend_aarch64_prepared_memory_operand_records` and
+`backend_prepared_lookup_helper`.
+
 ## Proof Route
 
 Prove BIR/prepared equivalence for semantic access/source answers, then run
