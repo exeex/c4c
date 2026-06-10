@@ -3,37 +3,35 @@
 Status: Complete
 Source Idea Path: ideas/open/158_bir_comparison_condition_producer_identity.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Switch comparison and branch provenance consumers
+Current Step ID: 6
+Current Step Title: Run acceptance validation and route review check
 
 ## Just Finished
 
-Step 5 completed the final direct prepared fused-compare operand producer read
-switch inside `lower_missing_fused_compare_operand_publication`.
+Step 6 completed acceptance validation bookkeeping for the BIR comparison
+producer route.
 
-Missing fused-compare operand publication now uses
-`bir::find_comparison_operand_producer` for the named operand at
-`context.bir_block->insts.size()` to decide whether a same-block producer
-instruction exists. When BIR reports a producer instruction, the existing
-`hooks.emit_value_publication_to_register` path remains in use; otherwise the
-prepared scalar publication plan/home fallback path is unchanged. The now-unused
-local `find_prepared_fused_compare_operand_producer` wrapper was removed.
+The exact delegated build plus backend CTest proof passed. The route-review
+check confirmed `comparison.cpp` has no remaining direct consumer matches for
+`find_prepared_fused_compare_operand_producer(` or
+`find_prepared_materialized_condition_producer(`. The completed comparison and
+materialized-condition producer consumers now read BIR producer identity, while
+target policy, scratch choice, branch policy, condition-code selection, compare
+emission, branch emission, and publication fallback behavior remained outside
+BIR and unchanged.
 
 ## Suggested Next
 
-Supervisor can decide whether the completed Step 5 consumer switches are ready
-for plan-owner review, the next plan step, or acceptance validation.
+Supervisor can decide whether this completed route is ready for plan-owner
+lifecycle review or another acceptance-level review artifact.
 
 ## Watchouts
 
-- `lower_missing_fused_compare_operand_publication` no longer calls the
-  prepared operand-producer lookup; do not restore that direct read in a later
-  cleanup.
-- Branch legality, condition-code selection, compare emission, branch emission,
-  hazards, emitted-register state, final instruction policy, scratch/target
-  choice, publication hooks, and the prepared scalar fallback path were left
-  unchanged.
-- This slice did not add or change test expectations.
+- Do not restore direct prepared producer reads in `comparison.cpp`; the
+  consumers covered by this route should continue using BIR producer identity.
+- This validation-only packet did not touch source, plan, idea, review, or
+  baseline log files.
+- Target policy intentionally stayed outside BIR for this route.
 
 ## Proof
 
