@@ -53,3 +53,28 @@ annotations, while rejecting target branch policy and final instruction records.
 - Reject expectation downgrades that mark comparison/condition supported-path
   behavior unsupported without explicit user approval.
 - Reject broad branch lowering rewrites as schema progress.
+
+## Closure Notes
+
+Closed after implementing Route 7 BIR comparison operand, comparison
+instruction, and branch-condition records/indexes over instruction,
+terminator, and value payloads, oracle tests for fused-operand and
+materialized-condition answers, and a low-risk migration of
+`bir::find_materialized_condition_producer_identity(...)` to Route 7
+records/index helpers.
+
+Reviewer report `review/165_bir_comparison_condition_route_review.md` found no
+blocking issues and recommended closure. The residual risk is limited to
+future consumer expansion: later Route 7 users must continue excluding target
+branch spelling, fused-compare legality/can-fuse policy, condition-code
+selection, hazard handling, emitted-register state, and final instruction
+records/order from BIR schema payloads.
+
+Closure validation used canonical broad backend logs from:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both passed `179/179`, and the
+regression guard passed with no new failures or pass-count regression.
