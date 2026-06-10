@@ -53,3 +53,32 @@ root, non-select root, direct global load, and no-dependency paths.
 - Validates only one named select/global case while nearby select-chain shapes
   remain unexamined.
 - Weakens or rewrites expectations instead of proving query equivalence.
+
+## Closure Notes
+
+Closed after the active runbook completed Step 6 acceptance review.
+
+- BIR select-chain identity records and query APIs were added for source
+  producer, direct-global dependency, scalar materialization eligibility, and
+  combined identity lookup.
+- Prepared/BIR equivalence proof covers select root, direct global root,
+  local/no-dependency root, nested non-select direct-global root,
+  before-boundary rejection, root type or name mismatch, and missing-root
+  fail-closed paths.
+- One route-local consumer switched its direct-global identity read to the BIR
+  query while leaving prepared select-chain queries available as oracle and
+  fallback authority for unswitched materialization, prealloc, and call-routing
+  consumers.
+- No target materialization cost, register availability, publication routing,
+  call ABI behavior, or final AArch64 move/branch policy was added to BIR
+  select-chain identity.
+
+Accepted final proof scope:
+
+```bash
+set -o pipefail && cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$' --output-on-failure | tee test_after.log
+```
+
+Accepted result: `2/2` tests passed for `backend_prepared_lookup_helper` and
+`backend_aarch64_instruction_dispatch`, preserved in `test_before.log` as the
+rolled-forward final proof log.
