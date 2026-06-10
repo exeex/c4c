@@ -170,6 +170,66 @@ bool prepared_and_bir_same_block_global_load_access_match(
          bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::GlobalSymbol;
 }
 
+bool prepared_and_bir_same_block_load_local_source_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedMemoryAccessLookups& memory_accesses,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    mir::SameBlockValueMaterializationQuery bir_query,
+    const bir::Value& value) {
+  const auto prepared =
+      prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &memory_accesses,
+          &source_producers,
+          block_label,
+          &block,
+          value,
+          bir_query.before_instruction_index);
+  const auto bir = mir::find_bir_same_block_load_local_source_identity(
+      mir::BirSameBlockLoadLocalSourceRequest{
+          .block = &block,
+          .block_label = bir_query.block_label,
+          .root_value = &value,
+          .root_value_name = value.kind == bir::Value::Kind::Named
+                                 ? std::string_view(value.name)
+                                 : std::string_view{},
+          .root_value_type = value.type,
+          .before_instruction_index = bir_query.before_instruction_index,
+      });
+  if (prepared.has_value() != static_cast<bool>(bir)) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return true;
+  }
+  const auto prepared_slot =
+      prepared->source_access != nullptr
+          ? prepared->source_access->address.frame_slot_id
+          : std::optional<prepare::PreparedFrameSlotId>{};
+  return prepared->producer != nullptr &&
+         prepared->producer->load_local == bir.load_local &&
+         prepared->source_access != nullptr &&
+         bir.producer.inst == &block.insts[prepared->producer->instruction_index] &&
+         bir.producer.kind == mir::SameBlockProducerKind::LoadLocal &&
+         bir.producer.instruction_index ==
+             prepared->producer->instruction_index &&
+         bir.result_value.name == value.name &&
+         bir.result_value.type == value.type &&
+         bir.memory_access.block_label == block.label &&
+         bir.memory_access.instruction_index ==
+             prepared->producer->instruction_index &&
+         bir.memory_access.node_kind == mir::BirMemoryAccessNodeKind::LoadLocal &&
+         bir.memory_access.result_value_name == value.name &&
+         bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::LocalSlot &&
+         (!prepared_slot.has_value() ||
+          bir.memory_access.local_slot_id ==
+              static_cast<c4c::SlotNameId>(*prepared_slot));
+}
+
 bool prepared_and_bir_integer_constants_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
@@ -3467,6 +3527,7 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto choice_name = names.value_names.intern("%choice");
   const auto product_name = names.value_names.intern("%product");
   const auto global_name = names.link_names.intern("global0");
+  const auto slot_id = prepare::PreparedFrameSlotId{12};
 
   bir::Block block;
   block.label = "entry";
@@ -3500,8 +3561,20 @@ int verify_prepared_same_block_scalar_source_facts() {
   block.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I64, "%from_slot"),
       .slot_name = "local0",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
       .byte_offset = 8,
       .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "local0",
+              .byte_offset = 8,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Fs,
+              .is_volatile = true,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
   });
   block.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::I64, "%from_global"),
@@ -3613,10 +3686,39 @@ int verify_prepared_same_block_scalar_source_facts() {
           .instruction_index = 7,
           .binary = product,
       });
+  const prepare::PreparedStackLayout stack_layout{
+      .frame_slots = {
+          prepare::PreparedFrameSlot{
+              .slot_id = slot_id,
+              .object_id = 2,
+              .function_name = function_name,
+              .offset_bytes = 48,
+              .size_bytes = 8,
+              .align_bytes = 8,
+          },
+      },
+  };
   const prepare::PreparedAddressingFunction addressing{
       .function_name = function_name,
       .accesses =
           {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 4,
+                  .result_value_name = from_slot_name,
+                  .address_space = bir::AddressSpace::Fs,
+                  .is_volatile = true,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = slot_id,
+                          .byte_offset = 8,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
               prepare::PreparedMemoryAccess{
                   .function_name = function_name,
                   .block_label = block_label,
@@ -3656,6 +3758,8 @@ int verify_prepared_same_block_scalar_source_facts() {
       .block_label = "entry",
       .before_instruction_index = block.insts.size(),
   };
+  const auto memory_accesses =
+      prepare::make_prepared_memory_access_lookups(&addressing);
   const auto bir_sum =
       mir::find_same_block_scalar_producer(
           bir_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
@@ -3765,6 +3869,120 @@ int verify_prepared_same_block_scalar_source_facts() {
               .before_instruction_index = block.insts.size(),
           })) {
     return fail("BIR/prepared same-block global-load access should fail closed for non-global or mismatched roots");
+  }
+  if (!prepared_and_bir_same_block_load_local_source_match(
+          names,
+          stack_layout,
+          memory_accesses,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot"))) {
+    return fail("BIR same-block load-local source query should match prepared oracle");
+  }
+  auto before_local_query = bir_query;
+  before_local_query.before_instruction_index = 4;
+  if (!prepared_and_bir_same_block_load_local_source_match(
+          names,
+          stack_layout,
+          memory_accesses,
+          source_producers,
+          block_label,
+          block,
+          before_local_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot")) ||
+      mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%from_slot",
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = block.insts.size(),
+          })) {
+    return fail("BIR/prepared same-block load-local source should fail closed before producer or for mismatched roots");
+  }
+  auto invalidated_block = block;
+  invalidated_block.insts.insert(
+      invalidated_block.insts.begin() + 5,
+      bir::StoreLocalInst{
+          .slot_name = "local0",
+          .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          .value = bir::Value::named(bir::TypeKind::I64, "%sum"),
+          .byte_offset = 8,
+          .align_bytes = 8,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                  .base_name = "local0",
+                  .byte_offset = 8,
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+                  .address_space = bir::AddressSpace::Fs,
+                  .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+              },
+      });
+  auto invalidated_source_producers = source_producers;
+  invalidated_source_producers.producers_by_value_name[lhs_name]
+      .binary = std::get_if<bir::BinaryInst>(&invalidated_block.insts[0]);
+  invalidated_source_producers.producers_by_value_name[rhs_name]
+      .binary = std::get_if<bir::BinaryInst>(&invalidated_block.insts[1]);
+  invalidated_source_producers.producers_by_value_name[sum_name]
+      .binary = std::get_if<bir::BinaryInst>(&invalidated_block.insts[2]);
+  invalidated_source_producers.producers_by_value_name[wide_name]
+      .cast = std::get_if<bir::CastInst>(&invalidated_block.insts[3]);
+  invalidated_source_producers.producers_by_value_name[from_slot_name]
+      .load_local = std::get_if<bir::LoadLocalInst>(&invalidated_block.insts[4]);
+  invalidated_source_producers.producers_by_value_name[from_global_name]
+      .instruction_index = 6;
+  invalidated_source_producers.producers_by_value_name[from_global_name]
+      .load_global = std::get_if<bir::LoadGlobalInst>(&invalidated_block.insts[6]);
+  invalidated_source_producers.producers_by_value_name[choice_name]
+      .instruction_index = 7;
+  invalidated_source_producers.producers_by_value_name[choice_name]
+      .select = std::get_if<bir::SelectInst>(&invalidated_block.insts[7]);
+  invalidated_source_producers.producers_by_value_name[product_name]
+      .instruction_index = 8;
+  invalidated_source_producers.producers_by_value_name[product_name]
+      .binary = std::get_if<bir::BinaryInst>(&invalidated_block.insts[8]);
+  prepare::PreparedAddressingFunction invalidated_addressing = addressing;
+  for (auto& access : invalidated_addressing.accesses) {
+    if (access.inst_index == 5) {
+      access.inst_index = 6;
+    }
+  }
+  invalidated_addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = function_name,
+      .block_label = block_label,
+      .inst_index = 5,
+      .stored_value_name = sum_name,
+      .address_space = bir::AddressSpace::Fs,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = slot_id,
+              .byte_offset = 8,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+  });
+  const auto invalidated_accesses =
+      prepare::make_prepared_memory_access_lookups(&invalidated_addressing);
+  auto after_intervening_store_query = bir_query;
+  after_intervening_store_query.block = &invalidated_block;
+  after_intervening_store_query.before_instruction_index =
+      invalidated_block.insts.size();
+  if (!prepared_and_bir_same_block_load_local_source_match(
+          names,
+          stack_layout,
+          invalidated_accesses,
+          invalidated_source_producers,
+          block_label,
+          invalidated_block,
+          after_intervening_store_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot"))) {
+    return fail("BIR/prepared load-local source should fail closed after same-slot store");
   }
   const auto current_block_sum =
       prepare::find_prepared_current_block_publication_consumption(

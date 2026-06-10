@@ -1,4 +1,5 @@
 #include "src/backend/prealloc/module.hpp"
+#include "src/backend/mir/query.hpp"
 
 #include <iostream>
 #include <optional>
@@ -7,6 +8,7 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -77,6 +79,62 @@ bir::CallArgAbiInfo register_abi(bir::TypeKind type) {
       .primary_class = bir::AbiValueClass::Integer,
       .passed_in_register = true,
   };
+}
+
+bool prepared_and_bir_load_local_source_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedMemoryAccessLookups& memory_accesses,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto prepared =
+      prepare::find_prepared_same_block_load_local_source_producer(
+          names,
+          stack_layout,
+          &memory_accesses,
+          &source_producers,
+          block_label,
+          &block,
+          value,
+          before_instruction_index);
+  const auto bir = mir::find_bir_same_block_load_local_source_identity(
+      mir::BirSameBlockLoadLocalSourceRequest{
+          .block = &block,
+          .block_label = block.label,
+          .root_value = &value,
+          .root_value_name = value.kind == bir::Value::Kind::Named
+                                 ? std::string_view(value.name)
+                                 : std::string_view{},
+          .root_value_type = value.type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (prepared.has_value() != static_cast<bool>(bir)) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return true;
+  }
+  const auto prepared_slot =
+      prepared->source_access != nullptr
+          ? prepared->source_access->address.frame_slot_id
+          : std::optional<prepare::PreparedFrameSlotId>{};
+  return prepared->producer != nullptr &&
+         prepared->producer->load_local == bir.load_local &&
+         prepared->source_access != nullptr &&
+         bir.producer.kind == mir::SameBlockProducerKind::LoadLocal &&
+         bir.producer.instruction_index ==
+             prepared->producer->instruction_index &&
+         bir.memory_access.node_kind == mir::BirMemoryAccessNodeKind::LoadLocal &&
+         bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::LocalSlot &&
+         bir.memory_access.result_value_name == value.name &&
+         (!prepared_slot.has_value() ||
+          bir.memory_access.local_slot_id ==
+              static_cast<c4c::SlotNameId>(*prepared_slot)) &&
+         bir.result_value.name == value.name &&
+         bir.result_value.type == value.type;
 }
 
 int records_local_store_source_identity() {
@@ -493,8 +551,18 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
   block.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I64, "%loaded"),
       .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
       .byte_offset = 0,
       .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
   });
   const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[0]);
   prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
@@ -526,6 +594,39 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
       source->producer->load_local != load ||
       source->source_access != &addressing.accesses.front()) {
     return fail("expected indexed unpublished load-local source authority");
+  }
+  block.label = "entry";
+  if (!prepared_and_bir_load_local_source_match(
+          names,
+          stack_layout,
+          memory_accesses,
+          source_producers,
+          block_label,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          1)) {
+    return fail("expected BIR load-local source identity to match prepared oracle");
+  }
+  if (!prepared_and_bir_load_local_source_match(
+          names,
+          stack_layout,
+          memory_accesses,
+          source_producers,
+          block_label,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          0)) {
+    return fail("expected BIR/prepared load-local source to fail closed before producer");
+  }
+  if (mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = 1,
+          })) {
+    return fail("expected BIR load-local source to reject root type mismatch");
   }
 
   bir::Block mismatched_position_block;
@@ -613,10 +714,21 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
   non_overlapping_store_block.insts.push_back(block.insts[0]);
   non_overlapping_store_block.insts.push_back(bir::StoreLocalInst{
       .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
       .value = bir::Value::named(bir::TypeKind::I64, "%stored"),
       .byte_offset = 16,
       .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 16,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
   });
+  non_overlapping_store_block.label = "entry";
   const auto* non_overlapping_load =
       std::get_if<bir::LoadLocalInst>(&non_overlapping_store_block.insts[0]);
   prepare::PreparedEdgePublicationSourceProducerLookups non_overlapping_producers;
@@ -649,15 +761,36 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
            .has_value()) {
     return fail("non-overlapping intervening store should preserve load-local source");
   }
+  if (mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &non_overlapping_store_block,
+              .block_label = non_overlapping_store_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = 2,
+          })) {
+    return fail("BIR load-local source should fail closed for same-slot intervening store without layout overlap authority");
+  }
 
   bir::Block overlapping_store_block;
   overlapping_store_block.insts.push_back(block.insts[0]);
   overlapping_store_block.insts.push_back(bir::StoreLocalInst{
       .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
       .value = bir::Value::named(bir::TypeKind::I64, "%stored"),
       .byte_offset = 0,
       .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
   });
+  overlapping_store_block.label = "entry";
   const auto* overlapping_load =
       std::get_if<bir::LoadLocalInst>(&overlapping_store_block.insts[0]);
   prepare::PreparedEdgePublicationSourceProducerLookups overlapping_producers;
@@ -689,6 +822,17 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
           2)
           .has_value()) {
     return fail("overlapping intervening store should block load-local source");
+  }
+  if (!prepared_and_bir_load_local_source_match(
+          names,
+          stack_layout,
+          overlapping_accesses,
+          overlapping_producers,
+          block_label,
+          overlapping_store_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          2)) {
+    return fail("expected BIR/prepared load-local source to fail closed for same-slot intervening store");
   }
 
   return 0;

@@ -115,8 +115,12 @@ void populate_bir_memory_address_identity(
   identity.base_kind = bir_memory_access_base_kind(address->base_kind);
   switch (address->base_kind) {
     case bir::MemoryAddress::BaseKind::LocalSlot:
-      identity.local_slot_name = address->base_name;
-      identity.local_slot_id = address->base_slot_id;
+      if (!address->base_name.empty()) {
+        identity.local_slot_name = address->base_name;
+      }
+      if (address->base_slot_id != c4c::kInvalidSlotName) {
+        identity.local_slot_id = address->base_slot_id;
+      }
       break;
     case bir::MemoryAddress::BaseKind::GlobalSymbol:
       identity.global_name = address->base_name;
@@ -209,6 +213,66 @@ void populate_bir_memory_address_identity(
   }
   return request.root_value != nullptr ? request.root_value->type
                                       : bir::TypeKind::Void;
+}
+
+[[nodiscard]] std::string_view root_value_name(
+    const BirSameBlockLoadLocalSourceRequest& request) {
+  if (!request.root_value_name.empty()) {
+    return request.root_value_name;
+  }
+  if (request.root_value != nullptr &&
+      request.root_value->kind == bir::Value::Kind::Named) {
+    return request.root_value->name;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::TypeKind root_value_type(
+    const BirSameBlockLoadLocalSourceRequest& request) {
+  if (request.root_value_type != bir::TypeKind::Void) {
+    return request.root_value_type;
+  }
+  return request.root_value != nullptr ? request.root_value->type
+                                      : bir::TypeKind::Void;
+}
+
+[[nodiscard]] bool same_local_slot_identity(
+    const BirMemoryAccessIdentity& lhs,
+    const BirMemoryAccessIdentity& rhs) {
+  if (!lhs ||
+      !rhs ||
+      lhs.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
+      rhs.base_kind != BirMemoryAccessBaseKind::LocalSlot) {
+    return false;
+  }
+  if (lhs.local_slot_id != c4c::kInvalidSlotName &&
+      rhs.local_slot_id != c4c::kInvalidSlotName) {
+    return lhs.local_slot_id == rhs.local_slot_id;
+  }
+  return !lhs.local_slot_name.empty() &&
+         lhs.local_slot_name == rhs.local_slot_name;
+}
+
+[[nodiscard]] bool has_intervening_same_slot_store(
+    const bir::Block& block,
+    std::string_view block_label,
+    const BirMemoryAccessIdentity& load_access,
+    std::size_t after_instruction_index,
+    std::size_t before_instruction_index) {
+  const auto limit = std::min(before_instruction_index, block.insts.size());
+  for (std::size_t index = after_instruction_index; index < limit; ++index) {
+    const auto store_access = find_bir_memory_access_identity(
+        BirMemoryAccessIdentityRequest{
+            .block = &block,
+            .block_label = block_label,
+            .instruction_index = index,
+            .node_kind = BirMemoryAccessNodeKind::StoreLocal,
+        });
+    if (same_local_slot_identity(load_access, store_access)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] std::optional<SameBlockIntegerConstant>
@@ -382,6 +446,64 @@ find_bir_same_block_global_load_access_identity(
       .producer = producer,
       .memory_access = memory_access,
       .load_global = load_global,
+      .result_value = producer.produced_value,
+      .root_value_name = value_name,
+      .root_value_type = value_type,
+      .before_instruction_index = request.before_instruction_index,
+  };
+}
+
+[[nodiscard]] BirSameBlockLoadLocalSourceIdentity
+find_bir_same_block_load_local_source_identity(
+    BirSameBlockLoadLocalSourceRequest request) {
+  if (!request) {
+    return {};
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return {};
+  }
+  const auto value_type = root_value_type(request);
+  const auto producer = find_same_block_producer_identity(
+      SameBlockProducerIdentityRequest{
+          .block = request.block,
+          .block_label = request.block_label,
+          .value_name = value_name,
+          .value_type = value_type,
+          .before_instruction_index = request.before_instruction_index,
+      });
+  if (!producer || producer.kind != SameBlockProducerKind::LoadLocal) {
+    return {};
+  }
+  const auto* load_local =
+      producer.inst != nullptr ? std::get_if<bir::LoadLocalInst>(producer.inst)
+                               : nullptr;
+  if (load_local == nullptr) {
+    return {};
+  }
+  const auto memory_access = find_bir_memory_access_identity(
+      BirMemoryAccessIdentityRequest{
+          .block = request.block,
+          .block_label = request.block_label,
+          .instruction_index = producer.instruction_index,
+          .node_kind = BirMemoryAccessNodeKind::LoadLocal,
+      });
+  if (!memory_access ||
+      memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
+      memory_access.result_value_name != value_name) {
+    return {};
+  }
+  if (has_intervening_same_slot_store(*request.block,
+                                      request.block_label,
+                                      memory_access,
+                                      producer.instruction_index + 1U,
+                                      request.before_instruction_index)) {
+    return {};
+  }
+  return BirSameBlockLoadLocalSourceIdentity{
+      .producer = producer,
+      .memory_access = memory_access,
+      .load_local = load_local,
       .result_value = producer.produced_value,
       .root_value_name = value_name,
       .root_value_type = value_type,
