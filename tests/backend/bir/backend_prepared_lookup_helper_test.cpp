@@ -3183,6 +3183,18 @@ int verify_current_block_join_parallel_copy_source_query() {
           MissingEdgePublicationLookups) {
     return fail("current-block join query should require shared edge publications");
   }
+  if (mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{})
+          .status != mir::BirCurrentBlockJoinSourceStatus::MissingBlock) {
+    return fail("BIR current-block join query should fail closed without a successor block");
+  }
+  const auto route5_missing_successor_join =
+      bir::route5_current_block_join_source_records(nullptr);
+  if (route5_missing_successor_join.size() != 1 ||
+      route5_missing_successor_join.front().status !=
+          bir::Route5PublicationStatus::MissingSuccessor) {
+    return fail("Route 5 current-block join records should fail closed without a successor block");
+  }
   bir::Block no_phi_block;
   no_phi_block.label = "current_join.succ";
   no_phi_block.label_id = successor_label;
