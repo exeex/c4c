@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/159_bir_producer_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Switch One Low-Risk Identity Consumer
+Current Step ID: 6
+Current Step Title: Run acceptance validation and route review check
 
 # Current Packet
 
