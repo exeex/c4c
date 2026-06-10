@@ -2090,6 +2090,114 @@ struct MaterializedConditionProducerIdentity {
   std::optional<ComparisonOperandProducer> rhs;
 };
 
+enum class Route7ComparisonStatus : unsigned char {
+  Unavailable,
+  Available,
+  MissingBlock,
+  MissingInstruction,
+  WrongInstruction,
+  NonComparison,
+  MissingConditionValue,
+  MissingOperandProducer,
+  DuplicateProducer,
+  AbsentProvenance,
+  NoMatch,
+};
+
+[[nodiscard]] constexpr std::string_view route7_comparison_status_name(
+    Route7ComparisonStatus status) {
+  switch (status) {
+    case Route7ComparisonStatus::Unavailable:
+      return "unavailable";
+    case Route7ComparisonStatus::Available:
+      return "available";
+    case Route7ComparisonStatus::MissingBlock:
+      return "missing_block";
+    case Route7ComparisonStatus::MissingInstruction:
+      return "missing_instruction";
+    case Route7ComparisonStatus::WrongInstruction:
+      return "wrong_instruction";
+    case Route7ComparisonStatus::NonComparison:
+      return "non_comparison";
+    case Route7ComparisonStatus::MissingConditionValue:
+      return "missing_condition_value";
+    case Route7ComparisonStatus::MissingOperandProducer:
+      return "missing_operand_producer";
+    case Route7ComparisonStatus::DuplicateProducer:
+      return "duplicate_producer";
+    case Route7ComparisonStatus::AbsentProvenance:
+      return "absent_provenance";
+    case Route7ComparisonStatus::NoMatch:
+      return "no_match";
+  }
+  return "unavailable";
+}
+
+enum class Route7ComparisonOperandRole : unsigned char {
+  None,
+  Lhs,
+  Rhs,
+  ConditionValue,
+};
+
+enum class Route7BranchConditionKind : unsigned char {
+  Unknown,
+  FusedCompare,
+  MaterializedCondition,
+};
+
+struct Route7ComparisonOperandRecord {
+  bool available = false;
+  Route7ComparisonStatus status = Route7ComparisonStatus::Unavailable;
+  Route7ComparisonOperandRole role = Route7ComparisonOperandRole::None;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::size_t before_instruction_index = 0;
+  Route1SourceValueIdentity value;
+  ComparisonProducerKind producer_kind = ComparisonProducerKind::Unknown;
+  const Inst* producer_instruction = nullptr;
+  std::size_t producer_instruction_index = 0;
+  Route1SourceValueIdentity produced_value;
+  std::optional<std::int64_t> integer_constant;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route7ComparisonInstructionRecord {
+  bool available = false;
+  Route7ComparisonStatus status = Route7ComparisonStatus::Unavailable;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  const Inst* instruction = nullptr;
+  const BinaryInst* binary = nullptr;
+  std::size_t instruction_index = 0;
+  Route1SourceValueIdentity condition_value;
+  BinaryOpcode predicate = BinaryOpcode::Eq;
+  TypeKind compare_type = TypeKind::Void;
+  Route1SourceValueIdentity lhs_value;
+  Route1SourceValueIdentity rhs_value;
+  Route7ComparisonOperandRecord lhs;
+  Route7ComparisonOperandRecord rhs;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route7BranchConditionRecord {
+  bool available = false;
+  Route7ComparisonStatus status = Route7ComparisonStatus::Unavailable;
+  Route7BranchConditionKind kind = Route7BranchConditionKind::Unknown;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  Route1SourceValueIdentity condition_value;
+  std::string_view true_label;
+  BlockLabelId true_label_id = kInvalidBlockLabel;
+  std::string_view false_label;
+  BlockLabelId false_label_id = kInvalidBlockLabel;
+  Route7ComparisonInstructionRecord comparison;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
 struct CallResultSourceIdentity {
   bool available = false;
   std::size_t call_instruction_index = 0;
@@ -2372,6 +2480,17 @@ MaterializedConditionProducerIdentity find_materialized_condition_producer_ident
     const Block& block,
     const Value& condition_value,
     std::size_t before_instruction_index);
+[[nodiscard]] Route7ComparisonOperandRecord route7_comparison_operand_record(
+    const Block* block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role);
+[[nodiscard]] Route7ComparisonInstructionRecord
+route7_comparison_instruction_record(
+    const Block* block,
+    std::size_t instruction_index);
+[[nodiscard]] Route7BranchConditionRecord route7_branch_condition_record(
+    const Block* block);
 CallResultSourceIdentity find_call_result_source_identity(
     const Block& block,
     const CallInst& call,
