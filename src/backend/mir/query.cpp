@@ -390,6 +390,26 @@ find_route3_load_local_source(
   return SameBlockProducerKind::Unknown;
 }
 
+[[nodiscard]] SameBlockProducerKind
+route4_publication_source_kind_to_same_block_kind(
+    bir::Route4PublicationSourceKind kind) {
+  switch (kind) {
+    case bir::Route4PublicationSourceKind::Binary:
+      return SameBlockProducerKind::Binary;
+    case bir::Route4PublicationSourceKind::Cast:
+      return SameBlockProducerKind::Cast;
+    case bir::Route4PublicationSourceKind::SelectMaterialization:
+      return SameBlockProducerKind::Select;
+    case bir::Route4PublicationSourceKind::LoadLocal:
+      return SameBlockProducerKind::LoadLocal;
+    case bir::Route4PublicationSourceKind::LoadGlobal:
+      return SameBlockProducerKind::LoadGlobal;
+    case bir::Route4PublicationSourceKind::Unknown:
+      return SameBlockProducerKind::Unknown;
+  }
+  return SameBlockProducerKind::Unknown;
+}
+
 [[nodiscard]] SameBlockValueIdentity route1_source_value_identity_to_same_block(
     const bir::Route1SourceValueIdentity& source) {
   return SameBlockValueIdentity{
@@ -461,6 +481,39 @@ route2_select_chain_producer_record_to_same_block(
       .produced_value = route2_source_value_identity_to_same_block(
           record.root_value),
       .materialization_available = record.scalar_materialization_available,
+  };
+}
+
+[[nodiscard]] SameBlockProducerIdentity route4_current_block_record_to_same_block(
+    const bir::Route4CurrentBlockPublicationRecord& record,
+    const bir::Block& block,
+    std::string_view block_label) {
+  if (!record ||
+      record.source_producer_instruction_index >= block.insts.size()) {
+    return {};
+  }
+  const auto kind = route4_publication_source_kind_to_same_block_kind(
+      record.source_producer_kind);
+  if (kind == SameBlockProducerKind::Unknown) {
+    return {};
+  }
+  const auto& inst = block.insts[record.source_producer_instruction_index];
+  const auto* produced_value = produced_value_for_same_block_identity(inst);
+  if (produced_value == nullptr ||
+      produced_value->kind != bir::Value::Kind::Named ||
+      produced_value->name != record.value_name ||
+      produced_value->type != record.value_type) {
+    return {};
+  }
+  return SameBlockProducerIdentity{
+      .inst = &inst,
+      .instruction_index = record.source_producer_instruction_index,
+      .kind = kind,
+      .block_label = normalized_block_label(block, block_label),
+      .before_instruction_index = record.before_instruction_index,
+      .produced_value = same_block_value_identity(*produced_value),
+      .materialization_available = same_block_producer_kind_has_materialization(
+          kind),
   };
 }
 
@@ -883,17 +936,19 @@ find_bir_current_block_publication_identity(
   if (value_name.empty()) {
     return {};
   }
-  const auto producer = find_same_block_producer_identity(
-      SameBlockProducerIdentityRequest{
-          .block = request.block,
-          .block_label = request.block_label,
-          .value_name = value_name,
-          .value_type = root_value_type(request),
-          .before_instruction_index = request.before_instruction_index,
-      });
-  if (!producer ||
-      producer.inst == nullptr ||
-      !producer.produced_value ||
+  const auto value_type = root_value_type(request);
+  bir::Function function;
+  function.blocks.push_back(*request.block);
+  const auto& indexed_block = function.blocks.front();
+  const auto index = bir::route4_build_publication_availability_index(function);
+  const auto publication = bir::route4_find_current_block_publication(
+      index,
+      indexed_block,
+      bir::Value::named(value_type, std::string{value_name}),
+      request.before_instruction_index);
+  const auto producer = route4_current_block_record_to_same_block(
+      publication, *request.block, request.block_label);
+  if (!producer || !producer.produced_value ||
       producer.produced_value.name != value_name) {
     return {};
   }

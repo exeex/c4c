@@ -5784,6 +5784,28 @@ int verify_prepared_same_block_scalar_source_facts() {
       indexed_current_sum.source_producer_instruction_index != std::size_t{2}) {
     return fail("Route 4 current-block publication index should find available BIR record");
   }
+  const auto bir_current_sum_from_route4 =
+      mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &route4_current_block,
+              .block_label = route4_current_block.label,
+              .root_value_name = "%sum",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = route4_current_block.insts.size(),
+          });
+  if (!bir_current_sum_from_route4 ||
+      bir_current_sum_from_route4.instruction !=
+          indexed_current_sum.source_producer_instruction ||
+      bir_current_sum_from_route4.instruction_index !=
+          indexed_current_sum.source_producer_instruction_index ||
+      bir_current_sum_from_route4.produced_value_name !=
+          indexed_current_sum.value_name ||
+      bir_current_sum_from_route4.produced_value_type !=
+          indexed_current_sum.value_type ||
+      bir_current_sum_from_route4.source_producer_kind !=
+          mir::SameBlockProducerKind::Binary) {
+    return fail("MIR current-block publication identity should answer from Route 4 indexed BIR record");
+  }
   const auto indexed_current_before_sum =
       bir::route4_find_current_block_publication(
           route4_publications,
