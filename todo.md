@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/155_bir_block_entry_publication_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add BIR-Owned Publication Queries
+Current Step ID: 4
+Current Step Title: Prove Semantic Publication Identity Boundary
 
 # Current Packet
 
@@ -31,15 +31,25 @@ policy.
 
 ## Suggested Next
 
-Next packet: add a test-only adapter or comparison helper for consumers that
-currently ask prepared block-entry publication questions, so future switch work
-can prove prepared-vs-BIR parity without changing dispatch/call consumers yet.
+Next packet: execute rewritten Step 4 by tightening the test-only proof around
+the semantic boundary. Preserve exact prepared/BIR equivalence only where both
+sides answer the same-block source/value/producer identity question.
+For block-entry publication, prove PHI-entry destination identity and add
+boundary coverage documenting that prepared-only move/home/storage/register
+readiness positives remain prepared oracle/fallback behavior, while BIR
+PHI-entry positives do not imply prepared emission readiness.
 
 ## Watchouts
 
 - BIR entry-publication availability is intentionally PHI-entry semantic
   availability. Exact prepared availability from move/value-home/register facts
-  remains outside BIR until a later explicit consumer switch packet.
+  remains outside BIR and must stay prepared-owned.
+- Step 4 must not compare prepared hook kind, destination home, storage
+  encoding, stack-source policy, register view, immediate/move payload,
+  emitted-storage availability, destination register spelling, or scalar
+  emission policy as BIR facts.
+- Treat prepared-only readiness positives as oracle/fallback behavior, not as
+  a missing BIR semantic availability case.
 - Leave register parsing plus destination storage decisions in existing
   prepared/AArch64 consumers until a later explicit switch packet.
 - Escalate validation if any future packet touches dispatch publication, calls,

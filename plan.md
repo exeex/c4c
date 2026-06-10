@@ -12,8 +12,10 @@ encoding, register views, and emission policy downstream.
 ## Goal
 
 Add BIR block-entry/current-block publication queries that match prepared
-source, value, producer, instruction, index, and producer-kind answers for
-entry and same-block availability before switching any consumer reads.
+source, value, producer, instruction, index, and producer-kind identity where
+both sides answer the same semantic question. For block-entry publication,
+BIR-owned availability means PHI-entry destination identity; prepared
+move/home/storage/register/emission readiness remains prepared-owned.
 
 ## Core Rule
 
@@ -41,8 +43,10 @@ scalar publication emission policy.
   value name, and before-instruction index.
 - Source producer identity, produced BIR value/name, producer instruction,
   producer instruction index, and source-producer kind.
-- Prepared/BIR query-equivalence proof for available and unavailable
-  publication consumption paths before consumer switches.
+- Prepared/BIR query-equivalence proof for same-block semantic publication
+  identity and PHI-entry destination identity before consumer switches.
+- Explicit boundary proof that prepared-only publication readiness positives
+  remain oracle/fallback behavior, not BIR availability facts.
 - Scalar publication planning reads only where the read asks which semantic
   source is available, not how that source should be emitted.
 
@@ -59,14 +63,19 @@ scalar publication emission policy.
 
 ## Working Model
 
-- Prepared current-block publication queries remain the oracle while BIR-owned
-  publication identity is introduced.
+- Prepared current-block publication queries remain the oracle for publication
+  readiness while BIR-owned semantic publication identity is introduced.
 - BIR answers only which semantic source/value/producer is available at block
   entry or before a current-block instruction.
+- For block-entry publication, BIR availability is derived from leading
+  successor PHIs and identifies the semantic destination/source relationship.
+  It does not claim prepared move bundle, value-home, destination storage,
+  register, immediate payload, emitted-storage, or emission readiness.
 - Existing prealloc/MIR code continues to own hook selection, home selection,
   storage encoding, register views, and emission.
 - Consumer switches are allowed only after prepared/BIR equivalence proves the
-  semantic identity fields for the selected path.
+  semantic identity fields for the selected path; prepared queries remain the
+  fallback/readiness oracle for any field outside that semantic boundary.
 
 ## Execution Rules
 
@@ -153,32 +162,47 @@ Completion check:
 - BIR publication queries compile and can be compared against prepared query
   results without changing broad backend behavior.
 
-### Step 4: Prove Prepared/BIR Publication Equivalence
+### Step 4: Prove Semantic Publication Identity Boundary
 
-Goal: demonstrate that BIR publication queries match the prepared oracle for
-positive and negative paths.
+Goal: demonstrate same-block prepared/BIR semantic identity equivalence and
+block-entry PHI-destination identity equivalence without treating prepared
+publication readiness as a BIR-owned fact.
 
 Primary target: targeted backend/codegen tests, assertions, or dumps.
 
 Actions:
-- Add or update proof for entry-available, same-block-available,
-  unavailable, wrong-value, wrong-block, and before-index paths.
-- Compare availability, source producer identity, produced value/name,
-  producer instruction, instruction index, and source-producer kind.
+- Add or update proof for same-block available, unavailable, wrong-value,
+  wrong-block, and before-index paths where prepared and BIR answer the same
+  semantic source/value/producer question.
+- For block-entry publication, prove PHI-entry destination identity for
+  available, missing/unpublished destination, wrong successor, and wrong
+  destination cases.
+- Add explicit boundary coverage for divergent entry readiness cases:
+  prepared-only move/home/storage/register readiness positives must remain
+  prepared oracle/fallback behavior, and BIR PHI-entry positives must not imply
+  prepared emission readiness.
+- Compare only semantic identity fields: source producer identity, produced
+  value/name, producer instruction, instruction index, source-producer kind,
+  successor block identity, and PHI destination value identity.
+- Do not compare hook kind, destination home, storage encoding, stack-source
+  extension policy, register view, immediate payload, emitted-storage
+  availability, destination register spelling, or scalar emission policy as BIR
+  facts.
 - Capture matched `test_before.log` and `test_after.log` for the smallest
   backend/codegen subset that exercises dispatch publication and
-  current-block publication consumers.
+  current-block publication consumers, if code changes are made.
 - Investigate mismatches as semantic gaps instead of special-casing named
   failing cases.
 
 Completion check:
-- Matched proof logs show no regression, and equivalence evidence covers each
-  current-block publication path named by the source idea.
+- Matched proof logs show no regression, same-block semantic identity and
+  block-entry PHI-destination identity are covered, and divergent prepared
+  readiness cases are documented as intended boundary behavior.
 
-### Step 5: Switch One Semantic Publication Consumer If Proven
+### Step 5: Switch One Semantic Identity Consumer If Proven
 
 Goal: move one current-block publication or scalar publication planning read to
-the BIR query only after equivalence proof exists.
+the BIR query only after semantic identity proof exists.
 
 Primary target: one narrow consumer that only asks which semantic source is
 available.
@@ -187,14 +211,19 @@ Actions:
 - Select a consumer with minimal blast radius and no ownership of hook kind,
   destination homes, storage encoding, register views, immediate payloads, or
   emission policy.
-- Switch only identity reads already proven equivalent.
-- Keep prepared queries available for comparison and fallback during this
-  route.
+- Switch only semantic identity reads already proven equivalent. Do not switch
+  any readiness check that depends on prepared move bundles, destination homes,
+  storage/register facts, emitted-storage availability, or emission policy.
+- Keep prepared queries available for comparison, fallback, and publication
+  readiness oracle behavior during this route.
+- Treat prepared-only readiness positives as a reason to use the prepared
+  fallback/oracle path, not as a missing BIR semantic availability fact.
 - Run the delegated narrow subset and escalate validation if dispatch
   publication, calls, or scalar publication planning behavior changes.
 
 Completion check:
 - One route-local consumer uses BIR publication identity for proven facts,
+  prepared remains the readiness oracle/fallback for non-semantic fields,
   matched proof remains green, and no target publication policy rewrite is
   included.
 
