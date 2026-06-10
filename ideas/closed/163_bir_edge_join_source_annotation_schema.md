@@ -53,3 +53,27 @@ annotation candidates while rejecting parallel-copy execution policy.
 - Reject if BIR edge annotations are just wrappers around
   `PreparedEdgePublication` records rather than field-level semantic facts.
 - Reject broad rewrites of parallel-copy scheduling or MIR move emission.
+
+## Closure Notes
+
+Closed after implementing Route 5 BIR edge and current-block join-source
+records, BIR-owned lookup/index helpers, oracle tests for edge and join-source
+identity, and a low-risk CFG edge publication source MIR query migration.
+
+Reviewer report `review/163_edge_join_source_route_review.md` found no
+blocking issues and judged closure reasonable. The residual boundary is that
+`mir::find_bir_current_block_join_source_identity(...)` remains on its prior
+semantic implementation while Route 5 current-block join records/indexes are
+implemented and oracle-covered; this was accepted because the source idea
+requires BIR-owned schema and migration oracles, not every consumer migration
+in this slice.
+
+Full-suite baseline review after Step 3 was accepted at `3427/3427`.
+Closure validation used canonical broad backend logs from:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both passed `179/179`, and the
+regression guard passed with no new failures or pass-count regression.
