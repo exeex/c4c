@@ -140,6 +140,19 @@ struct BirSelectChainIdentity {
   }
 };
 
+[[nodiscard]] SameBlockProducerIdentity find_bir_select_chain_source_producer(
+    BirSelectChainIdentityRequest request);
+
+[[nodiscard]] BirSelectChainDirectGlobalDependency
+find_bir_select_chain_direct_global_dependency(
+    BirSelectChainIdentityRequest request);
+
+[[nodiscard]] bool find_bir_select_chain_scalar_materialization_eligibility(
+    BirSelectChainIdentityRequest request);
+
+[[nodiscard]] BirSelectChainIdentity find_bir_select_chain_identity(
+    BirSelectChainIdentityRequest request);
+
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;

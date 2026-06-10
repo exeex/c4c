@@ -94,11 +94,94 @@ namespace {
   return producer.produced_value.value;
 }
 
+[[nodiscard]] std::string_view root_value_name(
+    const BirSelectChainIdentityRequest& request) {
+  if (!request.root_value_name.empty()) {
+    return request.root_value_name;
+  }
+  if (request.root_value != nullptr &&
+      request.root_value->kind == bir::Value::Kind::Named) {
+    return request.root_value->name;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::TypeKind root_value_type(
+    const BirSelectChainIdentityRequest& request) {
+  if (request.root_value_type != bir::TypeKind::Void) {
+    return request.root_value_type;
+  }
+  return request.root_value != nullptr ? request.root_value->type
+                                      : bir::TypeKind::Void;
+}
+
 [[nodiscard]] std::optional<SameBlockIntegerConstant>
 evaluate_same_block_integer_constant(
     SameBlockValueMaterializationQuery query,
     const bir::Value& value,
     unsigned depth);
+
+[[nodiscard]] std::optional<BirSelectChainDirectGlobalDependency>
+find_bir_select_chain_direct_global_dependency(
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth) {
+  if (block == nullptr ||
+      depth > 64U ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto producer = find_same_block_producer_identity(
+      SameBlockProducerIdentityRequest{
+          .block = block,
+          .value_name = value.name,
+          .value_type = value.type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (!producer || producer.inst == nullptr) {
+    return std::nullopt;
+  }
+  const auto nested_before = producer.instruction_index;
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(producer.inst);
+      load_global != nullptr) {
+    return BirSelectChainDirectGlobalDependency{
+        .contains_direct_global_load = true,
+        .load_global = load_global,
+        .instruction_index = producer.instruction_index,
+    };
+  }
+  if (std::get_if<bir::LoadLocalInst>(producer.inst) != nullptr) {
+    return BirSelectChainDirectGlobalDependency{};
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(producer.inst);
+      select != nullptr) {
+    const auto true_value = find_bir_select_chain_direct_global_dependency(
+        block, select->true_value, nested_before, depth + 1U);
+    if (!true_value.has_value() || *true_value) {
+      return true_value;
+    }
+    return find_bir_select_chain_direct_global_dependency(
+        block, select->false_value, nested_before, depth + 1U);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(producer.inst);
+      cast != nullptr) {
+    return find_bir_select_chain_direct_global_dependency(
+        block, cast->operand, nested_before, depth + 1U);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer.inst);
+      binary != nullptr) {
+    const auto lhs = find_bir_select_chain_direct_global_dependency(
+        block, binary->lhs, nested_before, depth + 1U);
+    if (!lhs.has_value() || *lhs) {
+      return lhs;
+    }
+    return find_bir_select_chain_direct_global_dependency(
+        block, binary->rhs, nested_before, depth + 1U);
+  }
+  return std::nullopt;
+}
 
 }  // namespace
 
@@ -188,6 +271,79 @@ evaluate_same_block_integer_constant(
     };
   }
   return {};
+}
+
+[[nodiscard]] SameBlockProducerIdentity find_bir_select_chain_source_producer(
+    BirSelectChainIdentityRequest request) {
+  if (!request) {
+    return {};
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return {};
+  }
+  return find_same_block_producer_identity(SameBlockProducerIdentityRequest{
+      .block = request.block,
+      .block_label = request.block_label,
+      .value_name = value_name,
+      .value_type = root_value_type(request),
+      .before_instruction_index = request.before_instruction_index,
+  });
+}
+
+[[nodiscard]] BirSelectChainDirectGlobalDependency
+find_bir_select_chain_direct_global_dependency(
+    BirSelectChainIdentityRequest request) {
+  const auto root = find_bir_select_chain_source_producer(request);
+  const auto* root_value = produced_value_for_same_block_producer(root);
+  if (!root || root_value == nullptr) {
+    return {};
+  }
+  const auto dependency = find_bir_select_chain_direct_global_dependency(
+      request.block, *root_value, request.before_instruction_index, 0U);
+  if (!dependency.has_value()) {
+    return {};
+  }
+  return *dependency;
+}
+
+[[nodiscard]] bool find_bir_select_chain_scalar_materialization_eligibility(
+    BirSelectChainIdentityRequest request) {
+  const auto root = find_bir_select_chain_source_producer(request);
+  const auto* root_value = produced_value_for_same_block_producer(root);
+  if (!root || root_value == nullptr) {
+    return false;
+  }
+  return find_same_block_scalar_producer(
+             SameBlockValueMaterializationQuery{
+                 .block = request.block,
+                 .block_label = request.block_label,
+                 .before_instruction_index = request.before_instruction_index,
+             },
+             *root_value)
+      .has_value();
+}
+
+[[nodiscard]] BirSelectChainIdentity find_bir_select_chain_identity(
+    BirSelectChainIdentityRequest request) {
+  const auto root = find_bir_select_chain_source_producer(request);
+  const auto* root_value = produced_value_for_same_block_producer(root);
+  if (!root || root_value == nullptr) {
+    return BirSelectChainIdentity{
+        .root_value_name = root_value_name(request),
+    };
+  }
+  return BirSelectChainIdentity{
+      .root_producer = root,
+      .root_value = same_block_value_identity(*root_value),
+      .root_value_name = root_value->name,
+      .root_is_select = root.kind == SameBlockProducerKind::Select,
+      .root_instruction_index = root.instruction_index,
+      .direct_global_dependency =
+          find_bir_select_chain_direct_global_dependency(request),
+      .scalar_materialization_available =
+          find_bir_select_chain_scalar_materialization_eligibility(request),
+  };
 }
 
 [[nodiscard]] std::optional<SameBlockScalarProducer>
