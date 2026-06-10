@@ -1,88 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/170_route4_block_entry_publication_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Contract Only Proven-Private Prepared Surface
+Current Step ID: 5
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 evidence pass completed for the prepared block-entry publication helper
-surface after the Step 3 MIR migration. No contraction is safe now.
+Step 5 validation and handoff bookkeeping completed for the Route 4
+block-entry publication migration.
 
-Scanned declarations/definitions and direct consumers:
-- `PreparedBlockEntryPublicationStatus` and
-  `prepared_block_entry_publication_status_name(...)`: still used by
-  `src/backend/prealloc/prepared_printer/value_locations.cpp` and oracle tests.
-- `PreparedBlockEntryPublication`: still public through
-  `src/backend/prealloc/value_locations.hpp`,
-  `src/backend/prealloc/publication_plans.hpp`,
-  `src/backend/mir/x86/prepared/prepared.hpp`, AArch64 dispatch helpers, x86
-  publication-plan tests, and Route 4 oracle tests.
-- `PreparedBlockEntryPublication` fields `status`, `home`,
-  `destination_value_id`, `destination_kind`, `destination_storage_kind`, and
-  `destination_register_name`: still read by production AArch64 current-block
-  entry publication paths and/or scalar publication planning. `bundle` and
-  `move` remain observable through helper tests and are tied to the public
-  helper result shape.
-- `PreparedCurrentBlockEntryPublicationStatus` and
-  `prepared_current_block_entry_publication_status_name(...)`: status remains
-  part of the public prepared query result and is still asserted by Route 4
-  oracle tests.
-- `PreparedCurrentBlockEntryPublicationQueryInputs` fields `names`,
-  `regalloc`, `value_locations`, `value_home_lookups`, and `successor_label`:
-  still required by `find_prepared_current_block_entry_publication(...)`
-  callers in AArch64 current-block entry publication code and oracle tests.
-- `PreparedCurrentBlockEntryPublication` fields `status`, `publication`,
-  `destination_home`, `destination_value_id`, and `destination_value_name`:
-  still consumed by AArch64 publication-register selection and Route 4 oracle
-  tests.
-- `prepared_block_entry_publication_available(...)`: still used by
-  `src/backend/prealloc/prepared_lookups.cpp`,
-  `src/backend/prealloc/publication_plans.cpp`,
-  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`,
-  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`, and tests.
-- `collect_prepared_block_entry_publications(...)`: still used by
-  `src/backend/prealloc/prepared_lookups.cpp`,
-  `src/backend/prealloc/prepared_printer/value_locations.cpp`,
-  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`,
-  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`,
-  `src/backend/mir/x86/prepared/prepared.hpp`, and tests.
-- `find_prepared_current_block_entry_publication(...)`: still used by
-  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` and prepared/Route
-  4 oracle tests. AST query also confirmed the `bir::Value` overload delegates
-  to the `PreparedValueId` overload inside `src/backend/prealloc/prepared_lookups.cpp`.
-- `PreparedScalarPublicationPlan::current_block_entry_publication`,
-  `PreparedScalarPublicationPlan::current_block_entry_publication_available`,
-  and `PreparedScalarPublicationInputs::current_block_entry_publication`: still
-  part of scalar publication planning in
-  `src/backend/prealloc/publication_plans.cpp`, AArch64 comparison/value-home
-  materialization, and x86 publication-plan coverage.
+Completed migration state:
+- Step 1 selected `mir::find_bir_block_entry_publication_identity(...)` in
+  `src/backend/mir/query.cpp` as the residual semantic consumer.
+- Step 2 added selected-consumer MIR negative coverage for missing destination
+  keys and destination type mismatch.
+- Step 3 migrated the selected MIR helper to Route 4 publication availability
+  records and `bir::route4_find_block_entry_publication(...)` for typed
+  destination lookup, while preserving fail-closed statuses.
+- Step 4 re-scanned the prepared helper surface and found no safe contraction:
+  production consumers remain in AArch64 dispatch/publication paths, prepared
+  printer, x86 prepared wrapper, and scalar publication planning, with oracle
+  tests still using the public helper surface.
 
-Decision: keep the prepared block-entry publication helper surface public. The
-Step 3 MIR migration removed the selected MIR semantic consumer, but remaining
-current-block, target/codegen, printer, x86 wrapper, scalar publication-plan,
-and oracle consumers are direct evidence against hiding or narrowing the helper
-surface in this packet.
+Focused Route 4 proof passed 3/3 before the Step 3 commit, and regression
+guard with `--allow-non-decreasing-passed` passed.
 
 ## Suggested Next
 
-Proceed to Step 5 validation and handoff for the Route 4 migration slice. No
-follow-up contraction packet is recommended from current evidence.
+Do not close the active plan as fully validated in this executor packet. Leave
+closure or blocked-state handling to the supervisor/plan-owner lifecycle
+decision because broader backend validation is blocked by the current
+`backend_aarch64_instruction_dispatch` failure.
 
 ## Watchouts
 
-- Direct prepared helper consumers remain outside the migrated MIR query:
-  `dispatch_publication.cpp`, `dispatch_producers.cpp`, prepared printer,
-  x86 prepared wrapper, scalar publication planning, and oracle tests.
-- No exact contraction-owned files or contraction proof command are recorded
-  because no helper or field is proven private.
-- Do not treat test-only uses as the only blocker; there are still production
-  target/codegen and printer consumers.
+- Broader backend validation command
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_before.log 2>&1`
+  failed current-state with `backend_aarch64_instruction_dispatch`.
+- Direct rerun
+  `ctest --test-dir build --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`
+  also failed with `expected selected f64 global readback to feed call ABI move`.
+- The Route 4 migration itself has focused green proof, but the active plan
+  should remain blocked pending supervisor/plan-owner lifecycle decision unless
+  the supervisor accepts the broader backend blocker as unrelated.
 
 ## Proof
 
-No build or tests required for this analysis-only packet. Used `rg` plus
-`c4c-clang-tool`/`c4c-clang-tool-ccdb` direct symbol queries. `test_after.log`
-was not touched.
+No new test run required in this Step 5 bookkeeping packet.
+
+Recorded supervisor validation facts:
+- Focused Route 4 proof command
+  `(cmake --build build --target backend_prealloc_block_entry_publications_test backend_prepared_lookup_helper_test backend_prepare_frame_stack_call_contract_test && ctest --test-dir build -R '^(backend_prealloc_block_entry_publications|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract)$' --output-on-failure) > test_after.log 2>&1`
+  passed 3/3 before the Step 3 commit.
+- Regression guard with `--allow-non-decreasing-passed` passed.
+- Broader backend validation command
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_before.log 2>&1`
+  failed current-state with `backend_aarch64_instruction_dispatch`.
+- Direct rerun
+  `ctest --test-dir build --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`
+  also failed with `expected selected f64 global readback to feed call ABI move`.
+
+Proof log paths were not touched by this packet. Existing focused proof path:
+`test_after.log`. Existing broader validation path: `test_before.log`.
