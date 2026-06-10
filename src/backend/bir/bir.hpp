@@ -1636,6 +1636,183 @@ route4_find_block_entry_publication(
     const Block& successor_block,
     const Value& destination_value);
 
+enum class Route5PublicationStatus : unsigned char {
+  Unavailable,
+  Available,
+  NoSource,
+  MemorySource,
+  MissingPredecessor,
+  MissingSuccessor,
+  MissingDestination,
+  MissingPublication,
+  MissingSourceValue,
+  MissingSourceProducer,
+  MissingSourceMemoryAccess,
+  IncompleteSourceMemoryAccess,
+  NoMatch,
+};
+
+[[nodiscard]] constexpr std::string_view route5_publication_status_name(
+    Route5PublicationStatus status) {
+  switch (status) {
+    case Route5PublicationStatus::Unavailable:
+      return "unavailable";
+    case Route5PublicationStatus::Available:
+      return "available";
+    case Route5PublicationStatus::NoSource:
+      return "no_source";
+    case Route5PublicationStatus::MemorySource:
+      return "memory_source";
+    case Route5PublicationStatus::MissingPredecessor:
+      return "missing_predecessor";
+    case Route5PublicationStatus::MissingSuccessor:
+      return "missing_successor";
+    case Route5PublicationStatus::MissingDestination:
+      return "missing_destination";
+    case Route5PublicationStatus::MissingPublication:
+      return "missing_publication";
+    case Route5PublicationStatus::MissingSourceValue:
+      return "missing_source_value";
+    case Route5PublicationStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case Route5PublicationStatus::MissingSourceMemoryAccess:
+      return "missing_source_memory_access";
+    case Route5PublicationStatus::IncompleteSourceMemoryAccess:
+      return "incomplete_source_memory_access";
+    case Route5PublicationStatus::NoMatch:
+      return "no_match";
+  }
+  return "unavailable";
+}
+
+enum class Route5PublicationScope : unsigned char {
+  None,
+  CfgEdge,
+  CurrentBlockJoin,
+};
+
+enum class Route5PublicationSourceKind : unsigned char {
+  Unknown,
+  Immediate,
+  LoadLocal,
+  LoadGlobal,
+  Cast,
+  Binary,
+  SelectMaterialization,
+};
+
+enum class Route5PublicationValueRole : unsigned char {
+  None,
+  Destination,
+  Source,
+  IncomingExpression,
+};
+
+struct Route5CfgEdgePublicationRecord {
+  bool available = false;
+  Route5PublicationStatus status = Route5PublicationStatus::Unavailable;
+  const Block* predecessor_block = nullptr;
+  std::string_view predecessor_label;
+  BlockLabelId predecessor_label_id = kInvalidBlockLabel;
+  const Block* successor_block = nullptr;
+  std::string_view successor_label;
+  BlockLabelId successor_label_id = kInvalidBlockLabel;
+  const Inst* destination_instruction = nullptr;
+  const PhiInst* destination_phi = nullptr;
+  std::size_t destination_instruction_index = 0;
+  Route1SourceValueIdentity destination_value;
+  std::string_view destination_value_name;
+  ValueNameId destination_value_name_id = kInvalidValueName;
+  TypeKind destination_value_type = TypeKind::Void;
+  Route1SourceValueIdentity source_value;
+  std::string_view source_value_name;
+  ValueNameId source_value_name_id = kInvalidValueName;
+  Value::Kind source_value_kind = Value::Kind::Immediate;
+  TypeKind source_value_type = TypeKind::Void;
+  bool explicit_no_source = false;
+  Route5PublicationSourceKind source_producer_kind =
+      Route5PublicationSourceKind::Unknown;
+  const Inst* source_producer_instruction = nullptr;
+  BlockLabelId source_producer_block_label_id = kInvalidBlockLabel;
+  std::optional<std::size_t> source_producer_instruction_index;
+  bool source_memory_identity_available = false;
+  Route3MemoryAccessRecord source_memory_access;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route5CurrentBlockJoinSourceRecord {
+  bool available = false;
+  Route5PublicationStatus status = Route5PublicationStatus::Unavailable;
+  const Block* successor_block = nullptr;
+  std::string_view successor_label;
+  BlockLabelId successor_label_id = kInvalidBlockLabel;
+  std::string_view predecessor_label;
+  BlockLabelId predecessor_label_id = kInvalidBlockLabel;
+  const Inst* destination_instruction = nullptr;
+  const PhiInst* destination_phi = nullptr;
+  std::size_t destination_instruction_index = 0;
+  Route1SourceValueIdentity destination_value;
+  std::string_view destination_value_name;
+  TypeKind destination_value_type = TypeKind::Void;
+  Route1SourceValueIdentity source_value;
+  std::string_view source_value_name;
+  Value::Kind source_value_kind = Value::Kind::Immediate;
+  TypeKind source_value_type = TypeKind::Void;
+  Route5PublicationSourceKind source_producer_kind =
+      Route5PublicationSourceKind::Unknown;
+  const Inst* source_producer_instruction = nullptr;
+  std::optional<std::size_t> source_producer_instruction_index;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route5PublicationValueRecord {
+  bool available = false;
+  Route5PublicationScope scope = Route5PublicationScope::None;
+  Route5PublicationStatus status = Route5PublicationStatus::Unavailable;
+  Route5PublicationValueRole value_role = Route5PublicationValueRole::None;
+  Route1SourceValueIdentity value;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::string_view predecessor_label;
+  BlockLabelId predecessor_label_id = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  Route5CfgEdgePublicationRecord edge;
+  Route5CurrentBlockJoinSourceRecord join;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+[[nodiscard]] Route5PublicationSourceKind
+route5_publication_source_kind(Route1ProducerKind kind);
+
+[[nodiscard]] Route5CfgEdgePublicationRecord
+route5_cfg_edge_publication_record(
+    const Block* predecessor_block,
+    const Block* successor_block,
+    const Value& destination_value,
+    ValueNameId destination_value_name_id = kInvalidValueName,
+    ValueNameId source_value_name_id = kInvalidValueName);
+
+[[nodiscard]] std::vector<Route5CurrentBlockJoinSourceRecord>
+route5_current_block_join_source_records(const Block* successor_block);
+
+[[nodiscard]] Route5PublicationValueRecord
+route5_edge_destination_value_record(
+    const Route5CfgEdgePublicationRecord& edge);
+
+[[nodiscard]] Route5PublicationValueRecord
+route5_edge_source_value_record(const Route5CfgEdgePublicationRecord& edge);
+
+[[nodiscard]] Route5PublicationValueRecord
+route5_join_destination_value_record(
+    const Route5CurrentBlockJoinSourceRecord& join);
+
+[[nodiscard]] Route5PublicationValueRecord
+route5_join_source_value_record(
+    const Route5CurrentBlockJoinSourceRecord& join);
+
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;
   std::size_t arg_index = 0;

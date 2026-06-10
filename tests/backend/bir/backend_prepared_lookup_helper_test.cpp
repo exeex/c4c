@@ -121,6 +121,27 @@ bir::Route4PublicationSourceKind expected_bir_route4_publication_source_kind(
   return bir::Route4PublicationSourceKind::Unknown;
 }
 
+bir::Route5PublicationSourceKind expected_bir_route5_publication_source_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return bir::Route5PublicationSourceKind::Immediate;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::Route5PublicationSourceKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return bir::Route5PublicationSourceKind::Cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::Route5PublicationSourceKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return bir::Route5PublicationSourceKind::LoadGlobal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return bir::Route5PublicationSourceKind::SelectMaterialization;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return bir::Route5PublicationSourceKind::Unknown;
+  }
+  return bir::Route5PublicationSourceKind::Unknown;
+}
+
 bir::Route2SelectChainProducerKind expected_bir_route2_select_chain_producer_kind(
     prepare::PreparedEdgePublicationSourceProducerKind kind) {
   switch (kind) {
@@ -2946,6 +2967,8 @@ int verify_current_block_join_parallel_copy_source_query() {
           .successor_label = "current_join.succ",
           .successor_label_id = successor_label,
       });
+  const auto route5_join_records =
+      bir::route5_current_block_join_source_records(&block);
 
   auto contains_value_id = [](const std::vector<prepare::PreparedValueId>& values,
                               prepare::PreparedValueId value_id) {
@@ -2966,6 +2989,54 @@ int verify_current_block_join_parallel_copy_source_query() {
   }
   if (bir_query.facts.size() != 3) {
     return fail("BIR current-block join-source identity should expose only PHI source facts");
+  }
+  auto find_route5_join = [&](std::string_view destination_name) {
+    return std::find_if(route5_join_records.begin(),
+                        route5_join_records.end(),
+                        [&](const auto& record) {
+                          return record.destination_value_name == destination_name;
+                        });
+  };
+  const auto route5_named_join = find_route5_join("%current.destination");
+  const auto route5_immediate_join =
+      find_route5_join("%current.immediate_destination");
+  const auto route5_stack_join = find_route5_join("%current.stack_destination");
+  if (route5_join_records.size() != 3 ||
+      route5_named_join == route5_join_records.end() ||
+      route5_immediate_join == route5_join_records.end() ||
+      route5_stack_join == route5_join_records.end() ||
+      !*route5_named_join ||
+      route5_named_join->status != bir::Route5PublicationStatus::Available ||
+      route5_named_join->predecessor_label_id != predecessor_label ||
+      route5_named_join->successor_label_id != successor_label ||
+      route5_named_join->source_value_name != "%current.incoming" ||
+      route5_named_join->source_producer_kind !=
+          bir::Route5PublicationSourceKind::Binary ||
+      route5_named_join->source_producer_instruction_index != std::size_t{3} ||
+      !*route5_immediate_join ||
+      route5_immediate_join->source_value_kind != bir::Value::Kind::Immediate ||
+      route5_immediate_join->source_producer_kind !=
+          bir::Route5PublicationSourceKind::Immediate ||
+      !*route5_stack_join ||
+      route5_stack_join->source_value_name != "%current.stack_source" ||
+      route5_stack_join->source_producer_instruction_index != std::size_t{5}) {
+    return fail("Route 5 current-block join records should expose PHI source identities");
+  }
+  const auto route5_named_join_destination =
+      bir::route5_join_destination_value_record(*route5_named_join);
+  const auto route5_named_join_source =
+      bir::route5_join_source_value_record(*route5_named_join);
+  if (!route5_named_join_destination ||
+      route5_named_join_destination.scope !=
+          bir::Route5PublicationScope::CurrentBlockJoin ||
+      route5_named_join_destination.value_role !=
+          bir::Route5PublicationValueRole::Destination ||
+      route5_named_join_destination.value.name != "%current.destination" ||
+      !route5_named_join_source ||
+      route5_named_join_source.value_role !=
+          bir::Route5PublicationValueRole::Source ||
+      route5_named_join_source.value.name != "%current.incoming") {
+    return fail("Route 5 current-block join value records should link destination and source values");
   }
   if (!contains_value_id(query.incoming_expression_value_ids, incoming_id) ||
       !contains_value_id(query.incoming_expression_value_ids, operand_id) ||
@@ -3054,6 +3125,13 @@ int verify_current_block_join_parallel_copy_source_query() {
           .status != mir::BirCurrentBlockJoinSourceStatus::MissingPublication) {
     return fail("BIR current-block join query should fail closed without PHIs");
   }
+  const auto route5_no_phi_join =
+      bir::route5_current_block_join_source_records(&no_phi_block);
+  if (route5_no_phi_join.size() != 1 ||
+      route5_no_phi_join.front().status !=
+          bir::Route5PublicationStatus::MissingPublication) {
+    return fail("Route 5 current-block join records should fail closed without PHIs");
+  }
   if (mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{
               .successor_block = &block,
@@ -3090,6 +3168,15 @@ int verify_current_block_join_parallel_copy_source_query() {
       missing_source_query.facts.front().status !=
           mir::BirCurrentBlockJoinSourceStatus::MissingSourceProducer) {
     return fail("BIR current-block join query should diagnose missing named source producers");
+  }
+  const auto route5_missing_join =
+      bir::route5_current_block_join_source_records(&missing_source_block);
+  if (route5_missing_join.size() != 1 ||
+      route5_missing_join.front() ||
+      route5_missing_join.front().status !=
+          bir::Route5PublicationStatus::MissingSourceProducer ||
+      route5_missing_join.front().source_value_name != "%current.missing_source") {
+    return fail("Route 5 current-block join records should diagnose missing source producers");
   }
 
   return 0;
@@ -3785,6 +3872,53 @@ int verify_edge_publication_source_producer_facts() {
           load_publication->source_memory_is_volatile) {
     return fail("BIR CFG edge source identity should match prepared load-local semantic oracle");
   }
+  const auto route5_load_edge =
+      bir::route5_cfg_edge_publication_record(&predecessor_block,
+                                              &successor_block,
+                                              load_destination,
+                                              load_destination_name,
+                                              loaded_name);
+  const auto route5_load_destination =
+      bir::route5_edge_destination_value_record(route5_load_edge);
+  const auto route5_load_source =
+      bir::route5_edge_source_value_record(route5_load_edge);
+  if (!route5_load_edge ||
+      route5_load_edge.status != bir::Route5PublicationStatus::MemorySource ||
+      route5_load_edge.predecessor_label_id != load_publication->predecessor_label ||
+      route5_load_edge.successor_label_id != load_publication->successor_label ||
+      route5_load_edge.destination_value_name_id !=
+          load_publication->destination_value_name ||
+      route5_load_edge.source_value_name_id != load_publication->source_value_name ||
+      route5_load_edge.source_value_name != loaded.name ||
+      route5_load_edge.source_value_type != load_publication->source_value.type ||
+      route5_load_edge.source_producer_kind !=
+          expected_bir_route5_publication_source_kind(
+              load_publication->source_producer_kind) ||
+      route5_load_edge.source_producer_instruction != &predecessor_block.insts[0] ||
+      route5_load_edge.source_producer_instruction_index !=
+          load_publication->source_producer_instruction_index ||
+      !route5_load_edge.source_memory_identity_available ||
+      route5_load_edge.source_memory_access.instruction !=
+          &predecessor_block.insts[0] ||
+      route5_load_edge.source_memory_access.node_kind !=
+          bir::Route3MemoryAccessNodeKind::LoadLocal ||
+      route5_load_edge.source_memory_access.result_value.name != loaded.name ||
+      route5_load_edge.source_memory_access.base_kind !=
+          bir::Route3MemoryAccessBaseKind::LocalSlot ||
+      route5_load_edge.source_memory_access.address_space !=
+          load_publication->source_memory_address_space ||
+      route5_load_edge.source_memory_access.is_volatile !=
+          load_publication->source_memory_is_volatile ||
+      !route5_load_destination ||
+      route5_load_destination.scope != bir::Route5PublicationScope::CfgEdge ||
+      route5_load_destination.value_role !=
+          bir::Route5PublicationValueRole::Destination ||
+      route5_load_destination.value.name != load_destination.name ||
+      !route5_load_source ||
+      route5_load_source.value_role != bir::Route5PublicationValueRole::Source ||
+      route5_load_source.value.name != loaded.name) {
+    return fail("Route 5 edge record should expose load-local memory-source identity");
+  }
 
   const auto cast_request = make_bir_edge_publication_source_request(
       predecessor_block,
@@ -3812,6 +3946,22 @@ int verify_edge_publication_source_producer_facts() {
           cast_publication->source_producer_instruction_index ||
       bir_cast_edge.source_memory_access) {
     return fail("BIR CFG edge source identity should expose named non-memory producer identity only");
+  }
+  const auto route5_cast_edge =
+      bir::route5_cfg_edge_publication_record(&predecessor_block,
+                                              &successor_block,
+                                              cast_destination,
+                                              cast_destination_name,
+                                              casted_name);
+  if (!route5_cast_edge ||
+      route5_cast_edge.status != bir::Route5PublicationStatus::Available ||
+      route5_cast_edge.source_memory_identity_available ||
+      route5_cast_edge.source_producer_kind !=
+          expected_bir_route5_publication_source_kind(
+              cast_publication->source_producer_kind) ||
+      route5_cast_edge.source_producer_instruction_index !=
+          cast_publication->source_producer_instruction_index) {
+    return fail("Route 5 edge record should expose named non-memory source identity");
   }
 
   if (!prepared_and_bir_cfg_edge_publication_source_identity_match(
@@ -3896,6 +4046,45 @@ int verify_edge_publication_source_producer_facts() {
       bir_missing_source.destination_value_id != 15 ||
       bir_missing_source.source_value_name != "%missing.producer") {
     return fail("BIR CFG edge source identity should fail closed for unavailable edge sources");
+  }
+  const auto route5_missing_source =
+      bir::route5_cfg_edge_publication_record(&predecessor_block,
+                                              &successor_block,
+                                              unavailable_destination,
+                                              unavailable_destination_name,
+                                              unavailable_source_name);
+  if (route5_missing_source ||
+      route5_missing_source.status !=
+          bir::Route5PublicationStatus::MissingSourceProducer ||
+      route5_missing_source.destination_value_name_id !=
+          unavailable_destination_name ||
+      route5_missing_source.source_value_name != "%missing.producer" ||
+      route5_missing_source.source_value_name_id != unavailable_source_name) {
+    return fail("Route 5 edge record should fail closed with explicit missing-source status");
+  }
+  auto wrong_predecessor_block = predecessor_block;
+  wrong_predecessor_block.label = "edge_producers.other_pred";
+  wrong_predecessor_block.label_id = c4c::BlockLabelId{777};
+  const auto route5_wrong_edge =
+      bir::route5_cfg_edge_publication_record(&wrong_predecessor_block,
+                                              &successor_block,
+                                              load_destination,
+                                              load_destination_name,
+                                              loaded_name);
+  if (route5_wrong_edge ||
+      route5_wrong_edge.status != bir::Route5PublicationStatus::NoSource ||
+      !route5_wrong_edge.explicit_no_source) {
+    return fail("Route 5 edge record should represent wrong-edge no-source explicitly");
+  }
+  const auto route5_missing_destination =
+      bir::route5_cfg_edge_publication_record(
+          &predecessor_block,
+          &successor_block,
+          bir::Value::named(bir::TypeKind::I32, "%producer.missing"));
+  if (route5_missing_destination ||
+      route5_missing_destination.status !=
+          bir::Route5PublicationStatus::MissingPublication) {
+    return fail("Route 5 edge record should fail closed for missing destination");
   }
 
   auto wrong_predecessor_request = load_request;
