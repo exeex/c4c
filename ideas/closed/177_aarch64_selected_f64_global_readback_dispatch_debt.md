@@ -58,3 +58,21 @@ AArch64 dispatch interfaces change.
 - Route 5 join-source records are used to carry call ABI/layout policy.
 - The same f64 global readback still bypasses the call ABI move under a renamed
   helper or facade.
+
+## Completion Notes
+
+Closed after Step 4 proof/handoff. Commit `af3891f3e` repaired the selected
+F32/F64 direct-global call-argument path in AArch64 select materialization so
+it materializes through the prepared FPR home before the existing ABI move.
+The route-quality review in `review/route177_step3_review.md` judged the
+implementation on-route and not testcase overfit.
+
+Close proof used the focused build plus monolithic dispatch CTest:
+
+```bash
+(cmake --build build --target backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^backend_aarch64_instruction_dispatch$' --output-on-failure) > test_after.log 2>&1
+```
+
+`test_after.log` passed 1/1. The close-time regression guard compared the
+matching focused `test_before.log` and `test_after.log` scope and passed with
+no new failures.
