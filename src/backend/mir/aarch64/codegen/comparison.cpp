@@ -1566,20 +1566,10 @@ find_prepared_materialized_condition_producer(
 }
 
 [[nodiscard]] bool fused_compare_operand_has_select_producer(
-    const module::BlockLoweringContext& context,
-    const bir::Value& value,
-    const DispatchBranchFusionHooks&) {
-  if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   value,
-                                                   context.bir_block->insts.size());
+    const std::optional<bir::ComparisonOperandProducer>& producer) {
   return producer.has_value() &&
-         producer->kind ==
-             prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization &&
-         producer->select != nullptr;
+         producer->producer_kind == bir::ComparisonProducerKind::Select &&
+         producer->producer_instruction != nullptr;
 }
 
 [[nodiscard]] std::optional<std::uint8_t>
@@ -2481,8 +2471,17 @@ bool fused_compare_uses_selected_operand(
   if (!branch_facts.has_value()) {
     return false;
   }
-  return fused_compare_operand_has_select_producer(context, branch_facts->lhs, hooks) ||
-         fused_compare_operand_has_select_producer(context, branch_facts->rhs, hooks);
+  if (context.bir_block == nullptr) {
+    return false;
+  }
+  const auto producer_facts = bir::find_fused_compare_operand_producer_facts(
+      *context.bir_block,
+      branch_facts->lhs,
+      branch_facts->rhs,
+      context.bir_block->insts.size());
+  return producer_facts.available &&
+         (fused_compare_operand_has_select_producer(producer_facts.lhs) ||
+          fused_compare_operand_has_select_producer(producer_facts.rhs));
 }
 
 
