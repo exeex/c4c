@@ -6334,6 +6334,142 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
   return 0;
 }
 
+int verify_production_bir_comparison_condition_producer_equivalence() {
+  bir::Module module;
+  module.functions.push_back(bir::Function{
+      .name = "production_compare_facts",
+      .return_type = bir::TypeKind::I32,
+      .blocks =
+          {
+              bir::Block{
+                  .label = "entry",
+                  .insts =
+                      {
+                          bir::BinaryInst{
+                              .opcode = bir::BinaryOpcode::Add,
+                              .result = bir::Value::named(bir::TypeKind::I64, "%lhs"),
+                              .operand_type = bir::TypeKind::I64,
+                              .lhs = bir::Value::immediate_i64(10),
+                              .rhs = bir::Value::immediate_i64(5),
+                          },
+                          bir::BinaryInst{
+                              .opcode = bir::BinaryOpcode::Mul,
+                              .result = bir::Value::named(bir::TypeKind::I64, "%rhs"),
+                              .operand_type = bir::TypeKind::I64,
+                              .lhs = bir::Value::immediate_i64(3),
+                              .rhs = bir::Value::immediate_i64(7),
+                          },
+                          bir::BinaryInst{
+                              .opcode = bir::BinaryOpcode::Slt,
+                              .result = bir::Value::named(bir::TypeKind::I1, "%cond"),
+                              .operand_type = bir::TypeKind::I64,
+                              .lhs = bir::Value::named(bir::TypeKind::I64, "%lhs"),
+                              .rhs = bir::Value::named(bir::TypeKind::I64, "%rhs"),
+                          },
+                      },
+                  .terminator =
+                      bir::Terminator{bir::CondBranchTerminator{
+                          .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+                          .true_label = "then",
+                          .false_label = "else",
+                      }},
+              },
+              bir::Block{
+                  .label = "then",
+                  .terminator =
+                      bir::Terminator{bir::ReturnTerminator{
+                          .value = bir::Value::immediate_i32(1),
+                      }},
+              },
+              bir::Block{
+                  .label = "else",
+                  .terminator =
+                      bir::Terminator{bir::ReturnTerminator{
+                          .value = bir::Value::immediate_i32(0),
+                      }},
+              },
+          },
+  });
+
+  prepare::BirPreAlloc prealloc(
+      module, c4c::default_target_profile(c4c::TargetArch::X86_64));
+  prealloc.run_legalize();
+  prealloc.run_stack_layout();
+  prealloc.run_liveness();
+
+  const auto& prepared = prealloc.prepared();
+  const auto* function = prepared.module.functions.empty()
+                             ? nullptr
+                             : &prepared.module.functions.front();
+  const auto* control_flow = prepared.control_flow.functions.empty()
+                                 ? nullptr
+                                 : &prepared.control_flow.functions.front();
+  if (function == nullptr ||
+      control_flow == nullptr ||
+      function->blocks.empty() ||
+      control_flow->branch_conditions.size() != 1U) {
+    return fail(
+        "production comparison fixture should publish one prepared branch condition");
+  }
+
+  const auto& block = function->blocks.front();
+  const auto& branch_condition = control_flow->branch_conditions.front();
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          prepared, *control_flow);
+  const auto prepared_fused =
+      prepare::find_prepared_fused_compare_operand_producer_facts(
+          prepared.names,
+          &source_producers,
+          branch_condition.block_label,
+          &block,
+          branch_condition,
+          block.insts.size());
+  const auto bir_fused = bir::find_fused_compare_operand_producer_facts(
+      block, *branch_condition.lhs, *branch_condition.rhs, block.insts.size());
+  if (!prepared_fused.has_value() ||
+      !bir_fused.available ||
+      !branch_condition.can_fuse_with_branch ||
+      branch_condition.kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !prepared_and_bir_comparison_operand_producer_match(
+          prepared.names, block, prepared_fused->lhs, *branch_condition.lhs,
+          block.insts.size()) ||
+      !prepared_and_bir_comparison_operand_producer_match(
+          prepared.names, block, prepared_fused->rhs, *branch_condition.rhs,
+          block.insts.size()) ||
+      !bir_fused.lhs.has_value() ||
+      !bir_fused.rhs.has_value() ||
+      bir_fused.lhs->integer_constant != std::optional<std::int64_t>{15} ||
+      bir_fused.rhs->integer_constant != std::optional<std::int64_t>{21}) {
+    return fail(
+        "production BIR fused compare producer facts should match prepared branch-condition oracle");
+  }
+
+  const auto prepared_condition =
+      prepare::find_prepared_materialized_condition_producer(
+          prepared.names,
+          &source_producers,
+          branch_condition.block_label,
+          &block,
+          branch_condition.condition_value,
+          block.insts.size());
+  const auto bir_condition = bir::find_materialized_condition_producer_identity(
+      block, branch_condition.condition_value, block.insts.size());
+  if (!prepared_condition.has_value() ||
+      !bir_condition.available ||
+      bir_condition.binary != prepared_condition->binary ||
+      bir_condition.instruction_index != prepared_condition->instruction_index ||
+      prepared.names.value_names.find(bir_condition.condition_value_name) !=
+          prepared_condition->condition_value_name ||
+      !bir_condition.lhs.has_value() ||
+      !bir_condition.rhs.has_value()) {
+    return fail(
+        "production BIR materialized condition facts should match prepared condition oracle");
+  }
+
+  return 0;
+}
+
 int verify_bir_call_result_source_identity_lookup() {
   prepare::PreparedNameTables names;
   const auto block_label = names.block_labels.intern("entry");
@@ -6553,6 +6689,11 @@ int main() {
   }
   if (const int result =
           verify_prepared_bir_comparison_condition_producer_equivalence();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_production_bir_comparison_condition_producer_equivalence();
       result != 0) {
     return result;
   }
