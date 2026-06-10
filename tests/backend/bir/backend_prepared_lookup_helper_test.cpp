@@ -58,6 +58,93 @@ bool expect_same(const void* actual, const void* expected, std::string_view mess
   return true;
 }
 
+mir::SameBlockProducerKind expected_bir_producer_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return mir::SameBlockProducerKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return mir::SameBlockProducerKind::Cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return mir::SameBlockProducerKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return mir::SameBlockProducerKind::LoadGlobal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return mir::SameBlockProducerKind::Select;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return mir::SameBlockProducerKind::Unknown;
+  }
+  return mir::SameBlockProducerKind::Unknown;
+}
+
+bool prepared_and_bir_scalar_producers_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    mir::SameBlockValueMaterializationQuery bir_query,
+    const bir::Value& value,
+    prepare::PreparedEdgePublicationSourceProducerKind expected_kind) {
+  const auto prepared =
+      prepare::find_prepared_same_block_scalar_producer(
+          names, &source_producers, block_label, &block, value,
+          bir_query.before_instruction_index);
+  const auto bir = mir::find_same_block_scalar_producer(bir_query, value);
+  if (!prepared.has_value() || !bir.has_value()) {
+    return false;
+  }
+  const auto expected_bir_kind = expected_bir_producer_kind(expected_kind);
+  return prepared->producer.kind == expected_kind &&
+         prepared->instruction == bir->instruction &&
+         prepared->instruction_index == bir->instruction_index &&
+         prepared->value_name == names.value_names.find(value.name) &&
+         bir->producer.kind == expected_bir_kind &&
+         bir->producer.inst == prepared->instruction &&
+         bir->producer.instruction_index == prepared->instruction_index &&
+         bir->producer.block_label == block.label &&
+         bir->producer.produced_value.name == value.name &&
+         bir->producer.produced_value.type == value.type &&
+         bir->producer.produced_value.value == bir->produced_value &&
+         bir->producer.materialization_available &&
+         bir->produced_value != nullptr &&
+         bir->produced_value->name == value.name &&
+         bir->produced_value->type == value.type;
+}
+
+bool prepared_and_bir_integer_constants_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    mir::SameBlockValueMaterializationQuery bir_query,
+    const bir::Value& value,
+    std::int64_t expected) {
+  const auto prepared =
+      prepare::evaluate_prepared_same_block_integer_constant(
+          names, &source_producers, block_label, &block, value,
+          bir_query.before_instruction_index);
+  const auto bir = mir::evaluate_same_block_integer_constant(bir_query, value);
+  return prepared.has_value() &&
+         bir.has_value() &&
+         *prepared == expected &&
+         bir->value == *prepared;
+}
+
+bool prepared_and_bir_integer_constants_both_fail(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    mir::SameBlockValueMaterializationQuery bir_query,
+    const bir::Value& value) {
+  return !prepare::evaluate_prepared_same_block_integer_constant(
+              names, &source_producers, block_label, &block, value,
+              bir_query.before_instruction_index)
+              .has_value() &&
+         !mir::evaluate_same_block_integer_constant(bir_query, value).has_value();
+}
+
 int verify_prepared_home_same_register_helper() {
   const prepare::PreparedValueHome source_register{
       .value_id = 1,
@@ -2870,6 +2957,10 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto lhs_name = names.value_names.intern("%lhs");
   const auto rhs_name = names.value_names.intern("%rhs");
   const auto sum_name = names.value_names.intern("%sum");
+  const auto wide_name = names.value_names.intern("%wide");
+  const auto from_slot_name = names.value_names.intern("%from_slot");
+  const auto from_global_name = names.value_names.intern("%from_global");
+  const auto choice_name = names.value_names.intern("%choice");
   const auto product_name = names.value_names.intern("%product");
 
   bir::Block block;
@@ -2896,6 +2987,32 @@ int verify_prepared_same_block_scalar_source_facts() {
       .lhs = bir::Value::named(bir::TypeKind::I64, "%lhs"),
       .rhs = bir::Value::named(bir::TypeKind::I64, "%rhs"),
   });
+  block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%wide"),
+      .operand = bir::Value::named(bir::TypeKind::I64, "%sum"),
+  });
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%from_slot"),
+      .slot_name = "local0",
+      .byte_offset = 8,
+      .align_bytes = 8,
+  });
+  block.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%from_global"),
+      .global_name = "global0",
+      .byte_offset = 16,
+      .align_bytes = 8,
+  });
+  block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I64, "%choice"),
+      .compare_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .rhs = bir::Value::immediate_i64(21),
+      .true_value = bir::Value::named(bir::TypeKind::I64, "%wide"),
+      .false_value = bir::Value::named(bir::TypeKind::I64, "%from_slot"),
+  });
   block.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Mul,
       .result = bir::Value::named(bir::TypeKind::I64, "%product"),
@@ -2907,7 +3024,11 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto* lhs = std::get_if<bir::BinaryInst>(&block.insts[0]);
   const auto* rhs = std::get_if<bir::BinaryInst>(&block.insts[1]);
   const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[2]);
-  const auto* product = std::get_if<bir::BinaryInst>(&block.insts[3]);
+  const auto* wide = std::get_if<bir::CastInst>(&block.insts[3]);
+  const auto* from_slot = std::get_if<bir::LoadLocalInst>(&block.insts[4]);
+  const auto* from_global = std::get_if<bir::LoadGlobalInst>(&block.insts[5]);
+  const auto* choice = std::get_if<bir::SelectInst>(&block.insts[6]);
+  const auto* product = std::get_if<bir::BinaryInst>(&block.insts[7]);
 
   prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
   source_producers.producers_by_value_name.emplace(
@@ -2935,11 +3056,44 @@ int verify_prepared_same_block_scalar_source_facts() {
           .binary = sum,
       });
   source_producers.producers_by_value_name.emplace(
+      wide_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast,
+          .block_label = block_label,
+          .instruction_index = 3,
+          .cast = wide,
+      });
+  source_producers.producers_by_value_name.emplace(
+      from_slot_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 4,
+          .load_local = from_slot,
+      });
+  source_producers.producers_by_value_name.emplace(
+      from_global_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 5,
+          .load_global = from_global,
+      });
+  source_producers.producers_by_value_name.emplace(
+      choice_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 6,
+          .select = choice,
+      });
+  source_producers.producers_by_value_name.emplace(
       product_name,
       prepare::PreparedEdgePublicationSourceProducer{
           .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
           .block_label = block_label,
-          .instruction_index = 3,
+          .instruction_index = 7,
           .binary = product,
       });
 
@@ -2950,7 +3104,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
-          4);
+          block.insts.size());
   if (!prepared_sum.has_value() ||
       prepared_sum->producer.binary != sum ||
       prepared_sum->instruction_index != 2 ||
@@ -2960,7 +3114,7 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto bir_query = mir::SameBlockValueMaterializationQuery{
       .block = &block,
       .block_label = "entry",
-      .before_instruction_index = 4,
+      .before_instruction_index = block.insts.size(),
   };
   const auto bir_sum =
       mir::find_same_block_scalar_producer(
@@ -2974,6 +3128,64 @@ int verify_prepared_same_block_scalar_source_facts() {
       bir_sum->produced_value->name != "%sum") {
     return fail("BIR same-block scalar producer query should match prepared scalar producer oracle");
   }
+  if (!prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%lhs"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%rhs"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%wide"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot"),
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_global"),
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%choice"),
+          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization) ||
+      !prepared_and_bir_scalar_producers_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%product"),
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary)) {
+    return fail("BIR scalar producer query should match prepared oracle across supported producer kinds");
+  }
   const auto current_block_sum =
       prepare::find_prepared_current_block_publication_consumption(
           names,
@@ -2981,7 +3193,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           sum_name,
-          4);
+          block.insts.size());
   if (!current_block_sum.available ||
       current_block_sum.source_producer == nullptr ||
       current_block_sum.source_producer->binary != sum ||
@@ -3001,7 +3213,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%product"),
-          4);
+          block.insts.size());
   if (!product_constant.has_value() || *product_constant != 42) {
     return fail("prepared integer constant query should fold prepared same-block producers");
   }
@@ -3012,6 +3224,70 @@ int verify_prepared_same_block_scalar_source_facts() {
       bir_product_constant->value != *product_constant ||
       bir_product_constant->depth != 0U) {
     return fail("BIR same-block integer constant query should match prepared oracle");
+  }
+  if (!prepared_and_bir_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::immediate_i64(7),
+          7) ||
+      !prepared_and_bir_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%lhs"),
+          5) ||
+      !prepared_and_bir_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%rhs"),
+          16) ||
+      !prepared_and_bir_integer_constants_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          21)) {
+    return fail("BIR integer constant query should match prepared oracle for immediate and binary constants");
+  }
+  if (!prepared_and_bir_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%wide")) ||
+      !prepared_and_bir_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_slot")) ||
+      !prepared_and_bir_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%from_global")) ||
+      !prepared_and_bir_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I64, "%choice"))) {
+    return fail("integer constant equivalence should fail closed for nonconstant scalar producers");
   }
 
   const prepare::PreparedBranchCondition fused_compare_condition{
@@ -3032,7 +3308,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           fused_compare_condition,
-          4);
+          block.insts.size());
   if (!operand_producer_facts.has_value() ||
       !operand_producer_facts->lhs.has_value() ||
       !operand_producer_facts->rhs.has_value() ||
@@ -3054,7 +3330,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           materialized_condition,
-          4)
+          block.insts.size())
           .has_value()) {
     return fail("fused compare operand producer query should fail closed by kind");
   }
@@ -3065,14 +3341,14 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%product"),
-          3)
+          7)
           .has_value()) {
     return fail("scalar source facade should fail closed for future producers");
   }
   const auto before_product_query = mir::SameBlockValueMaterializationQuery{
       .block = &block,
       .block_label = "entry",
-      .before_instruction_index = 3,
+      .before_instruction_index = 7,
   };
   if (mir::find_same_block_scalar_producer(
           before_product_query, bir::Value::named(bir::TypeKind::I64, "%product"))
@@ -3088,7 +3364,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           product_name,
-          3)
+          7)
           .available) {
     return fail("current-block publication consumption query should fail closed for future producers");
   }
@@ -3098,20 +3374,48 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%missing"),
-          4)
+          block.insts.size())
           .has_value()) {
     return fail("prepared integer constant query should fail closed for missing facts");
+  }
+  if (prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          block.insts.size())
+          .has_value() ||
+      mir::find_same_block_scalar_producer(
+          bir_query, bir::Value::named(bir::TypeKind::I64, "%missing"))
+          .has_value()) {
+    return fail("same-block scalar producer queries should both fail closed for missing facts");
+  }
+  if (mir::find_same_block_scalar_producer(
+          bir_query, bir::Value::named(bir::TypeKind::I32, "%sum"))
+          .has_value()) {
+    return fail("BIR scalar producer query should fail closed for mismatched value type");
   }
 
   auto mismatched_source_producers = source_producers;
   mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 1;
+  if (prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &mismatched_source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          block.insts.size())
+          .has_value()) {
+    return fail("prepared scalar producer query should fail closed on mismatched producer facts");
+  }
   if (prepare::find_prepared_current_block_publication_consumption(
           names,
           &mismatched_source_producers,
           block_label,
           &block,
           sum_name,
-          4)
+          block.insts.size())
           .available) {
     return fail("current-block publication consumption query should fail closed on mismatched producer facts");
   }
@@ -3121,7 +3425,7 @@ int verify_prepared_same_block_scalar_source_facts() {
           block_label,
           &block,
           bir::Value::named(bir::TypeKind::I64, "%product"),
-          4)
+          block.insts.size())
           .has_value()) {
     return fail("prepared integer constant query should fail closed on mismatched producer facts");
   }
