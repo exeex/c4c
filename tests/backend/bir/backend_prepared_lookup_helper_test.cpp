@@ -2,6 +2,7 @@
 #include "src/backend/prealloc/module.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
+#include "src/backend/mir/query.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -14,6 +15,7 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(std::string_view message) {
@@ -2955,6 +2957,23 @@ int verify_prepared_same_block_scalar_source_facts() {
       prepared_sum->value_name != sum_name) {
     return fail("value-based scalar source facade should expose prepared producer facts");
   }
+  const auto bir_query = mir::SameBlockValueMaterializationQuery{
+      .block = &block,
+      .block_label = "entry",
+      .before_instruction_index = 4,
+  };
+  const auto bir_sum =
+      mir::find_same_block_scalar_producer(
+          bir_query, bir::Value::named(bir::TypeKind::I64, "%sum"));
+  if (!bir_sum.has_value() ||
+      bir_sum->producer.kind != mir::SameBlockProducerKind::Binary ||
+      bir_sum->producer.inst != prepared_sum->instruction ||
+      bir_sum->instruction != prepared_sum->instruction ||
+      bir_sum->instruction_index != prepared_sum->instruction_index ||
+      bir_sum->produced_value == nullptr ||
+      bir_sum->produced_value->name != "%sum") {
+    return fail("BIR same-block scalar producer query should match prepared scalar producer oracle");
+  }
   const auto current_block_sum =
       prepare::find_prepared_current_block_publication_consumption(
           names,
@@ -2985,6 +3004,14 @@ int verify_prepared_same_block_scalar_source_facts() {
           4);
   if (!product_constant.has_value() || *product_constant != 42) {
     return fail("prepared integer constant query should fold prepared same-block producers");
+  }
+  const auto bir_product_constant =
+      mir::evaluate_same_block_integer_constant(
+          bir_query, bir::Value::named(bir::TypeKind::I64, "%product"));
+  if (!bir_product_constant.has_value() ||
+      bir_product_constant->value != *product_constant ||
+      bir_product_constant->depth != 0U) {
+    return fail("BIR same-block integer constant query should match prepared oracle");
   }
 
   const prepare::PreparedBranchCondition fused_compare_condition{
@@ -3041,6 +3068,19 @@ int verify_prepared_same_block_scalar_source_facts() {
           3)
           .has_value()) {
     return fail("scalar source facade should fail closed for future producers");
+  }
+  const auto before_product_query = mir::SameBlockValueMaterializationQuery{
+      .block = &block,
+      .block_label = "entry",
+      .before_instruction_index = 3,
+  };
+  if (mir::find_same_block_scalar_producer(
+          before_product_query, bir::Value::named(bir::TypeKind::I64, "%product"))
+          .has_value() ||
+      mir::evaluate_same_block_integer_constant(
+          before_product_query, bir::Value::named(bir::TypeKind::I64, "%product"))
+          .has_value()) {
+    return fail("BIR same-block queries should fail closed for future producers like prepared oracle");
   }
   if (prepare::find_prepared_current_block_publication_consumption(
           names,

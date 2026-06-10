@@ -85,6 +85,23 @@ struct SameBlockIntegerConstant {
   unsigned depth = 0;
 };
 
+struct SameBlockValueMaterializationQuery {
+  const bir::Block* block = nullptr;
+  std::string_view block_label;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const { return block != nullptr; }
+};
+
+struct SameBlockScalarProducer {
+  SameBlockProducerIdentity producer;
+  const bir::Inst* instruction = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const { return producer && instruction != nullptr; }
+};
+
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;
@@ -122,6 +139,11 @@ using DependencyPredicate = bool (*)(const DependencyTraversalRecord& record);
 [[nodiscard]] SameBlockProducerIdentity find_same_block_producer_identity(
     SameBlockProducerIdentityRequest request);
 
+[[nodiscard]] std::optional<SameBlockScalarProducer>
+find_same_block_scalar_producer(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value);
+
 [[nodiscard]] const bir::Inst* find_same_block_named_producer(
     const bir::Block* block,
     std::string_view value_name,
@@ -140,6 +162,11 @@ evaluate_same_block_integer_constant(
     const bir::Block* block,
     const bir::Value& value,
     unsigned depth = 0);
+
+[[nodiscard]] std::optional<SameBlockIntegerConstant>
+evaluate_same_block_integer_constant(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value);
 
 [[nodiscard]] bool select_chain_contains_dependency(
     const bir::Block* block,

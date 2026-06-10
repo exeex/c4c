@@ -86,6 +86,20 @@ namespace {
   return block.label;
 }
 
+[[nodiscard]] const bir::Value* produced_value_for_same_block_producer(
+    const SameBlockProducerIdentity& producer) {
+  if (!producer) {
+    return nullptr;
+  }
+  return producer.produced_value.value;
+}
+
+[[nodiscard]] std::optional<SameBlockIntegerConstant>
+evaluate_same_block_integer_constant(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value,
+    unsigned depth);
+
 }  // namespace
 
 [[nodiscard]] SameBlockBinaryProducer find_same_block_binary_producer(
@@ -176,6 +190,39 @@ namespace {
   return {};
 }
 
+[[nodiscard]] std::optional<SameBlockScalarProducer>
+find_same_block_scalar_producer(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value) {
+  if (!query ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto producer = find_same_block_producer_identity(
+      SameBlockProducerIdentityRequest{
+          .block = query.block,
+          .block_label = query.block_label,
+          .value_name = value.name,
+          .value_type = value.type,
+          .before_instruction_index = query.before_instruction_index,
+      });
+  const auto* produced_value = produced_value_for_same_block_producer(producer);
+  if (!producer ||
+      produced_value == nullptr ||
+      produced_value->kind != bir::Value::Kind::Named ||
+      produced_value->name != value.name ||
+      produced_value->type != value.type) {
+    return std::nullopt;
+  }
+  return SameBlockScalarProducer{
+      .producer = producer,
+      .instruction = producer.inst,
+      .produced_value = produced_value,
+      .instruction_index = producer.instruction_index,
+  };
+}
+
 [[nodiscard]] const bir::Inst* find_same_block_named_producer(
     const bir::Block* block,
     std::string_view value_name,
@@ -213,24 +260,56 @@ evaluate_same_block_integer_constant(
     const bir::Block* block,
     const bir::Value& value,
     unsigned depth) {
+  return evaluate_same_block_integer_constant(
+      SameBlockValueMaterializationQuery{
+          .block = block,
+          .before_instruction_index = block != nullptr ? block->insts.size() : 0U,
+      },
+      value,
+      depth);
+}
+
+namespace {
+
+[[nodiscard]] std::optional<SameBlockIntegerConstant>
+evaluate_same_block_integer_constant(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value,
+    unsigned depth) {
   if (value.kind == bir::Value::Kind::Immediate) {
     return SameBlockIntegerConstant{.value = value.immediate, .depth = depth};
   }
-  if (depth > 4U) {
+  if (!query ||
+      depth > 4U ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
     return std::nullopt;
   }
-  const auto binary = find_same_block_binary_producer(block, value);
-  if (!binary) {
+  const auto producer = find_same_block_scalar_producer(query, value);
+  if (!producer.has_value() ||
+      producer->producer.kind != SameBlockProducerKind::Binary ||
+      producer->producer.inst == nullptr) {
     return std::nullopt;
   }
-  const auto lhs = evaluate_same_block_integer_constant(block, binary.binary->lhs, depth + 1);
-  const auto rhs = evaluate_same_block_integer_constant(block, binary.binary->rhs, depth + 1);
+  const auto* binary = std::get_if<bir::BinaryInst>(producer->producer.inst);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto nested_query = SameBlockValueMaterializationQuery{
+      .block = query.block,
+      .block_label = query.block_label,
+      .before_instruction_index = producer->instruction_index,
+  };
+  const auto lhs =
+      evaluate_same_block_integer_constant(nested_query, binary->lhs, depth + 1);
+  const auto rhs =
+      evaluate_same_block_integer_constant(nested_query, binary->rhs, depth + 1);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
   const auto lhs_value = lhs->value;
   const auto rhs_value = rhs->value;
-  switch (binary.binary->opcode) {
+  switch (binary->opcode) {
     case bir::BinaryOpcode::Add:
       return SameBlockIntegerConstant{
           .value = static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs_value) +
@@ -357,6 +436,15 @@ evaluate_same_block_integer_constant(
           .depth = depth};
   }
   return std::nullopt;
+}
+
+}  // namespace
+
+[[nodiscard]] std::optional<SameBlockIntegerConstant>
+evaluate_same_block_integer_constant(
+    SameBlockValueMaterializationQuery query,
+    const bir::Value& value) {
+  return evaluate_same_block_integer_constant(query, value, 0U);
 }
 
 [[nodiscard]] bool select_chain_contains_dependency(

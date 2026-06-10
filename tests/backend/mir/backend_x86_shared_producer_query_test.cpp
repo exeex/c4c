@@ -70,6 +70,13 @@ bir::Block make_query_block() {
       .lhs = named(bir::TypeKind::I64, "%choice"),
       .rhs = bir::Value::immediate_i64(1),
   });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Mul,
+      .result = named(bir::TypeKind::I64, "%late_const"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(6),
+      .rhs = bir::Value::immediate_i64(7),
+  });
   return block;
 }
 
@@ -94,6 +101,27 @@ int x86_facing_code_can_consume_shared_query_records() {
   if (!sum_constant.has_value() || sum_constant->value != 9 ||
       sum_constant->depth != 0U) {
     return fail("expected shared query to evaluate same-block integer constant");
+  }
+  const auto query_at_select = mir::SameBlockValueMaterializationQuery{
+      .block = &block,
+      .block_label = "entry",
+      .before_instruction_index = 4U,
+  };
+  const auto query_after_late_const = mir::SameBlockValueMaterializationQuery{
+      .block = &block,
+      .block_label = "entry",
+      .before_instruction_index = block.insts.size(),
+  };
+  const auto late_const = named(bir::TypeKind::I64, "%late_const");
+  if (mir::find_same_block_scalar_producer(query_at_select, late_const).has_value() ||
+      mir::evaluate_same_block_integer_constant(query_at_select, late_const).has_value()) {
+    return fail("expected BIR same-block queries to reject producers after before-index");
+  }
+  const auto late_constant =
+      mir::evaluate_same_block_integer_constant(query_after_late_const, late_const);
+  if (!late_constant.has_value() || late_constant->value != 42 ||
+      late_constant->depth != 0U) {
+    return fail("expected BIR same-block constant query to honor before-index window");
   }
   const auto immediate = bir::Value::immediate_i64(42);
   const auto immediate_identity = mir::same_block_value_identity(immediate);
@@ -170,7 +198,7 @@ int x86_facing_code_can_consume_shared_query_records() {
           .block_label = "entry",
           .value_name = "%after",
           .value_type = bir::TypeKind::I64,
-          .before_instruction_index = block.insts.size() - 1U,
+          .before_instruction_index = 5U,
       });
   if (future_product) {
     return fail("expected shared query identity to fail closed for future producers");
