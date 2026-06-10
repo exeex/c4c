@@ -1,38 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Lookup/Index Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Query Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for
+Completed Step 4 for
 `ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md`.
-Added BIR-owned function-local Route 2 lookup/index helpers in
-`src/backend/bir/bir.hpp` and `src/backend/bir/bir.cpp`:
+Migrated the narrow shared MIR select-chain query consumer in
+`src/backend/mir/query.cpp` to answer from rebuilt BIR Route 2
+`Route2SelectChainValueIndex` records:
 
-- `Route2SelectChainValueIndex` stores rebuilt
-  `Route2SelectChainValueRecord` payloads for one BIR block.
-- `Route2SelectChainValueQuery` carries a function-local index plus the
-  before-instruction boundary.
-- `route2_build_select_chain_value_index(...)` rebuilds Route 2 value records
-  from the block's BIR annotation construction helpers.
-- `route2_find_select_chain_value_record(...)` performs target-neutral lookup
-  over Route 2 records by named root value, value type, and before-boundary.
+- `find_bir_select_chain_source_producer(...)` now maps the Route 2 root
+  producer record into the existing MIR same-block producer identity.
+- `find_bir_select_chain_direct_global_dependency(...)` now maps the Route 2
+  direct-global dependency record instead of walking select/cast/binary
+  producers recursively.
+- `find_bir_select_chain_scalar_materialization_eligibility(...)` now reads the
+  Route 2 scalar-materialization availability bit.
+- `find_bir_select_chain_identity(...)` now assembles the public MIR identity
+  from a single Route 2 value record.
 
-Extended `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` so the
-Route 2 index is proved separately from prepared storage. Coverage now checks
-direct-global success, explicit no-dependency local roots, select roots,
-non-select nested roots, before-producer boundaries, type/name mismatches, and
-missing roots. No production MIR, AArch64, or prealloc consumer was switched.
+Removed the old private recursive select-chain dependency walk from the shared
+query path. Corrected the Route 2 lookup key so an explicit non-void
+`BirSelectChainIdentityRequest::root_value_type` overrides
+`root_value->type` when building the BIR lookup value.
+
+Existing `backend_prepared_lookup_helper` coverage continues to use
+prepared/prealloc results as oracle checks for direct-global success, explicit
+no-dependency, select-root, non-select-root, before-boundary, type mismatch, and
+missing-root cases. Added a focused fail-closed case where `root_value` points
+at an existing root but `root_value_type` is an explicit mismatched type. No
+AArch64 codegen files or prealloc production helpers were edited.
 
 ## Suggested Next
 
-Execute Step 4 by adding the first low-risk consumer migration over the Route 2
-BIR index, keeping prepared/prealloc helpers as oracle checks and avoiding
-AArch64 target-policy leakage.
+Execute Step 5 by adding any final target-neutral validation/cleanup needed for
+the Route 2 schema migration, or request review if the runbook is exhausted.
 
 ## Watchouts
 
@@ -49,22 +56,24 @@ AArch64 target-policy leakage.
 - The existing `CallArgumentDirectGlobalSelectChainDependency` is a useful
   migration quarantine, but Step 2 should not broaden into call consumer
   switching.
-- Step 3 intentionally allows the Route 2 index builder to reuse Route 1
-  construction helpers, but `route2_find_select_chain_value_record(...)`
-  answers only from rebuilt Route 2 records.
+- Step 4 rebuilds a Route 2 index per shared MIR select-chain query request.
+  That is intentionally low-risk for migration; later work can cache or thread
+  an index if a production hot path needs it.
+- Route 2 select-chain lookup must continue to honor explicit non-void request
+  types over the pointed `root_value` type.
 - `Route2SelectChainDirectGlobalDependencyRecord::available == true` with
   `contains_direct_global_load == false` is the explicit no-dependency state
   for roots such as `LoadLocalInst`; an unavailable Route 2 value record remains
   the absent/fail-closed state for missing roots or before-producer queries.
-- The new Route 2 index is function-local/block-backed and currently has no
-  production consumer switch.
+- The shared MIR query consumer is now switched, but target/AArch64 policy
+  remains outside the BIR Route 2 schema and was not edited in this packet.
 
 ## Proof
 
 Exact delegated proof passed:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$' > test_after.log
 ```
 
 Additional local validation: `git diff --check` passed.

@@ -8,6 +8,16 @@
 
 namespace c4c::backend::mir {
 
+namespace {
+
+[[nodiscard]] std::string_view root_value_name(
+    const BirSelectChainIdentityRequest& request);
+
+[[nodiscard]] bir::TypeKind root_value_type(
+    const BirSelectChainIdentityRequest& request);
+
+}  // namespace
+
 [[nodiscard]] BirMemoryAccessNodeKind bir_memory_access_node_kind(
     const bir::Inst& inst) {
   return std::visit(
@@ -188,7 +198,36 @@ void populate_bir_memory_address_identity(
   return SameBlockProducerKind::Unknown;
 }
 
+[[nodiscard]] SameBlockProducerKind route2_select_chain_producer_kind_to_same_block_kind(
+    bir::Route2SelectChainProducerKind kind) {
+  switch (kind) {
+    case bir::Route2SelectChainProducerKind::Binary:
+      return SameBlockProducerKind::Binary;
+    case bir::Route2SelectChainProducerKind::Cast:
+      return SameBlockProducerKind::Cast;
+    case bir::Route2SelectChainProducerKind::Select:
+      return SameBlockProducerKind::Select;
+    case bir::Route2SelectChainProducerKind::LoadLocal:
+      return SameBlockProducerKind::LoadLocal;
+    case bir::Route2SelectChainProducerKind::LoadGlobal:
+      return SameBlockProducerKind::LoadGlobal;
+    case bir::Route2SelectChainProducerKind::Unknown:
+      return SameBlockProducerKind::Unknown;
+  }
+  return SameBlockProducerKind::Unknown;
+}
+
 [[nodiscard]] SameBlockValueIdentity route1_source_value_identity_to_same_block(
+    const bir::Route1SourceValueIdentity& source) {
+  return SameBlockValueIdentity{
+      .value = source.value,
+      .name = source.name,
+      .type = source.type,
+      .immediate_constant = source.integer_constant,
+  };
+}
+
+[[nodiscard]] SameBlockValueIdentity route2_source_value_identity_to_same_block(
     const bir::Route1SourceValueIdentity& source) {
   return SameBlockValueIdentity{
       .value = source.value,
@@ -221,6 +260,91 @@ void populate_bir_memory_address_identity(
       .materialization_available =
           record.materialization.scalar_materialization_available,
   };
+}
+
+[[nodiscard]] SameBlockProducerIdentity
+route2_select_chain_producer_record_to_same_block(
+    const bir::Route2SelectChainValueRecord& record,
+    const bir::Block& block,
+    std::string_view block_label,
+    std::size_t before_instruction_index) {
+  if (!record ||
+      !record.root_producer ||
+      record.root_producer.instruction == nullptr ||
+      record.root_value.value == nullptr) {
+    return {};
+  }
+  const auto kind = route2_select_chain_producer_kind_to_same_block_kind(
+      record.root_producer.kind);
+  if (kind == SameBlockProducerKind::Unknown) {
+    return {};
+  }
+  return SameBlockProducerIdentity{
+      .inst = record.root_producer.instruction,
+      .instruction_index = record.root_producer.instruction_index,
+      .kind = kind,
+      .block_label = normalized_block_label(block, block_label),
+      .before_instruction_index = before_instruction_index,
+      .produced_value = route2_source_value_identity_to_same_block(
+          record.root_value),
+      .materialization_available = record.scalar_materialization_available,
+  };
+}
+
+[[nodiscard]] BirSelectChainDirectGlobalDependency
+route2_select_chain_direct_global_dependency_to_mir(
+    const bir::Route2SelectChainDirectGlobalDependencyRecord& record) {
+  if (!record ||
+      !record.contains_direct_global_load ||
+      record.load_global == nullptr) {
+    return {};
+  }
+  return BirSelectChainDirectGlobalDependency{
+      .contains_direct_global_load = true,
+      .load_global = record.load_global,
+      .instruction_index = record.direct_load_instruction_index,
+  };
+}
+
+[[nodiscard]] std::optional<bir::Route2SelectChainValueRecord>
+find_route2_select_chain_value_record(BirSelectChainIdentityRequest request) {
+  if (!request) {
+    return std::nullopt;
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return std::nullopt;
+  }
+  const auto index = bir::route2_build_select_chain_value_index(*request.block);
+  const auto before = std::min(request.before_instruction_index,
+                               request.block->insts.size());
+  const auto value_type = root_value_type(request);
+  if (value_type != bir::TypeKind::Void) {
+    const auto lookup_value =
+        bir::Value::named(value_type, std::string(value_name));
+    const auto* record = bir::route2_find_select_chain_value_record(
+        bir::Route2SelectChainValueQuery{
+            .index = &index,
+            .before_instruction_index = before,
+        },
+        lookup_value);
+    if (record == nullptr) {
+      return std::nullopt;
+    }
+    return *record;
+  }
+  for (auto it = index.records.rbegin(); it != index.records.rend(); ++it) {
+    const auto& record = *it;
+    if (!record ||
+        record.root_value.value_kind != bir::Value::Kind::Named ||
+        record.root_value.name != value_name ||
+        !record.root_instruction_index.has_value() ||
+        *record.root_instruction_index >= before) {
+      continue;
+    }
+    return record;
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] SameBlockProducerIdentity find_route1_producer_identity(
@@ -298,14 +422,6 @@ route1_integer_constant_to_same_block(
       .value = constant->value,
       .depth = constant->depth,
   };
-}
-
-[[nodiscard]] const bir::Value* produced_value_for_same_block_producer(
-    const SameBlockProducerIdentity& producer) {
-  if (!producer) {
-    return nullptr;
-  }
-  return producer.produced_value.value;
 }
 
 [[nodiscard]] std::string_view root_value_name(
@@ -598,68 +714,6 @@ evaluate_same_block_integer_constant(
     SameBlockValueMaterializationQuery query,
     const bir::Value& value,
     unsigned depth);
-
-[[nodiscard]] std::optional<BirSelectChainDirectGlobalDependency>
-find_bir_select_chain_direct_global_dependency(
-    const bir::Block* block,
-    const bir::Value& value,
-    std::size_t before_instruction_index,
-    unsigned depth) {
-  if (block == nullptr ||
-      depth > 64U ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return std::nullopt;
-  }
-  const auto producer = find_same_block_producer_identity(
-      SameBlockProducerIdentityRequest{
-          .block = block,
-          .value_name = value.name,
-          .value_type = value.type,
-          .before_instruction_index = before_instruction_index,
-      });
-  if (!producer || producer.inst == nullptr) {
-    return std::nullopt;
-  }
-  const auto nested_before = producer.instruction_index;
-  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(producer.inst);
-      load_global != nullptr) {
-    return BirSelectChainDirectGlobalDependency{
-        .contains_direct_global_load = true,
-        .load_global = load_global,
-        .instruction_index = producer.instruction_index,
-    };
-  }
-  if (std::get_if<bir::LoadLocalInst>(producer.inst) != nullptr) {
-    return BirSelectChainDirectGlobalDependency{};
-  }
-  if (const auto* select = std::get_if<bir::SelectInst>(producer.inst);
-      select != nullptr) {
-    const auto true_value = find_bir_select_chain_direct_global_dependency(
-        block, select->true_value, nested_before, depth + 1U);
-    if (!true_value.has_value() || *true_value) {
-      return true_value;
-    }
-    return find_bir_select_chain_direct_global_dependency(
-        block, select->false_value, nested_before, depth + 1U);
-  }
-  if (const auto* cast = std::get_if<bir::CastInst>(producer.inst);
-      cast != nullptr) {
-    return find_bir_select_chain_direct_global_dependency(
-        block, cast->operand, nested_before, depth + 1U);
-  }
-  if (const auto* binary = std::get_if<bir::BinaryInst>(producer.inst);
-      binary != nullptr) {
-    const auto lhs = find_bir_select_chain_direct_global_dependency(
-        block, binary->lhs, nested_before, depth + 1U);
-    if (!lhs.has_value() || *lhs) {
-      return lhs;
-    }
-    return find_bir_select_chain_direct_global_dependency(
-        block, binary->rhs, nested_before, depth + 1U);
-  }
-  return std::nullopt;
-}
 
 }  // namespace
 
@@ -1241,74 +1295,60 @@ find_bir_same_block_load_local_source_identity(
 
 [[nodiscard]] SameBlockProducerIdentity find_bir_select_chain_source_producer(
     BirSelectChainIdentityRequest request) {
-  if (!request) {
+  const auto record = find_route2_select_chain_value_record(request);
+  if (!record.has_value() || request.block == nullptr) {
     return {};
   }
-  const auto value_name = root_value_name(request);
-  if (value_name.empty()) {
-    return {};
-  }
-  return find_same_block_producer_identity(SameBlockProducerIdentityRequest{
-      .block = request.block,
-      .block_label = request.block_label,
-      .value_name = value_name,
-      .value_type = root_value_type(request),
-      .before_instruction_index = request.before_instruction_index,
-  });
+  return route2_select_chain_producer_record_to_same_block(
+      *record, *request.block, request.block_label,
+      request.before_instruction_index);
 }
 
 [[nodiscard]] BirSelectChainDirectGlobalDependency
 find_bir_select_chain_direct_global_dependency(
     BirSelectChainIdentityRequest request) {
-  const auto root = find_bir_select_chain_source_producer(request);
-  const auto* root_value = produced_value_for_same_block_producer(root);
-  if (!root || root_value == nullptr) {
+  const auto record = find_route2_select_chain_value_record(request);
+  if (!record.has_value()) {
     return {};
   }
-  const auto dependency = find_bir_select_chain_direct_global_dependency(
-      request.block, *root_value, request.before_instruction_index, 0U);
-  if (!dependency.has_value()) {
-    return {};
-  }
-  return *dependency;
+  return route2_select_chain_direct_global_dependency_to_mir(
+      record->direct_global_dependency);
 }
 
 [[nodiscard]] bool find_bir_select_chain_scalar_materialization_eligibility(
     BirSelectChainIdentityRequest request) {
-  const auto root = find_bir_select_chain_source_producer(request);
-  const auto* root_value = produced_value_for_same_block_producer(root);
-  if (!root || root_value == nullptr) {
-    return false;
-  }
-  return find_same_block_scalar_producer(
-             SameBlockValueMaterializationQuery{
-                 .block = request.block,
-                 .block_label = request.block_label,
-                 .before_instruction_index = request.before_instruction_index,
-             },
-             *root_value)
-      .has_value();
+  const auto record = find_route2_select_chain_value_record(request);
+  return record.has_value() && record->scalar_materialization_available;
 }
 
 [[nodiscard]] BirSelectChainIdentity find_bir_select_chain_identity(
     BirSelectChainIdentityRequest request) {
-  const auto root = find_bir_select_chain_source_producer(request);
-  const auto* root_value = produced_value_for_same_block_producer(root);
-  if (!root || root_value == nullptr) {
+  const auto record = find_route2_select_chain_value_record(request);
+  if (!record.has_value() || request.block == nullptr) {
+    return BirSelectChainIdentity{
+        .root_value_name = root_value_name(request),
+    };
+  }
+  const auto root = route2_select_chain_producer_record_to_same_block(
+      *record, *request.block, request.block_label,
+      request.before_instruction_index);
+  if (!root) {
     return BirSelectChainIdentity{
         .root_value_name = root_value_name(request),
     };
   }
   return BirSelectChainIdentity{
       .root_producer = root,
-      .root_value = same_block_value_identity(*root_value),
-      .root_value_name = root_value->name,
-      .root_is_select = root.kind == SameBlockProducerKind::Select,
-      .root_instruction_index = root.instruction_index,
+      .root_value = route2_source_value_identity_to_same_block(
+          record->root_value),
+      .root_value_name = record->root_value_name,
+      .root_is_select = record->root_is_select,
+      .root_instruction_index = record->root_instruction_index,
       .direct_global_dependency =
-          find_bir_select_chain_direct_global_dependency(request),
+          route2_select_chain_direct_global_dependency_to_mir(
+              record->direct_global_dependency),
       .scalar_materialization_available =
-          find_bir_select_chain_scalar_materialization_eligibility(request),
+          record->scalar_materialization_available,
   };
 }
 

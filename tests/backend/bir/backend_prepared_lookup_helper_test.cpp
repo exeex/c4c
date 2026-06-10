@@ -4849,6 +4849,28 @@ int verify_direct_global_select_chain_dependency_query() {
           bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root"))) {
     return fail("BIR select-chain queries and Route 2 records should match prepared fail-closed boundary and mismatch paths");
   }
+  const auto explicit_mismatched_type_request = mir::BirSelectChainIdentityRequest{
+      .block = &block,
+      .block_label = block.label,
+      .root_value = &selected,
+      .root_value_name = selected.name,
+      .root_value_type = bir::TypeKind::I64,
+      .before_instruction_index = before_end,
+  };
+  const auto explicit_mismatched_type_identity =
+      mir::find_bir_select_chain_identity(explicit_mismatched_type_request);
+  if (mir::find_bir_select_chain_source_producer(
+          explicit_mismatched_type_request) ||
+      mir::find_bir_select_chain_direct_global_dependency(
+          explicit_mismatched_type_request) ||
+      mir::find_bir_select_chain_scalar_materialization_eligibility(
+          explicit_mismatched_type_request) ||
+      explicit_mismatched_type_identity ||
+      explicit_mismatched_type_identity.direct_global_dependency ||
+      explicit_mismatched_type_identity.scalar_materialization_available ||
+      explicit_mismatched_type_identity.root_instruction_index.has_value()) {
+    return fail("BIR select-chain Route 2 lookup should honor explicit mismatched request types");
+  }
 
   const auto missing_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
