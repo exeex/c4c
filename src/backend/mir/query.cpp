@@ -1189,34 +1189,77 @@ find_bir_block_entry_publication_identity(
   result.destination_value_name = value_name;
   result.destination_value_type = value_type;
 
-  for (std::size_t index = 0; index < request.successor_block->insts.size();
-       ++index) {
-    const auto& inst = request.successor_block->insts[index];
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
-      break;
+  bir::Function function;
+  function.blocks.push_back(*request.successor_block);
+  const auto& indexed_successor = function.blocks.front();
+  const auto route4_publications =
+      bir::route4_build_publication_availability_index(function);
+
+  bir::Route4BlockEntryPublicationRecord publication;
+  const bir::Route4BlockEntryPublicationRecord* publication_record = nullptr;
+  if (value_type != bir::TypeKind::Void) {
+    publication = bir::route4_find_block_entry_publication(
+        route4_publications,
+        indexed_successor,
+        bir::Value::named(value_type, std::string{value_name}));
+    publication_record = &publication;
+  } else {
+    for (const auto& candidate : route4_publications.block_entry_records) {
+      if (candidate && candidate.destination_value_name == value_name) {
+        publication_record = &candidate;
+        break;
+      }
     }
-    if (phi->result.kind != bir::Value::Kind::Named ||
-        phi->result.name != value_name) {
-      continue;
-    }
-    if (value_type != bir::TypeKind::Void && phi->result.type != value_type) {
-      result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
-      return result;
-    }
-    result.available = true;
-    result.status = BirBlockEntryPublicationStatus::Available;
-    result.instruction = &inst;
-    result.phi = phi;
-    result.instruction_index = index;
-    result.destination_value = &phi->result;
-    result.destination_value_identity = same_block_value_identity(phi->result);
-    result.destination_value_name = phi->result.name;
-    result.destination_value_type = phi->result.type;
-    return result;
   }
 
-  result.status = BirBlockEntryPublicationStatus::MissingPublication;
+  if (publication_record == nullptr) {
+    result.status = BirBlockEntryPublicationStatus::MissingPublication;
+    return result;
+  }
+  if (!*publication_record) {
+    switch (publication_record->status) {
+      case bir::Route4PublicationAvailabilityStatus::MissingValue:
+      case bir::Route4PublicationAvailabilityStatus::NoMatch:
+        result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+        return result;
+      case bir::Route4PublicationAvailabilityStatus::Unavailable:
+      case bir::Route4PublicationAvailabilityStatus::MissingBlock:
+      case bir::Route4PublicationAvailabilityStatus::MissingPublication:
+      case bir::Route4PublicationAvailabilityStatus::AlternateSource:
+      case bir::Route4PublicationAvailabilityStatus::Available:
+        result.status = BirBlockEntryPublicationStatus::MissingPublication;
+        return result;
+    }
+  }
+
+  if (publication_record->destination_instruction_index >=
+      request.successor_block->insts.size()) {
+    result.status = BirBlockEntryPublicationStatus::MissingPublication;
+    return result;
+  }
+  const auto& inst =
+      request.successor_block
+          ->insts[publication_record->destination_instruction_index];
+  const auto* phi = std::get_if<bir::PhiInst>(&inst);
+  if (phi == nullptr ||
+      phi->result.kind != bir::Value::Kind::Named ||
+      phi->result.name != publication_record->destination_value_name) {
+    result.status = BirBlockEntryPublicationStatus::MissingPublication;
+    return result;
+  }
+  if (value_type != bir::TypeKind::Void && phi->result.type != value_type) {
+    result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+    return result;
+  }
+  result.available = true;
+  result.status = BirBlockEntryPublicationStatus::Available;
+  result.instruction = &inst;
+  result.phi = phi;
+  result.instruction_index = publication_record->destination_instruction_index;
+  result.destination_value = &phi->result;
+  result.destination_value_identity = same_block_value_identity(phi->result);
+  result.destination_value_name = phi->result.name;
+  result.destination_value_type = phi->result.type;
   return result;
 }
 
