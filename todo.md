@@ -1,54 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/151_phase_a_bir_normalization_candidate_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Candidate BIR Relationships
+Current Step ID: 3
+Current Step Title: Classify Rejected Prepared Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` classified the BIR-normalization candidate table in
+Step 3 of `plan.md` classified the facts rejected from BIR normalization in
 `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`.
 
-Completed candidate domains:
+Completed reject groups:
 
-- same-block producer/materialization
-- select-chain dependency/materialization
-- current-block entry publication consumption
-- edge-publication and parallel-copy source identity
-- call-boundary source/dependency identity
-- memory/access source identity
-- comparison/materialized-condition producer identity
+- ABI register/stack placement
+- stack offsets, frame slots, and saved-register placement
+- register spelling, banks, views, occupied registers, and operand conversion
+- scratch policy and aggregate transport lanes
+- target addressing modes, TLS relocations, and base-plus-offset legality
+- parallel-copy execution and publication routing policy
+- publication hook, storage encoding, and typed stack-source emission payloads
+- final instruction routing, ordering, hazards, and record/error payloads
+- runtime helper, special-carrier, variadic, and dynamic-stack resource policy
+- mixed publication/call/memory payloads from Step 2 candidate rows
 
-Each row now records current owner, current consumers, proposed BIR owner
-surface, semantic rationale, and dependencies/risks where the current prepared
-surface mixes BIR-normalizable identity with prealloc or target policy.
+Each reject row now names current owners and examples, the concrete rejection
+reason, the required non-BIR owner, and the cross-check that the Step 2
+candidate rows do not rely on smuggling target-local payloads into BIR.
 
 ## Suggested Next
 
-Execute Step 3: classify rejected prepared facts in the artifact. Focus on ABI
-placement, stack offsets/frame slots, register spelling/banks/views, scratch
-and aggregate transport policy, target addressing modes/TLS relocations, and
-final instruction routing/order.
+Execute Step 4: order safe normalization routes in the artifact. Group the
+accepted Step 2 candidate rows into route-sized implementation sequences, then
+order them so producer/source identity precedes publication/edge, call, memory,
+and comparison consumers.
 
 ## Watchouts
 
 - This plan is analysis-only; do not edit implementation files or test
   expectations.
-- Treat target-specific placement, register spelling, scratch policy, final
-  emission, and target addressing facts as reject candidates unless a separate
-  target-neutral semantic relationship is proven.
-- Step 2 classified only target-neutral relationship identity as BIR
-  candidates. The same rows intentionally call out mixed payloads that Step 3
-  should reject rather than carry into BIR.
-- Call, edge-publication, and memory/addressing surfaces are the riskiest mixed
-  domains because they colocate semantic source/access identity with ABI,
-  home, stack, register, TLS, addressing-mode, and copy-routing policy.
+- Step 3 rejects are not dead code; they are required prealloc, ABI, stack,
+  regalloc, MIR, or AArch64 ownership boundaries.
+- Step 4 should preserve the split: BIR routes may depend on target-neutral
+  producer/source/access identity, but not on homes, stack offsets, register
+  spelling, ABI placement, TLS relocations, parallel-copy schedule, scratch
+  policy, or final instruction records.
+- Any route that imports a whole mixed `Prepared*Plan`, `Prepared*Publication`,
+  `PreparedAddress`, or `PreparedValueHome` shape into BIR should be treated as
+  route drift.
 
 ## Proof
 
 Analysis-only/docs packet; no build required. Verification for this packet:
-artifact table filled for all seven required Step 2 domains, `todo.md` records
-Step 2 completion, and final diff touches only
-`docs/bir_prealloc_fusion/phase_a_normalization_candidates.md` and `todo.md`.
+used `c4c-clang-tools` symbol inventories for the call, addressing,
+publication, and value-location headers; inspected targeted owner snippets for
+call plans, frame/register placement, address materialization, publication
+plans, control-flow copy routing, and AArch64 instruction records; artifact
+reject table has concrete owner/reason/cross-check entries; `todo.md` records
+Step 3 completion. No `test_after.log` was created because the delegated proof
+explicitly required no build.
