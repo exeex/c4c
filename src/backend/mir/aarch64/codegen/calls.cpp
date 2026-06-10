@@ -6622,10 +6622,28 @@ lower_scalar_call_argument_producers(
     c4c::ValueNameId value_name,
     std::size_t before_instruction_index) {
   if (value_name == c4c::kInvalidValueName ||
-      context.function.prepared_lookups == nullptr ||
       context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
       context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto spelling =
+      prepare::prepared_value_name(context.function.prepared->names, value_name);
+  if (spelling.empty()) {
+    return std::nullopt;
+  }
+  const auto bir_identity =
+      mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = context.bir_block,
+              .block_label = context.bir_block->label,
+              .root_value_name = spelling,
+              .before_instruction_index = before_instruction_index,
+          });
+  if (bir_identity.available && bir_identity.produced_value != nullptr) {
+    return *bir_identity.produced_value;
+  }
+  if (context.function.prepared_lookups == nullptr ||
+      context.control_flow_block == nullptr) {
     return std::nullopt;
   }
   const auto consumption =
