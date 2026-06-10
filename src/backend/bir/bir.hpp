@@ -13,6 +13,7 @@
 namespace c4c::backend::bir {
 
 struct Module;
+struct Block;
 
 struct NameTables {
   NameTables() { reattach(); }
@@ -451,6 +452,87 @@ inline bool operator==(const Value& lhs, const Value& rhs) {
 inline bool operator!=(const Value& lhs, const Value& rhs) {
   return !(lhs == rhs);
 }
+
+enum class Route1ProducerKind : unsigned char {
+  Unknown,
+  Immediate,
+  LoadLocal,
+  LoadGlobal,
+  Cast,
+  Binary,
+  SelectMaterialization,
+};
+
+[[nodiscard]] constexpr std::string_view route1_producer_kind_name(
+    Route1ProducerKind kind) {
+  switch (kind) {
+    case Route1ProducerKind::Unknown:
+      return "unknown";
+    case Route1ProducerKind::Immediate:
+      return "immediate";
+    case Route1ProducerKind::LoadLocal:
+      return "load_local";
+    case Route1ProducerKind::LoadGlobal:
+      return "load_global";
+    case Route1ProducerKind::Cast:
+      return "cast";
+    case Route1ProducerKind::Binary:
+      return "binary";
+    case Route1ProducerKind::SelectMaterialization:
+      return "select_materialization";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr bool route1_producer_kind_has_materialization(
+    Route1ProducerKind kind) {
+  switch (kind) {
+    case Route1ProducerKind::LoadLocal:
+    case Route1ProducerKind::LoadGlobal:
+    case Route1ProducerKind::Cast:
+    case Route1ProducerKind::Binary:
+    case Route1ProducerKind::SelectMaterialization:
+      return true;
+    case Route1ProducerKind::Unknown:
+    case Route1ProducerKind::Immediate:
+      return false;
+  }
+  return false;
+}
+
+struct Route1SourceValueIdentity {
+  const Value* value = nullptr;
+  Value::Kind value_kind = Value::Kind::Immediate;
+  TypeKind type = TypeKind::Void;
+  std::string_view name;
+  ValueNameId name_id = kInvalidValueName;
+  std::optional<std::int64_t> integer_constant;
+  LinkNameId pointer_symbol_link_name_id = kInvalidLinkName;
+
+  [[nodiscard]] explicit operator bool() const {
+    return value != nullptr ||
+           !name.empty() ||
+           name_id != kInvalidValueName ||
+           integer_constant.has_value();
+  }
+};
+
+struct Route1ImmediateIntegerConstant {
+  bool available = false;
+  std::int64_t value = 0;
+  TypeKind type = TypeKind::Void;
+  unsigned depth = 0;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+[[nodiscard]] Route1SourceValueIdentity route1_source_value_identity(
+    const Value& value,
+    ValueNameId name_id = kInvalidValueName);
+
+[[nodiscard]] Route1ImmediateIntegerConstant route1_immediate_integer_constant(
+    const Value& value,
+    unsigned depth = 0);
 
 struct PhiIncoming {
   // Compatibility label spelling for dumps and raw-only BIR; label_id is the
@@ -1008,6 +1090,47 @@ using Inst = std::variant<BinaryInst,
                           LoadGlobalInst,
                           StoreGlobalInst,
                           StoreLocalInst>;
+
+struct Route1ProducerInstructionIdentity {
+  const Inst* instruction = nullptr;
+  std::size_t instruction_index = 0;
+  Route1ProducerKind kind = Route1ProducerKind::Unknown;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+
+  [[nodiscard]] explicit operator bool() const { return instruction != nullptr; }
+};
+
+struct Route1MaterializationAvailability {
+  bool available = false;
+  bool scalar_materialization_available = false;
+  Route1ProducerKind producer_kind = Route1ProducerKind::Unknown;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route1ProducerRecord {
+  bool available = false;
+  Route1ProducerKind kind = Route1ProducerKind::Unknown;
+  Route1SourceValueIdentity source_value;
+  Route1ProducerInstructionIdentity producer_instruction;
+  Route1ImmediateIntegerConstant integer_constant;
+  Route1MaterializationAvailability materialization;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+[[nodiscard]] Route1ProducerKind route1_producer_kind(const Inst& inst);
+
+[[nodiscard]] const Value* route1_produced_value(const Inst& inst);
+
+[[nodiscard]] Route1ProducerInstructionIdentity route1_producer_instruction_identity(
+    const Block& block,
+    std::size_t instruction_index);
+
+[[nodiscard]] Route1ProducerRecord route1_producer_record(
+    const Block& block,
+    std::size_t instruction_index);
 
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;

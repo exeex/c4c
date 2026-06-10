@@ -25,6 +25,24 @@ namespace {
       inst);
 }
 
+[[nodiscard]] const Value* produced_value_for_route1_producer(
+    const Inst& inst) {
+  return std::visit(
+      [](const auto& candidate) -> const Value* {
+        using T = std::decay_t<decltype(candidate)>;
+        if constexpr (std::is_same_v<T, BinaryInst> ||
+                      std::is_same_v<T, SelectInst> ||
+                      std::is_same_v<T, CastInst> ||
+                      std::is_same_v<T, LoadLocalInst> ||
+                      std::is_same_v<T, LoadGlobalInst>) {
+          return &candidate.result;
+        } else {
+          return nullptr;
+        }
+      },
+      inst);
+}
+
 [[nodiscard]] ComparisonProducerKind comparison_producer_kind_for_inst(
     const Inst& inst) {
   return std::visit(
@@ -167,6 +185,110 @@ struct SameBlockComparisonProducer {
 }
 
 }  // namespace
+
+Route1SourceValueIdentity route1_source_value_identity(
+    const Value& value,
+    ValueNameId name_id) {
+  return Route1SourceValueIdentity{
+      .value = &value,
+      .value_kind = value.kind,
+      .type = value.type,
+      .name = value.kind == Value::Kind::Named ? std::string_view(value.name)
+                                               : std::string_view{},
+      .name_id = name_id,
+      .integer_constant = value.kind == Value::Kind::Immediate
+                              ? std::optional<std::int64_t>{value.immediate}
+                              : std::nullopt,
+      .pointer_symbol_link_name_id = value.pointer_symbol_link_name_id,
+  };
+}
+
+Route1ImmediateIntegerConstant route1_immediate_integer_constant(
+    const Value& value,
+    unsigned depth) {
+  if (value.kind != Value::Kind::Immediate) {
+    return {};
+  }
+  return Route1ImmediateIntegerConstant{
+      .available = true,
+      .value = value.immediate,
+      .type = value.type,
+      .depth = depth,
+  };
+}
+
+Route1ProducerKind route1_producer_kind(const Inst& inst) {
+  return std::visit(
+      [](const auto& candidate) -> Route1ProducerKind {
+        using T = std::decay_t<decltype(candidate)>;
+        if constexpr (std::is_same_v<T, LoadLocalInst>) {
+          return Route1ProducerKind::LoadLocal;
+        } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
+          return Route1ProducerKind::LoadGlobal;
+        } else if constexpr (std::is_same_v<T, CastInst>) {
+          return Route1ProducerKind::Cast;
+        } else if constexpr (std::is_same_v<T, BinaryInst>) {
+          return Route1ProducerKind::Binary;
+        } else if constexpr (std::is_same_v<T, SelectInst>) {
+          return Route1ProducerKind::SelectMaterialization;
+        } else {
+          return Route1ProducerKind::Unknown;
+        }
+      },
+      inst);
+}
+
+const Value* route1_produced_value(const Inst& inst) {
+  return produced_value_for_route1_producer(inst);
+}
+
+Route1ProducerInstructionIdentity route1_producer_instruction_identity(
+    const Block& block,
+    std::size_t instruction_index) {
+  if (instruction_index >= block.insts.size()) {
+    return {};
+  }
+  const auto& inst = block.insts[instruction_index];
+  const auto kind = route1_producer_kind(inst);
+  if (kind == Route1ProducerKind::Unknown) {
+    return {};
+  }
+  return Route1ProducerInstructionIdentity{
+      .instruction = &inst,
+      .instruction_index = instruction_index,
+      .kind = kind,
+      .block_label = block.label,
+      .block_label_id = block.label_id,
+  };
+}
+
+Route1ProducerRecord route1_producer_record(const Block& block,
+                                            std::size_t instruction_index) {
+  const auto instruction =
+      route1_producer_instruction_identity(block, instruction_index);
+  if (!instruction) {
+    return {};
+  }
+  const auto* produced_value = route1_produced_value(*instruction.instruction);
+  if (produced_value == nullptr) {
+    return {};
+  }
+  const auto kind = instruction.kind;
+  return Route1ProducerRecord{
+      .available = true,
+      .kind = kind,
+      .source_value = route1_source_value_identity(*produced_value),
+      .producer_instruction = instruction,
+      .integer_constant = route1_immediate_integer_constant(*produced_value),
+      .materialization =
+          Route1MaterializationAvailability{
+              .available = kind != Route1ProducerKind::Unknown,
+              .scalar_materialization_available =
+                  route1_producer_kind_has_materialization(kind),
+              .producer_kind = kind,
+          },
+  };
+}
 
 Value Value::immediate_i1(bool value) {
   Value result;

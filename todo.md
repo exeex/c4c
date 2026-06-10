@@ -1,94 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/159_bir_producer_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Producer Identity Surfaces
+Current Step ID: 2
+Current Step Title: Define The BIR Producer Vocabulary And Records
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Inventory Producer Identity Surfaces completed as an inspection-only
-packet.
+Step 2 - Define The BIR Producer Vocabulary And Records completed as the first
+code-changing packet.
 
-Concrete current Route 1 surfaces:
+Added BIR-owned Route 1 schema surface in `src/backend/bir/bir.hpp` /
+`src/backend/bir/bir.cpp`:
 
-- `src/backend/bir/bir.hpp` / `src/backend/bir/bir.cpp` already define
-  BIR-local producer identities for comparison and call-argument paths:
-  `ComparisonProducerKind`, `ComparisonOperandProducer`,
-  `MaterializedConditionProducerIdentity`,
-  `CallArgumentSourceProducerKind`, and
-  `CallArgumentSourceProducerMaterialization`.
-- `src/backend/mir/query.hpp` / `src/backend/mir/query.cpp` currently host the
-  generic same-block identity vocabulary and query API:
-  `SameBlockProducerKind`, `SameBlockValueIdentity`,
-  `SameBlockProducerRecord`, `SameBlockValueMaterializationQuery`,
-  `find_same_block_scalar_producer`, `evaluate_same_block_integer_constant`,
-  and the BIR select-chain identity helpers.
-- `src/backend/prealloc/publication_plans.hpp` owns the prepared producer-kind
-  authority that Route 1 must stop depending on:
-  `PreparedEdgePublicationSourceProducerKind` with `Unknown`, `Immediate`,
-  `LoadLocal`, `LoadGlobal`, `Cast`, `Binary`, and
-  `SelectMaterialization`.
-- `src/backend/prealloc/select_chain_lookups.cpp` currently populates
-  `PreparedEdgePublicationSourceProducerLookups::producers_by_value_name` from
-  `LoadLocalInst`, `LoadGlobalInst`, `CastInst`, `BinaryInst`, and
-  `SelectInst`, resolving through prepared value-name ids.
-- `src/backend/prealloc/prepared_lookups.cpp` currently computes the prepared
-  same-block oracle in `prepared_same_block_source_producer`,
-  `find_prepared_same_block_scalar_producer`, and
-  `evaluate_prepared_same_block_integer_constant`.
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` already contains
-  prepared-vs-BIR comparison helpers for scalar producers, integer constants,
-  select-chain answers, call-argument source materialization, global-load
-  access, and load-local source identity.
+- `Route1ProducerKind` with `Unknown`, `Immediate`, `LoadLocal`, `LoadGlobal`,
+  `Cast`, `Binary`, and `SelectMaterialization`.
+- `Route1SourceValueIdentity` for BIR value pointer, kind, name, name id, type,
+  immediate integer constant, and pointer-symbol identity.
+- `Route1ProducerInstructionIdentity` for producer instruction pointer,
+  instruction index, producer kind, block label, and block label id.
+- `Route1ImmediateIntegerConstant` and `Route1MaterializationAvailability` as
+  typed annotation payloads.
+- `Route1ProducerRecord` plus BIR-local helpers to derive records from a block
+  instruction without calling prepared producer authority.
+
+Extended `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` to cover
+the new records in the existing same-block scalar producer fixture: immediate
+constant identity, producer instruction/index, source name/type identity,
+materialization availability, and fail-closed behavior for missing/non-producer
+instructions. No production consumers were switched.
 
 ## Suggested Next
 
-Execute Step 2 as the first code-changing packet:
+Execute Step 3 as the next code-changing packet:
 
-- Edit `src/backend/bir/bir.hpp` and `src/backend/bir/bir.cpp` to add the
-  target-neutral Route 1 BIR producer vocabulary and typed annotation records.
-- Prefer consolidating around the existing generic MIR same-block vocabulary in
-  `src/backend/mir/query.hpp` / `src/backend/mir/query.cpp` only if the next
-  packet keeps BIR as the durable owner and avoids cloning prepared structures.
-- Add or adjust oracle checks in
-  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` for the new BIR
-  records before switching consumers.
-- First code-changing proof command:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
+- Add BIR same-block producer query APIs and cheap lookup/index surfaces that
+  point at the new `Route1ProducerRecord` / typed annotation records.
+- Keep prepared helpers as oracle checks only; do not switch AArch64 or broad
+  production consumers.
+- Compare BIR-backed query answers with prepared same-block producer,
+  integer-constant, and materialization-oracle answers in
+  `backend_prepared_lookup_helper`.
 
 ## Watchouts
 
-- Producer kinds needing equivalence coverage: `Immediate` as constant-only
-  source, `LoadLocal`, `LoadGlobal`, `Cast`, `Binary`,
-  `SelectMaterialization`, plus `Unknown`/missing-fact fail-closed behavior and
-  future-producer fail-closed behavior.
-- Current same-block constant computation is duplicated between
-  `bir::evaluate_comparison_integer_constant`,
-  `prepare::evaluate_prepared_same_block_integer_constant`, and
-  `mir::evaluate_same_block_integer_constant`; the Step 2 record shape should
-  preserve immediate integer facts without making prepared the source of truth.
-- Current materialization availability is split across
-  `mir::same_block_producer_kind_has_materialization`,
-  `mir::find_bir_select_chain_scalar_materialization_eligibility`, prepared
-  `find_prepared_scalar_select_chain_materialization`, and
-  `bir::find_call_argument_source_producer_materialization`. Keep the new
-  payload about semantic availability only; do not import prepared homes,
-  registers, storage, frame slots, emitted state, spill/reload behavior,
+- Step 2 intentionally did not move existing MIR same-block queries onto the
+  new BIR records; Step 3 owns query/index integration.
+- `Route1ProducerRecord` currently derives from individual BIR instructions and
+  does not yet represent immediate values as standalone producer records.
+  Immediate constants are represented by `Route1SourceValueIdentity` and
+  `Route1ImmediateIntegerConstant`.
+- Keep materialization payload semantic only. Do not add prepared homes,
+  registers, storage, frame slots, emitted availability, spill/reload behavior,
   operand views, or final instruction records.
-- Prepared oracle helpers to keep for migration checks:
-  `find_prepared_same_block_scalar_producer`,
-  `evaluate_prepared_same_block_integer_constant`,
-  `find_prepared_select_chain_source_producer`,
-  `find_prepared_scalar_select_chain_materialization`, and
-  `find_prepared_call_argument_source_producer_materialization`.
-- Existing consumer sites that still read prepared producer facts include
-  `src/backend/mir/aarch64/codegen/alu.cpp` and
-  `src/backend/mir/aarch64/codegen/calls.cpp`; do not switch them until the
-  BIR/prepared oracle checks are green.
+- `clang-format` is not installed in this environment; manual style hygiene was
+  used for this packet.
 
 ## Proof
 
-Inspection-only packet. No build or test proof was required, and no
-`test_after.log` was generated.
+Ran exact delegated proof command:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
+
+Result: passed. Full proof output saved in `test_after.log`.

@@ -79,6 +79,56 @@ mir::SameBlockProducerKind expected_bir_producer_kind(
   return mir::SameBlockProducerKind::Unknown;
 }
 
+bir::Route1ProducerKind expected_bir_route1_producer_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return bir::Route1ProducerKind::Immediate;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::Route1ProducerKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return bir::Route1ProducerKind::Cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::Route1ProducerKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return bir::Route1ProducerKind::LoadGlobal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return bir::Route1ProducerKind::SelectMaterialization;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return bir::Route1ProducerKind::Unknown;
+  }
+  return bir::Route1ProducerKind::Unknown;
+}
+
+bool bir_route1_producer_record_matches(
+    const bir::Block& block,
+    std::size_t instruction_index,
+    const bir::Value& expected_value,
+    prepare::PreparedEdgePublicationSourceProducerKind expected_kind) {
+  const auto expected_bir_kind = expected_bir_route1_producer_kind(expected_kind);
+  const auto record = bir::route1_producer_record(block, instruction_index);
+  return record &&
+         record.kind == expected_bir_kind &&
+         record.producer_instruction &&
+         record.producer_instruction.instruction == &block.insts[instruction_index] &&
+         record.producer_instruction.instruction_index == instruction_index &&
+         record.producer_instruction.kind == expected_bir_kind &&
+         record.producer_instruction.block_label == block.label &&
+         record.producer_instruction.block_label_id == block.label_id &&
+         record.source_value &&
+         record.source_value.value != nullptr &&
+         *record.source_value.value == expected_value &&
+         record.source_value.value_kind == expected_value.kind &&
+         record.source_value.name == expected_value.name &&
+         record.source_value.type == expected_value.type &&
+         !record.source_value.integer_constant.has_value() &&
+         !record.integer_constant &&
+         record.materialization &&
+         record.materialization.producer_kind == expected_bir_kind &&
+         record.materialization.scalar_materialization_available ==
+             bir::route1_producer_kind_has_materialization(expected_bir_kind);
+}
+
 bir::CallArgumentSourceEncodingKind expected_bir_call_source_encoding(
     prepare::PreparedStorageEncodingKind kind) {
   switch (kind) {
@@ -4601,6 +4651,34 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto* from_global = std::get_if<bir::LoadGlobalInst>(&block.insts[5]);
   const auto* choice = std::get_if<bir::SelectInst>(&block.insts[6]);
   const auto* product = std::get_if<bir::BinaryInst>(&block.insts[7]);
+  if (lhs == nullptr || rhs == nullptr || sum == nullptr || wide == nullptr ||
+      from_slot == nullptr || from_global == nullptr || choice == nullptr ||
+      product == nullptr) {
+    return fail("same-block scalar source fixture is malformed");
+  }
+
+  const auto immediate_value = bir::Value::immediate_i64(17);
+  const auto immediate_identity =
+      bir::route1_source_value_identity(immediate_value);
+  const auto immediate_constant =
+      bir::route1_immediate_integer_constant(immediate_value, 2U);
+  if (!immediate_identity ||
+      immediate_identity.value_kind != bir::Value::Kind::Immediate ||
+      immediate_identity.type != bir::TypeKind::I64 ||
+      immediate_identity.name_id != c4c::kInvalidValueName ||
+      immediate_identity.name != std::string_view{} ||
+      immediate_identity.integer_constant != std::optional<std::int64_t>{17} ||
+      !immediate_constant ||
+      immediate_constant.value != 17 ||
+      immediate_constant.type != bir::TypeKind::I64 ||
+      immediate_constant.depth != 2U ||
+      bir::route1_producer_kind_name(bir::Route1ProducerKind::Immediate) !=
+          "immediate" ||
+      bir::route1_producer_kind_has_materialization(
+          bir::Route1ProducerKind::Immediate)) {
+    return fail(
+        "BIR Route 1 value records should expose immediate integer constants without materialization");
+  }
 
   prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
   source_producers.producers_by_value_name.emplace(
@@ -4668,6 +4746,50 @@ int verify_prepared_same_block_scalar_source_facts() {
           .instruction_index = 7,
           .binary = product,
       });
+
+  if (!bir_route1_producer_record_matches(
+          block,
+          0,
+          lhs->result,
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) ||
+      !bir_route1_producer_record_matches(
+          block,
+          3,
+          wide->result,
+          prepare::PreparedEdgePublicationSourceProducerKind::Cast) ||
+      !bir_route1_producer_record_matches(
+          block,
+          4,
+          from_slot->result,
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) ||
+      !bir_route1_producer_record_matches(
+          block,
+          5,
+          from_global->result,
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal) ||
+      !bir_route1_producer_record_matches(
+          block,
+          6,
+          choice->result,
+          prepare::PreparedEdgePublicationSourceProducerKind::
+              SelectMaterialization)) {
+    return fail(
+        "BIR Route 1 producer records should cover source value, instruction index, kind, and materialization availability");
+  }
+  if (bir::route1_producer_record(block, block.insts.size()) ||
+      bir::route1_producer_record(
+          bir::Block{
+              .label = "entry",
+              .insts = {bir::StoreLocalInst{
+                  .slot_name = "local0",
+                  .value = bir::Value::named(bir::TypeKind::I64, "%sum"),
+              }},
+              .label_id = block_label,
+          },
+          0)) {
+    return fail(
+        "BIR Route 1 producer records should fail closed for missing and non-producer instructions");
+  }
   const prepare::PreparedStackLayout stack_layout{
       .frame_slots = {
           prepare::PreparedFrameSlot{
