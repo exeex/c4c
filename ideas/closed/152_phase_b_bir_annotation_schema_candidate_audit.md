@@ -117,3 +117,30 @@ sections that justify each proposed annotation.
   instruction spelling.
 - Losing cheap lookup identity or forcing consumers into expensive scans.
 - Ignoring future x86/riscv consumers when defining schema shape.
+
+## Closure Note
+
+Closed by `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`.
+The artifact classifies all seven Phase A BIR-owned semantic routes into
+durable annotation candidates, cache/private data, bridge/oracle data,
+target-facing rejects, and deferred blockers. It records the required Phase A
+coverage table, candidate schema map, private/cache-only `Prepared*`
+classifications, target-facing exclusions, follow-up schema ideas, migration
+constraints for stable AArch64 behavior, and traceability back to Phase A route
+evidence.
+
+The accepted follow-up domains are:
+
+- `ideas/open/159_bir_producer_identity_annotation_schema.md`
+- `ideas/open/160_bir_select_chain_global_dependency_annotation_schema.md`
+- `ideas/open/161_bir_memory_access_identity_annotation_schema.md`
+- `ideas/open/162_bir_publication_availability_annotation_schema.md`
+- `ideas/open/163_bir_edge_join_source_annotation_schema.md`
+- `ideas/open/164_bir_call_use_source_annotation_schema.md`
+- `ideas/open/165_bir_comparison_condition_annotation_schema.md`
+- `ideas/open/166_bir_annotation_lookup_index_schema.md`
+
+No implementation or schema code changed in this Phase B analysis plan. Close
+validation used the existing backend `test_before.log` and `test_after.log`
+pair with the regression guard in non-decreasing mode: both logs reported
+179/179 passing tests and no new failures. `git diff --check` also passed.
