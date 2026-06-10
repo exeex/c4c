@@ -215,6 +215,49 @@ bool prepared_and_bir_call_argument_source_producer_materialization_match(
              names.value_names.find(call.args[arg_index].name);
 }
 
+bool prepared_and_bir_call_result_source_identity_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedCallResultPlan& prepared_result,
+    prepare::PreparedValueId expected_destination_value_id,
+    c4c::ValueNameId expected_result_name,
+    const bir::Block& block,
+    const bir::CallInst& call,
+    std::size_t call_instruction_index) {
+  const auto bir = bir::find_call_result_source_identity(
+      block, call, call_instruction_index);
+  if (!prepared_result.destination_value_id.has_value()) {
+    return !bir.available;
+  }
+  return *prepared_result.destination_value_id ==
+             expected_destination_value_id &&
+         bir.available &&
+         bir.call_instruction_index == prepared_result.instruction_index &&
+         bir.result_value != nullptr &&
+         bir.result_value->kind == bir::Value::Kind::Named &&
+         names.value_names.find(bir.result_value->name) ==
+             expected_result_name;
+}
+
+bool prepared_and_bir_call_result_lane_source_identity_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedAfterCallResultLaneBinding& prepared_lane,
+    const bir::Block& block,
+    const bir::CallInst& call,
+    std::size_t call_instruction_index,
+    const bir::Value& expected_lane_value) {
+  const auto bir = bir::find_call_result_lane_source_identity(
+      block, call, call_instruction_index, expected_lane_value);
+  return bir.available &&
+         bir.call_instruction_index == prepared_lane.instruction_index &&
+         bir.lane_index == prepared_lane.lane_index &&
+         bir.lane_value != nullptr &&
+         bir.lane_value->kind == bir::Value::Kind::Named &&
+         bir.lane_value->name == expected_lane_value.name &&
+         bir.lane_value->type == expected_lane_value.type &&
+         names.value_names.find(bir.lane_value->name) ==
+             prepared_lane.value_name;
+}
+
 bool prepared_and_bir_call_argument_publication_source_routing_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedCallArgumentPlan& prepared_argument,
@@ -5880,6 +5923,140 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
   return 0;
 }
 
+int verify_bir_call_result_source_identity_lookup() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
+  const auto result_name = names.value_names.intern("%call.result");
+  const auto high_lane_name = names.value_names.intern("%call.result.high");
+  const auto result_value =
+      bir::Value::named(bir::TypeKind::I128, "%call.result");
+  const auto high_lane =
+      bir::Value::named(bir::TypeKind::I64, "%call.result.high");
+
+  bir::Block block{
+      .label = "entry",
+      .insts =
+          {
+              bir::CallInst{
+                  .result = result_value,
+                  .result_lanes =
+                      {
+                          result_value,
+                          high_lane,
+                      },
+                  .callee = "produce_result_identity",
+                  .return_type = bir::TypeKind::I128,
+              },
+          },
+      .label_id = block_label,
+  };
+  constexpr std::size_t call_instruction_index = 0;
+  const auto* call =
+      std::get_if<bir::CallInst>(&block.insts[call_instruction_index]);
+  if (call == nullptr) {
+    return fail("BIR call-result identity fixture is malformed");
+  }
+
+  const prepare::PreparedCallResultPlan prepared_result{
+      .instruction_index = call_instruction_index,
+      .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+      .destination_value_id = prepare::PreparedValueId{700},
+      .source_register_name =
+          std::string{"abi-source-register-must-not-be-required"},
+      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .destination_slot_id = prepare::PreparedFrameSlotId{42},
+      .destination_stack_offset_bytes = std::size_t{128},
+  };
+  const auto late_publication =
+      prepare::find_prepared_call_result_late_publication(prepared_result);
+  if (!late_publication.source_register_publication_available ||
+      !prepared_result.destination_slot_id.has_value() ||
+      call->result_abi.has_value()) {
+    return fail(
+        "BIR call-result identity fixture should keep prepared ABI/publication details outside the BIR query");
+  }
+  if (!prepared_and_bir_call_result_source_identity_match(
+          names, prepared_result, prepare::PreparedValueId{700},
+          result_name, block, *call, call_instruction_index)) {
+    return fail(
+        "BIR call-result source identity should match prepared destination value identity only");
+  }
+
+  const prepare::PreparedAfterCallResultLaneBinding primary_lane{
+      .value_id = prepare::PreparedValueId{700},
+      .value_name = result_name,
+      .block_index = 0,
+      .instruction_index = call_instruction_index,
+      .lane_index = 0,
+  };
+  const prepare::PreparedAfterCallResultLaneBinding high_prepared_lane{
+      .value_id = prepare::PreparedValueId{701},
+      .value_name = high_lane_name,
+      .block_index = 0,
+      .instruction_index = call_instruction_index,
+      .lane_index = 1,
+  };
+  if (!prepared_and_bir_call_result_lane_source_identity_match(
+          names, primary_lane, block, *call, call_instruction_index,
+          result_value) ||
+      !prepared_and_bir_call_result_lane_source_identity_match(
+          names, high_prepared_lane, block, *call, call_instruction_index,
+          high_lane)) {
+    return fail(
+        "BIR call-result lane identity should match prepared after-call result lane bindings");
+  }
+
+  auto duplicate_lane_block = block;
+  auto* duplicate_lane_call =
+      std::get_if<bir::CallInst>(&duplicate_lane_block.insts[0]);
+  if (duplicate_lane_call == nullptr) {
+    return fail("BIR duplicate result-lane fixture is malformed");
+  }
+  duplicate_lane_call->result_lanes.push_back(high_lane);
+  if (bir::find_call_result_lane_source_identity(
+          duplicate_lane_block, *duplicate_lane_call, call_instruction_index,
+          high_lane)
+          .available) {
+    return fail(
+        "BIR call-result lane identity should fail closed for duplicate lane value identities");
+  }
+
+  bir::Block no_result_block{
+      .label = "entry",
+      .insts =
+          {
+              bir::CallInst{
+                  .callee = "abi_only_result_identity_is_unavailable",
+                  .return_type = bir::TypeKind::I64,
+                  .result_abi =
+                      bir::CallResultAbiInfo{
+                          .type = bir::TypeKind::I64,
+                          .primary_class = bir::AbiValueClass::Integer,
+                      },
+              },
+          },
+  };
+  const auto* no_result_call =
+      std::get_if<bir::CallInst>(&no_result_block.insts[0]);
+  if (no_result_call == nullptr ||
+      bir::find_call_result_source_identity(no_result_block, *no_result_call, 0)
+          .available) {
+    return fail(
+        "BIR call-result source identity should require a result value, not result ABI placement");
+  }
+  auto detached_call = *call;
+  if (bir::find_call_result_source_identity(
+          block, detached_call, call_instruction_index)
+          .available ||
+      bir::find_call_result_source_identity(block, *call, 1).available) {
+    return fail(
+        "BIR call-result source identity should fail closed for mismatched call boundaries");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -5955,6 +6132,10 @@ int main() {
   }
   if (const int result =
           verify_bir_call_argument_source_producer_materialization_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_bir_call_result_source_identity_lookup();
       result != 0) {
     return result;
   }

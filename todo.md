@@ -3,42 +3,42 @@
 Status: Complete
 Source Idea Path: ideas/open/157_bir_call_boundary_source_facts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove prepared-oracle equivalence for argument source facts
+Current Step ID: 4
+Current Step Title: Prove prepared-oracle equivalence for result source facts
 
 ## Just Finished
 
-Step 3 extended the BIR-owned call-argument source surface with
-same-block source-producer materialization facts. BIR now exposes a
-target-neutral query for call argument source producers that carries producer
-identity, instruction index, produced value identity, and materializable
-eligibility only.
+Step 4 added a BIR-owned call-result source identity/query surface for
+target-neutral result identity only. BIR now exposes primary result value
+identity and result-lane value identity with call-instruction boundary checks;
+it does not expose result register names, destination homes, ABI bindings,
+late-publication alias booleans, stack slots, or move records.
 
-`backend_prepared_lookup_helper_test.cpp` now compares the BIR query against
-`PreparedCallArgumentSourceProducerMaterialization` for load-local,
-materializable binary opcode, nonmaterializable binary opcode, missing
-producer, producer-after-call, and duplicate source-record fail-closed paths.
-No AArch64 or prealloc consumers were switched, and no ABI placement/final
-lowering fields were added.
+`backend_prepared_lookup_helper_test.cpp` compares the BIR result identity
+queries against `PreparedCallResultPlan::destination_value_id` and
+`PreparedAfterCallResultLaneBinding` semantic identity facts. The tests cover
+primary result identity, lane identity, lane-0 primary-result aliasing,
+duplicate lane fail-closed behavior, ABI-only result calls, and detached or
+wrong-index call boundaries. `backend_prealloc_call_boundary_classification_test.cpp`
+keeps the prepared result ABI classification available while proving the new
+BIR query does not reconstruct identity from result ABI placement.
 
 ## Suggested Next
 
-No remaining Step 3 gaps are known inside this packet. The next coherent packet
-is supervisor-owned: either accept/commit this BIR query and oracle proof slice
-or choose the next call-boundary source/result identity surface while keeping
-consumers on prepared authority.
+No remaining Step 4 gaps are known inside this packet. The next coherent packet
+is supervisor-owned: accept/commit this BIR result identity proof slice or
+choose the next source-fact surface while keeping AArch64/prealloc consumers on
+prepared authority.
 
 ## Watchouts
 
-- The new BIR query requires the `CallInst` to be the instruction at the
-  provided same-block call index and requires exactly one `arg_sources` record
-  for the argument; duplicates fail closed.
-- Nonmaterializable binary producers are reported as available producers with
-  `materializable=false`, while the prepared materialization oracle remains
-  absent; the test comparator checks equivalence through the materializable
-  eligibility bit.
-- The materialization surface currently recognizes load-local and binary
-  producers only, matching the prepared oracle for this packet.
+- The result identity surface intentionally reports only `Value` identity,
+  call instruction index, lane index, and whether a lane aliases the primary
+  result. It must not be used as result ABI placement authority.
+- Lane lookup is by named value identity and fails closed when the same lane
+  value appears more than once, except for the canonical lane-0 alias where
+  `result_lanes[0]` repeats the primary call result.
+- No AArch64 or prealloc consumers were switched in this packet.
 
 ## Proof
 

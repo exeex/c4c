@@ -260,6 +260,17 @@ const CallArgumentSourceRelationship* find_call_argument_source_relationship(
   return result;
 }
 
+const CallInst* indexed_call_inst(const Block& block,
+                                  const CallInst& call,
+                                  std::size_t call_instruction_index) {
+  if (call_instruction_index >= block.insts.size()) {
+    return nullptr;
+  }
+  const auto* block_call =
+      std::get_if<CallInst>(&block.insts[call_instruction_index]);
+  return block_call == &call ? block_call : nullptr;
+}
+
 CallArgumentSourceProducerMaterialization
 find_call_argument_source_producer_materialization(
     const Block& block,
@@ -271,9 +282,7 @@ find_call_argument_source_producer_materialization(
       find_call_argument_source_relationship(call, arg_index) == nullptr) {
     return {};
   }
-  const auto* block_call =
-      std::get_if<CallInst>(&block.insts[call_instruction_index]);
-  if (block_call != &call) {
+  if (indexed_call_inst(block, call, call_instruction_index) == nullptr) {
     return {};
   }
 
@@ -317,6 +326,80 @@ find_call_argument_source_producer_materialization(
     }
   }
   return {};
+}
+
+CallResultSourceIdentity find_call_result_source_identity(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index) {
+  if (indexed_call_inst(block, call, call_instruction_index) == nullptr ||
+      !call.result.has_value() ||
+      call.result->kind != Value::Kind::Named ||
+      call.result->name.empty()) {
+    return {};
+  }
+  return CallResultSourceIdentity{
+      .available = true,
+      .call_instruction_index = call_instruction_index,
+      .result_value = &*call.result,
+  };
+}
+
+CallResultLaneSourceIdentity find_call_result_lane_source_identity(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    const Value& value) {
+  const auto result_identity =
+      find_call_result_source_identity(block, call, call_instruction_index);
+  if (!result_identity.available ||
+      value.kind != Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+
+  CallResultLaneSourceIdentity result;
+  if (call.result->kind == value.kind &&
+      call.result->name == value.name &&
+      call.result->type == value.type) {
+    result = CallResultLaneSourceIdentity{
+        .available = true,
+        .call_instruction_index = call_instruction_index,
+        .lane_index = 0,
+        .lane_value = &*call.result,
+        .aliases_primary_result = true,
+    };
+  }
+
+  for (std::size_t lane_index = 0; lane_index < call.result_lanes.size();
+       ++lane_index) {
+    const auto& lane = call.result_lanes[lane_index];
+    if (lane.kind != value.kind ||
+        lane.name != value.name ||
+        lane.type != value.type) {
+      continue;
+    }
+    const bool aliases_primary_result =
+        lane_index == 0 &&
+        call.result->kind == lane.kind &&
+        call.result->name == lane.name &&
+        call.result->type == lane.type;
+    if (result.available && result.aliases_primary_result &&
+        aliases_primary_result) {
+      continue;
+    }
+    if (result.available) {
+      return {};
+    }
+    result = CallResultLaneSourceIdentity{
+        .available = true,
+        .call_instruction_index = call_instruction_index,
+        .lane_index = lane_index,
+        .lane_value = &lane,
+        .aliases_primary_result = aliases_primary_result,
+    };
+  }
+  return result;
 }
 
 CallArgumentPublicationSourceRouting find_call_argument_publication_source_routing(

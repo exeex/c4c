@@ -1,3 +1,4 @@
+#include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/regalloc/call_return_abi.hpp"
 #include "src/backend/prealloc/variadic.hpp"
@@ -8,6 +9,7 @@
 
 namespace {
 
+namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
 bool expect(bool condition, std::string_view message) {
@@ -229,6 +231,85 @@ int verify_result_and_non_call_classification() {
   return 0;
 }
 
+int verify_bir_result_identity_excludes_prepared_abi_placement() {
+  const auto call_plan = sample_call_plan();
+  const auto placement = sample_gpr_placement();
+  const prepare::PreparedMoveResolution result_move{
+      .from_value_id = 0,
+      .to_value_id = 20,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = "x0",
+      .destination_register_placement = placement,
+  };
+  const prepare::PreparedMoveBundle bundle{
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 3,
+      .instruction_index = 9,
+      .moves = {result_move},
+      .abi_bindings = {binding_for(result_move)},
+  };
+  const auto prepared = prepare::classify_prepared_call_boundary_move(
+      call_plan, bundle, bundle.moves[0]);
+
+  bir::Block semantic_result_block{
+      .label = "entry",
+      .insts =
+          {
+              bir::CallInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%call.result"),
+                  .callee = "callee",
+                  .return_type = bir::TypeKind::I32,
+              },
+          },
+  };
+  const auto* semantic_call =
+      std::get_if<bir::CallInst>(&semantic_result_block.insts[0]);
+  bir::Block abi_only_block{
+      .label = "entry",
+      .insts =
+          {
+              bir::CallInst{
+                  .callee = "callee",
+                  .return_type = bir::TypeKind::I32,
+                  .result_abi =
+                      bir::CallResultAbiInfo{
+                          .type = bir::TypeKind::I32,
+                          .primary_class = bir::AbiValueClass::Integer,
+                      },
+              },
+          },
+  };
+  const auto* abi_only_call = std::get_if<bir::CallInst>(&abi_only_block.insts[0]);
+  const auto semantic_identity =
+      semantic_call != nullptr
+          ? bir::find_call_result_source_identity(
+                semantic_result_block, *semantic_call, 0)
+          : bir::CallResultSourceIdentity{};
+  const auto abi_only_identity =
+      abi_only_call != nullptr
+          ? bir::find_call_result_source_identity(abi_only_block, *abi_only_call, 0)
+          : bir::CallResultSourceIdentity{};
+
+  if (!expect(prepare::prepared_call_boundary_move_classification_available(prepared),
+              "prepared result classification should remain available") ||
+      !expect(prepared.result_plan == &*call_plan.result,
+              "prepared result plan should remain classification authority") ||
+      !expect(prepared.abi_binding == &bundle.abi_bindings[0],
+              "prepared result ABI binding should remain available to prealloc") ||
+      !expect(semantic_identity.available,
+              "BIR result identity should be available from the call result value") ||
+      !expect(semantic_identity.result_value != nullptr &&
+                  semantic_identity.result_value->name == "%call.result",
+              "BIR result identity should expose only the result value") ||
+      !expect(!abi_only_identity.available,
+              "BIR result identity should not be reconstructed from result ABI placement")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_missing_and_mismatched_statuses() {
   const auto call_plan = sample_call_plan();
   const auto placement = sample_gpr_placement();
@@ -419,6 +500,10 @@ int main() {
     return rc;
   }
   if (const int rc = verify_result_and_non_call_classification(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_bir_result_identity_excludes_prepared_abi_placement();
+      rc != 0) {
     return rc;
   }
   if (const int rc = verify_missing_and_mismatched_statuses(); rc != 0) {

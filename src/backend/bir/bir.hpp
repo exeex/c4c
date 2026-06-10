@@ -1012,6 +1012,20 @@ struct CallArgumentSourceProducerMaterialization {
   bool materializable = false;
 };
 
+struct CallResultSourceIdentity {
+  bool available = false;
+  std::size_t call_instruction_index = 0;
+  const Value* result_value = nullptr;
+};
+
+struct CallResultLaneSourceIdentity {
+  bool available = false;
+  std::size_t call_instruction_index = 0;
+  std::size_t lane_index = 0;
+  const Value* lane_value = nullptr;
+  bool aliases_primary_result = false;
+};
+
 struct ReturnTerminator {
   std::optional<Value> value;
   std::vector<Value> return_lanes;
@@ -1189,6 +1203,15 @@ find_call_argument_source_producer_materialization(
     const CallInst& call,
     std::size_t call_instruction_index,
     std::size_t arg_index);
+CallResultSourceIdentity find_call_result_source_identity(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index);
+CallResultLaneSourceIdentity find_call_result_lane_source_identity(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    const Value& value);
 std::string print(const Module& module);
 bool validate(const Module& module, std::string* error);
 
