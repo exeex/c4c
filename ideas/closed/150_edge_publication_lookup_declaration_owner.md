@@ -49,6 +49,16 @@ explicitly include-only and did not move declarations.
 - Proof includes `cmake --build --preset default` and
   `ctest --test-dir build -R '^backend_' --output-on-failure`.
 
+## Closure
+
+Closed after the active runbook moved the public
+`make_prepared_edge_publication_lookups` declarations to
+`publication_plans.hpp`, updated the motivating AArch64 dispatch producer to
+include that narrow owner directly, and classified the remaining
+`prepared_lookups.hpp` backend includes as true facade or owning
+implementation users. Close proof used the backend CTest scope with 179/179
+tests passing before and after and no new failures.
+
 ## Reviewer Reject Signals
 
 - The patch keeps the helper declared only by `prepared_lookups.hpp` while
