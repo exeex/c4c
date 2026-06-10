@@ -54,3 +54,27 @@ codegen-owned.
 - Reject expectation rewrites that weaken call-boundary source contracts rather
   than preserving old prepared answers as oracles.
 - Reject broad rewrites of call lowering or ABI assignment as schema progress.
+
+## Closure Notes
+
+Closed after implementing Route 6 BIR call-use source records and indexes over
+`CallInst` and value payloads, oracle tests for semantic call argument/result
+source facts, direct-global dependency, eligible memory/publication source
+facts, and ABI-bound exclusions, plus a low-risk migration of
+`bir::find_call_argument_source_producer_materialization(...)` to Route 6
+records.
+
+Reviewer report `review/164_call_use_source_route_review.md` found no
+blocking issues and judged closure reasonable. The migration shape is accepted:
+there was no dedicated public MIR call-use query in this route, and no broad
+MIR, target/codegen, ABI assignment, aggregate transport, or prealloc
+production consumer was switched.
+
+Closure validation used canonical broad backend logs from:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both passed `179/179`, and the
+regression guard passed with no new failures or pass-count regression.
