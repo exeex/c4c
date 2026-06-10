@@ -119,3 +119,29 @@ cache contraction route.
 - Making consumers rebuild expensive indexes manually.
 - Treating private-cache contraction as permission to weaken prepared facts.
 - Moving target-local MIR lowering details into prealloc to keep caches alive.
+
+## Closure Note
+
+Closed by `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`.
+The artifact completes the Phase C analysis-only audit and is the Phase D/E
+handoff surface. It records the Phase A/B prerequisite source map, Phase B
+route coverage table, private-cache candidates, temporarily public migration
+oracles and blockers, permanently public or out-of-scope target-policy
+surfaces, blocked route migrations, required BIR annotation prerequisites, and
+proof-route recommendations.
+
+The accepted follow-up boundaries are bounded consumer migrations and cache/API
+contractions for Routes 1 through 7, selected route-index facade expansion,
+`PreparedFunctionLookups` aggregate privacy after projected fields have owners,
+and a separate return-chain owner/schema decision. No prepared public surface is
+ready to delete or hide immediately without a follow-up consumer migration.
+
+No implementation source changed in this Phase C analysis plan. Close
+validation regenerated matching canonical backend logs with:
+
+```bash
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both reported 179/179 passing tests and
+the regression guard passed with `--allow-non-decreasing-passed`.
