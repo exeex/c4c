@@ -59,3 +59,51 @@ supported producer kind.
 - Switches broad MIR emission before query equivalence is proven.
 - Proves only one named case while nearby same-block producer kinds remain
   unexamined.
+
+## Closure Note
+
+Closed 2026-06-10.
+
+Implemented the target-neutral BIR producer identity foundation in the MIR
+query surface. The completed API includes BIR-owned same-block producer
+identity request/value/record types, a semantic producer-kind vocabulary for
+binary, cast, select, load-local, and load-global producers, and
+`find_same_block_producer_identity(...)` as the identity owner. The scalar
+producer and integer-constant query helpers now build on that identity surface
+while preserving same-block boundary and type checks.
+
+Prepared query APIs remain available as the comparison oracle. Equivalence
+coverage proves prepared/BIR agreement for same-block scalar producers across
+binary, cast, load-local, load-global, select, and product cases, plus integer
+constant agreement for immediate and binary constant cases. Fail-closed cases
+cover future producers, missing facts, mismatched value types, mismatched
+prepared facts, and nonconstant scalar producers.
+
+Exactly one narrow consumer switched during this idea:
+`find_prepared_same_block_select_producer` now reads select producer identity
+through the BIR identity query. The switch is limited to materializable select
+records with matching BIR instruction, instruction boundary, value name, and
+value type. Broad MIR emission, scalar producer recursion, constant evaluation
+ownership, storage/register/publication ownership, and final instruction-order
+behavior remain outside this closed idea.
+
+Rejected target-specific state stayed out of the BIR relationship: no register
+homes, storage state, publication-owned enum authority, emitted-register
+availability, spill/reload behavior, operand views, frame-slot layout, or final
+instruction order were imported into the BIR schema.
+
+Final matched proof logs:
+
+- `test_before.log`: 3/3 passed for `backend_x86_shared_producer_query`,
+  `backend_prepared_lookup_helper`, and
+  `backend_aarch64_instruction_dispatch`.
+- `test_after.log`: 3/3 passed for `backend_x86_shared_producer_query`,
+  `backend_prepared_lookup_helper`, and
+  `backend_aarch64_instruction_dispatch`.
+- `c4c-regression-guard --allow-non-decreasing-passed`: PASS for the matched
+  logs.
+
+Remaining route boundaries are intentionally left to the already-open follow-up
+ideas `153` through `158`: select-chain direct/global identity, memory access
+identity, block-entry publication identity, CFG edge publication identity, call
+boundary source facts, and comparison condition producer identity.
