@@ -49,3 +49,25 @@ lookup subset plus the relevant target lowering subset.
 - Importing target storage, register, home, or final-emission policy into BIR.
 - Deleting prepared helpers while higher-route consumers still use them as
   migration oracles.
+
+## Completion Note
+
+Closed after migrating the selected AArch64 GP scalar value-publication
+materialization path in
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` to use
+Route 1-backed same-block scalar producer and integer-constant queries for the
+selected semantic facts.
+
+The selected consumer now reads through
+`mir::find_same_block_scalar_producer(...)` and
+`mir::evaluate_same_block_integer_constant(...)`. Prepared answers remain
+available for residual target-policy and non-selected consumers. Step 4 found
+no prepared producer, constant, cache, or API surface safe to contract yet
+because remaining AArch64 and prealloc consumers still publicly require those
+surfaces, so no contraction was performed.
+
+Close proof used the canonical narrow backend logs:
+`test_before.log` and `test_after.log` both covered
+`backend_prepared_lookup_helper` and `backend_aarch64_instruction_dispatch`.
+The c4c regression guard passed in non-decreasing mode with 2 passed, 0 failed
+before and after.
