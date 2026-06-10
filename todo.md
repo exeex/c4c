@@ -8,31 +8,31 @@ Current Step Title: Switch comparison and branch provenance consumers
 
 ## Just Finished
 
-Step 5 completed the cast-operand load-producer read switch inside
-`lower_fused_compare_branch_from_emitted_cast` from
-`find_prepared_fused_compare_operand_producer` to
-`bir::find_comparison_operand_producer` for `cast->operand` at
-`cast_producer->producer_instruction_index`.
+Step 5 completed the final direct prepared fused-compare operand producer read
+switch inside `lower_missing_fused_compare_operand_publication`.
 
-The BIR producer path now requires
-`bir::ComparisonProducerKind::LoadLocal`, recovers the `bir::LoadLocalInst`,
-keeps the existing `I8` source-load type check, and still uses the producer
-instruction index for `branch_fusion_prepared_frame_slot_load_address`.
+Missing fused-compare operand publication now uses
+`bir::find_comparison_operand_producer` for the named operand at
+`context.bir_block->insts.size()` to decide whether a same-block producer
+instruction exists. When BIR reports a producer instruction, the existing
+`hooks.emit_value_publication_to_register` path remains in use; otherwise the
+prepared scalar publication plan/home fallback path is unchanged. The now-unused
+local `find_prepared_fused_compare_operand_producer` wrapper was removed.
 
 ## Suggested Next
 
-Supervisor can decide whether Step 5 needs another provenance-consumer packet
-or whether the completed Step 5 slices are ready for the next plan
-step/acceptance validation.
+Supervisor can decide whether the completed Step 5 consumer switches are ready
+for plan-owner review, the next plan step, or acceptance validation.
 
 ## Watchouts
 
-- The requested cast-operand load lookup now uses BIR producer identity; do not
-  restore the prepared load-producer read in a later cleanup.
-- Do not move branch legality, cast opcode/type checks, condition-code
-  selection, compare emission, branch emission, final-record policy, hazards,
-  emitted-register state, RHS constant fallback, or load-address policy while
-  continuing Step 5.
+- `lower_missing_fused_compare_operand_publication` no longer calls the
+  prepared operand-producer lookup; do not restore that direct read in a later
+  cleanup.
+- Branch legality, condition-code selection, compare emission, branch emission,
+  hazards, emitted-register state, final instruction policy, scratch/target
+  choice, publication hooks, and the prepared scalar fallback path were left
+  unchanged.
 - This slice did not add or change test expectations.
 
 ## Proof
