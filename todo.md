@@ -1,49 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/177_aarch64_selected_f64_global_readback_dispatch_debt.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement The Readback To Call-Move Repair
+Current Step ID: 4
+Current Step Title: Prove And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 (`Implement The Readback To Call-Move Repair`): implemented the local
-readback repair in
-`src/backend/mir/aarch64/codegen/select_materialization.cpp`.
-`materialize_direct_global_select_chain_call_argument(...)` now builds a local
-`PreparedValueHomeLookups` fallback from `context.function.value_locations`
-when `context.function.value_home_lookups` is null and passes that lookup into
-`find_prepared_value_home_for_bir_value(...)`.
+Step 4 (`Prove And Handoff`): reran the close-level monolithic dispatch proof
+after the Step 3 repair. `backend_aarch64_instruction_dispatch` now passes the
+selected f64 global readback call ABI move expectation.
 
-The helper also now materializes selected FP direct-global call arguments into
-their prepared FPR home before the existing ABI move. It emits the same-block
-FP select chain locally, reads leaf FP values back from prepared FPR homes when
-generic FP reconstruction cannot, records the prepared FPR home as emitted,
-and leaves the existing `fmov d0, d20` ABI move to consume that home.
+Step 3 changed only
+`src/backend/mir/aarch64/codegen/select_materialization.cpp`: the direct-global
+select-chain call-argument helper now builds local prepared value-home lookups
+when needed and materializes selected F32/F64 direct-global call arguments into
+their prepared FPR home before the existing ABI move.
 
 ## Suggested Next
 
-Step 4 should inspect the Step 3 diff for route quality and decide whether the
-local FP select-chain readback should remain in
-`select_materialization.cpp` or be split into a smaller shared helper before
-supervisor acceptance.
+Plan-owner close decision: the active runbook proof is green. The supervisor
+already accepted route-quality review in `review/route177_step3_review.md`;
+close or deactivate the idea unless lifecycle review finds remaining source
+intent.
 
 ## Watchouts
 
 - No test expectations were weakened or edited.
 - The repair stayed in `select_materialization.cpp`; `calls.cpp`, `plan.md`,
   and source ideas were not touched.
-- The code now recomputes this direct-global selected FP call argument into its
-  prepared FPR home immediately before the ABI move, rather than trusting stale
-  scalar-state availability.
-- The FP leaf fallback currently handles prepared FPR register homes, which is
-  sufficient for the selected f64 direct-global call-argument fixture that
-  stores `%lhs`, `%rhs`, and `%selected` in FPR homes.
+- `review/route177_step3_review.md` judged the expanded FP select-chain helper
+  on-route and not testcase overfit. It remains watch debt, not a close
+  blocker.
 
 ## Proof
 
-Ran the delegated proof:
+Ran the close-level proof:
 
 ```bash
 (cmake --build build --target backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^backend_aarch64_instruction_dispatch$' --output-on-failure) > test_after.log 2>&1
