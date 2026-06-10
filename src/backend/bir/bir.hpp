@@ -858,6 +858,28 @@ struct CallArgumentDirectGlobalSelectChainDependency {
          dependency.root_instruction_index.has_value();
 }
 
+enum class CallArgumentSourceProducerKind : unsigned char {
+  Unknown,
+  LoadLocal,
+  Binary,
+};
+
+[[nodiscard]] constexpr std::string_view call_argument_source_producer_kind_name(
+    CallArgumentSourceProducerKind kind) {
+  switch (kind) {
+    case CallArgumentSourceProducerKind::Unknown:
+      return "unknown";
+    case CallArgumentSourceProducerKind::LoadLocal:
+      return "load_local";
+    case CallArgumentSourceProducerKind::Binary:
+      return "binary";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] bool call_argument_binary_source_producer_opcode_is_materializable(
+    BinaryOpcode opcode);
+
 struct CallArgumentSourceRelationship {
   std::size_t arg_index = 0;
   CallArgumentSourceEncodingKind source_encoding =
@@ -978,6 +1000,17 @@ using Inst = std::variant<BinaryInst,
                           LoadGlobalInst,
                           StoreGlobalInst,
                           StoreLocalInst>;
+
+struct CallArgumentSourceProducerMaterialization {
+  bool available = false;
+  std::size_t arg_index = 0;
+  CallArgumentSourceProducerKind producer_kind =
+      CallArgumentSourceProducerKind::Unknown;
+  const Inst* producer_instruction = nullptr;
+  std::size_t producer_instruction_index = 0;
+  const Value* produced_value = nullptr;
+  bool materializable = false;
+};
 
 struct ReturnTerminator {
   std::optional<Value> value;
@@ -1149,6 +1182,12 @@ const CallArgumentSourceRelationship* find_call_argument_source_relationship(
     std::size_t arg_index);
 CallArgumentPublicationSourceRouting find_call_argument_publication_source_routing(
     const CallInst& call,
+    std::size_t arg_index);
+CallArgumentSourceProducerMaterialization
+find_call_argument_source_producer_materialization(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
     std::size_t arg_index);
 std::string print(const Module& module);
 bool validate(const Module& module, std::string* error);

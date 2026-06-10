@@ -208,6 +208,38 @@ std::string render_cast_opcode(CastOpcode opcode) {
   return "<unknown>";
 }
 
+bool call_argument_binary_source_producer_opcode_is_materializable(
+    BinaryOpcode opcode) {
+  switch (opcode) {
+    case BinaryOpcode::Add:
+    case BinaryOpcode::Sub:
+    case BinaryOpcode::And:
+    case BinaryOpcode::Or:
+    case BinaryOpcode::Xor:
+    case BinaryOpcode::Mul:
+    case BinaryOpcode::SDiv:
+    case BinaryOpcode::SRem:
+      return true;
+    case BinaryOpcode::UDiv:
+    case BinaryOpcode::URem:
+    case BinaryOpcode::Shl:
+    case BinaryOpcode::LShr:
+    case BinaryOpcode::AShr:
+    case BinaryOpcode::Eq:
+    case BinaryOpcode::Ne:
+    case BinaryOpcode::Slt:
+    case BinaryOpcode::Sle:
+    case BinaryOpcode::Sgt:
+    case BinaryOpcode::Sge:
+    case BinaryOpcode::Ult:
+    case BinaryOpcode::Ule:
+    case BinaryOpcode::Ugt:
+    case BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
 const CallArgumentSourceRelationship* find_call_argument_source_relationship(
     const CallInst& call,
     std::size_t arg_index) {
@@ -226,6 +258,65 @@ const CallArgumentSourceRelationship* find_call_argument_source_relationship(
     result = &relationship;
   }
   return result;
+}
+
+CallArgumentSourceProducerMaterialization
+find_call_argument_source_producer_materialization(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index) {
+  if (call_instruction_index >= block.insts.size() ||
+      arg_index >= call.args.size() ||
+      find_call_argument_source_relationship(call, arg_index) == nullptr) {
+    return {};
+  }
+  const auto* block_call =
+      std::get_if<CallInst>(&block.insts[call_instruction_index]);
+  if (block_call != &call) {
+    return {};
+  }
+
+  const auto& source_value = call.args[arg_index];
+  if (source_value.kind != Value::Kind::Named || source_value.name.empty()) {
+    return {};
+  }
+  for (std::size_t inst_index = call_instruction_index; inst_index-- > 0;) {
+    const auto& inst = block.insts[inst_index];
+    if (const auto* load_local = std::get_if<LoadLocalInst>(&inst);
+        load_local != nullptr &&
+        load_local->result.kind == Value::Kind::Named &&
+        load_local->result.name == source_value.name &&
+        load_local->result.type == source_value.type) {
+      return CallArgumentSourceProducerMaterialization{
+          .available = true,
+          .arg_index = arg_index,
+          .producer_kind = CallArgumentSourceProducerKind::LoadLocal,
+          .producer_instruction = &inst,
+          .producer_instruction_index = inst_index,
+          .produced_value = &load_local->result,
+          .materializable = true,
+      };
+    }
+    if (const auto* binary = std::get_if<BinaryInst>(&inst);
+        binary != nullptr &&
+        binary->result.kind == Value::Kind::Named &&
+        binary->result.name == source_value.name &&
+        binary->result.type == source_value.type) {
+      return CallArgumentSourceProducerMaterialization{
+          .available = true,
+          .arg_index = arg_index,
+          .producer_kind = CallArgumentSourceProducerKind::Binary,
+          .producer_instruction = &inst,
+          .producer_instruction_index = inst_index,
+          .produced_value = &binary->result,
+          .materializable =
+              call_argument_binary_source_producer_opcode_is_materializable(
+                  binary->opcode),
+      };
+    }
+  }
+  return {};
 }
 
 CallArgumentPublicationSourceRouting find_call_argument_publication_source_routing(

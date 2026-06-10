@@ -119,6 +119,24 @@ bir::CallArgumentSourceSelectionKind expected_bir_call_source_selection_kind(
   return bir::CallArgumentSourceSelectionKind::None;
 }
 
+bir::CallArgumentSourceProducerKind
+expected_bir_call_argument_source_producer_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::CallArgumentSourceProducerKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::CallArgumentSourceProducerKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return bir::CallArgumentSourceProducerKind::Unknown;
+  }
+  return bir::CallArgumentSourceProducerKind::Unknown;
+}
+
 bool prepared_and_bir_scalar_producers_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
@@ -151,6 +169,50 @@ bool prepared_and_bir_scalar_producers_match(
          bir->produced_value != nullptr &&
          bir->produced_value->name == value.name &&
          bir->produced_value->type == value.type;
+}
+
+bool prepared_and_bir_call_argument_source_producer_materialization_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index) {
+  if (arg_index >= call.args.size()) {
+    return false;
+  }
+  const auto prepared =
+      prepare::find_prepared_call_argument_source_producer_materialization(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          call.args[arg_index],
+          call_instruction_index);
+  const auto bir =
+      bir::find_call_argument_source_producer_materialization(
+          block, call, call_instruction_index, arg_index);
+  if (prepared.has_value() != (bir.available && bir.materializable)) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return !bir.materializable;
+  }
+  return bir.available &&
+         bir.arg_index == arg_index &&
+         bir.producer_kind ==
+             expected_bir_call_argument_source_producer_kind(
+                 prepared->producer.producer.kind) &&
+         bir.producer_instruction == prepared->producer.instruction &&
+         bir.producer_instruction_index ==
+             prepared->producer.instruction_index &&
+         bir.produced_value != nullptr &&
+         bir.produced_value->name == call.args[arg_index].name &&
+         bir.produced_value->type == call.args[arg_index].type &&
+         bir.materializable == prepared->materializable &&
+         prepared->producer.value_name ==
+             names.value_names.find(call.args[arg_index].name);
 }
 
 bool prepared_and_bir_call_argument_publication_source_routing_match(
@@ -5610,6 +5672,214 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
   return 0;
 }
 
+int verify_bir_call_argument_source_producer_materialization_lookup() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("entry");
+  const auto loaded_name = names.value_names.intern("%loaded.arg");
+  const auto sum_name = names.value_names.intern("%sum.arg");
+  const auto quotient_name = names.value_names.intern("%quotient.arg");
+  const auto missing_name = names.value_names.intern("%missing.arg");
+  const auto after_name = names.value_names.intern("%after.arg");
+
+  bir::Block block{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result =
+                      bir::Value::named(bir::TypeKind::I64, "%loaded.arg"),
+                  .slot_name = "slot0",
+                  .slot_id = c4c::SlotNameId{3},
+                  .byte_offset = 0,
+                  .align_bytes = 8,
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result =
+                      bir::Value::named(bir::TypeKind::I64, "%sum.arg"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::named(bir::TypeKind::I64, "%loaded.arg"),
+                  .rhs = bir::Value::immediate_i64(4),
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::UDiv,
+                  .result = bir::Value::named(
+                      bir::TypeKind::I64, "%quotient.arg"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::named(bir::TypeKind::I64, "%sum.arg"),
+                  .rhs = bir::Value::immediate_i64(2),
+              },
+              bir::CallInst{
+                  .callee = "consume_materialized_sources",
+                  .args =
+                      {
+                          bir::Value::named(
+                              bir::TypeKind::I64, "%loaded.arg"),
+                          bir::Value::named(bir::TypeKind::I64, "%sum.arg"),
+                          bir::Value::named(
+                              bir::TypeKind::I64, "%quotient.arg"),
+                          bir::Value::named(
+                              bir::TypeKind::I64, "%missing.arg"),
+                          bir::Value::named(bir::TypeKind::I64, "%after.arg"),
+                      },
+                  .arg_sources =
+                      {
+                          bir::CallArgumentSourceRelationship{
+                              .arg_index = 0,
+                              .source_encoding =
+                                  bir::CallArgumentSourceEncodingKind::
+                                      Register,
+                          },
+                          bir::CallArgumentSourceRelationship{
+                              .arg_index = 1,
+                              .source_encoding =
+                                  bir::CallArgumentSourceEncodingKind::
+                                      Register,
+                          },
+                          bir::CallArgumentSourceRelationship{
+                              .arg_index = 2,
+                              .source_encoding =
+                                  bir::CallArgumentSourceEncodingKind::
+                                      Register,
+                          },
+                          bir::CallArgumentSourceRelationship{
+                              .arg_index = 3,
+                              .source_encoding =
+                                  bir::CallArgumentSourceEncodingKind::
+                                      Register,
+                          },
+                          bir::CallArgumentSourceRelationship{
+                              .arg_index = 4,
+                              .source_encoding =
+                                  bir::CallArgumentSourceEncodingKind::
+                                      Register,
+                          },
+                      },
+                  .return_type = bir::TypeKind::Void,
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result =
+                      bir::Value::named(bir::TypeKind::I64, "%after.arg"),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::named(bir::TypeKind::I64, "%sum.arg"),
+                  .rhs = bir::Value::immediate_i64(8),
+              },
+          },
+      .label_id = block_label,
+  };
+
+  constexpr std::size_t call_instruction_index = 3;
+  const auto* loaded = std::get_if<bir::LoadLocalInst>(&block.insts[0]);
+  const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[1]);
+  const auto* quotient = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  const auto* call =
+      std::get_if<bir::CallInst>(&block.insts[call_instruction_index]);
+  const auto* after = std::get_if<bir::BinaryInst>(&block.insts[4]);
+  if (loaded == nullptr || sum == nullptr || quotient == nullptr ||
+      call == nullptr || after == nullptr) {
+    return fail("BIR call-argument materialization fixture is malformed");
+  }
+
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = loaded,
+      });
+  source_producers.producers_by_value_name.emplace(
+      sum_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = sum,
+      });
+  source_producers.producers_by_value_name.emplace(
+      quotient_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = quotient,
+      });
+  source_producers.producers_by_value_name.emplace(
+      missing_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Unknown,
+          .block_label = block_label,
+      });
+  source_producers.producers_by_value_name.emplace(
+      after_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 4,
+          .binary = after,
+      });
+
+  if (!prepared_and_bir_call_argument_source_producer_materialization_match(
+          names, source_producers, block_label, block, *call,
+          call_instruction_index, 0) ||
+      !prepared_and_bir_call_argument_source_producer_materialization_match(
+          names, source_producers, block_label, block, *call,
+          call_instruction_index, 1)) {
+    return fail(
+        "BIR call-argument source-producer materialization should match prepared load-local and materializable binary oracle facts");
+  }
+
+  const auto nonmaterializable =
+      bir::find_call_argument_source_producer_materialization(
+          block, *call, call_instruction_index, 2);
+  if (!prepared_and_bir_call_argument_source_producer_materialization_match(
+          names, source_producers, block_label, block, *call,
+          call_instruction_index, 2) ||
+      !nonmaterializable.available ||
+      nonmaterializable.producer_kind !=
+          bir::CallArgumentSourceProducerKind::Binary ||
+      nonmaterializable.materializable) {
+    return fail(
+        "BIR call-argument materialization should expose nonmaterializable binary producer eligibility");
+  }
+
+  const auto missing =
+      bir::find_call_argument_source_producer_materialization(
+          block, *call, call_instruction_index, 3);
+  const auto after_call =
+      bir::find_call_argument_source_producer_materialization(
+          block, *call, call_instruction_index, 4);
+  if (!prepared_and_bir_call_argument_source_producer_materialization_match(
+          names, source_producers, block_label, block, *call,
+          call_instruction_index, 3) ||
+      !prepared_and_bir_call_argument_source_producer_materialization_match(
+          names, source_producers, block_label, block, *call,
+          call_instruction_index, 4) ||
+      missing.available ||
+      after_call.available) {
+    return fail(
+        "BIR call-argument materialization should fail closed for missing and producer-after-call paths");
+  }
+
+  auto duplicate_block = block;
+  auto* duplicate_call =
+      std::get_if<bir::CallInst>(&duplicate_block.insts[call_instruction_index]);
+  if (duplicate_call == nullptr) {
+    return fail("BIR duplicate materialization fixture is malformed");
+  }
+  duplicate_call->arg_sources.push_back(duplicate_call->arg_sources.front());
+  if (bir::find_call_argument_source_producer_materialization(
+          duplicate_block, *duplicate_call, call_instruction_index, 0)
+          .available) {
+    return fail(
+        "BIR call-argument materialization should fail closed for duplicate argument source records");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -5680,6 +5950,11 @@ int main() {
   }
   if (const int result =
           verify_bir_call_argument_publication_source_routing_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_bir_call_argument_source_producer_materialization_lookup();
       result != 0) {
     return result;
   }

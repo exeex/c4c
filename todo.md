@@ -3,41 +3,42 @@
 Status: Complete
 Source Idea Path: ideas/open/157_bir_call_boundary_source_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the BIR call-use source relationship surface
+Current Step ID: 3
+Current Step Title: Prove prepared-oracle equivalence for argument source facts
 
 ## Just Finished
 
-Step 2 added the first BIR-owned call-argument source relationship surface:
-`bir::CallInst` now carries target-neutral `arg_sources` records keyed by
-argument index, and BIR exposes fail-closed lookup/query helpers for scalar
-argument source identity, source-selection identity, and publication-source
-routing including direct-global select-chain dependency fields.
+Step 3 extended the BIR-owned call-argument source surface with
+same-block source-producer materialization facts. BIR now exposes a
+target-neutral query for call argument source producers that carries producer
+identity, instruction index, produced value identity, and materializable
+eligibility only.
 
-The slice kept AArch64 and prealloc consumers on their existing prepared
-authority. It did not copy ABI placement, aggregate transport lanes, scratch,
-preservation storage, variadic state, helper protocols, or final-lowering
-fields into BIR. `backend_prepared_lookup_helper_test.cpp` now compares the new
-BIR call-argument routing query against prepared oracle answers for register,
-computed-address, frame-slot value, local-frame-address materialization, direct
-global select-chain, unavailable, duplicate, and out-of-range cases.
+`backend_prepared_lookup_helper_test.cpp` now compares the BIR query against
+`PreparedCallArgumentSourceProducerMaterialization` for load-local,
+materializable binary opcode, nonmaterializable binary opcode, missing
+producer, producer-after-call, and duplicate source-record fail-closed paths.
+No AArch64 or prealloc consumers were switched, and no ABI placement/final
+lowering fields were added.
 
 ## Suggested Next
 
-Delegate the next narrow packet for the supervisor-selected call-boundary fact
-family, likely expanding from call-argument routing into the next BIR-owned
-source/result identity surface without switching AArch64 or prealloc consumers.
+No remaining Step 3 gaps are known inside this packet. The next coherent packet
+is supervisor-owned: either accept/commit this BIR query and oracle proof slice
+or choose the next call-boundary source/result identity surface while keeping
+consumers on prepared authority.
 
 ## Watchouts
 
-- The new BIR surface is intentionally populated only by direct BIR records in
-  this slice; no lowering, prealloc, or AArch64 consumer has been switched.
-- `arg_sources` is semantic source identity only. Keep ABI register/stack
-  placement, aggregate/byval transport policy, preservation/clobber storage,
-  helper protocol state, and final call lowering outside this BIR surface.
-- Duplicate source records for the same argument fail closed by design.
-- Source base value name is available on the call-argument routing record, not
-  on prepared source-selection records.
+- The new BIR query requires the `CallInst` to be the instruction at the
+  provided same-block call index and requires exactly one `arg_sources` record
+  for the argument; duplicates fail closed.
+- Nonmaterializable binary producers are reported as available producers with
+  `materializable=false`, while the prepared materialization oracle remains
+  absent; the test comparator checks equivalence through the materializable
+  eligibility bit.
+- The materialization surface currently recognizes load-local and binary
+  producers only, matching the prepared oracle for this packet.
 
 ## Proof
 
