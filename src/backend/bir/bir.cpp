@@ -208,4 +208,66 @@ std::string render_cast_opcode(CastOpcode opcode) {
   return "<unknown>";
 }
 
+const CallArgumentSourceRelationship* find_call_argument_source_relationship(
+    const CallInst& call,
+    std::size_t arg_index) {
+  if (arg_index >= call.args.size()) {
+    return nullptr;
+  }
+
+  const CallArgumentSourceRelationship* result = nullptr;
+  for (const auto& relationship : call.arg_sources) {
+    if (relationship.arg_index != arg_index) {
+      continue;
+    }
+    if (result != nullptr) {
+      return nullptr;
+    }
+    result = &relationship;
+  }
+  return result;
+}
+
+CallArgumentPublicationSourceRouting find_call_argument_publication_source_routing(
+    const CallInst& call,
+    std::size_t arg_index) {
+  const auto* relationship =
+      find_call_argument_source_relationship(call, arg_index);
+  if (relationship == nullptr) {
+    return {};
+  }
+
+  const auto* selection =
+      relationship->source_selection.has_value() &&
+              call_argument_source_selection_available(
+                  *relationship->source_selection)
+          ? &*relationship->source_selection
+          : nullptr;
+  const auto* dependency =
+      relationship->direct_global_select_chain_dependency.has_value() &&
+              call_argument_direct_global_select_chain_dependency_available(
+                  *relationship->direct_global_select_chain_dependency)
+          ? &*relationship->direct_global_select_chain_dependency
+          : nullptr;
+  const bool available =
+      relationship->source_encoding != CallArgumentSourceEncodingKind::None ||
+      selection != nullptr ||
+      dependency != nullptr;
+  if (!available) {
+    return {};
+  }
+
+  return CallArgumentPublicationSourceRouting{
+      .available = true,
+      .arg_index = relationship->arg_index,
+      .source_encoding = relationship->source_encoding,
+      .source_value_id = relationship->source_value_id,
+      .source_base_value_id = relationship->source_base_value_id,
+      .source_base_value_name = relationship->source_base_value_name,
+      .source_pointer_byte_delta = relationship->source_pointer_byte_delta,
+      .source_selection = selection,
+      .direct_global_select_chain_dependency = dependency,
+  };
+}
+
 }  // namespace c4c::backend::bir

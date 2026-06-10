@@ -766,6 +766,125 @@ struct IntrinsicOperation {
   bool has_side_effects = false;
 };
 
+enum class CallArgumentSourceEncodingKind : unsigned char {
+  None,
+  Register,
+  FrameSlot,
+  Immediate,
+  ComputedAddress,
+  SymbolAddress,
+};
+
+[[nodiscard]] constexpr std::string_view call_argument_source_encoding_kind_name(
+    CallArgumentSourceEncodingKind kind) {
+  switch (kind) {
+    case CallArgumentSourceEncodingKind::None:
+      return "none";
+    case CallArgumentSourceEncodingKind::Register:
+      return "register";
+    case CallArgumentSourceEncodingKind::FrameSlot:
+      return "frame_slot";
+    case CallArgumentSourceEncodingKind::Immediate:
+      return "immediate";
+    case CallArgumentSourceEncodingKind::ComputedAddress:
+      return "computed_address";
+    case CallArgumentSourceEncodingKind::SymbolAddress:
+      return "symbol_address";
+  }
+  return "unknown";
+}
+
+enum class CallArgumentSourceSelectionKind : unsigned char {
+  None,
+  PriorPreservation,
+  LocalFrameAddressMaterialization,
+  FrameSlotAddress,
+  FrameSlotValue,
+  ByvalRegisterLane,
+};
+
+[[nodiscard]] constexpr std::string_view call_argument_source_selection_kind_name(
+    CallArgumentSourceSelectionKind kind) {
+  switch (kind) {
+    case CallArgumentSourceSelectionKind::None:
+      return "none";
+    case CallArgumentSourceSelectionKind::PriorPreservation:
+      return "prior_preservation";
+    case CallArgumentSourceSelectionKind::LocalFrameAddressMaterialization:
+      return "local_frame_address_materialization";
+    case CallArgumentSourceSelectionKind::FrameSlotAddress:
+      return "frame_slot_address";
+    case CallArgumentSourceSelectionKind::FrameSlotValue:
+      return "frame_slot_value";
+    case CallArgumentSourceSelectionKind::ByvalRegisterLane:
+      return "byval_register_lane";
+  }
+  return "unknown";
+}
+
+struct CallArgumentSourceSelection {
+  CallArgumentSourceSelectionKind kind = CallArgumentSourceSelectionKind::None;
+  std::optional<std::size_t> source_value_id;
+  std::optional<std::string> source_value_name;
+  std::optional<std::size_t> source_base_value_id;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  std::optional<SlotNameId> source_slot_id;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<std::size_t> source_size_bytes;
+  std::optional<std::size_t> source_align_bytes;
+  std::optional<BlockLabelId> address_materialization_block_label;
+  std::optional<std::size_t> address_materialization_inst_index;
+  std::optional<SlotNameId> address_materialization_frame_slot_id;
+  std::optional<std::int64_t> address_materialization_byte_offset;
+};
+
+[[nodiscard]] constexpr bool call_argument_source_selection_available(
+    const CallArgumentSourceSelection& selection) {
+  return selection.kind != CallArgumentSourceSelectionKind::None;
+}
+
+struct CallArgumentDirectGlobalSelectChainDependency {
+  bool available = false;
+  std::string source_value_name;
+  bool contains_direct_global_load = false;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+};
+
+[[nodiscard]] constexpr bool call_argument_direct_global_select_chain_dependency_available(
+    const CallArgumentDirectGlobalSelectChainDependency& dependency) {
+  return dependency.available &&
+         dependency.contains_direct_global_load &&
+         dependency.root_instruction_index.has_value();
+}
+
+struct CallArgumentSourceRelationship {
+  std::size_t arg_index = 0;
+  CallArgumentSourceEncodingKind source_encoding =
+      CallArgumentSourceEncodingKind::None;
+  std::optional<std::size_t> source_value_id;
+  std::optional<std::size_t> source_base_value_id;
+  std::optional<std::string> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  std::optional<CallArgumentSourceSelection> source_selection;
+  std::optional<CallArgumentDirectGlobalSelectChainDependency>
+      direct_global_select_chain_dependency;
+};
+
+struct CallArgumentPublicationSourceRouting {
+  bool available = false;
+  std::size_t arg_index = 0;
+  CallArgumentSourceEncodingKind source_encoding =
+      CallArgumentSourceEncodingKind::None;
+  std::optional<std::size_t> source_value_id;
+  std::optional<std::size_t> source_base_value_id;
+  std::optional<std::string> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
+  const CallArgumentSourceSelection* source_selection = nullptr;
+  const CallArgumentDirectGlobalSelectChainDependency*
+      direct_global_select_chain_dependency = nullptr;
+};
+
 struct CallInst {
   std::optional<Value> result;
   std::vector<Value> result_lanes;
@@ -777,6 +896,7 @@ struct CallInst {
   std::optional<Value> callee_value;
   std::vector<Value> args;
   std::vector<TypeKind> arg_types;
+  std::vector<CallArgumentSourceRelationship> arg_sources;
   std::vector<CallArgAbiInfo> arg_abi;
   // Final type spelling for aggregate call results; return_type remains the
   // scalar ABI class and structured_return_type_name is display/dump text.
@@ -1024,6 +1144,12 @@ inline std::optional<std::int64_t> parse_i32_return_immediate(const Function& fu
 std::string render_type(TypeKind type);
 std::string render_binary_opcode(BinaryOpcode opcode);
 std::string render_cast_opcode(CastOpcode opcode);
+const CallArgumentSourceRelationship* find_call_argument_source_relationship(
+    const CallInst& call,
+    std::size_t arg_index);
+CallArgumentPublicationSourceRouting find_call_argument_publication_source_routing(
+    const CallInst& call,
+    std::size_t arg_index);
 std::string print(const Module& module);
 bool validate(const Module& module, std::string* error);
 

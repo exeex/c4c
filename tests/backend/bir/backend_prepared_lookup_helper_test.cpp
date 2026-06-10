@@ -79,6 +79,46 @@ mir::SameBlockProducerKind expected_bir_producer_kind(
   return mir::SameBlockProducerKind::Unknown;
 }
 
+bir::CallArgumentSourceEncodingKind expected_bir_call_source_encoding(
+    prepare::PreparedStorageEncodingKind kind) {
+  switch (kind) {
+    case prepare::PreparedStorageEncodingKind::None:
+      return bir::CallArgumentSourceEncodingKind::None;
+    case prepare::PreparedStorageEncodingKind::Register:
+      return bir::CallArgumentSourceEncodingKind::Register;
+    case prepare::PreparedStorageEncodingKind::FrameSlot:
+      return bir::CallArgumentSourceEncodingKind::FrameSlot;
+    case prepare::PreparedStorageEncodingKind::Immediate:
+      return bir::CallArgumentSourceEncodingKind::Immediate;
+    case prepare::PreparedStorageEncodingKind::ComputedAddress:
+      return bir::CallArgumentSourceEncodingKind::ComputedAddress;
+    case prepare::PreparedStorageEncodingKind::SymbolAddress:
+      return bir::CallArgumentSourceEncodingKind::SymbolAddress;
+  }
+  return bir::CallArgumentSourceEncodingKind::None;
+}
+
+bir::CallArgumentSourceSelectionKind expected_bir_call_source_selection_kind(
+    prepare::PreparedCallArgumentSourceSelectionKind kind) {
+  switch (kind) {
+    case prepare::PreparedCallArgumentSourceSelectionKind::None:
+      return bir::CallArgumentSourceSelectionKind::None;
+    case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+      return bir::CallArgumentSourceSelectionKind::PriorPreservation;
+    case prepare::PreparedCallArgumentSourceSelectionKind::
+        LocalFrameAddressMaterialization:
+      return bir::CallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization;
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      return bir::CallArgumentSourceSelectionKind::FrameSlotAddress;
+    case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      return bir::CallArgumentSourceSelectionKind::FrameSlotValue;
+    case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+      return bir::CallArgumentSourceSelectionKind::ByvalRegisterLane;
+  }
+  return bir::CallArgumentSourceSelectionKind::None;
+}
+
 bool prepared_and_bir_scalar_producers_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
@@ -111,6 +151,130 @@ bool prepared_and_bir_scalar_producers_match(
          bir->produced_value != nullptr &&
          bir->produced_value->name == value.name &&
          bir->produced_value->type == value.type;
+}
+
+bool prepared_and_bir_call_argument_publication_source_routing_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedCallArgumentPlan& prepared_argument,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  const auto prepared =
+      prepare::find_prepared_call_argument_publication_source_routing(
+          prepared_argument);
+  const auto bir = bir::find_call_argument_publication_source_routing(
+      call, arg_index);
+  if (prepared.available != bir.available) {
+    return false;
+  }
+  if (!prepared.available) {
+    return true;
+  }
+  if (!bir.available ||
+      bir.arg_index != arg_index ||
+      bir.source_encoding !=
+          expected_bir_call_source_encoding(prepared.source_encoding) ||
+      bir.source_value_id != prepared.source_value_id ||
+      bir.source_base_value_id != prepared.source_base_value_id ||
+      bir.source_pointer_byte_delta != prepared.source_pointer_byte_delta) {
+    return false;
+  }
+  if (prepared.source_base_value_name.has_value()) {
+    if (!bir.source_base_value_name.has_value() ||
+        *bir.source_base_value_name !=
+            prepare::prepared_value_name(
+                names, *prepared.source_base_value_name)) {
+      return false;
+    }
+  } else if (bir.source_base_value_name.has_value()) {
+    return false;
+  }
+
+  if ((prepared.source_selection != nullptr) !=
+      (bir.source_selection != nullptr)) {
+    return false;
+  }
+  if (prepared.source_selection != nullptr) {
+    const auto& prepared_selection = *prepared.source_selection;
+    const auto& bir_selection = *bir.source_selection;
+    if (bir_selection.kind !=
+            expected_bir_call_source_selection_kind(
+                prepared_selection.kind) ||
+        bir_selection.source_value_id != prepared_selection.source_value_id ||
+        bir_selection.source_base_value_id !=
+            prepared_selection.source_base_value_id ||
+        bir_selection.source_pointer_byte_delta !=
+            prepared_selection.source_pointer_byte_delta ||
+        bir_selection.source_stack_offset_bytes !=
+            prepared_selection.source_stack_offset_bytes ||
+        bir_selection.source_size_bytes !=
+            prepared_selection.source_size_bytes ||
+        bir_selection.source_align_bytes !=
+            prepared_selection.source_align_bytes ||
+        bir_selection.address_materialization_block_label !=
+            prepared_selection.address_materialization_block_label ||
+        bir_selection.address_materialization_inst_index !=
+            prepared_selection.address_materialization_inst_index ||
+        bir_selection.address_materialization_byte_offset !=
+            prepared_selection.address_materialization_byte_offset) {
+      return false;
+    }
+    if (prepared_selection.source_value_name.has_value()) {
+      if (!bir_selection.source_value_name.has_value() ||
+          *bir_selection.source_value_name !=
+              prepare::prepared_value_name(
+                  names, *prepared_selection.source_value_name)) {
+        return false;
+      }
+    } else if (bir_selection.source_value_name.has_value()) {
+      return false;
+    }
+    if (prepared_selection.source_slot_id.has_value()) {
+      if (!bir_selection.source_slot_id.has_value() ||
+          *bir_selection.source_slot_id !=
+              static_cast<c4c::SlotNameId>(
+                  *prepared_selection.source_slot_id)) {
+        return false;
+      }
+    } else if (bir_selection.source_slot_id.has_value()) {
+      return false;
+    }
+    if (prepared_selection.address_materialization_frame_slot_id.has_value()) {
+      if (!bir_selection.address_materialization_frame_slot_id.has_value() ||
+          *bir_selection.address_materialization_frame_slot_id !=
+              static_cast<c4c::SlotNameId>(
+                  *prepared_selection
+                       .address_materialization_frame_slot_id)) {
+        return false;
+      }
+    } else if (bir_selection.address_materialization_frame_slot_id.has_value()) {
+      return false;
+    }
+  }
+
+  if ((prepared.direct_global_select_chain_dependency != nullptr) !=
+      (bir.direct_global_select_chain_dependency != nullptr)) {
+    return false;
+  }
+  if (prepared.direct_global_select_chain_dependency != nullptr) {
+    const auto& prepared_dependency =
+        *prepared.direct_global_select_chain_dependency;
+    const auto& bir_dependency = *bir.direct_global_select_chain_dependency;
+    if (!bir_dependency.available ||
+        bir_dependency.source_value_name !=
+            prepare::prepared_value_name(
+                names, prepared_dependency.source_value_name) ||
+        bir_dependency.contains_direct_global_load !=
+            prepared_dependency.direct_global_dependency
+                .contains_direct_global_load ||
+        bir_dependency.root_is_select !=
+            prepared_dependency.direct_global_dependency.root_is_select ||
+        bir_dependency.root_instruction_index !=
+            prepared_dependency.direct_global_dependency
+                .root_instruction_index) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool prepared_and_bir_current_block_publication_identity_match(
@@ -5227,6 +5391,225 @@ int verify_bir_block_entry_publication_identity_lookup() {
   return 0;
 }
 
+int verify_bir_call_argument_publication_source_routing_lookup() {
+  prepare::PreparedNameTables names;
+  const auto base_name = names.value_names.intern("%base.ptr");
+  const auto frame_value_name = names.value_names.intern("%frame.value");
+  const auto selected_global_name = names.value_names.intern("%selected.global");
+  const auto block_label = names.block_labels.intern("entry");
+
+  const prepare::PreparedCallArgumentPlan scalar_argument{
+      .arg_index = 0,
+      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+      .source_value_id = prepare::PreparedValueId{101},
+  };
+  const prepare::PreparedCallArgumentPlan computed_argument{
+      .arg_index = 1,
+      .source_encoding = prepare::PreparedStorageEncodingKind::ComputedAddress,
+      .source_value_id = prepare::PreparedValueId{102},
+      .source_base_value_id = prepare::PreparedValueId{201},
+      .source_base_value_name = base_name,
+      .source_pointer_byte_delta = std::int64_t{12},
+  };
+  const prepare::PreparedCallArgumentPlan frame_argument{
+      .arg_index = 2,
+      .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .source_value_id = prepare::PreparedValueId{103},
+      .source_selection =
+          prepare::PreparedCallArgumentSourceSelection{
+              .kind =
+                  prepare::PreparedCallArgumentSourceSelectionKind::
+                      FrameSlotValue,
+              .source_value_id = prepare::PreparedValueId{103},
+              .source_value_name = frame_value_name,
+              .source_slot_id = prepare::PreparedFrameSlotId{7},
+              .source_stack_offset_bytes = std::size_t{32},
+              .source_size_bytes = std::size_t{8},
+              .source_align_bytes = std::size_t{8},
+          },
+  };
+  const prepare::PreparedCallArgumentPlan direct_global_argument{
+      .arg_index = 3,
+      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+      .source_value_id = prepare::PreparedValueId{104},
+      .direct_global_select_chain_dependency =
+          prepare::PreparedCallArgumentDirectGlobalSelectChainDependency{
+              .available = true,
+              .source_value_name = selected_global_name,
+              .direct_global_dependency =
+                  prepare::PreparedDirectGlobalSelectChainDependency{
+                      .contains_direct_global_load = true,
+                      .root_is_select = true,
+                      .root_instruction_index = std::size_t{5},
+                  },
+          },
+  };
+  const prepare::PreparedCallArgumentPlan local_frame_address_argument{
+      .arg_index = 4,
+      .source_selection =
+          prepare::PreparedCallArgumentSourceSelection{
+              .kind =
+                  prepare::PreparedCallArgumentSourceSelectionKind::
+                      LocalFrameAddressMaterialization,
+              .source_value_id = prepare::PreparedValueId{105},
+              .source_base_value_id = prepare::PreparedValueId{205},
+              .source_pointer_byte_delta = std::int64_t{-4},
+              .address_materialization_block_label = block_label,
+              .address_materialization_inst_index = std::size_t{9},
+              .address_materialization_frame_slot_id =
+                  prepare::PreparedFrameSlotId{8},
+              .address_materialization_byte_offset = std::int64_t{40},
+          },
+  };
+
+  bir::CallInst call{
+      .callee = "consume_sources",
+      .args =
+          {
+              bir::Value::named(bir::TypeKind::I64, "%scalar"),
+              bir::Value::named(bir::TypeKind::Ptr, "%computed"),
+              bir::Value::named(bir::TypeKind::I64, "%frame"),
+              bir::Value::named(bir::TypeKind::Ptr, "%selected.global"),
+              bir::Value::named(bir::TypeKind::Ptr, "%frame.addr"),
+          },
+      .arg_types =
+          {
+              bir::TypeKind::I64,
+              bir::TypeKind::Ptr,
+              bir::TypeKind::I64,
+              bir::TypeKind::Ptr,
+              bir::TypeKind::Ptr,
+          },
+      .arg_sources =
+          {
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 0,
+                  .source_encoding =
+                      bir::CallArgumentSourceEncodingKind::Register,
+                  .source_value_id = std::size_t{101},
+              },
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 1,
+                  .source_encoding =
+                      bir::CallArgumentSourceEncodingKind::ComputedAddress,
+                  .source_value_id = std::size_t{102},
+                  .source_base_value_id = std::size_t{201},
+                  .source_base_value_name = std::string{"%base.ptr"},
+                  .source_pointer_byte_delta = std::int64_t{12},
+              },
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 2,
+                  .source_encoding =
+                      bir::CallArgumentSourceEncodingKind::FrameSlot,
+                  .source_value_id = std::size_t{103},
+                  .source_selection =
+                      bir::CallArgumentSourceSelection{
+                          .kind =
+                              bir::CallArgumentSourceSelectionKind::
+                                  FrameSlotValue,
+                          .source_value_id = std::size_t{103},
+                          .source_value_name = std::string{"%frame.value"},
+                          .source_slot_id = c4c::SlotNameId{7},
+                          .source_stack_offset_bytes = std::size_t{32},
+                          .source_size_bytes = std::size_t{8},
+                          .source_align_bytes = std::size_t{8},
+                      },
+              },
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 3,
+                  .source_encoding =
+                      bir::CallArgumentSourceEncodingKind::Register,
+                  .source_value_id = std::size_t{104},
+                  .direct_global_select_chain_dependency =
+                      bir::CallArgumentDirectGlobalSelectChainDependency{
+                          .available = true,
+                          .source_value_name =
+                              std::string{"%selected.global"},
+                          .contains_direct_global_load = true,
+                          .root_is_select = true,
+                          .root_instruction_index = std::size_t{5},
+                      },
+              },
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 4,
+                  .source_selection =
+                      bir::CallArgumentSourceSelection{
+                          .kind =
+                              bir::CallArgumentSourceSelectionKind::
+                                  LocalFrameAddressMaterialization,
+                          .source_value_id = std::size_t{105},
+                          .source_base_value_id = std::size_t{205},
+                          .source_pointer_byte_delta = std::int64_t{-4},
+                          .address_materialization_block_label = block_label,
+                          .address_materialization_inst_index =
+                              std::size_t{9},
+                          .address_materialization_frame_slot_id =
+                              c4c::SlotNameId{8},
+                          .address_materialization_byte_offset =
+                              std::int64_t{40},
+                      },
+              },
+          },
+      .return_type = bir::TypeKind::Void,
+  };
+
+  if (!call.arg_abi.empty()) {
+    return fail(
+        "BIR call-argument source routing fixture should not require ABI placement records");
+  }
+  if (!prepared_and_bir_call_argument_publication_source_routing_match(
+          names, scalar_argument, call, 0) ||
+      !prepared_and_bir_call_argument_publication_source_routing_match(
+          names, computed_argument, call, 1) ||
+      !prepared_and_bir_call_argument_publication_source_routing_match(
+          names, frame_argument, call, 2) ||
+      !prepared_and_bir_call_argument_publication_source_routing_match(
+          names, direct_global_argument, call, 3) ||
+      !prepared_and_bir_call_argument_publication_source_routing_match(
+          names, local_frame_address_argument, call, 4)) {
+    return fail(
+        "BIR call-argument source routing should match prepared semantic source oracle fields");
+  }
+
+  auto duplicate_call = call;
+  duplicate_call.arg_sources.push_back(call.arg_sources.front());
+  if (bir::find_call_argument_source_relationship(duplicate_call, 0) !=
+          nullptr ||
+      bir::find_call_argument_publication_source_routing(duplicate_call, 0)
+          .available) {
+    return fail(
+        "BIR call-argument source routing should fail closed for duplicate argument source records");
+  }
+
+  if (bir::find_call_argument_source_relationship(call, 99) != nullptr ||
+      bir::find_call_argument_publication_source_routing(call, 99)
+          .available) {
+    return fail(
+        "BIR call-argument source routing should fail closed for out-of-range argument indexes");
+  }
+
+  bir::CallInst unavailable_call{
+      .callee = "consume_unavailable",
+      .args = {bir::Value::named(bir::TypeKind::I32, "%arg")},
+      .arg_sources =
+          {
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 0,
+              },
+          },
+  };
+  const prepare::PreparedCallArgumentPlan unavailable_argument{
+      .arg_index = 0,
+  };
+  if (!prepared_and_bir_call_argument_publication_source_routing_match(
+          names, unavailable_argument, unavailable_call, 0)) {
+    return fail(
+        "BIR call-argument source routing should match prepared unavailable source routing");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -5292,6 +5675,11 @@ int main() {
     return result;
   }
   if (const int result = verify_bir_block_entry_publication_identity_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_bir_call_argument_publication_source_routing_lookup();
       result != 0) {
     return result;
   }

@@ -127,6 +127,83 @@ void render_sret_suffix(std::ostringstream& out, std::size_t size_bytes, std::si
   }
 }
 
+void render_call_argument_source_annotation(
+    std::ostringstream& out,
+    const CallArgumentSourceRelationship& source) {
+  out << "  ; call_arg_source index=" << source.arg_index
+      << " encoding="
+      << call_argument_source_encoding_kind_name(source.source_encoding);
+  if (source.source_value_id.has_value()) {
+    out << " source_value_id=" << *source.source_value_id;
+  }
+  if (source.source_base_value_id.has_value()) {
+    out << " source_base_value_id=" << *source.source_base_value_id;
+  }
+  if (source.source_base_value_name.has_value()) {
+    out << " source_base=" << *source.source_base_value_name;
+  }
+  if (source.source_pointer_byte_delta.has_value()) {
+    out << " source_delta=" << *source.source_pointer_byte_delta;
+  }
+  if (source.source_selection.has_value() &&
+      call_argument_source_selection_available(*source.source_selection)) {
+    const auto& selection = *source.source_selection;
+    out << " selection="
+        << call_argument_source_selection_kind_name(selection.kind);
+    if (selection.source_value_id.has_value()) {
+      out << " selection_value_id=" << *selection.source_value_id;
+    }
+    if (selection.source_value_name.has_value()) {
+      out << " selection_value=" << *selection.source_value_name;
+    }
+    if (selection.source_base_value_id.has_value()) {
+      out << " selection_base_value_id=" << *selection.source_base_value_id;
+    }
+    if (selection.source_pointer_byte_delta.has_value()) {
+      out << " selection_delta=" << *selection.source_pointer_byte_delta;
+    }
+    if (selection.source_slot_id.has_value()) {
+      out << " selection_slot=" << *selection.source_slot_id;
+    }
+    if (selection.source_stack_offset_bytes.has_value()) {
+      out << " selection_stack_offset="
+          << *selection.source_stack_offset_bytes;
+    }
+    if (selection.source_size_bytes.has_value()) {
+      out << " selection_size=" << *selection.source_size_bytes;
+    }
+    if (selection.source_align_bytes.has_value()) {
+      out << " selection_align=" << *selection.source_align_bytes;
+    }
+    if (selection.address_materialization_inst_index.has_value()) {
+      out << " address_materialization_inst="
+          << *selection.address_materialization_inst_index;
+    }
+    if (selection.address_materialization_frame_slot_id.has_value()) {
+      out << " address_materialization_slot="
+          << *selection.address_materialization_frame_slot_id;
+    }
+    if (selection.address_materialization_byte_offset.has_value()) {
+      out << " address_materialization_offset="
+          << *selection.address_materialization_byte_offset;
+    }
+  }
+  if (source.direct_global_select_chain_dependency.has_value() &&
+      call_argument_direct_global_select_chain_dependency_available(
+          *source.direct_global_select_chain_dependency)) {
+    const auto& dependency = *source.direct_global_select_chain_dependency;
+    out << " direct_global_select_chain=yes";
+    if (!dependency.source_value_name.empty()) {
+      out << " direct_global_source=" << dependency.source_value_name;
+    }
+    out << " direct_global_root_is_select="
+        << (dependency.root_is_select ? "yes" : "no")
+        << " direct_global_root_inst="
+        << *dependency.root_instruction_index;
+  }
+  out << "\n";
+}
+
 std::string render_block_label(const NameTables& names,
                                BlockLabelId label_id,
                                const std::string& fallback) {
@@ -279,6 +356,9 @@ void render_function(std::ostringstream& out,
                 out << "]";
               }
               out << "\n";
+              for (const auto& source : lowered.arg_sources) {
+                render_call_argument_source_annotation(out, source);
+              }
             } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
               out << "  " << lowered.result.name << " = bir.load_local "
                   << render_type(lowered.result.type) << " " << lowered.slot_name;
