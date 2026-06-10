@@ -758,6 +758,39 @@ Route3MemoryAccessValueRecord route3_memory_access_stored_value_record(
   };
 }
 
+Route3MemoryAccessIndex route3_build_memory_access_index(const Block& block) {
+  Route3MemoryAccessIndex index{
+      .block = &block,
+  };
+  index.records.reserve(block.insts.size());
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto record = route3_memory_access_record(block, instruction_index);
+    if (record) {
+      index.records.push_back(record);
+    }
+  }
+  return index;
+}
+
+const Route3MemoryAccessRecord* route3_find_memory_access_record(
+    const Route3MemoryAccessIndex& index,
+    std::size_t instruction_index,
+    Route3MemoryAccessNodeKind node_kind) {
+  if (!index) {
+    return nullptr;
+  }
+  for (const auto& record : index.records) {
+    if (!record ||
+        record.instruction_index != instruction_index ||
+        record.node_kind != node_kind) {
+      continue;
+    }
+    return &record;
+  }
+  return nullptr;
+}
+
 Route3SameBlockGlobalLoadAccessRecord
 route3_same_block_global_load_access_record(
     Route1SameBlockProducerQuery query,
@@ -821,6 +854,87 @@ route3_same_block_load_local_source_record(
       record.invalidating_store_access = store_access;
       return record;
     }
+  }
+  record.source_available = true;
+  return record;
+}
+
+Route3SameBlockGlobalLoadAccessRecord
+route3_find_same_block_global_load_access(
+    Route3MemoryAccessQuery query,
+    const Value& value) {
+  Route3SameBlockGlobalLoadAccessRecord record{
+      .available = value.kind == Value::Kind::Named && !value.name.empty(),
+      .root_value = route1_source_value_identity(value),
+  };
+  if (!query || !record.available) {
+    return {};
+  }
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& candidate = *it;
+    if (!candidate ||
+        candidate.node_kind != Route3MemoryAccessNodeKind::LoadGlobal ||
+        candidate.base_kind != Route3MemoryAccessBaseKind::GlobalSymbol ||
+        candidate.instruction_index >= query.before_instruction_index ||
+        candidate.result_value.value_kind != Value::Kind::Named ||
+        candidate.result_value.name != value.name ||
+        candidate.result_value.type != value.type) {
+      continue;
+    }
+    record.load_instruction_index = candidate.instruction_index;
+    record.load_access = candidate;
+    record.access_available = true;
+    return record;
+  }
+  return record;
+}
+
+Route3SameBlockLoadLocalSourceRecord
+route3_find_same_block_load_local_source(
+    Route3MemoryAccessQuery query,
+    const Value& value) {
+  Route3SameBlockLoadLocalSourceRecord record{
+      .available = value.kind == Value::Kind::Named && !value.name.empty(),
+      .root_value = route1_source_value_identity(value),
+  };
+  if (!query || !record.available) {
+    return {};
+  }
+  const Route3MemoryAccessRecord* load_access = nullptr;
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& candidate = *it;
+    if (!candidate ||
+        candidate.node_kind != Route3MemoryAccessNodeKind::LoadLocal ||
+        candidate.base_kind != Route3MemoryAccessBaseKind::LocalSlot ||
+        candidate.instruction_index >= query.before_instruction_index ||
+        candidate.result_value.value_kind != Value::Kind::Named ||
+        candidate.result_value.name != value.name ||
+        candidate.result_value.type != value.type) {
+      continue;
+    }
+    load_access = &candidate;
+    break;
+  }
+  if (load_access == nullptr) {
+    return record;
+  }
+  record.load_instruction_index = load_access->instruction_index;
+  record.load_access = *load_access;
+  for (const auto& candidate : query.index->records) {
+    if (!candidate ||
+        candidate.node_kind != Route3MemoryAccessNodeKind::StoreLocal ||
+        candidate.instruction_index <= load_access->instruction_index ||
+        candidate.instruction_index >= query.before_instruction_index ||
+        !route3_same_local_slot(*load_access, candidate)) {
+      continue;
+    }
+    record.invalidating_store_instruction_index = candidate.instruction_index;
+    record.invalidating_store_access = candidate;
+    return record;
   }
   record.source_available = true;
   return record;

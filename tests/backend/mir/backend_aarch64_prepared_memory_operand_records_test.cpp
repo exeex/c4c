@@ -77,6 +77,23 @@ bir::Route3MemoryAccessNodeKind expected_route3_node_kind(
   return bir::Route3MemoryAccessNodeKind::Unknown;
 }
 
+bir::Route3MemoryAccessNodeKind mismatched_route3_node_kind(
+    bir::Route3MemoryAccessNodeKind kind) {
+  switch (kind) {
+    case bir::Route3MemoryAccessNodeKind::LoadLocal:
+      return bir::Route3MemoryAccessNodeKind::StoreLocal;
+    case bir::Route3MemoryAccessNodeKind::LoadGlobal:
+      return bir::Route3MemoryAccessNodeKind::StoreGlobal;
+    case bir::Route3MemoryAccessNodeKind::StoreLocal:
+      return bir::Route3MemoryAccessNodeKind::LoadLocal;
+    case bir::Route3MemoryAccessNodeKind::StoreGlobal:
+      return bir::Route3MemoryAccessNodeKind::LoadGlobal;
+    case bir::Route3MemoryAccessNodeKind::Unknown:
+      return bir::Route3MemoryAccessNodeKind::LoadLocal;
+  }
+  return bir::Route3MemoryAccessNodeKind::Unknown;
+}
+
 bir::Route3MemoryAccessBaseKind expected_route3_base_kind(
     prepare::PreparedAddressBaseKind kind) {
   switch (kind) {
@@ -111,6 +128,12 @@ bool prepared_and_bir_direct_memory_identity_match(
           .node_kind = node_kind,
       });
   const auto route3 = bir::route3_memory_access_record(block, instruction_index);
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  const auto route3_node_kind = expected_route3_node_kind(node_kind);
+  const auto* indexed_route3 = bir::route3_find_memory_access_record(
+      route3_index, instruction_index, route3_node_kind);
+  const auto* wrong_kind_route3 = bir::route3_find_memory_access_record(
+      route3_index, instruction_index, mismatched_route3_node_kind(route3_node_kind));
   if (prepared == nullptr || !mir_access) {
     return false;
   }
@@ -131,11 +154,19 @@ bool prepared_and_bir_direct_memory_identity_match(
       !route3 ||
       route3.instruction != &block.insts[instruction_index] ||
       route3.instruction_index != instruction_index ||
-      route3.node_kind != expected_route3_node_kind(node_kind) ||
+      route3.node_kind != route3_node_kind ||
       route3.block_label != block.label ||
       route3.address_space != prepared->address_space ||
       route3.is_volatile != prepared->is_volatile ||
       route3.base_kind != expected_route3_base_kind(prepared->address.base_kind) ||
+      indexed_route3 == nullptr ||
+      indexed_route3->instruction != route3.instruction ||
+      indexed_route3->instruction_index != route3.instruction_index ||
+      indexed_route3->node_kind != route3.node_kind ||
+      indexed_route3->base_kind != route3.base_kind ||
+      indexed_route3->address_space != route3.address_space ||
+      indexed_route3->is_volatile != route3.is_volatile ||
+      wrong_kind_route3 != nullptr ||
       prepared->result_value_name.value_or(c4c::kInvalidValueName) != result_name ||
       prepared->stored_value_name.value_or(c4c::kInvalidValueName) != stored_name) {
     return false;
@@ -234,17 +265,29 @@ bool prepared_and_bir_same_block_global_load_access_match(
               .before_instruction_index = before_instruction_index,
           },
           value);
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  const auto indexed_route3 =
+      bir::route3_find_same_block_global_load_access(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = before_instruction_index,
+          },
+          value);
   if (prepared.has_value() != static_cast<bool>(mir_identity)) {
     return false;
   }
   if (!prepared.has_value()) {
-    return !route3;
+    return !route3 && !indexed_route3;
   }
   const auto* access = prepared->access;
   return access != nullptr &&
          route3 &&
+         indexed_route3 &&
          mir_identity.load_global == prepared->load_global &&
          route3.load_access.instruction == mir_identity.producer.inst &&
+         indexed_route3.load_access.instruction == route3.load_access.instruction &&
+         indexed_route3.load_access.instruction_index ==
+             route3.load_access.instruction_index &&
          route3.load_access.node_kind ==
              bir::Route3MemoryAccessNodeKind::LoadGlobal &&
          route3.load_access.global_name_id ==
@@ -878,6 +921,15 @@ int same_block_global_load_access_identity_matches_prepared_oracle() {
               .before_instruction_index = 9,
           })) {
     return fail("expected BIR same-block global-load access to reject root type mismatch");
+  }
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  if (bir::route3_find_same_block_global_load_access(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = 9,
+          },
+          named_value(bir::TypeKind::I64, "%load"))) {
+    return fail("expected Route 3 global-load lookup to reject root type mismatch");
   }
 
   const bir::Value string_loaded = named_value(bir::TypeKind::I32, "%load");

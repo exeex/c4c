@@ -119,11 +119,19 @@ bool prepared_and_bir_load_local_source_match(
               .before_instruction_index = before_instruction_index,
           },
           value);
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  const auto indexed_route3 =
+      bir::route3_find_same_block_load_local_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = before_instruction_index,
+          },
+          value);
   if (prepared.has_value() != static_cast<bool>(mir_identity)) {
     return false;
   }
   if (!prepared.has_value()) {
-    return !route3;
+    return !route3 && !indexed_route3;
   }
   const auto prepared_slot =
       prepared->source_access != nullptr
@@ -133,7 +141,11 @@ bool prepared_and_bir_load_local_source_match(
          prepared->producer->load_local == mir_identity.load_local &&
          prepared->source_access != nullptr &&
          route3 &&
+         indexed_route3 &&
          route3.load_access.instruction == mir_identity.producer.inst &&
+         indexed_route3.load_access.instruction == route3.load_access.instruction &&
+         indexed_route3.load_access.instruction_index ==
+             route3.load_access.instruction_index &&
          route3.load_access.node_kind == bir::Route3MemoryAccessNodeKind::LoadLocal &&
          route3.load_access.base_kind == bir::Route3MemoryAccessBaseKind::LocalSlot &&
          route3.load_access.result_value.name == value.name &&
@@ -643,6 +655,15 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
           })) {
     return fail("expected BIR load-local source to reject root type mismatch");
   }
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  if (bir::route3_find_same_block_load_local_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = 1,
+          },
+          bir::Value::named(bir::TypeKind::I32, "%loaded"))) {
+    return fail("expected Route 3 load-local lookup to reject root type mismatch");
+  }
 
   bir::Block mismatched_position_block;
   mismatched_position_block.insts.push_back(bir::LoadLocalInst{
@@ -785,6 +806,16 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
               .before_instruction_index = 2,
           })) {
     return fail("BIR load-local source should fail closed for same-slot intervening store without layout overlap authority");
+  }
+  const auto non_overlapping_route3_index =
+      bir::route3_build_memory_access_index(non_overlapping_store_block);
+  if (bir::route3_find_same_block_load_local_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &non_overlapping_route3_index,
+              .before_instruction_index = 2,
+          },
+          bir::Value::named(bir::TypeKind::I64, "%loaded"))) {
+    return fail("Route 3 load-local lookup should fail closed for same-slot store without layout authority");
   }
 
   bir::Block overlapping_store_block;

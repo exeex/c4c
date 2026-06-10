@@ -1,79 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/161_bir_memory_access_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add BIR Annotation Records
+Current Step ID: 3
+Current Step Title: Add Lookup/Index Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for
+Completed Step 3 for
 `ideas/open/161_bir_memory_access_identity_annotation_schema.md`.
-Added typed Route 3 BIR memory/access annotation records and construction
-helpers without switching production consumers:
+Added function-local Route 3 BIR memory/access lookup/index helpers without
+switching production consumers:
 
-- `Route3MemoryAccessNodeKind` for `LoadLocal`, `LoadGlobal`, `StoreLocal`,
-  and `StoreGlobal` instruction identity.
-- `Route3MemoryAccessBaseKind` for semantic BIR base identity:
-  `LocalSlot`, `GlobalSymbol`, `PointerValue`, and `StringConstant`.
-- `Route3MemoryAccessRecord` for instruction identity, block identity,
-  result/stored value links, address-space, volatile flag, and semantic
-  local/global/pointer/string base identity.
-- `Route3MemoryAccessValueRecord` for result-value and stored-value links back
-  to the owning memory access record.
-- `Route3SameBlockGlobalLoadAccessRecord` and
-  `Route3SameBlockLoadLocalSourceRecord` for Step 2 same-block oracle checks,
-  including present-negative states where a named root has no accepted source.
-- Construction helpers:
-  `route3_memory_access_node_kind(...)`,
-  `route3_memory_access_base_kind(...)`,
-  `route3_memory_access_record(...)`,
-  `route3_memory_access_result_value_record(...)`,
-  `route3_memory_access_stored_value_record(...)`,
-  `route3_same_block_global_load_access_record(...)`, and
-  `route3_same_block_load_local_source_record(...)`.
+- `Route3MemoryAccessIndex` and `route3_build_memory_access_index(...)` rebuild
+  a block-local memory/access index from Route 3 BIR annotation records.
+- `Route3MemoryAccessQuery` carries the function-local index plus
+  same-block-before boundary for lookup helpers.
+- `route3_find_memory_access_record(...)` looks up direct memory access identity
+  by instruction index and Route 3 node kind.
+- `route3_find_same_block_global_load_access(...)` answers the same-block
+  global-load source use case from indexed Route 3 memory/access records.
+- `route3_find_same_block_load_local_source(...)` answers the same-block
+  load-local source use case from indexed Route 3 memory/access records and
+  preserves the existing BIR fail-closed stance for same-slot intervening
+  stores without layout-overlap authority.
 
-Extended narrow oracle coverage:
+Extended narrow oracle coverage in the owned tests:
 
-- `backend_aarch64_prepared_memory_operand_records_test.cpp` now compares direct
-  memory identity and same-block global-load answers against Route 3 BIR
-  records in addition to the existing prepared/MIR oracle checks.
-- `backend_store_source_publication_plan_test.cpp` now compares same-block
-  load-local source answers against Route 3 BIR records in addition to the
-  existing prepared/MIR oracle checks.
+- Direct memory lookup/index answers now match prepared/MIR oracle facts and
+  fail closed for wrong Route 3 node kind while preserving address-space and
+  volatile fields in indexed records.
+- Same-block global-load lookup answers now match the prepared/MIR/direct Route
+  3 oracle path and fail closed for before-boundary, type mismatch, and
+  non-global string-base loads.
+- Same-block load-local source lookup answers now match the prepared/MIR/direct
+  Route 3 oracle path and fail closed for before-boundary, type mismatch,
+  same-slot invalidation, and no indexed memory/source authority.
 
 No production MIR query consumer, AArch64 codegen production file, or prealloc
 production helper was switched.
 
 ## Suggested Next
 
-Execute Step 3 by adding function-local Route 3 lookup/index helpers over the
-new BIR annotation records, then prove same-block global-load and load-local
-source lookups are target-neutral indexes over BIR payloads.
+Execute Step 4 by migrating the narrow shared memory/access query consumer to
+read Route 3 BIR lookup/index records while preserving prepared/prealloc oracle
+checks in tests.
 
 ## Watchouts
 
-- Keep Route 3 annotations target-neutral and semantic.
-- Do not import frame slot ids, byte offsets, size/align layout, relocation
-  spelling, TLS register details, addressing-mode legality, or AArch64 memory
-  operand formation.
-- Do not copy `PreparedAddress` or `PreparedMemoryAccess` wholesale as the BIR
-  schema shape.
-- Preserve explicit negative cases for volatile, address-space, local-source,
-  and no-source behavior where applicable.
-- Keep Route 3 semantic identity separate from target addressing policy:
-  frame slot ids, byte offsets, size/align, relocation spelling, TLS register
-  details, and AArch64 memory operand formation remain out of scope.
-- The Step 2 BIR schema may reuse `bir::MemoryAddress` as construction input,
-  but the durable annotation should be a Route 3 field-level semantic record,
-  not the whole `MemoryAddress` or prepared carrier copied through.
-- Step 2 intentionally keeps byte offsets, size/align, frame slot ids,
-  relocation spelling, TLS register details, addressing-mode legality, and
-  AArch64 operand fields out of the Route 3 records.
-- Step 2 same-block load-local source records use same-slot invalidation only;
-  range/offset-sensitive overlap authority remains with prepared/prealloc
-  oracles and must not be smuggled into the BIR schema.
+- Keep Step 4 target-neutral: shared MIR query migration may consume Route 3
+  BIR records, but must not import AArch64 addressing policy or prepared-only
+  layout authority.
+- Preserve the existing oracle comparison shape: prepared/prealloc answers
+  remain the test oracle while Route 3 proves it can carry the BIR identity
+  payload.
+- Same-block load-local source BIR lookup intentionally fails closed for any
+  same-slot intervening store; offset/range-sensitive acceptance remains
+  prepared/prealloc authority until a separate semantic overlap schema exists.
+- Route 3 records/index helpers remain semantic: no frame slot ids, byte
+  offsets, size/align layout, relocation spelling, TLS register details,
+  addressing-mode legality, or AArch64 operand fields were added.
 
 ## Proof
 
@@ -85,4 +72,4 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Additional local validation: `git diff --check` passed.
 
-Proof log: `test_after.log`.
+Proof log: `test_after.log` (`2/2` matching backend tests passed).

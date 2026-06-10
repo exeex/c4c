@@ -1380,6 +1380,22 @@ struct Route3MemoryAccessValueRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route3MemoryAccessIndex {
+  const Block* block = nullptr;
+  std::vector<Route3MemoryAccessRecord> records;
+
+  [[nodiscard]] explicit operator bool() const { return block != nullptr; }
+};
+
+struct Route3MemoryAccessQuery {
+  const Route3MemoryAccessIndex* index = nullptr;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return index != nullptr && *index;
+  }
+};
+
 struct Route3SameBlockGlobalLoadAccessRecord {
   bool available = false;
   bool access_available = false;
@@ -1426,6 +1442,15 @@ route3_memory_access_stored_value_record(
     const Block& block,
     std::size_t instruction_index);
 
+[[nodiscard]] Route3MemoryAccessIndex route3_build_memory_access_index(
+    const Block& block);
+
+[[nodiscard]] const Route3MemoryAccessRecord*
+route3_find_memory_access_record(
+    const Route3MemoryAccessIndex& index,
+    std::size_t instruction_index,
+    Route3MemoryAccessNodeKind node_kind);
+
 [[nodiscard]] Route3SameBlockGlobalLoadAccessRecord
 route3_same_block_global_load_access_record(
     Route1SameBlockProducerQuery query,
@@ -1434,6 +1459,16 @@ route3_same_block_global_load_access_record(
 [[nodiscard]] Route3SameBlockLoadLocalSourceRecord
 route3_same_block_load_local_source_record(
     Route1SameBlockProducerQuery query,
+    const Value& value);
+
+[[nodiscard]] Route3SameBlockGlobalLoadAccessRecord
+route3_find_same_block_global_load_access(
+    Route3MemoryAccessQuery query,
+    const Value& value);
+
+[[nodiscard]] Route3SameBlockLoadLocalSourceRecord
+route3_find_same_block_load_local_source(
+    Route3MemoryAccessQuery query,
     const Value& value);
 
 struct CallArgumentSourceProducerMaterialization {
