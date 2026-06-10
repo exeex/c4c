@@ -2181,10 +2181,12 @@ lower_constant_rhs_fused_compare_branch(
   }
   auto rhs = branch_facts->rhs;
   rhs.type = branch_facts->compare_type;
-  const auto rhs_producer =
-      find_prepared_fused_compare_operand_producer(context,
-                                                   rhs,
-                                                   context.bir_block->insts.size());
+  const auto rhs_producer = bir::find_comparison_operand_producer(
+      *context.bir_block, rhs, context.bir_block->insts.size());
+  const auto* rhs_binary =
+      rhs_producer.has_value() && rhs_producer->producer_instruction != nullptr
+          ? std::get_if<bir::BinaryInst>(rhs_producer->producer_instruction)
+          : nullptr;
   const auto* rhs_home =
       prepare::find_prepared_value_home_for_bir_value(
           context.function.prepared->names,
@@ -2193,8 +2195,8 @@ lower_constant_rhs_fused_compare_branch(
           context.function.value_locations,
           rhs);
   if (!rhs_producer.has_value() ||
-      rhs_producer->kind != prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
-      rhs_producer->binary == nullptr ||
+      rhs_producer->producer_kind != bir::ComparisonProducerKind::Binary ||
+      rhs_binary == nullptr ||
       rhs_home == nullptr ||
       rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       value_has_current_block_entry_publication(context, *rhs_home)) {
