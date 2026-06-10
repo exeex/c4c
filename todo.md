@@ -3,52 +3,62 @@
 Status: Active
 Source Idea Path: ideas/open/156_bir_cfg_edge_publication_identity.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Switch one edge-source consumer at a time
+Current Step ID: 6
+Current Step Title: Run the acceptance proof
 
 ## Just Finished
 
-Step 5 switched the narrow current-block join prepared-query routing consumer
-in `build_current_block_join_prepared_query_routing` to use
-`mir::find_bir_current_block_join_source_identity` for incoming-expression and
-source booleans when BIR identity is available, while retaining the prepared
-current-block join-source facts as the availability guard and fallback when BIR
-identity is absent or incomplete.
+Step 6 recorded the final acceptance proof for idea 156's BIR CFG edge
+publication identity route and left the packet close-ready for supervisor
+lifecycle handling.
 
 Completed work item:
 
-- Added instruction-result matching against BIR `SameBlockValueIdentity`
-  vectors for the current-block join routing helper only.
-- Left prepared fact construction, edge-copy source facts, move execution,
-  register/home/storage decisions, stack-source routing, immediate
-  materialization, and parallel-copy scheduling unchanged.
-- Added focused AArch64 dispatch coverage for BIR-available routing and
-  prepared fallback when the BIR join identity is absent.
+- BIR CFG edge publication now exposes a query surface for edge-source
+  identity instead of forcing consumers to inspect prepared ownership internals.
+- Prepared-oracle equivalence proof covers normal edge, memory-source, and
+  no-source paths, preserving behavior while changing the source of truth for
+  semantic identity reads.
+- Current-block join-source BIR query and proof are present for the join-source
+  path.
+- The single switched current-block join routing consumer is
+  `build_current_block_join_prepared_query_routing`; it reads BIR identity when
+  available and retains prepared facts as the availability guard and fallback.
+- Prepared ownership remains authoritative for move execution, scheduling,
+  storage, register, and home policy.
 
 ## Suggested Next
 
-Proposed Step 6 packet: run the acceptance proof for the completed semantic
-edge-source route. Include the prepared lookup and AArch64 dispatch coverage
-that exercises normal edge, memory-source, no-source, join-source, and the
-single switched current-block join routing consumer.
+Close or otherwise resolve the active lifecycle state for
+`ideas/open/156_bir_cfg_edge_publication_identity.md`; the executor acceptance
+packet is complete.
 
 ## Watchouts
 
-- This packet intentionally switched exactly one consumer:
+- This packet is evidence-only and intentionally did not modify source,
+  tests, plans, ideas, review artifacts, or logs.
+- Do not widen the BIR identity query into authority for register names, homes,
+  stack-source routing, immediate move details, move bundles, prepared move
+  records, or scheduling/storage policy.
+- The final consumer switch remains intentionally narrow:
   `build_current_block_join_prepared_query_routing`.
-- The helper still requires prepared current-block join-source facts to be
-  available before publishing routing booleans; BIR identity only supplies the
-  semantic value-membership read when complete.
-- Do not use `BirCurrentBlockJoinSourceIdentity` as authority for register
-  names, homes, stack-source routing, immediate move details, move bundles, or
-  prepared move records.
 
 ## Proof
 
-Ran the delegated proof:
+Did not run tests for this evidence-only packet, per supervisor delegation.
 
 `cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build --output-on-failure -R 'backend_(prepared_lookup_helper|aarch64_instruction_dispatch)' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the passing
-`backend_aarch64_instruction_dispatch` and `backend_prepared_lookup_helper`
-CTest runs.
+Supervisor-reported final acceptance proof logs:
+
+- `test_before.log`
+- `test_after.log`
+
+Covered subsets:
+
+- `backend_prepared_lookup_helper`
+- `backend_aarch64_instruction_dispatch`
+
+Result: 2/2 passed. Supervisor verified
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+passes with monotonic guard PASS.
