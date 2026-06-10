@@ -566,6 +566,29 @@ route2_select_chain_producer_record_to_same_block(
   return BirCfgEdgePublicationSourceStatus::MissingPublication;
 }
 
+[[nodiscard]] BirCurrentBlockJoinSourceStatus route5_join_status_to_mir(
+    bir::Route5PublicationStatus status) {
+  switch (status) {
+    case bir::Route5PublicationStatus::Available:
+      return BirCurrentBlockJoinSourceStatus::Available;
+    case bir::Route5PublicationStatus::MissingSourceProducer:
+    case bir::Route5PublicationStatus::MissingSourceMemoryAccess:
+    case bir::Route5PublicationStatus::IncompleteSourceMemoryAccess:
+      return BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+    case bir::Route5PublicationStatus::Unavailable:
+    case bir::Route5PublicationStatus::NoSource:
+    case bir::Route5PublicationStatus::MemorySource:
+    case bir::Route5PublicationStatus::MissingPredecessor:
+    case bir::Route5PublicationStatus::MissingSuccessor:
+    case bir::Route5PublicationStatus::MissingDestination:
+    case bir::Route5PublicationStatus::MissingPublication:
+    case bir::Route5PublicationStatus::MissingSourceValue:
+    case bir::Route5PublicationStatus::NoMatch:
+      return BirCurrentBlockJoinSourceStatus::MissingPublication;
+  }
+  return BirCurrentBlockJoinSourceStatus::MissingPublication;
+}
+
 [[nodiscard]] const bir::Value* route5_original_source_value(
     const bir::Block& predecessor_block,
     const bir::Block& successor_block,
@@ -590,6 +613,40 @@ route2_select_chain_producer_record_to_same_block(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] SameBlockProducerIdentity route5_join_source_producer_to_mir(
+    const bir::Route5CurrentBlockJoinSourceRecord& record,
+    const bir::Block& successor_block,
+    std::string_view successor_label) {
+  if (!record.source_producer_instruction_index.has_value() ||
+      *record.source_producer_instruction_index >= successor_block.insts.size()) {
+    return {};
+  }
+  const auto kind = route5_publication_source_kind_to_same_block_kind(
+      record.source_producer_kind);
+  if (kind == SameBlockProducerKind::Unknown) {
+    return {};
+  }
+  const auto& inst =
+      successor_block.insts[*record.source_producer_instruction_index];
+  const auto* produced_value = produced_value_for_same_block_identity(inst);
+  if (produced_value == nullptr ||
+      produced_value->kind != bir::Value::Kind::Named ||
+      produced_value->name != record.source_value_name ||
+      produced_value->type != record.source_value_type) {
+    return {};
+  }
+  return SameBlockProducerIdentity{
+      .inst = &inst,
+      .instruction_index = *record.source_producer_instruction_index,
+      .kind = kind,
+      .block_label = normalized_block_label(successor_block, successor_label),
+      .before_instruction_index = successor_block.insts.size(),
+      .produced_value = same_block_value_identity(*produced_value),
+      .materialization_available =
+          same_block_producer_kind_has_materialization(kind),
+  };
 }
 
 [[nodiscard]] SameBlockProducerIdentity route5_edge_source_producer_to_mir(
@@ -1398,69 +1455,74 @@ find_bir_current_block_join_source_identity(
     return result;
   }
 
-  bool saw_phi = false;
-  for (std::size_t index = 0; index < request.successor_block->insts.size();
-       ++index) {
-    const auto& inst = request.successor_block->insts[index];
-    const auto* phi = std::get_if<bir::PhiInst>(&inst);
-    if (phi == nullptr) {
-      break;
+  const auto join_records =
+      bir::route5_current_block_join_source_records(request.successor_block);
+  for (const auto& record : join_records) {
+    if (record.status == bir::Route5PublicationStatus::MissingPublication) {
+      continue;
     }
-    saw_phi = true;
-    for (const auto& incoming : phi->incomings) {
-      BirCurrentBlockJoinSourceFact fact{
-          .predecessor_label = incoming.label,
-          .predecessor_label_id = incoming.label_id,
-          .successor_label = result.successor_label,
-          .successor_label_id = result.successor_label_id,
-          .destination_instruction = &inst,
-          .destination_phi = phi,
-          .destination_instruction_index = index,
-          .destination_value = &phi->result,
-          .destination_value_identity = same_block_value_identity(phi->result),
-          .destination_value_name = named_value_name(phi->result),
-          .destination_value_type = phi->result.type,
-          .source_value = &incoming.value,
-          .source_value_identity = same_block_value_identity(incoming.value),
-          .source_value_name = named_value_name(incoming.value),
-          .source_value_kind = incoming.value.kind,
-          .source_value_type = incoming.value.type,
-      };
+    BirCurrentBlockJoinSourceFact fact{
+        .status = route5_join_status_to_mir(record.status),
+        .predecessor_label = record.predecessor_label,
+        .predecessor_label_id = record.predecessor_label_id,
+        .successor_label = result.successor_label,
+        .successor_label_id = result.successor_label_id,
+        .destination_instruction = record.destination_instruction,
+        .destination_phi = record.destination_phi,
+        .destination_instruction_index = record.destination_instruction_index,
+        .destination_value = record.destination_value.value,
+        .destination_value_identity =
+            route1_source_value_identity_to_same_block(record.destination_value),
+        .destination_value_name = record.destination_value_name,
+        .destination_value_type = record.destination_value_type,
+        .source_value = record.source_value.value,
+        .source_value_identity =
+            route1_source_value_identity_to_same_block(record.source_value),
+        .source_value_name = record.source_value_name,
+        .source_value_kind = record.source_value_kind,
+        .source_value_type = record.source_value_type,
+        .source_producer_kind =
+            route5_publication_source_kind_to_same_block_kind(
+                record.source_producer_kind),
+        .source_producer_instruction_index =
+            record.source_producer_instruction_index,
+    };
+    append_unique_value_identity(result.source_values,
+                                 fact.destination_value_identity);
+    if (record.source_value_kind == bir::Value::Kind::Named) {
       append_unique_value_identity(result.source_values,
-                                   fact.destination_value_identity);
-      if (incoming.value.kind == bir::Value::Kind::Named) {
-        append_unique_value_identity(result.source_values,
-                                     fact.source_value_identity);
-        append_unique_value_identity(result.incoming_expression_values,
-                                     fact.source_value_identity);
-        const auto producer = find_same_block_producer_identity(
-            SameBlockProducerIdentityRequest{
-                .block = request.successor_block,
-                .block_label = result.successor_label,
-                .value_name = incoming.value.name,
-                .value_type = incoming.value.type,
-                .before_instruction_index =
-                    request.successor_block->insts.size(),
-            });
-        if (!producer) {
-          fact.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
-          result.facts.push_back(fact);
-          continue;
-        }
-        fact.source_producer = producer;
-        fact.source_producer_kind = producer.kind;
-        fact.source_producer_instruction_index = producer.instruction_index;
-      }
-      fact.status = BirCurrentBlockJoinSourceStatus::Available;
-      result.facts.push_back(fact);
+                                   fact.source_value_identity);
+      append_unique_value_identity(result.incoming_expression_values,
+                                   fact.source_value_identity);
     }
+    if (record.status == bir::Route5PublicationStatus::Available &&
+        record.source_value_kind == bir::Value::Kind::Named) {
+      fact.source_producer = route5_join_source_producer_to_mir(
+          record, *request.successor_block, result.successor_label);
+      if (!fact.source_producer) {
+        fact.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+        fact.source_producer_kind = SameBlockProducerKind::Unknown;
+        fact.source_producer_instruction_index.reset();
+      } else {
+        fact.source_producer_kind = fact.source_producer.kind;
+        fact.source_producer_instruction_index =
+            fact.source_producer.instruction_index;
+      }
+    }
+    result.facts.push_back(fact);
   }
 
-  if (!saw_phi || result.facts.empty()) {
+  if (result.facts.empty()) {
     result.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
     return result;
   }
 
+  const auto route1_index =
+      bir::route1_build_producer_index(*request.successor_block);
+  const auto route1_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = request.successor_block->insts.size(),
+  };
   std::vector<SameBlockValueIdentity> pending =
       result.incoming_expression_values;
   std::vector<SameBlockValueIdentity> processed;
@@ -1481,16 +1543,10 @@ find_bir_current_block_join_source_identity(
     }
     append_unique_value_identity(processed, value);
     append_unique_value_identity(result.incoming_expression_values, value);
-    const auto producer = find_same_block_producer_identity(
-        SameBlockProducerIdentityRequest{
-            .block = request.successor_block,
-            .block_label = result.successor_label,
-            .value_name = value.name,
-            .value_type = value.type,
-            .before_instruction_index = request.successor_block->insts.size(),
-        });
-    if (producer.inst != nullptr) {
-      append_bir_expression_operands(pending, *producer.inst);
+    const auto producer = bir::route1_find_same_block_scalar_producer(
+        route1_query, bir::Value::named(value.type, std::string{value.name}));
+    if (producer.has_value() && producer->instruction != nullptr) {
+      append_bir_expression_operands(pending, *producer->instruction);
     }
   }
 
