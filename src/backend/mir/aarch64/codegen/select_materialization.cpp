@@ -260,6 +260,197 @@ bir_call_argument_direct_global_select_chain_dependency(
   return true;
 }
 
+[[nodiscard]] bool emit_fp_select_chain_value_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    abi::RegisterReference destination,
+    std::uint8_t gp_scratch_index,
+    std::uint8_t gp_auxiliary_index,
+    std::vector<std::string>& lines,
+    std::vector<std::string_view>& active_values,
+    const prepare::PreparedDirectGlobalSelectChainDependency*
+        direct_global_dependency) {
+  const auto destination_view = scalar_fp_register_view(destination, value.type);
+  if (!destination_view.has_value()) {
+    return false;
+  }
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return emit_fp_value_to_register(context,
+                                     value,
+                                     before_instruction_index,
+                                     *destination_view,
+                                     gp_scratch_index,
+                                     lines);
+  }
+  for (const auto active : active_values) {
+    if (active == value.name) {
+      return false;
+    }
+  }
+  const auto prepared_producer =
+      find_prepared_same_block_select_producer(context, value, before_instruction_index);
+  const bir::SelectInst* select = prepared_producer.select;
+  auto producer_instruction_index = prepared_producer.instruction_index;
+  if (select == nullptr && context.bir_block != nullptr) {
+    for (std::size_t index = 0;
+         index < before_instruction_index && index < context.bir_block->insts.size();
+         ++index) {
+      const auto* candidate =
+          std::get_if<bir::SelectInst>(&context.bir_block->insts[index]);
+      if (candidate != nullptr &&
+          candidate->result.kind == bir::Value::Kind::Named &&
+          candidate->result.name == value.name &&
+          candidate->result.type == value.type) {
+        select = candidate;
+        producer_instruction_index = index;
+        break;
+      }
+    }
+  }
+  if (select == nullptr) {
+    const auto previous_size = lines.size();
+    if (emit_fp_value_to_register(context,
+                                  value,
+                                  before_instruction_index,
+                                  *destination_view,
+                                  gp_scratch_index,
+                                  lines)) {
+      return true;
+    }
+    lines.resize(previous_size);
+    std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
+    const auto* value_home_lookups = context.function.value_home_lookups;
+    if (value_home_lookups == nullptr &&
+        context.function.value_locations != nullptr) {
+      local_value_home_lookups =
+          prepare::make_prepared_value_home_lookups(context.function.value_locations);
+      value_home_lookups = &*local_value_home_lookups;
+    }
+    const auto* home = context.function.prepared != nullptr
+                           ? prepare::find_prepared_value_home_for_bir_value(
+                                 context.function.prepared->names,
+                                 value_home_lookups,
+                                 context.function.regalloc,
+                                 context.function.value_locations,
+                                 value)
+                           : nullptr;
+    if (home == nullptr ||
+        home->kind != prepare::PreparedValueHomeKind::Register ||
+        !home->register_name.has_value()) {
+      return false;
+    }
+    const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+    if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
+      return false;
+    }
+    const auto source = scalar_fp_register_view(*parsed, value.type);
+    if (!source.has_value()) {
+      return false;
+    }
+    const auto source_name = abi::register_name(*source);
+    const auto destination_name = abi::register_name(*destination_view);
+    if (source_name != destination_name) {
+      lines.push_back("fmov " + std::string{destination_name} + ", " +
+                      std::string{source_name});
+    }
+    return true;
+  }
+  const auto condition = branch_condition_suffix(select->predicate);
+  const auto compare_view = scalar_view_for_type(select->compare_type);
+  if (!condition.has_value() || !compare_view.has_value()) {
+    return false;
+  }
+  if (direct_global_dependency != nullptr &&
+      direct_global_dependency->root_is_select != true) {
+    return false;
+  }
+
+  const auto gp_lhs = abi::gp_register(gp_scratch_index, *compare_view);
+  const auto gp_rhs = abi::gp_register(gp_auxiliary_index, *compare_view);
+  if (!gp_lhs.has_value() || !gp_rhs.has_value()) {
+    return false;
+  }
+  std::optional<abi::RegisterReference> true_scratch;
+  for (const auto scratch : abi::reserved_mir_scratch_fp_simd_registers()) {
+    if (scratch.index == destination_view->index) {
+      continue;
+    }
+    true_scratch = scalar_fp_register_view(scratch, value.type);
+    if (true_scratch.has_value()) {
+      break;
+    }
+  }
+  if (!true_scratch.has_value()) {
+    return false;
+  }
+
+  auto true_value = select->true_value;
+  true_value.type = value.type;
+  auto false_value = select->false_value;
+  false_value.type = value.type;
+  active_values.push_back(value.name);
+  if (!emit_fp_select_chain_value_to_register(context,
+                                              false_value,
+                                              producer_instruction_index,
+                                              *destination_view,
+                                              gp_scratch_index,
+                                              gp_auxiliary_index,
+                                              lines,
+                                              active_values,
+                                              nullptr) ||
+      !emit_fp_select_chain_value_to_register(context,
+                                              true_value,
+                                              producer_instruction_index,
+                                              *true_scratch,
+                                              gp_scratch_index,
+                                              gp_auxiliary_index,
+                                              lines,
+                                              active_values,
+                                              nullptr)) {
+    active_values.pop_back();
+    return false;
+  }
+
+  auto lhs = select->lhs;
+  lhs.type = select->compare_type;
+  if (!emit_value_publication_to_register(context,
+                                          lhs,
+                                          producer_instruction_index,
+                                          gp_scratch_index,
+                                          gp_auxiliary_index,
+                                          lines)) {
+    active_values.pop_back();
+    return false;
+  }
+  std::string rhs_name;
+  if (select->rhs.kind == bir::Value::Kind::Immediate &&
+      is_cmp_immediate_encodable(select->rhs.immediate)) {
+    rhs_name = "#" + std::to_string(select->rhs.immediate);
+  } else {
+    auto rhs = select->rhs;
+    rhs.type = select->compare_type;
+    if (!emit_value_publication_to_register(context,
+                                            rhs,
+                                            producer_instruction_index,
+                                            gp_auxiliary_index,
+                                            gp_scratch_index,
+                                            lines)) {
+      active_values.pop_back();
+      return false;
+    }
+    rhs_name = abi::register_name(*gp_rhs);
+  }
+  lines.push_back("cmp " + std::string{abi::register_name(*gp_lhs)} + ", " +
+                  rhs_name);
+  lines.push_back("fcsel " + std::string{abi::register_name(*destination_view)} +
+                  ", " + std::string{abi::register_name(*true_scratch)} +
+                  ", " + std::string{abi::register_name(*destination_view)} +
+                  ", " + std::string{*condition});
+  active_values.pop_back();
+  return true;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 make_select_chain_materialization_instruction(
     const module::BlockLoweringContext& context,
@@ -324,14 +515,20 @@ materialize_direct_global_select_chain_call_argument(
   const auto value_name = prepared_named_value_id(context, value);
   if (!value_name.has_value() || argument_plan == nullptr ||
       argument_plan->instruction_index != before_instruction_index ||
-      !argument_plan->source_value_id.has_value() ||
-      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+      !argument_plan->source_value_id.has_value()) {
     return std::nullopt;
+  }
+  std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
+  const auto* value_home_lookups = context.function.value_home_lookups;
+  if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
+    local_value_home_lookups =
+        prepare::make_prepared_value_home_lookups(context.function.value_locations);
+    value_home_lookups = &*local_value_home_lookups;
   }
   const auto* value_home =
       prepare::find_prepared_value_home_for_bir_value(
           context.function.prepared->names,
-          context.function.value_home_lookups,
+          value_home_lookups,
           context.function.regalloc,
           context.function.value_locations,
           value);
@@ -377,12 +574,16 @@ materialize_direct_global_select_chain_call_argument(
       return std::nullopt;
     }
     std::vector<std::string> lines;
-    if (!emit_fp_value_to_register(context,
-                                   value,
-                                   before_instruction_index,
-                                   *result_register,
-                                   scratches.front().index,
-                                   lines) ||
+    std::vector<std::string_view> active_values;
+    if (!emit_fp_select_chain_value_to_register(context,
+                                                value,
+                                                before_instruction_index,
+                                                *result_register,
+                                                scratches.front().index,
+                                                scratches[1].index,
+                                                lines,
+                                                active_values,
+                                                &*direct_global_dependency) ||
         lines.empty()) {
       return std::nullopt;
     }
