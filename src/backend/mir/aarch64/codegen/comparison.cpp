@@ -2380,18 +2380,12 @@ lower_stack_home_fused_compare_branch(
   auto lhs = branch_facts->lhs;
   lhs.type = branch_facts->compare_type;
   if (lhs.kind == bir::Value::Kind::Named && context.bir_block != nullptr) {
-    const auto producer =
-        find_prepared_fused_compare_operand_producer(context,
-                                                     lhs,
-                                                     context.bir_block->insts.size());
+    const auto producer = bir::find_comparison_operand_producer(
+        *context.bir_block, lhs, context.bir_block->insts.size());
     const auto has_allowed_load_producer =
         producer.has_value() &&
-        ((producer->kind ==
-              prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
-          producer->load_local != nullptr) ||
-         (producer->kind ==
-              prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal &&
-          producer->load_global != nullptr));
+        (producer->producer_kind == bir::ComparisonProducerKind::LoadLocal ||
+         producer->producer_kind == bir::ComparisonProducerKind::LoadGlobal);
     if (producer.has_value() && !has_allowed_load_producer) {
       return std::nullopt;
     }
