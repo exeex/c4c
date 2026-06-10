@@ -52,3 +52,15 @@ constants and non-fusable negative paths.
   materialized-condition coverage.
 - Rewrites expectations instead of preserving existing target behavior through
   query-equivalence proof.
+
+## Closure Notes
+
+Closed after Step 6 acceptance validation. The completed route adds BIR
+comparison producer queries, proves them against prepared fused-operand and
+materialized-condition producer answers, and switches comparison/branch
+provenance consumers without moving target policy into BIR.
+
+Close-time regression guard used matching backend CTest logs:
+`test_before.log` and regenerated `test_after.log` both reported 179 passing
+backend tests and 0 failures. The guard passed with non-decreasing pass count,
+which is appropriate for this lifecycle-only close operation.
