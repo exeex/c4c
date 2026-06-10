@@ -8,20 +8,20 @@ Current Step Title: Switch comparison and branch provenance consumers
 
 ## Just Finished
 
-Step 5 switched the selected-operand provenance check used by
-`fused_compare_uses_selected_operand` from the prepared fused-compare operand
-producer helper to BIR fused-compare operand producer facts.
+Step 5 switched the materialized-condition producer identity read in
+`lower_materialized_compare_condition_branch` from the prepared materialized
+condition producer helper to
+`bir::find_materialized_condition_producer_identity`.
 
-`comparison.cpp` now asks
-`bir::find_fused_compare_operand_producer_facts` for the branch lhs/rhs pair
-and treats `bir::ComparisonProducerKind::Select` as the selected-operand
-provenance signal. The surrounding prepared branch facts, fused-compare
-legality, condition-code selection, branch emission, missing-publication
-lowering, hazards, emitted-register state, and final instruction policy remain
-on their existing AArch64/prealloc paths.
+`comparison.cpp` now reads the comparison-producing `BinaryInst` and producer
+instruction index for `branch_condition.condition_value` from the BIR block at
+`context.bir_block->insts.size()`. Prepared branch facts, condition value-home
+checks, target selection, condition suffix mapping, value publication hooks,
+branch emission, final instruction records, hazards, and emitted-register state
+remain on their existing paths.
 
-Prepared/BIR equivalence coverage remains in place, and the existing selected
-global-load fused-branch tests still cover both lhs and rhs selected operand
+Prepared/BIR equivalence coverage remains in place, and the existing
+materialized compare branch regression still covers the recompute-before-branch
 behavior.
 
 ## Suggested Next
@@ -32,8 +32,8 @@ switch is desired for this idea.
 
 ## Watchouts
 
-- The selected-operand gate now reads BIR semantic producer provenance, but the
-  downstream publication and branch lowering helpers still intentionally use
+- The materialized-compare branch recompute now reads BIR producer identity, but
+  the downstream publication and branch lowering helpers still intentionally use
   prepared/AArch64 authority.
 - Do not combine the next provenance read with branch legality, condition-code,
   emission, final-record, hazard, or emitted-register changes.
