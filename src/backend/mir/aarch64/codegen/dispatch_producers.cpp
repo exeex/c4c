@@ -85,6 +85,20 @@ instruction_result_prepared_value_id(
       context, context.function.value_home_lookups, inst);
 }
 
+[[nodiscard]] bool instruction_result_matches_bir_value_identity(
+    const bir::Inst& inst,
+    const std::vector<mir::SameBlockValueIdentity>& values) {
+  const auto* result = instruction_result_value_ref(inst);
+  if (result == nullptr ||
+      result->kind != bir::Value::Kind::Named ||
+      result->name.empty()) {
+    return false;
+  }
+  return std::find_if(values.begin(), values.end(), [&](const auto& value) {
+           return value.name == result->name && value.type == result->type;
+         }) != values.end();
+}
+
 [[nodiscard]] prepare::PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
     const module::BlockLoweringContext& context) {
@@ -390,19 +404,40 @@ build_current_block_join_prepared_query_routing(
     return routing;
   }
 
+  const auto bir_identity = mir::find_bir_current_block_join_source_identity(
+      mir::BirCurrentBlockJoinSourceRequest{
+          .successor_block = context.bir_block,
+          .successor_label_id =
+              context.control_flow_block != nullptr
+                  ? context.control_flow_block->block_label
+                  : c4c::kInvalidBlockLabel,
+      });
+  const bool use_bir_identity =
+      bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available;
+
   for (const auto& inst : context.bir_block->insts) {
     const auto result_value_id =
         instruction_result_prepared_value_id(context, value_home_lookups, inst);
-    routing.incoming_expressions.push_back(
+    const bool prepared_incoming_expression =
         result_value_id.has_value() &&
         std::find(facts.incoming_expression_value_ids.begin(),
                   facts.incoming_expression_value_ids.end(),
-                  *result_value_id) != facts.incoming_expression_value_ids.end());
-    routing.sources.push_back(
+                  *result_value_id) != facts.incoming_expression_value_ids.end();
+    const bool prepared_source =
         result_value_id.has_value() &&
         std::find(facts.source_value_ids.begin(),
                   facts.source_value_ids.end(),
-                  *result_value_id) != facts.source_value_ids.end());
+                  *result_value_id) != facts.source_value_ids.end();
+    routing.incoming_expressions.push_back(
+        use_bir_identity
+            ? instruction_result_matches_bir_value_identity(
+                  inst, bir_identity.incoming_expression_values)
+            : prepared_incoming_expression);
+    routing.sources.push_back(
+        use_bir_identity
+            ? instruction_result_matches_bir_value_identity(inst,
+                                                            bir_identity.source_values)
+            : prepared_source);
   }
   return routing;
 }
