@@ -8,53 +8,47 @@ Current Step Title: Validate And Handoff
 
 ## Just Finished
 
-Completed Step 4 scan portion: re-scanned direct consumers after the selected
-AArch64 GP scalar value-publication materialization migration and found no
-prepared producer, constant, cache, or API surface that is safe to contract yet.
+Completed Step 5: validated and handed off the Route 1 producer/constant oracle
+thinning slice.
 
-Consumer evidence:
-- The selected migrated file no longer calls
-  `prepare::find_prepared_same_block_scalar_producer(...)` or
-  `prepare::evaluate_prepared_same_block_integer_constant(...)` for its primary
-  GP scalar value-publication producer/constant facts.
-- The selected file still intentionally reads
-  `prepared_lookups->edge_publication_source_producers` through
-  `find_prepared_scalar_select_chain_materialization(...)` for select-chain
-  materialization compatibility.
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` still calls
-  `prepare::find_prepared_same_block_scalar_producer(...)` and reads
-  `edge_publication_source_producers` for publication-source producer queries.
-- `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp` still calls
-  `prepare::find_prepared_same_block_scalar_producer(...)` for FP
-  materialization.
-- `src/backend/mir/aarch64/codegen/alu.cpp` still calls
-  `prepare::find_prepared_same_block_load_local_source_producer(...)`,
-  `prepare::find_prepared_same_block_scalar_producer(...)`, and
-  `prepare::find_prepared_scalar_select_chain_materialization(...)`.
+Selected migration completed by this runbook:
+- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now uses
+  `mir::find_same_block_scalar_producer(...)` and
+  `mir::evaluate_same_block_integer_constant(...)` for the selected AArch64 GP
+  scalar value-publication same-block producer and named integer-constant facts.
+- Immediate fast paths, prepared home/memory/publication lookups,
+  select-chain materialization, and target emission policy were left intact.
+- The local prepared-shaped adapter in the selected file is residual
+  compatibility for existing AArch64 target-policy APIs, not prepared producer
+  discovery.
+
+Step 4 handoff result: no prepared producer, constant, cache, or API surface is
+safe to contract yet. Remaining direct consumers still require the prepared
+surfaces outside the migrated GP scalar value-publication path.
+
+Residual consumers blocking contraction:
+- `dispatch_value_materialization.cpp` still uses prepared select-chain and
+  publication surfaces for compatibility.
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` still uses prepared
+  publication-source producer queries.
+- `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp` still uses
+  prepared same-block scalar producer lookup for FP materialization.
+- `src/backend/mir/aarch64/codegen/alu.cpp` still uses prepared same-block
+  load-local, scalar producer, and select-chain materialization helpers.
 - `src/backend/mir/aarch64/codegen/calls.cpp` still uses prepared
-  source-producer lookups for scalar call-argument materialization and indirect
-  callee source discovery.
+  source-producer lookups for scalar call arguments and indirect callees.
 - `src/backend/prealloc/comparison.cpp`,
   `src/backend/prealloc/call_plans.cpp`,
   `src/backend/prealloc/publication_plans.cpp`, and
-  `src/backend/prealloc/select_chain_lookups.cpp` still expose prepared
-  producer/constant/materialization helper APIs used by non-selected paths.
-
-Decision: no contraction is safe yet. `PreparedFunctionLookups::
-edge_publication_source_producers`,
-`PreparedEdgePublicationSourceProducerLookups`,
-`PreparedSameBlockScalarProducer`,
-`find_prepared_same_block_scalar_producer(...)`, and
-`evaluate_prepared_same_block_integer_constant(...)` still have live public or
-cross-module consumers outside the migrated GP scalar value-publication path.
+  `src/backend/prealloc/select_chain_lookups.cpp` still expose prepared helper
+  APIs used by non-selected paths.
 
 ## Suggested Next
 
-Execute Step 5: validate and hand off this Route 1 thinning slice as a
-no-contraction result. Recommended proof command:
-`bash -lc "set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'" |& tee test_after.log`
-
-No implementation contraction packet is recommended from this Step 4 scan.
+The active runbook is ready for supervisor acceptance and plan-owner
+close/deactivation review as a completed no-contraction slice. No additional
+implementation packet is recommended from this runbook without a new selected
+consumer family.
 
 ## Watchouts
 
@@ -72,17 +66,18 @@ No implementation contraction packet is recommended from this Step 4 scan.
 - The local prepared-shaped adapter in the selected file reshapes a MIR
   producer answer for existing AArch64 target-policy APIs; it does not by
   itself justify hiding prepared lookup APIs.
+- Treat the residual prepared consumers as evidence that this source idea
+  remains broader than the completed selected slice; close/deactivate choice
+  belongs to the plan owner.
 
 ## Proof
 
-No build or tests run; this was a scan-only Step 4 packet.
+Supervisor-selected proof command run:
+`bash -lc "set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'" |& tee test_after.log`
 
-Tooling used:
-- `c4c-clang-tool-ccdb function-callers` on
-  `src/backend/prealloc/prepared_lookups.cpp` for prepared helper callers.
-- `rg` over `src/backend` and `tests` for direct prepared lookup/helper and
-  Route 1 helper consumers.
+Result: passed. The build was already up to date, and both selected tests
+passed:
+- `backend_prepared_lookup_helper`
+- `backend_aarch64_instruction_dispatch`
 
-No new proof log was produced by this scan-only packet. The accepted prior
-proof has been rolled forward to `test_before.log`; there is currently no
-`test_after.log`.
+Proof log: `test_after.log`.
