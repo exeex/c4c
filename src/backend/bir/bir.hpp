@@ -1471,6 +1471,145 @@ route3_find_same_block_load_local_source(
     Route3MemoryAccessQuery query,
     const Value& value);
 
+enum class Route4PublicationAvailabilityStatus : unsigned char {
+  Unavailable,
+  Available,
+  MissingBlock,
+  MissingValue,
+  MissingPublication,
+  AlternateSource,
+  NoMatch,
+};
+
+[[nodiscard]] constexpr std::string_view
+route4_publication_availability_status_name(
+    Route4PublicationAvailabilityStatus status) {
+  switch (status) {
+    case Route4PublicationAvailabilityStatus::Unavailable:
+      return "unavailable";
+    case Route4PublicationAvailabilityStatus::Available:
+      return "available";
+    case Route4PublicationAvailabilityStatus::MissingBlock:
+      return "missing_block";
+    case Route4PublicationAvailabilityStatus::MissingValue:
+      return "missing_value";
+    case Route4PublicationAvailabilityStatus::MissingPublication:
+      return "missing_publication";
+    case Route4PublicationAvailabilityStatus::AlternateSource:
+      return "alternate_source";
+    case Route4PublicationAvailabilityStatus::NoMatch:
+      return "no_match";
+  }
+  return "unavailable";
+}
+
+enum class Route4PublicationScope : unsigned char {
+  None,
+  CurrentBlock,
+  BlockEntry,
+};
+
+enum class Route4PublicationSourceKind : unsigned char {
+  Unknown,
+  Immediate,
+  LoadLocal,
+  LoadGlobal,
+  Cast,
+  Binary,
+  SelectMaterialization,
+};
+
+enum class Route4PublicationValueRole : unsigned char {
+  None,
+  Produced,
+  Consumed,
+  Source,
+};
+
+struct Route4CurrentBlockPublicationRecord {
+  bool available = false;
+  Route4PublicationAvailabilityStatus status =
+      Route4PublicationAvailabilityStatus::Unavailable;
+  const Block* block = nullptr;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  Route1SourceValueIdentity value;
+  std::string_view value_name;
+  ValueNameId value_name_id = kInvalidValueName;
+  TypeKind value_type = TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+  Route4PublicationSourceKind source_producer_kind =
+      Route4PublicationSourceKind::Unknown;
+  const Inst* source_producer_instruction = nullptr;
+  std::size_t source_producer_instruction_index = 0;
+  BlockLabelId source_producer_block_label_id = kInvalidBlockLabel;
+  Route1SourceValueIdentity produced_value;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route4BlockEntryPublicationRecord {
+  bool available = false;
+  Route4PublicationAvailabilityStatus status =
+      Route4PublicationAvailabilityStatus::Unavailable;
+  const Block* successor_block = nullptr;
+  std::string_view successor_label;
+  BlockLabelId successor_label_id = kInvalidBlockLabel;
+  const Inst* destination_instruction = nullptr;
+  const PhiInst* phi = nullptr;
+  std::size_t destination_instruction_index = 0;
+  Route1SourceValueIdentity destination_value;
+  std::string_view destination_value_name;
+  ValueNameId destination_value_name_id = kInvalidValueName;
+  TypeKind destination_value_type = TypeKind::Void;
+  Route1SourceValueIdentity source_value;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route4PublicationValueRecord {
+  bool available = false;
+  Route4PublicationScope scope = Route4PublicationScope::None;
+  Route4PublicationAvailabilityStatus status =
+      Route4PublicationAvailabilityStatus::Unavailable;
+  Route4PublicationValueRole value_role = Route4PublicationValueRole::None;
+  Route1SourceValueIdentity value;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  Route4CurrentBlockPublicationRecord current_block;
+  Route4BlockEntryPublicationRecord block_entry;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+[[nodiscard]] Route4PublicationSourceKind
+route4_publication_source_kind(Route1ProducerKind kind);
+
+[[nodiscard]] Route4CurrentBlockPublicationRecord
+route4_current_block_publication_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value,
+    ValueNameId value_name_id = kInvalidValueName);
+
+[[nodiscard]] Route4BlockEntryPublicationRecord
+route4_block_entry_publication_record(
+    const Block* successor_block,
+    const Value& destination_value,
+    ValueNameId destination_value_name_id = kInvalidValueName);
+
+[[nodiscard]] Route4PublicationValueRecord
+route4_current_block_publication_value_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value,
+    ValueNameId value_name_id = kInvalidValueName);
+
+[[nodiscard]] Route4PublicationValueRecord
+route4_block_entry_publication_value_record(
+    const Block* successor_block,
+    const Value& destination_value,
+    ValueNameId destination_value_name_id = kInvalidValueName);
+
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;
   std::size_t arg_index = 0;

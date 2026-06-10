@@ -940,6 +940,175 @@ route3_find_same_block_load_local_source(
   return record;
 }
 
+Route4PublicationSourceKind route4_publication_source_kind(
+    Route1ProducerKind kind) {
+  switch (kind) {
+    case Route1ProducerKind::Immediate:
+      return Route4PublicationSourceKind::Immediate;
+    case Route1ProducerKind::LoadLocal:
+      return Route4PublicationSourceKind::LoadLocal;
+    case Route1ProducerKind::LoadGlobal:
+      return Route4PublicationSourceKind::LoadGlobal;
+    case Route1ProducerKind::Cast:
+      return Route4PublicationSourceKind::Cast;
+    case Route1ProducerKind::Binary:
+      return Route4PublicationSourceKind::Binary;
+    case Route1ProducerKind::SelectMaterialization:
+      return Route4PublicationSourceKind::SelectMaterialization;
+    case Route1ProducerKind::Unknown:
+      return Route4PublicationSourceKind::Unknown;
+  }
+  return Route4PublicationSourceKind::Unknown;
+}
+
+Route4CurrentBlockPublicationRecord route4_current_block_publication_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value,
+    ValueNameId value_name_id) {
+  Route4CurrentBlockPublicationRecord record{
+      .status = Route4PublicationAvailabilityStatus::Unavailable,
+      .value = route1_source_value_identity(value, value_name_id),
+      .value_name = value.kind == Value::Kind::Named ? std::string_view{value.name}
+                                                     : std::string_view{},
+      .value_name_id = value_name_id,
+      .value_type = value.type,
+      .before_instruction_index = query.before_instruction_index,
+  };
+  if (!query || query.index->block == nullptr) {
+    record.status = Route4PublicationAvailabilityStatus::MissingBlock;
+    return record;
+  }
+  const auto& block = *query.index->block;
+  record.block = &block;
+  record.block_label = block.label;
+  record.block_label_id = block.label_id;
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    record.status = Route4PublicationAvailabilityStatus::MissingValue;
+    return record;
+  }
+  const auto producer = route1_find_same_block_scalar_producer(query, value);
+  if (!producer.has_value() ||
+      producer->record == nullptr ||
+      producer->instruction == nullptr ||
+      producer->produced_value == nullptr) {
+    record.status = Route4PublicationAvailabilityStatus::NoMatch;
+    return record;
+  }
+  record.available = true;
+  record.status = Route4PublicationAvailabilityStatus::Available;
+  record.source_producer_kind =
+      route4_publication_source_kind(producer->record->kind);
+  record.source_producer_instruction = producer->instruction;
+  record.source_producer_instruction_index = producer->instruction_index;
+  record.source_producer_block_label_id =
+      producer->record->producer_instruction.block_label_id;
+  record.produced_value =
+      route1_source_value_identity(*producer->produced_value, value_name_id);
+  return record;
+}
+
+Route4BlockEntryPublicationRecord route4_block_entry_publication_record(
+    const Block* successor_block,
+    const Value& destination_value,
+    ValueNameId destination_value_name_id) {
+  Route4BlockEntryPublicationRecord record{
+      .status = Route4PublicationAvailabilityStatus::Unavailable,
+      .destination_value = route1_source_value_identity(
+          destination_value, destination_value_name_id),
+      .destination_value_name =
+          destination_value.kind == Value::Kind::Named
+              ? std::string_view{destination_value.name}
+              : std::string_view{},
+      .destination_value_name_id = destination_value_name_id,
+      .destination_value_type = destination_value.type,
+  };
+  if (successor_block == nullptr) {
+    record.status = Route4PublicationAvailabilityStatus::MissingBlock;
+    return record;
+  }
+  record.successor_block = successor_block;
+  record.successor_label = successor_block->label;
+  record.successor_label_id = successor_block->label_id;
+  if (destination_value.kind != Value::Kind::Named ||
+      destination_value.name.empty()) {
+    record.status = Route4PublicationAvailabilityStatus::MissingValue;
+    return record;
+  }
+  for (std::size_t instruction_index = 0;
+       instruction_index < successor_block->insts.size();
+       ++instruction_index) {
+    const auto& inst = successor_block->insts[instruction_index];
+    const auto* phi = std::get_if<PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.kind != Value::Kind::Named ||
+        phi->result.name != destination_value.name) {
+      continue;
+    }
+    if (phi->result.type != destination_value.type) {
+      record.status = Route4PublicationAvailabilityStatus::NoMatch;
+      return record;
+    }
+    record.available = true;
+    record.status = Route4PublicationAvailabilityStatus::Available;
+    record.destination_instruction = &inst;
+    record.phi = phi;
+    record.destination_instruction_index = instruction_index;
+    record.destination_value =
+        route1_source_value_identity(phi->result, destination_value_name_id);
+    record.destination_value_name = phi->result.name;
+    record.destination_value_type = phi->result.type;
+    if (phi->incomings.size() == 1U) {
+      record.source_value = route1_source_value_identity(phi->incomings.front().value);
+    }
+    return record;
+  }
+  record.status = Route4PublicationAvailabilityStatus::MissingPublication;
+  return record;
+}
+
+Route4PublicationValueRecord route4_current_block_publication_value_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value,
+    ValueNameId value_name_id) {
+  const auto publication =
+      route4_current_block_publication_record(query, value, value_name_id);
+  return Route4PublicationValueRecord{
+      .available = publication.available,
+      .scope = Route4PublicationScope::CurrentBlock,
+      .status = publication.status,
+      .value_role = Route4PublicationValueRole::Produced,
+      .value = publication.available ? publication.produced_value
+                                     : publication.value,
+      .block_label = publication.block_label,
+      .block_label_id = publication.block_label_id,
+      .instruction_index = publication.source_producer_instruction_index,
+      .current_block = publication,
+  };
+}
+
+Route4PublicationValueRecord route4_block_entry_publication_value_record(
+    const Block* successor_block,
+    const Value& destination_value,
+    ValueNameId destination_value_name_id) {
+  const auto publication =
+      route4_block_entry_publication_record(successor_block,
+                                            destination_value,
+                                            destination_value_name_id);
+  return Route4PublicationValueRecord{
+      .available = publication.available,
+      .scope = Route4PublicationScope::BlockEntry,
+      .status = publication.status,
+      .value_role = Route4PublicationValueRole::Consumed,
+      .value = publication.destination_value,
+      .block_label = publication.successor_label,
+      .block_label_id = publication.successor_label_id,
+      .instruction_index = publication.destination_instruction_index,
+      .block_entry = publication,
+  };
+}
+
 namespace {
 
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
