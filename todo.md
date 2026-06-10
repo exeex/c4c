@@ -3,50 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/157_bir_call_boundary_source_facts.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Bridge production argument source facts and audit field scope
+Current Step ID: 6
+Current Step Title: Switch one call-source consumer at a time
 
 ## Just Finished
 
-Step 5 completed the next production-backed call-argument source slice. BIR
-direct call lowering now reconstructs same-block direct-global select-chain
-dependencies for named call arguments and populates
-`bir::CallArgumentSourceRelationship::direct_global_select_chain_dependency`
-when the argument root is produced by a load-global/select/cast/binary chain.
-The extractor fails closed on missing roots, non-named values, local-load-only
-chains, and recursion depth exhaustion.
+Step 6 completed the first call-source consumer switch. The AArch64
+direct-global select-chain call-argument materialization path now reads the
+semantic direct-global dependency from `bir::find_call_argument_publication_source_routing`
+for the matching call argument when BIR publishes it, and falls back to the
+prepared call-argument routing dependency when BIR facts are unavailable.
 
-`backend_lir_to_bir_notes_test.cpp` now covers a production-lowered dynamic
-global selected scalar passed directly as a call argument, proves the populated
-direct-global select-chain dependency is exposed through
-`find_call_argument_publication_source_routing`, and adds explicit
-unavailable-source routing parity for production BIR call arguments. The
-existing prepared lookup helper still compares prepared and BIR source routing,
-direct-global select-chain, source-producer materialization, and unavailable
-routing oracle answers.
+The switch is scoped to that single direct-global dependency read. Prepared
+call plans still provide call instruction identity, source value id checks,
+value-home/register authority, argument package index, and all ABI placement
+facts.
 
-No AArch64 or prealloc consumers were switched. Prepared-only stack/layout
-fields remain quarantined from production BIR call source relationships.
+`backend_aarch64_instruction_dispatch_test.cpp` now covers the switched path by
+removing the prepared direct-global dependency from an existing dynamic selected
+global call-argument fixture, seeding the equivalent BIR call-argument
+relationship, and proving the selected value is still materialized before the
+call.
 
 ## Suggested Next
 
-Supervisor should review whether Step 5 is now acceptance-ready against the
-source idea and decide whether to route a Step 6 consumer-switch packet or ask
-for a reviewer/plan-owner pass first.
+Supervisor should review this first Step 6 consumer switch and then decide the
+next single consumer packet, likely either source-producer materialization or
+publication-source routing, with the same prepared fallback/ABI-authority
+boundary.
 
 ## Watchouts
 
 - BIR production lowering still does not mint prepared numeric value ids;
   consumers that require `PreparedValueId` must continue to resolve ids through
   prepared name/value-location tables or add an explicit parity bridge.
-- The production direct-global dependency extractor is intentionally BIR-owned
-  and same-block only; it does not import prepared source-producer tables and it
-  does not cross CFG edges.
+- This Step 6 switch converts the BIR direct-global dependency into the
+  existing prepared-shaped dependency payload only at the local AArch64
+  materialization boundary; do not treat that as BIR ownership of ABI placement
+  or prepared numeric ids.
 - `find_call_argument_source_producer_materialization` remains a producer query
   gated by relationship uniqueness and call identity, not by publication-routing
-  availability. Unavailable-source parity in this slice is covered on the
-  publication-routing API.
-- No AArch64 or prealloc consumers were switched in this packet.
+  availability.
 - The result identity surface from Step 4 remains value-identity-only and must
   not be treated as result ABI placement authority.
 

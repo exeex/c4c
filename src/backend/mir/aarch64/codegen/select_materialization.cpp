@@ -40,6 +40,35 @@ namespace {
                                                  value.name);
 }
 
+[[nodiscard]] std::optional<prepare::PreparedDirectGlobalSelectChainDependency>
+bir_call_argument_direct_global_select_chain_dependency(
+    const module::BlockLoweringContext& context,
+    std::size_t before_instruction_index,
+    std::size_t argument_index,
+    std::string_view source_value_name) {
+  if (context.bir_block == nullptr ||
+      before_instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call_inst =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[before_instruction_index]);
+  if (call_inst == nullptr) {
+    return std::nullopt;
+  }
+  const auto routing =
+      bir::find_call_argument_publication_source_routing(*call_inst, argument_index);
+  const auto* dependency = routing.direct_global_select_chain_dependency;
+  if (dependency == nullptr ||
+      dependency->source_value_name != source_value_name) {
+    return std::nullopt;
+  }
+  return prepare::PreparedDirectGlobalSelectChainDependency{
+      .contains_direct_global_load = dependency->contains_direct_global_load,
+      .root_is_select = dependency->root_is_select,
+      .root_instruction_index = dependency->root_instruction_index,
+  };
+}
+
 }  // namespace
 
 [[nodiscard]] std::string select_chain_label(
@@ -313,14 +342,21 @@ materialize_direct_global_select_chain_call_argument(
   }
   const auto routing =
       prepare::find_prepared_call_argument_publication_source_routing(*argument_plan);
-  const auto* call_argument_dependency =
-      routing.direct_global_select_chain_dependency;
-  if (call_argument_dependency == nullptr ||
-      call_argument_dependency->source_value_name != *value_name) {
+  const auto bir_dependency =
+      bir_call_argument_direct_global_select_chain_dependency(
+          context, before_instruction_index, argument_plan->arg_index, value.name);
+  std::optional<prepare::PreparedDirectGlobalSelectChainDependency>
+      prepared_dependency;
+  if (routing.direct_global_select_chain_dependency != nullptr &&
+      routing.direct_global_select_chain_dependency->source_value_name == *value_name) {
+    prepared_dependency =
+        routing.direct_global_select_chain_dependency->direct_global_dependency;
+  }
+  const auto direct_global_dependency =
+      bir_dependency.has_value() ? bir_dependency : prepared_dependency;
+  if (!direct_global_dependency.has_value()) {
     return std::nullopt;
   }
-  const auto& direct_global_dependency =
-      call_argument_dependency->direct_global_dependency;
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   if (scratches.size() < 2U) {
     return std::nullopt;
@@ -409,7 +445,7 @@ materialize_direct_global_select_chain_call_argument(
                                            label_index,
                                            active_values,
                                            true,
-                                           &direct_global_dependency) ||
+                                           &*direct_global_dependency) ||
       lines.empty()) {
     return std::nullopt;
   }
