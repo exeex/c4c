@@ -44,18 +44,6 @@ struct PreparedFunctionLookups {
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
 
-[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
-    const PreparedNameTables& names,
-    const PreparedControlFlowFunction& function,
-    const PreparedValueLocationFunction* value_locations,
-    const PreparedValueHomeLookups* value_home_lookups = nullptr);
-
-[[nodiscard]] PreparedEdgePublicationLookups make_prepared_edge_publication_lookups(
-    const PreparedBirModule& prepared,
-    const PreparedControlFlowFunction& function,
-    const PreparedValueLocationFunction* value_locations,
-    const PreparedValueHomeLookups* value_home_lookups = nullptr);
-
 [[nodiscard]] PreparedFunctionLookups make_prepared_function_lookups(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
