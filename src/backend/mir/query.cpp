@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 #include <variant>
 
@@ -27,6 +28,65 @@ namespace c4c::backend::mir {
       },
       inst);
 }
+
+[[nodiscard]] bool same_block_producer_kind_has_materialization(
+    SameBlockProducerKind kind) {
+  switch (kind) {
+    case SameBlockProducerKind::Binary:
+    case SameBlockProducerKind::Cast:
+    case SameBlockProducerKind::Select:
+    case SameBlockProducerKind::LoadLocal:
+    case SameBlockProducerKind::LoadGlobal:
+      return true;
+    case SameBlockProducerKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] SameBlockValueIdentity same_block_value_identity(
+    const bir::Value& value) {
+  SameBlockValueIdentity identity{
+      .value = &value,
+      .name = value.name,
+      .type = value.type,
+  };
+  if (value.kind == bir::Value::Kind::Immediate) {
+    identity.immediate_constant = value.immediate;
+  }
+  return identity;
+}
+
+namespace {
+
+[[nodiscard]] const bir::Value* produced_value_for_same_block_identity(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) -> const bir::Value* {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return &typed_inst.result;
+        } else {
+          return nullptr;
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] std::string_view normalized_block_label(
+    const bir::Block& block,
+    std::string_view requested_label) {
+  if (!requested_label.empty()) {
+    return requested_label;
+  }
+  return block.label;
+}
+
+}  // namespace
 
 [[nodiscard]] SameBlockBinaryProducer find_same_block_binary_producer(
     const bir::Block* block,
@@ -74,34 +134,44 @@ namespace c4c::backend::mir {
     const bir::Block* block,
     std::string_view value_name,
     std::size_t before_instruction_index) {
-  if (block == nullptr || value_name.empty()) {
+  return find_same_block_producer_identity(SameBlockProducerIdentityRequest{
+      .block = block,
+      .value_name = value_name,
+      .before_instruction_index = before_instruction_index,
+  });
+}
+
+[[nodiscard]] SameBlockProducerIdentity find_same_block_producer_identity(
+    SameBlockProducerIdentityRequest request) {
+  if (!request) {
     return {};
   }
-  const auto before = std::min(before_instruction_index, block->insts.size());
+  const auto before = std::min(request.before_instruction_index,
+                               request.block->insts.size());
   for (std::size_t index = before; index > 0; --index) {
     const std::size_t candidate_index = index - 1;
-    const auto& candidate = block->insts[candidate_index];
-    bool matches = false;
-    std::visit(
-        [&](const auto& typed_inst) {
-          using T = std::decay_t<decltype(typed_inst)>;
-          if constexpr (std::is_same_v<T, bir::BinaryInst> ||
-                        std::is_same_v<T, bir::CastInst> ||
-                        std::is_same_v<T, bir::SelectInst> ||
-                        std::is_same_v<T, bir::LoadLocalInst> ||
-                        std::is_same_v<T, bir::LoadGlobalInst>) {
-            matches = typed_inst.result.kind == bir::Value::Kind::Named &&
-                      typed_inst.result.name == value_name;
-          }
-        },
-        candidate);
-    if (matches) {
-      return SameBlockProducerRecord{
-          .inst = &candidate,
-          .instruction_index = candidate_index,
-          .kind = same_block_producer_kind(candidate),
-      };
+    const auto& candidate = request.block->insts[candidate_index];
+    const auto* result = produced_value_for_same_block_identity(candidate);
+    if (result == nullptr ||
+        result->kind != bir::Value::Kind::Named ||
+        result->name != request.value_name) {
+      continue;
     }
+    if (request.value_type != bir::TypeKind::Void &&
+        result->type != request.value_type) {
+      return {};
+    }
+    const auto kind = same_block_producer_kind(candidate);
+    return SameBlockProducerIdentity{
+        .inst = &candidate,
+        .instruction_index = candidate_index,
+        .kind = kind,
+        .block_label = normalized_block_label(*request.block, request.block_label),
+        .before_instruction_index = request.before_instruction_index,
+        .produced_value = same_block_value_identity(*result),
+        .materialization_available =
+            same_block_producer_kind_has_materialization(kind),
+    };
   }
   return {};
 }
