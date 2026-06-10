@@ -8,48 +8,49 @@ Current Step Title: Prove Semantic Publication Identity Boundary
 
 ## Just Finished
 
-Completed Step 3 for `plan.md`: added BIR block-entry publication identity
-request/result records and `find_bir_block_entry_publication_identity`. The
-query is keyed by successor block label/id plus destination value identity and
-derives availability only from leading BIR PHI results at successor entry.
+Completed Step 4 for `plan.md`: tightened test-only proof for the semantic
+publication identity boundary without switching consumers or touching
+implementation files.
 
-Added test-only prepared/BIR semantic comparison in
-`backend_prealloc_block_entry_publications_test.cpp` and
-`backend_prepared_lookup_helper_test.cpp` for available entry publication,
-missing/unpublished destination, wrong successor, and wrong destination value
-cases. Added call-contract coverage in
-`backend_prepare_frame_stack_call_contract_test.cpp` to compare prepared
-current-block entry publication destination fields against the BIR PHI-entry
-identity.
+`backend_prealloc_block_entry_publications_test.cpp` now compares prepared/BIR
+block-entry publication equivalence only for the shared available PHI
+destination identity fields: successor identity, destination value id/name/type,
+destination value pointer identity, PHI instruction pointer, and instruction
+index. It also proves divergent readiness boundaries: prepared home/register
+fallback readiness can be available while BIR has no PHI-entry identity, and
+BIR PHI-entry identity can be available while prepared emission readiness is
+missing or unavailable because prepared move/storage facts do not support
+emission.
 
-No consumers were switched. The BIR shape carries only semantic successor and
-destination identity fields; it does not import `PreparedBlockEntryPublication`
-payload such as hook kind, value-home pointers/kinds, storage encoding,
-stack-source policy, register-view conversion, immediate/move payloads,
-destination register spelling, emitted-storage availability, or scalar emission
-policy.
+`backend_prepared_lookup_helper_test.cpp` now carries matching boundary cases
+for prepared move/register readiness without a PHI, BIR PHI identity without a
+prepared publication move, and BIR PHI identity for a prepared stack-destination
+publication that remains prepared-unavailable.
+
+`backend_prepare_frame_stack_call_contract_test.cpp` now checks the BIR
+block-entry semantic fields more explicitly and proves that a BIR PHI-entry
+destination identity does not imply prepared entry-publication emission
+readiness in the call-contract context.
 
 ## Suggested Next
 
-Next packet: execute rewritten Step 4 by tightening the test-only proof around
-the semantic boundary. Preserve exact prepared/BIR equivalence only where both
-sides answer the same-block source/value/producer identity question.
-For block-entry publication, prove PHI-entry destination identity and add
-boundary coverage documenting that prepared-only move/home/storage/register
-readiness positives remain prepared oracle/fallback behavior, while BIR
-PHI-entry positives do not imply prepared emission readiness.
+Step 5 candidate: inspect the remaining prepared/AArch64 consumers that still
+own register parsing, destination storage decisions, and scalar emission policy.
+If the plan still calls for a consumer switch, split it into a narrow packet
+that names exactly one consumer boundary and keeps BIR identity data limited to
+semantic source/destination identity.
 
 ## Watchouts
 
 - BIR entry-publication availability is intentionally PHI-entry semantic
   availability. Exact prepared availability from move/value-home/register facts
   remains outside BIR and must stay prepared-owned.
-- Step 4 must not compare prepared hook kind, destination home, storage
-  encoding, stack-source policy, register view, immediate/move payload,
-  emitted-storage availability, destination register spelling, or scalar
-  emission policy as BIR facts.
-- Treat prepared-only readiness positives as oracle/fallback behavior, not as
-  a missing BIR semantic availability case.
+- Step 4 proof intentionally does not compare prepared hook kind, destination
+  home, storage encoding, stack-source policy, register view, immediate/move
+  payload, emitted-storage availability, destination register spelling, or
+  scalar emission policy as BIR facts.
+- Treat prepared-only readiness positives as oracle/fallback behavior and BIR
+  PHI-entry positives as semantic identity only, not emission readiness.
 - Leave register parsing plus destination storage decisions in existing
   prepared/AArch64 consumers until a later explicit switch packet.
 - Escalate validation if any future packet touches dispatch publication, calls,

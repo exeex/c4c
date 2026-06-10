@@ -24,33 +24,23 @@ bool expect(bool condition, std::string_view message) {
   return true;
 }
 
-bool prepared_and_bir_block_entry_publication_identity_match(
+bool prepared_and_bir_available_block_entry_publication_identity_match(
     const prepare::PreparedCurrentBlockEntryPublication& prepared,
     const mir::BirBlockEntryPublicationIdentity& bir) {
-  if ((prepared.status ==
-       prepare::PreparedCurrentBlockEntryPublicationStatus::Available) !=
-      bir.available) {
-    return false;
-  }
-  if (prepared.destination_value_id != prepare::PreparedValueId{0} &&
-      bir.destination_value_id != prepared.destination_value_id) {
-    return false;
-  }
-  if (prepared.destination_value_name != c4c::kInvalidValueName &&
-      bir.destination_value_name_id != prepared.destination_value_name) {
-    return false;
-  }
-  if (!bir.available) {
-    return bir.status != mir::BirBlockEntryPublicationStatus::Available;
-  }
-  return prepared.destination_home != nullptr &&
+  return prepared.status ==
+             prepare::PreparedCurrentBlockEntryPublicationStatus::Available &&
+         bir.available &&
          prepared.publication.destination_value_id ==
              prepared.destination_value_id &&
          bir.status == mir::BirBlockEntryPublicationStatus::Available &&
+         bir.instruction != nullptr &&
          bir.phi != nullptr &&
+         bir.instruction_index == 0 &&
          bir.destination_value != nullptr &&
+         bir.destination_value_id == prepared.destination_value_id &&
          bir.destination_value_identity.value == bir.destination_value &&
          bir.destination_value_identity.name == bir.destination_value_name &&
+         bir.destination_value_name_id == prepared.destination_value_name &&
          bir.destination_value_name == bir.destination_value->name &&
          bir.destination_value_type == bir.destination_value->type;
 }
@@ -424,7 +414,13 @@ int check_current_block_entry_publication_query() {
 
   prepare::PreparedNameTables names;
   const auto published_value_name = names.value_names.intern("%published");
+  const auto fallback_value_name = names.value_names.intern("%fallback");
+  const auto stack_value_name = names.value_names.intern("%stack_destination");
+  const auto bir_only_value_name = names.value_names.intern("%bir_only");
   fixture.locations.value_homes[0].value_name = published_value_name;
+  fixture.locations.value_homes[1].value_name = fallback_value_name;
+  fixture.locations.value_homes[2].value_name = stack_value_name;
+  fixture.locations.value_homes[4].value_name = bir_only_value_name;
   const auto named_value_home_lookups =
       prepare::make_prepared_value_home_lookups(&fixture.locations);
   const prepare::PreparedCurrentBlockEntryPublicationQueryInputs named_query{
@@ -457,6 +453,26 @@ int check_current_block_entry_publication_query() {
           },
       },
   });
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%stack_destination"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "predecessor",
+              .value = bir::Value::named(bir::TypeKind::I32, "%stack_source"),
+              .label_id = fixture.predecessor_label,
+          },
+      },
+  });
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%bir_only"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "predecessor",
+              .value = bir::Value::named(bir::TypeKind::I32, "%bir_source"),
+              .label_id = fixture.predecessor_label,
+          },
+      },
+  });
 
   const auto bir_available = mir::find_bir_block_entry_publication_identity(
       mir::BirBlockEntryPublicationIdentityRequest{
@@ -469,12 +485,95 @@ int check_current_block_entry_publication_query() {
           .destination_value_name_id = by_bir_value.destination_value_name,
           .destination_value_type = bir::TypeKind::I32,
       });
-  if (!expect(prepared_and_bir_block_entry_publication_identity_match(
+  if (!expect(prepared_and_bir_available_block_entry_publication_identity_match(
                   by_bir_value, bir_available),
               "BIR block-entry publication identity should match prepared semantic destination fields for available PHI publication") ||
       !expect(bir_available.successor_label == successor.label &&
                   bir_available.successor_label_id == fixture.successor_label,
               "BIR block-entry publication identity should preserve successor identity")) {
+    return 1;
+  }
+
+  const auto prepared_home_register_fallback =
+      prepare::find_prepared_current_block_entry_publication(
+          named_query, prepare::PreparedValueId{2});
+  bir::Block no_phi_successor;
+  no_phi_successor.label = "successor";
+  no_phi_successor.label_id = fixture.successor_label;
+  const auto bir_missing_fallback_phi =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &no_phi_successor,
+              .successor_label = no_phi_successor.label,
+              .successor_label_id = fixture.successor_label,
+              .destination_value_id =
+                  prepared_home_register_fallback.destination_value_id,
+              .destination_value_name = "%fallback",
+              .destination_value_name_id =
+                  prepared_home_register_fallback.destination_value_name,
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (!expect(prepared_home_register_fallback.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "prepared home-register fallback should remain a prepared readiness positive") ||
+      !expect(!bir_missing_fallback_phi &&
+                  bir_missing_fallback_phi.status ==
+                      mir::BirBlockEntryPublicationStatus::MissingPublication,
+              "prepared home/register readiness should not imply BIR PHI-entry identity")) {
+    return 1;
+  }
+
+  const auto prepared_stack_destination =
+      prepare::find_prepared_current_block_entry_publication(
+          named_query, prepare::PreparedValueId{3});
+  const auto bir_stack_destination =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &successor,
+              .successor_label = successor.label,
+              .successor_label_id = fixture.successor_label,
+              .destination_value_id =
+                  prepared_stack_destination.destination_value_id,
+              .destination_value_name = "%stack_destination",
+              .destination_value_name_id =
+                  prepared_stack_destination.destination_value_name,
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (!expect(prepared_stack_destination.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      PublicationUnavailable,
+              "prepared stack-destination publication should remain prepared-owned readiness") ||
+      !expect(bir_stack_destination.available &&
+                  bir_stack_destination.destination_value_name ==
+                      "%stack_destination" &&
+                  bir_stack_destination.destination_value_name_id ==
+                      prepared_stack_destination.destination_value_name,
+              "BIR PHI-entry identity should not require prepared emission readiness")) {
+    return 1;
+  }
+
+  const auto prepared_bir_only =
+      prepare::find_prepared_current_block_entry_publication(
+          named_query, prepare::PreparedValueId{5});
+  const auto bir_only = mir::find_bir_block_entry_publication_identity(
+      mir::BirBlockEntryPublicationIdentityRequest{
+          .successor_block = &successor,
+          .successor_label = successor.label,
+          .successor_label_id = fixture.successor_label,
+          .destination_value_id = prepared_bir_only.destination_value_id,
+          .destination_value_name = "%bir_only",
+          .destination_value_name_id = prepared_bir_only.destination_value_name,
+          .destination_value_type = bir::TypeKind::I32,
+      });
+  if (!expect(prepared_bir_only.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      MissingPublication,
+              "prepared missing-publication should remain a prepared emission-readiness negative") ||
+      !expect(bir_only.available &&
+                  bir_only.destination_value_name == "%bir_only" &&
+                  bir_only.destination_value_name_id ==
+                      prepared_bir_only.destination_value_name,
+              "BIR PHI-entry publication identity should not imply prepared move publication readiness")) {
     return 1;
   }
 
@@ -493,8 +592,16 @@ int check_current_block_entry_publication_query() {
                   unpublished_prepared.destination_value_name,
               .destination_value_type = bir::TypeKind::I32,
           });
-  if (!expect(prepared_and_bir_block_entry_publication_identity_match(
-                  unpublished_prepared, bir_missing_publication),
+  if (!expect(unpublished_prepared.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      MissingPublication &&
+                  !bir_missing_publication &&
+                  bir_missing_publication.status ==
+                      mir::BirBlockEntryPublicationStatus::MissingPublication &&
+                  bir_missing_publication.destination_value_id ==
+                      unpublished_prepared.destination_value_id &&
+                  bir_missing_publication.destination_value_name_id ==
+                      unpublished_prepared.destination_value_name,
               "BIR block-entry publication identity should fail closed with prepared missing-publication category")) {
     return 1;
   }
@@ -518,8 +625,10 @@ int check_current_block_entry_publication_query() {
                   wrong_successor_prepared.destination_value_name,
               .destination_value_type = bir::TypeKind::I32,
           });
-  if (!expect(prepared_and_bir_block_entry_publication_identity_match(
-                  wrong_successor_prepared, bir_wrong_successor),
+  if (!expect(wrong_successor_prepared.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::
+                      MissingPublication &&
+                  !bir_wrong_successor,
               "BIR block-entry publication identity should fail closed for wrong successor") ||
       !expect(bir_wrong_successor.status ==
                   mir::BirBlockEntryPublicationStatus::MissingSuccessorLabel,

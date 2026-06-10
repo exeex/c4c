@@ -4356,6 +4356,7 @@ int verify_bir_block_entry_publication_identity_lookup() {
       names.block_labels.intern("entry_publication.other");
   const auto destination_name = names.value_names.intern("%entry.dst");
   const auto unpublished_name = names.value_names.intern("%entry.unpublished");
+  const auto stack_only_name = names.value_names.intern("%entry.stack");
 
   prepare::PreparedValueLocationFunction locations{
       .function_name = function_name,
@@ -4374,6 +4375,14 @@ int verify_bir_block_entry_publication_identity_lookup() {
               .kind = prepare::PreparedValueHomeKind::Register,
               .register_name = std::string{"r11"},
           },
+          prepare::PreparedValueHome{
+              .value_id = 103,
+              .function_name = function_name,
+              .value_name = stack_only_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = 7,
+              .offset_bytes = 56,
+          },
       },
       .move_bundles = {
           prepare::PreparedMoveBundle{
@@ -4390,6 +4399,17 @@ int verify_bir_block_entry_publication_identity_lookup() {
                       .destination_storage_kind =
                           prepare::PreparedMoveStorageKind::Register,
                       .destination_register_name = std::string{"r10"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+                  prepare::PreparedMoveResolution{
+                      .to_value_id = 103,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_stack_offset_bytes = std::size_t{56},
                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                       .authority_kind =
                           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -4419,6 +4439,24 @@ int verify_bir_block_entry_publication_identity_lookup() {
           },
       },
   });
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%entry.unpublished"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry_publication.left",
+              .value = bir::Value::named(bir::TypeKind::I32, "%entry.other_src"),
+          },
+      },
+  });
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%entry.stack"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry_publication.left",
+              .value = bir::Value::named(bir::TypeKind::I32, "%entry.stack_src"),
+          },
+      },
+  });
 
   const auto prepared_available =
       prepare::find_prepared_current_block_entry_publication(
@@ -4445,8 +4483,33 @@ int verify_bir_block_entry_publication_identity_lookup() {
       bir_available.destination_value == nullptr ||
       bir_available.destination_value_identity.value !=
           bir_available.destination_value ||
+      bir_available.destination_value_identity.name !=
+          bir_available.destination_value_name ||
       bir_available.destination_value_name != "%entry.dst") {
     return fail("BIR block-entry publication identity should match prepared available destination semantics");
+  }
+
+  bir::Block no_phi_successor;
+  no_phi_successor.label = "entry_publication.join";
+  no_phi_successor.label_id = successor_label;
+  const auto bir_missing_phi_for_prepared_ready =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &no_phi_successor,
+              .successor_label = no_phi_successor.label,
+              .successor_label_id = successor_label,
+              .destination_value_id = prepared_available.destination_value_id,
+              .destination_value_name = "%entry.dst",
+              .destination_value_name_id =
+                  prepared_available.destination_value_name,
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (prepared_available.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      bir_missing_phi_for_prepared_ready.available ||
+      bir_missing_phi_for_prepared_ready.status !=
+          mir::BirBlockEntryPublicationStatus::MissingPublication) {
+    return fail("prepared move/register readiness should not imply BIR PHI-entry identity");
   }
 
   const auto prepared_missing =
@@ -4454,8 +4517,8 @@ int verify_bir_block_entry_publication_identity_lookup() {
           query, prepare::PreparedValueId{102});
   const auto bir_missing = mir::find_bir_block_entry_publication_identity(
       mir::BirBlockEntryPublicationIdentityRequest{
-          .successor_block = &successor,
-          .successor_label = successor.label,
+          .successor_block = &no_phi_successor,
+          .successor_label = no_phi_successor.label,
           .successor_label_id = successor_label,
           .destination_value_id = prepared_missing.destination_value_id,
           .destination_value_name = "%entry.unpublished",
@@ -4470,6 +4533,47 @@ int verify_bir_block_entry_publication_identity_lookup() {
       bir_missing.destination_value_name_id !=
           prepared_missing.destination_value_name) {
     return fail("BIR block-entry publication identity should match prepared missing-publication category");
+  }
+
+  const auto bir_unpublished_phi = mir::find_bir_block_entry_publication_identity(
+      mir::BirBlockEntryPublicationIdentityRequest{
+          .successor_block = &successor,
+          .successor_label = successor.label,
+          .successor_label_id = successor_label,
+          .destination_value_id = prepared_missing.destination_value_id,
+          .destination_value_name = "%entry.unpublished",
+          .destination_value_name_id = prepared_missing.destination_value_name,
+          .destination_value_type = bir::TypeKind::I32,
+      });
+  if (prepared_missing.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::MissingPublication ||
+      !bir_unpublished_phi.available ||
+      bir_unpublished_phi.destination_value_name != "%entry.unpublished" ||
+      bir_unpublished_phi.destination_value_name_id !=
+          prepared_missing.destination_value_name) {
+    return fail("BIR PHI-entry identity should not imply prepared move publication readiness");
+  }
+
+  const auto prepared_stack_only =
+      prepare::find_prepared_current_block_entry_publication(
+          query, prepare::PreparedValueId{103});
+  const auto bir_stack_phi = mir::find_bir_block_entry_publication_identity(
+      mir::BirBlockEntryPublicationIdentityRequest{
+          .successor_block = &successor,
+          .successor_label = successor.label,
+          .successor_label_id = successor_label,
+          .destination_value_id = prepared_stack_only.destination_value_id,
+          .destination_value_name = "%entry.stack",
+          .destination_value_name_id = prepared_stack_only.destination_value_name,
+          .destination_value_type = bir::TypeKind::I32,
+      });
+  if (prepared_stack_only.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::
+              PublicationUnavailable ||
+      !bir_stack_phi.available ||
+      bir_stack_phi.destination_value_name_id !=
+          prepared_stack_only.destination_value_name) {
+    return fail("BIR PHI-entry identity should not import prepared destination storage readiness");
   }
 
   const auto prepared_wrong_successor =
