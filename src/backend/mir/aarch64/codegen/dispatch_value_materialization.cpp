@@ -34,6 +34,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 namespace {
@@ -277,6 +278,30 @@ prepared_same_block_integer_constant(
                                                  target_index,
                                                  lines,
                                                  fixed_slots_use_frame_pointer(context.function));
+    }
+    const auto global_load_identity =
+        mir::find_bir_same_block_global_load_access_identity(
+            mir::BirSameBlockGlobalLoadAccessRequest{
+                .block = context.bir_block,
+                .block_label = context.bir_block != nullptr
+                                   ? std::string_view{context.bir_block->label}
+                                   : std::string_view{},
+                .root_value = &value,
+                .before_instruction_index = before_instruction_index,
+            });
+    if (global_load_identity) {
+      const auto* prepared_access =
+          prepared_memory_access(context, global_load_identity.producer.instruction_index);
+      if (!prepared_memory_access_matches_instruction(
+              context, prepared_access, *global_load_identity.producer.inst)) {
+        return false;
+      }
+      return emit_prepared_global_load_to_register(context,
+                                                  *global_load_identity.load_global,
+                                                  *prepared_access,
+                                                  target_index,
+                                                  scratch_index,
+                                                  lines);
     }
     const auto* addressing =
         context.function.prepared != nullptr && context.function.control_flow != nullptr

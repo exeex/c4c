@@ -2809,6 +2809,16 @@ prepare::PreparedBirModule prepared_with_load_global_call_argument(
                         .global_name = global_spelling,
                         .global_name_id = bir_global_link,
                         .align_bytes = 8,
+                        .address =
+                            bir::MemoryAddress{
+                                .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                                .base_name = global_spelling,
+                                .byte_offset = 0,
+                                .size_bytes = 8,
+                                .align_bytes = 8,
+                                .address_space = bir::AddressSpace::Default,
+                                .base_link_name_id = bir_global_link,
+                            },
                     },
                     bir::CallInst{
                         .callee = "consume_ptr",
