@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/171_route5_current_block_join_source_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Or Confirm Route 5 Oracle Coverage
+Current Step ID: 3
+Current Step Title: Migrate The MIR Join-Source Helper
 
 # Current Packet
 
