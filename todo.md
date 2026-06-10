@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/152_phase_b_bir_annotation_schema_candidate_audit.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Finalize Phase B Artifact And Closure Summary
+Current Step ID: 6
+Current Step Title: Run acceptance validation and route review check
 
 # Current Packet
 
