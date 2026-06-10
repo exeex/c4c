@@ -45,3 +45,22 @@ stack-layout and same-block source-producer owners.
 - The implementation is shaped around only the AArch64 call-site case.
 - Addressing ownership is used to absorb unrelated same-block materialization
   APIs.
+
+## Completion Note
+
+Closed on 2026-06-09 after the active runbook completed Step 4 and validation
+was committed through `263575573`.
+
+- `PreparedSameBlockLoadLocalStoredValueSource` and
+  `find_prepared_same_block_load_local_stored_value_source` are declared from
+  `src/backend/prealloc/addressing.hpp`.
+- The direct AArch64 consumer includes the addressing owner header.
+- The finder continues to reuse prepared source-producer, stack-layout, and
+  memory-access facts; no duplicate scan or named call-site shortcut was
+  introduced.
+- Close-time backend regression guard passed with 179/179 backend tests before
+  and after. The strict guard had no new failures but no pass-count increase;
+  the non-decreasing maintenance policy was used for this lifecycle closeout.
+- No separate residual follow-up was created. The remaining implementation body
+  location is treated as the existing prepared lookup implementation owner, not
+  a separate initiative required for this source idea.
