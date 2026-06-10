@@ -1,54 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/155_bir_block_entry_publication_identity.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Switch One Semantic Identity Consumer If Proven
+Current Step ID: 6
+Current Step Title: Acceptance Review And Close Payload
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 for `plan.md`: switched one same-block call-boundary semantic
-source read in `prepared_call_boundary_source_value` to ask
-`mir::find_bir_current_block_publication_identity` first for the same BIR
-block, prepared value spelling, and before-instruction index.
+Completed Step 6 for `plan.md`: recorded close-ready acceptance evidence for
+the BIR block-entry publication identity route.
 
-The helper now returns the BIR-produced value when that semantic identity is
-available. The prepared current-block publication consumption query remains as
-fallback/readiness-oracle behavior for cases where the BIR identity is absent
-or the prepared lookup/context data is needed.
+The accepted BIR publication vocabulary/API surface is semantic identity only:
+`mir::BirCurrentBlockPublicationIdentityRequest`,
+`mir::BirCurrentBlockPublicationIdentity`,
+`mir::find_bir_current_block_publication_identity`,
+`mir::BirBlockEntryPublicationIdentityRequest`,
+`mir::BirBlockEntryPublicationIdentity`, and
+`mir::find_bir_block_entry_publication_identity`. These queries cover block
+label, value name, before-instruction index where applicable, source producer
+identity, produced BIR value/name, producer instruction, producer instruction
+index, source-producer kind, successor block identity, and PHI destination
+value identity.
 
-No test expectation rewrites were needed; the existing call-contract and
-AArch64 dispatch subset already covers the relevant boundary.
+Step 4 proof established same-block semantic identity cases for available,
+unavailable, wrong-value, wrong-block, and before-index paths, plus block-entry
+PHI-destination identity cases for available, missing/unpublished destination,
+wrong successor, and wrong destination paths. The boundary proof documented
+that prepared-only move/home/storage/register readiness positives remain
+prepared oracle/fallback behavior, and that BIR PHI-entry positives do not
+imply prepared emission readiness.
+
+Step 5 switched the narrow call-boundary semantic source consumer
+`prepared_call_boundary_source_value` to query
+`mir::find_bir_current_block_publication_identity` first for proven same-block
+semantic identity. The prepared current-block publication consumption query
+remains available as the readiness oracle and fallback when BIR identity is
+absent or prepared lookup/context data is needed.
+
+Rejected fields did not enter the BIR relationship: hook kind, destination
+home, storage encoding, stack-source extension policy, register-view
+conversion, immediate publication payloads, emitted-storage availability,
+destination register spelling, scalar emission policy, and target emission
+mechanics remain outside BIR publication identity.
 
 ## Suggested Next
 
-Step 5 follow-up candidate: review whether any remaining call-boundary semantic
-source reads still depend directly on prepared current-block publication
-consumption. Keep any further switch narrow and preserve prepared ownership of
-publication readiness, register/storage policy, and emission facts.
+Supervisor can hand this Step 6 close payload to lifecycle closure review for
+`ideas/open/155_bir_block_entry_publication_identity.md`.
 
 ## Watchouts
 
-- This switch intentionally treats BIR current-block publication as semantic
-  source identity only; prepared current-block publication consumption still
-  owns readiness/fallback behavior when BIR identity is missing.
-- The helper now no longer requires `prepared_lookups` before trying BIR
-  identity, but it still requires prepared names to resolve the value id to a
-  BIR spelling.
-- Do not use this slice as precedent for moving register parsing, destination
-  storage decisions, scalar emission policy, or prepared hook/home facts into
-  BIR identity queries.
-- Escalate validation if a future packet touches dispatch publication, scalar
-  publication planning, value homes, or emitted instruction behavior beyond
-  this local source-value helper.
+- Treat `test_before.log` as the final matched proof log from the accepted
+  Step 5 code-changing scope. This Step 6 packet is todo-only and intentionally
+  did not create `test_after.log`.
+- Do not close the source idea as a storage/register/emission migration; the
+  accepted route is limited to semantic publication identity plus one proven
+  semantic consumer switch.
 
 ## Proof
 
-Supervisor-selected proof passed and wrote `test_after.log`:
+Docs-only/todo-only packet per supervisor instruction. No tests were run and
+no `test_after.log` was created.
+
+Final accepted Step 5 code-changing proof is available in `test_before.log`:
 
 ```sh
 cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build --output-on-failure -R 'backend_(prepare_frame_stack_call_contract|aarch64_instruction_dispatch)' > test_after.log 2>&1
 ```
 
-`test_after.log`: 2/2 targeted tests passed.
+`test_before.log`: 2/2 targeted tests passed for
+`backend_aarch64_instruction_dispatch` and
+`backend_prepare_frame_stack_call_contract`.
