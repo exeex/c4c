@@ -91,6 +91,7 @@ int expect_link_name_id_extern_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
+int expect_dynamic_global_selected_call_argument_publishes_dependency();
 int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
@@ -3526,6 +3527,23 @@ int expect_production_call_argument_source_relationships_lower() {
       producer.produced_value->name != "%sum.arg") {
     return fail(
         "production call argument source-producer query should see the lowered scalar producer");
+  }
+  auto unavailable_block = block;
+  auto* unavailable_call = std::get_if<c4c::backend::bir::CallInst>(
+      &unavailable_block.insts[call_instruction_index]);
+  if (unavailable_call == nullptr) {
+    return fail("production unavailable source fixture lost its call");
+  }
+  unavailable_call->arg_sources = {
+      c4c::backend::bir::CallArgumentSourceRelationship{
+          .arg_index = 0,
+      },
+  };
+  if (c4c::backend::bir::find_call_argument_publication_source_routing(
+          *unavailable_call, 0)
+          .available) {
+    return fail(
+        "production call argument publication routing should fail closed for unavailable source facts");
   }
   for (const auto& source : call->arg_sources) {
     if (source.source_selection.has_value() &&
@@ -7161,6 +7179,94 @@ LirModule make_dynamic_indexed_gep_global_member_array_module() {
   return module;
 }
 
+int expect_dynamic_global_selected_call_argument_publishes_dependency() {
+  LirModule module = make_dynamic_indexed_gep_global_member_array_module();
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId sink_id = module.link_names.intern("selected_global_sink");
+  c4c::codegen::lir::LirExternDecl sink;
+  sink.name = "selected_global_sink";
+  sink.link_name_id = sink_id;
+  sink.return_type_str = "void";
+  sink.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(sink));
+
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@selected_global_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(i64)",
+      .args_str = "i64 %t7",
+      .callee_signature = void_call_signature({"i64"}),
+  });
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail(
+        "dynamic global selected call-argument fixture should lower to BIR");
+  }
+
+  const c4c::backend::bir::Function* function = nullptr;
+  for (const auto& candidate : result.module->functions) {
+    if (candidate.name == "dynamic_indexed_gep_global_member_array") {
+      function = &candidate;
+      break;
+    }
+  }
+  if (function == nullptr || function->blocks.empty()) {
+    return fail("dynamic global selected call-argument fixture lost its block");
+  }
+
+  const c4c::backend::bir::CallInst* call = nullptr;
+  for (const auto& inst : function->blocks.front().insts) {
+    const auto* candidate =
+        std::get_if<c4c::backend::bir::CallInst>(&inst);
+    if (candidate != nullptr && candidate->callee == "selected_global_sink") {
+      call = candidate;
+      break;
+    }
+  }
+  if (call == nullptr || call->args.size() != 1 ||
+      call->arg_sources.size() != 1) {
+    return fail(
+        "dynamic global selected call should publish one argument source");
+  }
+
+  const auto* source =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 0);
+  if (source == nullptr ||
+      source->source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::Register ||
+      source->source_value_name != std::optional<std::string>{"%t7"} ||
+      !source->direct_global_select_chain_dependency.has_value()) {
+    return fail(
+        "dynamic global selected call argument lost source relationship facts");
+  }
+  const auto& dependency = *source->direct_global_select_chain_dependency;
+  if (!c4c::backend::bir::
+          call_argument_direct_global_select_chain_dependency_available(
+              dependency) ||
+      dependency.source_value_name != "%t7" ||
+      !dependency.root_is_select ||
+      !dependency.root_instruction_index.has_value()) {
+    return fail(
+        "dynamic global selected call argument lost direct-global select-chain dependency");
+  }
+  const auto routing =
+      c4c::backend::bir::find_call_argument_publication_source_routing(*call, 0);
+  if (!routing.available ||
+      routing.direct_global_select_chain_dependency == nullptr ||
+      routing.direct_global_select_chain_dependency->source_value_name !=
+          "%t7") {
+    return fail(
+        "dynamic global selected call routing should expose direct-global dependency");
+  }
+  return 0;
+}
+
 LirModule make_dynamic_indexed_gep_global_member_scalar_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -7399,6 +7505,11 @@ int main() {
           expect_production_call_argument_source_relationships_lower();
       production_arg_source_status != 0) {
     return production_arg_source_status;
+  }
+  if (const int selected_global_arg_source_status =
+          expect_dynamic_global_selected_call_argument_publishes_dependency();
+      selected_global_arg_source_status != 0) {
+    return selected_global_arg_source_status;
   }
 
   if (const int missing_byval_metadata_status =

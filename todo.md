@@ -8,57 +8,44 @@ Current Step Title: Bridge production argument source facts and audit field scop
 
 ## Just Finished
 
-Step 5 partially populated production-lowered `bir::CallInst::arg_sources`
-from BIR lowering-side semantic facts. BIR call argument source relationships
-now carry native `source_value_name` identity, immediate/register/symbol/
-computed/frame encodings, and computed global or pointer base/delta facts
-without requiring prepared numeric value ids.
+Step 5 completed the next production-backed call-argument source slice. BIR
+direct call lowering now reconstructs same-block direct-global select-chain
+dependencies for named call arguments and populates
+`bir::CallArgumentSourceRelationship::direct_global_select_chain_dependency`
+when the argument root is produced by a load-global/select/cast/binary chain.
+The extractor fails closed on missing roots, non-named values, local-load-only
+chains, and recursion depth exhaustion.
 
-`backend_lir_to_bir_notes_test.cpp` now proves a real lowered direct call with
-scalar, immediate, symbol-address, computed global-address, and aggregate/byval
-arguments. The test exercises `find_call_argument_source_relationship`,
-`find_call_argument_publication_source_routing`, and
-`find_call_argument_source_producer_materialization` on the production-lowered
-call and verifies production BIR does not populate stack-layout-shaped
-`CallArgumentSourceSelection` fields.
+`backend_lir_to_bir_notes_test.cpp` now covers a production-lowered dynamic
+global selected scalar passed directly as a call argument, proves the populated
+direct-global select-chain dependency is exposed through
+`find_call_argument_publication_source_routing`, and adds explicit
+unavailable-source routing parity for production BIR call arguments. The
+existing prepared lookup helper still compares prepared and BIR source routing,
+direct-global select-chain, source-producer materialization, and unavailable
+routing oracle answers.
 
-This is not full Step 5 completion under `plan.md`: production-backed
-direct-global select-chain dependency, unavailable-source parity, and explicit
-prepared-oracle comparison coverage for all Step 5 argument-source families are
-still missing. Step 6 consumer switches are not acceptance-ready yet.
-
-`CallArgumentSourceSelection` now documents the prepared-only quarantine for
-`source_stack_offset_bytes`, `source_size_bytes`, `source_align_bytes`,
-`address_materialization_frame_slot_id`, and
-`address_materialization_byte_offset`; production BIR lowering identifies
-source values and slots but leaves ABI placement/layout policy to prepared
-consumers.
+No AArch64 or prealloc consumers were switched. Prepared-only stack/layout
+fields remain quarantined from production BIR call source relationships.
 
 ## Suggested Next
 
-Continue Step 5. The next packet should add production-backed
-direct-global-select-chain dependency extraction/population or a documented
-BIR-owned fail-closed analysis path, then prove it against the prepared oracle.
-The same packet should add unavailable-source parity coverage and compare
-production BIR source answers with prepared call-plan oracle answers for the
-remaining source families that the plan names.
-
-Keep AArch64/prealloc consumers on prepared authority. Do not start Step 6 until
-the Step 5 completion check is satisfied or the plan owner explicitly narrows
-the Step 5 contract.
+Supervisor should review whether Step 5 is now acceptance-ready against the
+source idea and decide whether to route a Step 6 consumer-switch packet or ask
+for a reviewer/plan-owner pass first.
 
 ## Watchouts
 
 - BIR production lowering still does not mint prepared numeric value ids;
   consumers that require `PreparedValueId` must continue to resolve ids through
   prepared name/value-location tables or add an explicit parity bridge.
-- `direct_global_select_chain_dependency` remains a prepared-only dependency
-  fact in this slice. The production BIR bridge covers direct symbol-address
-  source identity and computed base/delta facts, but it does not reconstruct the
-  select-chain dependency query; this is the main remaining Step 5 gap.
-- The current production test proves BIR query availability on lowered calls,
-  but it is not yet the full prepared-oracle equivalence suite required by the
-  Step 5 completion check.
+- The production direct-global dependency extractor is intentionally BIR-owned
+  and same-block only; it does not import prepared source-producer tables and it
+  does not cross CFG edges.
+- `find_call_argument_source_producer_materialization` remains a producer query
+  gated by relationship uniqueness and call identity, not by publication-routing
+  availability. Unavailable-source parity in this slice is covered on the
+  publication-routing API.
 - No AArch64 or prealloc consumers were switched in this packet.
 - The result identity surface from Step 4 remains value-identity-only and must
   not be treated as result ABI placement authority.

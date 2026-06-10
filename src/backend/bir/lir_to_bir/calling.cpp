@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <type_traits>
 
 namespace c4c::backend {
 
@@ -126,6 +127,143 @@ struct Aapcs64VaArgHfaPayloadShape {
   std::size_t lane_count = 0;
   std::size_t lane_size_bytes = 0;
 };
+
+struct SameBlockCallArgumentSourceProducer {
+  const bir::Inst* inst = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] const bir::Value* produced_value_for_call_argument_source(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& candidate) -> const bir::Value* {
+        using T = std::decay_t<decltype(candidate)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return &candidate.result;
+        } else {
+          return nullptr;
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] SameBlockCallArgumentSourceProducer
+find_same_block_call_argument_source_producer(
+    const std::vector<bir::Inst>& insts,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return {};
+  }
+  const std::size_t before =
+      std::min(before_instruction_index, insts.size());
+  for (std::size_t index = before; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto& candidate = insts[candidate_index];
+    const auto* produced =
+        produced_value_for_call_argument_source(candidate);
+    if (produced == nullptr ||
+        produced->kind != bir::Value::Kind::Named ||
+        produced->name != value.name ||
+        produced->type != value.type) {
+      continue;
+    }
+    return SameBlockCallArgumentSourceProducer{
+        .inst = &candidate,
+        .produced_value = produced,
+        .instruction_index = candidate_index,
+    };
+  }
+  return {};
+}
+
+[[nodiscard]] std::optional<bool>
+call_argument_source_contains_direct_global_load(
+    const std::vector<bir::Inst>& insts,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 64U) {
+    return false;
+  }
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return false;
+  }
+  const auto producer = find_same_block_call_argument_source_producer(
+      insts, value, before_instruction_index);
+  if (producer.inst == nullptr) {
+    return std::nullopt;
+  }
+  const std::size_t nested_before = producer.instruction_index;
+  if (std::get_if<bir::LoadGlobalInst>(producer.inst) != nullptr) {
+    return true;
+  }
+  if (std::get_if<bir::LoadLocalInst>(producer.inst) != nullptr) {
+    return false;
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(producer.inst);
+      select != nullptr) {
+    const auto true_value = call_argument_source_contains_direct_global_load(
+        insts, select->true_value, nested_before, depth + 1U);
+    if (!true_value.has_value() || *true_value) {
+      return true_value;
+    }
+    return call_argument_source_contains_direct_global_load(
+        insts, select->false_value, nested_before, depth + 1U);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(producer.inst);
+      cast != nullptr) {
+    return call_argument_source_contains_direct_global_load(
+        insts, cast->operand, nested_before, depth + 1U);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer.inst);
+      binary != nullptr) {
+    const auto lhs = call_argument_source_contains_direct_global_load(
+        insts, binary->lhs, nested_before, depth + 1U);
+    if (!lhs.has_value() || *lhs) {
+      return lhs;
+    }
+    return call_argument_source_contains_direct_global_load(
+        insts, binary->rhs, nested_before, depth + 1U);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<bir::CallArgumentDirectGlobalSelectChainDependency>
+call_argument_direct_global_select_chain_dependency(
+    const std::vector<bir::Inst>* lowered_insts,
+    const bir::Value& value) {
+  if (lowered_insts == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const std::size_t before_instruction_index = lowered_insts->size();
+  const auto root = find_same_block_call_argument_source_producer(
+      *lowered_insts, value, before_instruction_index);
+  if (root.inst == nullptr) {
+    return std::nullopt;
+  }
+  const auto contains_direct_global_load =
+      call_argument_source_contains_direct_global_load(
+          *lowered_insts, value, before_instruction_index);
+  if (!contains_direct_global_load.has_value() ||
+      !*contains_direct_global_load) {
+    return std::nullopt;
+  }
+  return bir::CallArgumentDirectGlobalSelectChainDependency{
+      .available = true,
+      .source_value_name = value.name,
+      .contains_direct_global_load = true,
+      .root_is_select = std::get_if<bir::SelectInst>(root.inst) != nullptr,
+      .root_instruction_index = root.instruction_index,
+  };
+}
 
 [[nodiscard]] std::optional<std::size_t> va_arg_hfa_lane_size_bytes(
     bir::TypeKind lane_type) {
@@ -1212,6 +1350,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           relationship.source_encoding =
               bir::CallArgumentSourceEncodingKind::Register;
         }
+        relationship.direct_global_select_chain_dependency =
+            call_argument_direct_global_select_chain_dependency(
+                lowered_insts, value);
       }
 
       relationships.push_back(std::move(relationship));
