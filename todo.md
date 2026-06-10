@@ -1,18 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/169_route3_semantic_memory_access_cache_split.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Contract Only Proven-Private Surface
+Current Step ID: 5
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 of `plan.md` completed as an audit-first contraction pass for the
-selected AArch64 FP same-block global-load value materialization family.
+Step 5 of `plan.md` completed for the selected AArch64 FP same-block
+global-load value materialization family.
 
-No prepared same-block global-load surface was contracted. Direct consumer
-evidence:
+Validation and handoff:
+- The selected FP `LoadGlobalInst` materialization consumer now reads Route 3
+  semantic same-block global-load identity through
+  `mir::find_bir_same_block_global_load_access_identity`.
+- Prepared `PreparedMemoryAccess` remains only as the target-addressing/
+  address-policy emission source for this consumer.
+- The final narrow proof is green for the Route 3/prepared oracle tests and the
+  selected AArch64 memory operand record subset.
+
+Residual prepared same-block global-load surface evidence:
 
 - `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp` no longer calls
   `prepare::find_prepared_same_block_global_load_access` or
@@ -34,15 +42,15 @@ evidence:
   for BIR/Route 3 equivalence coverage.
 
 Because remaining non-FP codegen consumers still require the public prepared
-semantic lookup, and target/addressing payloads must remain public, Step 4 made
-an explicit no-contraction decision.
+semantic lookup, and target/addressing payloads must remain public, this
+runbook made an explicit no-contraction handoff.
 
 ## Suggested Next
 
-Execute Step 5: Validate And Handoff. Run the delegated narrow proof for the
-selected FP migration, then record fresh proof results plus the residual
-prepared same-block global-load consumers that keep the public helper surface
-alive.
+The selected consumer migration is complete. If this source idea continues,
+the next bounded Route 3 candidate should migrate or retire the remaining
+`dispatch_value_materialization.cpp` same-block global-load prepared consumer
+before any public helper contraction is attempted.
 
 ## Watchouts
 
@@ -52,17 +60,14 @@ alive.
   consumer evidence.
 - Target/addressing payloads remain public and are still required for
   address-policy and memory operand emission.
-- A future contraction packet should first migrate or explicitly retire the
-  `dispatch_value_materialization.cpp` and `globals.cpp` prepared consumers;
-  the selected FP migration alone is not enough to hide the helper surface.
+- Do not close or contract `PreparedSameBlockGlobalLoadAccess`,
+  `prepare::find_prepared_global_load_access`, or
+  `prepare::find_prepared_same_block_global_load_access` until remaining
+  non-FP consumers have migrated or been explicitly retired.
 
 ## Proof
 
-Not run for this audit-only no-contraction packet, per delegated proof rule.
+Passed:
+`(cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_prepared_lookup_helper_test && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_prepared_lookup_helper)$' --output-on-failure) > test_after.log 2>&1`
 
-Audit commands used:
-- `rg -n "find_prepared_same_block_global_load_access|find_prepared_global_load_access|PreparedSameBlockGlobalLoadAccess" src tests -g '*.hpp' -g '*.cpp'`
-- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/prealloc/prepared_lookups.cpp find_prepared_global_load_access build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/prealloc/prepared_lookups.cpp find_prepared_same_block_global_load_access build/compile_commands.json`
-
-Proof log: none for this packet; existing `test_after.log` was not refreshed.
+Proof log: `test_after.log`.
