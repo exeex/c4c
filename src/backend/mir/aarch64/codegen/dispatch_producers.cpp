@@ -272,42 +272,18 @@ prepared_publication_source_producer_for_value(
     const bir::Value& value,
     std::size_t before_instruction_index,
     unsigned depth [[maybe_unused]]) {
-  if (context.function.prepared == nullptr ||
-      context.control_flow_block == nullptr ||
-      context.bir_block == nullptr ||
+  if (context.bir_block == nullptr ||
       value.kind != bir::Value::Kind::Named ||
       value.name.empty()) {
     return false;
   }
-  if (context.function.prepared_lookups != nullptr) {
-    const auto dependency = prepare::find_prepared_direct_global_select_chain_dependency(
-        prepare::PreparedSelectChainDependencyQuery{
-            .names = &context.function.prepared->names,
-            .source_producers =
-                &context.function.prepared_lookups->edge_publication_source_producers,
-            .block_label = context.control_flow_block->block_label,
-            .block = context.bir_block,
-            .before_instruction_index = before_instruction_index,
-        },
-        value);
-    return dependency.contains_direct_global_load;
-  }
-  if (context.function.control_flow == nullptr) {
-    return false;
-  }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  const auto dependency = prepare::find_prepared_direct_global_select_chain_dependency(
-      prepare::PreparedSelectChainDependencyQuery{
-          .names = &context.function.prepared->names,
-          .source_producers = &source_producers,
-          .block_label = context.control_flow_block->block_label,
+  const auto dependency = mir::find_bir_select_chain_direct_global_dependency(
+      mir::BirSelectChainIdentityRequest{
           .block = context.bir_block,
+          .block_label = context.bir_block->label,
+          .root_value = &value,
           .before_instruction_index = before_instruction_index,
-      },
-      value);
+      });
   return dependency.contains_direct_global_load;
 }
 
