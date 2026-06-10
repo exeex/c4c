@@ -54,3 +54,15 @@ function-level indexes only for cheap lookup.
   unsupported without explicit user approval.
 - Reject helper-only reshuffling where prepared queries still own the semantic
   answer and BIR has no typed annotation payload.
+
+## Closure Notes
+
+Closed after the active runbook completed Route 2 typed BIR annotation records,
+function-local lookup/index helpers rebuilt from those records, and migration
+of the shared MIR select-chain query consumer to the BIR-backed index while
+retaining prepared answers as oracle tests.
+
+Closure review found no blocking findings, no testcase overfit, no expectation
+downgrade, and no target-policy leakage. Broad backend regression validation
+passed with `179/179` tests before and after, and the regression guard reported
+`PASS`.
