@@ -6265,6 +6265,8 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto& route4_current_block = route4_current_function.blocks.front();
   const auto route4_publications =
       bir::route4_build_publication_availability_index(route4_current_function);
+  const auto route4_facade =
+      bir::route_index_reference_facade(route4_publications);
   const auto indexed_current_sum =
       bir::route4_find_current_block_publication(
           route4_publications,
@@ -6274,6 +6276,12 @@ int verify_prepared_same_block_scalar_source_facts() {
   const auto indexed_current_sum_ref =
       bir::route4_validate_current_block_publication_reference(
           route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          route4_current_block.insts.size());
+  const auto facade_current_sum_ref =
+      bir::route_index_validate_current_block_publication_reference(
+          route4_facade,
           route4_current_block,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
           route4_current_block.insts.size());
@@ -6300,7 +6308,12 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir::RouteIndexRelationshipKind::Route4CurrentBlockPublication ||
       indexed_current_sum_ref.current_block_record == nullptr ||
       indexed_current_sum_ref.current_block_record->source_producer_instruction !=
-          &route4_current_block.insts[2]) {
+          &route4_current_block.insts[2] ||
+      !facade_current_sum_ref ||
+      facade_current_sum_ref.current_block_record !=
+          indexed_current_sum_ref.current_block_record ||
+      facade_current_sum_ref.reference.record_index !=
+          indexed_current_sum_ref.reference.record_index) {
     return fail("Route 4 current-block publication index/reference should find available BIR record");
   }
   const auto bir_current_sum_from_route4 =
@@ -6369,9 +6382,40 @@ int verify_prepared_same_block_scalar_source_facts() {
           route4_current_block,
           bir::Value::named(bir::TypeKind::I64, "%sum"),
           route4_current_block.insts.size());
+  const auto duplicate_route4_facade =
+      bir::route_index_reference_facade(duplicate_route4_publications);
+  const auto facade_current_duplicate_ref =
+      bir::route_index_validate_current_block_publication_reference(
+          duplicate_route4_facade,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          route4_current_block.insts.size());
   const auto indexed_block_entry_wrong_relationship_ref =
       bir::route4_validate_block_entry_publication_reference(
           route4_publications,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"));
+  const auto facade_current_type_mismatch_ref =
+      bir::route_index_validate_current_block_publication_reference(
+          route4_facade,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          route4_current_block.insts.size());
+  const auto facade_current_missing_ref =
+      bir::route_index_validate_current_block_publication_reference(
+          route4_facade,
+          route4_current_block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          route4_current_block.insts.size());
+  const auto facade_current_stale_ref =
+      bir::route_index_validate_current_block_publication_reference(
+          route4_facade,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          block.insts.size());
+  const auto facade_block_entry_wrong_relationship_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          route4_facade,
           route4_current_block,
           bir::Value::named(bir::TypeKind::I64, "%sum"));
   if (indexed_current_type_mismatch ||
@@ -6391,8 +6435,16 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir::RouteIndexValidationStatus::DuplicateReference ||
       indexed_block_entry_wrong_relationship_ref ||
       indexed_block_entry_wrong_relationship_ref.status !=
-          bir::RouteIndexValidationStatus::WrongRelationship) {
-    return fail("Route 4 current-block publication index/reference should fail closed for type, missing, stale, duplicate, and wrong-relationship cases");
+          bir::RouteIndexValidationStatus::WrongRelationship ||
+      facade_current_type_mismatch_ref.status !=
+          indexed_current_type_mismatch_ref.status ||
+      facade_current_missing_ref.status != indexed_current_missing_ref.status ||
+      facade_current_stale_ref.status != indexed_current_stale_ref.status ||
+      facade_current_duplicate_ref.status !=
+          indexed_current_duplicate_ref.status ||
+      facade_block_entry_wrong_relationship_ref.status !=
+          indexed_block_entry_wrong_relationship_ref.status) {
+    return fail("Route 4 current-block publication facade should match direct reference validation for type, missing, stale, duplicate, and wrong-relationship cases");
   }
 
   const auto product_constant =
@@ -6981,6 +7033,8 @@ int verify_bir_block_entry_publication_identity_lookup() {
   const auto& route4_no_phi_successor = route4_entry_function.blocks.back();
   const auto route4_entry_publications =
       bir::route4_build_publication_availability_index(route4_entry_function);
+  const auto route4_entry_facade =
+      bir::route_index_reference_facade(route4_entry_publications);
   const auto indexed_entry_available =
       bir::route4_find_block_entry_publication(route4_entry_publications,
                                                route4_entry_successor,
@@ -6988,6 +7042,11 @@ int verify_bir_block_entry_publication_identity_lookup() {
   const auto indexed_entry_available_ref =
       bir::route4_validate_block_entry_publication_reference(
           route4_entry_publications,
+          route4_entry_successor,
+          available_destination);
+  const auto facade_entry_available_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          route4_entry_facade,
           route4_entry_successor,
           available_destination);
   if (!route4_entry_publications ||
@@ -7006,7 +7065,12 @@ int verify_bir_block_entry_publication_identity_lookup() {
           bir::RouteIndexRelationshipKind::Route4BlockEntryPublication ||
       indexed_entry_available_ref.block_entry_record == nullptr ||
       indexed_entry_available_ref.block_entry_record->destination_instruction !=
-          &route4_entry_successor.insts[0]) {
+          &route4_entry_successor.insts[0] ||
+      !facade_entry_available_ref ||
+      facade_entry_available_ref.block_entry_record !=
+          indexed_entry_available_ref.block_entry_record ||
+      facade_entry_available_ref.reference.record_index !=
+          indexed_entry_available_ref.reference.record_index) {
     return fail("Route 4 block-entry publication index/reference should find available PHI record");
   }
   const auto indexed_entry_missing =
@@ -7039,6 +7103,21 @@ int verify_bir_block_entry_publication_identity_lookup() {
           duplicate_route4_entry_publications,
           route4_entry_successor,
           available_destination);
+  const auto duplicate_route4_entry_facade =
+      bir::route_index_reference_facade(duplicate_route4_entry_publications);
+  const auto facade_entry_type_mismatch_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          route4_entry_facade,
+          route4_entry_successor,
+          bir::Value::named(bir::TypeKind::I64, "%entry.dst"));
+  const auto facade_entry_stale_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          route4_entry_facade, successor, available_destination);
+  const auto facade_entry_duplicate_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          duplicate_route4_entry_facade,
+          route4_entry_successor,
+          available_destination);
   if (indexed_entry_type_mismatch ||
       indexed_entry_type_mismatch.status !=
           bir::Route4PublicationAvailabilityStatus::NoMatch ||
@@ -7050,8 +7129,12 @@ int verify_bir_block_entry_publication_identity_lookup() {
           bir::RouteIndexValidationStatus::StaleOwner ||
       indexed_entry_duplicate_ref ||
       indexed_entry_duplicate_ref.status !=
-          bir::RouteIndexValidationStatus::DuplicateReference) {
-    return fail("Route 4 block-entry publication index/reference should fail closed for type, stale, and duplicate cases");
+          bir::RouteIndexValidationStatus::DuplicateReference ||
+      facade_entry_type_mismatch_ref.status !=
+          indexed_entry_type_mismatch_ref.status ||
+      facade_entry_stale_ref.status != indexed_entry_stale_ref.status ||
+      facade_entry_duplicate_ref.status != indexed_entry_duplicate_ref.status) {
+    return fail("Route 4 block-entry publication facade should match direct reference validation for type, stale, and duplicate cases");
   }
 
   const auto prepared_missing =
@@ -8089,6 +8172,7 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
   const auto& route7_block = route7_function.blocks.front();
   const auto route7_index =
       bir::route7_build_comparison_condition_index(route7_function);
+  const auto route7_facade = bir::route_index_reference_facade(route7_index);
   const auto indexed_route7_condition_instruction =
       bir::route7_find_comparison_instruction(route7_index, route7_block, 5);
   const auto indexed_route7_materialized_condition =
@@ -8110,6 +8194,12 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
   const auto route7_materialized_ref =
       bir::route7_validate_materialized_condition_reference(
           route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          6);
+  const auto facade_route7_materialized_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          route7_facade,
           route7_block,
           bir::Value::named(bir::TypeKind::I1, "%cond"),
           6);
@@ -8189,6 +8279,11 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
       route7_materialized_ref.reference.relationship !=
           bir::RouteIndexRelationshipKind::Route7MaterializedCondition ||
       route7_materialized_ref.reference.value.name != "%cond" ||
+      !facade_route7_materialized_ref ||
+      facade_route7_materialized_ref.comparison_record !=
+          route7_materialized_ref.comparison_record ||
+      facade_route7_materialized_ref.reference.record_index !=
+          route7_materialized_ref.reference.record_index ||
       !route7_lhs_ref ||
       route7_lhs_ref.reference.record_category !=
           bir::RouteIndexRecordCategory::Route7ComparisonOperand ||
@@ -8241,6 +8336,12 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           route7_block,
           bir::Value::named(bir::TypeKind::I1, "%missing.cond"),
           route7_block.insts.size());
+  const auto facade_missing_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          route7_facade,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I1, "%missing.cond"),
+          route7_block.insts.size());
   if (stale_block_ref ||
       stale_block_ref.status != bir::RouteIndexValidationStatus::StaleOwner ||
       wrong_role_ref ||
@@ -8252,9 +8353,13 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
       missing_condition_ref ||
       missing_condition_ref.status !=
           bir::RouteIndexValidationStatus::MissingRecord ||
-      missing_condition_ref.route_status != bir::Route7ComparisonStatus::NoMatch) {
+      missing_condition_ref.route_status !=
+          bir::Route7ComparisonStatus::NoMatch ||
+      facade_missing_condition_ref.status != missing_condition_ref.status ||
+      facade_missing_condition_ref.route_status !=
+          missing_condition_ref.route_status) {
     return fail(
-        "Route 7 index reference validation should reject stale owner, wrong role, duplicate reference, and missing condition divergence");
+        "Route 7 index reference facade should reject stale owner, wrong role, duplicate reference, and missing condition divergence");
   }
 
   const auto route7_noncompare =

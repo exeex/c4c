@@ -1,32 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/166_bir_annotation_lookup_index_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Normalize Route-Specific Lookup Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Consumer Facade
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
-normalized Route 4 publication availability indexes to the shared
-route-reference validation pattern. Route 4 now has current-block and
-block-entry publication reference validators using the shared route/category,
-owner-scope, stable BIR key, relationship, and record-index metadata while
-keeping semantic payloads in the typed Route 4 records. The validators preserve
-existing public lookup answer shapes and fail closed for missing records,
-stale function/block ownership, wrong keys/type mismatches, wrong
-relationships through value-link scope, duplicate index references, no-match,
-and record-pointer divergence.
+Step 4 completed for `ideas/open/166_bir_annotation_lookup_index_schema.md`:
+added a non-durable `RouteIndexReferenceFacade` over existing Route 4 and Route
+7 typed index handles and migrated the low-risk BIR
+`find_materialized_condition_producer_identity(...)` helper through the Route 7
+facade validation path. The facade stores only pointers to typed route indexes
+and delegates to existing Route 4/Route 7 reference validators; it does not
+store semantic payloads or target/prealloc policy.
 
 ## Suggested Next
 
-Execute Step 4: add the private aggregate facade or next normalization slice
-only if the active plan calls for it. Keep the facade non-durable and limited
-to typed Route index/reference handles; do not turn it into a BIR-owned
-`PreparedFunctionLookups` clone.
+Execute Step 5: broaden backend validation and prepare closure if the active
+plan is otherwise complete. Confirm that the facade remains non-durable,
+typed-index-only, and not a `PreparedFunctionLookups` clone.
 
-Delegated Step 3 proof command:
+Delegated Step 4 proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log`
 
 Also run `git diff --check`.
@@ -52,6 +48,9 @@ Also run `git diff --check`.
 - The Route 4 contract intentionally treats copied blocks outside the indexed
   function as stale for validation, even though legacy public lookup helpers
   may still match some external blocks by stable label/id.
+- The new facade is intentionally a thin local handle bundle over Route 4 and
+  Route 7 indexes. It should not grow semantic payload vectors or import target
+  policy in later packets.
 
 ## Proof
 

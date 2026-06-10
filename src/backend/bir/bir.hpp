@@ -2274,6 +2274,15 @@ struct RouteIndexRecordReference {
   std::size_t record_index = 0;
 };
 
+struct RouteIndexReferenceFacade {
+  const Route4PublicationAvailabilityIndex* route4_publications = nullptr;
+  const Route7ComparisonConditionIndex* route7_comparisons = nullptr;
+
+  [[nodiscard]] explicit operator bool() const {
+    return route4_publications != nullptr || route7_comparisons != nullptr;
+  }
+};
+
 struct Route4IndexReferenceValidation {
   bool valid = false;
   RouteIndexValidationStatus status =
@@ -2651,6 +2660,30 @@ route7_validate_materialized_condition_reference(
 route7_validate_branch_condition_reference(
     const Route7ComparisonConditionIndex& index,
     const Block& block);
+[[nodiscard]] RouteIndexReferenceFacade route_index_reference_facade(
+    const Route4PublicationAvailabilityIndex& route4_publications);
+[[nodiscard]] RouteIndexReferenceFacade route_index_reference_facade(
+    const Route7ComparisonConditionIndex& route7_comparisons);
+[[nodiscard]] RouteIndexReferenceFacade route_index_reference_facade(
+    const Route4PublicationAvailabilityIndex& route4_publications,
+    const Route7ComparisonConditionIndex& route7_comparisons);
+[[nodiscard]] Route4IndexReferenceValidation
+route_index_validate_current_block_publication_reference(
+    const RouteIndexReferenceFacade& facade,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+[[nodiscard]] Route4IndexReferenceValidation
+route_index_validate_block_entry_publication_reference(
+    const RouteIndexReferenceFacade& facade,
+    const Block& successor_block,
+    const Value& destination_value);
+[[nodiscard]] Route7IndexReferenceValidation
+route_index_validate_materialized_condition_reference(
+    const RouteIndexReferenceFacade& facade,
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index);
 CallResultSourceIdentity find_call_result_source_identity(
     const Block& block,
     const CallInst& call,
