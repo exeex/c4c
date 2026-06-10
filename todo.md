@@ -1,55 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/163_bir_edge_join_source_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Lookup/Index Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Query Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for
+Completed Step 4 for
 `ideas/open/163_bir_edge_join_source_annotation_schema.md`.
-Added function-local Route 5 lookup/index helpers over the BIR edge and
-current-block join-source annotation records without switching production
-consumers:
+Migrated the narrow shared Route 5 MIR edge-publication source query to read
+Route 5 BIR records/index helpers:
 
-- `Route5EdgeJoinSourceIndex` groups Route 5 edge records, current-block
-  join-source records, and value-link records rebuilt from a `bir::Function`.
-- `route5_build_edge_join_source_index(...)` rebuilds edge records from PHI
-  incoming predecessor/successor/destination tuples and join-source records
-  from block-local PHI incoming facts.
-- `route5_find_cfg_edge_publication(...)` looks up predecessor/successor/
-  destination keyed edge answers by stable BIR block label/id and destination
-  value name/type.
-- `route5_find_current_block_join_source(...)` looks up successor/destination/
-  source keyed join-source answers by stable BIR block label/id and value
-  name/type or immediate source identity.
-- The helpers return explicit Route 5 statuses for memory-source, no-source,
-  missing-source, missing destination, missing successor, and no-match/type
-  mismatch cases instead of relying on absent records.
+- `mir::find_bir_cfg_edge_publication_source_identity(...)` now builds a
+  function-local Route 5 BIR index from the request blocks and answers through
+  `bir::route5_find_cfg_edge_publication(...)`.
+- The migrated helper maps Route 5 statuses back into the existing public MIR
+  result shape and preserves direct source producer, memory-source, source
+  value, destination PHI, and explicit missing/unavailable statuses.
+- Multi-predecessor PHI lookup preserves the Step 3 fix by carrying other
+  incoming predecessor labels into the rebuilt Route 5 function before
+  querying the requested predecessor edge.
+- Current-block join-source MIR consumers were intentionally left unchanged.
 
-Focused `backend_prepared_lookup_helper_test.cpp` coverage now proves:
+Focused `backend_prepared_lookup_helper_test.cpp` coverage now keeps prepared
+edge-copy reads as oracles and adds assertions tying the migrated MIR answer to
+indexed Route 5 BIR records for load-local memory-source identity, explicit
+missing-source status, and wrong-predecessor/no-source fail-closed behavior.
 
-- Edge index success for load-local memory-source publication, including Route
-  3 memory identity preservation.
-- Edge index success for multi-predecessor PHIs where the requested predecessor
-  is not the first successor/destination candidate.
-- Edge index fail-closed behavior for missing source producer, destination
-  type mismatch, missing destination, wrong predecessor/no-source, and wrong
-  successor.
-- Current-block join index success for named and immediate PHI incoming
-  sources.
-- Current-block join index fail-closed behavior for destination type mismatch,
-  missing source value, missing destination, and missing source producer.
-
-No MIR, target/codegen, or prealloc production consumer was switched.
+No target/codegen, prealloc production helper, parallel-copy scheduling, move
+emission, or storage/publication-policy consumer was migrated.
 
 ## Suggested Next
 
-Execute Step 4 by migrating the narrowest shared MIR Route 5 edge or
-join-source query consumer to read Route 5 BIR record/index helpers while
-preserving prepared/MIR oracle checks.
+Execute Step 5 by running broader backend acceptance validation for the Route
+5 edge/join-source schema migration and recording closure readiness.
 
 ## Watchouts
 
@@ -66,17 +52,17 @@ preserving prepared/MIR oracle checks.
 - Explicit no-source and memory-source records must be representable as
   semantic identities; absence alone should not stand in for unavailable or
   no-source when an edge/join identity exists.
-- Step 2 intentionally did not switch
-  `mir::find_bir_cfg_edge_publication_source_identity(...)` or
-  `mir::find_bir_current_block_join_source_identity(...)`.
-- Step 3 intentionally did not switch those MIR consumers either.
+- Step 4 switched only
+  `mir::find_bir_cfg_edge_publication_source_identity(...)`.
+- `mir::find_bir_current_block_join_source_identity(...)` remains intentionally
+  unswitched and oracle-covered for later work.
 - Route 5 indexes are rebuildable from BIR records and must remain
   target-neutral lookup helpers, not prepared edge-publication lookup
   containers.
 
 ## Proof
 
-Exact delegated Step 3 proof passed:
+Exact delegated Step 4 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log

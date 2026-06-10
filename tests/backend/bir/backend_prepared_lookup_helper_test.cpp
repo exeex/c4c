@@ -4197,6 +4197,34 @@ int verify_edge_publication_source_producer_facts() {
       indexed_route5_load_edge.destination_value_name != load_destination.name) {
     return fail("Route 5 edge index should find load-local memory-source edge");
   }
+  const auto indexed_bir_load_edge =
+      mir::find_bir_cfg_edge_publication_source_identity(
+          make_bir_edge_publication_source_request(route5_predecessor,
+                                                   predecessor_label,
+                                                   route5_successor,
+                                                   successor_label,
+                                                   load_destination,
+                                                   11,
+                                                   load_destination_name));
+  if (!indexed_bir_load_edge ||
+      indexed_bir_load_edge.status !=
+          mir::BirCfgEdgePublicationSourceStatus::Available ||
+      indexed_bir_load_edge.source_producer.inst !=
+          indexed_route5_load_edge.source_producer_instruction ||
+      indexed_bir_load_edge.source_producer_instruction_index !=
+          indexed_route5_load_edge.source_producer_instruction_index ||
+      indexed_bir_load_edge.source_memory_access.inst !=
+          indexed_route5_load_edge.source_memory_access.instruction ||
+      indexed_bir_load_edge.source_memory_access.instruction_index !=
+          indexed_route5_load_edge.source_memory_access.instruction_index ||
+      indexed_bir_load_edge.source_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::LoadLocal ||
+      indexed_bir_load_edge.source_value_name !=
+          indexed_route5_load_edge.source_value_name ||
+      indexed_bir_load_edge.destination_value_name !=
+          indexed_route5_load_edge.destination_value_name) {
+    return fail("MIR Route 5 edge lookup should read indexed memory-source records");
+  }
   const auto indexed_route5_missing_source =
       bir::route5_find_cfg_edge_publication(route5_edge_index,
                                             route5_predecessor,
@@ -4207,6 +4235,24 @@ int verify_edge_publication_source_producer_facts() {
           bir::Route5PublicationStatus::MissingSourceProducer ||
       indexed_route5_missing_source.source_value_name != "%missing.producer") {
     return fail("Route 5 edge index should preserve missing-source status");
+  }
+  const auto indexed_bir_missing_source =
+      mir::find_bir_cfg_edge_publication_source_identity(
+          make_bir_edge_publication_source_request(route5_predecessor,
+                                                   predecessor_label,
+                                                   route5_successor,
+                                                   successor_label,
+                                                   unavailable_destination,
+                                                   15,
+                                                   unavailable_destination_name));
+  if (indexed_bir_missing_source ||
+      indexed_bir_missing_source.status !=
+          mir::BirCfgEdgePublicationSourceStatus::MissingSourceProducer ||
+      indexed_bir_missing_source.source_value_name !=
+          indexed_route5_missing_source.source_value_name ||
+      indexed_bir_missing_source.destination_value_name !=
+          indexed_route5_missing_source.destination_value_name) {
+    return fail("MIR Route 5 edge lookup should preserve indexed missing-source status");
   }
   const auto indexed_route5_wrong_destination_type =
       bir::route5_find_cfg_edge_publication(
@@ -4243,6 +4289,20 @@ int verify_edge_publication_source_producer_facts() {
           bir::Route5PublicationStatus::NoSource ||
       !indexed_route5_wrong_predecessor.explicit_no_source) {
     return fail("Route 5 edge index should represent wrong predecessor as no-source");
+  }
+  const auto indexed_bir_wrong_predecessor =
+      mir::find_bir_cfg_edge_publication_source_identity(
+          make_bir_edge_publication_source_request(route5_wrong_predecessor,
+                                                   c4c::BlockLabelId{777},
+                                                   route5_successor,
+                                                   successor_label,
+                                                   load_destination,
+                                                   11,
+                                                   load_destination_name));
+  if (indexed_bir_wrong_predecessor ||
+      indexed_bir_wrong_predecessor.status !=
+          mir::BirCfgEdgePublicationSourceStatus::MissingSourceValue) {
+    return fail("MIR Route 5 edge lookup should fail closed for wrong predecessor records");
   }
   auto route5_wrong_successor = route5_successor;
   route5_wrong_successor.label = "edge_producers.other_succ";
