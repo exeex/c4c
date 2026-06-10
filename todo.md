@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/151_phase_a_bir_normalization_candidate_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Order Safe Normalization Routes
+Current Step ID: 5
+Current Step Title: Draft Follow-Up Idea Payloads
 
 # Current Packet
 
