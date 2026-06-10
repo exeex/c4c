@@ -53,3 +53,25 @@ rejecting publication mechanics.
 - Reject if lookup performance is preserved by a new function-level lowering
   plan rather than typed indexes over block/value annotations.
 - Reject broad rewrites of scalar publication emission as schema progress.
+
+## Closure Notes
+
+Closed after implementing Route 4 BIR publication availability block/value
+records, BIR-owned lookup/index helpers, oracle tests for current-block and
+block-entry availability, and a low-risk current-block MIR query migration.
+
+Reviewer report `review/162_publication_availability_route_review.md` found no
+blocking issues and judged closure reasonable. The only residual scope is that
+the block-entry MIR consumer remains on its older semantic PHI scan while Route
+4 block-entry records/indexes are implemented and oracle-covered; this was
+accepted because the source idea required BIR-owned schema and migration
+oracles, not every block-entry consumer migration in this slice.
+
+Closure validation used canonical broad backend logs from:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both passed `179/179`, and the
+regression guard passed with no new failures or pass-count regression.
