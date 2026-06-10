@@ -100,6 +100,25 @@ bir::Route1ProducerKind expected_bir_route1_producer_kind(
   return bir::Route1ProducerKind::Unknown;
 }
 
+bir::Route2SelectChainProducerKind expected_bir_route2_select_chain_producer_kind(
+    prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return bir::Route2SelectChainProducerKind::LoadLocal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return bir::Route2SelectChainProducerKind::LoadGlobal;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return bir::Route2SelectChainProducerKind::Cast;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return bir::Route2SelectChainProducerKind::Binary;
+    case prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return bir::Route2SelectChainProducerKind::Select;
+    case prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      break;
+  }
+  return bir::Route2SelectChainProducerKind::Unknown;
+}
+
 bool bir_route1_producer_record_matches(
     const bir::Block& block,
     std::size_t instruction_index,
@@ -873,6 +892,87 @@ bool prepared_and_bir_select_chain_answers_match(
          prepared_materialization.direct_global_dependency
                  .contains_direct_global_load ==
              static_cast<bool>(bir_identity.direct_global_dependency);
+}
+
+bool prepared_and_route2_select_chain_records_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    bir::Route1SameBlockProducerQuery route1_query,
+    const bir::Value& value) {
+  const auto prepared_source =
+      prepare::find_prepared_select_chain_source_producer(
+          names, &source_producers, block_label, &block, value,
+          route1_query.before_instruction_index);
+  const auto prepared_dependency =
+      prepare::find_prepared_direct_global_select_chain_dependency(
+          names, &source_producers, block_label, &block, value,
+          route1_query.before_instruction_index);
+  const auto prepared_materialization =
+      prepare::find_prepared_scalar_select_chain_materialization(
+          names, &source_producers, block_label, &block, value,
+          route1_query.before_instruction_index);
+  const auto route2 =
+      bir::route2_select_chain_value_record(route1_query, value);
+
+  if (prepared_source == nullptr) {
+    return !route2 &&
+           !prepared_dependency.contains_direct_global_load &&
+           !prepared_materialization.available;
+  }
+  if (!route2 ||
+      !route2.root_producer ||
+      route2.root_producer.instruction !=
+          &block.insts[prepared_source->instruction_index] ||
+      route2.root_producer.instruction_index !=
+          prepared_source->instruction_index ||
+      route2.root_producer.kind !=
+          expected_bir_route2_select_chain_producer_kind(
+              prepared_source->kind) ||
+      route2.root_producer.produced_value == nullptr ||
+      route2.root_value.value != route2.root_producer.produced_value ||
+      route2.root_value_name != value.name ||
+      route2.root_value.type != value.type ||
+      route2.root_is_select !=
+          (prepared_source->kind ==
+           prepare::PreparedEdgePublicationSourceProducerKind::
+               SelectMaterialization) ||
+      route2.root_instruction_index != prepared_source->instruction_index ||
+      route2.scalar_materialization_available !=
+          prepared_materialization.available ||
+      route2.direct_global_dependency.available != true ||
+      route2.direct_global_dependency.root_is_select != route2.root_is_select ||
+      route2.direct_global_dependency.root_instruction_index !=
+          route2.root_instruction_index ||
+      route2.direct_global_dependency.contains_direct_global_load !=
+          prepared_dependency.contains_direct_global_load) {
+    return false;
+  }
+  if (!prepared_dependency.contains_direct_global_load) {
+    return !route2.direct_global_dependency &&
+           route2.direct_global_dependency.load_global == nullptr;
+  }
+  if (!route2.direct_global_dependency ||
+      route2.direct_global_dependency.root_is_select !=
+          prepared_dependency.root_is_select ||
+      route2.direct_global_dependency.root_instruction_index !=
+          prepared_dependency.root_instruction_index) {
+    return false;
+  }
+  const auto* load_global =
+      route2.direct_global_dependency.load_global;
+  return load_global != nullptr &&
+         route2.direct_global_dependency.direct_load_instruction_index <
+             block.insts.size() &&
+         std::get_if<bir::LoadGlobalInst>(
+             &block.insts[route2.direct_global_dependency
+                              .direct_load_instruction_index]) ==
+             load_global &&
+         route2.direct_global_dependency.global_name_id ==
+             load_global->global_name_id &&
+         route2.direct_global_dependency.global_name ==
+             load_global->global_name;
 }
 
 [[nodiscard]] mir::BirCfgEdgePublicationSourceRequest
@@ -4393,6 +4493,11 @@ int verify_direct_global_select_chain_dependency_query() {
           .instruction_index = 5,
           .binary = binary_inst,
       });
+  const auto route1_index = bir::route1_build_producer_index(block);
+  const auto route2_end_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = before_end,
+  };
 
   const auto select_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -4549,8 +4654,17 @@ int verify_direct_global_select_chain_dependency_query() {
       !prepared_and_bir_select_chain_answers_match(
           names, source_producers, block_label, block, direct, before_end) ||
       !prepared_and_bir_select_chain_answers_match(
-          names, source_producers, block_label, block, local, before_end)) {
-    return fail("BIR select-chain queries should match prepared oracle for root positives and no-dependency paths");
+          names, source_producers, block_label, block, local, before_end) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_end_query,
+          selected) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_end_query,
+          direct) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_end_query,
+          local)) {
+    return fail("BIR select-chain queries and Route 2 records should match prepared oracle for root positives and no-dependency paths");
   }
   const auto nested_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -4582,9 +4696,20 @@ int verify_direct_global_select_chain_dependency_query() {
           std::size_t{0} ||
       !bir_nested_identity.scalar_materialization_available ||
       !prepared_and_bir_select_chain_answers_match(
-          names, source_producers, block_label, block, binary, before_end)) {
-    return fail("BIR select-chain queries should match prepared oracle for nested non-select direct-global paths");
+          names, source_producers, block_label, block, binary, before_end) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_end_query,
+          binary)) {
+    return fail("BIR select-chain queries and Route 2 records should match prepared oracle for nested non-select direct-global paths");
   }
+  const auto route2_before_select = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = 1,
+  };
+  const auto route2_before_direct = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index = 2,
+  };
   if (!prepared_and_bir_select_chain_answers_match(
           names, source_producers, block_label, block, selected, 1) ||
       !prepared_and_bir_select_chain_answers_match(
@@ -4602,8 +4727,28 @@ int verify_direct_global_select_chain_dependency_query() {
           block_label,
           block,
           bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root"),
-          before_end)) {
-    return fail("BIR select-chain queries should match prepared fail-closed boundary and mismatch paths");
+          before_end) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_before_select,
+          selected) ||
+      !prepared_and_route2_select_chain_records_match(
+          names, source_producers, block_label, block, route2_before_direct,
+          direct) ||
+      !prepared_and_route2_select_chain_records_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I64, selected.name)) ||
+      !prepared_and_route2_select_chain_records_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root"))) {
+    return fail("BIR select-chain queries and Route 2 records should match prepared fail-closed boundary and mismatch paths");
   }
 
   const auto missing_dependency =
@@ -4647,8 +4792,15 @@ int verify_direct_global_select_chain_dependency_query() {
       mir::find_bir_select_chain_source_producer(missing_request) ||
       mir::find_bir_select_chain_direct_global_dependency(missing_request) ||
       mir::find_bir_select_chain_scalar_materialization_eligibility(
-          missing_request)) {
-    return fail("BIR select-chain query should fail closed on missing roots");
+          missing_request) ||
+      !prepared_and_route2_select_chain_records_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I32, "%missing"))) {
+    return fail("BIR select-chain query and Route 2 records should fail closed on missing roots");
   }
 
   return 0;

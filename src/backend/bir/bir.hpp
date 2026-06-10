@@ -1184,6 +1184,88 @@ route1_evaluate_same_block_integer_constant(
     Route1SameBlockProducerQuery query,
     const Value& value);
 
+enum class Route2SelectChainProducerKind : unsigned char {
+  Unknown,
+  LoadLocal,
+  LoadGlobal,
+  Cast,
+  Binary,
+  Select,
+};
+
+[[nodiscard]] constexpr std::string_view route2_select_chain_producer_kind_name(
+    Route2SelectChainProducerKind kind) {
+  switch (kind) {
+    case Route2SelectChainProducerKind::Unknown:
+      return "unknown";
+    case Route2SelectChainProducerKind::LoadLocal:
+      return "load_local";
+    case Route2SelectChainProducerKind::LoadGlobal:
+      return "load_global";
+    case Route2SelectChainProducerKind::Cast:
+      return "cast";
+    case Route2SelectChainProducerKind::Binary:
+      return "binary";
+    case Route2SelectChainProducerKind::Select:
+      return "select";
+  }
+  return "unknown";
+}
+
+struct Route2SelectChainProducerRecord {
+  bool available = false;
+  Route2SelectChainProducerKind kind = Route2SelectChainProducerKind::Unknown;
+  const Inst* instruction = nullptr;
+  std::size_t instruction_index = 0;
+  const Value* produced_value = nullptr;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::string_view global_name;
+  LinkNameId global_name_id = kInvalidLinkName;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route2SelectChainDirectGlobalDependencyRecord {
+  bool available = false;
+  bool contains_direct_global_load = false;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+  const LoadGlobalInst* load_global = nullptr;
+  std::size_t direct_load_instruction_index = 0;
+  std::string_view global_name;
+  LinkNameId global_name_id = kInvalidLinkName;
+
+  [[nodiscard]] explicit operator bool() const {
+    return available && contains_direct_global_load && load_global != nullptr;
+  }
+};
+
+struct Route2SelectChainValueRecord {
+  bool available = false;
+  Route1SourceValueIdentity root_value;
+  std::string_view root_value_name;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+  bool scalar_materialization_available = false;
+  Route2SelectChainProducerRecord root_producer;
+  Route2SelectChainDirectGlobalDependencyRecord direct_global_dependency;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+[[nodiscard]] Route2SelectChainProducerKind route2_select_chain_producer_kind(
+    const Inst& inst);
+
+[[nodiscard]] Route2SelectChainProducerRecord
+route2_select_chain_producer_record(
+    const Block& block,
+    std::size_t instruction_index);
+
+[[nodiscard]] Route2SelectChainValueRecord route2_select_chain_value_record(
+    Route1SameBlockProducerQuery query,
+    const Value& value);
+
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;
   std::size_t arg_index = 0;
