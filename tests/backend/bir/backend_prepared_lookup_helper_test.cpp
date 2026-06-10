@@ -975,6 +975,45 @@ bool prepared_and_route2_select_chain_records_match(
              load_global->global_name;
 }
 
+bool route2_select_chain_index_matches_record_lookup(
+    bir::Route2SelectChainValueQuery query,
+    bir::Route1SameBlockProducerQuery route1_query,
+    const bir::Value& value) {
+  const auto expected = bir::route2_select_chain_value_record(route1_query, value);
+  const auto* indexed = bir::route2_find_select_chain_value_record(query, value);
+  if (!expected) {
+    return indexed == nullptr;
+  }
+  return indexed != nullptr &&
+         indexed->root_value.value == expected.root_value.value &&
+         indexed->root_value_name == expected.root_value_name &&
+         indexed->root_value.type == expected.root_value.type &&
+         indexed->root_is_select == expected.root_is_select &&
+         indexed->root_instruction_index == expected.root_instruction_index &&
+         indexed->scalar_materialization_available ==
+             expected.scalar_materialization_available &&
+         indexed->root_producer.instruction == expected.root_producer.instruction &&
+         indexed->root_producer.instruction_index ==
+             expected.root_producer.instruction_index &&
+         indexed->root_producer.kind == expected.root_producer.kind &&
+         indexed->direct_global_dependency.available ==
+             expected.direct_global_dependency.available &&
+         indexed->direct_global_dependency.contains_direct_global_load ==
+             expected.direct_global_dependency.contains_direct_global_load &&
+         indexed->direct_global_dependency.root_is_select ==
+             expected.direct_global_dependency.root_is_select &&
+         indexed->direct_global_dependency.root_instruction_index ==
+             expected.direct_global_dependency.root_instruction_index &&
+         indexed->direct_global_dependency.load_global ==
+             expected.direct_global_dependency.load_global &&
+         indexed->direct_global_dependency.direct_load_instruction_index ==
+             expected.direct_global_dependency.direct_load_instruction_index &&
+         indexed->direct_global_dependency.global_name ==
+             expected.direct_global_dependency.global_name &&
+         indexed->direct_global_dependency.global_name_id ==
+             expected.direct_global_dependency.global_name_id;
+}
+
 [[nodiscard]] mir::BirCfgEdgePublicationSourceRequest
 make_bir_edge_publication_source_request(
     const bir::Block& predecessor_block,
@@ -4498,6 +4537,11 @@ int verify_direct_global_select_chain_dependency_query() {
       .index = &route1_index,
       .before_instruction_index = before_end,
   };
+  const auto route2_index = bir::route2_build_select_chain_value_index(block);
+  const auto route2_index_end_query = bir::Route2SelectChainValueQuery{
+      .index = &route2_index,
+      .before_instruction_index = before_end,
+  };
 
   const auto select_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -4663,8 +4707,41 @@ int verify_direct_global_select_chain_dependency_query() {
           direct) ||
       !prepared_and_route2_select_chain_records_match(
           names, source_producers, block_label, block, route2_end_query,
-          local)) {
+          local) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query, route2_end_query, selected) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query, route2_end_query, direct) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query, route2_end_query, local)) {
     return fail("BIR select-chain queries and Route 2 records should match prepared oracle for root positives and no-dependency paths");
+  }
+  const auto* indexed_select =
+      bir::route2_find_select_chain_value_record(route2_index_end_query, selected);
+  const auto* indexed_direct =
+      bir::route2_find_select_chain_value_record(route2_index_end_query, direct);
+  const auto* indexed_local =
+      bir::route2_find_select_chain_value_record(route2_index_end_query, local);
+  if (!route2_index ||
+      route2_index.block != &block ||
+      route2_index.records.size() != std::size_t{6} ||
+      indexed_select == nullptr ||
+      indexed_select->root_producer.instruction != &block.insts[1] ||
+      !indexed_select->root_is_select ||
+      !indexed_select->direct_global_dependency ||
+      indexed_select->direct_global_dependency.load_global != loaded_inst ||
+      indexed_direct == nullptr ||
+      indexed_direct->root_producer.instruction != &block.insts[2] ||
+      indexed_direct->root_is_select ||
+      !indexed_direct->direct_global_dependency ||
+      indexed_direct->direct_global_dependency.load_global != direct_inst ||
+      indexed_local == nullptr ||
+      indexed_local->root_producer.instruction != &block.insts[3] ||
+      indexed_local->root_is_select ||
+      !indexed_local->direct_global_dependency.available ||
+      indexed_local->direct_global_dependency.contains_direct_global_load ||
+      indexed_local->direct_global_dependency.load_global != nullptr) {
+    return fail("Route 2 select-chain index should expose target-neutral BIR records");
   }
   const auto nested_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -4699,7 +4776,9 @@ int verify_direct_global_select_chain_dependency_query() {
           names, source_producers, block_label, block, binary, before_end) ||
       !prepared_and_route2_select_chain_records_match(
           names, source_producers, block_label, block, route2_end_query,
-          binary)) {
+          binary) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query, route2_end_query, binary)) {
     return fail("BIR select-chain queries and Route 2 records should match prepared oracle for nested non-select direct-global paths");
   }
   const auto route2_before_select = bir::Route1SameBlockProducerQuery{
@@ -4708,6 +4787,14 @@ int verify_direct_global_select_chain_dependency_query() {
   };
   const auto route2_before_direct = bir::Route1SameBlockProducerQuery{
       .index = &route1_index,
+      .before_instruction_index = 2,
+  };
+  const auto route2_index_before_select = bir::Route2SelectChainValueQuery{
+      .index = &route2_index,
+      .before_instruction_index = 1,
+  };
+  const auto route2_index_before_direct = bir::Route2SelectChainValueQuery{
+      .index = &route2_index,
       .before_instruction_index = 2,
   };
   if (!prepared_and_bir_select_chain_answers_match(
@@ -4746,6 +4833,18 @@ int verify_direct_global_select_chain_dependency_query() {
           source_producers,
           block_label,
           block,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root")) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_before_select, route2_before_select, selected) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_before_direct, route2_before_direct, direct) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I64, selected.name)) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query,
           route2_end_query,
           bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root"))) {
     return fail("BIR select-chain queries and Route 2 records should match prepared fail-closed boundary and mismatch paths");
@@ -4798,6 +4897,10 @@ int verify_direct_global_select_chain_dependency_query() {
           source_producers,
           block_label,
           block,
+          route2_end_query,
+          bir::Value::named(bir::TypeKind::I32, "%missing")) ||
+      !route2_select_chain_index_matches_record_lookup(
+          route2_index_end_query,
           route2_end_query,
           bir::Value::named(bir::TypeKind::I32, "%missing"))) {
     return fail("BIR select-chain query and Route 2 records should fail closed on missing roots");

@@ -1254,6 +1254,22 @@ struct Route2SelectChainValueRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route2SelectChainValueIndex {
+  const Block* block = nullptr;
+  std::vector<Route2SelectChainValueRecord> records;
+
+  [[nodiscard]] explicit operator bool() const { return block != nullptr; }
+};
+
+struct Route2SelectChainValueQuery {
+  const Route2SelectChainValueIndex* index = nullptr;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return index != nullptr && *index;
+  }
+};
+
 [[nodiscard]] Route2SelectChainProducerKind route2_select_chain_producer_kind(
     const Inst& inst);
 
@@ -1264,6 +1280,14 @@ route2_select_chain_producer_record(
 
 [[nodiscard]] Route2SelectChainValueRecord route2_select_chain_value_record(
     Route1SameBlockProducerQuery query,
+    const Value& value);
+
+[[nodiscard]] Route2SelectChainValueIndex
+route2_build_select_chain_value_index(const Block& block);
+
+[[nodiscard]] const Route2SelectChainValueRecord*
+route2_find_select_chain_value_record(
+    Route2SelectChainValueQuery query,
     const Value& value);
 
 struct CallArgumentSourceProducerMaterialization {

@@ -510,6 +510,59 @@ Route2SelectChainValueRecord route2_select_chain_value_record(
   };
 }
 
+Route2SelectChainValueIndex route2_build_select_chain_value_index(
+    const Block& block) {
+  Route2SelectChainValueIndex index{
+      .block = &block,
+  };
+  index.records.reserve(block.insts.size());
+  const auto route1_index = route1_build_producer_index(block);
+  for (const auto& route1_record : route1_index.records) {
+    if (!route1_record ||
+        !route1_record.source_value ||
+        route1_record.source_value.value == nullptr) {
+      continue;
+    }
+    const auto query = Route1SameBlockProducerQuery{
+        .index = &route1_index,
+        .before_instruction_index =
+            route1_record.producer_instruction.instruction_index + 1U,
+    };
+    const auto record =
+        route2_select_chain_value_record(query, *route1_record.source_value.value);
+    if (record) {
+      index.records.push_back(record);
+    }
+  }
+  return index;
+}
+
+const Route2SelectChainValueRecord* route2_find_select_chain_value_record(
+    Route2SelectChainValueQuery query,
+    const Value& value) {
+  if (!query ||
+      value.kind != Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& record = *it;
+    if (!record ||
+        record.root_value.value == nullptr ||
+        record.root_value.value_kind != Value::Kind::Named ||
+        record.root_value.name != value.name ||
+        record.root_value.type != value.type ||
+        !record.root_instruction_index.has_value() ||
+        *record.root_instruction_index >= query.before_instruction_index) {
+      continue;
+    }
+    return &record;
+  }
+  return nullptr;
+}
+
 namespace {
 
 [[nodiscard]] std::optional<Route1ImmediateIntegerConstant>
