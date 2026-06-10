@@ -1,14 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/154_bir_memory_access_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add BIR-Owned Memory Access Queries
+Current Step ID: 4
+Current Step Title: Prove BIR-Representable Memory Equivalence
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 BIR-owned same-block load-local source identity query is complete.
+Step 3 BIR-owned same-block load-local source identity query is complete, and
+the runbook has been rewritten after
+`review/154_memory_access_step3_route_review.md` to narrow Step 4/Step 5 around
+the BIR-representable semantic equivalence boundary.
 
 Implemented `BirSameBlockLoadLocalSourceRequest`,
 `BirSameBlockLoadLocalSourceIdentity`, and
@@ -38,10 +41,23 @@ No consumers were switched to the BIR query in this packet.
 
 ## Suggested Next
 
-Next coherent packet: add the next BIR-owned memory/source identity query that
-the supervisor wants before any consumer migration, or ask reviewer/plan-owner
-for Step 3 boundary review if the remaining prepared/BIR equivalence depends on
-stack-layout range overlap facts that BIR must not own.
+Next executable packet: implement Step 4 proof for BIR-representable memory
+equivalence.
+
+The executor should add or tighten prepared/BIR comparison coverage for local,
+global, pointer, string, volatile, same-block global-load, load-local
+stored-value/source, store-source, and unavailable paths where the answer
+depends only on BIR-owned semantic facts: operation identity, source identity,
+result/stored names, address space, volatile flag, semantic base kind, and
+same-block producer/source links.
+
+The proof should also keep explicit boundary coverage for prepared-only
+positives that depend on stack-layout range non-overlap. Those cases remain
+prepared oracle/fallback behavior while BIR fails closed; they are not BIR
+parity requirements and should not be used to justify importing frame offsets,
+concrete sizes, alignment, or overlap math into BIR.
+
+Do not switch consumers in this packet.
 
 ## Watchouts
 
@@ -65,6 +81,10 @@ stack-layout range overlap facts that BIR must not own.
   prepared stack-layout overlap/match facts for prior-store source recovery.
   Do not import frame offsets, concrete sizes, or range overlap math into BIR
   to chase exact prepared equivalence.
+- Step 5 consumer migration is blocked for any load-local source path whose
+  correctness depends on prepared stack-layout range overlap/non-overlap proof.
+- The rewritten Step 4 proof target is semantic equivalence, not exact prepared
+  parity for layout-derived positives.
 
 ## Proof
 

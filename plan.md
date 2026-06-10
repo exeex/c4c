@@ -11,9 +11,10 @@ addressing, relocation, and AArch64 operand formation downstream.
 
 ## Goal
 
-Add BIR memory-access queries that match prepared answers for local, global,
-pointer, string, volatile, same-block global-load, and load-local stored-value
-source cases before switching any consumer reads.
+Add BIR memory-access queries that match prepared answers for
+BIR-representable semantic identity cases for local, global, pointer, string,
+volatile, same-block global-load, and load-local source cases before switching
+any consumer reads.
 
 ## Core Rule
 
@@ -42,7 +43,11 @@ memory operand legality.
   pointer/global/local/string source identity, same-block global-load access,
   and load-local stored-value source links.
 - Prepared/BIR query-equivalence proof for accepted memory access and source
-  recovery paths before any consumer switch.
+  recovery paths within the BIR-representable semantic domain before any
+  consumer switch.
+- Prepared-only positives that require stack-layout range overlap or
+  non-overlap math remain oracle/fallback evidence, not BIR parity
+  requirements.
 - At most one route-local consumer switch after equivalence proof exists.
 
 ## Non-Goals
@@ -62,6 +67,12 @@ memory operand legality.
   introduced.
 - BIR uses stable semantic names and BIR slot/name identity for locals instead
   of prepared frame slot ids.
+- BIR equivalence means parity for facts BIR can represent semantically:
+  operation identity, source identity, result/stored names, address space,
+  volatile flag, semantic base kind, and same-block producer/source links.
+- Prepared answers that depend on frame offsets, concrete sizes, alignment, or
+  stack-layout range overlap/non-overlap are outside the BIR equivalence
+  domain and remain prepared-owned fallback/oracle behavior.
 - Store-source and memory-retargeting consumers may switch only for semantic
   source identity after prepared/BIR equivalence is proven.
 - Target addressing and layout consumers continue to read prepared or
@@ -133,8 +144,8 @@ Completion check:
 
 ### Step 3: Add BIR-Owned Memory Access Queries
 
-Goal: expose BIR-owned queries that answer the same semantic subset as the
-prepared memory/access query surface.
+Goal: expose BIR-owned queries for the semantic subset of the prepared
+memory/access query surface that BIR can represent without layout authority.
 
 Primary target: per-function BIR analysis or MIR query implementation.
 
@@ -145,40 +156,56 @@ Actions:
   and load-local stored-value source recovery.
 - Build on existing producer/source identity where load-local source recovery
   needs a prior semantic producer.
+- For load-local source recovery, fail closed on intervening same-slot stores
+  unless BIR owns a semantic non-overlap fact that is not derived from stack
+  layout.
+- Treat prepared positives that require stack-layout range non-overlap as
+  oracle-only evidence; do not copy frame offsets, concrete sizes, alignment,
+  or overlap math into BIR.
 - Keep the existing prepared queries available as comparison oracles.
 - Avoid consumer rewrites in this step except for test-only comparison hooks.
 
 Completion check:
-- BIR memory queries compile and can be compared against prepared query
-  results without changing broad backend behavior.
+- BIR memory queries compile, expose only semantic memory/source facts, and
+  can be compared against prepared query results without changing broad
+  backend behavior. Known prepared-only layout positives are documented as
+  fail-closed BIR boundaries, not parity failures.
 
-### Step 4: Prove Prepared/BIR Memory Equivalence
+### Step 4: Prove BIR-Representable Memory Equivalence
 
 Goal: demonstrate that BIR memory/access queries match the prepared oracle for
-accepted positive and negative paths.
+accepted positive and negative paths inside the BIR-representable semantic
+domain.
 
 Primary target: targeted backend/codegen tests, assertions, or dumps.
 
 Actions:
 - Add or update proof for local, global, pointer, string, volatile,
   same-block global-load, load-local stored-value, store-source, and
-  unavailable paths.
+  unavailable paths when the answer depends only on BIR-owned semantic facts.
 - Include negative coverage for source mismatch, missing access, missing prior
   store/source, and rejected target-only address facts where the existing
   prepared semantics reject.
+- Include explicit boundary coverage for prepared-only positives that depend
+  on stack-layout range non-overlap, proving they remain prepared
+  oracle/fallback behavior while BIR fails closed.
 - Capture matched `test_before.log` and `test_after.log` for the smallest
   backend/codegen subset that exercises memory/access source identity.
 - Investigate mismatches as semantic gaps instead of special-casing named
   failing cases.
+- Do not treat prepared acceptance that depends on frame offsets, concrete
+  sizes, alignment, or range overlap/non-overlap as a BIR equivalence failure.
 
 Completion check:
-- Matched proof logs show no regression, and equivalence evidence covers each
-  memory/access path named by the source idea.
+- Matched proof logs show no regression; equivalence evidence covers each
+  memory/access path named by the source idea within the BIR-representable
+  semantic domain; and prepared-only layout positives are preserved as
+  documented oracle/fallback cases.
 
 ### Step 5: Switch One Semantic Memory Consumer If Proven
 
 Goal: move one store-source, memory-retargeting, or source-recovery consumer to
-the BIR query only after equivalence proof exists.
+the BIR query only after BIR-representable equivalence proof exists.
 
 Primary target: one narrow consumer that only reads already-proven semantic
 memory/source identity facts.
@@ -187,14 +214,18 @@ Actions:
 - Select a consumer with minimal blast radius and no ownership of layout,
   relocation, target addressing, storage encoding, or AArch64 operand policy.
 - Switch only identity reads already proven equivalent.
+- Do not switch load-local source paths whose correctness depends on prepared
+  stack-layout range overlap/non-overlap proof.
 - Keep prepared queries available for comparison and fallback during this
   route.
 - Run the delegated narrow subset and escalate validation if shared backend
   memory behavior changes.
 
 Completion check:
-- One route-local consumer uses BIR memory identity for proven facts, matched
-  proof remains green, and no target addressing or layout rewrite is included.
+- One route-local consumer uses BIR memory identity only for proven
+  BIR-representable semantic facts, prepared remains available for
+  layout-dependent fallback, matched proof remains green, and no target
+  addressing or layout rewrite is included.
 
 ### Step 6: Acceptance Review And Close Payload
 
