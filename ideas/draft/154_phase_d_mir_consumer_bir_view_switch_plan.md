@@ -9,6 +9,21 @@ This is Phase D of the BIR/prealloc thinning program. It is analysis-only and
 must produce follow-up ideas for consumer migration, not directly convert
 AArch64, x86, or riscv lowering.
 
+## Shared Artifact Contract
+
+This phase must read:
+
+- `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`
+- `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`
+- `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`
+
+This phase must write its durable analysis payload to:
+
+- `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`
+
+The closure note should summarize that document. Phase E must be able to
+consume the artifact directly.
+
 ## Direction
 
 The final consumer contract should be BIR annotated view -> MIR lowering. The
@@ -41,11 +56,15 @@ Map consumer families:
 
 The closure note must contain:
 
+- a link to `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`;
 - a consumer dependency map from prepared APIs to proposed BIR view APIs;
 - an ordered migration ladder;
 - adapter boundaries that may be needed temporarily;
 - follow-up ideas for each safe consumer migration slice;
 - explicit blockers that must be solved by Phase A/B/C before conversion.
+
+The artifact must identify which Phase A/B/C entries unblock each proposed
+consumer migration.
 
 ## Reject Signals
 

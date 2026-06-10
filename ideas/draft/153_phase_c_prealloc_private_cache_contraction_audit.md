@@ -8,6 +8,20 @@ pass internals once BIR owns the semantic relationships and annotation schema.
 This is Phase C of the BIR/prealloc thinning program. It is analysis-only and
 must produce follow-up ideas for cache privatization and API contraction.
 
+## Shared Artifact Contract
+
+This phase must read:
+
+- `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`
+- `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`
+
+This phase must write its durable analysis payload to:
+
+- `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`
+
+The closure note should summarize that document. Phase D and Phase E must be
+able to consume the artifact directly.
+
 ## Direction
 
 Prealloc should become a thin translation/planning pass, not a second IR. Its
@@ -42,11 +56,15 @@ Inspect:
 
 The closure note must contain:
 
+- a link to `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`;
 - cache/index groups that should become private;
 - cache/index groups that should remain public temporarily, with blockers;
 - follow-up ideas for privatizing each concrete cache surface;
 - required BIR annotation prerequisites before each privatization;
 - proof-route recommendations for API contraction work.
+
+The artifact must name the Phase A/B prerequisite section for each proposed
+cache contraction route.
 
 ## Reject Signals
 

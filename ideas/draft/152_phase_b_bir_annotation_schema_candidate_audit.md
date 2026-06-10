@@ -9,6 +9,19 @@ This is Phase B of the BIR/prealloc thinning program. It is analysis-only and
 must produce follow-up ideas for annotation schema work rather than directly
 changing the schema.
 
+## Shared Artifact Contract
+
+This phase must read:
+
+- `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`
+
+This phase must write its durable analysis payload to:
+
+- `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`
+
+The closure note should summarize that document. Phase C, Phase D, and Phase E
+must be able to consume the artifact directly.
+
 ## Direction
 
 The desired final shape is that MIR/codegen can consume BIR nodes plus typed
@@ -53,12 +66,16 @@ Inspect at least:
 
 The closure note must contain:
 
+- a link to `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`;
 - a candidate BIR annotation schema map;
 - a list of `Prepared*` fields that should stay private/cache-only;
 - a list of fields that are target-facing and must not enter BIR;
 - follow-up ideas for schema prototypes by domain;
 - migration constraints for keeping AArch64 behavior stable while annotations
   are introduced.
+
+The artifact must include traceability back to the Phase A candidate ids or
+sections that justify each proposed annotation.
 
 ## Reject Signals
 

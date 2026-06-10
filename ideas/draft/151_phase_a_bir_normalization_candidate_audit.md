@@ -10,6 +10,17 @@ This is Phase A of the BIR/prealloc thinning program. It is analysis-only and
 must create smaller follow-up ideas instead of directly rewriting BIR,
 prealloc, or MIR consumers.
 
+## Shared Artifact Contract
+
+This phase must write its durable analysis payload to:
+
+- `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`
+
+The closure note should summarize that document, but later phases must be able
+to consume the artifact directly without mining the closed idea text. Phase A's
+artifact is the required input for Phase B and an input dependency for all
+later phases.
+
 ## Direction
 
 The long-term direction is to make prealloc as thin as possible. BIR should own
@@ -51,11 +62,15 @@ Relevant files include:
 
 The closure note must contain:
 
+- a link to `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`;
 - a table of BIR-normalization candidates;
 - a table of facts rejected from BIR normalization, with reasons;
 - a dependency order for moving candidates forward safely;
 - follow-up ideas for each concrete normalization route;
 - explicit proof-route recommendations for each follow-up idea.
+
+The artifact must contain the same data in durable handoff form, including
+proposed follow-up idea filenames or filename prefixes for each candidate route.
 
 ## Reject Signals
 
