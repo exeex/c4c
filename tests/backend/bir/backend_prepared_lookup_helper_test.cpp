@@ -1121,12 +1121,6 @@ bool prepared_and_bir_cfg_edge_publication_source_identity_match(
                static_cast<c4c::SlotNameId>(
                    prepared.source_memory_frame_slot_id.value_or(
                        prepare::PreparedFrameSlotId{0})) &&
-           bir.source_memory_access.byte_offset ==
-               prepared.source_memory_byte_offset &&
-           bir.source_memory_access.size_bytes ==
-               prepared.source_memory_size_bytes &&
-           bir.source_memory_access.align_bytes ==
-               prepared.source_memory_align_bytes &&
            bir.source_memory_access.address_space ==
                prepared.source_memory_address_space &&
            bir.source_memory_access.is_volatile ==
@@ -3712,12 +3706,10 @@ int verify_edge_publication_source_producer_facts() {
       bir_load_edge.source_memory_access.result_value_name != loaded.name ||
       bir_load_edge.source_memory_access.base_kind !=
           mir::BirMemoryAccessBaseKind::LocalSlot ||
-      bir_load_edge.source_memory_access.byte_offset !=
-          load_publication->source_memory_byte_offset ||
-      bir_load_edge.source_memory_access.size_bytes !=
-          load_publication->source_memory_size_bytes ||
-      bir_load_edge.source_memory_access.align_bytes !=
-          load_publication->source_memory_align_bytes) {
+      bir_load_edge.source_memory_access.address_space !=
+          load_publication->source_memory_address_space ||
+      bir_load_edge.source_memory_access.is_volatile !=
+          load_publication->source_memory_is_volatile) {
     return fail("BIR CFG edge source identity should match prepared load-local semantic oracle");
   }
 

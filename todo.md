@@ -1,75 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/161_bir_memory_access_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Lookup/Index Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Query Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for
+Completed Step 4 for
 `ideas/open/161_bir_memory_access_identity_annotation_schema.md`.
-Added function-local Route 3 BIR memory/access lookup/index helpers without
-switching production consumers:
+Migrated the narrow shared MIR memory/access query consumers to read rebuilt
+Route 3 BIR record/index helpers:
 
-- `Route3MemoryAccessIndex` and `route3_build_memory_access_index(...)` rebuild
-  a block-local memory/access index from Route 3 BIR annotation records.
-- `Route3MemoryAccessQuery` carries the function-local index plus
-  same-block-before boundary for lookup helpers.
-- `route3_find_memory_access_record(...)` looks up direct memory access identity
-  by instruction index and Route 3 node kind.
-- `route3_find_same_block_global_load_access(...)` answers the same-block
-  global-load source use case from indexed Route 3 memory/access records.
-- `route3_find_same_block_load_local_source(...)` answers the same-block
-  load-local source use case from indexed Route 3 memory/access records and
-  preserves the existing BIR fail-closed stance for same-slot intervening
-  stores without layout-overlap authority.
+- `mir::find_bir_memory_access_identity(...)` now builds a Route 3 memory
+  access index and converts `Route3MemoryAccessRecord` payloads into the public
+  MIR identity result instead of reconstructing directly from raw BIR
+  instruction/address fields.
+- `mir::find_bir_same_block_global_load_access_identity(...)` now answers from
+  Route 3 same-block global-load lookup records, preserving normalized request
+  value name/type behavior and block-label fail-closed checks.
+- `mir::find_bir_same_block_load_local_source_identity(...)` now answers from
+  Route 3 same-block load-local source lookup records, including same-slot
+  invalidation fail-closed behavior.
+- Name-only same-block memory requests keep the previous no-explicit-type
+  behavior through a Route 3 index-backed fallback scan rather than raw
+  instruction reconstruction.
 
-Extended narrow oracle coverage in the owned tests:
+Updated the owned helper test expectations so prepared/prealloc oracle checks
+continue to cover semantic memory identity while no longer requiring byte
+offset, size, or align fields from Route 3-backed MIR memory identity.
 
-- Direct memory lookup/index answers now match prepared/MIR oracle facts and
-  fail closed for wrong Route 3 node kind while preserving address-space and
-  volatile fields in indexed records.
-- Same-block global-load lookup answers now match the prepared/MIR/direct Route
-  3 oracle path and fail closed for before-boundary, type mismatch, and
-  non-global string-base loads.
-- Same-block load-local source lookup answers now match the prepared/MIR/direct
-  Route 3 oracle path and fail closed for before-boundary, type mismatch,
-  same-slot invalidation, and no indexed memory/source authority.
-
-No production MIR query consumer, AArch64 codegen production file, or prealloc
-production helper was switched.
+No BIR schema file, AArch64 codegen production file, or prealloc production
+helper was changed.
 
 ## Suggested Next
 
-Execute Step 4 by migrating the narrow shared memory/access query consumer to
-read Route 3 BIR lookup/index records while preserving prepared/prealloc oracle
-checks in tests.
+Execute Step 5 by broadening backend validation for the Route 3 memory/access
+schema migration and preparing closure readiness.
 
 ## Watchouts
 
-- Keep Step 4 target-neutral: shared MIR query migration may consume Route 3
-  BIR records, but must not import AArch64 addressing policy or prepared-only
-  layout authority.
-- Preserve the existing oracle comparison shape: prepared/prealloc answers
-  remain the test oracle while Route 3 proves it can carry the BIR identity
-  payload.
-- Same-block load-local source BIR lookup intentionally fails closed for any
-  same-slot intervening store; offset/range-sensitive acceptance remains
-  prepared/prealloc authority until a separate semantic overlap schema exists.
-- Route 3 records/index helpers remain semantic: no frame slot ids, byte
-  offsets, size/align layout, relocation spelling, TLS register details,
-  addressing-mode legality, or AArch64 operand fields were added.
+- Step 5 should run broad backend validation because Step 4 changed shared MIR
+  query behavior used by downstream backend paths.
+- Route 3-backed MIR memory identity intentionally does not provide byte
+  offset, size, align, relocation/TLS details, addressing-mode legality, or
+  AArch64 operand policy.
+- Prepared/prealloc oracles remain responsible for target/layout-specific
+  acceptance, including offset/range-sensitive overlap authority.
 
 ## Proof
 
 Exact delegated proof passed:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_store_source_publication_plan)$' > test_after.log
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_store_source_publication_plan|backend_aarch64_instruction_dispatch|backend_aarch64_prepared_scalar_alu_records)$' > test_after.log
 ```
 
 Additional local validation: `git diff --check` passed.
 
-Proof log: `test_after.log` (`2/2` matching backend tests passed).
+Proof log: `test_after.log` (`4/4` matching backend tests passed).
