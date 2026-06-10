@@ -55,3 +55,26 @@ migration.
   typed annotation references and divergence checks.
 - Reject if the schema introduces a new Phase A semantic route instead of
   indexing the already accepted Route 1 through Route 7 relationships.
+
+## Closure Notes
+
+Closed after implementing a Route index reference contract, Route 4 and Route
+7 reference validation, a private `RouteIndexReferenceFacade`, focused
+fail-closed validation coverage, and a low-risk materialized-condition helper
+migration through the facade.
+
+Reviewer report `review/166_bir_annotation_lookup_index_route_review.md` found
+no blocking issues and recommended closure. The accepted residual risk is that
+Route 1, Route 2, Route 3, Route 5, and Route 6 retain existing typed
+record/index shapes rather than the shared reference facade. This is acceptable
+for prototype closure because the route proved typed-record references and a
+facade migration without creating a durable lowering-plan aggregate.
+
+Closure validation used canonical broad backend logs from:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+`test_before.log` and `test_after.log` both passed `179/179`, and the
+regression guard passed with no new failures or pass-count regression.
