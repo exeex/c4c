@@ -2342,8 +2342,10 @@ const CallInst* indexed_call_inst(const Block& block,
   return block_call == &call ? block_call : nullptr;
 }
 
+namespace {
+
 CallArgumentSourceProducerMaterialization
-find_call_argument_source_producer_materialization(
+raw_call_argument_source_producer_materialization(
     const Block& block,
     const CallInst& call,
     std::size_t call_instruction_index,
@@ -2397,6 +2399,54 @@ find_call_argument_source_producer_materialization(
     }
   }
   return {};
+}
+
+[[nodiscard]] CallArgumentSourceProducerKind
+route6_public_call_argument_source_producer_kind(Route1ProducerKind kind) {
+  switch (kind) {
+    case Route1ProducerKind::LoadLocal:
+      return CallArgumentSourceProducerKind::LoadLocal;
+    case Route1ProducerKind::Binary:
+      return CallArgumentSourceProducerKind::Binary;
+    case Route1ProducerKind::Unknown:
+    case Route1ProducerKind::Immediate:
+    case Route1ProducerKind::LoadGlobal:
+    case Route1ProducerKind::Cast:
+    case Route1ProducerKind::SelectMaterialization:
+      return CallArgumentSourceProducerKind::Unknown;
+  }
+  return CallArgumentSourceProducerKind::Unknown;
+}
+
+}  // namespace
+
+CallArgumentSourceProducerMaterialization
+find_call_argument_source_producer_materialization(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index,
+    std::size_t arg_index) {
+  const auto record = route6_call_argument_source_producer_record(
+      block, call, call_instruction_index, arg_index);
+  if (!record ||
+      !record.producer ||
+      !record.producer.producer_instruction ||
+      record.producer.source_value.value == nullptr) {
+    return {};
+  }
+  return CallArgumentSourceProducerMaterialization{
+      .available = true,
+      .arg_index = record.argument_source.arg_index,
+      .producer_kind =
+          route6_public_call_argument_source_producer_kind(record.producer.kind),
+      .producer_instruction =
+          record.producer.producer_instruction.instruction,
+      .producer_instruction_index =
+          record.producer.producer_instruction.instruction_index,
+      .produced_value = record.producer.source_value.value,
+      .materializable =
+          record.materialization.scalar_materialization_available,
+  };
 }
 
 namespace {
@@ -2582,7 +2632,7 @@ route6_call_argument_source_producer_record(
     return record;
   }
   const auto materialization =
-      find_call_argument_source_producer_materialization(
+      raw_call_argument_source_producer_materialization(
           block, call, call_instruction_index, arg_index);
   if (!materialization.available || materialization.producer_instruction == nullptr ||
       materialization.produced_value == nullptr) {

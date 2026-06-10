@@ -7623,6 +7623,11 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
   };
   const auto& route6_materialization_block =
       route6_materialization_function.blocks.front();
+  const auto* route6_materialization_call = std::get_if<bir::CallInst>(
+      &route6_materialization_block.insts[call_instruction_index]);
+  if (route6_materialization_call == nullptr) {
+    return fail("Route 6 materialization index fixture is malformed");
+  }
   const auto route6_materialization_index =
       bir::route6_build_call_use_source_index(route6_materialization_function);
   const auto route6_load_producer =
@@ -7638,6 +7643,12 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           call_instruction_index,
           "consume_materialized_sources",
           0);
+  const auto migrated_indexed_load =
+      bir::find_call_argument_source_producer_materialization(
+          route6_materialization_block,
+          *route6_materialization_call,
+          call_instruction_index,
+          0);
   if (!route6_load_producer ||
       route6_load_producer.status != bir::Route6CallUseStatus::Available ||
       route6_load_producer.producer.kind != bir::Route1ProducerKind::LoadLocal ||
@@ -7649,6 +7660,10 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           bir::Route1ProducerKind::LoadLocal ||
       indexed_route6_load_producer.producer.producer_instruction.instruction !=
           &route6_materialization_block.insts[0] ||
+      !migrated_indexed_load.available ||
+      migrated_indexed_load.producer_instruction !=
+          indexed_route6_load_producer.producer.producer_instruction.instruction ||
+      !migrated_indexed_load.materializable ||
       !route6_sum_producer ||
       route6_sum_producer.producer.kind != bir::Route1ProducerKind::Binary ||
       route6_sum_producer.producer.producer_instruction.instruction !=
@@ -7689,6 +7704,19 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
   const auto route6_nonmaterializable =
       bir::route6_call_argument_source_producer_record(
           block, *call, call_instruction_index, 2);
+  const auto indexed_route6_nonmaterializable =
+      bir::route6_find_call_argument_source_producer(
+          route6_materialization_index,
+          route6_materialization_block,
+          call_instruction_index,
+          "consume_materialized_sources",
+          2);
+  const auto migrated_indexed_nonmaterializable =
+      bir::find_call_argument_source_producer_materialization(
+          route6_materialization_block,
+          *route6_materialization_call,
+          call_instruction_index,
+          2);
   if (!prepared_and_bir_call_argument_source_producer_materialization_match(
           names, source_producers, block_label, block, *call,
           call_instruction_index, 2) ||
@@ -7697,7 +7725,15 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           bir::CallArgumentSourceProducerKind::Binary ||
       nonmaterializable.materializable ||
       !route6_nonmaterializable ||
-      route6_nonmaterializable.materialization.scalar_materialization_available) {
+      route6_nonmaterializable.materialization.scalar_materialization_available ||
+      !indexed_route6_nonmaterializable ||
+      indexed_route6_nonmaterializable.materialization
+          .scalar_materialization_available ||
+      !migrated_indexed_nonmaterializable.available ||
+      migrated_indexed_nonmaterializable.producer_instruction !=
+          indexed_route6_nonmaterializable.producer.producer_instruction
+              .instruction ||
+      migrated_indexed_nonmaterializable.materializable) {
     return fail(
         "BIR call-argument materialization should expose nonmaterializable binary producer eligibility");
   }
@@ -7725,25 +7761,29 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
   const auto route6_after_producer =
       bir::route6_call_argument_source_producer_record(
           block, *call, call_instruction_index, 4);
+  const auto indexed_route6_missing_producer =
+      bir::route6_find_call_argument_source_producer(
+          route6_materialization_index,
+          route6_materialization_block,
+          call_instruction_index,
+          "consume_materialized_sources",
+          3);
+  const auto migrated_indexed_missing =
+      bir::find_call_argument_source_producer_materialization(
+          route6_materialization_block,
+          *route6_materialization_call,
+          call_instruction_index,
+          3);
   if (route6_missing_producer ||
       route6_missing_producer.status !=
           bir::Route6CallUseStatus::MissingSourceProducer ||
       route6_after_producer ||
       route6_after_producer.status !=
           bir::Route6CallUseStatus::MissingSourceProducer ||
-      bir::route6_find_call_argument_source_producer(
-          route6_materialization_index,
-          route6_materialization_block,
-          call_instruction_index,
-          "consume_materialized_sources",
-          3) ||
-      bir::route6_find_call_argument_source_producer(
-          route6_materialization_index,
-          route6_materialization_block,
-          call_instruction_index,
-          "consume_materialized_sources",
-          3)
-              .status != bir::Route6CallUseStatus::MissingSourceProducer) {
+      indexed_route6_missing_producer ||
+      indexed_route6_missing_producer.status !=
+          bir::Route6CallUseStatus::MissingSourceProducer ||
+      migrated_indexed_missing.available) {
     return fail(
         "Route 6 call argument producer record/index should explicitly report missing source producers");
   }
@@ -7764,9 +7804,39 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
   const auto route6_duplicate_producer =
       bir::route6_call_argument_source_producer_record(
           duplicate_block, *duplicate_call, call_instruction_index, 0);
+  const bir::Function route6_duplicate_function{
+      .name = "route6_duplicate_sources",
+      .blocks = {duplicate_block},
+  };
+  const auto& route6_duplicate_block =
+      route6_duplicate_function.blocks.front();
+  const auto* route6_duplicate_call = std::get_if<bir::CallInst>(
+      &route6_duplicate_block.insts[call_instruction_index]);
+  if (route6_duplicate_call == nullptr) {
+    return fail("Route 6 duplicate materialization index fixture is malformed");
+  }
+  const auto route6_duplicate_index =
+      bir::route6_build_call_use_source_index(route6_duplicate_function);
+  const auto indexed_route6_duplicate =
+      bir::route6_find_call_argument_source_producer(
+          route6_duplicate_index,
+          route6_duplicate_block,
+          call_instruction_index,
+          "consume_materialized_sources",
+          0);
+  const auto migrated_indexed_duplicate =
+      bir::find_call_argument_source_producer_materialization(
+          route6_duplicate_block,
+          *route6_duplicate_call,
+          call_instruction_index,
+          0);
   if (route6_duplicate_producer ||
       route6_duplicate_producer.status !=
-          bir::Route6CallUseStatus::DuplicateRelationship) {
+          bir::Route6CallUseStatus::DuplicateRelationship ||
+      indexed_route6_duplicate ||
+      indexed_route6_duplicate.status !=
+          bir::Route6CallUseStatus::DuplicateRelationship ||
+      migrated_indexed_duplicate.available) {
     return fail(
         "Route 6 call argument producer record should fail closed for duplicate source records");
   }

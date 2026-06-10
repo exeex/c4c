@@ -1,38 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/164_bir_call_use_source_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Lookup/Index Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Query Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for
+Completed Step 4 for
 `ideas/open/164_bir_call_use_source_annotation_schema.md`.
-Added function-local Route 6 lookup/index helpers over the Step 2 BIR
-call-use annotation records without switching production consumers:
+Migrated the narrow shared BIR call-use helper
+`bir::find_call_argument_source_producer_materialization(...)` to answer from
+Route 6 BIR argument source-producer records instead of directly owning the raw
+scan.
 
-- Added `Route6CallUseSourceIndex`, rebuilt from BIR `Function`/`Block`
-  `CallInst` payloads and value records.
-- The index groups argument source, argument producer/materialization,
-  direct-global, publication/memory source, result, and result-lane records.
-- Added lookup helpers keyed by stable BIR block label/id, call instruction
-  index, callee spelling, argument index, result value name/type, and
-  result-lane value name/type.
-- The helpers remain target-neutral indexes over Route 6 records, not
-  prepared call-plan containers.
-
-Focused test additions now prove indexed argument success, direct-global
-dependency success, Route 3 memory-source reuse, result provenance success,
-result-lane success/no-match, wrong-call behavior, missing-source behavior,
-duplicate relationship/lane behavior, and ABI-bound exclusion behavior.
+- Kept the old raw same-block scan as an internal primitive for Route 6 record
+  construction, avoiding recursive record/helper calls.
+- The public helper now converts the Route 6 argument producer/materialization
+  record back into the existing `CallArgumentSourceProducerMaterialization`
+  result shape.
+- Focused tests tie the migrated helper answer to Route 6 indexed BIR records
+  for materializable producer, nonmaterializable producer, missing producer,
+  and duplicate relationship fail-closed cases.
+- No MIR, target/codegen, ABI assignment, call lowering, aggregate transport,
+  or prealloc production consumers were switched.
 
 ## Suggested Next
 
-Execute Step 4 by migrating the narrowest shared Route 6 query consumer to
-read Route 6 BIR records/index helpers while preserving prepared/BIR oracle
-checks.
+Execute Step 5 by running the broader backend acceptance validation and
+recording closure readiness for idea 164.
 
 ## Watchouts
 
@@ -49,15 +46,16 @@ checks.
 - Existing `CallArgumentSourceSelection` still contains quarantine fields for
   prepared-only layout comparisons. Route 6 records keep those ABI/layout
   fields out of the schema and use them only to report `AbiBoundExcluded`.
-- Step 3 intentionally did not switch MIR, target/codegen, ABI assignment, call
-  lowering, aggregate transport, or prealloc production consumers.
 - Route 6 indexes are rebuilt from BIR records and must remain target-neutral;
   do not add prepared call-plan, ABI placement, outgoing-stack, aggregate
   transport, or register/storage fields to the index payload.
+- The migrated public helper preserves legacy fail-closed behavior by returning
+  unavailable for Route 6 negative statuses such as missing producer and
+  duplicate relationship.
 
 ## Proof
 
-Exact delegated Step 3 proof passed:
+Exact delegated Step 4 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log
