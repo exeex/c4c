@@ -1,27 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/171_route5_current_block_join_source_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate The Selected Join-Source Consumer
+Current Step ID: 5
+Current Step Title: Contract Only Proven-Private Prepared Surface
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 (`Migrate The Selected Join-Source Consumer`): migrated the selected
-AArch64 consumer,
-`aarch64_codegen::build_current_block_join_prepared_query_routing(...)`, so it
-queries the Route 5-backed MIR current-block join-source identity first and
-uses prepared current-block join facts only as the absent/no-PHI fallback.
-Added the isolated
-`backend_aarch64_current_block_join_routing` harness proving Route 5-available
-routing without prepared value-location policy and no-PHI prepared fallback
-routing without weakening or reordering `backend_aarch64_instruction_dispatch`.
+Step 5 (`Contract Only Proven-Private Prepared Surface`): re-scanned the
+prepared current-block join-source helper exposure and found no surface proven
+private enough for safe contraction in this packet. No implementation files were
+changed.
+
+Direct remaining consumers from the scan:
+
+- `prepare::PreparedCurrentBlockJoinParallelCopySource*` types and
+  `prepare::prepare_current_block_join_parallel_copy_source_facts(...)` remain
+  production prealloc API in `src/backend/prealloc/publication_plans.hpp/.cpp`,
+  are used by `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`, and are
+  directly covered by
+  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+- `aarch64_codegen::prepared_query_current_block_join_parallel_copy_source(...)`
+  remains a production AArch64 codegen helper declared in
+  `dispatch_producers.hpp`, defined in `dispatch_producers.cpp`, and consumed
+  from `dispatch_value_materialization.cpp`.
+- `aarch64_codegen::build_current_block_join_prepared_query_routing(...)`,
+  `current_block_join_prepared_query_incoming_expression(...)`, and
+  `current_block_join_prepared_query_source(...)` remain production dispatch
+  routing helpers consumed by `dispatch.cpp` and directly exercised by
+  `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp` and
+  the existing `backend_aarch64_instruction_dispatch` helper path.
 
 ## Suggested Next
 
-Start Step 5 with a narrow scan of direct prepared current-block join-source
-helper exposure and contract only the surface proven private by Steps 3-4.
+Step 6 or lifecycle close: have the supervisor decide whether the remaining
+public prepared current-block join-source seams are acceptable close-level
+coverage, or whether a follow-up plan-owner/reviewer pass should split a new
+initiative for migrating the remaining production/test seams.
 
 ## Watchouts
 
@@ -31,8 +47,10 @@ helper exposure and contract only the surface proven private by Steps 3-4.
   routing, execution site policy, carrier/phase policy, coalescing,
   redundancy, destination registers, storage-sharing checks, prepared move
   records, or AArch64 edge-copy emission policy into BIR.
-- Do not hide prepared current-block join-source helpers until direct
-  consumers have been re-scanned and migrated or proven out of scope.
+- Step 5 found no prepared current-block join-source helper that is both within
+  this packet's owned files and proven private by direct `rg` evidence.
+- Do not hide the remaining prepared current-block join-source helpers without
+  first migrating or deliberately replacing their production/test consumers.
 - The migrated MIR helper currently uses direct Route 5 current-block join
   records because the existing MIR result is an aggregate list with no
   destination/source request fields. If Step 4 needs typed per-value lookup,
@@ -58,9 +76,9 @@ helper exposure and contract only the surface proven private by Steps 3-4.
 ## Proof
 
 ```bash
-(cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_current_block_join_routing_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_current_block_join_routing)$' --output-on-failure) > test_after.log 2>&1
+(rg -n 'PreparedCurrentBlockJoin|prepare_current_block_join|prepared_query_current_block_join|current_block_join_prepared_query' src tests -S && cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_current_block_join_routing_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_current_block_join_routing)$' --output-on-failure) > test_after.log 2>&1
 ```
 
-Result: passed, 2/2 tests green.
+Result: passed, scan completed and 2/2 tests green.
 
 Log path: `test_after.log`.
