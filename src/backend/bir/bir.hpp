@@ -1020,6 +1020,61 @@ struct CallArgumentSourceProducerMaterialization {
   bool materializable = false;
 };
 
+enum class ComparisonProducerKind : unsigned char {
+  Unknown,
+  Immediate,
+  LoadLocal,
+  LoadGlobal,
+  Cast,
+  Binary,
+  Select,
+};
+
+[[nodiscard]] constexpr std::string_view comparison_producer_kind_name(
+    ComparisonProducerKind kind) {
+  switch (kind) {
+    case ComparisonProducerKind::Unknown:
+      return "unknown";
+    case ComparisonProducerKind::Immediate:
+      return "immediate";
+    case ComparisonProducerKind::LoadLocal:
+      return "load_local";
+    case ComparisonProducerKind::LoadGlobal:
+      return "load_global";
+    case ComparisonProducerKind::Cast:
+      return "cast";
+    case ComparisonProducerKind::Binary:
+      return "binary";
+    case ComparisonProducerKind::Select:
+      return "select";
+  }
+  return "unknown";
+}
+
+struct ComparisonOperandProducer {
+  bool available = false;
+  ComparisonProducerKind producer_kind = ComparisonProducerKind::Unknown;
+  const Inst* producer_instruction = nullptr;
+  std::size_t producer_instruction_index = 0;
+  const Value* produced_value = nullptr;
+  std::optional<std::int64_t> integer_constant;
+};
+
+struct FusedCompareOperandProducerFacts {
+  bool available = false;
+  std::optional<ComparisonOperandProducer> lhs;
+  std::optional<ComparisonOperandProducer> rhs;
+};
+
+struct MaterializedConditionProducerIdentity {
+  bool available = false;
+  const BinaryInst* binary = nullptr;
+  std::size_t instruction_index = 0;
+  std::string condition_value_name;
+  std::optional<ComparisonOperandProducer> lhs;
+  std::optional<ComparisonOperandProducer> rhs;
+};
+
 struct CallResultSourceIdentity {
   bool available = false;
   std::size_t call_instruction_index = 0;
@@ -1211,6 +1266,19 @@ find_call_argument_source_producer_materialization(
     const CallInst& call,
     std::size_t call_instruction_index,
     std::size_t arg_index);
+std::optional<ComparisonOperandProducer> find_comparison_operand_producer(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index);
+FusedCompareOperandProducerFacts find_fused_compare_operand_producer_facts(
+    const Block& block,
+    const Value& lhs,
+    const Value& rhs,
+    std::size_t before_instruction_index);
+MaterializedConditionProducerIdentity find_materialized_condition_producer_identity(
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index);
 CallResultSourceIdentity find_call_result_source_identity(
     const Block& block,
     const CallInst& call,

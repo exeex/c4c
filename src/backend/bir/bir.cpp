@@ -1,8 +1,166 @@
 #include "bir.hpp"
 
+#include <algorithm>
+#include <type_traits>
 #include <utility>
 
 namespace c4c::backend::bir {
+namespace {
+
+[[nodiscard]] const Value* produced_value_for_comparison_producer(
+    const Inst& inst) {
+  return std::visit(
+      [](const auto& candidate) -> const Value* {
+        using T = std::decay_t<decltype(candidate)>;
+        if constexpr (std::is_same_v<T, BinaryInst> ||
+                      std::is_same_v<T, SelectInst> ||
+                      std::is_same_v<T, CastInst> ||
+                      std::is_same_v<T, LoadLocalInst> ||
+                      std::is_same_v<T, LoadGlobalInst>) {
+          return &candidate.result;
+        } else {
+          return nullptr;
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] ComparisonProducerKind comparison_producer_kind_for_inst(
+    const Inst& inst) {
+  return std::visit(
+      [](const auto& candidate) -> ComparisonProducerKind {
+        using T = std::decay_t<decltype(candidate)>;
+        if constexpr (std::is_same_v<T, LoadLocalInst>) {
+          return ComparisonProducerKind::LoadLocal;
+        } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
+          return ComparisonProducerKind::LoadGlobal;
+        } else if constexpr (std::is_same_v<T, CastInst>) {
+          return ComparisonProducerKind::Cast;
+        } else if constexpr (std::is_same_v<T, BinaryInst>) {
+          return ComparisonProducerKind::Binary;
+        } else if constexpr (std::is_same_v<T, SelectInst>) {
+          return ComparisonProducerKind::Select;
+        } else {
+          return ComparisonProducerKind::Unknown;
+        }
+      },
+      inst);
+}
+
+[[nodiscard]] bool is_comparison_binary_opcode(BinaryOpcode opcode) {
+  switch (opcode) {
+    case BinaryOpcode::Eq:
+    case BinaryOpcode::Ne:
+    case BinaryOpcode::Slt:
+    case BinaryOpcode::Sle:
+    case BinaryOpcode::Sgt:
+    case BinaryOpcode::Sge:
+    case BinaryOpcode::Ult:
+    case BinaryOpcode::Ule:
+    case BinaryOpcode::Ugt:
+    case BinaryOpcode::Uge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+struct SameBlockComparisonProducer {
+  const Inst* inst = nullptr;
+  const Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+  bool ambiguous = false;
+};
+
+[[nodiscard]] SameBlockComparisonProducer find_unique_comparison_producer(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind != Value::Kind::Named || value.name.empty()) {
+    return {};
+  }
+  const std::size_t before =
+      std::min(before_instruction_index, block.insts.size());
+  SameBlockComparisonProducer result;
+  for (std::size_t index = before; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto& candidate = block.insts[candidate_index];
+    const auto* produced = produced_value_for_comparison_producer(candidate);
+    if (produced == nullptr ||
+        produced->kind != Value::Kind::Named ||
+        produced->name != value.name ||
+        produced->type != value.type) {
+      continue;
+    }
+    if (result.inst != nullptr) {
+      result.ambiguous = true;
+      return result;
+    }
+    result = SameBlockComparisonProducer{
+        .inst = &candidate,
+        .produced_value = produced,
+        .instruction_index = candidate_index,
+    };
+  }
+  return result;
+}
+
+[[nodiscard]] std::optional<std::int64_t> evaluate_comparison_integer_constant(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (value.kind == Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  if (depth > 4U ||
+      value.kind != Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto producer =
+      find_unique_comparison_producer(block, value, before_instruction_index);
+  if (producer.inst == nullptr || producer.ambiguous) {
+    return std::nullopt;
+  }
+  const auto* binary = std::get_if<BinaryInst>(producer.inst);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto lhs = evaluate_comparison_integer_constant(
+      block, binary->lhs, producer.instruction_index, depth + 1U);
+  const auto rhs = evaluate_comparison_integer_constant(
+      block, binary->rhs, producer.instruction_index, depth + 1U);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_value = *lhs;
+  const auto rhs_value = *rhs;
+  switch (binary->opcode) {
+    case BinaryOpcode::Add:
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(lhs_value) +
+          static_cast<std::uint64_t>(rhs_value));
+    case BinaryOpcode::Sub:
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(lhs_value) -
+          static_cast<std::uint64_t>(rhs_value));
+    case BinaryOpcode::Mul:
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(lhs_value) *
+          static_cast<std::uint64_t>(rhs_value));
+    case BinaryOpcode::And:
+      return lhs_value & rhs_value;
+    case BinaryOpcode::Or:
+      return lhs_value | rhs_value;
+    case BinaryOpcode::Xor:
+      return lhs_value ^ rhs_value;
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
 
 Value Value::immediate_i1(bool value) {
   Value result;
@@ -326,6 +484,84 @@ find_call_argument_source_producer_materialization(
     }
   }
   return {};
+}
+
+std::optional<ComparisonOperandProducer> find_comparison_operand_producer(
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index) {
+  if (value.kind == Value::Kind::Immediate) {
+    return ComparisonOperandProducer{
+        .available = true,
+        .producer_kind = ComparisonProducerKind::Immediate,
+        .integer_constant = value.immediate,
+    };
+  }
+
+  const auto producer =
+      find_unique_comparison_producer(block, value, before_instruction_index);
+  if (producer.inst == nullptr || producer.ambiguous) {
+    return std::nullopt;
+  }
+
+  ComparisonOperandProducer result{
+      .available = true,
+      .producer_kind = comparison_producer_kind_for_inst(*producer.inst),
+      .producer_instruction = producer.inst,
+      .producer_instruction_index = producer.instruction_index,
+      .produced_value = producer.produced_value,
+      .integer_constant = evaluate_comparison_integer_constant(
+          block, value, before_instruction_index),
+  };
+  if (result.producer_kind == ComparisonProducerKind::Unknown) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+FusedCompareOperandProducerFacts find_fused_compare_operand_producer_facts(
+    const Block& block,
+    const Value& lhs,
+    const Value& rhs,
+    std::size_t before_instruction_index) {
+  FusedCompareOperandProducerFacts result{
+      .lhs = find_comparison_operand_producer(
+          block, lhs, before_instruction_index),
+      .rhs = find_comparison_operand_producer(
+          block, rhs, before_instruction_index),
+  };
+  result.available = result.lhs.has_value() || result.rhs.has_value();
+  return result;
+}
+
+MaterializedConditionProducerIdentity find_materialized_condition_producer_identity(
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index) {
+  if (condition_value.kind != Value::Kind::Named ||
+      condition_value.name.empty()) {
+    return {};
+  }
+  const auto producer =
+      find_unique_comparison_producer(block, condition_value,
+                                      before_instruction_index);
+  if (producer.inst == nullptr || producer.ambiguous) {
+    return {};
+  }
+  const auto* binary = std::get_if<BinaryInst>(producer.inst);
+  if (binary == nullptr || !is_comparison_binary_opcode(binary->opcode)) {
+    return {};
+  }
+  return MaterializedConditionProducerIdentity{
+      .available = true,
+      .binary = binary,
+      .instruction_index = producer.instruction_index,
+      .condition_value_name = condition_value.name,
+      .lhs = find_comparison_operand_producer(
+          block, binary->lhs, producer.instruction_index),
+      .rhs = find_comparison_operand_producer(
+          block, binary->rhs, producer.instruction_index),
+  };
 }
 
 CallResultSourceIdentity find_call_result_source_identity(
