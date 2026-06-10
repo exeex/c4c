@@ -358,6 +358,27 @@ prepared_publication_source_producer_for_value(
 build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context) {
   CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
+  if (context.bir_block != nullptr) {
+    const auto bir_identity = mir::find_bir_current_block_join_source_identity(
+        mir::BirCurrentBlockJoinSourceRequest{
+            .successor_block = context.bir_block,
+            .successor_label_id =
+                context.control_flow_block != nullptr
+                    ? context.control_flow_block->block_label
+                    : c4c::kInvalidBlockLabel,
+        });
+    if (bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) {
+      for (const auto& inst : context.bir_block->insts) {
+        routing.incoming_expressions.push_back(
+            instruction_result_matches_bir_value_identity(
+                inst, bir_identity.incoming_expression_values));
+        routing.sources.push_back(instruction_result_matches_bir_value_identity(
+            inst, bir_identity.source_values));
+      }
+      return routing;
+    }
+  }
+
   std::optional<prepare::PreparedValueHomeLookups> local_value_home_lookups;
   const auto* value_home_lookups = context.function.value_home_lookups;
   if (value_home_lookups == nullptr && context.function.value_locations != nullptr) {
@@ -404,17 +425,6 @@ build_current_block_join_prepared_query_routing(
     return routing;
   }
 
-  const auto bir_identity = mir::find_bir_current_block_join_source_identity(
-      mir::BirCurrentBlockJoinSourceRequest{
-          .successor_block = context.bir_block,
-          .successor_label_id =
-              context.control_flow_block != nullptr
-                  ? context.control_flow_block->block_label
-                  : c4c::kInvalidBlockLabel,
-      });
-  const bool use_bir_identity =
-      bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available;
-
   for (const auto& inst : context.bir_block->insts) {
     const auto result_value_id =
         instruction_result_prepared_value_id(context, value_home_lookups, inst);
@@ -428,16 +438,8 @@ build_current_block_join_prepared_query_routing(
         std::find(facts.source_value_ids.begin(),
                   facts.source_value_ids.end(),
                   *result_value_id) != facts.source_value_ids.end();
-    routing.incoming_expressions.push_back(
-        use_bir_identity
-            ? instruction_result_matches_bir_value_identity(
-                  inst, bir_identity.incoming_expression_values)
-            : prepared_incoming_expression);
-    routing.sources.push_back(
-        use_bir_identity
-            ? instruction_result_matches_bir_value_identity(inst,
-                                                            bir_identity.source_values)
-            : prepared_source);
+    routing.incoming_expressions.push_back(prepared_incoming_expression);
+    routing.sources.push_back(prepared_source);
   }
   return routing;
 }
