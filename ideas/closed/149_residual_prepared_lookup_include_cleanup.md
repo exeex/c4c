@@ -42,6 +42,17 @@ the declarations have real narrower homes.
 - Proof includes `cmake --build --preset default` and
   `ctest --test-dir build -R '^backend_' --output-on-failure`.
 
+## Closure Note
+
+Closed after the residual include audit and cleanup completed. Remaining direct
+`prepared_lookups.hpp` includes were classified in `todo.md` before closure.
+The only AArch64 cleanup target still blocked by declaration ownership is
+`src/backend/mir/aarch64/codegen/dispatch_producers.cpp`, which still calls
+`make_prepared_edge_publication_lookups`; that helper remains declared only in
+`prepared_lookups.hpp`. Follow-up idea
+`ideas/open/150_edge_publication_lookup_declaration_owner.md` owns that
+declaration-owner work.
+
 ## Reviewer Reject Signals
 
 - Cleanup hides the old facade through a different broad umbrella header.
