@@ -106,6 +106,34 @@ struct SameBlockProducerRecord {
 
 using SameBlockProducerIdentity = SameBlockProducerRecord;
 
+struct BirSameBlockGlobalLoadAccessRequest {
+  const bir::Block* block = nullptr;
+  std::string_view block_label;
+  const bir::Value* root_value = nullptr;
+  std::string_view root_value_name;
+  bir::TypeKind root_value_type = bir::TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return block != nullptr &&
+           (root_value != nullptr || !root_value_name.empty());
+  }
+};
+
+struct BirSameBlockGlobalLoadAccessIdentity {
+  SameBlockProducerIdentity producer;
+  BirMemoryAccessIdentity memory_access;
+  const bir::LoadGlobalInst* load_global = nullptr;
+  SameBlockValueIdentity result_value;
+  std::string_view root_value_name;
+  bir::TypeKind root_value_type = bir::TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return load_global != nullptr && memory_access && producer;
+  }
+};
+
 struct SameBlockProducerIndex {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;
@@ -205,6 +233,10 @@ find_bir_select_chain_direct_global_dependency(
 
 [[nodiscard]] BirMemoryAccessIdentity find_bir_memory_access_identity(
     BirMemoryAccessIdentityRequest request);
+
+[[nodiscard]] BirSameBlockGlobalLoadAccessIdentity
+find_bir_same_block_global_load_access_identity(
+    BirSameBlockGlobalLoadAccessRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

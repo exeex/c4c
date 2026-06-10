@@ -190,6 +190,27 @@ void populate_bir_memory_address_identity(
                                       : bir::TypeKind::Void;
 }
 
+[[nodiscard]] std::string_view root_value_name(
+    const BirSameBlockGlobalLoadAccessRequest& request) {
+  if (!request.root_value_name.empty()) {
+    return request.root_value_name;
+  }
+  if (request.root_value != nullptr &&
+      request.root_value->kind == bir::Value::Kind::Named) {
+    return request.root_value->name;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::TypeKind root_value_type(
+    const BirSameBlockGlobalLoadAccessRequest& request) {
+  if (request.root_value_type != bir::TypeKind::Void) {
+    return request.root_value_type;
+  }
+  return request.root_value != nullptr ? request.root_value->type
+                                      : bir::TypeKind::Void;
+}
+
 [[nodiscard]] std::optional<SameBlockIntegerConstant>
 evaluate_same_block_integer_constant(
     SameBlockValueMaterializationQuery query,
@@ -315,6 +336,57 @@ find_bir_select_chain_direct_global_dependency(
       },
       inst);
   return identity;
+}
+
+[[nodiscard]] BirSameBlockGlobalLoadAccessIdentity
+find_bir_same_block_global_load_access_identity(
+    BirSameBlockGlobalLoadAccessRequest request) {
+  if (!request) {
+    return {};
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return {};
+  }
+  const auto value_type = root_value_type(request);
+  const auto producer = find_same_block_producer_identity(
+      SameBlockProducerIdentityRequest{
+          .block = request.block,
+          .block_label = request.block_label,
+          .value_name = value_name,
+          .value_type = value_type,
+          .before_instruction_index = request.before_instruction_index,
+      });
+  if (!producer || producer.kind != SameBlockProducerKind::LoadGlobal) {
+    return {};
+  }
+  const auto* load_global =
+      producer.inst != nullptr ? std::get_if<bir::LoadGlobalInst>(producer.inst)
+                               : nullptr;
+  if (load_global == nullptr) {
+    return {};
+  }
+  const auto memory_access = find_bir_memory_access_identity(
+      BirMemoryAccessIdentityRequest{
+          .block = request.block,
+          .block_label = request.block_label,
+          .instruction_index = producer.instruction_index,
+          .node_kind = BirMemoryAccessNodeKind::LoadGlobal,
+      });
+  if (!memory_access ||
+      memory_access.base_kind != BirMemoryAccessBaseKind::GlobalSymbol ||
+      memory_access.result_value_name != value_name) {
+    return {};
+  }
+  return BirSameBlockGlobalLoadAccessIdentity{
+      .producer = producer,
+      .memory_access = memory_access,
+      .load_global = load_global,
+      .result_value = producer.produced_value,
+      .root_value_name = value_name,
+      .root_value_type = value_type,
+      .before_instruction_index = request.before_instruction_index,
+  };
 }
 
 [[nodiscard]] SameBlockBinaryProducer find_same_block_binary_producer(

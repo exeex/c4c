@@ -1,47 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/154_bir_memory_access_identity.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define BIR Memory Access Identity Records
+Current Step ID: 3
+Current Step Title: Add BIR-Owned Memory Access Queries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 direct BIR memory-access identity surface is complete.
+Step 3 BIR-owned same-block global-load access identity query is complete.
 
-Implemented `BirMemoryAccessIdentityRequest`,
-`BirMemoryAccessIdentity`, `BirMemoryAccessNodeKind`,
-`BirMemoryAccessBaseKind`, `bir_memory_access_node_kind`, and
-`find_bir_memory_access_identity` in `src/backend/mir/query.hpp/.cpp`.
-The query is keyed by BIR block label, instruction index, and direct memory
-node kind for `LoadLocalInst`, `LoadGlobalInst`, `StoreLocalInst`, and
-`StoreGlobalInst`.
+Implemented `BirSameBlockGlobalLoadAccessRequest`,
+`BirSameBlockGlobalLoadAccessIdentity`, and
+`find_bir_same_block_global_load_access_identity` in
+`src/backend/mir/query.hpp/.cpp`. The query resolves a same-block scalar
+producer by block/root value/before-instruction identity, requires a direct
+`LoadGlobalInst` producer, and then reuses `find_bir_memory_access_identity`
+for the direct memory identity. It exposes only semantic BIR facts:
+producer identity, load-global pointer, result value identity, global symbol
+identity, address space, volatile flag, and semantic base kind.
 
-The record carries only semantic BIR identity:
-result/stored value name, address space, volatile flag, semantic base kind,
-BIR local slot name/id, global link/text spelling/id, pointer value name, and
-string constant spelling. It intentionally does not carry prepared frame slot
-ids, object ids, byte offsets, size/align, target addressing legality,
-relocation/GOT/TLS policy, register homes, or storage encoding.
-
-Added test-only prepared/BIR comparisons:
+Added test-only prepared/BIR comparisons against
+`find_prepared_same_block_global_load_access` in:
 - `tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp`
-  now checks direct load/store BIR memory identities against prepared semantic
-  oracle fields for local, global, pointer, string, volatile, missing prepared
-  access, result mismatch, and stored-value mismatch cases.
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` now verifies the
-  BIR direct memory identity lookup key behavior for matching load-local and
-  store-global nodes plus node-kind, block-label, and missing-index rejection.
+  for a direct global-symbol load positive, before-producer fail-closed,
+  root-type mismatch, and string-load fail-closed path.
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` for the existing
+  same-block scalar producer fixture, including direct global-load positive,
+  before-producer fail-closed, non-global root fail-closed, and mismatched root
+  type rejection.
 
 No consumers were switched to the BIR query in this packet.
 
 ## Suggested Next
 
-Next coherent packet: add a BIR-owned same-block direct global-load identity
-query on top of the direct memory identity surface, compare it against the
-prepared same-block global-load oracle, and keep consumers on prepared queries
-until equivalence is proven.
+Next coherent packet: add BIR-owned same-block load-local source identity
+queries for the semantic source relationship currently exposed through
+prepared same-block load-local source helpers, comparing against prepared
+oracles in tests while keeping consumers on prepared queries.
 
 ## Watchouts
 
@@ -52,10 +48,10 @@ until equivalence is proven.
   `fp_value_materialization.cpp`, `alu.cpp`, `calls.cpp`, `globals.cpp`, or
   memory-retargeting consumers before the supervisor delegates that consumer
   migration.
-- The current BIR direct memory identity intentionally treats missing
-  structured `MemoryAddress` as a present direct memory node with default/no
-  address identity fields; prepared/BIR comparison helpers reject missing
-  prepared oracle entries separately.
+- The same-block global-load access query intentionally requires semantic
+  `GlobalSymbol` memory identity, but still does not import target address
+  formation, offset legality, layout, relocation/GOT/TLS policy, or register
+  homes.
 - `find_prepared_same_block_load_local_stored_value_source` and
   `find_prepared_same_block_load_local_source_producer` currently depend on
   stack-layout range matching/overlap for correctness. A BIR query can expose

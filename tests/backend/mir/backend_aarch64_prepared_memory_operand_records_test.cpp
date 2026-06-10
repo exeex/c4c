@@ -3,6 +3,7 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/memory.hpp"
 #include "src/backend/mir/query.hpp"
+#include "src/backend/prealloc/prepared_lookups.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -112,6 +113,60 @@ bool prepared_and_bir_direct_memory_identity_match(
       return true;
   }
   return false;
+}
+
+bool prepared_and_bir_same_block_global_load_access_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto prepared_producer =
+      prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          value,
+          before_instruction_index);
+  const auto prepared =
+      prepared_producer.has_value()
+          ? prepare::find_prepared_same_block_global_load_access(
+                names, &addressing, *prepared_producer)
+          : std::nullopt;
+  const auto bir = mir::find_bir_same_block_global_load_access_identity(
+      mir::BirSameBlockGlobalLoadAccessRequest{
+          .block = &block,
+          .block_label = block.label,
+          .root_value = &value,
+          .root_value_name = value.name,
+          .root_value_type = value.type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (prepared.has_value() != static_cast<bool>(bir)) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return true;
+  }
+  const auto* access = prepared->access;
+  return access != nullptr &&
+         bir.load_global == prepared->load_global &&
+         bir.producer.inst == prepared_producer->instruction &&
+         bir.producer.instruction_index == prepared_producer->instruction_index &&
+         bir.result_value.name == value.name &&
+         bir.result_value.type == value.type &&
+         bir.memory_access.block_label == block.label &&
+         bir.memory_access.instruction_index == prepared_producer->instruction_index &&
+         bir.memory_access.node_kind == mir::BirMemoryAccessNodeKind::LoadGlobal &&
+         bir.memory_access.result_value_name == value.name &&
+         bir.memory_access.global_name_id ==
+             access->address.symbol_name.value_or(c4c::kInvalidLinkName) &&
+         bir.memory_access.address_space == access->address_space &&
+         bir.memory_access.is_volatile == access->is_volatile &&
+         bir.memory_access.base_kind == mir::BirMemoryAccessBaseKind::GlobalSymbol;
 }
 
 prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,
@@ -638,6 +693,129 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
           3,
           mir::BirMemoryAccessNodeKind::StoreGlobal)) {
     return fail("expected BIR store-global identity to match prepared semantic memory facts");
+  }
+  return 0;
+}
+
+int same_block_global_load_access_identity_matches_prepared_oracle() {
+  auto fixture = make_fixture();
+  const bir::Value loaded = named_value(bir::TypeKind::I32, "%load");
+  const bir::LoadGlobalInst load{
+      .result = loaded,
+      .global_name = "g.counter",
+      .global_name_id = fixture.global_name,
+      .byte_offset = 0,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.counter",
+              .byte_offset = 16,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = true,
+              .base_link_name_id = fixture.global_name,
+          },
+  };
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = fixture.function_name,
+      .block_label = fixture.block_label,
+      .inst_index = 8,
+      .result_value_name = fixture.load_name,
+      .address_space = bir::AddressSpace::Gs,
+      .is_volatile = true,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = fixture.global_name,
+              .byte_offset = 16,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+  });
+  const auto block = block_with_instruction("entry", 8, load);
+  const auto* load_global = std::get_if<bir::LoadGlobalInst>(&block.insts[8]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      fixture.load_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = fixture.block_label,
+          .instruction_index = 8,
+          .load_global = load_global,
+      });
+
+  if (!prepared_and_bir_same_block_global_load_access_match(
+          fixture.names,
+          fixture.addressing,
+          source_producers,
+          fixture.block_label,
+          block,
+          loaded,
+          9)) {
+    return fail("expected BIR same-block global-load access identity to match prepared oracle");
+  }
+  if (!prepared_and_bir_same_block_global_load_access_match(
+          fixture.names,
+          fixture.addressing,
+          source_producers,
+          fixture.block_label,
+          block,
+          loaded,
+          8)) {
+    return fail("expected BIR/prepared same-block global-load access to fail closed before producer");
+  }
+  if (mir::find_bir_same_block_global_load_access_identity(
+          mir::BirSameBlockGlobalLoadAccessRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value = &loaded,
+              .root_value_name = loaded.name,
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = 9,
+          })) {
+    return fail("expected BIR same-block global-load access to reject root type mismatch");
+  }
+
+  const bir::Value string_loaded = named_value(bir::TypeKind::I32, "%load");
+  const bir::LoadGlobalInst string_load{
+      .result = string_loaded,
+      .byte_offset = 0,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+              .base_name = ".L.str0",
+              .byte_offset = 4,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = true,
+          },
+  };
+  const auto string_block = block_with_instruction("entry", 5, string_load);
+  const auto* string_load_global =
+      std::get_if<bir::LoadGlobalInst>(&string_block.insts[5]);
+  prepare::PreparedEdgePublicationSourceProducerLookups string_source_producers;
+  string_source_producers.producers_by_value_name.emplace(
+      fixture.load_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = fixture.block_label,
+          .instruction_index = 5,
+          .load_global = string_load_global,
+      });
+  if (!prepared_and_bir_same_block_global_load_access_match(
+          fixture.names,
+          fixture.addressing,
+          string_source_producers,
+          fixture.block_label,
+          string_block,
+          string_loaded,
+          6)) {
+    return fail("expected BIR/prepared same-block global-load access to fail closed for string loads");
   }
   return 0;
 }
@@ -2458,6 +2636,11 @@ int main() {
     return status;
   }
   if (const int status = global_symbol_store_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          same_block_global_load_access_identity_matches_prepared_oracle();
       status != 0) {
     return status;
   }
