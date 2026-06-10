@@ -106,6 +106,35 @@ struct SameBlockProducerRecord {
 
 using SameBlockProducerIdentity = SameBlockProducerRecord;
 
+struct BirCurrentBlockPublicationIdentityRequest {
+  const bir::Block* block = nullptr;
+  std::string_view block_label;
+  const bir::Value* root_value = nullptr;
+  std::string_view root_value_name;
+  bir::TypeKind root_value_type = bir::TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return block != nullptr &&
+           (root_value != nullptr || !root_value_name.empty());
+  }
+};
+
+struct BirCurrentBlockPublicationIdentity {
+  bool available = false;
+  SameBlockProducerIdentity source_producer;
+  const bir::Inst* instruction = nullptr;
+  const bir::Value* produced_value = nullptr;
+  SameBlockValueIdentity produced_value_identity;
+  std::string_view produced_value_name;
+  bir::TypeKind produced_value_type = bir::TypeKind::Void;
+  std::size_t instruction_index = 0;
+  std::string_view value_name;
+  SameBlockProducerKind source_producer_kind = SameBlockProducerKind::Unknown;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
 struct BirSameBlockGlobalLoadAccessRequest {
   const bir::Block* block = nullptr;
   std::string_view block_label;
@@ -269,6 +298,10 @@ find_bir_same_block_global_load_access_identity(
 [[nodiscard]] BirSameBlockLoadLocalSourceIdentity
 find_bir_same_block_load_local_source_identity(
     BirSameBlockLoadLocalSourceRequest request);
+
+[[nodiscard]] BirCurrentBlockPublicationIdentity
+find_bir_current_block_publication_identity(
+    BirCurrentBlockPublicationIdentityRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

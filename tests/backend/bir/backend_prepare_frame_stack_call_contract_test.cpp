@@ -5,6 +5,7 @@
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
+#include "src/backend/mir/query.hpp"
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/call_plans.hpp"
@@ -27,6 +28,7 @@ namespace {
 
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 
@@ -3908,6 +3910,31 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: current-block publication consumption should be fact-backed");
   }
+  const auto sum_bir_current_block_publication =
+      mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = prepare::prepared_value_name(names, sum_name),
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = 3,
+          });
+  if (!sum_bir_current_block_publication.available ||
+      sum_bir_current_block_publication.source_producer.inst !=
+          sum_current_block_publication.instruction ||
+      sum_bir_current_block_publication.instruction !=
+          sum_current_block_publication.instruction ||
+      sum_bir_current_block_publication.produced_value !=
+          sum_current_block_publication.produced_value ||
+      sum_bir_current_block_publication.produced_value_name != "%sum" ||
+      sum_bir_current_block_publication.instruction_index !=
+          sum_current_block_publication.instruction_index ||
+      sum_bir_current_block_publication.value_name != "%sum" ||
+      sum_bir_current_block_publication.source_producer_kind !=
+          mir::SameBlockProducerKind::Binary) {
+    return fail(
+        "call-argument producer materializability contract: BIR current-block publication identity should match prepared semantic fields");
+  }
 
   if (prepare::find_prepared_call_argument_source_producer_materialization(
           names,
@@ -3942,6 +3969,17 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: current-block publication should fail closed for future producer");
   }
+  if (mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%sum",
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = 1,
+          })) {
+    return fail(
+        "call-argument producer materializability contract: BIR current-block publication should fail closed for future producer");
+  }
   auto mismatched_source_producers = source_producers;
   mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 0;
   if (prepare::find_prepared_current_block_publication_consumption(
@@ -3954,6 +3992,17 @@ int check_call_argument_source_producer_materializability_contract() {
           .available) {
     return fail(
         "call-argument producer materializability contract: current-block publication should fail closed on mismatched producer fact");
+  }
+  if (!mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%sum",
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = 3,
+          })) {
+    return fail(
+        "call-argument producer materializability contract: BIR current-block publication should not depend on mismatched prepared producer facts");
   }
 
   return 0;

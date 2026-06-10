@@ -113,6 +113,56 @@ bool prepared_and_bir_scalar_producers_match(
          bir->produced_value->type == value.type;
 }
 
+bool prepared_and_bir_current_block_publication_identity_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    c4c::ValueNameId value_name,
+    bir::TypeKind value_type,
+    std::size_t before_instruction_index) {
+  const auto prepared =
+      prepare::find_prepared_current_block_publication_consumption(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          value_name,
+          before_instruction_index);
+  const auto bir = mir::find_bir_current_block_publication_identity(
+      mir::BirCurrentBlockPublicationIdentityRequest{
+          .block = &block,
+          .block_label = prepare::prepared_block_label(names, block_label),
+          .root_value_name = prepare::prepared_value_name(names, value_name),
+          .root_value_type = value_type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (prepared.available != bir.available) {
+    return false;
+  }
+  if (!prepared.available) {
+    return true;
+  }
+  return prepared.source_producer != nullptr &&
+         prepared.instruction != nullptr &&
+         prepared.produced_value != nullptr &&
+         bir.source_producer &&
+         bir.instruction == prepared.instruction &&
+         bir.produced_value == prepared.produced_value &&
+         bir.produced_value_identity.value == prepared.produced_value &&
+         bir.produced_value_name == prepared.produced_value->name &&
+         bir.produced_value_type == prepared.produced_value->type &&
+         bir.instruction_index == prepared.instruction_index &&
+         bir.value_name == prepared.produced_value->name &&
+         names.value_names.find(bir.value_name) == prepared.value_name &&
+         bir.source_producer.inst == prepared.instruction &&
+         bir.source_producer.instruction_index == prepared.instruction_index &&
+         bir.source_producer.kind ==
+             expected_bir_producer_kind(prepared.source_producer_kind) &&
+         bir.source_producer_kind ==
+             expected_bir_producer_kind(prepared.source_producer_kind);
+}
+
 bool prepared_and_bir_same_block_global_load_access_match(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedAddressingFunction& addressing,
@@ -4003,6 +4053,48 @@ int verify_prepared_same_block_scalar_source_facts() {
           prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
     return fail("current-block publication consumption query should expose prepared producer fact");
   }
+  if (!prepared_and_bir_current_block_publication_identity_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          sum_name,
+          bir::TypeKind::I64,
+          block.insts.size())) {
+    return fail("BIR current-block publication identity should match prepared semantic producer fact");
+  }
+  const auto missing_name = names.value_names.intern("%missing");
+  if (!prepared_and_bir_current_block_publication_identity_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          missing_name,
+          bir::TypeKind::I64,
+          block.insts.size())) {
+    return fail("BIR/prepared current-block publication identity should fail closed for missing value");
+  }
+  const auto other_block_label = names.block_labels.intern("other");
+  if (!prepared_and_bir_current_block_publication_identity_match(
+          names,
+          source_producers,
+          other_block_label,
+          block,
+          sum_name,
+          bir::TypeKind::I64,
+          block.insts.size())) {
+    return fail("BIR/prepared current-block publication identity should fail closed for wrong block");
+  }
+  if (mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%sum",
+              .root_value_type = bir::TypeKind::I32,
+              .before_instruction_index = block.insts.size(),
+          })) {
+    return fail("BIR current-block publication identity should fail closed for mismatched value type");
+  }
 
   const auto product_constant =
       prepare::evaluate_prepared_same_block_integer_constant(
@@ -4166,6 +4258,16 @@ int verify_prepared_same_block_scalar_source_facts() {
           .available) {
     return fail("current-block publication consumption query should fail closed for future producers");
   }
+  if (!prepared_and_bir_current_block_publication_identity_match(
+          names,
+          source_producers,
+          block_label,
+          block,
+          product_name,
+          bir::TypeKind::I64,
+          7)) {
+    return fail("BIR/prepared current-block publication identity should fail closed before producer");
+  }
   if (prepare::evaluate_prepared_same_block_integer_constant(
           names,
           &source_producers,
@@ -4216,6 +4318,21 @@ int verify_prepared_same_block_scalar_source_facts() {
           block.insts.size())
           .available) {
     return fail("current-block publication consumption query should fail closed on mismatched producer facts");
+  }
+  const auto bir_sum_after_mismatched_prepared_fact =
+      mir::find_bir_current_block_publication_identity(
+          mir::BirCurrentBlockPublicationIdentityRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%sum",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = block.insts.size(),
+          });
+  if (!bir_sum_after_mismatched_prepared_fact.available ||
+      bir_sum_after_mismatched_prepared_fact.instruction != &block.insts[2] ||
+      bir_sum_after_mismatched_prepared_fact.source_producer_kind !=
+          mir::SameBlockProducerKind::Binary) {
+    return fail("BIR current-block publication identity should remain block-derived when prepared facts are mismatched");
   }
   if (prepare::evaluate_prepared_same_block_integer_constant(
           names,

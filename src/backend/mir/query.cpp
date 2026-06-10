@@ -236,6 +236,27 @@ void populate_bir_memory_address_identity(
                                       : bir::TypeKind::Void;
 }
 
+[[nodiscard]] std::string_view root_value_name(
+    const BirCurrentBlockPublicationIdentityRequest& request) {
+  if (!request.root_value_name.empty()) {
+    return request.root_value_name;
+  }
+  if (request.root_value != nullptr &&
+      request.root_value->kind == bir::Value::Kind::Named) {
+    return request.root_value->name;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::TypeKind root_value_type(
+    const BirCurrentBlockPublicationIdentityRequest& request) {
+  if (request.root_value_type != bir::TypeKind::Void) {
+    return request.root_value_type;
+  }
+  return request.root_value != nullptr ? request.root_value->type
+                                      : bir::TypeKind::Void;
+}
+
 [[nodiscard]] bool same_local_slot_identity(
     const BirMemoryAccessIdentity& lhs,
     const BirMemoryAccessIdentity& rhs) {
@@ -400,6 +421,45 @@ find_bir_select_chain_direct_global_dependency(
       },
       inst);
   return identity;
+}
+
+[[nodiscard]] BirCurrentBlockPublicationIdentity
+find_bir_current_block_publication_identity(
+    BirCurrentBlockPublicationIdentityRequest request) {
+  if (!request ||
+      (!request.block_label.empty() && request.block_label != request.block->label)) {
+    return {};
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return {};
+  }
+  const auto producer = find_same_block_producer_identity(
+      SameBlockProducerIdentityRequest{
+          .block = request.block,
+          .block_label = request.block_label,
+          .value_name = value_name,
+          .value_type = root_value_type(request),
+          .before_instruction_index = request.before_instruction_index,
+      });
+  if (!producer ||
+      producer.inst == nullptr ||
+      !producer.produced_value ||
+      producer.produced_value.name != value_name) {
+    return {};
+  }
+  return BirCurrentBlockPublicationIdentity{
+      .available = true,
+      .source_producer = producer,
+      .instruction = producer.inst,
+      .produced_value = producer.produced_value.value,
+      .produced_value_identity = producer.produced_value,
+      .produced_value_name = producer.produced_value.name,
+      .produced_value_type = producer.produced_value.type,
+      .instruction_index = producer.instruction_index,
+      .value_name = value_name,
+      .source_producer_kind = producer.kind,
+  };
 }
 
 [[nodiscard]] BirSameBlockGlobalLoadAccessIdentity
