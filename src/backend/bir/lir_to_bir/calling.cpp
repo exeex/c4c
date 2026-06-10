@@ -814,6 +814,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   auto& local_slot_types = local_slot_types_;
   auto& local_slot_pointer_values = local_slot_pointer_values_;
   auto& pointer_value_addresses = pointer_value_addresses_;
+  auto& global_pointer_slots = global_pointer_slots_;
   const auto& global_types = global_types_;
   const auto& function_symbols = function_symbols_;
   const auto& type_decls = type_decls_;
@@ -962,6 +963,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   std::vector<bir::Value> lowered_args;
   std::vector<bir::TypeKind> lowered_arg_types;
   std::vector<bir::CallArgAbiInfo> lowered_arg_abi;
+  std::vector<bir::CallArgumentSourceRelationship> lowered_arg_sources;
   std::optional<std::string> callee_name;
   std::optional<bir::Value> callee_value;
   std::optional<PointerAddress> returned_pointer_address;
@@ -1143,6 +1145,78 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       abi.passed_on_stack = false;
     }
     return abi;
+  };
+
+  const auto call_arg_source_selection_for_local_slot =
+      [&](const bir::Value& value)
+          -> std::optional<bir::CallArgumentSourceSelection> {
+    if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+      return std::nullopt;
+    }
+    if (local_aggregate_slots.find(value.name) == local_aggregate_slots.end() &&
+        local_slot_types.find(value.name) == local_slot_types.end()) {
+      return std::nullopt;
+    }
+    return bir::CallArgumentSourceSelection{
+        .kind = bir::CallArgumentSourceSelectionKind::FrameSlotAddress,
+        .source_value_name = value.name,
+    };
+  };
+
+  const auto build_call_argument_source_relationships =
+      [&]() -> std::vector<bir::CallArgumentSourceRelationship> {
+    std::vector<bir::CallArgumentSourceRelationship> relationships;
+    relationships.reserve(lowered_args.size());
+    for (std::size_t index = 0; index < lowered_args.size(); ++index) {
+      const auto& value = lowered_args[index];
+      bir::CallArgumentSourceRelationship relationship{
+          .arg_index = index,
+      };
+
+      if (value.kind == bir::Value::Kind::Immediate) {
+        relationship.source_encoding =
+            bir::CallArgumentSourceEncodingKind::Immediate;
+      } else if (value.kind == bir::Value::Kind::Named) {
+        relationship.source_value_name = value.name;
+        if (value.pointer_symbol_link_name_id != c4c::kInvalidLinkName ||
+            (!value.name.empty() && value.name.front() == '@')) {
+          relationship.source_encoding =
+              bir::CallArgumentSourceEncodingKind::SymbolAddress;
+        } else if (const auto pointer_address_it =
+                       pointer_value_addresses.find(value.name);
+                   pointer_address_it != pointer_value_addresses.end() &&
+                   pointer_address_it->second.base_value.kind ==
+                       bir::Value::Kind::Named) {
+          relationship.source_encoding =
+              bir::CallArgumentSourceEncodingKind::ComputedAddress;
+          relationship.source_base_value_name =
+              pointer_address_it->second.base_value.name;
+          relationship.source_pointer_byte_delta =
+              static_cast<std::int64_t>(pointer_address_it->second.byte_offset);
+        } else if (const auto global_pointer_it =
+                       global_pointer_slots.find(value.name);
+                   global_pointer_it != global_pointer_slots.end()) {
+          relationship.source_encoding =
+              bir::CallArgumentSourceEncodingKind::ComputedAddress;
+          relationship.source_base_value_name =
+              "@" + global_pointer_it->second.global_name;
+          relationship.source_pointer_byte_delta =
+              static_cast<std::int64_t>(global_pointer_it->second.byte_offset);
+        } else if (auto selection =
+                       call_arg_source_selection_for_local_slot(value);
+                   selection.has_value()) {
+          relationship.source_encoding =
+              bir::CallArgumentSourceEncodingKind::FrameSlot;
+          relationship.source_selection = std::move(*selection);
+        } else {
+          relationship.source_encoding =
+              bir::CallArgumentSourceEncodingKind::Register;
+        }
+      }
+
+      relationships.push_back(std::move(relationship));
+    }
+    return relationships;
   };
 
   const auto maybe_resolve_direct_calloc_pointer_address =
@@ -1470,8 +1544,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     lowered_call.callee = std::move(*callee_name);
     lowered_call.callee_link_name_id = call.direct_callee_link_name_id;
   }
+  lowered_arg_sources = build_call_argument_source_relationships();
   lowered_call.args = std::move(lowered_args);
   lowered_call.arg_types = std::move(lowered_arg_types);
+  lowered_call.arg_sources = std::move(lowered_arg_sources);
   lowered_call.arg_abi = std::move(lowered_arg_abi);
   if (call.return_type.has_struct_name_id()) {
     const auto structured_return_name =

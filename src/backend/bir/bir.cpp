@@ -436,6 +436,7 @@ CallArgumentPublicationSourceRouting find_call_argument_publication_source_routi
       .arg_index = relationship->arg_index,
       .source_encoding = relationship->source_encoding,
       .source_value_id = relationship->source_value_id,
+      .source_value_name = relationship->source_value_name,
       .source_base_value_id = relationship->source_base_value_id,
       .source_base_value_name = relationship->source_base_value_name,
       .source_pointer_byte_delta = relationship->source_pointer_byte_delta,

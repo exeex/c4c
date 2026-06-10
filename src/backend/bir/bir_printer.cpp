@@ -136,6 +136,9 @@ void render_call_argument_source_annotation(
   if (source.source_value_id.has_value()) {
     out << " source_value_id=" << *source.source_value_id;
   }
+  if (source.source_value_name.has_value()) {
+    out << " source_value=" << *source.source_value_name;
+  }
   if (source.source_base_value_id.has_value()) {
     out << " source_base_value_id=" << *source.source_base_value_id;
   }

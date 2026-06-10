@@ -3330,6 +3330,219 @@ int expect_legacy_byval_call_arg_without_type_refs_still_lowers() {
   return fail("legacy byval call-argument lowering should preserve byval ABI metadata");
 }
 
+LirModule make_call_argument_source_relationship_module() {
+  LirModule module;
+  module.target_profile =
+      c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  module.type_decls.push_back("%struct.Payload = type { i32 }");
+
+  const c4c::LinkNameId sink_id = module.link_names.intern("source_sink");
+  c4c::codegen::lir::LirExternDecl sink;
+  sink.name = "source_sink";
+  sink.link_name_id = sink_id;
+  sink.return_type_str = "void";
+  sink.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(sink));
+
+  const c4c::LinkNameId extern_data_id = module.link_names.intern("extern_data");
+  LirGlobal extern_data;
+  extern_data.name = "extern_data";
+  extern_data.link_name_id = extern_data_id;
+  extern_data.llvm_type = "i32";
+  extern_data.is_extern_decl = true;
+  extern_data.align_bytes = 4;
+  module.globals.push_back(std::move(extern_data));
+
+  const c4c::LinkNameId payload_id = module.link_names.intern("payload");
+  LirGlobal payload;
+  payload.name = "payload";
+  payload.link_name_id = payload_id;
+  payload.llvm_type = "%struct.Payload";
+  payload.init_text = "{ i32 9 }";
+  payload.align_bytes = 4;
+  module.globals.push_back(std::move(payload));
+
+  const c4c::LinkNameId bytes_id = module.link_names.intern("bytes");
+  LirGlobal bytes;
+  bytes.name = "bytes";
+  bytes.link_name_id = bytes_id;
+  bytes.qualifier = "constant ";
+  bytes.llvm_type = "[8 x i8]";
+  bytes.init_text = "c\"abcdefgh\"";
+  bytes.align_bytes = 1;
+  module.globals.push_back(std::move(bytes));
+
+  LirFunction function;
+  function.name = "call_argument_source_relationships";
+  function.signature_text = "define void @call_argument_source_relationships()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%bytes.plus.four"),
+      .element_type = "[8 x i8]",
+      .ptr = LirOperand("@bytes"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 4"},
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%sum.arg"),
+      .opcode = lir::LirBinaryOpcodeRef("add"),
+      .type_str = "i32",
+      .lhs = LirOperand("11"),
+      .rhs = LirOperand("31"),
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@source_sink"),
+      .direct_callee_link_name_id = sink_id,
+      .callee_type_suffix = "(i32, i32, ptr, ptr, ptr)",
+      .args_str =
+          "i32 %sum.arg, i32 7, ptr @extern_data, ptr %bytes.plus.four, "
+          "ptr byval(%struct.Payload) @payload",
+      .callee_signature =
+          void_call_signature({"i32", "i32", "ptr", "ptr", "ptr"}),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_production_call_argument_source_relationships_lower() {
+  auto result = try_lower_to_bir_with_options(
+      make_call_argument_source_relationship_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail(
+        "production call-argument source relationship fixture should lower");
+  }
+  const c4c::backend::bir::Function* function = nullptr;
+  for (const auto& candidate : result.module->functions) {
+    if (candidate.name == "call_argument_source_relationships") {
+      function = &candidate;
+      break;
+    }
+  }
+  if (function == nullptr || function->blocks.empty()) {
+    return fail("production call-argument source fixture lost its block");
+  }
+  std::size_t call_instruction_index = 0;
+  const c4c::backend::bir::CallInst* call = nullptr;
+  const auto& block = function->blocks.front();
+  for (std::size_t inst_index = 0; inst_index < block.insts.size();
+       ++inst_index) {
+    const auto& inst = block.insts[inst_index];
+    if (const auto* candidate =
+            std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+      call = candidate;
+      call_instruction_index = inst_index;
+      break;
+    }
+  }
+  if (call == nullptr || call->args.size() != 5 ||
+      call->arg_sources.size() != call->args.size()) {
+    return fail(
+        "production call should publish one source relationship per argument");
+  }
+
+  const auto* scalar =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 0);
+  const auto* immediate =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 1);
+  const auto* symbol =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 2);
+  const auto* computed =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 3);
+  const auto* byval =
+      c4c::backend::bir::find_call_argument_source_relationship(*call, 4);
+  if (scalar == nullptr || immediate == nullptr || symbol == nullptr ||
+      computed == nullptr || byval == nullptr) {
+    return fail("production call source lookup should find every argument");
+  }
+  if (scalar->source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::Register ||
+      scalar->source_value_name != std::optional<std::string>{"%sum.arg"}) {
+    return fail("production scalar call argument lost source value identity");
+  }
+  if (immediate->source_encoding !=
+      c4c::backend::bir::CallArgumentSourceEncodingKind::Immediate) {
+    return fail("production immediate call argument lost immediate encoding");
+  }
+  if (symbol->source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::SymbolAddress ||
+      symbol->source_value_name != std::optional<std::string>{"@extern_data"}) {
+    return fail("production symbol call argument lost symbol source identity");
+  }
+  if (computed->source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::ComputedAddress ||
+      computed->source_base_value_name != std::optional<std::string>{"@bytes"} ||
+      computed->source_pointer_byte_delta != std::optional<std::int64_t>{4}) {
+    return fail(
+        "production computed pointer call argument lost base/delta source identity");
+  }
+  if (byval->source_encoding !=
+          c4c::backend::bir::CallArgumentSourceEncodingKind::SymbolAddress ||
+      byval->source_value_name != std::optional<std::string>{"@payload"} ||
+      !call->arg_abi[4].byval_copy) {
+    return fail("production byval call argument lost aggregate source identity");
+  }
+  const auto scalar_routing =
+      c4c::backend::bir::find_call_argument_publication_source_routing(*call, 0);
+  const auto symbol_routing =
+      c4c::backend::bir::find_call_argument_publication_source_routing(*call, 2);
+  const auto computed_routing =
+      c4c::backend::bir::find_call_argument_publication_source_routing(*call, 3);
+  if (!scalar_routing.available ||
+      scalar_routing.source_value_name !=
+          std::optional<std::string>{"%sum.arg"} ||
+      !symbol_routing.available ||
+      symbol_routing.source_value_name !=
+          std::optional<std::string>{"@extern_data"} ||
+      !computed_routing.available ||
+      computed_routing.source_base_value_name !=
+          std::optional<std::string>{"@bytes"} ||
+      computed_routing.source_pointer_byte_delta !=
+          std::optional<std::int64_t>{4}) {
+    return fail(
+        "production call argument publication routing should expose BIR source facts");
+  }
+  const auto producer =
+      c4c::backend::bir::find_call_argument_source_producer_materialization(
+          block, *call, call_instruction_index, 0);
+  if (!producer.available ||
+      producer.producer_kind !=
+          c4c::backend::bir::CallArgumentSourceProducerKind::Binary ||
+      !producer.materializable ||
+      producer.produced_value == nullptr ||
+      producer.produced_value->name != "%sum.arg") {
+    return fail(
+        "production call argument source-producer query should see the lowered scalar producer");
+  }
+  for (const auto& source : call->arg_sources) {
+    if (source.source_selection.has_value() &&
+        (source.source_selection->source_stack_offset_bytes.has_value() ||
+         source.source_selection->source_size_bytes.has_value() ||
+         source.source_selection->source_align_bytes.has_value() ||
+         source.source_selection->address_materialization_frame_slot_id
+             .has_value() ||
+         source.source_selection->address_materialization_byte_offset
+             .has_value())) {
+      return fail(
+          "production BIR call source relationships must not publish prepared stack-layout fields");
+    }
+  }
+  return 0;
+}
+
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed() {
   auto result = try_lower_to_bir_with_options(
       make_byval_call_arg_boundary_module({lir::LirTypeRef("ptr byval(%struct.Payload)")}),
@@ -7180,6 +7393,12 @@ int main() {
           expect_legacy_byval_call_arg_without_type_refs_still_lowers();
       legacy_byval_status != 0) {
     return legacy_byval_status;
+  }
+
+  if (const int production_arg_source_status =
+          expect_production_call_argument_source_relationships_lower();
+      production_arg_source_status != 0) {
+    return production_arg_source_status;
   }
 
   if (const int missing_byval_metadata_status =

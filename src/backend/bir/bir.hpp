@@ -829,9 +829,15 @@ struct CallArgumentSourceSelection {
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::int64_t> source_pointer_byte_delta;
   std::optional<SlotNameId> source_slot_id;
+  // Prepared stack layout facts, not BIR source-identity authority. Production
+  // BIR lowering must leave these empty; they exist only so legacy fixture
+  // comparisons can quarantine prepared-only policy before consumers switch.
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<std::size_t> source_size_bytes;
   std::optional<std::size_t> source_align_bytes;
+  // Prepared address-materialization placement facts, not BIR source-identity
+  // authority. Production BIR lowering may identify the source value/slot, but
+  // not the instruction index, frame slot, or byte offset used by ABI layout.
   std::optional<BlockLabelId> address_materialization_block_label;
   std::optional<std::size_t> address_materialization_inst_index;
   std::optional<SlotNameId> address_materialization_frame_slot_id;
@@ -885,6 +891,7 @@ struct CallArgumentSourceRelationship {
   CallArgumentSourceEncodingKind source_encoding =
       CallArgumentSourceEncodingKind::None;
   std::optional<std::size_t> source_value_id;
+  std::optional<std::string> source_value_name;
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::string> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
@@ -899,6 +906,7 @@ struct CallArgumentPublicationSourceRouting {
   CallArgumentSourceEncodingKind source_encoding =
       CallArgumentSourceEncodingKind::None;
   std::optional<std::size_t> source_value_id;
+  std::optional<std::string> source_value_name;
   std::optional<std::size_t> source_base_value_id;
   std::optional<std::string> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
