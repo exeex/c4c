@@ -1,60 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/163_bir_edge_join_source_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add BIR Annotation Records
+Current Step ID: 3
+Current Step Title: Add Lookup/Index Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for
+Completed Step 3 for
 `ideas/open/163_bir_edge_join_source_annotation_schema.md`.
-Added typed Route 5 BIR edge and current-block join-source annotation records
-and construction helpers without switching production consumers:
+Added function-local Route 5 lookup/index helpers over the BIR edge and
+current-block join-source annotation records without switching production
+consumers:
 
-- `Route5PublicationStatus`, `Route5PublicationScope`,
-  `Route5PublicationSourceKind`, and `Route5PublicationValueRole` provide
-  target-neutral vocabulary for edge and join-source semantic facts.
-- `Route5CfgEdgePublicationRecord` captures predecessor/successor labels,
-  destination value identity, source value identity, source producer kind,
-  source producer instruction/block identity, explicit no-source status, and
-  optional Route 3 memory-source identity.
-- `Route5CurrentBlockJoinSourceRecord` captures current-block join PHI
-  incoming source identity, destination value identity, predecessor/successor
-  labels, and same-block source producer identity.
-- `Route5PublicationValueRecord` links edge/join records back to destination
-  and source value roles.
-- Construction helpers:
-  `route5_publication_source_kind(...)`,
-  `route5_cfg_edge_publication_record(...)`,
-  `route5_current_block_join_source_records(...)`,
-  `route5_edge_destination_value_record(...)`,
-  `route5_edge_source_value_record(...)`,
-  `route5_join_destination_value_record(...)`, and
-  `route5_join_source_value_record(...)`.
+- `Route5EdgeJoinSourceIndex` groups Route 5 edge records, current-block
+  join-source records, and value-link records rebuilt from a `bir::Function`.
+- `route5_build_edge_join_source_index(...)` rebuilds edge records from PHI
+  incoming predecessor/successor/destination tuples and join-source records
+  from block-local PHI incoming facts.
+- `route5_find_cfg_edge_publication(...)` looks up predecessor/successor/
+  destination keyed edge answers by stable BIR block label/id and destination
+  value name/type.
+- `route5_find_current_block_join_source(...)` looks up successor/destination/
+  source keyed join-source answers by stable BIR block label/id and value
+  name/type or immediate source identity.
+- The helpers return explicit Route 5 statuses for memory-source, no-source,
+  missing-source, missing destination, missing successor, and no-match/type
+  mismatch cases instead of relying on absent records.
 
 Focused `backend_prepared_lookup_helper_test.cpp` coverage now proves:
 
-- Edge-copy source positive records for load-local memory-source and named
-  non-memory source cases.
-- Route 5 memory-source records reuse Route 3 memory access identity and match
-  the existing prepared/MIR load-local edge oracle.
-- Edge value-link records expose destination and source value roles.
-- Edge fail-closed records explicitly represent missing-source, wrong-edge
-  no-source, and missing-destination cases.
-- Current-block join-source records expose named, immediate, and stack-source
-  PHI incoming identities.
-- Join value-link records expose destination and source value roles.
-- Join fail-closed records explicitly represent no-PHI missing-publication and
-  missing source producer cases.
+- Edge index success for load-local memory-source publication, including Route
+  3 memory identity preservation.
+- Edge index success for multi-predecessor PHIs where the requested predecessor
+  is not the first successor/destination candidate.
+- Edge index fail-closed behavior for missing source producer, destination
+  type mismatch, missing destination, wrong predecessor/no-source, and wrong
+  successor.
+- Current-block join index success for named and immediate PHI incoming
+  sources.
+- Current-block join index fail-closed behavior for destination type mismatch,
+  missing source value, missing destination, and missing source producer.
 
 No MIR, target/codegen, or prealloc production consumer was switched.
 
 ## Suggested Next
 
-Execute Step 3 by adding function-local Route 5 lookup/index helpers over the
-new BIR edge and join-source annotation records.
+Execute Step 4 by migrating the narrowest shared MIR Route 5 edge or
+join-source query consumer to read Route 5 BIR record/index helpers while
+preserving prepared/MIR oracle checks.
 
 ## Watchouts
 
@@ -74,12 +69,14 @@ new BIR edge and join-source annotation records.
 - Step 2 intentionally did not switch
   `mir::find_bir_cfg_edge_publication_source_identity(...)` or
   `mir::find_bir_current_block_join_source_identity(...)`.
-- Step 3 indexes should be rebuildable from Route 5 BIR records and must not
-  become prepared edge-publication lookup containers.
+- Step 3 intentionally did not switch those MIR consumers either.
+- Route 5 indexes are rebuildable from BIR records and must remain
+  target-neutral lookup helpers, not prepared edge-publication lookup
+  containers.
 
 ## Proof
 
-Exact delegated Step 2 proof passed:
+Exact delegated Step 3 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log

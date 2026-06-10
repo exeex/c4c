@@ -3038,6 +3038,76 @@ int verify_current_block_join_parallel_copy_source_query() {
       route5_named_join_source.value.name != "%current.incoming") {
     return fail("Route 5 current-block join value records should link destination and source values");
   }
+  bir::Function route5_join_function;
+  route5_join_function.blocks.push_back(block);
+  const auto& route5_join_block = route5_join_function.blocks.front();
+  const auto route5_join_index =
+      bir::route5_build_edge_join_source_index(route5_join_function);
+  const auto indexed_route5_named_join =
+      bir::route5_find_current_block_join_source(
+          route5_join_index,
+          route5_join_block,
+          bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+          bir::Value::named(bir::TypeKind::I32, "%current.incoming"));
+  if (!route5_join_index ||
+      !indexed_route5_named_join ||
+      indexed_route5_named_join.status !=
+          bir::Route5PublicationStatus::Available ||
+      indexed_route5_named_join.source_producer_kind !=
+          bir::Route5PublicationSourceKind::Binary ||
+      indexed_route5_named_join.source_producer_instruction !=
+          &route5_join_block.insts[3] ||
+      indexed_route5_named_join.source_producer_instruction_index !=
+          std::size_t{3}) {
+    return fail("Route 5 join index should find named current-block join source");
+  }
+  const auto indexed_route5_immediate_join =
+      bir::route5_find_current_block_join_source(
+          route5_join_index,
+          route5_join_block,
+          bir::Value::named(bir::TypeKind::I32,
+                            "%current.immediate_destination"),
+          bir::Value::immediate_i32(9));
+  if (!indexed_route5_immediate_join ||
+      indexed_route5_immediate_join.source_value_kind !=
+          bir::Value::Kind::Immediate ||
+      indexed_route5_immediate_join.source_producer_kind !=
+          bir::Route5PublicationSourceKind::Immediate) {
+    return fail("Route 5 join index should find immediate current-block join source");
+  }
+  const auto indexed_route5_wrong_join_type =
+      bir::route5_find_current_block_join_source(
+          route5_join_index,
+          route5_join_block,
+          bir::Value::named(bir::TypeKind::I64, "%current.destination"),
+          bir::Value::named(bir::TypeKind::I32, "%current.incoming"));
+  if (indexed_route5_wrong_join_type ||
+      indexed_route5_wrong_join_type.status !=
+          bir::Route5PublicationStatus::NoMatch) {
+    return fail("Route 5 join index should fail closed for destination type mismatch");
+  }
+  const auto indexed_route5_missing_join_source =
+      bir::route5_find_current_block_join_source(
+          route5_join_index,
+          route5_join_block,
+          bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+          bir::Value::named(bir::TypeKind::I32, "%current.other"));
+  if (indexed_route5_missing_join_source ||
+      indexed_route5_missing_join_source.status !=
+          bir::Route5PublicationStatus::MissingSourceValue) {
+    return fail("Route 5 join index should fail closed for missing source value");
+  }
+  const auto indexed_route5_missing_join_destination =
+      bir::route5_find_current_block_join_source(
+          route5_join_index,
+          route5_join_block,
+          bir::Value::named(bir::TypeKind::I32, "%current.missing"),
+          bir::Value::named(bir::TypeKind::I32, "%current.incoming"));
+  if (indexed_route5_missing_join_destination ||
+      indexed_route5_missing_join_destination.status !=
+          bir::Route5PublicationStatus::MissingPublication) {
+    return fail("Route 5 join index should fail closed for missing destination");
+  }
   if (!contains_value_id(query.incoming_expression_value_ids, incoming_id) ||
       !contains_value_id(query.incoming_expression_value_ids, operand_id) ||
       !contains_value_name(query.incoming_expression_value_names, incoming_name) ||
@@ -3177,6 +3247,23 @@ int verify_current_block_join_parallel_copy_source_query() {
           bir::Route5PublicationStatus::MissingSourceProducer ||
       route5_missing_join.front().source_value_name != "%current.missing_source") {
     return fail("Route 5 current-block join records should diagnose missing source producers");
+  }
+  bir::Function route5_missing_join_function;
+  route5_missing_join_function.blocks.push_back(missing_source_block);
+  const auto& route5_missing_join_block =
+      route5_missing_join_function.blocks.front();
+  const auto route5_missing_join_index =
+      bir::route5_build_edge_join_source_index(route5_missing_join_function);
+  const auto indexed_route5_missing_join_producer =
+      bir::route5_find_current_block_join_source(
+          route5_missing_join_index,
+          route5_missing_join_block,
+          bir::Value::named(bir::TypeKind::I32, "%current.destination"),
+          bir::Value::named(bir::TypeKind::I32, "%current.missing_source"));
+  if (indexed_route5_missing_join_producer ||
+      indexed_route5_missing_join_producer.status !=
+          bir::Route5PublicationStatus::MissingSourceProducer) {
+    return fail("Route 5 join index should preserve missing source producer status");
   }
 
   return 0;
@@ -4085,6 +4172,169 @@ int verify_edge_publication_source_producer_facts() {
       route5_missing_destination.status !=
           bir::Route5PublicationStatus::MissingPublication) {
     return fail("Route 5 edge record should fail closed for missing destination");
+  }
+  bir::Function route5_edge_function;
+  route5_edge_function.blocks.push_back(predecessor_block);
+  route5_edge_function.blocks.push_back(successor_block);
+  const auto& route5_predecessor = route5_edge_function.blocks.front();
+  const auto& route5_successor = route5_edge_function.blocks.back();
+  const auto route5_edge_index =
+      bir::route5_build_edge_join_source_index(route5_edge_function);
+  const auto indexed_route5_load_edge =
+      bir::route5_find_cfg_edge_publication(route5_edge_index,
+                                            route5_predecessor,
+                                            route5_successor,
+                                            load_destination);
+  if (!route5_edge_index ||
+      !indexed_route5_load_edge ||
+      indexed_route5_load_edge.status !=
+          bir::Route5PublicationStatus::MemorySource ||
+      indexed_route5_load_edge.source_memory_access.instruction !=
+          &route5_predecessor.insts[0] ||
+      indexed_route5_load_edge.source_memory_access.node_kind !=
+          bir::Route3MemoryAccessNodeKind::LoadLocal ||
+      indexed_route5_load_edge.source_value_name != loaded.name ||
+      indexed_route5_load_edge.destination_value_name != load_destination.name) {
+    return fail("Route 5 edge index should find load-local memory-source edge");
+  }
+  const auto indexed_route5_missing_source =
+      bir::route5_find_cfg_edge_publication(route5_edge_index,
+                                            route5_predecessor,
+                                            route5_successor,
+                                            unavailable_destination);
+  if (indexed_route5_missing_source ||
+      indexed_route5_missing_source.status !=
+          bir::Route5PublicationStatus::MissingSourceProducer ||
+      indexed_route5_missing_source.source_value_name != "%missing.producer") {
+    return fail("Route 5 edge index should preserve missing-source status");
+  }
+  const auto indexed_route5_wrong_destination_type =
+      bir::route5_find_cfg_edge_publication(
+          route5_edge_index,
+          route5_predecessor,
+          route5_successor,
+          bir::Value::named(bir::TypeKind::I64, load_destination.name));
+  if (indexed_route5_wrong_destination_type ||
+      indexed_route5_wrong_destination_type.status !=
+          bir::Route5PublicationStatus::NoMatch) {
+    return fail("Route 5 edge index should fail closed for destination type mismatch");
+  }
+  const auto indexed_route5_missing_destination =
+      bir::route5_find_cfg_edge_publication(
+          route5_edge_index,
+          route5_predecessor,
+          route5_successor,
+          bir::Value::named(bir::TypeKind::I32, "%producer.missing"));
+  if (indexed_route5_missing_destination ||
+      indexed_route5_missing_destination.status !=
+          bir::Route5PublicationStatus::MissingPublication) {
+    return fail("Route 5 edge index should fail closed for missing destination");
+  }
+  auto route5_wrong_predecessor = route5_predecessor;
+  route5_wrong_predecessor.label = "edge_producers.other_pred";
+  route5_wrong_predecessor.label_id = c4c::BlockLabelId{777};
+  const auto indexed_route5_wrong_predecessor =
+      bir::route5_find_cfg_edge_publication(route5_edge_index,
+                                            route5_wrong_predecessor,
+                                            route5_successor,
+                                            load_destination);
+  if (indexed_route5_wrong_predecessor ||
+      indexed_route5_wrong_predecessor.status !=
+          bir::Route5PublicationStatus::NoSource ||
+      !indexed_route5_wrong_predecessor.explicit_no_source) {
+    return fail("Route 5 edge index should represent wrong predecessor as no-source");
+  }
+  auto route5_wrong_successor = route5_successor;
+  route5_wrong_successor.label = "edge_producers.other_succ";
+  route5_wrong_successor.label_id = c4c::BlockLabelId{778};
+  const auto indexed_route5_wrong_successor =
+      bir::route5_find_cfg_edge_publication(route5_edge_index,
+                                            route5_predecessor,
+                                            route5_wrong_successor,
+                                            load_destination);
+  if (indexed_route5_wrong_successor ||
+      indexed_route5_wrong_successor.status !=
+          bir::Route5PublicationStatus::MissingSuccessor) {
+    return fail("Route 5 edge index should fail closed for wrong successor");
+  }
+  bir::Function route5_multi_pred_function;
+  bir::Block route5_multi_first_pred;
+  route5_multi_first_pred.label = "edge_producers.first_pred";
+  route5_multi_first_pred.label_id = c4c::BlockLabelId{901};
+  route5_multi_first_pred.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%multi.first"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  bir::Block route5_multi_second_pred;
+  route5_multi_second_pred.label = "edge_producers.second_pred";
+  route5_multi_second_pred.label_id = c4c::BlockLabelId{902};
+  route5_multi_second_pred.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%multi.second"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  bir::Block route5_multi_successor;
+  route5_multi_successor.label = "edge_producers.multi_succ";
+  route5_multi_successor.label_id = c4c::BlockLabelId{903};
+  route5_multi_successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%multi.dst"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = route5_multi_first_pred.label,
+              .value = bir::Value::named(bir::TypeKind::I32, "%multi.first"),
+              .label_id = route5_multi_first_pred.label_id,
+          },
+          bir::PhiIncoming{
+              .label = route5_multi_second_pred.label,
+              .value = bir::Value::named(bir::TypeKind::I32, "%multi.second"),
+              .label_id = route5_multi_second_pred.label_id,
+          },
+      },
+  });
+  route5_multi_pred_function.blocks.push_back(route5_multi_first_pred);
+  route5_multi_pred_function.blocks.push_back(route5_multi_second_pred);
+  route5_multi_pred_function.blocks.push_back(route5_multi_successor);
+  const auto& route5_indexed_first_pred =
+      route5_multi_pred_function.blocks[0];
+  const auto& route5_indexed_second_pred =
+      route5_multi_pred_function.blocks[1];
+  const auto& route5_indexed_multi_successor =
+      route5_multi_pred_function.blocks[2];
+  const auto route5_multi_pred_index =
+      bir::route5_build_edge_join_source_index(route5_multi_pred_function);
+  const auto indexed_route5_second_pred =
+      bir::route5_find_cfg_edge_publication(
+          route5_multi_pred_index,
+          route5_indexed_second_pred,
+          route5_indexed_multi_successor,
+          bir::Value::named(bir::TypeKind::I32, "%multi.dst"));
+  if (!indexed_route5_second_pred ||
+      indexed_route5_second_pred.predecessor_label_id !=
+          route5_multi_second_pred.label_id ||
+      indexed_route5_second_pred.source_value_name != "%multi.second" ||
+      indexed_route5_second_pred.source_producer_instruction !=
+          &route5_indexed_second_pred.insts[0]) {
+    return fail("Route 5 edge index should continue past first predecessor and find later matching predecessor");
+  }
+  auto route5_multi_wrong_pred = route5_indexed_first_pred;
+  route5_multi_wrong_pred.label = "edge_producers.missing_pred";
+  route5_multi_wrong_pred.label_id = c4c::BlockLabelId{904};
+  const auto indexed_route5_multi_wrong_pred =
+      bir::route5_find_cfg_edge_publication(
+          route5_multi_pred_index,
+          route5_multi_wrong_pred,
+          route5_indexed_multi_successor,
+          bir::Value::named(bir::TypeKind::I32, "%multi.dst"));
+  if (indexed_route5_multi_wrong_pred ||
+      indexed_route5_multi_wrong_pred.status !=
+          bir::Route5PublicationStatus::NoSource ||
+      !indexed_route5_multi_wrong_pred.explicit_no_source) {
+    return fail("Route 5 edge index should report no-source only after all predecessors miss");
   }
 
   auto wrong_predecessor_request = load_request;

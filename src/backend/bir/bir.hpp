@@ -1784,6 +1784,15 @@ struct Route5PublicationValueRecord {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+struct Route5EdgeJoinSourceIndex {
+  const Function* function = nullptr;
+  std::vector<Route5CfgEdgePublicationRecord> edge_records;
+  std::vector<Route5CurrentBlockJoinSourceRecord> join_records;
+  std::vector<Route5PublicationValueRecord> value_records;
+
+  [[nodiscard]] explicit operator bool() const { return function != nullptr; }
+};
+
 [[nodiscard]] Route5PublicationSourceKind
 route5_publication_source_kind(Route1ProducerKind kind);
 
@@ -1812,6 +1821,23 @@ route5_join_destination_value_record(
 [[nodiscard]] Route5PublicationValueRecord
 route5_join_source_value_record(
     const Route5CurrentBlockJoinSourceRecord& join);
+
+[[nodiscard]] Route5EdgeJoinSourceIndex
+route5_build_edge_join_source_index(const Function& function);
+
+[[nodiscard]] Route5CfgEdgePublicationRecord
+route5_find_cfg_edge_publication(
+    const Route5EdgeJoinSourceIndex& index,
+    const Block& predecessor_block,
+    const Block& successor_block,
+    const Value& destination_value);
+
+[[nodiscard]] Route5CurrentBlockJoinSourceRecord
+route5_find_current_block_join_source(
+    const Route5EdgeJoinSourceIndex& index,
+    const Block& successor_block,
+    const Value& destination_value,
+    const Value& source_value);
 
 struct CallArgumentSourceProducerMaterialization {
   bool available = false;
