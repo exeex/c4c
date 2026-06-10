@@ -1,51 +1,88 @@
 Status: Active
 Source Idea Path: ideas/open/170_route4_block_entry_publication_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate The Selected Consumer
+Current Step ID: 4
+Current Step Title: Contract Only Proven-Private Prepared Surface
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 selected-consumer migration completed for
-`mir::find_bir_block_entry_publication_identity(...)`.
+Step 4 evidence pass completed for the prepared block-entry publication helper
+surface after the Step 3 MIR migration. No contraction is safe now.
 
-Changed `src/backend/mir/query.cpp` so block-entry publication identity now
-builds a typed Route 4 publication availability index for the successor block
-and uses `bir::route4_find_block_entry_publication(...)` as the primary lookup
-when the destination type is known. For destination-name requests with no
-explicit type, it uses the Route 4 block-entry availability records directly as
-the primary source instead of the older semantic PHI scan.
+Scanned declarations/definitions and direct consumers:
+- `PreparedBlockEntryPublicationStatus` and
+  `prepared_block_entry_publication_status_name(...)`: still used by
+  `src/backend/prealloc/prepared_printer/value_locations.cpp` and oracle tests.
+- `PreparedBlockEntryPublication`: still public through
+  `src/backend/prealloc/value_locations.hpp`,
+  `src/backend/prealloc/publication_plans.hpp`,
+  `src/backend/mir/x86/prepared/prepared.hpp`, AArch64 dispatch helpers, x86
+  publication-plan tests, and Route 4 oracle tests.
+- `PreparedBlockEntryPublication` fields `status`, `home`,
+  `destination_value_id`, `destination_kind`, `destination_storage_kind`, and
+  `destination_register_name`: still read by production AArch64 current-block
+  entry publication paths and/or scalar publication planning. `bundle` and
+  `move` remain observable through helper tests and are tied to the public
+  helper result shape.
+- `PreparedCurrentBlockEntryPublicationStatus` and
+  `prepared_current_block_entry_publication_status_name(...)`: status remains
+  part of the public prepared query result and is still asserted by Route 4
+  oracle tests.
+- `PreparedCurrentBlockEntryPublicationQueryInputs` fields `names`,
+  `regalloc`, `value_locations`, `value_home_lookups`, and `successor_label`:
+  still required by `find_prepared_current_block_entry_publication(...)`
+  callers in AArch64 current-block entry publication code and oracle tests.
+- `PreparedCurrentBlockEntryPublication` fields `status`, `publication`,
+  `destination_home`, `destination_value_id`, and `destination_value_name`:
+  still consumed by AArch64 publication-register selection and Route 4 oracle
+  tests.
+- `prepared_block_entry_publication_available(...)`: still used by
+  `src/backend/prealloc/prepared_lookups.cpp`,
+  `src/backend/prealloc/publication_plans.cpp`,
+  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`,
+  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`, and tests.
+- `collect_prepared_block_entry_publications(...)`: still used by
+  `src/backend/prealloc/prepared_lookups.cpp`,
+  `src/backend/prealloc/prepared_printer/value_locations.cpp`,
+  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`,
+  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`,
+  `src/backend/mir/x86/prepared/prepared.hpp`, and tests.
+- `find_prepared_current_block_entry_publication(...)`: still used by
+  `src/backend/mir/aarch64/codegen/dispatch_publication.cpp` and prepared/Route
+  4 oracle tests. AST query also confirmed the `bir::Value` overload delegates
+  to the `PreparedValueId` overload inside `src/backend/prealloc/prepared_lookups.cpp`.
+- `PreparedScalarPublicationPlan::current_block_entry_publication`,
+  `PreparedScalarPublicationPlan::current_block_entry_publication_available`,
+  and `PreparedScalarPublicationInputs::current_block_entry_publication`: still
+  part of scalar publication planning in
+  `src/backend/prealloc/publication_plans.cpp`, AArch64 comparison/value-home
+  materialization, and x86 publication-plan coverage.
 
-Preserved the Step 2 fail-closed contract:
-- missing or mismatched successor label returns `MissingSuccessorLabel`
-- missing destination key returns `MissingDestinationValue`
-- Route 4 destination type mismatch (`NoMatch`) returns `MissingDestinationValue`
-- absent Route 4 block-entry publication returns `MissingPublication`
-- available records are mapped back onto the original successor block for MIR
-  instruction/PHI/value pointers
+Decision: keep the prepared block-entry publication helper surface public. The
+Step 3 MIR migration removed the selected MIR semantic consumer, but remaining
+current-block, target/codegen, printer, x86 wrapper, scalar publication-plan,
+and oracle consumers are direct evidence against hiding or narrowing the helper
+surface in this packet.
 
 ## Suggested Next
 
-Supervisor should review and commit the Step 3 code-plus-`todo.md` slice, then
-delegate the next plan step or plan-owner lifecycle decision according to the
-active runbook.
+Proceed to Step 5 validation and handoff for the Route 4 migration slice. No
+follow-up contraction packet is recommended from current evidence.
 
 ## Watchouts
 
-- `src/backend/mir/query.hpp` did not need changes; the existing request/result
-  shape preserved behavior.
-- Publication emission/storage mechanics, prepared helper public surface,
-  AArch64 codegen, tests, `plan.md`, and source ideas were left untouched.
-- The no-explicit-type path intentionally reads Route 4 availability records
-  directly because `route4_find_block_entry_publication(...)` requires a typed
-  destination `Value`.
+- Direct prepared helper consumers remain outside the migrated MIR query:
+  `dispatch_publication.cpp`, `dispatch_producers.cpp`, prepared printer,
+  x86 prepared wrapper, scalar publication planning, and oracle tests.
+- No exact contraction-owned files or contraction proof command are recorded
+  because no helper or field is proven private.
+- Do not treat test-only uses as the only blocker; there are still production
+  target/codegen and printer consumers.
 
 ## Proof
 
-Ran exact delegated proof; passed 3/3 tests. Proof log: `test_after.log`.
-
-```bash
-(cmake --build build --target backend_prealloc_block_entry_publications_test backend_prepared_lookup_helper_test backend_prepare_frame_stack_call_contract_test && ctest --test-dir build -R '^(backend_prealloc_block_entry_publications|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract)$' --output-on-failure) > test_after.log 2>&1
-```
+No build or tests required for this analysis-only packet. Used `rg` plus
+`c4c-clang-tool`/`c4c-clang-tool-ccdb` direct symbol queries. `test_after.log`
+was not touched.
