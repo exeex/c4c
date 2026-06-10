@@ -135,6 +135,50 @@ struct BirCurrentBlockPublicationIdentity {
   [[nodiscard]] explicit operator bool() const { return available; }
 };
 
+enum class BirBlockEntryPublicationStatus {
+  Available,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingPublication,
+};
+
+struct BirBlockEntryPublicationIdentityRequest {
+  const bir::Block* successor_block = nullptr;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Value* destination_value = nullptr;
+  std::size_t destination_value_id = 0;
+  std::string_view destination_value_name;
+  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+
+  [[nodiscard]] explicit operator bool() const {
+    return successor_block != nullptr &&
+           (destination_value != nullptr ||
+            !destination_value_name.empty() ||
+            destination_value_name_id != c4c::kInvalidValueName);
+  }
+};
+
+struct BirBlockEntryPublicationIdentity {
+  bool available = false;
+  BirBlockEntryPublicationStatus status =
+      BirBlockEntryPublicationStatus::MissingPublication;
+  const bir::Inst* instruction = nullptr;
+  const bir::PhiInst* phi = nullptr;
+  std::size_t instruction_index = 0;
+  const bir::Value* destination_value = nullptr;
+  std::size_t destination_value_id = 0;
+  SameBlockValueIdentity destination_value_identity;
+  std::string_view destination_value_name;
+  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
 struct BirSameBlockGlobalLoadAccessRequest {
   const bir::Block* block = nullptr;
   std::string_view block_label;
@@ -302,6 +346,10 @@ find_bir_same_block_load_local_source_identity(
 [[nodiscard]] BirCurrentBlockPublicationIdentity
 find_bir_current_block_publication_identity(
     BirCurrentBlockPublicationIdentityRequest request);
+
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    BirBlockEntryPublicationIdentityRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

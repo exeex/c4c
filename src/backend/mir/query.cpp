@@ -257,6 +257,41 @@ void populate_bir_memory_address_identity(
                                       : bir::TypeKind::Void;
 }
 
+[[nodiscard]] std::string_view destination_value_name(
+    const BirBlockEntryPublicationIdentityRequest& request) {
+  if (!request.destination_value_name.empty()) {
+    return request.destination_value_name;
+  }
+  if (request.destination_value != nullptr &&
+      request.destination_value->kind == bir::Value::Kind::Named) {
+    return request.destination_value->name;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::TypeKind destination_value_type(
+    const BirBlockEntryPublicationIdentityRequest& request) {
+  if (request.destination_value_type != bir::TypeKind::Void) {
+    return request.destination_value_type;
+  }
+  return request.destination_value != nullptr ? request.destination_value->type
+                                             : bir::TypeKind::Void;
+}
+
+[[nodiscard]] bool successor_block_label_matches(
+    const BirBlockEntryPublicationIdentityRequest& request) {
+  if (request.successor_block == nullptr) {
+    return false;
+  }
+  if (request.successor_label_id != c4c::kInvalidBlockLabel &&
+      request.successor_block->label_id != c4c::kInvalidBlockLabel &&
+      request.successor_label_id != request.successor_block->label_id) {
+    return false;
+  }
+  return request.successor_label.empty() ||
+         request.successor_label == request.successor_block->label;
+}
+
 [[nodiscard]] bool same_local_slot_identity(
     const BirMemoryAccessIdentity& lhs,
     const BirMemoryAccessIdentity& rhs) {
@@ -460,6 +495,66 @@ find_bir_current_block_publication_identity(
       .value_name = value_name,
       .source_producer_kind = producer.kind,
   };
+}
+
+[[nodiscard]] BirBlockEntryPublicationIdentity
+find_bir_block_entry_publication_identity(
+    BirBlockEntryPublicationIdentityRequest request) {
+  BirBlockEntryPublicationIdentity result{
+      .destination_value_id = request.destination_value_id,
+      .destination_value_name_id = request.destination_value_name_id,
+  };
+  if (request.successor_block != nullptr) {
+    result.successor_label =
+        normalized_block_label(*request.successor_block, request.successor_label);
+    result.successor_label_id = request.successor_block->label_id != c4c::kInvalidBlockLabel
+                                    ? request.successor_block->label_id
+                                    : request.successor_label_id;
+  }
+  if (request.successor_block == nullptr || !successor_block_label_matches(request)) {
+    result.status = BirBlockEntryPublicationStatus::MissingSuccessorLabel;
+    return result;
+  }
+
+  const auto value_name = destination_value_name(request);
+  const auto value_type = destination_value_type(request);
+  if (value_name.empty()) {
+    result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+    result.destination_value_type = value_type;
+    return result;
+  }
+  result.destination_value_name = value_name;
+  result.destination_value_type = value_type;
+
+  for (std::size_t index = 0; index < request.successor_block->insts.size();
+       ++index) {
+    const auto& inst = request.successor_block->insts[index];
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.kind != bir::Value::Kind::Named ||
+        phi->result.name != value_name) {
+      continue;
+    }
+    if (value_type != bir::TypeKind::Void && phi->result.type != value_type) {
+      result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+      return result;
+    }
+    result.available = true;
+    result.status = BirBlockEntryPublicationStatus::Available;
+    result.instruction = &inst;
+    result.phi = phi;
+    result.instruction_index = index;
+    result.destination_value = &phi->result;
+    result.destination_value_identity = same_block_value_identity(phi->result);
+    result.destination_value_name = phi->result.name;
+    result.destination_value_type = phi->result.type;
+    return result;
+  }
+
+  result.status = BirBlockEntryPublicationStatus::MissingPublication;
+  return result;
 }
 
 [[nodiscard]] BirSameBlockGlobalLoadAccessIdentity

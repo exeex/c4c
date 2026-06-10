@@ -22,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -3791,6 +3792,8 @@ int check_call_argument_source_shape_contract() {
 
 int check_call_argument_source_producer_materializability_contract() {
   prepare::PreparedNameTables names;
+  const auto function_name =
+      names.function_names.intern("call_argument_source_producer_contract");
   const auto block_label = names.block_labels.intern("entry");
   const auto loaded_name = names.value_names.intern("%loaded");
   const auto sum_name = names.value_names.intern("%sum");
@@ -3934,6 +3937,98 @@ int check_call_argument_source_producer_materializability_contract() {
           mir::SameBlockProducerKind::Binary) {
     return fail(
         "call-argument producer materializability contract: BIR current-block publication identity should match prepared semantic fields");
+  }
+
+  const auto join_label = names.block_labels.intern("call_contract.join");
+  const auto join_value_name = names.value_names.intern("%join.arg");
+  prepare::PreparedValueLocationFunction entry_publication_locations{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = 71,
+              .function_name = function_name,
+              .value_name = join_value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"r12"},
+          },
+      },
+      .move_bundles = {
+          prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind =
+                  prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .source_parallel_copy_successor_label = join_label,
+              .moves = {
+                  prepare::PreparedMoveResolution{
+                      .to_value_id = 71,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"r12"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  },
+              },
+          },
+      },
+  };
+  const auto entry_value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&entry_publication_locations);
+  const auto prepared_entry_publication =
+      prepare::find_prepared_current_block_entry_publication(
+          prepare::PreparedCurrentBlockEntryPublicationQueryInputs{
+              .names = &names,
+              .value_locations = &entry_publication_locations,
+              .value_home_lookups = &entry_value_home_lookups,
+              .successor_label = join_label,
+          },
+          prepare::PreparedValueId{71});
+  bir::Block join_block;
+  join_block.label = "call_contract.join";
+  join_block.label_id = join_label;
+  join_block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%join.arg"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = block.label,
+              .value = bir::Value::named(bir::TypeKind::I32, "%sum"),
+              .label_id = block_label,
+          },
+      },
+  });
+  const auto bir_entry_publication =
+      mir::find_bir_block_entry_publication_identity(
+          mir::BirBlockEntryPublicationIdentityRequest{
+              .successor_block = &join_block,
+              .successor_label = join_block.label,
+              .successor_label_id = join_label,
+              .destination_value =
+                  &std::get<bir::PhiInst>(join_block.insts.front()).result,
+              .destination_value_id =
+                  prepared_entry_publication.destination_value_id,
+              .destination_value_name =
+                  prepare::prepared_value_name(names, join_value_name),
+              .destination_value_name_id = join_value_name,
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (prepared_entry_publication.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      !bir_entry_publication.available ||
+      bir_entry_publication.status !=
+          mir::BirBlockEntryPublicationStatus::Available ||
+      bir_entry_publication.destination_value_id !=
+          prepared_entry_publication.destination_value_id ||
+      bir_entry_publication.destination_value_name_id !=
+          prepared_entry_publication.destination_value_name ||
+      bir_entry_publication.destination_value == nullptr ||
+      bir_entry_publication.destination_value_identity.value !=
+          bir_entry_publication.destination_value ||
+      bir_entry_publication.destination_value_name != "%join.arg") {
+    return fail(
+        "call-argument producer materializability contract: BIR block-entry publication identity should match prepared semantic destination fields");
   }
 
   if (prepare::find_prepared_call_argument_source_producer_materialization(
