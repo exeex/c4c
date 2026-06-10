@@ -3385,6 +3385,33 @@ Route7ComparisonConditionIndex route7_build_comparison_condition_index(
   return index;
 }
 
+Route7ComparisonConditionIndex route7_build_comparison_condition_index(
+    const Block& block) {
+  Route7ComparisonConditionIndex index{
+      .block = &block,
+  };
+  index.comparison_records.reserve(block.insts.size());
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    auto record = route7_comparison_instruction_record(&block, instruction_index);
+    index.comparison_records.push_back(record);
+    if (record.status == Route7ComparisonStatus::Available ||
+        record.status == Route7ComparisonStatus::NonComparison) {
+      if (record.lhs.status != Route7ComparisonStatus::Unavailable) {
+        index.operand_records.push_back(record.lhs);
+      }
+      if (record.rhs.status != Route7ComparisonStatus::Unavailable) {
+        index.operand_records.push_back(record.rhs);
+      }
+    }
+  }
+  const auto branch_record = route7_branch_condition_record(&block);
+  if (branch_record.status != Route7ComparisonStatus::Unavailable) {
+    index.branch_condition_records.push_back(branch_record);
+  }
+  return index;
+}
+
 Route7ComparisonInstructionRecord route7_find_comparison_instruction(
     const Route7ComparisonConditionIndex& index,
     const Block& block,
@@ -3496,33 +3523,43 @@ FusedCompareOperandProducerFacts find_fused_compare_operand_producer_facts(
   return result;
 }
 
+namespace {
+
+[[nodiscard]] std::optional<ComparisonOperandProducer>
+route7_operand_record_to_public(const Route7ComparisonOperandRecord& record) {
+  if (!record ||
+      record.producer_kind == ComparisonProducerKind::Unknown) {
+    return std::nullopt;
+  }
+  return ComparisonOperandProducer{
+      .available = true,
+      .producer_kind = record.producer_kind,
+      .producer_instruction = record.producer_instruction,
+      .producer_instruction_index = record.producer_instruction_index,
+      .produced_value = record.produced_value.value,
+      .integer_constant = record.integer_constant,
+  };
+}
+
+}  // namespace
+
 MaterializedConditionProducerIdentity find_materialized_condition_producer_identity(
     const Block& block,
     const Value& condition_value,
     std::size_t before_instruction_index) {
-  if (condition_value.kind != Value::Kind::Named ||
-      condition_value.name.empty()) {
-    return {};
-  }
-  const auto producer =
-      find_unique_comparison_producer(block, condition_value,
-                                      before_instruction_index);
-  if (producer.inst == nullptr || producer.ambiguous) {
-    return {};
-  }
-  const auto* binary = std::get_if<BinaryInst>(producer.inst);
-  if (binary == nullptr || !is_comparison_binary_opcode(binary->opcode)) {
+  const auto index = route7_build_comparison_condition_index(block);
+  const auto record = route7_find_materialized_condition(
+      index, block, condition_value, before_instruction_index);
+  if (!record || record.binary == nullptr) {
     return {};
   }
   return MaterializedConditionProducerIdentity{
       .available = true,
-      .binary = binary,
-      .instruction_index = producer.instruction_index,
-      .condition_value_name = condition_value.name,
-      .lhs = find_comparison_operand_producer(
-          block, binary->lhs, producer.instruction_index),
-      .rhs = find_comparison_operand_producer(
-          block, binary->rhs, producer.instruction_index),
+      .binary = record.binary,
+      .instruction_index = record.instruction_index,
+      .condition_value_name = std::string(record.condition_value.name),
+      .lhs = route7_operand_record_to_public(record.lhs),
+      .rhs = route7_operand_record_to_public(record.rhs),
   };
 }
 

@@ -8020,6 +8020,14 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           std::get_if<bir::BinaryInst>(&route7_block.insts[5]) ||
       !indexed_route7_materialized_condition ||
       indexed_route7_materialized_condition.instruction_index != 5 ||
+      condition.instruction_index !=
+          indexed_route7_materialized_condition.instruction_index ||
+      condition.condition_value_name !=
+          indexed_route7_materialized_condition.condition_value.name ||
+      condition.lhs->producer_kind !=
+          indexed_route7_materialized_condition.lhs.producer_kind ||
+      condition.rhs->integer_constant !=
+          indexed_route7_materialized_condition.rhs.integer_constant ||
       !indexed_route7_lhs_operand ||
       indexed_route7_lhs_operand.producer_kind !=
           bir::ComparisonProducerKind::Select ||

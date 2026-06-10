@@ -2200,11 +2200,14 @@ struct Route7BranchConditionRecord {
 
 struct Route7ComparisonConditionIndex {
   const Function* function = nullptr;
+  const Block* block = nullptr;
   std::vector<Route7ComparisonInstructionRecord> comparison_records;
   std::vector<Route7ComparisonOperandRecord> operand_records;
   std::vector<Route7BranchConditionRecord> branch_condition_records;
 
-  [[nodiscard]] explicit operator bool() const { return function != nullptr; }
+  [[nodiscard]] explicit operator bool() const {
+    return function != nullptr || block != nullptr;
+  }
 };
 
 struct CallResultSourceIdentity {
@@ -2502,6 +2505,8 @@ route7_comparison_instruction_record(
     const Block* block);
 [[nodiscard]] Route7ComparisonConditionIndex
 route7_build_comparison_condition_index(const Function& function);
+[[nodiscard]] Route7ComparisonConditionIndex
+route7_build_comparison_condition_index(const Block& block);
 [[nodiscard]] Route7ComparisonInstructionRecord
 route7_find_comparison_instruction(
     const Route7ComparisonConditionIndex& index,

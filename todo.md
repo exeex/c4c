@@ -1,38 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/165_bir_comparison_condition_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Lookup/Index Helpers
+Current Step ID: 4
+Current Step Title: Migrate A Low-Risk Query Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for
+Completed Step 4 for
 `ideas/open/165_bir_comparison_condition_annotation_schema.md`.
-Added function-local Route 7 lookup/index helpers over the Step 2 BIR
-comparison/condition annotation records without switching production
-consumers.
+Migrated the narrow shared BIR materialized-condition helper
+`bir::find_materialized_condition_producer_identity(...)` to read Route 7
+BIR records/index helpers while preserving the existing public result shape.
 
-- Added `Route7ComparisonConditionIndex`, rebuilt from BIR `Function` blocks
-  by collecting comparison instruction records, operand records, and
-  branch-condition records.
-- Added lookup helpers for comparison instruction, comparison operand,
-  materialized condition, and branch-condition provenance keyed by stable BIR
-  block label/id, instruction index, condition value, before-instruction
-  boundary, operand role/value identity, and block terminator identity.
-- Lookup helpers return Route 7 records with explicit statuses and remain
-  target-neutral BIR indexes, not prepared comparison-plan containers.
-- Focused tests prove indexed success for fused-operand/materialized-condition
-  and branch-condition paths, plus indexed non-comparison, no-match,
-  missing-producer, and duplicate-producer fail-closed statuses against the
-  existing prepared/BIR oracles.
+- Added a block-backed `Route7ComparisonConditionIndex` builder so the legacy
+  helper can index the caller's original BIR block without pointer drift.
+- The helper now looks up the materialized condition through
+  `route7_find_materialized_condition(...)` and converts Route 7 operand
+  records back into `ComparisonOperandProducer` values.
+- Focused tests tie the migrated helper result to the Route 7 indexed
+  materialized-condition record while retaining prepared/BIR oracle coverage
+  for positive, materialized-condition, integer-constant, non-comparison,
+  missing-producer, no-match, and duplicate-producer cases.
+- No MIR API, target/codegen, or prealloc production consumers were switched.
 
 ## Suggested Next
 
-Execute Step 4 by migrating the narrowest shared comparison/condition helper
-to read Route 7 BIR records/index helpers while preserving prepared/BIR oracle
-coverage.
+Execute Step 5 by running broader backend acceptance validation and recording
+closure readiness for idea 165.
 
 ## Watchouts
 
@@ -46,15 +42,15 @@ coverage.
 - Preserve explicit materialized-condition, integer-constant operand,
   non-comparison, missing producer, absent-provenance, non-materializable, and
   no-match cases where applicable.
-- Step 3 intentionally did not switch MIR, target/codegen, or prealloc
+- Step 4 intentionally did not switch MIR, target/codegen, or prealloc
   production consumers.
-- There is no dedicated public MIR comparison-condition query yet; Step 4 may
-  need to migrate the narrowest existing BIR helper rather than inventing a
-  broad MIR API.
+- `find_materialized_condition_producer_identity(...)` now depends on Route 7
+  record/index semantics; future changes to Route 7 no-match/duplicate status
+  handling can affect this legacy helper's fail-closed behavior.
 
 ## Proof
 
-Exact delegated Step 3 proof passed:
+Exact delegated Step 4 proof passed:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$' > test_after.log
