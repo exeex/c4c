@@ -7888,7 +7888,7 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
                   .result = bir::Value::named(bir::TypeKind::I1, "%cond"),
                   .operand_type = bir::TypeKind::I64,
                   .lhs = bir::Value::named(bir::TypeKind::I64, "%selected"),
-                  .rhs = bir::Value::named(bir::TypeKind::I64, "%folded"),
+                  .rhs = bir::Value::immediate_i64(12),
               },
               bir::BinaryInst{
                   .opcode = bir::BinaryOpcode::Add,
@@ -7904,6 +7904,12 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
                   .lhs = bir::Value::immediate_i64(1),
                   .rhs = bir::Value::immediate_i64(2),
               },
+          },
+      .terminator =
+          bir::CondBranchTerminator{
+              .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+              .true_label = "then",
+              .false_label = "else",
           },
   };
 
@@ -7991,6 +7997,32 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           bir::Value::named(bir::TypeKind::I64, "%selected"),
           5,
           bir::Route7ComparisonOperandRole::Lhs);
+  const auto route7_instruction_ref =
+      bir::route7_validate_comparison_instruction_reference(
+          route7_index, route7_block, 5);
+  const auto route7_materialized_ref =
+      bir::route7_validate_materialized_condition_reference(
+          route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          6);
+  const auto route7_lhs_ref =
+      bir::route7_validate_comparison_operand_reference(
+          route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I64, "%selected"),
+          5,
+          bir::Route7ComparisonOperandRole::Lhs);
+  const auto route7_rhs_immediate_ref =
+      bir::route7_validate_comparison_operand_reference(
+          route7_index,
+          route7_block,
+          bir::Value::immediate_i64(12),
+          5,
+          bir::Route7ComparisonOperandRole::Rhs);
+  const auto route7_branch_ref =
+      bir::route7_validate_branch_condition_reference(
+          route7_index, route7_block);
   if (!condition.available ||
       condition.binary != std::get_if<bir::BinaryInst>(&block.insts[5]) ||
       condition.instruction_index != 5 ||
@@ -8032,9 +8064,90 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
       indexed_route7_lhs_operand.producer_kind !=
           bir::ComparisonProducerKind::Select ||
       indexed_route7_lhs_operand.producer_instruction !=
-          &route7_block.insts[4]) {
+          &route7_block.insts[4] ||
+      !route7_instruction_ref ||
+      route7_instruction_ref.status !=
+          bir::RouteIndexValidationStatus::Valid ||
+      route7_instruction_ref.reference.route !=
+          bir::RouteIndexRoute::Route7ComparisonCondition ||
+      route7_instruction_ref.reference.owner_scope !=
+          bir::RouteIndexOwnerScope::Function ||
+      route7_instruction_ref.reference.record_category !=
+          bir::RouteIndexRecordCategory::Route7ComparisonInstruction ||
+      route7_instruction_ref.reference.relationship !=
+          bir::RouteIndexRelationshipKind::Route7Instruction ||
+      route7_instruction_ref.comparison_record == nullptr ||
+      route7_instruction_ref.comparison_record->instruction_index != 5 ||
+      !route7_materialized_ref ||
+      route7_materialized_ref.reference.relationship !=
+          bir::RouteIndexRelationshipKind::Route7MaterializedCondition ||
+      route7_materialized_ref.reference.value.name != "%cond" ||
+      !route7_lhs_ref ||
+      route7_lhs_ref.reference.record_category !=
+          bir::RouteIndexRecordCategory::Route7ComparisonOperand ||
+      route7_lhs_ref.reference.operand_role !=
+          bir::Route7ComparisonOperandRole::Lhs ||
+      route7_lhs_ref.operand_record == nullptr ||
+      route7_lhs_ref.operand_record->producer_instruction !=
+          &route7_block.insts[4] ||
+      !route7_rhs_immediate_ref ||
+      route7_rhs_immediate_ref.operand_record == nullptr ||
+      route7_rhs_immediate_ref.operand_record->producer_kind !=
+          bir::ComparisonProducerKind::Immediate ||
+      route7_rhs_immediate_ref.operand_record->producer_instruction != nullptr ||
+      route7_rhs_immediate_ref.operand_record->integer_constant !=
+          std::optional<std::int64_t>{12} ||
+      !route7_branch_ref ||
+      route7_branch_ref.reference.record_category !=
+          bir::RouteIndexRecordCategory::Route7BranchCondition ||
+      route7_branch_ref.branch_condition_record == nullptr ||
+      route7_branch_ref.branch_condition_record->comparison.instruction_index !=
+          5) {
     return fail(
-        "BIR materialized condition producer query and Route 7 records/index should expose comparison binary and operand producers");
+        "BIR materialized condition producer query and Route 7 records/index references should expose comparison binary and operand producers");
+  }
+
+  const auto route7_block_index =
+      bir::route7_build_comparison_condition_index(route7_block);
+  const auto stale_block_ref =
+      bir::route7_validate_comparison_instruction_reference(
+          route7_block_index, block, 5);
+  const auto wrong_role_ref =
+      bir::route7_validate_comparison_operand_reference(
+          route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I64, "%selected"),
+          5,
+          bir::Route7ComparisonOperandRole::Rhs);
+  auto divergent_route7_index = route7_index;
+  divergent_route7_index.operand_records.push_back(indexed_route7_lhs_operand);
+  const auto duplicate_lhs_ref =
+      bir::route7_validate_comparison_operand_reference(
+          divergent_route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I64, "%selected"),
+          5,
+          bir::Route7ComparisonOperandRole::Lhs);
+  const auto missing_condition_ref =
+      bir::route7_validate_materialized_condition_reference(
+          route7_index,
+          route7_block,
+          bir::Value::named(bir::TypeKind::I1, "%missing.cond"),
+          route7_block.insts.size());
+  if (stale_block_ref ||
+      stale_block_ref.status != bir::RouteIndexValidationStatus::StaleOwner ||
+      wrong_role_ref ||
+      wrong_role_ref.status !=
+          bir::RouteIndexValidationStatus::WrongRelationship ||
+      duplicate_lhs_ref ||
+      duplicate_lhs_ref.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference ||
+      missing_condition_ref ||
+      missing_condition_ref.status !=
+          bir::RouteIndexValidationStatus::MissingRecord ||
+      missing_condition_ref.route_status != bir::Route7ComparisonStatus::NoMatch) {
+    return fail(
+        "Route 7 index reference validation should reject stale owner, wrong role, duplicate reference, and missing condition divergence");
   }
 
   const auto route7_noncompare =
@@ -8066,6 +8179,13 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           route7_missing_producer_function);
   const auto indexed_route7_missing_producer =
       bir::route7_find_comparison_operand(
+          route7_missing_producer_index,
+          route7_missing_producer_block,
+          bir::Value::named(bir::TypeKind::I64, "%missing.lhs"),
+          5,
+          bir::Route7ComparisonOperandRole::Lhs);
+  const auto indexed_route7_missing_producer_ref =
+      bir::route7_validate_comparison_operand_reference(
           route7_missing_producer_index,
           route7_missing_producer_block,
           bir::Value::named(bir::TypeKind::I64, "%missing.lhs"),
@@ -8103,6 +8223,9 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
       indexed_route7_missing_producer ||
       indexed_route7_missing_producer.status !=
           bir::Route7ComparisonStatus::MissingOperandProducer ||
+      indexed_route7_missing_producer_ref ||
+      indexed_route7_missing_producer_ref.status !=
+          bir::RouteIndexValidationStatus::MissingRecord ||
       route7_after_operand ||
       route7_after_operand.status !=
           bir::Route7ComparisonStatus::MissingOperandProducer ||
@@ -8151,6 +8274,13 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           bir::Value::named(bir::TypeKind::I64, "%loaded"),
           6,
           bir::Route7ComparisonOperandRole::Lhs);
+  const auto indexed_route7_duplicate_ref =
+      bir::route7_validate_comparison_operand_reference(
+          route7_duplicate_index,
+          route7_duplicate_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          6,
+          bir::Route7ComparisonOperandRole::Lhs);
   if (bir::find_comparison_operand_producer(
           duplicate_block, bir::Value::named(bir::TypeKind::I64, "%loaded"),
           duplicate_block.insts.size())
@@ -8160,9 +8290,12 @@ int verify_bir_comparison_condition_producer_identity_lookup() {
           bir::Route7ComparisonStatus::DuplicateProducer ||
       indexed_route7_duplicate ||
       indexed_route7_duplicate.status !=
-          bir::Route7ComparisonStatus::DuplicateProducer) {
+          bir::Route7ComparisonStatus::DuplicateProducer ||
+      indexed_route7_duplicate_ref ||
+      indexed_route7_duplicate_ref.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference) {
     return fail(
-        "BIR comparison producer query and Route 7 records/index should fail closed for duplicate same-block producers");
+        "BIR comparison producer query and Route 7 records/index references should fail closed for duplicate same-block producers");
   }
 
   return 0;

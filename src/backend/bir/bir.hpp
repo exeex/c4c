@@ -2210,6 +2210,79 @@ struct Route7ComparisonConditionIndex {
   }
 };
 
+enum class RouteIndexRoute : unsigned char {
+  Unknown,
+  Route7ComparisonCondition,
+};
+
+enum class RouteIndexOwnerScope : unsigned char {
+  None,
+  Function,
+  Block,
+};
+
+enum class RouteIndexRecordCategory : unsigned char {
+  Unknown,
+  Route7ComparisonInstruction,
+  Route7ComparisonOperand,
+  Route7BranchCondition,
+};
+
+enum class RouteIndexRelationshipKind : unsigned char {
+  None,
+  Route7Instruction,
+  Route7Operand,
+  Route7MaterializedCondition,
+  Route7BranchCondition,
+};
+
+enum class RouteIndexValidationStatus : unsigned char {
+  Unavailable,
+  Valid,
+  MissingRecord,
+  StaleOwner,
+  WrongRecordCategory,
+  WrongRelationship,
+  WrongKey,
+  DuplicateReference,
+  AbsentProvenance,
+  NoMatch,
+  Diverged,
+};
+
+struct RouteIndexRecordReference {
+  RouteIndexRoute route = RouteIndexRoute::Unknown;
+  RouteIndexOwnerScope owner_scope = RouteIndexOwnerScope::None;
+  RouteIndexRecordCategory record_category =
+      RouteIndexRecordCategory::Unknown;
+  RouteIndexRelationshipKind relationship =
+      RouteIndexRelationshipKind::None;
+  const Function* function = nullptr;
+  const Block* block = nullptr;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  std::size_t before_instruction_index = 0;
+  Route1SourceValueIdentity value;
+  Route7ComparisonOperandRole operand_role =
+      Route7ComparisonOperandRole::None;
+  std::size_t record_index = 0;
+};
+
+struct Route7IndexReferenceValidation {
+  bool valid = false;
+  RouteIndexValidationStatus status =
+      RouteIndexValidationStatus::Unavailable;
+  Route7ComparisonStatus route_status =
+      Route7ComparisonStatus::Unavailable;
+  RouteIndexRecordReference reference;
+  const Route7ComparisonInstructionRecord* comparison_record = nullptr;
+  const Route7ComparisonOperandRecord* operand_record = nullptr;
+  const Route7BranchConditionRecord* branch_condition_record = nullptr;
+
+  [[nodiscard]] explicit operator bool() const { return valid; }
+};
+
 struct CallResultSourceIdentity {
   bool available = false;
   std::size_t call_instruction_index = 0;
@@ -2525,6 +2598,28 @@ route7_find_materialized_condition(
     const Value& condition_value,
     std::size_t before_instruction_index);
 [[nodiscard]] Route7BranchConditionRecord route7_find_branch_condition(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block);
+[[nodiscard]] Route7IndexReferenceValidation
+route7_validate_comparison_instruction_reference(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    std::size_t instruction_index);
+[[nodiscard]] Route7IndexReferenceValidation
+route7_validate_comparison_operand_reference(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role);
+[[nodiscard]] Route7IndexReferenceValidation
+route7_validate_materialized_condition_reference(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& condition_value,
+    std::size_t before_instruction_index);
+[[nodiscard]] Route7IndexReferenceValidation
+route7_validate_branch_condition_reference(
     const Route7ComparisonConditionIndex& index,
     const Block& block);
 CallResultSourceIdentity find_call_result_source_identity(
