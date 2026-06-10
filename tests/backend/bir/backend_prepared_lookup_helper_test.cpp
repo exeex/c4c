@@ -2818,6 +2818,7 @@ int verify_direct_global_select_chain_dependency_query() {
   const bir::Value direct =
       bir::Value::named(bir::TypeKind::I32, "%query.direct");
   const bir::Block block{
+      .label = "query.entry",
       .insts =
           {bir::LoadGlobalInst{
                .result = loaded,
@@ -2911,6 +2912,51 @@ int verify_direct_global_select_chain_dependency_query() {
           std::size_t{1}) {
     return fail("scalar select-chain materialization query should expose root authority");
   }
+  const auto bir_select_request = mir::BirSelectChainIdentityRequest{
+      .block = &block,
+      .block_label = block.label,
+      .root_value = &selected,
+      .root_value_name = selected.name,
+      .root_value_type = selected.type,
+      .before_instruction_index = 3,
+  };
+  const auto bir_select_root =
+      mir::find_same_block_producer_identity(mir::SameBlockProducerIdentityRequest{
+          .block = bir_select_request.block,
+          .block_label = bir_select_request.block_label,
+          .value_name = bir_select_request.root_value_name,
+          .value_type = bir_select_request.root_value_type,
+          .before_instruction_index = bir_select_request.before_instruction_index,
+      });
+  const auto bir_select_identity = mir::BirSelectChainIdentity{
+      .root_producer = bir_select_root,
+      .root_value = mir::same_block_value_identity(selected),
+      .root_value_name = selected.name,
+      .root_is_select = bir_select_root.kind == mir::SameBlockProducerKind::Select,
+      .root_instruction_index = bir_select_root.instruction_index,
+      .direct_global_dependency =
+          mir::BirSelectChainDirectGlobalDependency{
+              .contains_direct_global_load =
+                  select_dependency.contains_direct_global_load,
+              .load_global = loaded_inst,
+              .instruction_index = std::size_t{0},
+          },
+      .scalar_materialization_available = select_materialization.available,
+  };
+  if (!bir_select_request ||
+      !bir_select_identity ||
+      bir_select_identity.root_value.value != &selected ||
+      bir_select_identity.root_value_name != selected.name ||
+      !bir_select_identity.root_is_select ||
+      bir_select_identity.root_instruction_index !=
+          select_dependency.root_instruction_index ||
+      !bir_select_identity.direct_global_dependency ||
+      bir_select_identity.direct_global_dependency.load_global != loaded_inst ||
+      bir_select_identity.direct_global_dependency.instruction_index !=
+          std::size_t{0} ||
+      !bir_select_identity.scalar_materialization_available) {
+    return fail("BIR select-chain identity record should encode select-root direct-global facts");
+  }
 
   const auto direct_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
@@ -2919,6 +2965,54 @@ int verify_direct_global_select_chain_dependency_query() {
       direct_dependency.root_is_select ||
       direct_dependency.root_instruction_index != std::size_t{2}) {
     return fail("direct-global select-chain query should expose direct load root facts");
+  }
+  const auto direct_materialization =
+      prepare::find_prepared_scalar_select_chain_materialization(
+          names, &source_producers, block_label, &block, direct, 3);
+  const auto bir_direct_request = mir::BirSelectChainIdentityRequest{
+      .block = &block,
+      .block_label = block.label,
+      .root_value = &direct,
+      .root_value_name = direct.name,
+      .root_value_type = direct.type,
+      .before_instruction_index = 3,
+  };
+  const auto bir_direct_root =
+      mir::find_same_block_producer_identity(mir::SameBlockProducerIdentityRequest{
+          .block = bir_direct_request.block,
+          .block_label = bir_direct_request.block_label,
+          .value_name = bir_direct_request.root_value_name,
+          .value_type = bir_direct_request.root_value_type,
+          .before_instruction_index = bir_direct_request.before_instruction_index,
+      });
+  const auto bir_direct_identity = mir::BirSelectChainIdentity{
+      .root_producer = bir_direct_root,
+      .root_value = mir::same_block_value_identity(direct),
+      .root_value_name = direct.name,
+      .root_is_select = bir_direct_root.kind == mir::SameBlockProducerKind::Select,
+      .root_instruction_index = bir_direct_root.instruction_index,
+      .direct_global_dependency =
+          mir::BirSelectChainDirectGlobalDependency{
+              .contains_direct_global_load =
+                  direct_dependency.contains_direct_global_load,
+              .load_global = direct_inst,
+              .instruction_index = direct_dependency.root_instruction_index,
+          },
+      .scalar_materialization_available = direct_materialization.available,
+  };
+  if (!bir_direct_request ||
+      !bir_direct_identity ||
+      bir_direct_identity.root_value.value != &direct ||
+      bir_direct_identity.root_value_name != direct.name ||
+      bir_direct_identity.root_is_select ||
+      bir_direct_identity.root_instruction_index !=
+          direct_dependency.root_instruction_index ||
+      !bir_direct_identity.direct_global_dependency ||
+      bir_direct_identity.direct_global_dependency.load_global != direct_inst ||
+      bir_direct_identity.direct_global_dependency.instruction_index !=
+          direct_dependency.root_instruction_index ||
+      !bir_direct_identity.scalar_materialization_available) {
+    return fail("BIR select-chain identity record should encode direct-load root facts");
   }
 
   const auto missing_dependency =
@@ -2945,6 +3039,31 @@ int verify_direct_global_select_chain_dependency_query() {
       missing_materialization.root_value_name != c4c::kInvalidValueName ||
       missing_materialization.direct_global_dependency.contains_direct_global_load) {
     return fail("scalar select-chain materialization query should fail closed");
+  }
+  const auto missing_root =
+      mir::find_same_block_producer_identity(mir::SameBlockProducerIdentityRequest{
+          .block = &block,
+          .block_label = block.label,
+          .value_name = "%missing",
+          .value_type = bir::TypeKind::I32,
+          .before_instruction_index = 3,
+      });
+  const auto missing_identity = mir::BirSelectChainIdentity{
+      .root_producer = missing_root,
+      .root_value_name = "%missing",
+      .direct_global_dependency =
+          mir::BirSelectChainDirectGlobalDependency{
+              .contains_direct_global_load =
+                  missing_dependency.contains_direct_global_load,
+              .instruction_index = missing_dependency.root_instruction_index,
+          },
+      .scalar_materialization_available = missing_materialization.available,
+  };
+  if (missing_identity ||
+      missing_identity.direct_global_dependency ||
+      missing_identity.root_instruction_index.has_value() ||
+      missing_identity.scalar_materialization_available) {
+    return fail("BIR select-chain identity record should encode fail-closed missing roots");
   }
 
   return 0;

@@ -102,6 +102,44 @@ struct SameBlockScalarProducer {
   [[nodiscard]] explicit operator bool() const { return producer && instruction != nullptr; }
 };
 
+struct BirSelectChainIdentityRequest {
+  const bir::Block* block = nullptr;
+  std::string_view block_label;
+  const bir::Value* root_value = nullptr;
+  std::string_view root_value_name;
+  bir::TypeKind root_value_type = bir::TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return block != nullptr &&
+           (root_value != nullptr || !root_value_name.empty());
+  }
+};
+
+struct BirSelectChainDirectGlobalDependency {
+  bool contains_direct_global_load = false;
+  const bir::LoadGlobalInst* load_global = nullptr;
+  std::optional<std::size_t> instruction_index;
+
+  [[nodiscard]] explicit operator bool() const {
+    return contains_direct_global_load && load_global != nullptr;
+  }
+};
+
+struct BirSelectChainIdentity {
+  SameBlockProducerIdentity root_producer;
+  SameBlockValueIdentity root_value;
+  std::string_view root_value_name;
+  bool root_is_select = false;
+  std::optional<std::size_t> root_instruction_index;
+  BirSelectChainDirectGlobalDependency direct_global_dependency;
+  bool scalar_materialization_available = false;
+
+  [[nodiscard]] explicit operator bool() const {
+    return root_producer && root_value;
+  }
+};
+
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;
