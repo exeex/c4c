@@ -52,8 +52,10 @@ into BIR.
   - `find_prepared_call_argument_publication_source_routing`
   - call-boundary source lookup helpers used by AArch64 call materialization
 - BIR relationship surface attached to `bir::CallInst` arguments and results.
-- Call materialization/routing consumers only after equivalence is proven for
-  the specific argument or result class being switched.
+- Call materialization/routing consumers only after the relevant BIR facts are
+  populated by production construction or extraction, stack-layout-shaped fields
+  have been audited, and equivalence is proven for the specific argument or
+  result class being switched.
 
 ## Non-Goals
 
@@ -73,10 +75,24 @@ into BIR.
 
 - Prepared call plans remain the oracle until BIR answers match one call-use
   fact family at a time.
+- Tests that manually seed BIR call-source facts prove query shape only. A
+  consumer switch also requires proof that normal production BIR calls contain
+  or can extract the same facts.
 - BIR may own the relationship: "this call argument/result use is sourced from
   this BIR value or producer, with these target-neutral dependency links."
 - Prealloc/codegen continues to own how that source becomes ABI argument moves,
   result moves, stack copies, aggregate transport, and final emitted code.
+
+## Progress Checkpoint
+
+- Step 1 completed the prepared-oracle field inspection.
+- Step 2 added a BIR call-argument source relationship surface, but the current
+  argument facts are manually seeded in tests and are not yet proven to exist on
+  production lowered calls.
+- Step 3 proved argument query equivalence for manually seeded facts only.
+- Step 4 added and proved result identity queries from production-populated
+  `CallInst::result` and `CallInst::result_lanes`.
+- No call materialization or routing consumers have been switched.
 
 ## Execution Rules
 
@@ -84,6 +100,15 @@ into BIR.
   before switching consumers to it.
 - For each consumer migration, prove old prepared answers and new BIR answers
   are equivalent first.
+- Before switching any argument source-producer, direct-global dependency, or
+  publication-source routing consumer, prove `CallInst::arg_sources` is
+  populated by production LIR-to-BIR construction or by a production BIR
+  extraction/analysis path for normal lowered calls.
+- Before switching any argument consumer, audit every stack-layout-shaped field
+  in `CallArgumentSourceSelection`. Keep only target-neutral source identity in
+  the BIR-owned contract; remove, quarantine, or leave prepared-only any field
+  that is ABI placement, stack layout, addressing-form, or aggregate transport
+  policy.
 - Keep comparison against the prepared oracle until the current step has nearby
   positive, negative, scalar, aggregate, and indirect/source-dependent coverage
   appropriate to that fact family.
@@ -194,10 +219,49 @@ Completion check:
 - BIR result-source answers match prepared semantic source facts, and no result
   ABI binding fields are copied into BIR.
 
-### Step 5: Switch one call-source consumer at a time
+### Step 5: Bridge production argument source facts and audit field scope
 
-Goal: migrate reads only after BIR/prepared equivalence is proven for the
-specific fact family.
+Goal: make BIR argument source facts available from normal production calls, or
+from a production extraction/analysis path, and enforce the semantic-field
+boundary before any argument consumer switch.
+
+Primary target: `bir::CallInst::arg_sources`, production LIR-to-BIR call
+construction/extraction paths, and `CallArgumentSourceSelection` scope.
+
+Actions:
+
+- Inspect all production `bir::CallInst` construction paths that populate
+  `args`, `arg_types`, and `arg_abi`; add or route `arg_sources` population
+  there, or add a production BIR extraction/analysis path that derives the same
+  semantic facts from lowered call data.
+- Keep prepared call plans as the oracle while building the bridge. Do not
+  switch AArch64/prealloc consumers in this step.
+- Prove the bridge on real lowered calls, not only hand-built test fixtures.
+  Include scalar, stack/frame-slot, direct-global select-chain,
+  publication-source routing, unavailable-source, and nearby aggregate/byval
+  cases when those facts expose semantic source identity.
+- Audit `source_stack_offset_bytes`, `source_size_bytes`,
+  `source_align_bytes`, `address_materialization_frame_slot_id`, and
+  `address_materialization_byte_offset`. Document or enforce which are
+  target-neutral source identity; remove or quarantine any ABI/layout field
+  from the BIR-owned consumer contract.
+- Keep ABI move planning, outgoing stack layout, aggregate transport, scratch
+  selection, and final lowering downstream in prealloc/codegen.
+
+Completion check:
+
+- Normal production BIR calls either contain or can extract the argument source
+  facts needed by source-producer materialization, direct-global dependency, and
+  publication-source routing queries.
+- Stack-layout-shaped fields are either justified as target-neutral source
+  identity or are no longer part of the BIR-owned consumer contract.
+- Narrow backend BIR coverage proves production-populated/extracted argument
+  facts match the prepared semantic oracle, and no call consumers have switched.
+
+### Step 6: Switch one call-source consumer at a time
+
+Goal: migrate reads only after production-backed BIR/prepared equivalence is
+proven for the specific fact family.
 
 Primary target: call materialization and routing reads selected by the
 supervisor packet.
@@ -205,7 +269,7 @@ supervisor packet.
 Actions:
 
 - Switch a single source-producer materialization, direct-global dependency, or
-  publication-source routing consumer to the BIR query.
+  publication-source routing consumer to the production-backed BIR query.
 - Keep ABI move planning, aggregate transport, scratch selection, and final
   lowering downstream in prealloc/codegen.
 - Retain fallback or comparison checks where needed until equivalent coverage
@@ -218,7 +282,7 @@ Completion check:
   while generated call behavior remains unchanged against prepared-oracle
   tests.
 
-### Step 6: Run the acceptance proof
+### Step 7: Run the acceptance proof
 
 Goal: demonstrate that the idea's semantic migration is complete enough for
 supervisor review.
@@ -247,8 +311,14 @@ Completion check:
   state, helper/carrier protocols, or prepared move records into BIR.
 - Changes ABI placement, aggregate call transport, or final call lowering while
   claiming semantic source-fact migration.
-- Switches a consumer before proving BIR/prepared equivalence for that specific
-  argument or result fact family.
+- Switches an argument consumer before production construction or extraction
+  populates BIR argument source facts and proves equivalence for that specific
+  fact family.
+- Treats manually seeded `CallInst::arg_sources` fixtures as sufficient proof
+  for production argument consumer migration.
+- Keeps stack-layout, ABI placement, addressing-form, or aggregate transport
+  fields in the BIR-owned consumer contract without documenting and enforcing
+  them as target-neutral source identity.
 - Validates only one named call shape without nearby scalar, stack/frame-slot,
   aggregate/byval, result, direct-global, publication-source, and negative
   coverage appropriate to the touched path.
