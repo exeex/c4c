@@ -51,3 +51,24 @@ address-materialization code is touched.
   addressing behavior.
 - Proves only one memory shape while local/global/pointer/string or negative
   paths remain unexamined.
+
+## Closure Notes
+
+Closed after the active runbook completed the narrowed
+BIR-representable semantic equivalence scope. The route added BIR-owned memory
+identity for direct memory access, same-block global-load identity, and
+same-block load-local source identity while preserving prepared lookup helpers
+as the oracle/fallback for target-layout, stack-range, relocation, addressing,
+and operand-formation facts.
+
+One scalar global-load publication path now consults BIR same-block global-load
+identity for representable semantic facts, with the prepared path retained for
+legacy or non-BIR-representable positives. Closure does not claim migration of
+layout-dependent local-slot/load-local consumers, FP materialization, current
+global-load materialization, `globals.cpp`, `alu.cpp`, or `calls.cpp`.
+
+Final accepted proof scope:
+
+`ctest --test-dir build --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_store_source_publication_plan|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'`
+
+Accepted final proof log: `test_before.log`, 4/4 passing.
