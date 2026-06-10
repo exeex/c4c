@@ -189,15 +189,31 @@ Primary targets:
 Actions:
 - Route the selected consumer through the migrated Route 5-backed helper or
   facade.
+- Because the selected consumer lives in
+  `backend_aarch64_instruction_dispatch`, whose monolithic CTest currently
+  fails earlier on unrelated ambient AArch64 debt, do not use that red binary
+  as the Step 4 acceptance proof. Add or extract a bounded isolated proof
+  harness for
+  `current_block_join_query_routing_uses_bir_identity_with_prepared_fallback()`
+  or equivalent selected-consumer coverage, and make that harness the
+  delegated Step 4 consumer proof.
+- The isolated harness must prove the selected consumer observes Route 5
+  current-block join-source identity for the available and absent/no-PHI cases
+  without weakening or deleting the existing monolithic dispatch coverage.
 - Preserve target/prealloc decisions for move order, execution site, carriers,
   redundancy, registers, storage sharing, and prepared move records.
 - Preserve fallback behavior only where still needed for target policy outside
   Route 5 semantic identity.
-- Prove the selected consumer with the delegated narrow subset.
+- Prove the selected consumer with the delegated narrow subset:
+  `backend_prepared_lookup_helper` plus the new isolated AArch64
+  current-block join routing harness.
 
 Completion check:
 - The selected consumer observes Route 5 join-source identity for the covered
-  semantic cases, while target scheduling/emission behavior remains unchanged.
+  semantic cases in a green isolated consumer proof, while target
+  scheduling/emission behavior remains unchanged. The existing red
+  `backend_aarch64_instruction_dispatch` binary remains a close-level ambient
+  debt check unless its failure mode changes to implicate Route 5.
 
 ### Step 5: Contract Only Proven-Private Prepared Surface
 
@@ -232,7 +248,11 @@ Actions:
   consumer.
 - Run broader backend validation if public MIR query APIs, Route 5
   index/facade behavior, prepared helper declarations, AArch64 edge-copy or
-  publication paths, or publication planning surfaces changed.
+  publication paths, or publication planning surfaces changed. If
+  `backend_aarch64_instruction_dispatch` still fails at the pre-existing
+  selected f64 global readback case before reaching the selected Route 5
+  consumer, record it as ambient close-level debt rather than blocking the
+  isolated Step 4 proof.
 - Update `todo.md` with proof results, residual consumers, and whether prepared
   current-block join-source surfaces remain public by evidence.
 
