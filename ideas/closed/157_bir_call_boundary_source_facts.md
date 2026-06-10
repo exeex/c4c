@@ -48,6 +48,20 @@ equivalence for same-block producer, select-chain direct global, memory-source,
 publication-source, and negative call-argument cases. Escalate to broader
 backend if ABI or aggregate files change.
 
+## Closure Note
+
+Closed after Step 7 acceptance proof. Production BIR call-boundary semantic
+source facts now cover the source-producer and direct-global dependency
+families targeted by this idea, with safe AArch64 consumer reads switched only
+where ABI/layout authority remains downstream in prealloc/codegen. Remaining
+prepared publication-routing source-selection reads are ABI/layout-bound and
+intentionally left outside this source idea.
+
+Close-gate proof used matching backend before/after logs:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`.
+Both logs reported 179 backend tests passed and 0 failed; the regression guard
+passed with non-decreasing pass-count policy.
+
 ## Reviewer Reject Signals
 
 - Copies `PreparedCallArgumentPlan`, aggregate transport shapes, ABI placement,
