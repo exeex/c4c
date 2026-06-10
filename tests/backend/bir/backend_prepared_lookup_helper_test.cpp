@@ -2359,6 +2359,8 @@ int verify_edge_publication_source_producer_facts() {
   const bir::Value cast_destination = bir::Value::named(bir::TypeKind::I64, "%join.cast");
   const bir::Value binary_destination = bir::Value::named(bir::TypeKind::I32, "%join.binary");
   const bir::Value select_destination = bir::Value::named(bir::TypeKind::I32, "%join.select");
+  const bir::Value unavailable_destination =
+      bir::Value::named(bir::TypeKind::I32, "%join.unavailable");
 
   const auto loaded_name = prepared.names.value_names.intern(loaded.name);
   const auto casted_name = prepared.names.value_names.intern(casted.name);
@@ -2381,6 +2383,16 @@ int verify_edge_publication_source_producer_facts() {
                       bir::LoadLocalInst{
                           .result = loaded,
                           .slot_name = "slot",
+                          .address =
+                              bir::MemoryAddress{
+                                  .base_kind =
+                                      bir::MemoryAddress::BaseKind::LocalSlot,
+                                  .base_name = "slot",
+                                  .byte_offset = 4,
+                                  .size_bytes = 4,
+                                  .align_bytes = 4,
+                                  .base_slot_id = c4c::SlotNameId{31},
+                              },
                       },
                       bir::CastInst{
                           .opcode = bir::CastOpcode::SExt,
@@ -2413,6 +2425,44 @@ int verify_edge_publication_source_producer_facts() {
           },
           bir::Block{
               .label = "producer.join",
+              .insts =
+                  {
+                      bir::PhiInst{
+                          .result = load_destination,
+                          .incomings =
+                              {
+                                  bir::PhiIncoming{
+                                      .label = "producer.entry",
+                                      .value = loaded,
+                                      .label_id = predecessor_label,
+                                  },
+                              },
+                      },
+                      bir::PhiInst{
+                          .result = cast_destination,
+                          .incomings =
+                              {
+                                  bir::PhiIncoming{
+                                      .label = "producer.entry",
+                                      .value = casted,
+                                      .label_id = predecessor_label,
+                                  },
+                              },
+                      },
+                      bir::PhiInst{
+                          .result = unavailable_destination,
+                          .incomings =
+                              {
+                                  bir::PhiIncoming{
+                                      .label = "producer.entry",
+                                      .value = bir::Value::named(
+                                          bir::TypeKind::I32,
+                                          "%missing.producer"),
+                                      .label_id = predecessor_label,
+                                  },
+                              },
+                      },
+                  },
               .label_id = successor_label,
           },
       },
@@ -2640,6 +2690,114 @@ int verify_edge_publication_source_producer_facts() {
   if (prepare::prepared_edge_copy_source_facts_have_materializable_producer(
           publicationless_source_facts)) {
     return fail("edge source facts helper should require publication authority");
+  }
+
+  const auto& function = prepared.module.functions.front();
+  const auto& predecessor_block = function.blocks[0];
+  const auto& successor_block = function.blocks[1];
+  const auto bir_load_edge = mir::find_bir_cfg_edge_publication_source_identity(
+      mir::BirCfgEdgePublicationSourceRequest{
+          .predecessor_block = &predecessor_block,
+          .predecessor_label = predecessor_block.label,
+          .predecessor_label_id = predecessor_label,
+          .successor_block = &successor_block,
+          .successor_label = successor_block.label,
+          .successor_label_id = successor_label,
+          .destination_value = &load_destination,
+          .destination_value_id = 11,
+          .destination_value_name = load_destination.name,
+          .destination_value_name_id = load_destination_name,
+          .destination_value_type = load_destination.type,
+      });
+  if (!bir_load_edge ||
+      bir_load_edge.status !=
+          mir::BirCfgEdgePublicationSourceStatus::Available ||
+      bir_load_edge.predecessor_label_id != load_publication->predecessor_label ||
+      bir_load_edge.successor_label_id != load_publication->successor_label ||
+      bir_load_edge.destination_value_id != load_publication->destination_value_id ||
+      bir_load_edge.destination_value_name_id !=
+          load_publication->destination_value_name ||
+      bir_load_edge.destination_value_name != load_destination.name ||
+      bir_load_edge.source_value_kind != load_publication->source_value_kind ||
+      prepared.names.value_names.find(bir_load_edge.source_value_name) !=
+          load_publication->source_value_name ||
+      bir_load_edge.source_value_type != load_publication->source_value.type ||
+      bir_load_edge.source_producer_kind !=
+          expected_bir_producer_kind(load_publication->source_producer_kind) ||
+      bir_load_edge.source_producer_instruction_index !=
+          load_publication->source_producer_instruction_index ||
+      bir_load_edge.source_producer_block_label_id !=
+          load_publication->source_producer_block_label.value_or(
+              c4c::kInvalidBlockLabel) ||
+      bir_load_edge.source_producer.inst != &predecessor_block.insts[0] ||
+      bir_load_edge.source_memory_access.inst != &predecessor_block.insts[0] ||
+      bir_load_edge.source_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::LoadLocal ||
+      bir_load_edge.source_memory_access.result_value_name != loaded.name ||
+      bir_load_edge.source_memory_access.base_kind !=
+          mir::BirMemoryAccessBaseKind::LocalSlot ||
+      bir_load_edge.source_memory_access.byte_offset !=
+          load_publication->source_memory_byte_offset ||
+      bir_load_edge.source_memory_access.size_bytes !=
+          load_publication->source_memory_size_bytes ||
+      bir_load_edge.source_memory_access.align_bytes !=
+          load_publication->source_memory_align_bytes) {
+    return fail("BIR CFG edge source identity should match prepared load-local semantic oracle");
+  }
+
+  const auto bir_cast_edge = mir::find_bir_cfg_edge_publication_source_identity(
+      mir::BirCfgEdgePublicationSourceRequest{
+          .predecessor_block = &predecessor_block,
+          .predecessor_label_id = predecessor_label,
+          .successor_block = &successor_block,
+          .successor_label_id = successor_label,
+          .destination_value = &cast_destination,
+          .destination_value_id = 12,
+          .destination_value_name = cast_destination.name,
+          .destination_value_name_id = cast_destination_name,
+          .destination_value_type = cast_destination.type,
+      });
+  if (!bir_cast_edge ||
+      bir_cast_edge.source_producer_kind !=
+          expected_bir_producer_kind(cast_publication->source_producer_kind) ||
+      bir_cast_edge.source_producer_instruction_index !=
+          cast_publication->source_producer_instruction_index ||
+      bir_cast_edge.source_memory_access) {
+    return fail("BIR CFG edge source identity should expose named non-memory producer identity only");
+  }
+
+  const auto bir_missing_destination =
+      mir::find_bir_cfg_edge_publication_source_identity(
+          mir::BirCfgEdgePublicationSourceRequest{
+              .predecessor_block = &predecessor_block,
+              .predecessor_label_id = predecessor_label,
+              .successor_block = &successor_block,
+              .successor_label_id = successor_label,
+              .destination_value_name = "%producer.missing",
+              .destination_value_type = bir::TypeKind::I32,
+          });
+  if (bir_missing_destination ||
+      bir_missing_destination.status !=
+          mir::BirCfgEdgePublicationSourceStatus::MissingPublication) {
+    return fail("BIR CFG edge source identity should fail closed for missing destination publications");
+  }
+
+  const auto bir_missing_source =
+      mir::find_bir_cfg_edge_publication_source_identity(
+          mir::BirCfgEdgePublicationSourceRequest{
+              .predecessor_block = &predecessor_block,
+              .predecessor_label_id = predecessor_label,
+              .successor_block = &successor_block,
+              .successor_label_id = successor_label,
+              .destination_value = &unavailable_destination,
+              .destination_value_name = unavailable_destination.name,
+              .destination_value_type = unavailable_destination.type,
+          });
+  if (bir_missing_source ||
+      bir_missing_source.status !=
+          mir::BirCfgEdgePublicationSourceStatus::MissingSourceProducer ||
+      bir_missing_source.source_value_name != "%missing.producer") {
+    return fail("BIR CFG edge source identity should fail closed for unavailable edge sources");
   }
 
   return 0;

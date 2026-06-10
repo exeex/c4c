@@ -63,6 +63,9 @@ struct BirMemoryAccessIdentity {
   c4c::LinkNameId global_name_id = c4c::kInvalidLinkName;
   std::string_view pointer_value_name;
   std::string_view string_constant_name;
+  std::int64_t byte_offset = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
 
   [[nodiscard]] explicit operator bool() const { return inst != nullptr; }
 };
@@ -142,6 +145,16 @@ enum class BirBlockEntryPublicationStatus {
   MissingPublication,
 };
 
+enum class BirCfgEdgePublicationSourceStatus {
+  Available,
+  MissingPredecessorLabel,
+  MissingSuccessorLabel,
+  MissingDestinationValue,
+  MissingPublication,
+  MissingSourceValue,
+  MissingSourceProducer,
+};
+
 struct BirBlockEntryPublicationIdentityRequest {
   const bir::Block* successor_block = nullptr;
   std::string_view successor_label;
@@ -175,6 +188,62 @@ struct BirBlockEntryPublicationIdentity {
   bir::TypeKind destination_value_type = bir::TypeKind::Void;
   std::string_view successor_label;
   c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct BirCfgEdgePublicationSourceRequest {
+  const bir::Block* predecessor_block = nullptr;
+  std::string_view predecessor_label;
+  c4c::BlockLabelId predecessor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Block* successor_block = nullptr;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Value* destination_value = nullptr;
+  std::size_t destination_value_id = 0;
+  std::string_view destination_value_name;
+  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+
+  [[nodiscard]] explicit operator bool() const {
+    return predecessor_block != nullptr &&
+           successor_block != nullptr &&
+           (destination_value != nullptr ||
+            !destination_value_name.empty() ||
+            destination_value_name_id != c4c::kInvalidValueName);
+  }
+};
+
+struct BirCfgEdgePublicationSourceIdentity {
+  bool available = false;
+  BirCfgEdgePublicationSourceStatus status =
+      BirCfgEdgePublicationSourceStatus::MissingPublication;
+  std::string_view predecessor_label;
+  c4c::BlockLabelId predecessor_label_id = c4c::kInvalidBlockLabel;
+  std::string_view successor_label;
+  c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
+  const bir::Inst* destination_instruction = nullptr;
+  const bir::PhiInst* destination_phi = nullptr;
+  std::size_t destination_instruction_index = 0;
+  const bir::Value* destination_value = nullptr;
+  std::size_t destination_value_id = 0;
+  SameBlockValueIdentity destination_value_identity;
+  std::string_view destination_value_name;
+  c4c::ValueNameId destination_value_name_id = c4c::kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  const bir::Value* source_value = nullptr;
+  std::optional<std::size_t> source_value_id;
+  SameBlockValueIdentity source_value_identity;
+  std::string_view source_value_name;
+  c4c::ValueNameId source_value_name_id = c4c::kInvalidValueName;
+  bir::Value::Kind source_value_kind = bir::Value::Kind::Immediate;
+  bir::TypeKind source_value_type = bir::TypeKind::Void;
+  SameBlockProducerIdentity source_producer;
+  SameBlockProducerKind source_producer_kind = SameBlockProducerKind::Unknown;
+  std::string_view source_producer_block_label;
+  c4c::BlockLabelId source_producer_block_label_id = c4c::kInvalidBlockLabel;
+  std::optional<std::size_t> source_producer_instruction_index;
+  BirMemoryAccessIdentity source_memory_access;
 
   [[nodiscard]] explicit operator bool() const { return available; }
 };
@@ -350,6 +419,10 @@ find_bir_current_block_publication_identity(
 [[nodiscard]] BirBlockEntryPublicationIdentity
 find_bir_block_entry_publication_identity(
     BirBlockEntryPublicationIdentityRequest request);
+
+[[nodiscard]] BirCfgEdgePublicationSourceIdentity
+find_bir_cfg_edge_publication_source_identity(
+    BirCfgEdgePublicationSourceRequest request);
 
 struct DependencyTraversalRecord {
   const bir::Inst* producer = nullptr;

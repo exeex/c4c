@@ -113,6 +113,9 @@ void populate_bir_memory_address_identity(
   identity.address_space = address->address_space;
   identity.is_volatile = address->is_volatile;
   identity.base_kind = bir_memory_access_base_kind(address->base_kind);
+  identity.byte_offset = address->byte_offset;
+  identity.size_bytes = address->size_bytes;
+  identity.align_bytes = address->align_bytes;
   switch (address->base_kind) {
     case bir::MemoryAddress::BaseKind::LocalSlot:
       if (!address->base_name.empty()) {
@@ -269,8 +272,29 @@ void populate_bir_memory_address_identity(
   return {};
 }
 
+[[nodiscard]] std::string_view destination_value_name(
+    const BirCfgEdgePublicationSourceRequest& request) {
+  if (!request.destination_value_name.empty()) {
+    return request.destination_value_name;
+  }
+  if (request.destination_value != nullptr &&
+      request.destination_value->kind == bir::Value::Kind::Named) {
+    return request.destination_value->name;
+  }
+  return {};
+}
+
 [[nodiscard]] bir::TypeKind destination_value_type(
     const BirBlockEntryPublicationIdentityRequest& request) {
+  if (request.destination_value_type != bir::TypeKind::Void) {
+    return request.destination_value_type;
+  }
+  return request.destination_value != nullptr ? request.destination_value->type
+                                             : bir::TypeKind::Void;
+}
+
+[[nodiscard]] bir::TypeKind destination_value_type(
+    const BirCfgEdgePublicationSourceRequest& request) {
   if (request.destination_value_type != bir::TypeKind::Void) {
     return request.destination_value_type;
   }
@@ -290,6 +314,54 @@ void populate_bir_memory_address_identity(
   }
   return request.successor_label.empty() ||
          request.successor_label == request.successor_block->label;
+}
+
+[[nodiscard]] bool predecessor_block_label_matches(
+    const BirCfgEdgePublicationSourceRequest& request) {
+  if (request.predecessor_block == nullptr) {
+    return false;
+  }
+  if (request.predecessor_label_id != c4c::kInvalidBlockLabel &&
+      request.predecessor_block->label_id != c4c::kInvalidBlockLabel &&
+      request.predecessor_label_id != request.predecessor_block->label_id) {
+    return false;
+  }
+  return request.predecessor_label.empty() ||
+         request.predecessor_label == request.predecessor_block->label;
+}
+
+[[nodiscard]] bool successor_block_label_matches(
+    const BirCfgEdgePublicationSourceRequest& request) {
+  if (request.successor_block == nullptr) {
+    return false;
+  }
+  if (request.successor_label_id != c4c::kInvalidBlockLabel &&
+      request.successor_block->label_id != c4c::kInvalidBlockLabel &&
+      request.successor_label_id != request.successor_block->label_id) {
+    return false;
+  }
+  return request.successor_label.empty() ||
+         request.successor_label == request.successor_block->label;
+}
+
+[[nodiscard]] bool phi_incoming_label_matches(
+    const bir::PhiIncoming& incoming,
+    const BirCfgEdgePublicationSourceRequest& request) {
+  if (request.predecessor_label_id != c4c::kInvalidBlockLabel &&
+      incoming.label_id != c4c::kInvalidBlockLabel) {
+    return incoming.label_id == request.predecessor_label_id;
+  }
+  if (request.predecessor_block != nullptr &&
+      request.predecessor_block->label_id != c4c::kInvalidBlockLabel &&
+      incoming.label_id != c4c::kInvalidBlockLabel) {
+    return incoming.label_id == request.predecessor_block->label_id;
+  }
+  const auto label = !request.predecessor_label.empty()
+                         ? request.predecessor_label
+                         : request.predecessor_block != nullptr
+                               ? std::string_view{request.predecessor_block->label}
+                               : std::string_view{};
+  return !label.empty() && incoming.label == label;
 }
 
 [[nodiscard]] bool same_local_slot_identity(
@@ -554,6 +626,132 @@ find_bir_block_entry_publication_identity(
   }
 
   result.status = BirBlockEntryPublicationStatus::MissingPublication;
+  return result;
+}
+
+[[nodiscard]] BirCfgEdgePublicationSourceIdentity
+find_bir_cfg_edge_publication_source_identity(
+    BirCfgEdgePublicationSourceRequest request) {
+  BirCfgEdgePublicationSourceIdentity result{
+      .destination_value_id = request.destination_value_id,
+      .destination_value_name_id = request.destination_value_name_id,
+  };
+  if (request.predecessor_block != nullptr) {
+    result.predecessor_label =
+        normalized_block_label(*request.predecessor_block,
+                               request.predecessor_label);
+    result.predecessor_label_id =
+        request.predecessor_block->label_id != c4c::kInvalidBlockLabel
+            ? request.predecessor_block->label_id
+            : request.predecessor_label_id;
+  }
+  if (request.successor_block != nullptr) {
+    result.successor_label =
+        normalized_block_label(*request.successor_block, request.successor_label);
+    result.successor_label_id =
+        request.successor_block->label_id != c4c::kInvalidBlockLabel
+            ? request.successor_block->label_id
+            : request.successor_label_id;
+  }
+  if (request.predecessor_block == nullptr ||
+      !predecessor_block_label_matches(request)) {
+    result.status = BirCfgEdgePublicationSourceStatus::MissingPredecessorLabel;
+    return result;
+  }
+  if (request.successor_block == nullptr ||
+      !successor_block_label_matches(request)) {
+    result.status = BirCfgEdgePublicationSourceStatus::MissingSuccessorLabel;
+    return result;
+  }
+
+  const auto value_name = destination_value_name(request);
+  const auto value_type = destination_value_type(request);
+  if (value_name.empty()) {
+    result.status = BirCfgEdgePublicationSourceStatus::MissingDestinationValue;
+    result.destination_value_type = value_type;
+    return result;
+  }
+  result.destination_value_name = value_name;
+  result.destination_value_type = value_type;
+
+  for (std::size_t index = 0; index < request.successor_block->insts.size();
+       ++index) {
+    const auto& inst = request.successor_block->insts[index];
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.kind != bir::Value::Kind::Named ||
+        phi->result.name != value_name) {
+      continue;
+    }
+    if (value_type != bir::TypeKind::Void && phi->result.type != value_type) {
+      result.status = BirCfgEdgePublicationSourceStatus::MissingDestinationValue;
+      return result;
+    }
+
+    result.destination_instruction = &inst;
+    result.destination_phi = phi;
+    result.destination_instruction_index = index;
+    result.destination_value = &phi->result;
+    result.destination_value_identity = same_block_value_identity(phi->result);
+    result.destination_value_name = phi->result.name;
+    result.destination_value_type = phi->result.type;
+
+    for (const auto& incoming : phi->incomings) {
+      if (!phi_incoming_label_matches(incoming, request)) {
+        continue;
+      }
+      result.source_value = &incoming.value;
+      result.source_value_identity = same_block_value_identity(incoming.value);
+      result.source_value_kind = incoming.value.kind;
+      result.source_value_type = incoming.value.type;
+      if (incoming.value.kind == bir::Value::Kind::Named) {
+        result.source_value_name = incoming.value.name;
+        const auto producer = find_same_block_producer_identity(
+            SameBlockProducerIdentityRequest{
+                .block = request.predecessor_block,
+                .block_label = result.predecessor_label,
+                .value_name = incoming.value.name,
+                .value_type = incoming.value.type,
+                .before_instruction_index = request.predecessor_block->insts.size(),
+            });
+        if (!producer) {
+          result.status =
+              BirCfgEdgePublicationSourceStatus::MissingSourceProducer;
+          return result;
+        }
+        result.source_producer = producer;
+        result.source_producer_kind = producer.kind;
+        result.source_producer_block_label = producer.block_label;
+        result.source_producer_block_label_id = result.predecessor_label_id;
+        result.source_producer_instruction_index = producer.instruction_index;
+        if (producer.kind == SameBlockProducerKind::LoadLocal) {
+          const auto load_local = find_bir_same_block_load_local_source_identity(
+              BirSameBlockLoadLocalSourceRequest{
+                  .block = request.predecessor_block,
+                  .block_label = result.predecessor_label,
+                  .root_value = &incoming.value,
+                  .root_value_name = incoming.value.name,
+                  .root_value_type = incoming.value.type,
+                  .before_instruction_index =
+                      request.predecessor_block->insts.size(),
+              });
+          if (load_local) {
+            result.source_memory_access = load_local.memory_access;
+          }
+        }
+      }
+      result.available = true;
+      result.status = BirCfgEdgePublicationSourceStatus::Available;
+      return result;
+    }
+
+    result.status = BirCfgEdgePublicationSourceStatus::MissingSourceValue;
+    return result;
+  }
+
+  result.status = BirCfgEdgePublicationSourceStatus::MissingPublication;
   return result;
 }
 
