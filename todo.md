@@ -1,62 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/161_bir_memory_access_identity_annotation_schema.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate A Low-Risk Query Consumer
+Current Step ID: 5
+Current Step Title: Broaden Validation And Prepare Closure
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for
+Completed Step 5 for
 `ideas/open/161_bir_memory_access_identity_annotation_schema.md`.
-Migrated the narrow shared MIR memory/access query consumers to read rebuilt
-Route 3 BIR record/index helpers:
+Ran broad backend acceptance validation for the Route 3 memory/access schema
+migration and recorded closure readiness.
 
-- `mir::find_bir_memory_access_identity(...)` now builds a Route 3 memory
-  access index and converts `Route3MemoryAccessRecord` payloads into the public
-  MIR identity result instead of reconstructing directly from raw BIR
-  instruction/address fields.
-- `mir::find_bir_same_block_global_load_access_identity(...)` now answers from
-  Route 3 same-block global-load lookup records, preserving normalized request
-  value name/type behavior and block-label fail-closed checks.
-- `mir::find_bir_same_block_load_local_source_identity(...)` now answers from
-  Route 3 same-block load-local source lookup records, including same-slot
-  invalidation fail-closed behavior.
-- Name-only same-block memory requests keep the previous no-explicit-type
-  behavior through a Route 3 index-backed fallback scan rather than raw
-  instruction reconstruction.
+The validated slice includes:
 
-Updated the owned helper test expectations so prepared/prealloc oracle checks
-continue to cover semantic memory identity while no longer requiring byte
-offset, size, or align fields from Route 3-backed MIR memory identity.
+- Route 3 BIR memory/access annotation records and construction helpers.
+- Function-local Route 3 memory/access lookup/index helpers.
+- Shared MIR memory/access query consumers migrated to Route 3 BIR record/index
+  answers for direct memory identity, same-block global-load identity, and
+  same-block load-local source identity.
 
-No BIR schema file, AArch64 codegen production file, or prealloc production
-helper was changed.
+Closure readiness notes:
+
+- Broad backend proof is green at `179/179` matching `backend_` tests.
+- No expectation downgrades were introduced.
+- No target-policy leaks were introduced into the Route 3 BIR schema or lookup
+  helpers.
+- No whole-prepared-record schema copies were introduced.
+- The migration is not a helper-only reshuffle: shared MIR query consumers now
+  read rebuilt Route 3 BIR records/index helpers.
+- Target/layout-specific memory facts remain owned by prepared/prealloc or
+  target code, including byte offsets, size/align, frame slot ids, relocation
+  and TLS details, addressing-mode legality, AArch64 operand formation, and
+  offset/range-sensitive overlap authority.
 
 ## Suggested Next
 
-Execute Step 5 by broadening backend validation for the Route 3 memory/access
-schema migration and preparing closure readiness.
+Hand back to the supervisor/plan owner for closure review of
+`ideas/open/161_bir_memory_access_identity_annotation_schema.md`.
 
 ## Watchouts
 
-- Step 5 should run broad backend validation because Step 4 changed shared MIR
-  query behavior used by downstream backend paths.
-- Route 3-backed MIR memory identity intentionally does not provide byte
-  offset, size, align, relocation/TLS details, addressing-mode legality, or
-  AArch64 operand policy.
-- Prepared/prealloc oracles remain responsible for target/layout-specific
-  acceptance, including offset/range-sensitive overlap authority.
+- `test_after.log` contains the broad backend acceptance proof and should be
+  preserved as the executor proof artifact.
+- Closure should continue to treat Route 3 as semantic BIR identity only;
+  target/layout-specific memory facts remain prepared/prealloc or target-code
+  ownership.
 
 ## Proof
 
 Exact delegated proof passed:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_store_source_publication_plan|backend_aarch64_instruction_dispatch|backend_aarch64_prepared_scalar_alu_records)$' > test_after.log
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
 ```
 
-Additional local validation: `git diff --check` passed.
-
-Proof log: `test_after.log` (`4/4` matching backend tests passed).
+Proof log: `test_after.log` (`179/179` matching backend tests passed).
