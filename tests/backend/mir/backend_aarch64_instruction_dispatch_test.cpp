@@ -19865,6 +19865,105 @@ int prepared_root_emission_uses_producer_context_for_operands() {
   return 0;
 }
 
+int select_producer_lookup_uses_bir_identity_without_prepared_source_fact() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.select.bir.identity");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.select.bir.identity.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.select.bir.identity.entry");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.select.bir.identity",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.select.bir.identity.entry",
+              .insts =
+                  {bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.result"),
+                       .compare_type = bir::TypeKind::I64,
+                       .lhs =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.lhs"),
+                       .rhs = bir::Value::immediate_i64(0),
+                       .true_value =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.true"),
+                       .false_value =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.false"),
+                   },
+                   bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.next"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs =
+                           bir::Value::named(bir::TypeKind::I64,
+                                             "%dispatch.select.bir.identity.result"),
+                       .rhs = bir::Value::immediate_i64(1),
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  const auto result =
+      bir::Value::named(bir::TypeKind::I64,
+                        "%dispatch.select.bir.identity.result");
+  const auto producer =
+      aarch64_codegen::find_prepared_same_block_select_producer(
+          block_context, result, 1);
+  if (!producer || producer.instruction_index != 0 ||
+      producer.select !=
+          &std::get<bir::SelectInst>(
+              prepared.module.functions.front().blocks.front().insts.front())) {
+    return fail("expected select producer lookup to use BIR identity");
+  }
+
+  const auto not_before_select =
+      aarch64_codegen::find_prepared_same_block_select_producer(
+          block_context, result, 0);
+  if (not_before_select) {
+    return fail("expected BIR select lookup to respect before-instruction boundary");
+  }
+
+  auto wrong_type = result;
+  wrong_type.type = bir::TypeKind::I32;
+  const auto wrong_type_producer =
+      aarch64_codegen::find_prepared_same_block_select_producer(
+          block_context, wrong_type, 1);
+  if (wrong_type_producer) {
+    return fail("expected BIR select lookup to reject mismatched value type");
+  }
+
+  return 0;
+}
+
 int prepared_select_root_emission_uses_prepared_producer_boundary() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -34151,6 +34250,11 @@ int main() {
   }
   if (const int status =
           prepared_root_emission_uses_producer_context_for_operands();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          select_producer_lookup_uses_bir_identity_without_prepared_source_fact();
       status != 0) {
     return status;
   }

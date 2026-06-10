@@ -138,26 +138,32 @@ prepare_current_block_join_parallel_copy_source_facts(
       value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return {};
   }
-  const auto producer =
-      prepared_publication_source_producer_for_value(context, value);
-  if (!producer.has_value() ||
-      producer->kind !=
-          prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization ||
-      producer->block_label != context.control_flow_block->block_label ||
-      producer->instruction_index >= before_instruction_index ||
-      producer->instruction_index >= context.bir_block->insts.size()) {
+  const auto producer = mir::find_same_block_producer_identity(
+      mir::SameBlockProducerIdentityRequest{
+          .block = context.bir_block,
+          .block_label = context.bir_block->label,
+          .value_name = value.name,
+          .value_type = value.type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (!producer ||
+      producer.kind != mir::SameBlockProducerKind::Select ||
+      producer.instruction_index >= before_instruction_index ||
+      producer.instruction_index >= context.bir_block->insts.size() ||
+      !producer.materialization_available) {
     return {};
   }
   const auto* select =
-      std::get_if<bir::SelectInst>(&context.bir_block->insts[producer->instruction_index]);
-  if (select == nullptr || producer->select != select ||
+      std::get_if<bir::SelectInst>(&context.bir_block->insts[producer.instruction_index]);
+  if (select == nullptr ||
+      producer.inst != &context.bir_block->insts[producer.instruction_index] ||
       select->result.kind != bir::Value::Kind::Named ||
       select->result.name != value.name ||
       select->result.type != value.type) {
     return {};
   }
   return SameBlockSelectProducer{.select = select,
-                                 .instruction_index = producer->instruction_index};
+                                 .instruction_index = producer.instruction_index};
 }
 
 [[nodiscard]] std::optional<prepare::PreparedSameBlockScalarProducer>
