@@ -3,57 +3,48 @@
 Status: Active
 Source Idea Path: ideas/open/156_bir_cfg_edge_publication_identity.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the BIR edge publication relationship surface
+Current Step ID: 3
+Current Step Title: Prove prepared-oracle equivalence for edge sources
 
 ## Just Finished
 
-Step 2 added the target-neutral BIR CFG edge publication/source identity query
-surface in `src/backend/mir/query.hpp` and `src/backend/mir/query.cpp`.
+Step 3 added focused prepared-oracle equivalence coverage for the
+target-neutral BIR CFG edge publication/source identity query in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
 
-Completed API/work item:
+Completed test work item:
 
-- Added `BirCfgEdgePublicationSourceRequest`,
-  `BirCfgEdgePublicationSourceIdentity`, and
-  `BirCfgEdgePublicationSourceStatus`, keyed by predecessor block/label,
-  successor block/label, and destination value/name/id.
-- The query derives semantic edge publication from successor PHI incoming
-  identity and attaches predecessor-block source identity, source producer kind,
-  producer block/instruction identity, and optional load-local
-  `BirMemoryAccessIdentity`.
-- Extended `BirMemoryAccessIdentity` with semantic access `byte_offset`,
-  `size_bytes`, and `align_bytes` copied from BIR `MemoryAddress`.
-- Kept prepared homes, move bundles, parallel-copy scheduling, destination
-  storage/register facts, coalescing flags, execution phase/site/carrier facts,
-  and prepared move records out of the BIR surface.
-- Added focused coverage in
-  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` comparing the new
-  BIR query against prepared edge-publication oracle behavior for a normal
-  named load-local edge, a named non-memory producer edge, missing publication,
-  and unavailable named source producer.
+- Added a reusable prepared-vs-BIR helper over
+  `find_bir_cfg_edge_publication_source_identity` keyed by predecessor,
+  successor, and destination identity.
+- Extended the producer-facts fixture so prepared binary/select edge
+  publications have matching BIR PHIs, keeping the oracle comparison semantic.
+- Covered available load-local, cast, binary, and select edge sources against
+  prepared edge-copy source facts.
+- Verified optional load-local source memory identity through
+  `BirMemoryAccessIdentity` fields while intentionally excluding prepared target
+  addressing policy such as base-plus-offset usability.
+- Covered missing destination publication, unavailable named source producer,
+  and negative predecessor/successor/destination key paths without switching
+  consumers or editing implementation code.
 
 ## Suggested Next
 
-Proposed Step 3 packet: add prepared-vs-BIR equivalence proof for the new edge
-source identity surface before any consumer switch. Cover normal edge,
-no-source/unavailable-source, optional load-local memory-source identity, and
-negative predecessor/successor/destination-key paths against the prepared
-oracle while keeping MIR/AArch64 consumers unchanged.
+Proposed Step 4 packet: add the remaining join-source coverage over current
+block/join publication behavior before any consumer switch. Keep the proof
+oracle-based and focused on source identity, not move-routing or target
+addressing policy.
 
 ## Watchouts
 
-- The Step 2 query intentionally remains a BIR semantic identity surface, not a
-  move-routing surface. Do not add homes, move records, destination register
-  names, storage-sharing/coalescing flags, execution-site/phase/carrier fields,
-  or parallel-copy scheduling fields to it.
-- Source value ids remain optional because raw BIR PHI incoming values do not
-  carry prepared value ids. Callers that need prepared ids still need a separate
-  name/id authority until consumers are switched deliberately.
-- Optional memory-source coverage is included only through
-  `BirMemoryAccessIdentity`; target addressing policy such as base-plus-offset
-  usability and address-materialization requirements remains outside BIR.
-- `clang-format` was not available in this environment; `git diff --check` was
-  clean.
+- Step 3 stayed test-only and did not switch MIR/AArch64 consumers.
+- The prepared oracle can classify a named edge source as non-materializable
+  when no source producer exists; the BIR surface reports that same semantic
+  condition as `MissingSourceProducer`.
+- `BirCfgEdgePublicationSourceIdentity` remains a BIR semantic source-identity
+  surface. Homes, move records, destination register names, coalescing facts,
+  execution-site/phase/carrier facts, and parallel-copy scheduling remain out of
+  scope.
 
 ## Proof
 
