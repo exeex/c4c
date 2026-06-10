@@ -8,73 +8,35 @@ Current Step Title: Add Or Confirm Route 1 Oracle Coverage
 
 ## Just Finished
 
-Completed Step 1: inventoried Route 1 producer, constant, and materialization
-consumer candidates and selected one bounded first implementation family.
+Completed Step 2: confirmed and extended Route 1 oracle coverage for the
+selected AArch64 GP scalar value-publication materialization facts.
 
-Selected consumer family: AArch64 GP scalar value-publication materialization in
-`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`.
+Existing coverage in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` already compares:
+- `prepare::find_prepared_same_block_scalar_producer(...)`
+  with `mir::find_same_block_scalar_producer(...)` and
+  `bir::route1_find_same_block_scalar_producer(...)` across binary, cast,
+  load-local, load-global, select-materialization, and product producers.
+- `prepare::evaluate_prepared_same_block_integer_constant(...)`
+  with `mir::evaluate_same_block_integer_constant(...)` and
+  `bir::route1_evaluate_same_block_integer_constant(...)` for immediate and
+  folded binary constants.
+- materialization availability with direct Route 1 answers.
+- fail-closed behavior for missing values, future producers, non-constant
+  producer kinds, non-materializable producer kinds, and mismatched prepared
+  producer facts.
 
-Target files for the first code packet:
-- `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`
-- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` only if an oracle
-  gap appears while adding or confirming coverage
-
-Selected prepared consumers:
-- `prepared_same_block_scalar_producer(...)` currently builds a
-  `PreparedSameBlockValueMaterializationQuery` and calls
-  `prepare::find_prepared_same_block_scalar_producer(...)`.
-- `prepared_same_block_integer_constant(...)` preserves immediate fast-path
-  behavior, then calls `prepare::evaluate_prepared_same_block_integer_constant(...)`.
-
-Route 1 replacement surface:
-- `mir::find_same_block_scalar_producer(...)` in
-  `src/backend/mir/query.cpp`, already backed by `Route1ProducerIndex`.
-- `mir::evaluate_same_block_integer_constant(...)` in
-  `src/backend/mir/query.cpp`, already backed by
-  `bir::route1_evaluate_same_block_integer_constant(...)`.
-
-Rejected candidates:
-- `src/backend/mir/aarch64/codegen/calls.cpp` scalar call-argument
-  source-producer materialization: already has a Route 6 BIR path and falls back
-  to prepared answers; it is call ABI and carrier-policy-adjacent, so it is not
-  the smallest Route 1 first packet.
-- `src/backend/mir/aarch64/codegen/fp_value_materialization.cpp` prepared
-  producer usage for FP global loads: mixed with prepared memory access,
-  address policy, GOT/direct relocation, and FPR materialization choices.
-- `src/backend/mir/aarch64/codegen/alu.cpp` and
-  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp` control/publication
-  producer helpers: tied to register movement, current-block join copy
-  handling, and publication routing rather than pure Route 1 facts.
-- `src/backend/prealloc/comparison.cpp` and comparison/fused branch consumers:
-  Route 7 owns the relevant comparison-condition migration and branch-policy
-  boundaries; not a Route 1 first packet.
-- `PreparedFunctionLookups::edge_publication_source_producers` aggregate
-  exposure in `src/backend/prealloc/prepared_lookups.hpp`: aggregate-only
-  public surface, not safe to contract before at least one direct consumer
-  moves.
-- `find_prepared_same_block_global_load_access(...)` and
-  `find_prepared_same_block_load_local_stored_value_source(...)`: Route 3
-  memory/access semantics and target addressing policy, not pure Route 1.
-
-Explicit negative cases to preserve before implementation:
-- Missing named value has no producer and remains fail-closed.
-- Producer after `before_instruction_index` remains invisible.
-- Mismatched value type remains fail-closed.
-- Non-integer or non-constant producer kinds do not materialize as integer
-  constants.
-- Non-materializable producer kinds still do not claim scalar materialization.
-- Null or missing block context remains fail-closed without falling back to a
-  broad prepared lookup rebuild.
+Added one explicit oracle gap:
+- mismatched value type now checks integer-constant equivalence fails closed
+  for both prepared-vs-MIR and prepared-vs-direct-Route-1 paths.
 
 ## Suggested Next
 
-Execute Step 2 for the selected AArch64 GP scalar value-publication
-materialization family: confirm or add oracle coverage that compares prepared
-same-block producer and integer-constant answers with the Route 1-backed MIR
-helpers, then keep the implementation packet scoped to switching
-`dispatch_value_materialization.cpp` from prepared same-block producer/constant
-queries to `mir::find_same_block_scalar_producer(...)` and
+Execute Step 3: migrate only the selected AArch64 GP scalar
+value-publication materialization consumer in
+`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` from
+prepared same-block producer and named integer-constant discovery to
+`mir::find_same_block_scalar_producer(...)` and
 `mir::evaluate_same_block_integer_constant(...)`.
 
 ## Watchouts
@@ -96,13 +58,15 @@ queries to `mir::find_same_block_scalar_producer(...)` and
   spelling.
 - Do not contract `PreparedFunctionLookups` or
   `edge_publication_source_producers` in the first implementation packet.
+- Step 2 touched only oracle coverage; the selected consumer has not been
+  switched yet.
 
 ## Proof
 
-Not run; this packet was inventory-only and the delegated proof explicitly said
-no build was required.
+Ran the supervisor-selected proof command:
+`bash -lc "set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'" |& tee test_after.log`
 
-Recommended future proof command for the selected implementation packet:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'`
+Result: passed. `backend_prepared_lookup_helper` and
+`backend_aarch64_instruction_dispatch` both passed.
 
-No `test_after.log` was produced for this inventory-only packet.
+Proof log: `test_after.log`.

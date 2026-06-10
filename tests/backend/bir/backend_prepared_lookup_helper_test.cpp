@@ -6779,9 +6779,26 @@ int verify_prepared_same_block_scalar_source_facts() {
           bir::Value::named(bir::TypeKind::I32, "%sum"))) {
     return fail("BIR Route 1 materialization availability should match prepared mismatched-type fail-closed oracle");
   }
+  if (!prepared_and_bir_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          bir_query,
+          bir::Value::named(bir::TypeKind::I32, "%sum")) ||
+      !prepared_and_route1_integer_constants_both_fail(
+          names,
+          source_producers,
+          block_label,
+          block,
+          route1_query,
+          bir::Value::named(bir::TypeKind::I32, "%sum"))) {
+    return fail("integer constant equivalence should fail closed for mismatched value type");
+  }
 
   auto mismatched_source_producers = source_producers;
-  mismatched_source_producers.producers_by_value_name[sum_name].instruction_index = 1;
+  mismatched_source_producers.producers_by_value_name[sum_name]
+      .instruction_index = 1;
   if (prepare::find_prepared_same_block_scalar_producer(
           names,
           &mismatched_source_producers,
