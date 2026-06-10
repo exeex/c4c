@@ -52,3 +52,15 @@ unavailable publication consumption cases.
   proven.
 - Uses expectation rewrites or classification-only changes as capability
   progress.
+
+## Closure Note
+
+Closed after the active runbook introduced BIR-owned semantic publication
+identity queries for current-block and block-entry availability, proved the
+prepared/BIR semantic identity boundary, and switched one narrow call-boundary
+semantic source consumer while preserving prepared queries as readiness
+oracles/fallbacks. Closure proof used matched canonical logs
+`test_before.log` and `test_after.log` for
+`backend_aarch64_instruction_dispatch` and
+`backend_prepare_frame_stack_call_contract`, with monotonic regression guard
+PASS.
