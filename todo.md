@@ -8,47 +8,47 @@ Current Step Title: Validate And Handoff
 
 ## Just Finished
 
-Completed the scan portion of Step 4 of `plan.md`: re-scanned direct consumers
-after the selected AArch64 scalar value-publication Route 2 migration and found
-no prepared select-chain/direct-global/scalar-materialization surface that is
-proven private enough to contract yet.
+Completed Step 5 of `plan.md`: validated and handed off the selected Route 2
+thinning slice after the Step 4 no-contraction decision.
 
-Consumer evidence:
-- `find_prepared_select_chain_source_producer(...)` is still a production
-  dependency in `src/backend/prealloc/publication_plans.cpp` and remains an
-  internal dependency of prepared direct-global and scalar select-chain helper
+Selected migration completed:
+- The AArch64 scalar value-publication select-chain materialization path in
+  `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp` now uses
+  Route 2-backed `mir::find_bir_select_chain_identity(...)` for select root
+  identity, root instruction index, scalar materialization eligibility, and
+  direct-global dependency presence.
+- The selected path no longer uses prepared select-chain/direct-global lookup
+  fields as the primary semantic source for those facts.
+- Target emission policy, homes, publication routing, scratch/hazard behavior,
+  and final emission choices remained unchanged.
+
+No prepared select-chain/direct-global/scalar-materialization API or cache
+surface was contracted. The Step 4 scan found remaining production consumers:
+- `find_prepared_select_chain_source_producer(...)` remains used by prepared
+  publication planning and by prepared direct-global/scalar select-chain helper
   APIs.
-- `find_prepared_direct_global_select_chain_dependency(...)` is still used by
-  `src/backend/prealloc/call_plans.cpp`, the AArch64 indirect-callee path in
-  `src/backend/mir/aarch64/codegen/calls.cpp`, and the prepared scalar
-  materialization helper.
-- `find_prepared_store_source_direct_global_select_chain_dependency(...)` is
-  still used by prepared publication planning and AArch64 memory/store-source
+- `find_prepared_direct_global_select_chain_dependency(...)` remains used by
+  call planning, AArch64 indirect-callee lowering, and prepared scalar
+  materialization helper code.
+- `find_prepared_store_source_direct_global_select_chain_dependency(...)`
+  remains used by prepared publication planning and AArch64 memory/store-source
   lowering.
-- `find_prepared_scalar_select_chain_materialization(...)` is still used by
-  `src/backend/mir/aarch64/codegen/alu.cpp` and prepared printer select-chain
-  output.
+- `find_prepared_scalar_select_chain_materialization(...)` remains used by
+  AArch64 ALU lowering and prepared printer select-chain output.
 - `PreparedFunctionLookups::edge_publication_source_producers` still has broad
-  direct consumers across AArch64 producer, edge-copy, memory, FP materialization,
-  comparison, ALU, and call codegen paths.
+  AArch64 producer, edge-copy, memory, FP materialization, comparison, ALU, and
+  call codegen consumers.
 - `prepare::PreparedDirectGlobalSelectChainDependency` still crosses public
-  APIs in call plans, select-chain materialization, AArch64 test fixtures, and
-  the local adapter kept by the migrated value-publication consumer.
+  call-plan, select-chain materialization, AArch64 fixture, and local
+  compatibility-adapter surfaces.
 
-Route 2-backed users are not broad enough to replace those surfaces:
-- `mir::find_bir_select_chain_identity(...)` is used by the selected migrated
-  `dispatch_value_materialization.cpp` consumer and by oracle tests.
-- `mir::find_bir_select_chain_direct_global_dependency(...)` is used by
-  `dispatch_producers.cpp` plus oracle tests.
-- `mir::find_bir_select_chain_source_producer(...)` and
-  `mir::find_bir_select_chain_scalar_materialization_eligibility(...)` remain
-  oracle-test-only outside their declarations/definitions.
+The active runbook is ready for supervisor acceptance and plan-owner
+close/deactivation review.
 
 ## Suggested Next
 
-Move to Step 5 validation and handoff for a no-contraction Route 2 result. Use
-the existing narrow proof command:
-`bash -lc "set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'" |& tee test_after.log`
+Supervisor should review acceptance and delegate plan-owner close/deactivation
+review for `ideas/open/168_route2_select_chain_direct_global_oracle_thinning.md`.
 
 ## Watchouts
 
@@ -67,6 +67,9 @@ the existing narrow proof command:
 
 ## Proof
 
-No build or test run; the delegated packet was scan-only and explicitly required
-no build. No new proof log was produced and root-level log files were left
-untouched.
+Fresh validation run:
+`bash -lc "set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'" |& tee test_after.log`
+
+Result: passed. The build was up to date, and both selected tests passed:
+`backend_prepared_lookup_helper` and `backend_aarch64_instruction_dispatch`.
+Proof log path: `test_after.log`.
