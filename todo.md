@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/171_route5_current_block_join_source_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Residual Route 5 Consumers
+Current Step ID: 2
+Current Step Title: Add Or Confirm Route 5 Oracle Coverage
 
 # Current Packet
 
@@ -66,7 +66,29 @@ Coverage candidates before implementation:
 ## Suggested Next
 
 Execute Step 2 from `plan.md`: add or confirm Route 5 oracle coverage for the
-selected helper/consumer before changing the MIR helper implementation.
+selected helper before changing the MIR helper implementation.
+
+Use the green Route 5 oracle/helper subset for Step 2:
+
+```bash
+(cmake --build build --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
+```
+
+Do not include `backend_aarch64_instruction_dispatch` in the Step 2 proof
+baseline. The supervisor already ran the originally proposed combined proof
+into `test_before.log`; it failed 1/2 because
+`backend_aarch64_instruction_dispatch` still has the known ambient failure
+`expected selected f64 global readback to feed call ABI move`, while
+`backend_prepared_lookup_helper` passed. That AArch64 failure was previously
+proven to predate Route 4 at commit `963f2b71f`, so it is not a Step 2 oracle
+prerequisite.
+
+Before Step 4 or close-level validation, the supervisor should either provide a
+green isolated consumer proof for
+`current_block_join_query_routing_uses_bir_identity_with_prepared_fallback()`,
+select a different green Route 5-observing consumer, or split the ambient
+AArch64 dispatch failure into a separate blocker idea if the whole dispatch
+CTest remains required.
 
 ## Watchouts
 
@@ -93,7 +115,13 @@ inventory used `rg`, `ctest --test-dir build -N`, `c4c-clang-tool`, and
 Proposed future proof command:
 
 ```bash
-(cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
+(cmake --build build --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
 ```
 
 `test_after.log` was not touched in this packet.
+
+The previously proposed combined command with
+`backend_aarch64_instruction_dispatch_test` is red on current HEAD before
+Route 5 Step 2 begins because of the ambient AArch64 dispatch failure noted
+above. Treat it as a later consumer-proof decision point, not the Step 2
+baseline.
