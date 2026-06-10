@@ -53,3 +53,26 @@ value links, while rejecting target layout and addressing policy.
   proving BIR and prepared answers equivalent.
 - Reject broad changes to frame layout or target addressing code as part of
   this schema prototype.
+
+## Closure Notes
+
+Closed after implementing Route 3 BIR memory/access annotation records,
+function-local lookup/index helpers, and shared MIR memory/access query
+consumers backed by rebuilt Route 3 BIR records.
+
+Validation:
+
+- Route review `review/161_memory_access_route_review.md` found no blocking
+  issues, no testcase overfit, no expectation downgrade, and no target-policy
+  leakage.
+- Canonical broad backend logs matched the `^backend_` scope with `179/179`
+  passing tests before and after.
+- Regression guard passed with no new failures and no pass-count regression.
+- `git diff --check` passed.
+
+Residual boundary:
+
+- Target/layout-specific memory facts remain outside the Route 3 BIR schema,
+  including frame slot ids, concrete byte offsets, size/align layout,
+  relocation and TLS details, addressing-mode legality, AArch64 operand
+  formation, and offset/range-sensitive overlap authority.
