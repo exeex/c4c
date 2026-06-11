@@ -1,0 +1,119 @@
+# Phase A2 Residual Prepared Surface Semantic-Owner Audit
+
+Status: Step 1 audit skeleton.
+
+Source idea: `ideas/open/200_phase_a2_residual_prepared_surface_semantic_owner_audit.md`
+
+## Scope
+
+This artifact records the Phase A2 ownership audit for residual
+prepared/prealloc surfaces not already owned by Routes 1-8. The audit is
+analysis-only: it does not add route schemas, migrate consumers, contract
+prepared APIs, open draft 155, or claim `PreparedBirModule` retirement
+readiness.
+
+Rows below are seeded from the source idea and prior Phase A-D artifacts. Final
+classification is intentionally pending until the relevant source readers are
+inspected in later steps.
+
+## Evidence Inventory
+
+| Required input | Status | Step 1 impact |
+| --- | --- | --- |
+| `ideas/open/200_phase_a2_residual_prepared_surface_semantic_owner_audit.md` | read | Source intent, ownership categories, in-scope residual groups, output contract, and reject signals captured. |
+| `docs/bir_prealloc_fusion/phase_a_normalization_candidates.md` | read | Phase A candidate/reject boundaries captured for producer, select-chain, publication, call, memory, comparison, value-home, storage, frame, helper, carrier, and target-policy surfaces. |
+| `docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md` | read | Prior annotation-schema candidate boundaries captured for route-owned semantic facts versus retained prepared/target policy. |
+| `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md` | read | Private-cache and pass-context contraction constraints captured for later aggregate classification. |
+| `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` | read | Route 1-7 selected-consumer ladder, prepared fallback/oracle boundaries, x86/riscv wrapper constraints, non-migration surfaces, and return-chain blocker/import notes captured. |
+| `docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md` | read | Phase D follow-up status, selected-reader limits, target-policy boundaries, cross-target breadth limits, Route 3 hard boundary, and draft 155 blockers captured. |
+| `docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md` | read | Residual Route 1-7 production, printer/debug, target-wrapper, oracle, fallback, and future selected-migration surfaces captured. |
+| `docs/bir_prealloc_fusion/prepared_function_lookups_ownership_readiness_map.md` | read | `PreparedFunctionLookups` lookup-group rows captured as required residual audit seeds. |
+| `docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md` | read | Prepared printer, CLI dump, route-debug, lookup-helper, AArch64 threading, target-wrapper, and oracle retention prerequisites captured. |
+| `docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md` | read | x86 and riscv wrapper boundaries, ready/blocked/unknown route-view reuse status, and retained target-local policies captured. |
+| `docs/bir_prealloc_fusion/return_chain_import_and_naming.md` | read | Route 8 return-chain naming, target-neutral fact shape, target-local policy exclusions, and removed prepared helper status captured. |
+| `ideas/closed/190_full_suite_baseline_99_percent_regression_attribution.md` | read | Route 3 regression lesson captured: semantic memory/source identity can be correct while prepared target-addressing fallback or target policy is still required. |
+| `ideas/closed/199_full_suite_baseline_string_authority_timeout_attribution.md` | read | String-authority and baseline discipline captured: do not weaken guards, baselines, or expected strings to make route/readiness docs appear clean. |
+| `ideas/draft/155_phase_e_prepared_bir_module_retirement_plan.md` | read | Draft retirement questions and required field-by-field map captured as future constraints only; draft 155 remains unopened. |
+
+Missing required inputs: none.
+
+## Residual Ownership Table
+
+| Residual surface group | Current files and APIs to inspect | Seed evidence from inputs | Current consumers to verify | Provisional audit status | Classification owner | Follow-up payload need |
+| --- | --- | --- | --- | --- | --- | --- |
+| `PreparedBirModule` aggregate fields and wrapper state | `src/backend/prealloc/module.hpp`; construction, mutation, MIR/codegen wrapper, printer, and dump readers | Source idea and draft 155 require a field-by-field map before retirement; Phase D readiness says no current map proves deletion or demotion. | AArch64 traversal/lowering, x86/riscv wrapper setup, prepared printer/dump, route debug, oracle tests | Placeholder for Step 2 source-reader inspection | pending | Likely field-map or retained-policy payload after classification |
+| `PreparedFunctionLookups` aggregate compatibility surface | `src/backend/prealloc/prepared_lookups.hpp`, `src/backend/prealloc/prepared_lookups.cpp` | Idea 196 map says aggregate-wide replacement, deletion, privatization, or BIR-owned cloning is not ready. | AArch64 lowering, x86 `ConsumedPlans` and `prepared::Query`, riscv lookup setup, prepared printer/debug/helper oracles | Placeholder for Step 2 lookup-group inspection | pending | Field/group-specific follow-up payloads only |
+| `call_plans` lookup group | `PreparedCallPlanLookups`, call argument/result plan helpers | Idea 196 marks whole call plans as target/prepared policy with one Route 6 semantic subfact. | AArch64 calls; x86 `ConsumedPlans`; ABI placement helpers; prepared call tests | Placeholder row seeded from prior map | pending | Possible one-call-use-source adapter payload |
+| `address_materializations` lookup group | `PreparedAddressMaterializationLookups`, frame-address offset helpers | Idea 196 retains target-addressing policy; no group-level route replacement ready. | AArch64 globals, memory, calls, address materialization, frame helpers, tests | Placeholder row seeded from prior map | pending | Possible focused semantic address/source audit if a reader asks identity only |
+| `memory_accesses` lookup group | `PreparedMemoryAccessLookups`, `find_prepared_memory_access(...)`, global-load and load-local helpers | Idea 196 and idea 190 mark Route 3 semantic memory/source identity as mixed with retained target-addressing policy. | AArch64 memory/calls/dispatch; x86 local-slot and compare-load candidates; memory/frame/stack tests | Placeholder row seeded from prior map | pending | Possible one Route 3 memory/source adapter payload |
+| `move_bundles` lookup group | `PreparedMoveBundleLookups`, before/after call/return move helpers | Idea 196 marks move bundles as target/prepared policy and transient pass context. | AArch64 edge/call/return/dispatch/publication/prologue; x86 move and return wrappers | Placeholder row seeded from prior map | pending | Usually retained-policy payload unless a pure source-id sub-read is proven |
+| `value_homes` lookup group | `PreparedValueHomeLookups`, decoded-home/formal-publication inputs | Idea 196 retains storage authority, register choice, stack slot/offset, home rendering, and rematerialization spelling outside routes. | AArch64 operands/prologue/dispatch/publication/memory/calls; x86 decoded-home and ABI helpers; riscv operand rendering | Placeholder row seeded from prior map | pending | Retained-policy payload likely |
+| `edge_publications` lookup group | `PreparedEdgePublicationLookups`, indexed/unique publication helpers | Idea 196 marks mixed Route 4 publication identity and Route 5 edge/join-source identity with retained construction/emission policy. | AArch64 dispatch/memory/publication; x86 prepared dispatch; riscv prepared emission; wrapper tests | Placeholder row seeded from prior map | pending | Possible one Route 4/5 edge-publication adapter payload |
+| `edge_publication_source_producers` lookup group | `PreparedEdgePublicationSourceProducerLookups`, source-producer and store-source helpers | Idea 196 marks mixed Route 1/2/5/6/7 semantic subfacts plus retained production fallback and printer/debug oracle. | AArch64 dispatch/producers/publication/memory/calls; prepared printer; x86/riscv wrapper-adjacent paths | Placeholder row seeded from prior map | pending | Route-family-specific diagnostic/helper payload likely |
+| Route 1 producer/constant residuals | Same-block producer, integer-constant, scalar operand, value-publication helpers | Residual map keeps prepared helpers as public fallback/oracles for broad scalar materialization, ALU, memory/call operands, printer, and tests. | AArch64 ALU/materialization/publication paths; prealloc comparison/call/publication helpers; printer/oracle tests | Placeholder row seeded from Route 1 residual map | pending | Possible selected consumer or diagnostic oracle payload |
+| Route 2 select-chain/direct-global residuals | Select-chain materialization and direct-global dependency helpers | Residual map keeps prepared select-chain fallbacks for publication, call, memory, ALU, FP, producer, edge-copy, printer/test paths. | AArch64 calls, memory, ALU, FP, producer, edge-copy; prepared printer and route oracles | Placeholder row seeded from Route 2 residual map | pending | Possible selected consumer or diagnostic oracle payload |
+| Route 3 memory/source residuals | Prepared memory/access/global-load/same-block/load-local source helpers | Idea 190 makes prepared fallback and target-addressing preservation mandatory. | AArch64 memory/globals/frame-slot/fp/materialization/comparison; x86 module/local-slot wrappers; prealloc call/publication/variadic | Placeholder row seeded from Route 3 residual map | pending | Route 3 boundary-hardening or selected consumer payload |
+| Route 4 publication residuals | Current/block-entry publication helpers and edge-publication lookup surfaces | Phase D follow-up says only one selected AArch64 publication reader moved; x86 wrappers and route-oracle tests still retain prepared surfaces. | AArch64 dispatch/publication/call planning; prepared printer; x86 wrappers/debug; oracle tests | Placeholder row seeded from Route 4 residual map | pending | Possible selected publication reader or diagnostic payload |
+| Route 5 edge/join-source residuals | Edge publication, source-producer, current-block join-source, move-bundle helpers | Residual map keeps parallel-copy scheduling, homes, move bundles, branch spelling, and final edge-copy records outside BIR. | AArch64 edge/publication/memory/call/producer paths; x86 joined-branch tests; prepared printer | Placeholder row seeded from Route 5 residual map | pending | Possible selected edge/join source payload |
+| Route 6 call-use source residuals | Call-plan, argument/result, publication-source routing, value-home, move-bundle helpers | Residual map and cross-target map accept only narrow Route 6 semantic source reuse, not whole call-plan or wrapper migration. | AArch64 call argument/result readers; x86 scalar helper and wrappers; prepared call printer/debug surfaces | Placeholder row seeded from Route 6 residual map | pending | Possible one call-role adapter payload |
+| Route 7 comparison/condition residuals | Fused-compare, materialized-condition, branch operand, scalar comparison helpers | Residual map keeps branch spelling, fused legality, hazards, emitted-register state, and final branch/compare ordering target-owned. | AArch64 comparison/branch/ALU paths; x86 joined-branch tests; fused-compare and materialized-condition oracles | Placeholder row seeded from Route 7 residual map | pending | Possible selected comparison provenance payload |
+| Route 8 return-chain import | `route8_*` BIR records/index/lookups; removed historical prepared return-chain helpers | Return-chain import note says old public prepared helper names are absent after idea 180; Route 8 owns only target-neutral same-block return-chain identity. | AArch64 return-chain semantic consumers; target-owned return ABI, homes, registers, scratch, ALU records, emission order | Placeholder row seeded from import note | pending | Usually citation/import payload, not retained prepared helper payload |
+| AArch64 prepared wrapper and lowering context | `src/backend/mir/aarch64/` prepared context/threading and route-consuming readers | Phase D maps selected consumer progress only; many residual production, fallback, printer/debug, and oracle readers remain. | Traversal, dispatch, calls, memory, value materialization, publication, comparison, ALU, prologue, atomics/f128 | Placeholder for Step 3 wrapper/source-reader inspection | pending | Selected-consumer payloads only |
+| x86 prepared wrappers and `ConsumedPlans` | `src/backend/mir/x86/`, `ConsumedPlans`, `x86::prepared::Query`, route-debug summary/trace | Cross-target map says only x86 Route 6 scalar source sub-boundary is ready; whole plans, facade, ABI, frame, moves, wrappers remain blocked or target-local. | x86 direct extern/same-module calls, ABI helpers, edge-publication, compare/join, local-slot helpers, debug/handoff tests | Placeholder for Step 3 wrapper/source-reader inspection | pending | One wrapper-boundary payload at a time |
+| riscv prepared wrapper surfaces | `src/backend/mir/riscv/`, `emit_prepared_module`, edge-publication setup/emission | Cross-target map says no ready riscv route-view reuse point; edge-publication semantic source adapter is only a future blocked candidate. | riscv prepared lookup setup, edge-publication move intent, operand rendering, stack-source publication, register naming | Placeholder for Step 3 wrapper/source-reader inspection | pending | Possible blocked edge-publication adapter payload |
+| Wide-value carriers | I128/F128 carrier surfaces and related lowering helpers | Source idea and Phase D plan list wide carriers as residual non-migration surfaces except for underlying semantic source identities. | AArch64 f128/i128 paths, helper protocols, target records | Placeholder for Step 3 source-reader inspection | pending | Likely retained target/prepared policy payload |
+| Runtime helper protocols | Runtime helper plan/helper surfaces | Phase D plan excludes helper protocols, scratch resources, helper calls, and target records from BIR ownership. | AArch64 helper emission, call/helper protocol tests | Placeholder for Step 3 source-reader inspection | pending | Likely retained target/prepared policy payload |
+| Variadic entry helpers | Variadic entry and variadic FPR/count surfaces | Phase D plan excludes variadic entry/helpers and ABI counts from route migration. | Prealloc planning, AArch64/x86 call ABI paths, tests | Placeholder for Step 3 source-reader inspection | pending | Likely retained ABI/policy payload |
+| Intrinsic helpers | Intrinsic lowering helper surfaces | Source idea lists intrinsic helpers as residual prepared/prealloc surfaces needing owner audit. | Target intrinsic lowering and helper/oracle tests | Placeholder for Step 3 source-reader inspection | pending | Unknown until readers inspected |
+| Inline-asm helpers | Inline asm helper surfaces | Source idea lists inline-asm helpers as residual prepared/prealloc surfaces needing owner audit. | Target inline-asm lowering and diagnostics | Placeholder for Step 3 source-reader inspection | pending | Unknown until readers inspected |
+| Atomic helpers | Atomic helper surfaces | Source idea lists atomic helpers as residual prepared/prealloc surfaces needing owner audit. | AArch64 atomics and target-specific lowering/tests | Placeholder for Step 3 source-reader inspection | pending | Likely retained target/prepared policy unless pure semantic source identity is found |
+| Dynamic-stack helpers | Dynamic-stack plan/helpers | Phase D and cross-target maps retain dynamic stack, frame layout, and target wrapper policy outside routes. | x86 `ConsumedPlans`, AArch64 prologue/frame paths, tests | Placeholder for Step 3 source-reader inspection | pending | Likely retained pass-context/target-policy payload |
+| Frame helpers | Frame slots, frame layout, frame-address offset helpers | Prior maps retain stack/frame offsets and layout as target/prealloc policy. | AArch64 frame/prologue/memory; x86 frame/local-slot helpers; frame/stack tests | Placeholder for Step 3 source-reader inspection | pending | Likely retained target/prepared policy payload |
+| Special target-entry surfaces | Special carrier/target-entry protocols | Source idea and Phase D plan list special target entries as residual non-migration surfaces. | Target entry lowering and helper tests | Placeholder for Step 3 source-reader inspection | pending | Unknown until readers inspected |
+| Prepared printer | `prepare::print(const PreparedBirModule&)`, prepared printer tests | Diagnostics plan keeps prepared printer as compatibility oracle until route-native diagnostics prove equivalent content. | Prepared printer expected output, route/prepared comparison tests | Placeholder for Step 3 diagnostic inspection | pending | Diagnostic/oracle replacement payload likely |
+| Prepared CLI dump | `--dump-prepared-bir`, prepared dump snippets, `backend_cli_dump_prepared_bir_*` | Diagnostics plan keeps dump as user-facing compatibility stage, not route-native proof. | CLI dump tests and snippets | Placeholder for Step 3 diagnostic inspection | pending | Route-native dump payload only after exact scope |
+| x86 route-debug summary/trace | `summarize_prepared_module_routes(...)`, `trace_prepared_module_routes(...)` | Diagnostics plan says compatibility-derived rows must remain labeled until route-native authority owns every assertion. | x86 MIR summary/trace tests | Placeholder for Step 3 diagnostic inspection | pending | One summary/trace row-family payload |
+| Prepared lookup helper oracle | `backend_prepared_lookup_helper`, helper-status assertions | Diagnostics plan keeps helper oracle until route-native helper families reproduce success and fallback semantics. | Helper oracle tests for prepared lookup status and route/prepared agreement | Placeholder for Step 3 diagnostic inspection | pending | Route-native helper-oracle payload by route family |
+| AArch64 lookup threading as compatibility surface | `PreparedFunctionLookups` threaded through `FunctionLoweringContext` | Diagnostics plan treats target-local route-view delivery as unproven for every consumed fact family. | AArch64 route-consuming tests and context construction | Placeholder for Step 3 diagnostic/source inspection | pending | One route fact threading payload |
+| Target-wrapper compatibility tests | x86 wrapper tests and riscv prepared edge-publication tests | Diagnostics plan keeps wrapper assertions while adapters still consume prepared lookup state. | x86/riscv wrapper tests, route-debug/handoff tests | Placeholder for Step 3 diagnostic/source inspection | pending | One target-wrapper route-input payload |
+| Baseline and string-authority discipline | `test_baseline.log`, `test_baseline.new.log`, string-authority guard rules as cited by ideas 190 and 199 | Idea 190 and 199 reject accepting regressive baselines, weakening expectations, or hiding string-authority failures. | Any future classification touching fallback, target policy, docs authority, baselines, or expected output | Cross-cutting placeholder reminder | pending | Include explicit proof/guard note in affected payloads |
+
+## Accepted Route Candidates
+
+No accepted new route candidates are recorded in Step 1. Candidate acceptance is
+deferred until source-reader inspection proves the semantic fact, the owner,
+the excluded target/prepared policy, the proof route, and reject signals.
+
+## Rejected Retained Surfaces
+
+No final rejected/retained decisions are recorded in Step 1. Prior artifacts
+seed likely retained policy and oracle surfaces, but this audit will record
+final retained decisions only after the relevant readers are inspected.
+
+## Blocked Unknowns
+
+Step 1 found no missing required inputs. Classification remains blocked by
+planned source-reader inspection for rows whose surface group currently mixes
+semantic identity with target policy, pass context, diagnostics, or oracle
+compatibility.
+
+## Follow-Up Payloads
+
+No follow-up payload is finalized in Step 1. Later steps should draft payloads
+only after each row identifies:
+
+- the exact semantic fact or retained surface;
+- the primary owner category;
+- the excluded target/prepared policy;
+- required route/prepared agreement or diagnostic/oracle proof;
+- reject signals that would indicate route drift or testcase overfit.
+
+## Closure Notes
+
+Step 1 completion state:
+
+- The audit artifact exists and names the source idea.
+- Every required input is recorded as read; none are missing.
+- The residual table has placeholder rows for known prepared/prealloc surface
+  groups from the source idea and prior Phase A-D artifacts.
+
