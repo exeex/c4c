@@ -505,6 +505,17 @@
       "evidence": "Function checks is_numeric_label and generates .Lnum_ labels."
     },
     {
+      "path": "src/backend/mir/aarch64/codegen/calls.cpp",
+      "symbol": "find_prepared_indirect_callee_stored_value_source_fallback",
+      "pattern": "lookup-helper-rendered-compatibility",
+      "owner": "backend-aarch64",
+      "domain": "Route 3 indirect callee prepared fallback",
+      "category": "compatibility-bridge",
+      "reason": "Structured Route 3 identity is preferred; this helper handles absent, mismatched, ambiguous, or policy-sensitive cases by retaining the explicit prepared fallback.",
+      "removal_condition": "Remove when indirect callee materialization carries structured source identity and no longer needs the prepared fallback.",
+      "evidence": "First-bad 9e4892bcd introduced the explicit prepared fallback after the Route 3 identity path; the adjacent comment says absent, mismatched, ambiguous, or policy-sensitive cases stay on prepared fallback."
+    },
+    {
       "path": "src/backend/mir/aarch64/codegen/emit.cpp",
       "symbol": "block_map",
       "pattern": "string-keyed-container",
