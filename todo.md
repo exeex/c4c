@@ -1,71 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/199_full_suite_baseline_string_authority_timeout_attribution.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Decide the Repair or Follow-Up Route
+Current Step ID: Step 5
+Current Step Title: Prove the Final Baseline Decision
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: Decide the Repair or Follow-Up Route.
+Completed Step 5: Prove the Final Baseline Decision.
 
-First-bad rule:
-- The first real PASS-to-FAIL transition remains
-  `1496a715d -> 9e4892bcd`.
-- The current guard diagnostic for that first-bad route is the exact
-  declaration-level hit
-  `src/backend/mir/aarch64/codegen/calls.cpp:8062` /
-  `find_prepared_indirect_callee_stored_value_source_fallback` with pattern
-  `lookup-helper-rendered-compatibility`.
+Narrow guard and isolated test result:
+- `scripts/string_authority_guard.py` passed with
+  `231 classified declaration-level hits`.
+- `c_testsuite_aarch64_backend_src_00040_c` passed in isolation, confirming the
+  Step 2 timeout/noise case is not a current isolated failure.
 
-Repair decision:
-- Added exactly one path+symbol classification for
-  `find_prepared_indirect_callee_stored_value_source_fallback`.
-- Classified it as a `backend-aarch64` compatibility bridge for the Route 3
-  indirect callee prepared fallback because structured Route 3 identity is
-  preferred and the helper is the explicit prepared fallback for absent,
-  mismatched, ambiguous, or policy-sensitive cases.
-- Did not add broad exceptions and did not weaken
-  `string_authority_guard`.
+Full-suite baseline candidate:
+- `scripts.plan_review_state.refresh_test_baseline_candidate(...)` generated
+  fresh candidate `test_baseline.new.log`.
+- Candidate baseline commit is
+  `42fbc68e851f1dc929097fda1c91da182aac17c7`.
+- Candidate baseline subject is
+  `Classify AArch64 indirect callee fallback`.
+- Candidate result is `<full-suite>` with `3428/3428` tests passing.
 
-Preserved Step 2 classification:
-- `c_testsuite_aarch64_backend_src_00040_c` remains separate timeout/noise from
-  Step 2 and did not drive this Step 4 classification.
+Baseline decision:
+- The accepted `test_baseline.log` records a `<full-suite>` `3428/3428` pass.
+- The fresh `test_baseline.new.log` also records a `<full-suite>` `3428/3428`
+  pass, so it is non-regressive against the accepted baseline by status and
+  pass count.
+- Supervisor accepted `test_baseline.new.log` through
+  `scripts/plan_review_state.py accept-baseline`; canonical `test_baseline.log`
+  now records the current-HEAD `3428/3428` baseline.
 
 ## Suggested Next
 
-Supervisor should review the completed Step 4 classification slice and decide
-whether to commit it or request broader validation.
+Plan owner should decide whether this completed runbook closes the source idea.
 
 ## Watchouts
 
-- The first bad commit is `9e4892bcd`; do not infer first-bad from later
-  failing commits such as `521cf148f` or the rejected candidate `1d1c506f0`.
-- Do not infer first-bad from `1d1c506f0`; Step 1 found
-  `string_authority_guard` already failing in
-  `log/baseline_521cf148fa7660766f5bfa8c0932833bfa987311.log`.
-- The Step 2 isolated proof reproduced only `string_authority_guard`; `00040`
-  passed and remains timeout/noise unless it reappears in broader validation.
-- Do not weaken, disable, or bypass `string_authority_guard`.
-- Do not broaden this classification into adjacent AArch64 prepared-call
-  helpers without a separate first-bad diagnostic and route justification.
+- `test_after.log` includes the generated candidate contents after the proof
+  command prints `BASELINE_CANDIDATE test_baseline.new.log`.
+- `test_baseline.new.log` has been consumed by supervisor acceptance.
 
 ## Proof
 
-Ran the supervisor-delegated Step 4 proof and captured all output in
+Ran the supervisor-delegated Step 5 proof and captured all output in
 `test_after.log`:
 
 ```sh
 (
   set -o pipefail
   python3 scripts/string_authority_guard.py && \
-  python3 scripts/test_string_authority_guard.py && \
-  ctest --test-dir build --output-on-failure -R '^string_authority_guard(_self_test)?$'
+  ctest --test-dir build --output-on-failure -R '^c_testsuite_aarch64_backend_src_00040_c$' && \
+  python3 - <<'PY'
+from pathlib import Path
+import scripts.plan_review_state as prs
+candidate = prs.refresh_test_baseline_candidate(Path('test_baseline.log'), '')
+print(f'BASELINE_CANDIDATE {candidate}')
+print(Path(candidate).read_text())
+PY
 ) > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` records
-`string authority guard passed: 231 classified declaration-level hits`, the
-Python self-test passing 3 tests, and both CTest cases
-`string_authority_guard` and `string_authority_guard_self_test` passing.
+Result: passed. `test_after.log` records the guard pass, the isolated `00040`
+CTest pass, `BASELINE_CANDIDATE test_baseline.new.log`, and the full-suite
+candidate result `100% tests passed, 0 tests failed out of 3428`.
