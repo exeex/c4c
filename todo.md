@@ -1,42 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/205_route6_call_use_source_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Fail-Closed Route 6 Reader Adapter
+Current Step ID: 3
+Current Step Title: Wire The Selected Reader To The Adapter
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the fail-closed Route 6 reader adapter around the selected
-AArch64 scalar call argument source-producer materialization path.
+Step 3 verified that no additional implementation wiring is needed for the
+selected AArch64 scalar call argument source-producer boundary.
 
-`find_scalar_call_argument_source_producer_materialization(...)` now accepts
-Route 6 only when the selected call/argument key is unique, the Route 6 source
-value id/name/value agrees with the prepared `PreparedCallArgumentPlan`, the
-producer instruction points back into the current BIR block, and Route 6
-reports scalar materialization available. Absent Route 6, source-id mismatch,
-duplicate/ambiguous records, ABI-bound records, missing producers, stale
-producer pointers, and nonmaterializable producers fall back to the existing
-prepared source-producer lookup.
+`lower_scalar_call_argument_producers(...)` already builds the Route 6 call-use
+source index for the selected `CallInst`, finds the prepared argument plan for
+the argument index, and passes both into
+`materialize_scalar_call_argument_value(...)`.
 
-`materialize_scalar_call_argument_value(...)` now receives the prepared
-argument plan so the Route 6 adapter can validate source identity while
-prepared ABI/layout/policy facts remain authoritative.
+`materialize_scalar_call_argument_value(...)` already routes the selected
+top-level call argument through
+`find_scalar_call_argument_source_producer_materialization(...)`, which accepts
+only validated Route 6 semantic source identity and otherwise falls back to the
+prepared source-producer lookup. Recursive producer operand materialization
+passes no selected call/argument key, so Route 6 does not broaden beyond the
+selected call argument source role.
 
-Focused AArch64 coverage was added to the existing scalar call argument
-producer fixture for Route-6-only success, source-id mismatch fallback, absent
-Route 6 fallback, duplicate fallback, ABI-bound fallback, Route-6-only
-rejection for those bad facts, and nonmaterializable producer rejection.
+Prepared ABI placement, wrappers, clobbers, outgoing stack sizing, byval lanes,
+variadic FPR counts, helper protocols, homes, move bundles, aggregate
+transport, publication policy, final call records, and output authority remain
+unchanged. No code or test churn was needed.
 
 ## Suggested Next
 
-Execute Step 3 by reviewing/wiring the selected reader boundary now that the
-adapter is in place. Confirm the selected reader consumes only validated Route
-6 semantic identity and otherwise uses prepared fallback, with no migration of
-ABI placement, wrappers, clobbers, outgoing stack sizing, helper protocols,
-homes, move bundles, aggregate transport, publication policy, final call
-records, or output authority.
+Execute Step 4 by proving adapter completeness and route quality for the
+selected Route 6 scalar call argument source-producer boundary.
 
 ## Watchouts
 
@@ -46,9 +42,12 @@ records, or output authority.
 - Route 6 nonmaterializable binary producers now fall back to prepared lookup;
   with no prepared producer lookup, the selected route emits no scalar producer
   materialization.
-- Do not broaden the next packet into result lanes, direct-global dependency
-  routing, whole call plans, helper protocol changes, expected-output rewrites,
-  or unsupported-test downgrades.
+- Step 4 should assess whether the existing success, absent fallback,
+  source-id mismatch, duplicate, ABI-bound, nonmaterializable, prepared
+  fallback, and unchanged-output coverage is enough for route-quality proof.
+- Do not broaden into result lanes, direct-global dependency routing, whole
+  call plans, helper protocol changes, expected-output rewrites, or
+  unsupported-test downgrades.
 
 ## Proof
 
