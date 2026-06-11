@@ -12,18 +12,19 @@ Completed Step 3: Isolate the First Bad String-Authority Step.
 
 Historical isolation results:
 - Used a temporary worktree outside the active checkout:
-  `/tmp/c4c-string-authority-isolate-51008`.
-- Ran `python3 scripts/string_authority_guard.py` at every commit in the
-  ordered range `e52189425..3486d702e`, plus the lower endpoint `e52189425`.
-- The requested minimum commits were covered:
-  `e52189425`, `3d2f4f903`, `61bbaf8eb`, `4976210ac`, `19b3b8765`,
-  `6b5c0fa3f`, `eb4ebf5fc`, `c6fa8d8ee`, `f6bdf2641`, `e68d96749`, and
-  `3486d702e`.
-- Every tested commit passed with
+  `/tmp/c4c-string-authority-above-xA6sxb/wt`.
+- Ran `(cd temporary worktree && python3 scripts/string_authority_guard.py)` at
+  `3486d702e`, every commit in
+  `git log --oneline --reverse 3486d702e..521cf148f`, and `521cf148f`.
+- Found the first real PASS-to-FAIL transition above `3486d702e`:
+  - preceding passing commit:
+    `1496a715d` (`[todo_only] Record Route 3 consumer inventory`)
+  - first bad commit:
+    `9e4892bcd` (`Clarify Route 3 indirect callee fallback boundary`)
+- Passing commits through `1496a715d` reported
   `string authority guard passed: 229 classified declaration-level hits`.
-- No PASS-to-FAIL transition was found because the requested failing endpoint
-  `3486d702e` passed when checked out in the historical worktree and run with
-  the delegated guard command.
+- `9e4892bcd` and every later tested commit through `521cf148f` reported
+  `string authority guard failed`.
 - Removed the temporary worktree after the sweep.
 
 Preserved Step 2 classification:
@@ -33,17 +34,18 @@ Preserved Step 2 classification:
 
 ## Suggested Next
 
-Supervisor should reconcile the failing-endpoint assumption against the
-historical script result: either rerun the guard at the originally failing
-checkout/artifact that named `3486d702e`, or delegate a new isolation range
-above `3486d702e` where the guard failure is known to reproduce.
+Supervisor should route the next packet to inspect the first-bad diff at
+`9e4892bcd` against preceding pass `1496a715d`, identify the exact guarded
+string-authority violation introduced by
+`Clarify Route 3 indirect callee fallback boundary`, and decide whether repair
+belongs in this plan or a focused follow-up idea.
 
 ## Watchouts
 
-- Step 3 did not find a PASS-to-FAIL transition inside
-  `e52189425..3486d702e`; all tested commits in that interval passed.
-- This packet cannot isolate a first bad commit because the requested endpoint
-  `3486d702e` did not fail under the delegated historical workflow.
+- The lower endpoint `3486d702e` still passes under the corrected fresh
+  worktree method, matching the previous lower-range sweep.
+- The first bad commit is `9e4892bcd`; do not infer first-bad from later
+  failing commits such as `521cf148f` or the rejected candidate `1d1c506f0`.
 - Do not infer first-bad from `1d1c506f0`; Step 1 found
   `string_authority_guard` already failing in
   `log/baseline_521cf148fa7660766f5bfa8c0932833bfa987311.log`.
@@ -60,15 +62,15 @@ above `3486d702e` where the guard failure is known to reproduce.
 
 ## Proof
 
-Ran the supervisor-delegated historical proof workflow and captured the commit
-table in `test_after.log`:
+Ran the supervisor-delegated historical proof workflow from inside a fresh
+temporary worktree and captured the commit table in `test_after.log`:
 
 ```sh
-git worktree add --detach /tmp/c4c-string-authority-isolate-51008 e52189425
-python3 scripts/string_authority_guard.py
+git worktree add --detach /tmp/c4c-string-authority-above-xA6sxb/wt 3486d702e
+(cd /tmp/c4c-string-authority-above-xA6sxb/wt && python3 scripts/string_authority_guard.py)
 ```
 
-The script was run from the temporary worktree after checking out each tested
-historical commit. `test_after.log` is the proof log path and records
-`first_pass_to_fail_transition: not found in tested sequence` because all
-tested commits passed.
+The script was run from the temporary worktree after checking out each
+historical commit in the delegated range. `test_after.log` is the proof log
+path and records
+`first_pass_to_fail_transition: 1496a715d -> 9e4892bcd`.
