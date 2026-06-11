@@ -1,25 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/201_phase_b2_selected_route_extension_schema_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Existing Schema Sufficiency
+Current Step ID: 3
+Current Step Title: Define Proof And Reject Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2: Classify Existing Schema Sufficiency. Updated
+Completed plan Step 3: Define Proof And Reject Coverage. Updated
 `docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md`
-with schema-readiness classifications for every Route 1-8 candidate. Each row
-now states whether existing route records/indexes are schema sufficient,
-whether future work is a small schema/index extension, compatibility adapter,
-diagnostic/oracle replacement, retained-policy cleanup, or no action, and which
-prepared fallback/oracle surface must remain.
+with proof recommendations and concrete reviewer reject signals for every
+Route 1-8 classification. Each row now names the minimum route/prepared
+agreement, fail-closed, fallback, oracle, and string-authority proof expected
+before future implementation or diagnostic work, while keeping rejected
+target/prepared policy outside BIR schema scope.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: extract any follow-up payloads from the Step 2
-classification, keeping them narrow and route-specific.
+Execute Step 4 from `plan.md`: open only the bounded follow-up ideas justified
+by the completed audit, keeping each idea route-specific and proof/reject
+coverage-driven.
 
 ## Watchouts
 
@@ -34,16 +35,16 @@ classification, keeping them narrow and route-specific.
 - Routes 1-7 are generally schema sufficient for selected semantic facts, but
   wrappers, diagnostics, target policy, and aggregate lookup contraction remain
   separate adapter/oracle work.
+- Step 3 did not create follow-up idea files; Step 4 should decide whether any
+  are justified.
 
 ## Proof
 
-Docs-only inspection and targeted searches. Delegated searches run for Step 2:
+Docs-only inspection and targeted searches. Delegated searches run for Step 3:
 
-- `rg -n "Route [1-8]|record|index|lookup|annotation|schema|adapter|oracle|fallback|route8|Route8|PreparedFunctionLookups|PreparedBirModule" docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md`
-- `rg -n "Route [1-8]|record|index|lookup|annotation|schema|adapter|oracle|fallback|route8|Route8|return-chain" docs/bir_prealloc_fusion/phase_a2_residual_semantic_owner_audit.md docs/bir_prealloc_fusion/return_chain_import_and_naming.md`
-- `rg -n "Route [1-8]|record|index|lookup|annotation|schema|adapter|oracle|fallback|PreparedFunctionLookups|PreparedBirModule" docs/bir_prealloc_fusion/prepared_function_lookups_ownership_readiness_map.md docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md docs/bir_prealloc_fusion/phase_a_normalization_candidates.md`
-- `rg -n "struct Route[1-8]|using Route[1-8]|enum class Route[1-8]|route[1-8]_build|route[1-8]_find|route[1-8]_.*record" src/backend/bir/bir.hpp`
-- `rg -n "Route [1-8]|schema sufficient|schema/index extension|compatibility adapter|diagnostic/oracle|retained-policy cleanup|no action|fallback|oracle" docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md todo.md`
+- `rg -n "negative|ambiguous|mismatch|invalid-reference|duplicate|conflict|policy-sensitive|string-authority|fail-closed|fallback|oracle|Route [1-8]|route8|Route8" docs/bir_prealloc_fusion/phase_a2_residual_semantic_owner_audit.md docs/bir_prealloc_fusion/phase_a_normalization_candidates.md docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md docs/bir_prealloc_fusion/return_chain_import_and_naming.md docs/bir_prealloc_fusion/prepared_function_lookups_ownership_readiness_map.md docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md ideas/closed/190_full_suite_baseline_99_percent_regression_attribution.md ideas/closed/199_full_suite_baseline_string_authority_timeout_attribution.md`
+- `rg -n "Route[1-8].*(fail|invalid|duplicate|conflict|mismatch|ambiguous|unsupported)|fail_closed|fail-closed|invalid-reference|duplicate|conflict|mismatch|ambiguous|route8" src tests docs/bir_prealloc_fusion -g '!docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md'`
+- `rg -n "negative|ambiguous|mismatch|invalid-reference|duplicate|conflict|policy-sensitive|string-authority|proof|reject|fallback|oracle|Route [1-8]" docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md todo.md`
 
 No build or tests were run because this packet was docs-only. `test_after.log`
 was not touched because the packet explicitly listed it under Do Not Touch.
