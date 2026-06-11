@@ -52,3 +52,38 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
 - Tests are downgraded, renamed, or narrowed to hide a mismatch.
 - The selected consumer is matched by testcase shape instead of semantic Route
   4 records.
+
+## Closure Note
+
+Closed after migrating the selected AArch64 dispatch-publication reader
+`current_block_entry_publication_register(...)` through a narrow Route 4
+publication-identity boundary while preserving prepared helper fallback and
+oracle behavior.
+
+Changed implementation and test files:
+
+- `src/backend/mir/aarch64/codegen/dispatch_publication.cpp`
+- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+
+Focused proof:
+
+```bash
+cmake --build build --target backend_aarch64_instruction_dispatch_test backend_prealloc_block_entry_publications_test backend_prepared_lookup_helper_test &&
+ctest --test-dir build -R '^(backend_aarch64_instruction_dispatch|backend_prealloc_block_entry_publications|backend_prepared_lookup_helper)$' --output-on-failure
+```
+
+Result: 3/3 tests passed in `test_after.log`. Close-time regression guard
+passed against `test_before.log` with `--allow-non-decreasing-passed`.
+
+The hook-produced full-suite candidate `test_baseline.new.log` was rejected
+and did not replace `test_baseline.log` because it regressed three c_testsuite
+AArch64 backend tests:
+
+- `c_testsuite_aarch64_backend_src_00119_c`
+- `c_testsuite_aarch64_backend_src_00123_c`
+- `c_testsuite_aarch64_backend_src_00195_c`
+
+No prepared publication helper was deleted, privatized, or narrowed. This
+closure does not claim broader prepared API deletion or broad consumer
+migration.
