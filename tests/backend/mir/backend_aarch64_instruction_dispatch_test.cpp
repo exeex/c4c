@@ -27424,7 +27424,36 @@ int block_entry_publication_register_uses_indexed_value_identity() {
       published->value_name != value_name ||
       published->reg.index != 6 ||
       published->expected_view != aarch64_abi::RegisterView::W) {
-    return fail("expected block-entry publication register to use indexed prepared value identity");
+    return fail("expected block-entry publication register to prefer valid Route 4 identity with prepared register spelling");
+  }
+
+  auto route_unavailable_context = join_context;
+  route_unavailable_context.bir_block = nullptr;
+  const auto fallback_published =
+      aarch64_codegen::current_block_entry_publication_register(
+          route_unavailable_context, value, aarch64_abi::RegisterView::W);
+  if (!fallback_published.has_value() ||
+      fallback_published->value_id != prepare::PreparedValueId{720} ||
+      fallback_published->value_name != value_name ||
+      fallback_published->reg.index != 6 ||
+      fallback_published->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected block-entry publication register to preserve prepared fallback when Route 4 identity is unavailable");
+  }
+
+  auto wrong_type_route_block = join_route_block;
+  std::get<bir::PhiInst>(wrong_type_route_block.insts.front()).result.type =
+      bir::TypeKind::I64;
+  auto wrong_type_context = join_context;
+  wrong_type_context.bir_block = &wrong_type_route_block;
+  const auto wrong_type_fallback =
+      aarch64_codegen::current_block_entry_publication_register(
+          wrong_type_context, value, aarch64_abi::RegisterView::W);
+  if (!wrong_type_fallback.has_value() ||
+      wrong_type_fallback->value_id != prepare::PreparedValueId{720} ||
+      wrong_type_fallback->value_name != value_name ||
+      wrong_type_fallback->reg.index != 6 ||
+      wrong_type_fallback->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected block-entry publication register to preserve prepared fallback for invalid Route 4 data");
   }
 
   auto missing_value_id_lookups = prepared_lookups;

@@ -276,6 +276,14 @@ route4_current_block_entry_publication_identity(
        route4_identity.destination_value_type != value.type)) {
     return std::nullopt;
   }
+  auto destination_value_id = publication.destination_home->value_id;
+  auto destination_value_name = publication.destination_home->value_name;
+  if (route4_identity) {
+    destination_value_id = route4_identity.destination_value_id;
+    if (route4_identity.destination_value_name_id != c4c::kInvalidValueName) {
+      destination_value_name = route4_identity.destination_value_name_id;
+    }
+  }
   const auto parsed = abi::parse_aarch64_register_name(
       *publication.publication.destination_register_name);
   if (!parsed.has_value() ||
@@ -287,8 +295,8 @@ route4_current_block_entry_publication_identity(
   return RegisterOperand{
       .reg = reg,
       .role = RegisterOperandRole::StoragePlan,
-      .value_id = publication.destination_home->value_id,
-      .value_name = publication.destination_home->value_name,
+      .value_id = destination_value_id,
+      .value_name = destination_value_name,
       .expected_view = expected_view,
   };
 }
