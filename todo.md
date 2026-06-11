@@ -8,22 +8,47 @@ Current Step Title: Select One Route 6 Call-Use Consumer
 
 ## Just Finished
 
-Lifecycle activation created this execution state for Step 1 of `plan.md`.
+Completed Step 1 of `plan.md`: selected the AArch64 direct-global select-chain
+call-argument materializer as the one Route 6 call-use consumer path.
+
+Selected path: `lower_scalar_call_argument_producers(...)` in
+`src/backend/mir/aarch64/codegen/calls.cpp` calls
+`materialize_direct_global_select_chain_call_argument(...)` in
+`src/backend/mir/aarch64/codegen/select_materialization.cpp` for one call
+argument source class.
+
+Prepared fallback/oracle: keep
+`prepare::find_prepared_call_argument_publication_source_routing(*argument_plan)`
+and its `direct_global_select_chain_dependency` as the fallback/oracle. The
+current raw BIR helper
+`bir_call_argument_direct_global_select_chain_dependency(...)` is the semantic
+read to replace or wrap.
+
+Route 6 query surface: use
+`bir::route6_find_call_argument_direct_global_dependency(...)`, keyed by current
+block, call instruction index, callee, and argument index. A narrow adapter is
+needed in the selected path to provide a `Route6CallUseSourceIndex` or validated
+direct-global dependency view to `select_materialization.cpp` without moving
+value homes, register choice, scratch registers, or machine emission policy into
+Route 6.
 
 ## Suggested Next
 
-Inspect Route 6 call-use prepared helper consumers, choose one bounded AArch64
-call argument/result source reader or publication-source materialization role
-class, and record the selected prepared fallback, Route 6 query surface, and
-proof subset here before implementation.
+Expose/reuse the narrow Route 6 direct-global call-argument dependency adapter
+for `materialize_direct_global_select_chain_call_argument(...)`, then migrate
+that one semantic dependency read to Route 6-first with prepared fallback.
 
 ## Watchouts
 
-Do not accept `test_baseline.new.log` as a baseline. Keep prepared call
-surfaces public, and reject ABI/helper/carrier/call-record policy movement,
-broad BIR rescans, name matching, expectation downgrades, or multi-role
-migration in one slice.
+Keep the migration limited to direct-global select-chain call-argument source
+facts. Do not include frame-slot source-selection paths such as
+`materialize_missing_frame_slot_call_arguments(...)`; those depend on
+ABI/layout-bound source selections that Route 6 correctly reports as
+`AbiBoundExcluded`. Keep value-home checks, ABI register placement, scratch
+selection, and final machine instruction construction AArch64/prepared-owned.
 
 ## Proof
 
-Activation-only lifecycle change; no build or test proof run.
+Selection-only packet; no build/tests run and no `test_after.log` produced.
+Recommended next implementation proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call|backend_aarch64_call_boundary_owner)$'`.
