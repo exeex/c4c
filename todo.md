@@ -8,22 +8,28 @@ Current Step Title: Inventory Return-Chain Semantics
 
 ## Just Finished
 
-No executor packet has completed for this active plan yet.
+Completed Step 1 - Inventory Return-Chain Semantics. Recorded the prepared
+return-chain producer contract, accepted and fail-closed shapes, AArch64
+terminal/next-operand consumer expectations, and target-policy boundaries in
+`docs/bir_prealloc_fusion/return_chain_owner_schema_decision.md`.
 
 ## Suggested Next
 
-Start Step 1 by inventorying the prepared return-chain producer contract and
-AArch64 ALU consumers, then write the durable analysis facts at the lowest
-appropriate layer.
+Proceed to Step 2 by deciding whether terminal/next-operand identity should be
+BIR-owned, target-local AArch64-owned, or explicitly public prepared-owned,
+using the Step 1 facts as the boundary checklist.
 
 ## Watchouts
 
-- Keep this plan analysis-first; do not contract the prepared API during the
-  owner/schema decision.
-- Do not fold return-chain semantics into Route 1 or Route 7.
-- Keep homes, registers, ABI return placement, scratch choice, and final
-  emission order out of any BIR-owned schema proposal.
+- The current prepared lookup owns only target-neutral identity keyed by block
+  index, instruction index, and chain value name; AArch64 owns homes, ABI return
+  moves, register parsing/conversion, alias checks, scratch choice, scalar ALU
+  record construction, and emission order.
+- Producer acceptance is same-block, named-return, named-result scalar binary
+  chains that reach the return terminator; broken, unnamed, unsupported, or
+  conflicting cases fail closed.
 
 ## Proof
 
-Not run; activation only.
+No build run; delegated proof was metadata/analysis-only and no implementation
+or test files were changed.
