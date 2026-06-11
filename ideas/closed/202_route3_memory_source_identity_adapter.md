@@ -46,6 +46,26 @@ selected memory/source identity consumer, with idea 190 fallback discipline.
 - The implementation names any retained prepared oracle or fallback that is
   still required after the adapter lands.
 
+## Completion Notes
+
+Closed after the selected Route 3 load-local adapter landed. The selected
+reader now obtains semantic memory/source identity from BIR Route 3 while
+retaining `PreparedMemoryAccessLookups` and prepared load-local source-home
+fallback for address formation, materialization, addressing-mode legality,
+final operands, and policy-sensitive source-home behavior.
+
+Close proof used matching backend logs from:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > <log>`
+
+`test_before.log` and `test_after.log` both recorded 180 passed, 0 failed. The
+close-time regression guard passed in non-decreasing mode with no new failures
+because this closure slice is lifecycle-only and the implementation validation
+had already been committed.
+
+Additional Route 3 readers remain intentionally out of scope for this idea and
+should be opened as separate follow-up ideas if needed.
+
 ## Reviewer Reject Signals
 
 - Reject a slice that moves address formation, frame/global/TLS relocation,
