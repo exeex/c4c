@@ -38,6 +38,22 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
   scalar-eligible/ineligible, and nested select-chain cases.
 - Prepared oracle tests remain active and unweakened.
 
+## Closure Notes
+
+Closed after migrating the selected AArch64 scalar ALU control-publication
+`select.result` path through `lower_scalar_select_publication(...)` to consult
+the local Route 2 adapter first for select-root identity, root instruction
+index, scalar eligibility, and direct-global dependency presence.
+
+Prepared select-chain/direct-global helpers remain public fallback and oracle
+surfaces. Remaining prepared consumers are future migration scope, not
+unfinished work for this one-consumer idea.
+
+Close proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_alu_records|backend_aarch64_scalar_record_contract)$'`
+passed in `test_after.log`, and the close-time regression guard passed against
+`test_before.log` with 4/4 tests passing before and after.
+
 ## Reviewer Reject Signals
 
 - The implementation encodes target materialization policy in the Route 2
