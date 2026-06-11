@@ -69,3 +69,13 @@ fallbacks or oracles.
   already-known selected testcase.
 - Moving target policy, ABI policy, address-materialization policy, or final
   emission policy into route-view scope by implication.
+
+## Closure Note
+
+Closed after creation of
+`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`.
+The artifact satisfies the acceptance criteria by naming Route 1-7 residual
+prepared consumers, distinguishing migrated selected readers from remaining
+readers, representing printer/debug, oracle/test, target-wrapper, and retained
+policy consumers, and naming separable next selected-consumer proposals or
+retained-policy boundaries without claiming route-wide completion.
