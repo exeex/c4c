@@ -57,6 +57,28 @@ Close-level confidence is still blocked by an ambient
 selected Route 5 consumer. That failure is outside Route 5 current-block
 join-source scope and is tracked separately.
 
+## Closure Outcome
+
+Closed after the Route 5 closure validation plan proved that the prior external
+instruction-dispatch blocker no longer recurs.
+
+Closure proof:
+
+```sh
+cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch)$' >> test_after.log 2>&1
+```
+
+Result: `backend_prepared_lookup_helper`,
+`backend_aarch64_current_block_join_routing`, and
+`backend_aarch64_instruction_dispatch` passed. The canonical regression guard
+compared matching close-scope logs with 3/3 passing before and 3/3 passing
+after, no new failures, and non-decreasing pass count.
+
+The selected helper/consumer route covers `Route5EdgeJoinSourceIndex`, edge
+publication and join-source oracle equivalence, missing predecessor, no-source,
+and memory-source cases. No additional prepared current-block join-source
+helper contraction is claimed by this closure.
+
 ## Reviewer Reject Signals
 
 - Encoding parallel-copy scheduling or register-sharing decisions in BIR.
