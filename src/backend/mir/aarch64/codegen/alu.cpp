@@ -1375,6 +1375,21 @@ find_route8_return_chain_record(
   const auto record = bir::route8_find_return_chain_record(index, key);
   if (!record.available ||
       record.status != bir::Route8ReturnChainStatus::Available) {
+    if (record.status == bir::Route8ReturnChainStatus::NoMatch &&
+        chain_value_name != c4c::kInvalidValueName) {
+      const auto bir_identity_key =
+          bir::route8_return_chain_value_key(context.function.bir_function,
+                                             *context.bir_block,
+                                             instruction_index,
+                                             chain_value,
+                                             c4c::kInvalidValueName);
+      const auto bir_identity_record =
+          bir::route8_find_return_chain_record(index, bir_identity_key);
+      if (bir_identity_record.available &&
+          bir_identity_record.status == bir::Route8ReturnChainStatus::Available) {
+        return bir_identity_record;
+      }
+    }
     return std::nullopt;
   }
   return record;
@@ -1408,32 +1423,52 @@ find_route8_return_chain_next_operand_value(
   return record->next_operand_value;
 }
 
+[[nodiscard]] const prepare::PreparedValueHome* find_route8_identity_value_home(
+    const module::BlockLoweringContext& context,
+    const bir::Route1SourceValueIdentity& identity) {
+  if (!identity || context.function.value_locations == nullptr) {
+    return nullptr;
+  }
+
+  auto value_name = identity.name_id;
+  if (value_name == c4c::kInvalidValueName &&
+      identity.value != nullptr &&
+      identity.value->kind == bir::Value::Kind::Named &&
+      context.function.prepared != nullptr) {
+    value_name = prepare::resolve_prepared_value_name_id(
+                     context.function.prepared->names, identity.value->name)
+                     .value_or(c4c::kInvalidValueName);
+  }
+  if (value_name == c4c::kInvalidValueName &&
+      !identity.name.empty() &&
+      context.function.prepared != nullptr) {
+    value_name = context.function.prepared->names.value_names.find(identity.name);
+  }
+  if (value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+
+  return prepare::find_indexed_prepared_value_home(
+      context.function.value_home_lookups,
+      nullptr,
+      context.function.value_locations,
+      value_name);
+}
+
 [[nodiscard]] std::optional<RegisterOperand> find_return_chain_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const prepare::PreparedValueHome& result_home,
+    const bir::Value& chain_value,
     bir::TypeKind result_type) {
-  if (context.function.prepared_lookups == nullptr ||
-      context.bir_block == nullptr ||
-      context.function.value_locations == nullptr) {
+  if (context.bir_block == nullptr || context.function.value_locations == nullptr) {
     return std::nullopt;
   }
 
-  const auto terminal_value_name =
-      prepare::find_prepared_return_chain_terminal_value(
-          &context.function.prepared_lookups->return_chains,
-          context.block_index,
-          instruction_index,
-          result_home.value_name);
-  if (terminal_value_name == c4c::kInvalidValueName) {
-    return std::nullopt;
-  }
+  const auto terminal_identity = find_route8_return_chain_terminal_value(
+      context, instruction_index, chain_value, result_home.value_name);
   const auto* terminal_home =
-      prepare::find_indexed_prepared_value_home(
-          context.function.value_home_lookups,
-          nullptr,
-          context.function.value_locations,
-          terminal_value_name);
+      find_route8_identity_value_home(context, terminal_identity);
   if (terminal_home == nullptr) {
     return std::nullopt;
   }
@@ -1441,7 +1476,7 @@ find_route8_return_chain_next_operand_value(
       find_return_abi_register(context,
                                terminal_home->value_id,
                                terminal_home->value_name,
-                               context.bir_block->terminator.value->type);
+                               terminal_identity.type);
   if (!terminal_register.has_value()) {
     return std::nullopt;
   }
@@ -4250,7 +4285,11 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
       if (!scalar_record.has_value()) {
         if (!result_register.has_value() && result_home != nullptr) {
           result_register = find_return_chain_register(
-              context, instruction_index, *result_home, binary->result.type);
+              context,
+              instruction_index,
+              *result_home,
+              binary->result,
+              binary->result.type);
         }
         if (result_register.has_value() && result_home != nullptr &&
             result_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
