@@ -120,3 +120,18 @@ The closure note must contain:
   are not AArch64 production lowering.
 - Weakening tests, baselines, or string-authority rules to make ownership look
   cleaner.
+
+## Closure Note
+
+Closed after the Phase A2 audit artifact was completed at
+`docs/bir_prealloc_fusion/phase_a2_residual_semantic_owner_audit.md`.
+
+The artifact contains the required residual ownership table, accepted route
+candidate decisions, rejected retained target/prepared/pass-context/diagnostic
+surfaces with rationale, blocked-unknown classification status, and follow-up
+payloads for Phase B2 selected route extensions, retained-policy cleanup,
+diagnostic/oracle replacement, aggregate retirement prerequisites, and future
+focused blocked-surface audits.
+
+Closure does not authorize schema implementation, consumer migration, API
+contraction, diagnostic/oracle replacement, or `PreparedBirModule` retirement.
