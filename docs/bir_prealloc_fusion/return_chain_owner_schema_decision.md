@@ -1,6 +1,6 @@
 # Return-Chain Owner/Schema Decision Facts
 
-Status: Step 2 owner/schema decision complete.
+Status: Step 3 proof/follow-up definition complete.
 
 Source idea: `ideas/open/176_return_chain_owner_schema_decision.md`
 
@@ -277,3 +277,121 @@ condition provenance.
 - `src/backend/mir/aarch64/codegen/alu.cpp`: terminal consumer
   `find_return_chain_register(...)`; next-operand consumer in
   `lower_scalar_instruction(...)`.
+
+## Step 3 Proof Requirements
+
+Status: Step 3 proof/follow-up definition complete.
+
+The next implementation route must prove BIR-owned return-chain answers against
+the existing prepared helpers before any consumer migration or prepared API
+contraction. The oracle should compare the terminal and next-operand answers
+for the same function, block, instruction position, and chain value.
+
+### Oracle Shape
+
+For each fixture, the oracle should build both answer sets:
+
+- existing prepared answers from
+  `find_prepared_return_chain_terminal_value(...)` and
+  `find_prepared_return_chain_next_operand_value(...)`
+- new BIR-owned route/index answers using the same logical key:
+  `function, block, instruction_index, chain_value`
+
+The comparison should assert exact equivalence:
+
+- both routes publish the same terminal value name when the chain is accepted
+- both routes publish the same immediate next-operand value name when one is
+  accepted
+- both routes publish no answer when the chain is rejected
+- both routes fail closed for conflicts, represented by absence or the route's
+  explicit invalid sentinel, never by choosing an arbitrary answer
+
+Prepared helpers must stay public until this equivalence suite is green for
+terminal-only, terminal-plus-next-operand, negative, ambiguous, and conflict
+fixtures.
+
+### Positive Cases
+
+Positive terminal cases must cover:
+
+- a same-block scalar binary result whose walked chain reaches the return
+  terminator value
+- every scalar publication opcode accepted by the current prepared producer:
+  `Add`, `Sub`, `And`, `Or`, `Xor`, `Shl`, `LShr`, `AShr`, `Mul`, `SDiv`,
+  `SRem`, `UDiv`, and `URem`
+- a multi-instruction same-block chain where the candidate result is not the
+  final returned value but the terminal answer is the returned value
+
+Positive next-operand cases must cover:
+
+- the immediate next binary consuming the current chain value on the lhs
+- the immediate next binary consuming the current chain value on the rhs
+- the next operand having a stable named value and matching the prepared
+  next-operand answer exactly
+- a terminal answer and next-operand answer being available for the same key
+  without either answer depending on homes, registers, ABI return moves, alias
+  checks, scratch selection, or emission order
+
+### Negative Cases
+
+Negative terminal cases must prove no answer for:
+
+- non-return terminators
+- returns without values and returns of unnamed values
+- candidate instructions that are not scalar binary instructions
+- unsupported binary opcodes
+- unnamed candidate results or unnamed walked results
+- chains whose final walked value does not match the return terminator value
+- any relationship that crosses a BIR block boundary
+
+Negative next-operand cases must prove no next-operand answer for:
+
+- the immediate next binary's other operand lacking a stable name
+- the next instruction not consuming the current chain value
+- the next instruction using an unsupported opcode
+- the next instruction producing an unnamed result
+
+### Ambiguous Cases
+
+Ambiguous cases must prove the route is deliberately conservative:
+
+- a same-block walk that can no longer continue because an intervening
+  instruction is not a supported named-result scalar binary produces no answer
+- a candidate chain with a valid terminal return but no named immediate
+  next-operand still publishes only the terminal answer
+- duplicate structural opportunities that do not produce identical answers
+  must not be collapsed by traversal accident, consumer preference, target
+  register state, or insertion order
+
+### Conflict Cases
+
+Conflict fixtures must explicitly create duplicate publications for the same
+logical key with different terminal or next-operand answers. The required
+result is fail-closed behavior:
+
+- conflicting terminal answers invalidate or omit the terminal answer for that
+  key
+- conflicting next-operand answers invalidate or omit the next-operand answer
+  for that key
+- a conflict in one answer kind must not invent target-local fallback data for
+  the other answer kind
+- consumers must observe the conflict as no usable semantic answer, not as a
+  selected winner
+
+## Step 3 Follow-Up Sequence
+
+The BIR-owned route should be implemented through separate follow-up ideas so
+each slice has an explicit proof boundary:
+
+1. `ideas/open/177_bir_return_chain_schema_index.md`: add the BIR-owned
+   return-chain record and function-local lookup/index without changing target
+   consumers.
+2. `ideas/open/178_bir_return_chain_oracle_equivalence.md`: add oracle
+   equivalence tests comparing the new BIR route to the existing prepared
+   helpers across positive, negative, ambiguous, and conflict cases.
+3. `ideas/open/179_bir_return_chain_consumer_migration.md`: migrate AArch64
+   return-chain consumers to read the BIR-owned route while keeping all
+   register/home/scratch/emission policy target-local.
+4. `ideas/open/180_bir_return_chain_prepared_api_contraction.md`: contract the
+   prepared return-chain API only after the BIR route and migrated consumers
+   have equivalent coverage.
