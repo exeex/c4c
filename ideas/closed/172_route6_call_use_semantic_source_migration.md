@@ -40,6 +40,30 @@ Run call-source oracle tests for the selected class, then the narrow
 call-lowering subset for that class. Escalate to broader backend tests if
 public call APIs or plan projections change.
 
+## Completion Notes
+
+Closed after the selected AArch64 scalar call-argument source-producer consumer
+migration runbook completed. The selected consumer reads indexed Route 6
+call-use source records for semantic source-producer facts. ABI/layout policy
+remains prepared-owned.
+
+No prepared semantic-source surface was contracted during Step 5 because the
+prepared lookup still serves as fallback/oracle coverage and still supports
+recursive binary operand materialization where the call-argument Route 6 index
+is intentionally absent.
+
+Close proof used the canonical before/after logs with the delegated
+non-decreasing regression policy:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py \
+  --before test_before.log \
+  --after test_after.log \
+  --allow-non-decreasing-passed
+```
+
+Result: PASS, 2/2 tests before and 2/2 tests after.
+
 ## Reviewer Reject Signals
 
 - Copying call plans, ABI placement, aggregate transport, or helper/carrier
