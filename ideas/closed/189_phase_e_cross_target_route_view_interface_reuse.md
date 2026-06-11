@@ -36,6 +36,20 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
 - Tests prove interface reuse without weakening route-debug, wrapper, or target
   emission coverage.
 
+## Closure Note
+
+Closed after reusing the AArch64-proven Route 6 call-use source view at the x86
+`ConsumedPlans` call-boundary selector. The accepted slice threads scalar named
+`i32` `ArgumentValue` facts through the wrapper only when Route 6 and prepared
+call-plan source ids agree, preserves prepared fallback behavior for absent or
+mismatched facts, and keeps x86 ABI placement, frame layout, register
+selection, wrapper decisions, and instruction spelling target-owned.
+
+Default-path coverage in `backend_prepared_lookup_helper` proves interface
+reuse and fallback selector preservation. Final lifecycle close used a fresh
+backend regression guard over `ctest --test-dir build -j --output-on-failure -R
+'^backend_'`.
+
 ## Reviewer Reject Signals
 
 - A target-specific adapter is invented before the shared AArch64 route view is
