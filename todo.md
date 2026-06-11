@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/184_phase_e_route1_producer_constant_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove route/prepared equivalence
+Current Step ID: 5
+Current Step Title: Handoff and contraction guard
 
 # Current Packet
 
@@ -34,10 +34,11 @@ for this same-block consumer rather than adding route-wide behavior claims.
 
 ## Proof
 
-Step 3's accepted proof was rolled forward to `test_before.log`.
+The accepted Step 4 focused proof was rolled forward to `test_before.log` by
+the supervisor.
 
 Step 4 ran and passed:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper)$'; } > test_after.log 2>&1`
 
-Proof log: `test_after.log`.
+Accepted proof log: `test_before.log` after supervisor roll-forward.
