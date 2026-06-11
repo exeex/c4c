@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/200_phase_a2_residual_prepared_surface_semantic_owner_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Classify Cross-Target Wrappers And Diagnostic Oracles
+Current Step ID: Step 4
+Current Step Title: Produce Ownership Decisions And Follow-Up Payloads
 
 # Current Packet
 
