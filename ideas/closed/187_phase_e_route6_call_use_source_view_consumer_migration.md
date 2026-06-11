@@ -39,6 +39,23 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
   operand fallback cases.
 - Existing call-plan tests show ABI policy did not move into BIR.
 
+## Completion Notes
+
+Closed after migrating the direct-global select-chain call-argument
+materialization consumer to read Route 6 semantic dependency facts first, with
+the prepared publication-source routing helper retained as fallback/oracle.
+
+Close proof used matching before/after focused backend logs covering
+`backend_aarch64_instruction_dispatch`, `backend_prepared_lookup_helper`,
+`backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call`,
+and `backend_aarch64_call_boundary_owner`, with the regression guard passing
+4/4 before and 4/4 after under `--allow-non-decreasing-passed`. Supervisor
+broader backend validation also passed `cmake --build --preset default &&
+ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+
+Residual Route 6 call-use consumer migrations are follow-up source ideas, not
+remaining scope for this one-role-class idea.
+
 ## Reviewer Reject Signals
 
 - Call ABI, helper, carrier, or record-spelling policy appears in the Route 6
