@@ -139,3 +139,18 @@ The closure note must contain:
 - Opening D2 as a migration plan that ignores C2 retained-surface decisions.
 - Claiming broad `PreparedFunctionLookups` or `PreparedBirModule` retirement
   from one selected cache/API surface.
+
+## Closure Note
+
+Closed after Phase C2 completed its analysis-only audit. The durable evidence
+record is
+[`docs/bir_prealloc_fusion/phase_c2_selected_adapter_cache_contraction_readiness.md`](../../docs/bir_prealloc_fusion/phase_c2_selected_adapter_cache_contraction_readiness.md).
+
+The audit found no accepted bounded micro-contraction candidate from the
+current Route 3 through Route 7 adapter and diagnostic evidence. All touched
+surfaces remain classified as retained public fallback/oracle, retained
+target/prepared policy, diagnostic/oracle replacement prerequisite, transient
+pass-context, or blocked aggregate work. D2 guidance should therefore start
+from one retained surface or diagnostic/oracle prerequisite at a time rather
+than from broad cache/API migration, draft 155, aggregate
+`PreparedFunctionLookups` retirement, or `PreparedBirModule` retirement.
