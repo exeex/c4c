@@ -1,47 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/185_phase_e_route2_select_chain_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Expose Or Reuse A Narrow Route 2 View
+Current Step ID: 3
+Current Step Title: Migrate The Selected Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` exposed the selected AArch64 ALU control-publication
-select consumer to the existing Route 2 select-chain identity view. Added
-`route2_control_select_chain_materialization(...)` in
-`src/backend/mir/aarch64/codegen/alu.cpp`, keyed by `select.result` and
-`instruction_index + 1U`, requiring a select root, root instruction index, and
-scalar materialization eligibility before mapping only root identity and
-direct-global presence into the existing prepared-shaped materialization data.
+Step 3 of `plan.md` needed no additional code/test change because the accepted
+Step 2 slice already migrated the selected AArch64 ALU control-publication
+select-result consumer onto the intended Route 2-first path.
 
-The selected consumer now tries that Route 2 view first and keeps
-`prepare::find_prepared_scalar_select_chain_materialization(...)` as the
-unchanged fallback/oracle when Route 2 has no valid answer. Result-register
-selection, stack publication, materialization sequencing, final record spelling,
-memory/call policy, and storage/home decisions stayed outside Route 2.
+`lower_scalar_select_publication(...)` now reads
+`route2_control_select_chain_materialization(...)` for `select.result` at
+`instruction_index + 1U` before consulting the prepared fallback. The Route 2
+adapter uses `mir::find_bir_select_chain_identity(...)` through
+`mir::BirSelectChainIdentityRequest`, requires a select root, root instruction
+index, and scalar materialization eligibility, and maps only root identity plus
+direct-global dependency presence into the existing prepared-shaped consumer
+data. If Route 2 has no valid answer, the consumer still calls
+`prepare::find_prepared_scalar_select_chain_materialization(...)` unchanged.
+
+Result-register selection, stack publication, materialization sequencing, final
+record spelling, memory/call policy, storage/home decisions, and broad prepared
+aggregate ownership remain outside Route 2.
 
 ## Suggested Next
 
-Run the next supervisor-selected Step 3 packet against the same selected ALU
-select-result consumer, likely tightening or proving the consumer-side
-fallback/visibility contract without widening to call, memory, publication, or
-aggregate Route 2 users.
+Run the next supervisor-selected Step 4 packet to prove route/prepared
+equivalence for the migrated selected ALU select-result consumer, including
+direct-global present/absent, scalar-eligible/ineligible, nested select-chain,
+and prepared fallback behavior as appropriate.
 
 ## Watchouts
 
-The adapter intentionally depends on the typed
-`mir::BirSelectChainIdentityRequest` path and does not rescan broad BIR or
-perform ad hoc name matching beyond the Route 2 request. Keep the prepared
-select-chain/direct-global helpers public and unchanged as fallback/oracle.
-Do not extend this packet into `dispatch_value_materialization.cpp`,
-`dispatch_producers.cpp`, calls, memory/store consumers, publication planning,
-printer/debug surfaces, or expectation rewrites.
+The Step 3 no-code conclusion depends on the current `alu.cpp` ordering:
+Route 2 is queried first, and prepared lookup is used only when
+`select_chain_materialization.available` is false. Keep
+`prepare::find_prepared_scalar_select_chain_materialization(...)` public and
+unchanged as fallback/oracle. Do not extend Step 4 into
+`dispatch_value_materialization.cpp`, `dispatch_producers.cpp`, calls,
+memory/store consumers, publication planning, printer/debug surfaces, broad
+prepared aggregate APIs, or expectation rewrites.
 
 ## Proof
 
-Passed the supervisor-selected proof:
+No code or tests changed in Step 3, so the delegated packet explicitly did not
+require a new `test_after.log`. The accepted Step 2 proof for the same selected
+consumer and subset has been rolled forward to `test_before.log`:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_alu_records|backend_aarch64_scalar_record_contract)$'; } > test_after.log 2>&1`
 
-Proof log: `test_after.log`.
+Proof log: `test_before.log`.
