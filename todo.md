@@ -1,63 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/198_phase_d_phase_e_lifecycle_naming_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Write the Durable Naming Note
+Current Step ID: Step 5
+Current Step Title: Final Consistency Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 durable naming-note artifact is complete for idea 198, `Phase D versus
+Step 5 final consistency check is complete for idea 198, `Phase D versus
 Phase E lifecycle naming cleanup`.
 
-Created
-`docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md`.
-The artifact classifies ideas 182-189 as Phase D follow-up slices despite
-their historical `phase_e_*` closed filenames, includes a table for each idea
-with actual accepted scope, retained/not-proven scope, and recommended future
-citation wording, and states explicitly that no closed files were renamed.
+Confirmed
+`docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md`
+satisfies the source idea acceptance criteria. The artifact classifies ideas
+182-189 as Phase D follow-up slices despite their historical `phase_e_*`
+filenames, states draft 155 remains the future true Phase E
+`PreparedBirModule` retirement analysis, names prerequisite docs before draft
+155 activation or rewrite, and explicitly says no closed files were renamed.
 
-The note also records that draft 155 remains the future true Phase E
-`PreparedBirModule` retirement analysis. It names the prerequisite docs that
-should exist before draft 155 activation or rewrite: readiness audit, residual
-consumer migration map, cross-target reuse map, `PreparedFunctionLookups`
-ownership map, diagnostics/oracle replacement plan, return-chain import note,
-and relevant Phase A-D / return-chain background docs.
-
-Stable citation language and reject-language rules from Step 3 were copied
-into the durable note. The note rejects claims of implementation progress,
-prepared API contraction, broad `PreparedFunctionLookups` contraction, broad
+Confirmed the note rejects claims of implementation progress, prepared API
+contraction, broad `PreparedFunctionLookups` contraction, broad
 `PreparedBirModule` retirement, draft 155 readiness, route-wide migration,
 broad x86/riscv readiness, target-policy migration, expectation progress, and
 unsupported-marker progress.
 
+Confirmed the idea-198 committed range contains only lifecycle/docs files:
+`plan.md`, `todo.md`, and
+`docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md`. No
+implementation, test, expectation, unsupported-marker, source idea, or closed
+idea file was changed.
+
 ## Suggested Next
 
-Execute Step 5 final consistency check. Confirm the durable naming note
-satisfies idea 198 acceptance criteria, diff scope is docs/lifecycle-only,
-Markdown whitespace is clean, and the source idea is ready for plan-owner
-close if Step 5 passes.
+Ask the plan owner to decide closure for idea 198. The source idea appears
+ready to close if lifecycle review agrees.
 
 ## Watchouts
 
-- Preserve historical closed idea filenames and contents.
+- Preserve historical closed idea filenames and contents during closure.
 - Do not open, rewrite, or execute draft 155 under this naming-cleanup plan.
-- Step 5 should not edit implementation, tests, expectations, unsupported
-  markers, prepared API contracts, source ideas, or closed history.
 - Treat the artifact as a citation clarification only; it does not prove
   `PreparedBirModule` retirement, draft 155 readiness, broad
   `PreparedFunctionLookups` contraction, route-wide migration, broad x86/riscv
-  readiness, or target-policy migration.
-- Verify the table still names retained/not-proven scope for every idea
-  182-189 before closing.
+  readiness, target-policy migration, expectation progress, or
+  unsupported-marker progress.
+- `test_baseline.new.log` was already rejected by the supervisor and should
+  not be accepted or rolled forward as part of this packet.
 
 ## Proof
 
-Docs/lifecycle-only artifact packet. Inspected the active plan, source idea
-198, current `todo.md`, closed ideas 182-189, draft 155, and prerequisite
-readiness/cross-target/ownership/diagnostics/return-chain docs with targeted
-`sed` and `rg` searches. No build was required and no `test_after.log` was
-generated for this packet. Before handoff, ran `git diff --check -- todo.md
-docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md` and
-targeted `rg` checks for the required artifact language.
+Docs/lifecycle-only consistency packet. No build was required and no
+`test_after.log` was generated.
+
+Validation performed:
+- Read the active plan, source idea 198, current `todo.md`, and
+  `docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md`.
+- Ran targeted `rg` checks for Phase D follow-up classification, Phase
+  E-like filename language, draft 155 future Phase E wording, no-renaming
+  language, prerequisite-doc language, and reject-language signals.
+- Confirmed closed idea files 182-189 still exist under their historical
+  `phase_e_*` names.
+- Ran `git diff --name-status a70e5d5a5^..HEAD` and confirmed the idea-198
+  range changes only `plan.md`, `todo.md`, and the lifecycle naming note.
+- Ran `git diff --check`.
