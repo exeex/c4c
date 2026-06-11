@@ -185,6 +185,44 @@ the Phase D analysis should not directly implement them.
   unrelated route.
 - No implementation source changes are required for this analysis phase.
 
+## Closure Note
+
+Closed on 2026-06-11 after the Phase D analysis runbook completed.
+
+The finalized artifact is
+`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`. It records the
+Phase A-C and route-closure evidence, preserves the Phase C residual-consumer
+findings, maps remaining prepared consumer families, defines BIR view and
+adapter boundaries, orders the migration ladder, and keeps return-chain as a
+separate no-route blocker.
+
+The clean route review in `review/phase_d_artifact_route_review.md` found no
+blocking route-quality issues and judged the artifact aligned with this source
+idea.
+
+Durable Phase E follow-up ideas created from the artifact ladder:
+
+- `ideas/open/182_phase_e_route4_publication_view_consumer_migration.md`
+- `ideas/open/183_phase_e_route5_edge_join_source_view_consumer_migration.md`
+- `ideas/open/184_phase_e_route1_producer_constant_view_consumer_migration.md`
+- `ideas/open/185_phase_e_route2_select_chain_view_consumer_migration.md`
+- `ideas/open/186_phase_e_route3_memory_semantic_view_consumer_migration.md`
+- `ideas/open/187_phase_e_route6_call_use_source_view_consumer_migration.md`
+- `ideas/open/188_phase_e_route7_comparison_view_consumer_migration.md`
+- `ideas/open/189_phase_e_cross_target_route_view_interface_reuse.md`
+
+Close-time regression guard used the canonical `test_before.log` and
+`test_after.log` with this matching command:
+
+```bash
+cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_return_lowering_test
+ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_return_lowering)$' --output-on-failure
+```
+
+This phase made no implementation source changes and does not claim prepared
+API deletion or backend consumer conversion. Those are owned by the follow-up
+ideas above.
+
 ## Reviewer Reject Signals
 
 - Switching or rewriting MIR/codegen consumers while claiming to perform only
