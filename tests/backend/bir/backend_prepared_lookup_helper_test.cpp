@@ -7790,30 +7790,44 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
                               .source_encoding =
                                   bir::CallArgumentSourceEncodingKind::
                                       Register,
+                              .source_value_id = std::size_t{100},
+                              .source_value_name =
+                                  std::string{"%loaded.arg"},
                           },
                           bir::CallArgumentSourceRelationship{
                               .arg_index = 1,
                               .source_encoding =
                                   bir::CallArgumentSourceEncodingKind::
                                       Register,
+                              .source_value_id = std::size_t{101},
+                              .source_value_name = std::string{"%sum.arg"},
                           },
                           bir::CallArgumentSourceRelationship{
                               .arg_index = 2,
                               .source_encoding =
                                   bir::CallArgumentSourceEncodingKind::
                                       Register,
+                              .source_value_id = std::size_t{102},
+                              .source_value_name =
+                                  std::string{"%quotient.arg"},
                           },
                           bir::CallArgumentSourceRelationship{
                               .arg_index = 3,
                               .source_encoding =
                                   bir::CallArgumentSourceEncodingKind::
                                       Register,
+                              .source_value_id = std::size_t{103},
+                              .source_value_name =
+                                  std::string{"%missing.arg"},
                           },
                           bir::CallArgumentSourceRelationship{
                               .arg_index = 4,
                               .source_encoding =
                                   bir::CallArgumentSourceEncodingKind::
                                       Register,
+                              .source_value_id = std::size_t{104},
+                              .source_value_name =
+                                  std::string{"%after.arg"},
                           },
                       },
                   .return_type = bir::TypeKind::Void,
@@ -7930,11 +7944,49 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           0);
   if (!route6_load_producer ||
       route6_load_producer.status != bir::Route6CallUseStatus::Available ||
+      route6_load_producer.argument_source.call != call ||
+      route6_load_producer.argument_source.call_instruction_index !=
+          call_instruction_index ||
+      route6_load_producer.argument_source.block_label != block.label ||
+      route6_load_producer.argument_source.block_label_id != block_label ||
+      route6_load_producer.argument_source.callee !=
+          "consume_materialized_sources" ||
+      route6_load_producer.argument_source.arg_index != std::size_t{0} ||
+      route6_load_producer.argument_source.argument_value != &call->args[0] ||
+      route6_load_producer.argument_source.source_value.value !=
+          &call->args[0] ||
+      route6_load_producer.argument_source.source_value.name !=
+          "%loaded.arg" ||
+      route6_load_producer.argument_source.source_value_id !=
+          std::optional<std::size_t>{100} ||
+      route6_load_producer.argument_source.source_value_name !=
+          std::optional<std::string_view>{"%loaded.arg"} ||
+      route6_load_producer.argument_source.source_encoding !=
+          bir::CallArgumentSourceEncodingKind::Register ||
+      route6_load_producer.argument_source.source_kind !=
+          bir::Route6CallUseSourceKind::LoadLocal ||
       route6_load_producer.producer.kind != bir::Route1ProducerKind::LoadLocal ||
       route6_load_producer.producer.producer_instruction.instruction !=
           &block.insts[0] ||
+      route6_load_producer.producer.producer_instruction.instruction_index !=
+          std::size_t{0} ||
+      route6_load_producer.producer.source_value.value != &loaded->result ||
+      route6_load_producer.producer.source_value.name != "%loaded.arg" ||
+      route6_load_producer.materialization.available != true ||
+      route6_load_producer.materialization.producer_kind !=
+          bir::Route1ProducerKind::LoadLocal ||
       !route6_load_producer.materialization.scalar_materialization_available ||
       !indexed_route6_load_producer ||
+      indexed_route6_load_producer.argument_source.call !=
+          route6_materialization_call ||
+      indexed_route6_load_producer.argument_source.call_instruction_index !=
+          call_instruction_index ||
+      indexed_route6_load_producer.argument_source.callee !=
+          "consume_materialized_sources" ||
+      indexed_route6_load_producer.argument_source.arg_index !=
+          std::size_t{0} ||
+      indexed_route6_load_producer.argument_source.source_value_name !=
+          std::optional<std::string_view>{"%loaded.arg"} ||
       indexed_route6_load_producer.producer.kind !=
           bir::Route1ProducerKind::LoadLocal ||
       indexed_route6_load_producer.producer.producer_instruction.instruction !=
@@ -7944,12 +7996,38 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
           indexed_route6_load_producer.producer.producer_instruction.instruction ||
       !migrated_indexed_load.materializable ||
       !route6_sum_producer ||
+      route6_sum_producer.status != bir::Route6CallUseStatus::Available ||
+      route6_sum_producer.argument_source.call == nullptr ||
+      route6_sum_producer.argument_source.call_instruction_index !=
+          call_instruction_index ||
+      route6_sum_producer.argument_source.callee !=
+          "consume_materialized_sources" ||
+      route6_sum_producer.argument_source.arg_index != std::size_t{1} ||
+      route6_sum_producer.argument_source.argument_value != &call->args[1] ||
+      route6_sum_producer.argument_source.source_value.value !=
+          &call->args[1] ||
+      route6_sum_producer.argument_source.source_value.name != "%sum.arg" ||
+      route6_sum_producer.argument_source.source_value_id !=
+          std::optional<std::size_t>{101} ||
+      route6_sum_producer.argument_source.source_value_name !=
+          std::optional<std::string_view>{"%sum.arg"} ||
+      route6_sum_producer.argument_source.source_encoding !=
+          bir::CallArgumentSourceEncodingKind::Register ||
+      route6_sum_producer.argument_source.source_kind !=
+          bir::Route6CallUseSourceKind::Binary ||
       route6_sum_producer.producer.kind != bir::Route1ProducerKind::Binary ||
       route6_sum_producer.producer.producer_instruction.instruction !=
           &block.insts[1] ||
+      route6_sum_producer.producer.producer_instruction.instruction_index !=
+          std::size_t{1} ||
+      route6_sum_producer.producer.source_value.value != &sum->result ||
+      route6_sum_producer.producer.source_value.name != "%sum.arg" ||
+      route6_sum_producer.materialization.available != true ||
+      route6_sum_producer.materialization.producer_kind !=
+          bir::Route1ProducerKind::Binary ||
       !route6_sum_producer.materialization.scalar_materialization_available) {
     return fail(
-        "Route 6 call argument producer records should expose source producer and materialization facts");
+        "Route 6 call argument producer records should expose call-source identity, source producer, and materialization facts");
   }
   const auto route6_load_publication =
       bir::route6_call_argument_publication_source_record(
@@ -8065,6 +8143,106 @@ int verify_bir_call_argument_source_producer_materialization_lookup() {
       migrated_indexed_missing.available) {
     return fail(
         "Route 6 call argument producer record/index should explicitly report missing source producers");
+  }
+
+  auto missing_relationship_block = block;
+  auto* missing_relationship_call = std::get_if<bir::CallInst>(
+      &missing_relationship_block.insts[call_instruction_index]);
+  if (missing_relationship_call == nullptr) {
+    return fail("BIR missing-relationship materialization fixture is malformed");
+  }
+  missing_relationship_call->arg_sources.erase(
+      missing_relationship_call->arg_sources.begin());
+  const auto missing_relationship =
+      bir::route6_call_argument_source_producer_record(
+          missing_relationship_block,
+          *missing_relationship_call,
+          call_instruction_index,
+          0);
+  if (missing_relationship ||
+      missing_relationship.status !=
+          bir::Route6CallUseStatus::MissingSourceRelationship ||
+      bir::find_call_argument_source_producer_materialization(
+          missing_relationship_block,
+          *missing_relationship_call,
+          call_instruction_index,
+          0)
+          .available) {
+    return fail(
+        "Route 6 call argument producer record should fail closed for missing source relationships");
+  }
+
+  auto unnamed_source_block = block;
+  auto* unnamed_source_call =
+      std::get_if<bir::CallInst>(&unnamed_source_block.insts[call_instruction_index]);
+  if (unnamed_source_call == nullptr) {
+    return fail("BIR unnamed-source materialization fixture is malformed");
+  }
+  unnamed_source_call->args[0] = bir::Value::immediate_i64(17);
+  const auto unnamed_source =
+      bir::route6_call_argument_source_producer_record(
+          unnamed_source_block, *unnamed_source_call, call_instruction_index, 0);
+  if (unnamed_source ||
+      unnamed_source.status !=
+          bir::Route6CallUseStatus::MissingSourceProducer ||
+      bir::find_call_argument_source_producer_materialization(
+          unnamed_source_block, *unnamed_source_call, call_instruction_index, 0)
+          .available) {
+    return fail(
+        "Route 6 call argument producer record should fail closed when the argument has no named source value");
+  }
+
+  const auto indexed_route6_wrong_call =
+      bir::route6_find_call_argument_source_producer(
+          route6_materialization_index,
+          route6_materialization_block,
+          call_instruction_index,
+          "consume_wrong_sources",
+          0);
+  const auto indexed_route6_no_match =
+      bir::route6_find_call_argument_source_producer(
+          route6_materialization_index,
+          route6_materialization_block,
+          call_instruction_index,
+          "consume_materialized_sources",
+          99);
+  if (indexed_route6_wrong_call ||
+      indexed_route6_wrong_call.status != bir::Route6CallUseStatus::WrongCall ||
+      indexed_route6_no_match ||
+      indexed_route6_no_match.status != bir::Route6CallUseStatus::NoMatch) {
+    return fail(
+        "Route 6 call argument producer index should fail closed for wrong-call and no-match lookups");
+  }
+
+  auto abi_bound_block = block;
+  auto* abi_bound_call =
+      std::get_if<bir::CallInst>(&abi_bound_block.insts[call_instruction_index]);
+  if (abi_bound_call == nullptr) {
+    return fail("BIR ABI-bound materialization fixture is malformed");
+  }
+  abi_bound_call->arg_sources[0].source_selection =
+      bir::CallArgumentSourceSelection{
+          .kind = bir::CallArgumentSourceSelectionKind::FrameSlotValue,
+          .source_value_id = std::size_t{100},
+          .source_value_name = std::string{"%loaded.arg"},
+          .source_slot_id = c4c::SlotNameId{3},
+          .source_stack_offset_bytes = std::size_t{32},
+          .source_size_bytes = std::size_t{8},
+          .source_align_bytes = std::size_t{8},
+      };
+  const auto abi_bound_producer =
+      bir::route6_call_argument_source_producer_record(
+          abi_bound_block, *abi_bound_call, call_instruction_index, 0);
+  if (abi_bound_producer ||
+      abi_bound_producer.status !=
+          bir::Route6CallUseStatus::AbiBoundExcluded ||
+      abi_bound_producer.argument_source.source_kind !=
+          bir::Route6CallUseSourceKind::AbiBoundExcluded ||
+      bir::find_call_argument_source_producer_materialization(
+          abi_bound_block, *abi_bound_call, call_instruction_index, 0)
+          .available) {
+    return fail(
+        "Route 6 call argument producer record should exclude ABI-bound source-selection facts");
   }
 
   auto duplicate_block = block;
