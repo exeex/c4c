@@ -76,6 +76,43 @@ build_current_block_join_prepared_query_routing(
     const prepare::PreparedValueHome& home,
     std::uint8_t register_index);
 
+enum class Route1PublicationSourceProducerStatus {
+  Unavailable,
+  NoProducer,
+  Available,
+};
+
+enum class Route1PublicationIntegerConstantStatus {
+  Unavailable,
+  NoProducer,
+  NonConstant,
+  Constant,
+};
+
+struct Route1PublicationSourceProducerView {
+  Route1PublicationSourceProducerStatus status =
+      Route1PublicationSourceProducerStatus::Unavailable;
+  const bir::Inst* instruction = nullptr;
+  const bir::Value* produced_value = nullptr;
+  std::size_t instruction_index = 0;
+  bir::Route1ProducerKind producer_kind = bir::Route1ProducerKind::Unknown;
+  bir::Route1MaterializationAvailability materialization;
+  Route1PublicationIntegerConstantStatus integer_constant_status =
+      Route1PublicationIntegerConstantStatus::Unavailable;
+  bir::Route1ImmediateIntegerConstant integer_constant;
+
+  [[nodiscard]] explicit operator bool() const {
+    return status == Route1PublicationSourceProducerStatus::Available &&
+           instruction != nullptr && produced_value != nullptr;
+  }
+};
+
+[[nodiscard]] Route1PublicationSourceProducerView
+route1_publication_source_producer_for_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
+
 [[nodiscard]] bool value_publication_may_read_register_index(
     const module::BlockLoweringContext& context,
     const bir::Value& value,

@@ -225,6 +225,54 @@ prepared_same_block_publication_source_producer(
 
 }  // namespace
 
+[[nodiscard]] Route1PublicationSourceProducerView
+route1_publication_source_producer_for_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+
+  const auto route1_index = bir::route1_build_producer_index(*context.bir_block);
+  const auto route1_query = bir::Route1SameBlockProducerQuery{
+      .index = &route1_index,
+      .before_instruction_index =
+          std::min(before_instruction_index, context.bir_block->insts.size()),
+  };
+  auto view = Route1PublicationSourceProducerView{
+      .status = Route1PublicationSourceProducerStatus::NoProducer,
+      .integer_constant_status =
+          Route1PublicationIntegerConstantStatus::NoProducer,
+  };
+  const auto producer =
+      bir::route1_find_same_block_scalar_producer(route1_query, value);
+  if (!producer.has_value() ||
+      producer->record == nullptr ||
+      producer->instruction == nullptr ||
+      producer->produced_value == nullptr) {
+    return view;
+  }
+
+  view.status = Route1PublicationSourceProducerStatus::Available;
+  view.instruction = producer->instruction;
+  view.produced_value = producer->produced_value;
+  view.instruction_index = producer->instruction_index;
+  view.producer_kind = producer->record->kind;
+  view.materialization = producer->materialization;
+  if (producer->record->integer_constant) {
+    view.integer_constant_status =
+        Route1PublicationIntegerConstantStatus::Constant;
+    view.integer_constant = producer->record->integer_constant;
+  } else {
+    view.integer_constant_status =
+        Route1PublicationIntegerConstantStatus::NonConstant;
+  }
+  return view;
+}
+
 [[nodiscard]] SameBlockSelectProducer find_prepared_same_block_select_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
