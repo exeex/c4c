@@ -8,17 +8,27 @@ Current Step Title: Confirm selected value-home group
 
 ## Just Finished
 
-Lifecycle reset after Step 4 of the address-materialization runbook. The
-completed group was `address_materializations`; production traversal no longer
-reads `prepared_lookups.address_materializations`, and the selected proof in
-`test_after.log` was green.
+Step 1 from `plan.md`: confirmed `value_homes` remains the selected safe field
+group. Scan evidence:
+
+- `src/backend/mir/aarch64/codegen/traversal.cpp` still reads
+  `prepared_lookups.value_homes` only to assign
+  `FunctionLoweringContext::value_home_lookups`.
+- `prepare::make_prepared_value_home_lookups(...)` is a narrow builder over
+  `PreparedValueLocationFunction::value_homes`; it only fills `homes_by_id` and
+  `value_ids`.
+- `move_bundles` remains out of scope for the next packet because equivalent
+  construction is not just value-home lookup wiring:
+  `make_prepared_function_lookups(...)` builds move-bundle lookups separately
+  and then calls `publish_prepared_after_call_result_lane_bindings(...)`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: confirm `value_homes` remains the next safe
-field group, then proceed to Step 2 if the narrow
-`prepare::make_prepared_value_home_lookups(...)` projection still matches the
-current traversal shape.
+Execute Step 2 from `plan.md`: add the local
+`prepare::make_prepared_value_home_lookups(...)` construction in traversal and
+wire `FunctionLoweringContext::value_home_lookups` to the standalone lookup
+object, without changing `PreparedFunctionLookups::move_bundles` or other
+aggregate fields.
 
 ## Watchouts
 
@@ -38,6 +48,11 @@ current traversal shape.
 
 ## Proof
 
-No proof run by plan-owner for this lifecycle-only reset. The next executor
-packet should run the supervisor-selected compile and value-location/AArch64
-lowering subset after code changes.
+No build proof required for this confirmation-only packet; scan evidence is
+recorded above.
+
+Step 2 proof command:
+
+```sh
+(cmake --build build --target backend_aarch64_operand_resolution_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_operand_resolution|backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
+```
