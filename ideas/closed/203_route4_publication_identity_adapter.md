@@ -61,3 +61,15 @@ selected publication identity or wrapper adapter.
   that hides a prepared fallback regression.
 - Reject an adapter that broadens beyond one selected reader or wrapper
   boundary.
+
+## Completion Note
+
+Closed on 2026-06-11 after the selected AArch64 call-boundary current-block
+publication source reader was migrated to consume Route 4 only for semantic
+publication identity. Prepared publication lookup remains authoritative for
+mechanics and output-sensitive behavior, including move/home/storage policy,
+stack-source extension, block-order emission, wrapper formatting, immediate
+payload spelling, emitted strings, and allowed prepared fallback.
+
+Additional Route 4 reader migrations remain intentionally out of scope for this
+bounded idea and should be opened as separate ideas if pursued.
