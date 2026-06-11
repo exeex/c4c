@@ -1,55 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/199_full_suite_baseline_string_authority_timeout_attribution.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Reproduce and Classify the Two Failures Separately
+Current Step ID: Step 3
+Current Step Title: Isolate the First Bad String-Authority Step
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: Reproduce and Classify the Two Failures Separately.
+Completed Step 3: Isolate the First Bad String-Authority Step.
 
-Supervisor baseline comparison:
-- `test_before.log` used the same delegated command and recorded
-  `STEP2_STATUS string_authority_guard=8
-  c_testsuite_aarch64_backend_src_00040_c=0`.
-- The current run in `test_after.log` records the same status line:
-  `STEP2_STATUS string_authority_guard=8
-  c_testsuite_aarch64_backend_src_00040_c=0`.
-
-Independent reproduction results:
-- `string_authority_guard` reproduced as a deterministic narrow guard failure
-  in the current checkout: CTest exit status `8`, `0% tests passed, 1 tests
-  failed out of 1`.
-- The guard diagnostic is:
+Historical isolation results:
+- Used a temporary worktree outside the active checkout:
+  `/tmp/c4c-string-authority-isolate-48163`.
+- Ran `python3 scripts/string_authority_guard.py` at every commit in the
+  ordered range `3486d702e..521cf148f`, plus the lower endpoint `3486d702e`.
+- The requested minimum commits were covered:
+  `3486d702e`, `6f5b01955`, `23821ceb8`, `55125bd83`, `e58237c1f`,
+  `9732ff7c8`, `f281426eb`, and `521cf148f`.
+- Every tested commit failed with `string authority guard failed`.
+- The first observed bad commit in this bounded check is `3486d702e`, but this
+  packet cannot identify a first bad commit between `3486d702e` and
+  `521cf148f` because the lower endpoint is already failing.
+- Common diagnostic:
   `src/backend/mir/aarch64/codegen/calls.cpp:8062:
   find_prepared_indirect_callee_stored_value_source_fallback:
   pattern=lookup-helper-rendered-compatibility: classify this exact
   path+symbol in scripts/string_authority_classifications.json or replace it
   with structured authority`.
+- Removed the temporary worktree after the sweep.
+
+Preserved Step 2 classification:
 - `c_testsuite_aarch64_backend_src_00040_c` did not reproduce as a timeout in
-  the isolated Step 2 run: CTest exit status `0`, passed in 2.93 sec, `100%
-  tests passed, 0 tests failed out of 1`.
-- Classify `00040` as timeout/noise for this packet unless a later broader run
-  reproduces it; keep it separate from the deterministic string-authority
-  route.
+  the isolated Step 2 run and remains classified as timeout/noise unless a
+  later broader run reproduces it.
 
 ## Suggested Next
 
-Execute Step 3: isolate the first bad string-authority step by manually
-checking the ordered Phase D follow-up readiness and lifecycle naming commits
-with the narrow `string_authority_guard` command. Keep the `00040`
-timeout/noise classification separate.
+Supervisor should decide whether to extend historical isolation before
+`3486d702e`, treat `3486d702e` as the attribution boundary for this plan, or
+route to a repair packet for the reported string-authority diagnostic.
 
 ## Watchouts
 
-- The Step 2 isolated proof reproduced only `string_authority_guard`; `00040`
-  passed and should not drive the next route unless it reappears in broader
-  validation.
+- Step 3 did not find a PASS-to-FAIL transition inside
+  `3486d702e..521cf148f`; all tested commits in that interval failed.
 - Do not infer first-bad from `1d1c506f0`; Step 1 found
   `string_authority_guard` already failing in
   `log/baseline_521cf148fa7660766f5bfa8c0932833bfa987311.log`.
+- The Step 2 isolated proof reproduced only `string_authority_guard`; `00040`
+  passed and should not drive the next route unless it reappears in broader
+  validation.
 - Do not weaken, disable, or bypass `string_authority_guard`.
 - Do not delete, rename, or broadly rewrite Phase D or Phase E docs just to
   satisfy the guard.
@@ -60,22 +61,15 @@ timeout/noise classification separate.
 
 ## Proof
 
-Ran the supervisor-delegated exact proof command and captured all output in
-`test_after.log`:
+Ran the supervisor-delegated historical proof workflow and captured the commit
+table in `test_after.log`:
 
 ```sh
-(
-  set -o pipefail
-  cmake --build --preset default && \
-  ctest --test-dir build --output-on-failure -R '^string_authority_guard$' ; \
-  string_status=$? ; \
-  ctest --test-dir build --output-on-failure -R '^c_testsuite_aarch64_backend_src_00040_c$' ; \
-  c00040_status=$? ; \
-  printf '\nSTEP2_STATUS string_authority_guard=%s c_testsuite_aarch64_backend_src_00040_c=%s\n' "$string_status" "$c00040_status" ; \
-  test "$string_status" -eq 0 -a "$c00040_status" -eq 0
-) > test_after.log 2>&1
+git worktree add --detach /tmp/c4c-string-authority-isolate-48163 3486d702e
+python3 scripts/string_authority_guard.py
 ```
 
-The command exited `1` because `string_authority_guard` failed while `00040`
-passed. The supervisor-selected proof is sufficient for Step 2 reproduction
-and classification, and `test_after.log` is the proof log path.
+The script was run from the temporary worktree after checking out each tested
+historical commit. `test_after.log` is the proof log path and records
+`first_observed_bad: 3486d702e` plus the explicit lower-endpoint blocker to
+identifying a first bad commit inside the requested interval.
