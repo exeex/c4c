@@ -1,66 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/202_phase_c2_selected_adapter_cache_contraction_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Route-Specific Surfaces
+Current Step ID: 3
+Current Step Title: Classify Aggregate Coupling and Diagnostic Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Classify Route-Specific Surfaces completed for Phase C2.
+Step 3: Classify Aggregate Coupling and Diagnostic Authority completed for
+Phase C2.
 
-Created
+Extended
 `docs/bir_prealloc_fusion/phase_c2_selected_adapter_cache_contraction_readiness.md`
-with source/evidence links and a route-specific surface readiness table.
+with aggregate sections for `PreparedFunctionLookups` coupling,
+`PreparedBirModule` retirement blockers, and prepared diagnostic/oracle/string
+authority.
 
-The table has explicit Route 3, Route 4, Route 5, Route 6, and Route 7 rows.
-Each row records the selected reader or diagnostic row, prepared surface
-touched, public consumer removal status, retained fallback/oracle, retained
-target/prepared policy, proof scope, exactly one working-model readiness
-classification, and a contraction readiness result.
+The new sections explicitly classify broad `PreparedFunctionLookups`
+retirement as blocked by residual production, printer/debug, target-wrapper,
+oracle, fallback, pass-context, and target/prepared policy consumers. They also
+classify broad `PreparedBirModule` retirement as blocked pending a
+field-by-field owner map, fallback/oracle strategy, and non-regressive
+diagnostic/string proof.
 
-Step 2 classifications recorded:
-
-| Route | Readiness classification | Contraction readiness result |
-| --- | --- | --- |
-| Route 3 memory/source | retained public fallback/oracle | Not contraction-ready. |
-| Route 4 publication | retained target/prepared policy | Not contraction-ready. |
-| Route 5 edge/join-source | retained target/prepared policy | Not contraction-ready. |
-| Route 6 call-use source | retained target/prepared policy | Not contraction-ready. |
-| Route 7 comparison/provenance | diagnostic/oracle replacement prerequisite | Not contraction-ready. |
-
-No row claims cache/API contraction from adapter greenness, backend CTest
-greenness, or the accepted full-suite baseline alone.
+The diagnostic/oracle section distinguishes Route 7 provenance and other
+selected adapter closures as replacement prerequisites, not contraction-ready
+surfaces. It retains prepared printer, CLI dump, x86 route-debug,
+`backend_prepared_lookup_helper`, AArch64 lookup-threading, target-wrapper, and
+baseline/string-authority guards as public validation surfaces.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: classify aggregate coupling and diagnostic
-authority in
+Execute Step 4 from `plan.md`: write follow-up decisions and D2 guidance in
 `docs/bir_prealloc_fusion/phase_c2_selected_adapter_cache_contraction_readiness.md`.
-Add aggregate findings for `PreparedFunctionLookups` and `PreparedBirModule`,
-and distinguish diagnostic/oracle replacement prerequisites from
-contraction-ready surfaces.
+Convert the route-specific and aggregate retained-surface findings into narrow
+next-action guidance without opening broad D2, draft 155, or aggregate
+retirement work unless a one-surface contraction candidate is explicitly
+justified and delegated.
 
 ## Watchouts
 
 - This remains analysis-only unless a later packet explicitly delegates
   follow-up idea creation.
-- Step 2 found no route-specific contraction-ready surface. Do not upgrade any
-  row to micro-contraction readiness from adapter greenness, backend CTest
-  greenness, or full-suite baseline status alone.
-- Route 3 and Route 7 are mostly fallback/oracle and diagnostic/oracle
-  readiness stories; Routes 4 through 6 are dominated by retained
-  target/prepared policy.
-- Step 3 should keep aggregate `PreparedFunctionLookups` and
-  `PreparedBirModule` retirement separate from these one-reader adapter
-  closures.
+- Steps 2 and 3 found no route-specific or aggregate contraction-ready surface.
+  Do not upgrade any row or aggregate section from adapter greenness, backend
+  CTest greenness, or full-suite baseline status alone.
+- Step 4 should preserve the distinction between selected semantic adapters,
+  retained public fallback/oracle surfaces, retained target/prepared policy,
+  transient pass context, and diagnostic/oracle replacement prerequisites.
+- Broad `PreparedFunctionLookups`, `PreparedBirModule`, D2, draft 155, printer,
+  dump, route-debug, helper-oracle, target-wrapper, or expected-string work is
+  blocked unless a later packet narrows it to one surface with replacement
+  proof.
 
 ## Proof
 
 Docs-only analysis packet; no build or CTest command was delegated or run.
-Verification performed by checking that the C2 document exists, has explicit
-Route 3, Route 4, Route 5, Route 6, and Route 7 table rows, assigns one
-working-model readiness classification per row, and makes no contraction claim
-based only on adapter greenness. No `test_after.log` was produced for this
+Verification performed by checking that the C2 document explicitly states
+blockers to broad `PreparedFunctionLookups` and `PreparedBirModule` retirement
+and distinguishes diagnostic/oracle replacement prerequisites from
+contraction-ready surfaces. No `test_after.log` was produced for this
 docs-only packet.

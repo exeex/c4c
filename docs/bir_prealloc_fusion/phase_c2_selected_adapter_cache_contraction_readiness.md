@@ -1,6 +1,6 @@
 # Phase C2 Selected Adapter Cache Contraction Readiness
 
-Status: Step 2 route-specific surface classification drafted.
+Status: Step 3 aggregate coupling and diagnostic authority classification drafted.
 
 Source idea:
 `ideas/open/202_phase_c2_selected_adapter_cache_contraction_readiness_audit.md`
@@ -9,10 +9,10 @@ Source idea:
 
 This document records whether the Phase B2 selected Route 3 through Route 7
 adapter and diagnostic closures make any prepared lookup, cache, diagnostic, or
-API surface ready for contraction. Step 2 is limited to route-specific touched
-surfaces. Aggregate `PreparedFunctionLookups`, `PreparedBirModule`, diagnostic
-authority, final follow-up decisions, and D2 guidance are classified in later
-steps.
+API surface ready for contraction. Steps 2 and 3 classify route-specific touched
+surfaces, aggregate `PreparedFunctionLookups` and `PreparedBirModule` coupling,
+and prepared diagnostic/oracle authority. Final follow-up decisions and D2
+guidance are classified in later steps.
 
 The classification rule is conservative: adapter greenness, backend CTest
 greenness, and existing full-suite baseline success are evidence for bounded
@@ -65,3 +65,130 @@ replacement.
 Later C2 steps should classify aggregate coupling, diagnostic authority, and
 follow-up decisions without upgrading any row above from adapter greenness
 alone.
+
+## Aggregate PreparedFunctionLookups Coupling
+
+`PreparedFunctionLookups` remains an aggregate compatibility and pass-context
+surface. The selected Route 3 through Route 7 adapters prove that individual
+semantic subfacts can be read through fail-closed route/prepared agreement
+boundaries, but they do not retire the aggregate lookup bundle, the public
+field groups inside it, or the target-local context threading that passes those
+groups to AArch64, x86, and riscv consumers.
+
+The broad blockers are:
+
+- `call_plans` still owns ABI placement, call wrapper kind, clobber/preserve
+  sets, outgoing stack sizing, byval lanes, variadic FPR counts, helper/carrier
+  protocol, late publication, call records, call printer/debug rows, call-plan
+  oracles, and x86 `ConsumedPlans` compatibility. Route 6 owns only selected
+  call-use source identity after route/prepared agreement.
+- `address_materializations`, `move_bundles`, and `value_homes` remain retained
+  target/prepared policy surfaces. The selected adapters do not move address
+  formation, offsets, relocation choice, storage/home selection, move ordering,
+  cycle temporaries, ABI move phases, or final record rendering into route
+  ownership.
+- `memory_accesses` is mixed but not contraction-ready. Route 3 can answer one
+  memory/source identity question at a time, while prepared memory lookups,
+  address materialization, frame/global/TLS policy, volatile/address-space
+  handling, memory oracles, and target-addressing fallback remain public.
+- `edge_publications` and `edge_publication_source_producers` are mixed but not
+  contraction-ready. Route 4, Route 5, Route 6, and Route 7 subfacts can feed
+  selected semantic reads, while publication construction, source-producer
+  fallback, move/home/storage policy, wrapper compatibility, printer/debug
+  output, and edge/join oracles remain public.
+- AArch64 traversal still builds and threads prepared lookup context; x86 and
+  riscv wrappers still consume prepared lookup-derived surfaces. A future
+  route view may be threaded beside prepared context for one fact family, but a
+  BIR-owned clone, rename-only facade, aggregate deletion, or aggregate
+  privatization would leave the residual consumer boundary unresolved.
+
+Classification: retained public fallback/oracle and retained target/prepared
+policy. Future work can only target one lookup group and one consumer or
+diagnostic row at a time, naming the exact route fact, retained prepared
+fallback, retained target policy, and positive/negative/mismatch/fallback proof
+shape. No broad `PreparedFunctionLookups` retirement is contraction-ready from
+the Phase B2 selected adapter evidence.
+
+## PreparedBirModule Retirement Blockers
+
+`PreparedBirModule` remains a mixed aggregate, not a route-owned semantic
+surface. The aggregate combines target-neutral BIR module state with target
+profile, names/control flow, value locations, stack/frame/dynamic-stack,
+addressing, liveness, regalloc, call, publication, variadic, storage,
+wide-carrier, atomic, intrinsic, inline-asm, runtime-helper, phase, and note
+state. The selected Route 3 through Route 7 closures cover narrow semantic
+records adjacent to that aggregate; they do not provide a field-by-field owner
+map or a replacement path for the aggregate.
+
+Broad retirement is blocked by the same unresolved public boundaries Step 2
+and the aggregate lookup maps identify:
+
+- Production lowering still constructs target contexts from `PreparedBirModule`
+  and its derived lookup caches.
+- Printer, CLI dump, route-debug, target-wrapper, and helper-oracle consumers
+  still rely on prepared module state as compatibility authority.
+- Target/prepared policy fields such as ABI/layout, stack/frame offsets,
+  addressing legality, register/storage choice, move scheduling, branch
+  spelling, helper protocols, emitted strings, and final machine records remain
+  outside route ownership.
+- x86 and riscv compatibility paths still use prepared module or lookup-derived
+  wrappers. The existing x86 Route 6 scalar source reuse point is an
+  agreement-gated sub-boundary, not a prepared-module retirement signal.
+- No C2 evidence proves that diagnostics, expected strings, fallback behavior,
+  or public wrapper interfaces can be preserved after deleting, demoting, or
+  hiding the aggregate.
+
+Classification: retained target/prepared policy plus transient pass context and
+diagnostic/oracle compatibility. Any future `PreparedBirModule` retirement work
+needs a separate field-by-field ownership map, fallback/oracle strategy, and
+non-regressive diagnostic/string proof. Phase C2 selected adapter greenness is
+not enough to open a broad `PreparedBirModule` contraction.
+
+## Prepared Diagnostic, Oracle, And String Authority
+
+Prepared diagnostics and oracle surfaces remain replacement prerequisites, not
+contraction-ready surfaces. Route 7 materialized-condition provenance is the
+clearest selected diagnostic/oracle closure in this C2 scope: it proves one
+comparison provenance surface can validate Route 7 facts and fail closed while
+preserving prepared fallback. It does not replace branch-policy authority,
+fused-compare helpers, materialized-condition helpers, route-debug rows,
+printer/debug output, helper-oracle strings, or expected-output authority.
+
+Retained diagnostic and oracle authorities include:
+
+- Prepared printer output for prepared labels, formatting, route compatibility
+  rows, and target/prepared policy sections.
+- Prepared CLI dump output and dump snippets for the user-facing prepared BIR
+  stage.
+- x86 route-debug summary and trace output while compatibility-derived route
+  rows remain labeled and target-local wrappers still consume prepared state.
+- `backend_prepared_lookup_helper` and related helper-oracle assertions for
+  success, no-match, absent, invalid, duplicate/conflict, mismatch, and
+  fallback status.
+- AArch64 lookup-threading and target-wrapper tests that prove route/prepared
+  agreement, prepared fallback, and unchanged emitted/debug strings.
+- Baseline and string-authority guardrails that reject expectation rewrites,
+  unsupported downgrades, helper renames, or output relabeling as contraction
+  evidence.
+
+Diagnostic replacement must be route-family-specific and surface-specific. A
+valid follow-up must name the single diagnostic/oracle surface, the semantic
+route facts replacing prepared authority, the prepared oracle or compatibility
+adapter that remains, and equivalent positive, negative, ambiguous, mismatch,
+and fallback coverage. Until that exists for the consumed surface, the correct
+classification is diagnostic/oracle replacement prerequisite, not ready for
+cache/API contraction.
+
+## Step 3 Result
+
+Step 3 finds no aggregate contraction-ready surface. The Phase B2 selected
+adapters improve selected route/prepared agreement and diagnostic provenance,
+but broad `PreparedFunctionLookups` retirement, `PreparedBirModule` retirement,
+and prepared diagnostic/oracle/string-authority contraction are all blocked by
+residual production, printer/debug, target-wrapper, oracle, policy-sensitive,
+pass-context, and expected-string consumers.
+
+Step 4 should convert these retained-surface findings into follow-up decisions
+and D2 guidance. It should not open broad D2, draft 155, or aggregate
+retirement work unless a later delegated packet explicitly asks for a separate
+one-surface idea and the C2 evidence shows that one surface is actually ready.
