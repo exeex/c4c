@@ -132,3 +132,25 @@ Start with no code changes.
   failure family still reproduces.
 - The report dismisses the failures as ambient without repeat runs or
   historical evidence.
+
+## Closure Note
+
+Closed after completing the attribution and repair runbook.
+
+The baseline timeline kept `af8c2f6efac78a862e7f024cd579d1a2ec487be3` as the
+accepted 3427/3427 full-suite baseline and rejected the later 99% candidate
+until its failures were attributed. The narrow reproducer separated the
+`00040` timeout from the deterministic AArch64 failures in `00119`, `00123`,
+and `00195`. Manual historical attribution proved
+`c8346c7bb052af1ae81c7ca95bee1f71a899ea6d` as the first bad commit, implicating
+Route 3 FP global-load identity at the boundary between semantic memory/source
+identity and AArch64 prepared target-addressing policy.
+
+The focused repair restored the FP same-block global-load prepared fallback
+without weakening c_testsuite contracts or accepting the rejected 99% baseline.
+The final full-suite baseline candidate at
+`e5218942517a2bb9c3bd0167d810e27bed8273c8` passed 3428/3428 and was accepted
+as the repaired baseline. Close-gate backend regression logs used matching
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+commands; the guard passed with 180/180 before and 180/180 after, with no new
+failures.
