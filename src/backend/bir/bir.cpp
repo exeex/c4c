@@ -3973,8 +3973,21 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool route8_identity_matches(
+    const Route1SourceValueIdentity& lhs,
+    const Route1SourceValueIdentity& rhs) {
+  if (!lhs && !rhs) {
+    return true;
+  }
+  return route8_value_key_matches(lhs, rhs) &&
+         route8_value_key_matches(rhs, lhs);
+}
+
 [[nodiscard]] bool route8_key_matches(const Route8ReturnChainValueKey& record,
                                       const Route8ReturnChainValueKey& query) {
+  if (query.block == nullptr) {
+    return false;
+  }
   if (record.function != nullptr && query.function != nullptr &&
       record.function != query.function) {
     return false;
@@ -3998,6 +4011,146 @@ namespace {
   return route8_value_key_matches(record.chain_value, query.chain_value);
 }
 
+[[nodiscard]] bool route8_return_chain_binary_opcode_is_scalar_publication(
+    BinaryOpcode opcode) {
+  switch (opcode) {
+    case BinaryOpcode::Add:
+    case BinaryOpcode::Sub:
+    case BinaryOpcode::Mul:
+    case BinaryOpcode::And:
+    case BinaryOpcode::Or:
+    case BinaryOpcode::Xor:
+    case BinaryOpcode::Shl:
+    case BinaryOpcode::LShr:
+    case BinaryOpcode::AShr:
+    case BinaryOpcode::SDiv:
+    case BinaryOpcode::UDiv:
+    case BinaryOpcode::SRem:
+    case BinaryOpcode::URem:
+      return true;
+    case BinaryOpcode::Eq:
+    case BinaryOpcode::Ne:
+    case BinaryOpcode::Slt:
+    case BinaryOpcode::Sle:
+    case BinaryOpcode::Sgt:
+    case BinaryOpcode::Sge:
+    case BinaryOpcode::Ult:
+    case BinaryOpcode::Ule:
+    case BinaryOpcode::Ugt:
+    case BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool route8_is_named_value(const Value& value) {
+  return value.kind == Value::Kind::Named && !value.name.empty();
+}
+
+[[nodiscard]] bool route8_value_matches_name(const Value& value,
+                                             std::string_view name) {
+  return route8_is_named_value(value) && value.name == name;
+}
+
+[[nodiscard]] bool route8_record_conflicts(
+    const Route8ReturnChainRecord& lhs,
+    const Route8ReturnChainRecord& rhs) {
+  return !route8_identity_matches(lhs.terminal_return_value,
+                                  rhs.terminal_return_value) ||
+         !route8_identity_matches(lhs.next_operand_value,
+                                  rhs.next_operand_value);
+}
+
+void route8_publish_return_chain_record(Route8ReturnChainIndex& index,
+                                        Route8ReturnChainRecord record) {
+  if (!record.available) {
+    return;
+  }
+  for (auto& existing : index.records) {
+    if (!route8_key_matches(existing.key, record.key)) {
+      continue;
+    }
+    if (existing.status == Route8ReturnChainStatus::DuplicateRecord ||
+        route8_record_conflicts(existing, record)) {
+      existing.available = false;
+      existing.status = Route8ReturnChainStatus::DuplicateRecord;
+      existing.terminal_return_value = {};
+      existing.next_operand_value = {};
+    }
+    return;
+  }
+  index.records.push_back(std::move(record));
+}
+
+void route8_publish_return_chain_records_for_block(Route8ReturnChainIndex& index,
+                                                   const Function* function,
+                                                   const Block& block) {
+  if (block.terminator.kind != TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      !route8_is_named_value(*block.terminator.value)) {
+    return;
+  }
+
+  for (std::size_t instruction_index = 0;
+       instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto* binary =
+        std::get_if<BinaryInst>(&block.insts[instruction_index]);
+    if (binary == nullptr ||
+        !route8_return_chain_binary_opcode_is_scalar_publication(
+            binary->opcode) ||
+        !route8_is_named_value(binary->result)) {
+      continue;
+    }
+
+    std::string_view current_name = binary->result.name;
+    const Value* next_operand_value = nullptr;
+    for (std::size_t next_index = instruction_index + 1;
+         next_index < block.insts.size();
+         ++next_index) {
+      const auto* next_binary =
+          std::get_if<BinaryInst>(&block.insts[next_index]);
+      if (next_binary == nullptr ||
+          !route8_return_chain_binary_opcode_is_scalar_publication(
+              next_binary->opcode)) {
+        break;
+      }
+      const bool consumes_lhs =
+          route8_value_matches_name(next_binary->lhs, current_name);
+      const bool consumes_rhs =
+          route8_value_matches_name(next_binary->rhs, current_name);
+      if ((!consumes_lhs && !consumes_rhs) ||
+          !route8_is_named_value(next_binary->result)) {
+        break;
+      }
+      if (next_index == instruction_index + 1) {
+        const Value& other_operand =
+            consumes_lhs ? next_binary->rhs : next_binary->lhs;
+        if (route8_is_named_value(other_operand)) {
+          next_operand_value = &other_operand;
+        }
+      }
+      current_name = next_binary->result.name;
+    }
+
+    if (!route8_value_matches_name(*block.terminator.value, current_name)) {
+      continue;
+    }
+
+    route8_publish_return_chain_record(
+        index,
+        route8_return_chain_record(
+            route8_return_chain_value_key(function,
+                                          block,
+                                          instruction_index,
+                                          binary->result),
+            &*block.terminator.value,
+            kInvalidValueName,
+            next_operand_value,
+            kInvalidValueName));
+  }
+}
+
 [[nodiscard]] Route8ReturnChainStatus route8_missing_block_status(
     const Route8ReturnChainIndex& index,
     const Route8ReturnChainValueKey& key) {
@@ -4006,6 +4159,9 @@ namespace {
   }
   if (!key.chain_value) {
     return Route8ReturnChainStatus::MissingChainValue;
+  }
+  if (key.instruction_index >= key.block->insts.size()) {
+    return Route8ReturnChainStatus::MissingInstruction;
   }
   if (index.function == nullptr && index.block == nullptr) {
     return Route8ReturnChainStatus::MissingBlock;
@@ -4087,15 +4243,21 @@ Route8ReturnChainRecord route8_return_chain_record(
 
 Route8ReturnChainIndex route8_build_return_chain_index(
     const Function& function) {
-  return Route8ReturnChainIndex{
+  Route8ReturnChainIndex index{
       .function = &function,
   };
+  for (const auto& block : function.blocks) {
+    route8_publish_return_chain_records_for_block(index, &function, block);
+  }
+  return index;
 }
 
 Route8ReturnChainIndex route8_build_return_chain_index(const Block& block) {
-  return Route8ReturnChainIndex{
+  Route8ReturnChainIndex index{
       .block = &block,
   };
+  route8_publish_return_chain_records_for_block(index, nullptr, block);
+  return index;
 }
 
 Route8ReturnChainRecord route8_find_return_chain_record(

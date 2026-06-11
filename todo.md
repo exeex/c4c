@@ -1,34 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/177_bir_return_chain_schema_index.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Return-Chain Record and Key Types
+Current Step ID: 3
+Current Step Title: Build Function-Local Index and Lookup Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed. Added compileable BIR Route 8 return-chain declarations in
-`src/backend/bir/bir.hpp`: `Route8ReturnChainStatus`,
-`Route8ReturnChainValueKey`, `Route8ReturnChainRecord`,
-`Route8ReturnChainIndex`, status naming, key construction, record construction,
-index build overloads, record find, terminal value find, and next-operand value
-find declarations.
+Step 3 completed. Implemented the Route 8 return-chain index builders in
+`src/backend/bir/bir.cpp` for function and block owner scopes. Builders now walk
+same-block named scalar `BinaryInst` chains that reach a named return terminator,
+publish accepted records keyed by function/block/instruction index plus chain
+value identity, and preserve the optional immediate next-operand identity when
+that operand is named.
 
-Implemented minimal skeleton helpers in `src/backend/bir/bir.cpp`. The Route 8
-key preserves function pointer/name/link id when present, block pointer/label/id,
-instruction index, and chain `Route1SourceValueIdentity`. Records carry terminal
-return identity plus optional next-operand identity only. The builder overloads
-return owner-scoped empty indexes and do not traverse return chains yet. Find
-helpers fail closed with status-coded records and return empty identities until
-future traversal publishes records.
+Lookup helpers now operate over populated indexes: positive record lookups return
+terminal return identity and optional next operand identity, while unsupported
+opcodes, unnamed chain or terminal values, broken walks, non-return terminators,
+cross-block relationships, missing instruction keys, and conflicting duplicate
+publications fail closed without selecting a winner.
 
 ## Suggested Next
 
-Execute the next Step 3 packet by adding focused BIR tests for the Route 8
-schema/key/record skeleton and oracle-facing lookup shape, without changing
-prepared helpers, AArch64 consumers, or implementing full return-chain traversal
-unless the supervisor delegates that expansion.
+Execute Step 4 by adding focused backend/BIR schema and index tests for Route 8
+positive terminal and next-operand lookups plus negative unsupported, unnamed,
+broken-walk, non-return, cross-block, and duplicate-conflict cases.
 
 ## Watchouts
 
@@ -36,14 +33,18 @@ unless the supervisor delegates that expansion.
   policy, alias checks, ALU record construction, or emission order.
 - Do not migrate AArch64 consumers or hide prepared return-chain helpers in this
   idea.
-- Preserve the prepared conflict behavior semantically: conflicting duplicate
-  return-chain answers must fail closed rather than picking one publication.
+- The Route 8 builder currently mirrors the prepared scalar binary opcode set
+  and requires named chain and terminal values. Optional next-operand identity is
+  published only when the immediate next operand is named.
+- Conflicting duplicate return-chain publications mark the generated record
+  unavailable with `DuplicateRecord`; manual duplicate records in an index still
+  cause `route8_find_return_chain_record` to fail closed.
 - Route 8 remains distinct from Route 1 producer identity and Route 7 comparison
   provenance; it reuses `Route1SourceValueIdentity` for values, not the Route 1
   index as the route itself.
 - Keep oracle equivalence against prepared helpers for idea 178.
-- Current Route 8 indexes are intentionally empty skeletons; traversal and
-  publication are not implemented yet.
+- Function/block key stability is owner-local: rebuild the Route 8 index after
+  mutating indexed BIR functions, blocks, instructions, or value names.
 
 ## Proof
 
