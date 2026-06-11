@@ -1,5 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
@@ -177,6 +178,16 @@ prepare::PreparedValueLocationFunction* find_mutable_prepared_value_location_fun
   for (auto& function_locations : prepared.value_locations.functions) {
     if (function_locations.function_name == *function_name_id) {
       return &function_locations;
+    }
+  }
+  return nullptr;
+}
+
+bir::Function* find_mutable_bir_function(prepare::PreparedBirModule& prepared,
+                                         std::string_view function_name) {
+  for (auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
     }
   }
   return nullptr;
@@ -411,6 +422,75 @@ int check_route_requires_authoritative_prepared_after_call_bundle() {
   return fail("bounded direct extern call contract drift route: x86 prepared-module consumer reopened a local call-result ABI fallback when the authoritative prepared AfterCall bundle was removed");
 }
 
+int check_consumed_plans_threads_route6_scalar_call_argument_source() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+                                                        x86_target_profile());
+  const auto consumed = c4c::backend::x86::consume_plans(prepared, "main");
+  const auto* main_function = find_mutable_bir_function(prepared, "main");
+  if (main_function == nullptr || main_function->blocks.empty()) {
+    return fail("x86 Route 6 call-use boundary: malformed main fixture");
+  }
+  const auto& block = main_function->blocks.front();
+  const auto* call = std::get_if<bir::CallInst>(&block.insts[1]);
+  if (call == nullptr || call->args.size() <= 1) {
+    return fail("x86 Route 6 call-use boundary: malformed printf call fixture");
+  }
+  const auto route6_source =
+      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          consumed, block, *call, 0, 1, 1, call->args[1]);
+  const auto* prepared_argument =
+      c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 1, 1);
+  if (!route6_source || prepared_argument == nullptr ||
+      route6_source->source_kind != bir::Route6CallUseSourceKind::ArgumentValue ||
+      !route6_source->source_value_name.has_value() ||
+      *route6_source->source_value_name != "%t0" ||
+      !route6_source->source_value_id.has_value() ||
+      !prepared_argument->source_value_id.has_value() ||
+      *route6_source->source_value_id != *prepared_argument->source_value_id) {
+    return fail("x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans");
+  }
+
+  auto fallback_prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+                                                        x86_target_profile());
+  auto* fallback_main = find_mutable_bir_function(fallback_prepared, "main");
+  if (fallback_main == nullptr || fallback_main->blocks.empty()) {
+    return fail("x86 Route 6 call-use boundary fallback: malformed main fixture");
+  }
+  auto& fallback_block = fallback_main->blocks.front();
+  auto* fallback_call = std::get_if<bir::CallInst>(&fallback_block.insts[1]);
+  if (fallback_call == nullptr || fallback_call->args.size() <= 1) {
+    return fail("x86 Route 6 call-use boundary fallback: malformed printf call fixture");
+  }
+  fallback_call->arg_sources.clear();
+  const auto fallback_consumed = c4c::backend::x86::consume_plans(fallback_prepared, "main");
+  const auto fallback_route6_source =
+      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          fallback_consumed, fallback_block, *fallback_call, 0, 1, 1, fallback_call->args[1]);
+  if (fallback_route6_source.has_value()) {
+    return fail("x86 Route 6 call-use boundary fallback: missing Route 6 facts should fail closed");
+  }
+  if (c4c::backend::x86::find_consumed_call_argument_plan(fallback_consumed, 0, 1, 1) ==
+      nullptr) {
+    return fail("x86 Route 6 call-use boundary fallback: prepared call argument selector was not preserved");
+  }
+
+  std::string fallback_asm;
+  try {
+    fallback_asm = c4c::backend::x86::api::emit_prepared_module(fallback_prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string("x86 Route 6 call-use boundary fallback: prepared fallback rejected with exception: ") +
+                 ex.what())
+                    .c_str());
+  }
+  if (fallback_asm != expected_minimal_direct_extern_call_lane_asm()) {
+    return fail("x86 Route 6 call-use boundary fallback: prepared call-plan fallback changed asm");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
@@ -431,6 +511,10 @@ int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
     return status;
   }
   if (const auto status = check_route_requires_authoritative_prepared_after_call_bundle();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_consumed_plans_threads_route6_scalar_call_argument_source();
       status != 0) {
     return status;
   }

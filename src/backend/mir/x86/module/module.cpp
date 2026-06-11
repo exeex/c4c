@@ -3087,7 +3087,8 @@ bool append_prepared_direct_extern_call_argument(
     const c4c::backend::bir::Function& function,
     const Data& data,
     const c4c::backend::bir::Value& argument,
-    const std::string& destination_register) {
+    const std::string& destination_register,
+    const c4c::backend::bir::Route6CallArgumentSourceRecord* route6_argument_source = nullptr) {
   if (argument.kind == c4c::backend::bir::Value::Kind::Named && !argument.name.empty() &&
       argument.name.front() == '@' && argument.type == c4c::backend::bir::TypeKind::Ptr) {
     std::string_view symbol_name(argument.name.data() + 1, argument.name.size() - 1);
@@ -3107,8 +3108,13 @@ bool append_prepared_direct_extern_call_argument(
 
   if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
       argument.type == c4c::backend::bir::TypeKind::I32) {
+    const auto source_name =
+        route6_argument_source != nullptr &&
+                route6_argument_source->source_value_name.has_value()
+            ? *route6_argument_source->source_value_name
+            : std::string_view(argument.name);
     const auto& home = require_prepared_i32_value_home(
-        module, function_locations, function, argument.name, "direct extern call argument");
+        module, function_locations, function, source_name, "direct extern call argument");
     if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
         !home.register_name.has_value()) {
       throw_prepared_value_location_handoff_error(
@@ -3212,13 +3218,19 @@ bool append_prepared_direct_extern_call_return_function(
             "defined function '" + function.name +
             "' has no authoritative prepared call-bundle handoff");
       }
+      const auto route6_argument_source =
+          c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+              consumed, block, *call, 0, instruction_index, arg_index, call->args[arg_index]);
       if (!append_prepared_direct_extern_call_argument(function_out,
                                                       module,
                                                       *function_locations,
                                                       function,
                                                       data,
                                                       call->args[arg_index],
-                                                      *destination_register)) {
+                                                      *destination_register,
+                                                      route6_argument_source.has_value()
+                                                          ? &*route6_argument_source
+                                                          : nullptr)) {
         return false;
       }
     }
@@ -3516,6 +3528,9 @@ bool append_prepared_symbol_call_local_i32_function(
           }
           if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
               argument.type == c4c::backend::bir::TypeKind::I32) {
+            const auto route6_argument_source =
+                c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+                    consumed, block, *call, 0, instruction_index, arg_index, argument);
             const auto loaded_value = loaded_i32_values.find(argument.name);
             if (loaded_value != loaded_i32_values.end()) {
               function_out.append_line("    mov " +
@@ -3528,7 +3543,10 @@ bool append_prepared_symbol_call_local_i32_function(
                                                                     function,
                                                                     data,
                                                                     argument,
-                                                                    *destination_register)) {
+                                                                    *destination_register,
+                                                                    route6_argument_source.has_value()
+                                                                        ? &*route6_argument_source
+                                                                        : nullptr)) {
               return false;
             }
           } else {

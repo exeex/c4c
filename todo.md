@@ -1,70 +1,92 @@
 Status: Active
 Source Idea Path: ideas/open/189_phase_e_cross_target_route_view_interface_reuse.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Select One Cross-Target Boundary
+Current Step ID: Step 2
+Current Step Title: Thread the Proven Route View Through the Wrapper
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected the x86 call-boundary `ConsumedPlans` wrapper as the first
-cross-target reuse boundary. The concrete seam is
-`c4c::backend::x86::ConsumedPlans` plus its call selectors in
-`src/backend/mir/x86/x86.hpp`: `shared_call_plan_lookups()`,
-`find_consumed_call_plan(...)`, `find_consumed_call_argument_plan(...)`, and
-`find_consumed_call_result_plan(...)`. Existing x86 call emission already
-consumes that seam through `src/backend/mir/x86/module/module.cpp` while
-keeping x86 instruction text, ABI register spelling, frame adjustment, storage
-homes, and move-bundle use target-owned.
+Step 2 threaded the Route 6 call-use source view through the x86
+`ConsumedPlans` call-boundary wrapper for scalar named `i32` call arguments.
+`ConsumedPlans` now carries an optional `bir::Route6CallUseSourceIndex`, exposes
+`shared_route6_call_use_source_index()`, and adds
+`find_consumed_scalar_i32_call_argument_source(...)`, which only returns a Route
+6 argument source record when the Route 6 source is available, the source class
+is `ArgumentValue`, and the Route 6 source value id matches the prepared
+`PreparedCallArgumentPlan` source id.
 
-The reused route-view interface should be Route 6 call-use source facts:
-`bir::Route6CallUseSourceIndex` and the typed call-argument source-producer /
-direct-global / publication-source lookups keyed by call instruction,
-argument/result role, and value role. The AArch64 proof source is
-`ideas/closed/187_phase_e_route6_call_use_source_view_consumer_migration.md`,
-with the production route-first/fallback shape in
-`src/backend/mir/aarch64/codegen/calls.cpp` around
-`find_scalar_call_argument_source_producer_materialization(...)` and Route 6
-oracle coverage in `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+The x86 direct-call wrappers in `src/backend/mir/x86/module/module.cpp` now
+pass that optional Route 6 source into scalar call-argument rendering while
+still requiring prepared BeforeCall bundles for ABI destinations and prepared
+value homes for final x86 register moves. When Route 6 facts are absent, the
+helper fails closed and the existing prepared call-plan/storage path emits the
+same assembly.
 
-The x86 target-local fallback/policy path remains the prepared call-plan and
-storage surface already exposed by `ConsumedPlans`: `PreparedCallPlan`,
-`PreparedCallArgumentPlan`, `PreparedCallResultPlan`, value homes,
-before/after-call move bundles, frame/dynamic-stack plans, wrapper kind,
-direct/indirect callee identity, variadic FPR count, memory-return/sret shape,
-clobber/preserve sets, and final x86 operand/instruction spelling. Those stay
-out of BIR; Route 6 supplies only semantic source facts where available and
-must fail closed to the existing prepared call-plan path when absent.
+Focused coverage in
+`tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
+checks that a scalar `printf` argument source threads through `ConsumedPlans`
+and that clearing Route 6 call-argument source facts preserves the prepared
+call-argument selector and unchanged fallback assembly.
 
 ## Suggested Next
 
-Delegate Step 2 to thread the existing Route 6 call-use source view through the
-x86 `ConsumedPlans` call-boundary selectors for one scalar call-argument source
-class. Keep the prepared call-plan and storage/move surfaces as fallback/oracle
-inputs, and do not move x86 ABI placement, wrapper-kind decisions, frame
-layout, or instruction spelling into BIR.
+Delegate Step 3 to make the x86 Route 6-through-`ConsumedPlans` coverage
+acceptance-grade: either enable and run the focused x86 handoff-boundary test
+path in the standard proof route, or add an always-built backend test that
+observes the same interface reuse and fallback behavior without moving ABI
+placement, wrapper-kind decisions, frame layout, or instruction spelling out of
+x86.
 
 ## Watchouts
 
-- Do not invent an x86-only BIR adapter before reusing the Route 6 interface
-  already proven by AArch64.
-- Keep x86 instruction selection, formatting, frame/register allocation, ABI
-  policy, wrapper classification, and emission records target-owned.
-- Do not duplicate `PreparedFunctionLookups` under a BIR-owned name.
-- Do not weaken x86 route-debug, handoff-boundary, or prepared call-wrapper
-  coverage; this boundary has observable wrapper/debug behavior, so compile-only
-  proof is not enough for the next code packet.
-- Do not claim broad prepared aggregate contraction from one selected wrapper
-  thread.
+- The current Route 6 selector is intentionally narrow: named scalar `i32`
+  arguments whose Route 6 source kind is `ArgumentValue` and whose source value
+  id agrees with the prepared call-argument plan.
+- The x86 wrappers still require prepared move bundles and value homes before
+  emitting; do not replace those target-owned ABI/storage checks with Route 6
+  facts.
+- `clang-format` was not available in this container, so formatting was kept
+  manual.
+- The delegated CTest regex selected the three prepared tests shown in
+  `test_after.log`; `backend_x86_route_debug` and
+  `backend_x86_handoff_boundary` did not appear in the selected CTest run.
+- A supervisor x86-enabled build of `backend_x86_handoff_boundary_test`
+  compiled the modified direct-extern test object, but the aggregate target was
+  blocked by unrelated existing compile errors in
+  `backend_x86_handoff_boundary_joined_branch_test.cpp`.
 
 ## Proof
 
-Mapping-only packet. No build or tests were run, and no `test_after.log` was
-written for this packet by instruction.
-
-Initial narrow proof command for the next code-changing packet:
+Ran the supervisor-selected proof exactly, with combined output written to
+`test_after.log`:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_x86_route_debug|backend_x86_handoff_boundary)$'
 ```
+
+Result: passed. `test_after.log` shows a successful build and 3/3 selected
+CTest tests passing:
+`backend_prepared_lookup_helper`, `backend_prepare_liveness`, and
+`backend_prepare_frame_stack_call_contract`.
+
+Supervisor validation:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with no new failures.
+
+Additional supervisor compile probe:
+
+```sh
+cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_BACKEND_TESTS=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON
+cmake --build build-x86 --target backend_x86_handoff_boundary_test
+```
+
+Result: the modified
+`backend_x86_handoff_boundary_direct_extern_call_test.cpp` object compiled, but
+the aggregate target stopped on unrelated stale call-site errors in
+`backend_x86_handoff_boundary_joined_branch_test.cpp`.

@@ -19,6 +19,7 @@ struct ConsumedPlans {
   const c4c::backend::prepare::PreparedRegallocFunction* regalloc = nullptr;
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage = nullptr;
   std::optional<c4c::backend::prepare::PreparedFunctionLookups> prepared_lookups;
+  std::optional<c4c::backend::bir::Route6CallUseSourceIndex> route6_call_use_sources;
 
   [[nodiscard]] const c4c::backend::prepare::PreparedFunctionLookups*
   shared_function_lookups() const {
@@ -30,7 +31,25 @@ struct ConsumedPlans {
     const auto* lookups = shared_function_lookups();
     return lookups != nullptr ? &lookups->call_plans : nullptr;
   }
+
+  [[nodiscard]] const c4c::backend::bir::Route6CallUseSourceIndex*
+  shared_route6_call_use_source_index() const {
+    return route6_call_use_sources.has_value() ? &*route6_call_use_sources : nullptr;
+  }
 };
+
+[[nodiscard]] inline const c4c::backend::bir::Function* find_consumed_bir_function(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name) {
+  const auto function_spelling =
+      c4c::backend::prepare::prepared_function_name(module.names, function_name);
+  for (const auto& function : module.module.functions) {
+    if (function.name == function_spelling) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
 
 [[nodiscard]] inline const c4c::backend::prepare::PreparedCallPlan* find_consumed_call_plan(
     const ConsumedPlans& consumed,
@@ -73,6 +92,34 @@ find_consumed_call_argument_plan(const ConsumedPlans& consumed,
   return nullptr;
 }
 
+[[nodiscard]] inline std::optional<c4c::backend::bir::Route6CallArgumentSourceRecord>
+find_consumed_scalar_i32_call_argument_source(
+    const ConsumedPlans& consumed,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::CallInst& call,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index,
+    const c4c::backend::bir::Value& argument) {
+  const auto* prepared_argument =
+      find_consumed_call_argument_plan(consumed, block_index, instruction_index, arg_index);
+  const auto* route6_sources = consumed.shared_route6_call_use_source_index();
+  if (prepared_argument == nullptr || route6_sources == nullptr || !*route6_sources ||
+      argument.kind != c4c::backend::bir::Value::Kind::Named ||
+      argument.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto record = c4c::backend::bir::route6_find_call_argument_source(
+      *route6_sources, block, instruction_index, call.callee, arg_index);
+  if (!record || record.argument_value != &argument ||
+      record.source_kind != c4c::backend::bir::Route6CallUseSourceKind::ArgumentValue ||
+      !record.source_value_id.has_value() || !prepared_argument->source_value_id.has_value() ||
+      *record.source_value_id != *prepared_argument->source_value_id) {
+    return std::nullopt;
+  }
+  return record;
+}
+
 [[nodiscard]] inline const c4c::backend::prepare::PreparedCallResultPlan*
 find_consumed_call_result_plan(const ConsumedPlans& consumed,
                                std::size_t block_index,
@@ -105,6 +152,13 @@ find_consumed_call_result_plan(const ConsumedPlans& consumed,
       }(),
       .storage = c4c::backend::prepare::find_prepared_storage_plan(module, function_name),
       .prepared_lookups = consume_prepared_function_lookups(module, function_name),
+      .route6_call_use_sources = [&]() -> std::optional<c4c::backend::bir::Route6CallUseSourceIndex> {
+        const auto* function = find_consumed_bir_function(module, function_name);
+        if (function == nullptr) {
+          return std::nullopt;
+        }
+        return c4c::backend::bir::route6_build_call_use_source_index(*function);
+      }(),
   };
 }
 
