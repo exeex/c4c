@@ -1,62 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/204_route5_edge_join_source_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select The Route 5 Adapter Boundary
+Current Step ID: 2
+Current Step Title: Add The Fail-Closed Route 5 Reader Adapter
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected exactly one adapter boundary:
-`build_current_block_join_prepared_query_routing` in
-`src/backend/mir/aarch64/codegen/dispatch_producers.cpp`.
+Step 2 added the fail-closed Route 5 current-block join-source reader adapter
+for `build_current_block_join_prepared_query_routing`.
 
-The selected boundary may read Route 5 current-block join-source identity only
-through `mir::find_bir_current_block_join_source_identity` and
-`bir::Route5EdgeJoinSourceIndex`. Allowed Route 5 facts are successor block
-identity, predecessor label/id for each PHI incoming, destination/source value
-identity and type, named or immediate source kind, source producer kind,
-source producer instruction/index, no-source or missing-publication status, and
-current-block incoming expression/source identity.
+`mir::find_bir_current_block_join_source_identity` now validates indexed
+Route 5 current-block join records against the successor block, PHI
+predecessor label/id, destination value identity/type, source value
+identity/type, destination PHI/instruction/index, and named source producer
+instruction/index before reporting an available identity. Empty, duplicate,
+wrong-predecessor, mismatched, incomplete, no-source, and missing-producer
+Route 5 cases remain unavailable so the selected AArch64 routing boundary falls
+back to prepared query behavior.
 
-Prepared state remains authoritative for block-entry move bundles, out-of-SSA
-parallel-copy scheduling, source and destination homes, register/stack storage
-policy, move order, scratch/cycle handling, branch policy, wrapper formatting,
-final edge-copy records, coalescing, execution-site placement, and emitted
-output. Route 5 must only decide whether an instruction result is a join
-incoming expression or source candidate at this reader boundary; any invalid,
-absent, conflicting, mismatched, or incomplete Route 5 identity falls back to
-the existing prepared query path.
-
-Targeted negative coverage for the next packet should include absent Route 5
-index/data fallback, successor-label mismatch fallback, missing source
-producer fallback, destination/source mismatch rejection, duplicate or
-conflicting join-source record rejection, no-source status, and a memory-source
-edge sanity case proving Route 5 memory facts do not become join scheduling or
-storage authority.
+Prepared state remains authoritative for scheduling, storage homes, move
+bundles, branch policy, wrappers, final edge-copy records, coalescing,
+execution-site placement, and emitted output. The adapter only feeds the
+incoming-expression/source routing bitsets with validated Route 5 semantic
+identity.
 
 ## Suggested Next
 
-Execute Step 2 for the selected
-`build_current_block_join_prepared_query_routing` boundary: add or tighten the
-fail-closed Route 5 current-block join-source adapter so only fully valid BIR
-identity feeds the routing bitsets and every invalid case falls back to the
-prepared query path.
+Execute Step 3 for the selected boundary: review whether any remaining wiring
+is needed at `build_current_block_join_prepared_query_routing`, then keep
+prepared move scheduling, homes, wrappers, branch policy, final edge-copy
+records, and output authority unchanged while expanding only focused success
+and fallback proof if the supervisor wants another implementation slice.
 
 ## Watchouts
 
 - Route 5 is semantic identity only; prepared state remains authoritative for
   scheduling, storage, wrappers, branch policy, and output.
-- Do not broaden beyond one selected reader before the first proof ladder is
-  complete.
+- The indexed Route 5 adapter deliberately rejects duplicate exact
+  join-source records and wrong-predecessor records even when destination and
+  source values otherwise match.
+- Memory-like named sources can identify join-source expressions, but they do
+  not become scheduling or storage authority.
 - Do not claim progress through expected-output weakening, unsupported
   downgrades, helper renames, or testcase-shaped matching.
 
 ## Proof
 
-Step 1 selection-only packet. No build or test run required, and
-`test_after.log` was not produced.
+Ran exactly:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
-Future Step 2 proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Result: passed. Proof log path: `test_after.log`.

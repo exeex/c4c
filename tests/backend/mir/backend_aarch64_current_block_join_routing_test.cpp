@@ -339,6 +339,28 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
                     ? "expected Route 5 current-block join identity"
                     : "expected absent Route 5 current-block join identity");
   }
+  const auto route5_join_sources =
+      function_context.bir_function != nullptr
+          ? std::optional<bir::Route5EdgeJoinSourceIndex>{
+                bir::route5_build_edge_join_source_index(
+                    *function_context.bir_function)}
+          : std::nullopt;
+  const auto indexed_bir_identity =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = join_context.bir_block,
+              .route5_edge_join_sources =
+                  route5_join_sources.has_value() ? &*route5_join_sources
+                                                  : nullptr,
+              .successor_label_id = function_cf.blocks[1].block_label,
+          });
+  if ((indexed_bir_identity.status ==
+       mir::BirCurrentBlockJoinSourceStatus::Available) !=
+      expect_bir_available) {
+    return fail(expect_bir_available
+                    ? "expected indexed Route 5 current-block join identity"
+                    : "expected absent indexed Route 5 current-block join identity");
+  }
 
   const auto routing =
       aarch64_codegen::build_current_block_join_prepared_query_routing(

@@ -3135,6 +3135,40 @@ int verify_current_block_join_parallel_copy_source_query() {
       empty_index_bir_query.available) {
     return fail("indexed BIR current-block join query should fail closed for incomplete Route 5 data");
   }
+  auto duplicate_route5_join_index = route5_join_index;
+  duplicate_route5_join_index.join_records.push_back(
+      duplicate_route5_join_index.join_records.front());
+  const auto duplicate_index_bir_query =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &route5_join_block,
+              .route5_edge_join_sources = &duplicate_route5_join_index,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          });
+  if (duplicate_index_bir_query.status !=
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
+      duplicate_index_bir_query.available) {
+    return fail("indexed BIR current-block join query should reject duplicate Route 5 join records");
+  }
+  auto wrong_predecessor_route5_join_index = route5_join_index;
+  wrong_predecessor_route5_join_index.join_records.front().predecessor_label =
+      "current_join.other_pred";
+  wrong_predecessor_route5_join_index.join_records.front().predecessor_label_id =
+      c4c::BlockLabelId{777};
+  const auto wrong_predecessor_index_bir_query =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &route5_join_block,
+              .route5_edge_join_sources = &wrong_predecessor_route5_join_index,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          });
+  if (wrong_predecessor_index_bir_query.status !=
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
+      wrong_predecessor_index_bir_query.available) {
+    return fail("indexed BIR current-block join query should reject wrong-predecessor Route 5 records");
+  }
   const auto indexed_route5_named_join =
       bir::route5_find_current_block_join_source(
           route5_join_index,
