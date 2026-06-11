@@ -48,6 +48,13 @@ wrappers can reuse route views and which facts must remain target-local.
   migration.
 - Future implementation ideas can be scoped to one wrapper boundary at a time.
 
+## Completion Note
+
+Closed with `docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`.
+The audit found no ready boundary beyond the existing x86 Route 6 scalar
+helper, made riscv status explicit, and left future implementation scope as
+one-wrapper-boundary candidates rather than broad route-view migration.
+
 ## Reviewer Reject Signals
 
 - Inventing riscv-only or x86-only BIR adapters that bypass the AArch64-proven
