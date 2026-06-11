@@ -1,60 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/191_phase_d_followup_closure_pre_phase_e_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Write The Durable Readiness Audit
+Current Step ID: 4
+Current Step Title: Create Prerequisite Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Write The Durable Readiness Audit completed
-`docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md`.
+Step 4: Create Prerequisite Follow-Up Ideas completed.
 
-The audit records:
+Created separate open ideas for every prerequisite requirement named by
+`docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md`:
 
-- ideas 182-189 as Phase D follow-up selected-consumer slices, not the true
-  Phase E retirement plan;
-- route coverage for Routes 1-7 plus the single x86 Route 6 reuse boundary;
-- prepared fallback/oracle surfaces that must stay public for residual
-  production, printer/debug, target-wrapper, and oracle-test consumers;
-- target-policy boundaries for calls, memory, publication/materialization,
-  edge/control flow, comparison/ALU, cross-target wrappers, and non-migration
-  surfaces;
-- cross-target status showing only one x86 reuse point and no riscv reuse
-  proof;
-- return-chain as its own imported owner/schema line, distinct from Route 1,
-  Route 7, predecessor rescans, name matching, or a generic route-index
-  facade;
-- retirement blockers for `PreparedFunctionLookups` and `PreparedBirModule`;
-- explicit conclusion that draft 155 is not ready to open immediately because
-  the required field-by-field ownership/readiness map and prerequisite
-  follow-up ideas do not yet exist.
+- `ideas/open/192_residual_route_view_consumer_migration_map.md`
+- `ideas/open/193_route3_prepared_policy_boundary_hardening.md`
+- `ideas/open/194_prepared_printer_debug_oracle_replacement_planning.md`
+- `ideas/open/195_cross_target_route_view_reuse_beyond_x86_route6.md`
+- `ideas/open/196_prepared_function_lookups_ownership_readiness_audit.md`
+- `ideas/open/197_return_chain_import_and_naming_clarification.md`
+- `ideas/open/198_phase_d_phase_e_lifecycle_naming_cleanup.md`
 
-Named follow-up idea requirements in the audit:
-
-- residual route-view consumer migration map;
-- Route 3 prepared-policy boundary hardening;
-- prepared printer/debug/oracle replacement planning;
-- cross-target route-view reuse beyond x86 Route 6;
-- `PreparedFunctionLookups` ownership/readiness audit;
-- return-chain import and naming clarification;
-- Phase D versus Phase E lifecycle naming cleanup.
+Each new idea includes goal, why it exists, in-scope work, out-of-scope work,
+acceptance criteria, and concrete reviewer reject signals. No prerequisite was
+left as recommended-but-not-created.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: create separate prerequisite follow-up ideas
-under `ideas/open/` for the requirements named in
-`docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md`, keeping
-each idea scoped to a separate initiative with acceptance criteria and reject
-signals.
+Execute Step 5 from `plan.md`: final audit consistency check. Verify the audit
+and new open idea list against source idea 191, confirm no implementation files
+were modified, and record the final closure recommendation in `todo.md`.
 
 ## Watchouts
 
-- Step 4 is lifecycle/source-idea creation work and may need plan-owner routing
-  depending on supervisor packet choice.
-- Do not collapse the audit's seven follow-up requirements into one broad
-  catch-all idea.
+- The new follow-up ideas are separate prerequisites; do not collapse them into
+  a broad catch-all during future activation.
 - Draft 155 remains a draft; Step 4 should create prerequisites, not open or
   execute the Phase E retirement plan.
 - The audit intentionally does not claim prepared API deletion, route-wide
@@ -62,10 +42,15 @@ signals.
 
 ## Proof
 
-Docs-only packet; no build or CTest run required by the delegated proof.
-Verified that
-`docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md` exists and
-contains route coverage, prepared fallback/oracle, target-policy,
-cross-target reuse, return-chain, blocker tables, explicit draft-155 readiness
-conclusion, and follow-up idea requirements. No new `test_after.log` was
-produced for this documentation artifact packet.
+Docs/lifecycle-only packet; no build or CTest run required by the delegated
+proof.
+
+Proof checks:
+
+- Read active `plan.md`, `todo.md`, source idea 191, and
+  `docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md`.
+- Confirmed `ideas/open/` previously contained only source idea 191, so none of
+  the seven prerequisites already had an open idea to reuse.
+- Created one separate open idea for each audit prerequisite requirement.
+- Did not edit implementation files, draft 155, closed ideas, or `plan.md`.
+- No new `test_after.log` was produced for this lifecycle artifact packet.
