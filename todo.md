@@ -8,26 +8,22 @@ Current Step Title: Prove the selected move-bundle subset and decide next
 
 ## Just Finished
 
-Step 3 removed the now-unneeded direct
-`../../../prealloc/calls.hpp` include from AArch64 traversal after Step 2 moved
-the selected move-bundle projection behind a standalone
-`prepare::PreparedMoveBundleLookups` builder.
-
-Production traversal still has no `prepared_lookups.move_bundles` read.
-`PreparedFunctionLookups` remains available through the existing context path
-for unselected aggregate consumers.
+Step 4 proved the supervisor-selected move-bundle subset after the Step 2/Step
+3 projection boundary changes. The selected AArch64 call-boundary,
+operand-resolution, and instruction-dispatch tests all pass with the current
+standalone `prepare::PreparedMoveBundleLookups` path.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: prove the selected move-bundle subset and decide
-whether the next safe contraction should target another aggregate field or stop
-with the current projection boundary.
+Hand lifecycle decision back to the supervisor/plan-owner: either close/retire
+this runbook at the current move-bundle projection boundary or create/activate a
+separate route for any next aggregate-field contraction.
 
 ## Watchouts
 
-- Direct publication/source-producer, memory-access, and return-chain consumers
-  remain outside the Step 3 contraction and still have live AArch64 aggregate
-  reads.
+- Remaining aggregate exposure is intentionally out-of-scope for this Step 4
+  proof: `memory_accesses`, `edge_publications`,
+  `edge_publication_source_producers`, and `return_chains`.
 - `FunctionLoweringContext::move_bundle_lookups` still points at the standalone
   traversal-local projection; keep its lifetime aligned with the full
   function-lowering loop.
@@ -38,5 +34,8 @@ with the current projection boundary.
 
 ## Proof
 
-Supervisor-selected Step 3 proof passed and was captured in `test_after.log`:
+Supervisor-selected Step 4 move-bundle proof passed and was captured in
+`test_after.log`:
 `(cmake --build build --target backend_aarch64_call_boundary_owner_test backend_aarch64_operand_resolution_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1`.
+
+Result: 3/3 tests passed.
