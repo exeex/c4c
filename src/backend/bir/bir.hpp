@@ -2204,6 +2204,79 @@ struct Route7ComparisonConditionIndex {
   }
 };
 
+enum class Route8ReturnChainStatus : unsigned char {
+  Unavailable,
+  Available,
+  MissingBlock,
+  MissingInstruction,
+  MissingChainValue,
+  MissingTerminalValue,
+  MissingNextOperandValue,
+  DuplicateRecord,
+  NoMatch,
+};
+
+[[nodiscard]] constexpr std::string_view route8_return_chain_status_name(
+    Route8ReturnChainStatus status) {
+  switch (status) {
+    case Route8ReturnChainStatus::Unavailable:
+      return "unavailable";
+    case Route8ReturnChainStatus::Available:
+      return "available";
+    case Route8ReturnChainStatus::MissingBlock:
+      return "missing_block";
+    case Route8ReturnChainStatus::MissingInstruction:
+      return "missing_instruction";
+    case Route8ReturnChainStatus::MissingChainValue:
+      return "missing_chain_value";
+    case Route8ReturnChainStatus::MissingTerminalValue:
+      return "missing_terminal_value";
+    case Route8ReturnChainStatus::MissingNextOperandValue:
+      return "missing_next_operand_value";
+    case Route8ReturnChainStatus::DuplicateRecord:
+      return "duplicate_record";
+    case Route8ReturnChainStatus::NoMatch:
+      return "no_match";
+  }
+  return "unavailable";
+}
+
+struct Route8ReturnChainValueKey {
+  const Function* function = nullptr;
+  const Block* block = nullptr;
+  std::string_view function_name;
+  LinkNameId function_link_name_id = kInvalidLinkName;
+  std::string_view block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  Route1SourceValueIdentity chain_value;
+
+  [[nodiscard]] explicit operator bool() const {
+    return block != nullptr || !block_label.empty() ||
+           block_label_id != kInvalidBlockLabel || bool(chain_value);
+  }
+};
+
+struct Route8ReturnChainRecord {
+  bool available = false;
+  Route8ReturnChainStatus status = Route8ReturnChainStatus::Unavailable;
+  Route8ReturnChainValueKey key;
+  Route1SourceValueIdentity terminal_return_value;
+  Route1SourceValueIdentity next_operand_value;
+
+  [[nodiscard]] explicit operator bool() const { return available; }
+};
+
+struct Route8ReturnChainIndex {
+  const Function* function = nullptr;
+  const Block* block = nullptr;
+  std::vector<Route8ReturnChainRecord> records;
+
+  [[nodiscard]] explicit operator bool() const {
+    return function != nullptr || block != nullptr;
+  }
+};
+
 enum class RouteIndexRoute : unsigned char {
   Unknown,
   Route4PublicationAvailability,
@@ -2627,6 +2700,33 @@ route7_find_materialized_condition(
 [[nodiscard]] Route7BranchConditionRecord route7_find_branch_condition(
     const Route7ComparisonConditionIndex& index,
     const Block& block);
+[[nodiscard]] Route8ReturnChainValueKey route8_return_chain_value_key(
+    const Function* function,
+    const Block& block,
+    std::size_t instruction_index,
+    const Value& chain_value,
+    ValueNameId chain_value_name_id = kInvalidValueName);
+[[nodiscard]] Route8ReturnChainRecord route8_return_chain_record(
+    const Route8ReturnChainValueKey& key,
+    const Value* terminal_return_value = nullptr,
+    ValueNameId terminal_return_value_name_id = kInvalidValueName,
+    const Value* next_operand_value = nullptr,
+    ValueNameId next_operand_value_name_id = kInvalidValueName);
+[[nodiscard]] Route8ReturnChainIndex route8_build_return_chain_index(
+    const Function& function);
+[[nodiscard]] Route8ReturnChainIndex route8_build_return_chain_index(
+    const Block& block);
+[[nodiscard]] Route8ReturnChainRecord route8_find_return_chain_record(
+    const Route8ReturnChainIndex& index,
+    const Route8ReturnChainValueKey& key);
+[[nodiscard]] Route1SourceValueIdentity
+route8_find_return_chain_terminal_value(
+    const Route8ReturnChainIndex& index,
+    const Route8ReturnChainValueKey& key);
+[[nodiscard]] Route1SourceValueIdentity
+route8_find_return_chain_next_operand_value(
+    const Route8ReturnChainIndex& index,
+    const Route8ReturnChainValueKey& key);
 [[nodiscard]] Route4IndexReferenceValidation
 route4_validate_current_block_publication_reference(
     const Route4PublicationAvailabilityIndex& index,
