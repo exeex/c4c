@@ -1,49 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/206_route7_comparison_provenance_diagnostic_oracle.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Fail-Closed Route 7 Reader Adapter
+Current Step ID: 3
+Current Step Title: Wire The Selected Diagnostic Or Oracle Row
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the fail-closed Route 7 materialized-condition reader adapter in
-`find_route7_materialized_condition_producer_identity(...)`.
+Step 3 confirmed the selected visible materialized compare branch row is wired
+through the validated Route 7 materialized-condition producer identity while
+leaving prepared/AArch64 branch authority intact.
 
-The adapter now accepts the Route 7 materialized-condition producer only when
-the validated comparison record agrees with the current BIR block, condition
-value, producing `BinaryInst` pointer/index, opcode/type, and lhs/rhs operand
-provenance. Invalid, duplicated, ambiguous, mismatched, or stale Route 7 facts
-are rejected as Route 7 and fall through to the existing BIR/prepared fallback.
+No production change was needed: `lower_materialized_compare_condition_branch(...)`
+already consumes `find_route7_materialized_condition_producer_identity(...)` for
+the comparison `BinaryInst` and producer instruction index used by operand
+publication, while branch targets, final branch spelling, condition suffix
+mapping, emitted-register state, hazards, and final assembler row construction
+remain outside Route 7.
 
-Focused coverage was added beside the existing materialized compare Route 7
-tests for absent records, invalid-reference rejection, condition-name mismatch,
-duplicate materialized-condition provenance, and lhs/rhs provenance mismatch.
-The tests preserve the valid selected compare shape and the emitted-condition
-fallback shape without expected-string weakening. A supervisor-found regression
-was repaired so selected global-load compare operands keep their existing
-publication fallback instead of reloading stale stack homes.
+Focused coverage now pins the selected row as an assembler-backed selected
+machine node with validated Route 7 lhs/rhs provenance, exact recomputed
+compare lines, prepared true/false labels, and BIR-instruction origin. Invalid,
+absent, duplicated, and mismatched Route 7 facts continue to use the existing
+BIR/prepared fallback coverage from Step 2.
 
 ## Suggested Next
 
-Execute Step 3: wire the selected visible diagnostic/oracle row to consume the
-validated Route 7 materialized-condition provenance while keeping branch policy,
-condition-code selection, target records, final branch spelling, and printer
-authority in the prepared/AArch64 branch machinery.
+Execute Step 4: prove adapter completeness and route quality for the selected
+materialized-condition surface, including nearby same-feature coverage and a
+clear statement that Route 7 remains provenance-only.
 
 ## Watchouts
 
-- The adapter is intentionally limited to materialized-condition provenance;
-  do not broaden Step 3 into fused compare operand readers or Route 7 branch
-  condition records.
+- The selected row is still intentionally limited to materialized-condition
+  provenance; do not broaden Step 4 into fused compare operand readers or
+  Route 7 branch-condition records.
 - Invalid Route 7 operand provenance deliberately falls through to the existing
   BIR/prepared fallback. Some fixtures still emit the condition branch, while
   selected global-load and same-feature materialized compare cases may preserve
   selected compare emission through the older fallback.
-- Keep expected-output and branch-policy authority outside Route 7. Step 3
-  should not migrate condition-code choice, final branch spelling, hazard
-  decisions, or target records into BIR provenance.
+- Keep condition-code choice, final branch spelling, target records,
+  printer/output authority, hazards, emitted-register state, and final
+  instruction order outside Route 7.
 
 ## Proof
 

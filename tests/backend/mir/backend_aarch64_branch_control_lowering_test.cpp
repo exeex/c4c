@@ -1478,6 +1478,10 @@ int materialized_compare_branch_route7_provenance_matches_bir_identity() {
   if (!route7_record ||
       !route7_reference ||
       route7_reference.comparison_record == nullptr ||
+      route7_reference.comparison_record->lhs.status !=
+          bir::Route7ComparisonStatus::Available ||
+      route7_reference.comparison_record->rhs.status !=
+          bir::Route7ComparisonStatus::Available ||
       !bir_identity.available ||
       route7_record.instruction_index != bir_identity.instruction_index ||
       route7_reference.comparison_record->binary != bir_identity.binary ||
@@ -1510,9 +1514,39 @@ int materialized_compare_branch_route7_provenance_matches_bir_identity() {
           machine_block.instructions.back().target);
   if (!printed.ok ||
       printed.instruction_lines.size() != 6 ||
+      printed.instruction_lines[0] != "mov w9, w13" ||
+      printed.instruction_lines[1] != "mov w10, #16" ||
+      printed.instruction_lines[2] != "add x9, x9, x10" ||
       printed.instruction_lines[3] != "cmp w9, #0" ||
-      printed.instruction_lines[4].find("b.le ") != 0) {
+      printed.instruction_lines[4] !=
+          "b.le .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.true_label) ||
+      printed.instruction_lines[5] !=
+          "b .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.false_label)) {
     return fail("expected selected materialized compare branch to lower from Route 7-compatible provenance");
+  }
+  const auto& instruction = machine_block.instructions.back();
+  const auto* assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &instruction.target.payload);
+  if (assembler == nullptr ||
+      !assembler->has_inline_asm_payload ||
+      assembler->inline_asm_template.find("cmp w9, #0\nb.le ") == std::string::npos ||
+      instruction.target.family != aarch64_codegen::InstructionFamily::Assembler ||
+      instruction.target.surface !=
+          aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      instruction.target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.target.function_name != function_cf.function_name ||
+      instruction.target.block_label != block_cf.block_label ||
+      instruction.target.instruction_index != block.insts.size() ||
+      !instruction.origin.has_value() ||
+      instruction.origin->reason != mir::MachineOriginReason::BirInstruction ||
+      instruction.origin->function_name != function_cf.function_name ||
+      instruction.origin->block_label != block_cf.block_label ||
+      instruction.origin->instruction_index != block.insts.size()) {
+    return fail("expected selected materialized compare row to keep Route 7 provenance local to the assembler oracle");
   }
   return 0;
 }
