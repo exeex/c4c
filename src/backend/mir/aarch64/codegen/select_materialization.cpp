@@ -41,12 +41,14 @@ namespace {
 }
 
 [[nodiscard]] std::optional<prepare::PreparedDirectGlobalSelectChainDependency>
-bir_call_argument_direct_global_select_chain_dependency(
+route6_call_argument_direct_global_select_chain_dependency(
     const module::BlockLoweringContext& context,
     std::size_t before_instruction_index,
+    const bir::Route6CallUseSourceIndex* call_use_source_index,
     std::size_t argument_index,
     std::string_view source_value_name) {
-  if (context.bir_block == nullptr ||
+  if (context.bir_block == nullptr || call_use_source_index == nullptr ||
+      !*call_use_source_index ||
       before_instruction_index >= context.bir_block->insts.size()) {
     return std::nullopt;
   }
@@ -55,17 +57,25 @@ bir_call_argument_direct_global_select_chain_dependency(
   if (call_inst == nullptr) {
     return std::nullopt;
   }
-  const auto routing =
-      bir::find_call_argument_publication_source_routing(*call_inst, argument_index);
-  const auto* dependency = routing.direct_global_select_chain_dependency;
-  if (dependency == nullptr ||
-      dependency->source_value_name != source_value_name) {
+  const auto record =
+      bir::route6_find_call_argument_direct_global_dependency(
+          *call_use_source_index,
+          *context.bir_block,
+          before_instruction_index,
+          call_inst->callee,
+          argument_index);
+  if (!record || record.source_value_name != source_value_name ||
+      !record.direct_global_dependency.available ||
+      !record.direct_global_dependency.contains_direct_global_load ||
+      !record.direct_global_dependency.root_instruction_index.has_value()) {
     return std::nullopt;
   }
   return prepare::PreparedDirectGlobalSelectChainDependency{
-      .contains_direct_global_load = dependency->contains_direct_global_load,
-      .root_is_select = dependency->root_is_select,
-      .root_instruction_index = dependency->root_instruction_index,
+      .contains_direct_global_load =
+          record.direct_global_dependency.contains_direct_global_load,
+      .root_is_select = record.direct_global_dependency.root_is_select,
+      .root_instruction_index =
+          record.direct_global_dependency.root_instruction_index,
   };
 }
 
@@ -510,6 +520,7 @@ materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
+    const bir::Route6CallUseSourceIndex* call_use_source_index,
     const prepare::PreparedCallArgumentPlan* argument_plan,
     BlockScalarLoweringState& scalar_state) {
   const auto value_name = prepared_named_value_id(context, value);
@@ -539,9 +550,13 @@ materialize_direct_global_select_chain_call_argument(
   }
   const auto routing =
       prepare::find_prepared_call_argument_publication_source_routing(*argument_plan);
-  const auto bir_dependency =
-      bir_call_argument_direct_global_select_chain_dependency(
-          context, before_instruction_index, argument_plan->arg_index, value.name);
+  const auto route6_dependency =
+      route6_call_argument_direct_global_select_chain_dependency(
+          context,
+          before_instruction_index,
+          call_use_source_index,
+          argument_plan->arg_index,
+          value.name);
   std::optional<prepare::PreparedDirectGlobalSelectChainDependency>
       prepared_dependency;
   if (routing.direct_global_select_chain_dependency != nullptr &&
@@ -550,7 +565,7 @@ materialize_direct_global_select_chain_call_argument(
         routing.direct_global_select_chain_dependency->direct_global_dependency;
   }
   const auto direct_global_dependency =
-      bir_dependency.has_value() ? bir_dependency : prepared_dependency;
+      route6_dependency.has_value() ? route6_dependency : prepared_dependency;
   if (!direct_global_dependency.has_value()) {
     return std::nullopt;
   }

@@ -33172,6 +33172,62 @@ int direct_global_select_chain_call_argument_reads_bir_dependency() {
   return 0;
 }
 
+int direct_global_select_chain_call_argument_falls_back_to_prepared_dependency() {
+  auto prepared = prepared_with_dynamic_index_i32_select_global_call_argument();
+  auto& bir_block = prepared.module.functions.front().blocks.front();
+  auto* call = std::get_if<bir::CallInst>(&bir_block.insts[6]);
+  if (call == nullptr) {
+    return fail("expected dynamic select fixture to retain BIR call instruction");
+  }
+  call->arg_sources.clear();
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 7 || !result.visited_terminator ||
+      block.instructions.size() < 4) {
+    return fail("expected prepared dependency fallback to drive select-chain call argument materialization: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected prepared fallback select-chain call route to print: " +
+                printed.diagnostic);
+  }
+  const auto compare = printed.assembly.find("cmp x21, #0");
+  const auto select_region = printed.assembly.find("b.eq 1f", compare);
+  const auto selected_arg = printed.assembly.find("mov w0, w21", select_region);
+  const auto call_site = printed.assembly.find("bl consume_i32_ptr", selected_arg);
+  if (compare == std::string::npos ||
+      select_region == std::string::npos ||
+      selected_arg == std::string::npos ||
+      call_site == std::string::npos ||
+      !(compare < select_region && select_region < selected_arg &&
+        selected_arg < call_site)) {
+    return fail("expected prepared fallback dependency to materialize selected call argument before the call: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int scalar_call_argument_source_producer_reads_bir_materialization() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -34586,6 +34642,11 @@ int main() {
   }
   if (const int status =
           direct_global_select_chain_call_argument_reads_bir_dependency();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          direct_global_select_chain_call_argument_falls_back_to_prepared_dependency();
       status != 0) {
     return status;
   }

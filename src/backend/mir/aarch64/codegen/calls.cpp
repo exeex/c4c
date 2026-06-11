@@ -6608,6 +6608,12 @@ lower_scalar_call_argument_producers(
       call_inst != nullptr) {
     call_use_source_index.emplace();
     call_use_source_index->function = context.function.bir_function;
+    const auto producer_index =
+        bir::route1_build_producer_index(*context.bir_block);
+    const auto route1_query = bir::Route1SameBlockProducerQuery{
+        .index = &producer_index,
+        .before_instruction_index = instruction_index,
+    };
     for (std::size_t argument_index = 0; argument_index < call_inst->args.size();
          ++argument_index) {
       call_use_source_index->argument_source_records.push_back(
@@ -6616,6 +6622,13 @@ lower_scalar_call_argument_producers(
       call_use_source_index->argument_producer_records.push_back(
           bir::route6_call_argument_source_producer_record(
               *context.bir_block, *call_inst, instruction_index, argument_index));
+      call_use_source_index->direct_global_records.push_back(
+          bir::route6_call_argument_direct_global_dependency_record(
+              route1_query,
+              *context.bir_block,
+              *call_inst,
+              instruction_index,
+              argument_index));
     }
   }
   const auto* call_use_source_index_ptr =
@@ -6629,6 +6642,7 @@ lower_scalar_call_argument_producers(
             materialize_direct_global_select_chain_call_argument(context,
                                                                  argument,
                                                                  instruction_index,
+                                                                 call_use_source_index_ptr,
                                                                  argument_plan,
                                                                  scalar_state)) {
       lowered.push_back(std::move(*select_chain));

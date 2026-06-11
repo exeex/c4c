@@ -59,6 +59,7 @@ materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
     std::size_t before_instruction_index,
+    const bir::Route6CallUseSourceIndex* call_use_source_index,
     const prepare::PreparedCallArgumentPlan* argument_plan,
     BlockScalarLoweringState& scalar_state);
 

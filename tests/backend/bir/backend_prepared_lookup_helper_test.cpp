@@ -7905,6 +7905,13 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
           0,
           "consume_sources",
           3);
+  const auto indexed_route6_missing_direct_global =
+      bir::route6_find_call_argument_direct_global_dependency(
+          route6_call_index,
+          route6_indexed_block,
+          0,
+          "consume_sources",
+          0);
   if (!route6_direct_global ||
       route6_direct_global.status != bir::Route6CallUseStatus::Available ||
       route6_direct_global.argument_source.source_kind !=
@@ -7921,6 +7928,12 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
               .root_instruction_index != std::optional<std::size_t>{5}) {
     return fail(
         "Route 6 call argument record/index should expose direct-global dependency facts");
+  }
+  if (indexed_route6_missing_direct_global ||
+      indexed_route6_missing_direct_global.status !=
+          bir::Route6CallUseStatus::MissingDirectGlobal) {
+    return fail(
+        "Route 6 call argument direct-global dependency lookup should fail closed when the role is absent");
   }
   const auto route6_frame_argument_source =
       bir::route6_call_argument_source_record(
