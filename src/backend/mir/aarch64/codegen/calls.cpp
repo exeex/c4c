@@ -8019,33 +8019,54 @@ find_prepared_indirect_callee_direct_global_select_chain(
       before_instruction_index);
 }
 
-[[nodiscard]] std::optional<prepare::PreparedSameBlockLoadLocalStoredValueSource>
-find_prepared_indirect_callee_stored_value_source(
+enum class IndirectCalleeStoredValueSourceKind : unsigned char {
+  Route3Identity,
+  PreparedFallback,
+};
+
+struct IndirectCalleeStoredValueSource {
+  bir::Value stored_value;
+  std::size_t store_instruction_index = 0;
+  IndirectCalleeStoredValueSourceKind kind =
+      IndirectCalleeStoredValueSourceKind::PreparedFallback;
+};
+
+[[nodiscard]] std::optional<IndirectCalleeStoredValueSource>
+find_route3_indirect_callee_stored_value_source_identity(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.control_flow_block == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto route3 =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = context.bir_block,
+              .block_label = context.bir_block->label,
+              .root_value = &value,
+              .root_value_name = value.kind == bir::Value::Kind::Named
+                                     ? std::string_view(value.name)
+                                     : std::string_view{},
+              .root_value_type = value.type,
+              .before_instruction_index = before_instruction_index,
+          });
+  if (!route3 || route3.stored_value.value == nullptr) {
+    return std::nullopt;
+  }
+  return IndirectCalleeStoredValueSource{
+      .stored_value = *route3.stored_value.value,
+      .store_instruction_index = route3.store_memory_access.instruction_index,
+      .kind = IndirectCalleeStoredValueSourceKind::Route3Identity,
+  };
+}
+
+[[nodiscard]] std::optional<IndirectCalleeStoredValueSource>
+find_prepared_indirect_callee_stored_value_source_fallback(
     const module::BlockLoweringContext& context,
     const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (context.control_flow_block != nullptr && context.bir_block != nullptr) {
-    const auto route3 =
-        mir::find_bir_same_block_load_local_stored_value_source_identity(
-            mir::BirSameBlockLoadLocalSourceRequest{
-                .block = context.bir_block,
-                .block_label = context.bir_block->label,
-                .root_value = &value,
-                .root_value_name = value.kind == bir::Value::Kind::Named
-                                       ? std::string_view(value.name)
-                                       : std::string_view{},
-                .root_value_type = value.type,
-                .before_instruction_index = before_instruction_index,
-            });
-    if (route3 && route3.stored_value.value != nullptr) {
-      return prepare::PreparedSameBlockLoadLocalStoredValueSource{
-          .stored_value = *route3.stored_value.value,
-          .store_instruction_index =
-              route3.store_memory_access.instruction_index,
-      };
-    }
-  }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr) {
@@ -8054,15 +8075,42 @@ find_prepared_indirect_callee_stored_value_source(
   const auto* addressing =
       prepare::find_prepared_addressing(*context.function.prepared,
                                         context.function.control_flow->function_name);
-  return prepare::find_prepared_same_block_load_local_stored_value_source(
-      context.function.prepared->names,
-      context.function.prepared->stack_layout,
-      addressing,
-      source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      value,
-      before_instruction_index);
+  const auto prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          context.function.prepared->names,
+          context.function.prepared->stack_layout,
+          addressing,
+          source_producers,
+          context.control_flow_block->block_label,
+          context.bir_block,
+          value,
+          before_instruction_index);
+  if (!prepared.has_value()) {
+    return std::nullopt;
+  }
+  return IndirectCalleeStoredValueSource{
+      .stored_value = prepared->stored_value,
+      .store_instruction_index = prepared->store_instruction_index,
+      .kind = IndirectCalleeStoredValueSourceKind::PreparedFallback,
+  };
+}
+
+[[nodiscard]] std::optional<IndirectCalleeStoredValueSource>
+find_indirect_callee_stored_value_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  // Route 3 can only answer target-neutral source identity here. Absent,
+  // mismatched, ambiguous, or policy-sensitive cases stay on prepared fallback.
+  if (const auto route3 =
+          find_route3_indirect_callee_stored_value_source_identity(
+              context, value, before_instruction_index);
+      route3.has_value()) {
+    return route3;
+  }
+  return find_prepared_indirect_callee_stored_value_source_fallback(
+      context, source_producers, value, before_instruction_index);
 }
 
 [[nodiscard]] bool emit_indirect_callee_value_to_register_with_csel(
@@ -8257,7 +8305,7 @@ materialize_indirect_call_callee_to_prepared_register(
 
   bir::Value source_value = *callee_source;
   std::size_t source_before_index = instruction_index;
-  if (const auto stored = find_prepared_indirect_callee_stored_value_source(
+  if (const auto stored = find_indirect_callee_stored_value_source(
           context, source_producers, source_value, instruction_index);
       stored.has_value()) {
     const auto direct_global_dependency =
