@@ -45,3 +45,19 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
 - The slice claims route-wide or API contraction from one selected consumer.
 - Oracle tests are weakened or replaced with expectation-only changes.
 - Missing Route 1 facts are hidden by broad BIR scans.
+
+## Closure Notes
+
+Closed after migrating the selected publication-source consumer,
+`value_publication_may_read_register_index(...)`, to prefer the Route 1
+publication producer view for complete same-block source-producer facts while
+preserving prepared fallback and oracle surfaces for incomplete or out-of-scope
+answers. Focused proof covered the selected route-first behavior, prepared
+fallback/oracle visibility, no-producer and missing-producer fail-closed cases,
+future-producer fallback, recursive operand register dependencies without
+prepared source-producer indexes, and unrelated-register rejection.
+
+This closure does not claim route-wide consumer migration or prepared API
+contraction. Prepared producer, constant, scalar operand, value publication,
+target register, home, storage, move, and machine-record policy surfaces remain
+intentional guardrails for future slices.
