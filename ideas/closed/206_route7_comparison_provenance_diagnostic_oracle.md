@@ -49,6 +49,21 @@ selected comparison provenance reader or diagnostic row.
 - Proof covers fused, materialized, unfused fallback, absent-route,
   invalid-reference, duplicate, mismatch, and unchanged expected strings.
 
+## Closure Note
+
+Closed after the materialized-condition provenance reader was selected as the
+Route 7 surface. The implementation validates Route 7 materialized-condition
+producer identity, fails closed for absent, invalid, duplicate, and mismatched
+facts, and preserves prepared/AArch64 authority for branch targets, final
+branch spelling, condition suffix mapping, fused legality, hazards,
+emitted-register state, final instruction order, and final assembler rows.
+
+Close proof used:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+
+Regression guard result: 180 passed before, 180 passed after, no new failures.
+
 ## Reviewer Reject Signals
 
 - Reject a slice that treats comparison provenance as ownership of branch
