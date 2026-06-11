@@ -62,3 +62,14 @@ selected call-use source adapter.
   downgrades.
 - Reject an adapter that handles more than one selected call instruction and
   role before the first route/prepared proof is complete.
+
+## Closure Note
+
+Closed after implementing the selected AArch64 scalar call argument
+source-producer Route 6 adapter. The adapter accepts Route 6 only for semantic
+source identity when prepared source id/name/value, unique key, current-block
+producer pointer validity, and scalar materialization availability agree;
+otherwise it falls back to prepared call-plan lookup. Prepared call plans remain
+authoritative for ABI, layout, helper protocol, policy, storage, movement, and
+emitted output behavior. Close-time backend regression guard passed with 180
+passing tests before and after.
