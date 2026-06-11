@@ -45,3 +45,12 @@ constant coverage, then run the comparison/branch target subset.
 - Moving branch lowering policy into BIR.
 - Treating fused-compare legality as schema.
 - Contracting prepared comparison helpers before unexpanded consumers migrate.
+
+## Closure Notes
+
+Closed after the Route 7 selected fused-compare operand consumer migration.
+The selected consumer now reads Route 7 provenance first, with prepared answers
+retained as oracle/fallback surface for remaining branch/comparison consumers
+and equivalence tests. Acceptance proof covered the delegated prepared lookup
+helper and AArch64 instruction dispatch subset, and the close-time regression
+guard passed non-decreasing with 2/2 tests green.
