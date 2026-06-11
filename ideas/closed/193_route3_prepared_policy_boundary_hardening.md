@@ -49,6 +49,15 @@ repair.
 - Future Phase E retirement analysis can cite this boundary without treating
   Route 3 facts as authority over final target memory operands.
 
+## Closure Note
+
+Closed after the active runbook established the Route 3 boundary for the
+selected indirect-callee stored-value-source consumer, retained the prepared
+oracle/fallback surfaces, and recorded positive route-first plus negative
+fallback coverage. Draft 155, `PreparedBirModule` readiness, and prepared
+surface retirement remain out of scope for this idea and require separate
+analysis before any public prepared oracle/fallback surface is deleted.
+
 ## Reviewer Reject Signals
 
 - Describing idea 190 only as a fixed regression or narrow testcase.
