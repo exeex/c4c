@@ -1,32 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/181_phase_d_mir_consumer_bir_view_switch_plan.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define BIR View and Adapter Boundaries
+Current Step ID: 4
+Current Step Title: Order the Migration Ladder
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md` is complete. Updated
-`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` with a concrete
-boundary section that defines route-backed BIR views and adapters for Routes
-1-7, prepared fallback/oracle surfaces, durable target-policy non-migration
-surfaces, and return-chain as a no-route blocker.
+Step 4 from `plan.md` is complete. Updated
+`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` with an ordered
+migration ladder and bounded follow-up idea summaries for route-backed
+consumer groups. Each rung names the consumer group, BIR route prerequisite or
+view, prepared oracle/fallback boundary, out-of-scope target policy, and proof
+recommendation, with aggregate contraction, target-policy helpers, printer/debug
+oracles, x86/riscv target wrappers, and return-chain work deferred behind their
+prerequisites.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: turn the Step 2 map and Step 3 boundaries into
-an ordered migration ladder with bounded follow-up idea summaries, proof
-recommendations, prepared oracle boundaries, and out-of-scope target policy for
-each proposed consumer switch.
+Execute Step 5 from `plan.md`: finalize the Phase D artifact and lifecycle
+notes by checking the artifact against the source idea completion criteria,
+Phase A-C/route closure links, return-chain exclusion, prepared API
+non-deletion claim, and artifact-only proof record.
 
 ## Watchouts
 
 - Phase D is analysis-only; do not edit backend implementation files.
-- Do not turn `PreparedFunctionLookups` into a BIR-owned aggregate clone.
-- Step 4 should order migrations by consumer group and route-backed view, not by
-  broad prepared aggregate removal.
+- Do not turn `PreparedFunctionLookups` into a BIR-owned aggregate clone or
+  claim prepared API deletion from selected consumer switches.
+- Step 5 should verify the Step 4 ladder remains directly consumable by
+  follow-up ideas without creating those `ideas/open/` files unless the
+  supervisor explicitly delegates lifecycle work.
 - Keep target/layout/codegen policy out of BIR views: call ABI placement,
   storage/home/move policy, memory operand formation, wide-value carrier
   layout, runtime helper protocols, and final machine-record spelling stay
@@ -41,10 +46,10 @@ each proposed consumer switch.
 
 Docs-only analysis packet; no build/test required by the delegated proof. Local
 verification checked that
-`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` contains a Step 3
-BIR view and adapter boundary section naming route-backed BIR views for Routes
-1-7 where applicable, prepared fallback/oracle boundaries, durable
-target/layout/codegen policy non-migration boundaries, x86/riscv
-interface-level boundaries, and return-chain as a no-route blocker. No
+`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` contains a Step 4
+ordered migration ladder and follow-up summaries naming consumer group, BIR
+route prerequisite/view, prepared oracle/fallback boundary, out-of-scope target
+policy, and proof recommendation; blocked/deferred items are behind
+prerequisites; and the section makes no prepared API deletion claim. No
 `test_after.log` was produced because the delegated proof explicitly required
 no build/test.

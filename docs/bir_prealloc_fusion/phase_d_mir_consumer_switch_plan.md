@@ -1,7 +1,7 @@
 # Phase D MIR Consumer Switch Plan
 
 Source idea: `ideas/open/181_phase_d_mir_consumer_bir_view_switch_plan.md`
-Status: Step 3 BIR view and adapter boundaries drafted.
+Status: Step 4 migration ladder and follow-up summaries drafted.
 
 This artifact is the durable Phase D analysis surface for planning MIR/codegen
 consumer switches from `Prepared*` wrappers and aggregate lookup caches to BIR
@@ -180,3 +180,65 @@ from these boundaries. Each follow-up should name one route-backed consumer
 group, the exact BIR view or facade it will read, the prepared oracle it will
 compare against, the target/layout/codegen policy it refuses to migrate, and
 the proof ladder needed before any prepared API contraction claim.
+
+## Step 4 Ordered Migration Ladder
+
+The Phase D migration ladder should start with consumer groups that already
+have route-backed records, typed indexes, or selected facade validation, then
+move outward to mixed consumers that still rely on prepared target policy. Each
+rung is a bounded follow-up idea candidate. None of these rungs claims prepared
+API deletion; prepared helpers remain public oracles/fallbacks until a later
+contraction idea proves that every residual production, printer, debug, target,
+and test consumer has moved or has an intentional replacement.
+
+| Order | Follow-up idea summary | Consumer group | BIR route prerequisite/view | Prepared oracle/fallback boundary | Out-of-scope target policy | Proof recommendation |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Switch one AArch64 current/block-entry publication reader to the Route 4 typed publication view or existing validated facade style. | AArch64 value publication and dispatch publication paths that ask for current/block-entry publication identity. | Route 4 publication availability records, typed block-entry/current-block references, and the fail-closed facade pattern proven by the selected Route 4 facade work. | Keep prepared current-block and block-entry publication helpers, edge-publication lookup surfaces, prepared printer/debug consumers, x86 wrappers, and oracle tests as public comparison answers. | Value-home lookup, storage availability, move planning, publication record construction, and block-order emission stay prepared/AArch64-owned. | Add route/prepared equivalence tests for the selected publication reader, including present, absent, and mismatched-reference cases; run the narrow AArch64 publication subset plus the existing Route 4 oracle tests before considering any later contraction. |
+| 2 | Switch one AArch64 edge-copy join-source reader to a Route 5 edge/join-source view. | AArch64 edge-copy and join parallel-copy source recovery. | Route 5 edge join-source records keyed by edge, predecessor, destination block, and copied value role, including missing-predecessor, no-source, and memory-source cases. | Keep `PreparedEdgePublicationLookups`, `PreparedEdgePublicationSourceProducerLookups`, `find_prepared_current_block_join_parallel_copy_source(...)`, and move-bundle helpers as fallbacks and equivalence oracles. | Parallel-copy scheduling, out-of-SSA placement, source/destination homes, move-bundle selection, branch spelling, and final edge-copy records stay prepared or target-owned. | Prove same-answer behavior against prepared join-source helpers across normal predecessor, missing predecessor, no-source, memory-source, and absent-route cases; include route-index fail-closed coverage before proposing follow-up contraction. |
+| 3 | Switch one scalar value materialization or publication subpath to Route 1 producer/constant facts. | AArch64 scalar producer, integer-constant, and value-publication subpaths that currently query same-block scalar producer or integer constant helpers. | Route 1 producer and constant identity view keyed by the consuming BIR value or instruction-local operand reference. | Keep `find_prepared_same_block_scalar_producer(...)`, `evaluate_prepared_same_block_integer_constant(...)`, scalar operand helpers, and prepared value-publication paths public. | Value homes, storage encodings, register choice, rematerialization spelling, emitted machine records, and move generation stay prepared/AArch64-owned. | Compare route-first answers with prepared helper answers for same-block producer, constant, no-producer, non-constant, and cross-block cases; pair the selected consumer test with existing Route 1 oracle coverage. |
+| 4 | Switch one select-chain/direct-global materialization reader to the Route 2 select-chain view. | AArch64 select materialization, direct-global dependency checks, and scalar publication/call/memory subpaths that need select-root facts. | Route 2 select-chain/direct-global view returning select-root identity, root instruction index, scalar eligibility, and direct-global dependency presence. | Keep prepared select-chain materialization and direct-global dependency helpers as public fallbacks for publication, call, memory, ALU, and printer/test consumers. | Target materialization sequence choice, storage/home selection, memory operand formation, call-publication policy, and final record spelling remain outside the Route 2 view. | Prove route/prepared equivalence for selected direct-global present/absent, scalar-eligible/ineligible, and nested select-chain cases; do not weaken prepared oracle tests when moving the consumer. |
+| 5 | Switch one semantic memory source reader to the Route 3 memory/access identity view. | AArch64 memory, globals, and load-local source recovery paths that need semantic access identity rather than target address formation. | Route 3 memory semantic view for access identity, same-block global-load identity, and load-local stored-value source relationships. | Keep `PreparedMemoryAccessLookups`, `find_prepared_memory_access(...)`, global-load helpers, same-block global-load helpers, and load-local source helpers public. | Address base kind, offsets, stack/frame objects, TLS/global relocation data, pointer materialization, base-plus-offset legality, volatile/address-space behavior, and memory operand records stay prepared/AArch64-owned or target-owned. | Test semantic identity agreement for global-load, same-block global-load, local-stored source, absent-route, and non-semantic target-address-only cases; keep address-materialization tests as prepared-owned policy proof. |
+| 6 | Switch one scalar call argument/result source reader to the Route 6 call-use source view. | AArch64 call argument/result source-producer and publication-source materialization for one role class at a time. | Route 6 call-use source records keyed by call instruction plus argument/result role and value role. | Keep `PreparedCallPlanLookups`, call argument/result plans, publication-routing helpers, `find_prepared_call_argument_source_producer_materialization(...)`, value-home lookups, move-bundle lookups, and call-boundary effect plans public. | ABI register/stack placement, variadic FPR counts, clobber/preserve sets, byval lanes, outgoing stack sizing, late-publication mechanics, helper resources, carrier protocols, and call record spelling stay target-owned. | Prove the selected argument/result class against prepared call-source helpers, including direct source, publication source, missing source, and recursive operand fallback cases; include existing call-plan tests to show ABI policy did not move. |
+| 7 | Switch one comparison or branch operand provenance reader to the Route 7 comparison view. | AArch64 fused-compare, materialized-condition, branch operand, and scalar comparison provenance readers. | Route 7 condition/comparison provenance view or validated facade keyed by comparison or branch operand consumer. | Keep comparison prepared helpers, scalar producer/select-chain fallbacks, Route 7 facade validation, and fused-compare oracle tests visible. | Branch spelling, fused legality, condition-code selection, hazard handling, emitted-register state, final branch/compare record ordering, ALU result storage, and return-chain operand recovery stay outside BIR ownership. | Prove provenance equality for fused-compare, materialized condition, unfused fallback, absent-route, and invalid-reference cases; route-first behavior must still defer to prepared/target branch policy. |
+| 8 | Reuse proven AArch64 route-view interfaces at x86 or riscv prepared wrapper boundaries. | Future x86 `ConsumedPlans` wrappers and riscv `emit_prepared_module(...)`/prepared lookup threading. | Only route views already proven by AArch64 rungs above; no x86-only or riscv-only BIR adapter should be invented first. | Keep x86 consumed prepared wrappers, riscv prepared-module emission, route debug, and target-local prepared lookup threading as fallbacks. | x86/riscv instruction selection, target formatting, frame layout, register allocation, call ABI policy, and emission records remain target-local. | After an AArch64 route-view rung is green, add interface-level compile and route/debug tests for the target wrapper consuming the same view; do not use these targets as the first proof of a new semantic route view. |
+
+## Step 4 Deferred Or Blocked Items
+
+- `PreparedFunctionLookups` aggregate contraction is deferred until multiple
+  route-view consumer switches prove that the aggregate fields have no residual
+  production, printer, debug, target-wrapper, or oracle-test users. A follow-up
+  may thread narrow route views beside the prepared context, but must not build
+  a BIR-owned clone of the aggregate.
+- Prepared printer, debug, route-debug, and oracle-test surfaces remain public
+  validation consumers. They can move only after the production consumer family
+  they validate has an equivalent BIR route view and replacement diagnostics.
+- Wide-value carriers, runtime helper protocols, variadic entry, intrinsics,
+  inline asm, atomics, dynamic stack, frame helpers, and special target entries
+  are not Phase D route-backed migration rungs. They may consume semantic
+  source identities exposed by earlier rungs, but carrier layout, helper
+  protocols, scratch resources, frame effects, and target records remain
+  prepared/AArch64-owned or target-owned.
+- Return-chain consumers are blocked behind the separate return-chain
+  owner/schema line. They should remain prepared-owned until that result is
+  explicitly imported or activated; this ladder must not hide return-chain
+  terminal or next-operand reads under Route 1, Route 7, predecessor rescans,
+  name matching, or a generic route-index facade.
+
+## Step 4 Follow-Up Idea Template
+
+Each follow-up idea should stay one-rung wide and use this payload shape:
+
+- Consumer group: the exact AArch64, x86, or riscv consumer family being moved.
+- BIR route prerequisite/view: the route record, typed index, or validated
+  facade the consumer will read, including fail-closed behavior.
+- Prepared oracle/fallback boundary: the prepared helper family that remains
+  public for route/prepared comparison and fallback.
+- Out-of-scope target policy: the ABI, storage, layout, helper, address,
+  branch, move, or final-record policy that the idea refuses to migrate.
+- Proof recommendation: narrow route/prepared equivalence coverage for the
+  selected consumer plus existing route oracle tests and any target-policy
+  preservation checks needed to prove no prepared policy moved into BIR.
+
+Step 5 should verify that the highest-priority ready rungs are concrete enough
+for plan-owner lifecycle work if the supervisor wants to create or activate
+follow-up `ideas/open/` candidates.
