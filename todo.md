@@ -1,59 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/192_residual_route_view_consumer_migration_map.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Identify Next Migration Candidates
+Current Step ID: 4
+Current Step Title: Write The Durable Migration Map
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 candidate selection complete for `plan.md` Step 3. The table below
-turns the Step 2 residual-consumer inventory into one separable next
-selected-consumer migration proposal per route family, with retained-policy
-boundaries preserved for Step 4's durable migration map.
+Step 4 durable migration map complete for `plan.md` Step 4. Created
+`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md` from
+the Step 2 residual-consumer inventory and Step 3 candidate table.
 
-| Route | Next selected-consumer proposal or retained-policy reason | Required route/facade facts | Fallback behavior | Proof expectations that reject testcase-shaped shortcuts |
-| --- | --- | --- | --- | --- |
-| Route 1 producer/constant | Migrate one AArch64 scalar producer/constant read in the ALU/scalar materialization path before attempting call, memory, comparison, printer, or oracle retirement. Keep value-home, storage, rematerialization spelling, move records, and final machine-record policy on prepared/target-owned surfaces. | A route-first facade must expose same-block scalar producer identity, integer-constant availability/value, source block and value identity, and enough compatibility metadata to decide whether the existing prepared helper would have answered the same semantic question. It must not encode final register choice, storage home, or rematerialization emission spelling. | If the route fact is absent, mismatched with the prepared producer, ambiguous across multiple producers, or asks for target policy such as storage/home selection, fall back to the existing prepared helper and record that the candidate did not prove producer-helper retirement. Constants with width/sign or materialization uncertainty also stay on prepared fallback. | Cover the migrated ALU/scalar materialization reader plus nearby same-block producer and integer-constant variants, including a negative route-absent case that still lowers through prepared fallback. Do not pass by matching one named ALU testcase or by weakening prepared lookup/printer/oracle expectations. |
-| Route 2 select-chain/direct-global | Migrate the AArch64 store-source direct-global select-chain dependency reader as the next Route 2 consumer; leave call-argument policy and scalar materialization sequence choice for later route-specific packets. | The facade must name direct-global select-chain dependency, store-source value identity, selected source producer when available, dependency block/value provenance, and whether the route fact is compatible with the store-source publication context. It must not decide final memory operand formation, materialization sequence spelling, or call-publication policy. | Fall back to `find_prepared_store_source_direct_global_select_chain_dependency(...)` when route facts are absent, mismatch the store source, are ambiguous between source producers, or require materialization/storage policy. Prepared printer and oracle surfaces remain direct readers until the durable map schedules them separately. | Prove the store-source path with direct-global select-chain coverage and adjacent negative cases for absent or mismatched route facts. Same-feature memory/store-source cases must remain represented so the migration cannot be a named-case shortcut. |
-| Route 3 memory/source | Retain target-addressing and memory-operand policy on prepared surfaces, but migrate one semantic AArch64 global-load or same-block memory-access source reader that only asks "which source value/memory access is this?" and not "how should this target address be emitted?" | The route facade must expose semantic memory/source identity, access kind, source value or global identity, block provenance, and compatibility with the current lowering context. It may carry enough facts to verify the source relation but must not carry offsets, frame/TLS relocation choice, base-plus-offset legality, volatile/address-space target handling, or final memory operand records. | If a route fact is absent, disagrees with prepared memory lookup, is ambiguous among accesses, or crosses into address-materialization/target-addressing policy, retain the prepared memory lookup. x86 target-wrapper memory reads and frame/stack object facts are retained-policy consumers until a separate target-wrapper packet scopes them. | Prove one semantic memory/source migration with nearby load/global/same-block variants plus negative fallback for policy-sensitive addressing. Tests must show address formation and prepared memory oracle expectations are unchanged; do not claim Route 3 progress by moving target-addressing decisions into route facts. |
-| Route 4 publication | Migrate the AArch64 call-boundary or dispatch-publication current/block-entry publication lookup that is closest to the already proven current-block entry publication facade; retain x86/riscv wrappers and public dump/debug APIs until cross-target Route 4 reuse is separately proven. | The facade must expose current/block-entry publication identity, source value, destination block/current-block context, publication register availability, and compatibility with the lowering edge or call-boundary. It must not encode move-planning, value-home lookup, storage availability policy, final publication record construction, or block-order emission. | Fall back to `find_prepared_current_block_entry_publication(...)` or existing prepared publication collections when the route fact is missing, block context does not match, multiple publications compete, or target move/publication policy is needed. Cross-target wrappers keep prepared fallback by default. | Prove the chosen AArch64 publication reader plus adjacent block-entry/current-block publication cases and a negative absent-or-block-mismatch fallback. Do not satisfy proof by only reusing the single idea 182 reader or by weakening block-entry publication oracle/debug output. |
-| Route 5 edge/join-source | Migrate one AArch64 current-block edge/join source-producer read used by edge-copy lowering, not call/memory publication-source readers whose ownership may overlap Routes 2, 3, or 6. Keep parallel-copy scheduling, move-bundle selection, branch spelling, and final edge-copy records as retained target/prepared policy. | The facade must expose predecessor edge identity, join destination/current block, source value or producer identity, indexed edge publication/source-producer relation, and compatibility with the current edge-copy lowering context. It must not choose move order, source/destination homes, bundle placement, branch encoding, or out-of-SSA scheduling. | Fall back to `find_indexed_prepared_edge_publications(...)`, `find_indexed_prepared_edge_publication_source_producer(...)`, or move-bundle lookups when route facts are absent, edge indexes mismatch, multiple predecessors are ambiguous, or scheduling/home policy is required. Call/memory publication-source reads are deferred until their owning route is explicit. | Prove current-block join/edge-copy behavior with multiple predecessor and mismatch fallback coverage, plus nearby joined-branch/source-producer cases. The proof must reject hard-coded predecessor or block-name handling and must preserve prepared-printer/oracle edge-publication coverage. |
-| Route 6 call-use source | Migrate one AArch64 call-argument source-producer materialization read adjacent to the idea 187 direct-global argument path; retain call-result late-publication, ABI lane binding, variadic FPR count, clobber/preserve, outgoing stack sizing, and call-record spelling as prepared/ABI policy. | The call-use facade must expose argument index/lane identity, source producer/materialization provenance, call-site context, direct-global/select-chain compatibility when relevant, and enough metadata to validate equivalence with the prepared argument-source lookup. It must not decide ABI register/stack placement, byval lane expansion, helper resources, late-publication mechanics, or final call record formation. | Fall back to `find_prepared_call_argument_source_producer_materialization(...)` and existing call-plan lookups when route facts are absent, argument indexes mismatch, multiple materializations compete, ABI-sensitive data is requested, or the consumer reaches call-result/lane policy. x86 reuse remains limited to the proven Route 6 scalar argument interface. | Prove the migrated call-argument source path with direct-global and non-direct-global adjacent cases, argument-index mismatch fallback, and ABI-sensitive fallback coverage. Do not count x86 wrapper reuse or a single direct extern call case as route-wide Route 6 completion. |
-| Route 7 comparison/condition | Migrate one AArch64 fused-compare operand-producer read in branch-condition lowering; retain condition-code selection, branch spelling, hazard handling, emitted-register state, ALU result storage, materialized-compare join/render policy, and return-chain-adjacent recovery outside the candidate. | The facade must expose fused-compare operand producer facts, compared value identities, comparison kind/provenance, materialized-condition producer identity when applicable, and compatibility with the current branch-condition context. It must not choose final condition-code encoding, branch instruction spelling, emission order, or x86 render-contract details. | Fall back to `find_prepared_fused_compare_operand_producer_facts(...)`, `find_prepared_materialized_condition_producer(...)`, or existing scalar producer/select-chain prepared fallback when route facts are absent, operands mismatch, compare provenance is ambiguous, or final branch/emission policy is required. Return-chain facts remain out of Route 7. | Prove fused-compare branch lowering with adjacent operand orders, materialized-condition fallback, and route-absent/operand-mismatch negatives. The proof must not be a branch-test name shortcut and must preserve Route 7 lookup-helper and x86 joined-branch oracle coverage. |
+The artifact contains a Route 1-7 table covering selected-reader evidence,
+residual prepared consumers, consumer classification, candidate migrations,
+required route/facade facts, fallback/oracle surfaces, and proof expectations.
+It also includes separate sections for printer/debug/oracle consumers and for
+target-wrapper/retained-policy consumers, preserving these as blockers to
+prepared API contraction.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: write
-`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md` using
-the Step 2 residual-consumer inventory and the Step 3 candidate table above.
-Keep the map descriptive: do not implement migrations, weaken expectations, or
-claim route-wide prepared API retirement from selected-reader evidence.
+Execute Step 5 from `plan.md`: final consistency check against source idea 192
+acceptance criteria and reviewer reject signals. Confirm no implementation
+files changed, the durable map does not claim route-wide completion or prepared
+API retirement, and `todo.md` records a closure recommendation for supervisor
+review.
 
 ## Watchouts
 
-- Each route has exactly one narrow next selected-consumer proposal here; this
-  is intentional Step 4 input, not a queue of implementation packets.
-- Printer/debug, oracle/test, target-wrapper, and retained prepared/target
-  policy consumers must remain visible in the durable map because they block
-  prepared API contraction even when a production reader can migrate.
-- Ideas 182-188 prove selected-reader patterns only. Idea 189 proves one x86
-  Route 6 interface reuse point only; riscv has no imported reuse proof.
-- Keep target policy, ABI policy, address-materialization policy, final
-  emission policy, materialized-compare render policy, and return-chain facts
-  outside Routes 1-7 unless a separate owner/schema imports them.
-- Route 3 and Route 6 are the most policy-sensitive candidates; Step 4 should
-  spell their retained-policy boundaries more prominently than the simpler
-  production-lowering candidates.
+- The artifact is descriptive and proposal-granular only. It does not
+  implement migrations, delete/privatize prepared APIs, or open draft 155.
+- Each route names one next selected-consumer candidate, but printer/debug,
+  oracle/test, target-wrapper, and retained prepared/target policy consumers
+  remain visible as blockers to broad retirement.
+- Ideas 182-188 remain selected-reader evidence only; idea 189 remains one x86
+  Route 6 reuse point only, with no riscv imported reuse proof.
+- Route 3 target-addressing policy, Route 6 ABI/call policy, Route 7 branch
+  policy, materialized-compare render policy, final emission policy, and
+  return-chain facts stay outside Route 1-7 semantic migration scope.
 
 ## Proof
 
-Docs/lifecycle-only packet; no build required. Verification used the Step 2
-inventory already recorded in `todo.md`; no AST-backed code inspection was
-needed for Step 3. `todo.md` now records a concrete next selected-consumer
-migration proposal or retained-policy boundary for each Route 1-7 family,
-including required route/facade facts, fallback behavior for absent,
-mismatched, ambiguous, and policy-sensitive facts, and proof expectations that
-reject testcase-shaped shortcuts. Existing `test_after.log` remains the proof
-log path; no implementation files changed.
+Docs/lifecycle-only packet; no build required. Verification checked that
+`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`
+exists and contains the required Route 1-7 table plus separate
+printer/debug/oracle and target-wrapper/retained-policy sections. Existing
+`test_after.log` remains the proof log path; no implementation files changed.
