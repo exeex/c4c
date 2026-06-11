@@ -59,3 +59,11 @@ prepared API contraction from selected-consumer evidence.
   scope.
 - Weakening source-idea or test expectations to make lifecycle status appear
   more complete.
+
+## Completion Note
+
+Closed after producing
+`docs/bir_prealloc_fusion/phase_d_phase_e_lifecycle_naming_cleanup.md`.
+The note classifies ideas 182-189 as Phase D follow-up slices despite their
+`phase_e_*` filenames, preserves historical closed filenames, and keeps draft
+155 as the future true Phase E `PreparedBirModule` retirement analysis.
