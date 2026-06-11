@@ -33302,6 +33302,20 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
   if (call == nullptr) {
     return fail("expected scalar producer fixture to retain BIR call instruction");
   }
+  if (!aarch64_codegen::value_publication_may_read_register_index(
+          block_context,
+          call->args.front(),
+          1,
+          2)) {
+    return fail("expected Route 1 source-producer fact to expose recursive register dependency without prepared producer lookup");
+  }
+  if (aarch64_codegen::value_publication_may_read_register_index(
+          block_context,
+          call->args.front(),
+          1,
+          5)) {
+    return fail("expected Route 1 source-producer dependency check to preserve unrelated-register negative");
+  }
 
   aarch64_codegen::BlockScalarLoweringState scalar_state;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;

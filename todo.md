@@ -8,47 +8,35 @@ Current Step Title: Migrate the selected consumer route-first
 
 ## Just Finished
 
-Step 2 exposed a narrow Route 1 publication-source view for the selected
-`value_publication_may_read_register_index(...)` path in
-`src/backend/mir/aarch64/codegen/dispatch_producers.hpp` and
-`src/backend/mir/aarch64/codegen/dispatch_producers.cpp`.
+Step 3 migrated the selected recursive publication dependency check in
+`value_publication_may_read_register_index(...)` to query
+`route1_publication_source_producer_for_value(...)` first. Complete Route 1
+same-block producer facts now drive the recursive cast/binary/select walk, while
+the existing `prepared_same_block_publication_source_producer(...)` path remains
+the fallback for unavailable, no-producer, or otherwise incomplete Route 1
+answers.
 
-The new `route1_publication_source_producer_for_value(...)` boundary is keyed
-by `*context.bir_block`, `before_instruction_index`, and the consuming
-`bir::Value`. It builds a Route 1 producer index for the current BIR block,
-queries `bir::Route1SameBlockProducerQuery`, and returns stable semantic facts:
-producer instruction, produced value, producer kind, instruction index,
-materialization availability, and integer-constant status/value.
-
-Absence and fallback cases remain explicit:
-
-- `Unavailable` covers no current BIR block or non-named/empty values.
-- `NoProducer` covers valid same-block Route 1 queries with no before-consumer
-  producer, including future/cross-block/mismatched-type cases.
-- `NonConstant` and `Constant` distinguish producer records without copying any
-  prepared homes, registers, storage, moves, or machine-record policy.
-- Existing prepared helper APIs and the
-  `prepared_same_block_publication_source_producer(...)` fallback/oracle helper
-  remain available and behaviorally unchanged.
+The focused AArch64 dispatch fixture that clears prepared source-producer
+indexes now directly checks that Route 1 exposes a recursive register dependency
+for the scalar call argument and still returns false for an unrelated register.
 
 ## Suggested Next
 
-Migrate `value_publication_may_read_register_index(...)` to use
-`route1_publication_source_producer_for_value(...)` first, with the existing
-prepared helper retained as fallback/oracle for route-unavailable or
-intentionally out-of-scope cases.
+Proceed to Step 4 equivalence proof for route-present, route-absent,
+non-constant, no-producer, and cross-block behavior around the selected
+consumer.
 
 ## Watchouts
 
-The Step 2 view intentionally does not change the recursive publication
-dependency walk yet. Step 3 should avoid treating `NoProducer` as a hard
-prepared bypass unless the route is authoritative for the selected case; keep
-prepared fallback behavior for route-unavailable/out-of-scope answers.
+The migrated consumer intentionally does not treat `NoProducer` as an
+authoritative negative; any incomplete Route 1 view still falls through to the
+prepared helper/home behavior. Target register, home, storage, move, and
+machine-record policy remain in the existing AArch64/prepared paths.
 
 ## Proof
 
-Step 2 ran and passed:
+Step 3 ran and passed:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper)$'; } > test_after.log 2>&1`
 
-Accepted proof log: `test_before.log` after supervisor roll-forward.
+Proof log: `test_after.log`.

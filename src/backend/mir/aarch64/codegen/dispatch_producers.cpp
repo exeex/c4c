@@ -592,15 +592,22 @@ build_current_block_join_prepared_query_routing(
   if (home != nullptr && value_has_current_block_entry_publication(context, *home)) {
     return prepared_value_home_reads_register_index(*home, register_index);
   }
-  const auto producer_record = prepared_same_block_publication_source_producer(
-      context, value, before_instruction_index);
-  if (!producer_record.has_value()) {
-    return home != nullptr &&
-           prepared_value_home_reads_register_index(*home, register_index);
+  const auto route1_producer =
+      route1_publication_source_producer_for_value(context,
+                                                   value,
+                                                   before_instruction_index);
+  const bir::Inst* producer = route1_producer.instruction;
+  auto producer_index = route1_producer.instruction_index;
+  if (!route1_producer) {
+    const auto producer_record = prepared_same_block_publication_source_producer(
+        context, value, before_instruction_index);
+    if (!producer_record.has_value()) {
+      return home != nullptr &&
+             prepared_value_home_reads_register_index(*home, register_index);
+    }
+    producer = producer_record->instruction;
+    producer_index = producer_record->instruction_index;
   }
-
-  const auto* producer = producer_record->instruction;
-  const auto producer_index = producer_record->instruction_index;
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
     auto operand = cast->operand;
     operand.type = cast->operand.type;
