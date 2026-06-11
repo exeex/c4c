@@ -9816,6 +9816,52 @@ int verify_bir_return_chain_schema_and_index_lookup() {
         "Route 8 block-local return-chain index should expose the same schema identities");
   }
 
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("route8_return_chain");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto seed_name = prepared.names.value_names.intern("%seed");
+  const auto named_next_name = prepared.names.value_names.intern("%named.next");
+  const auto ret_name = prepared.names.value_names.intern("%ret");
+  prepared.module.functions.push_back(function);
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {return_block(entry_label)},
+  };
+  const auto prepared_return_chains =
+      prepare::make_prepared_return_chain_lookups(prepared, control_flow);
+  const auto route8_ret_terminal =
+      bir::route8_find_return_chain_terminal_value(index, terminal_key);
+  const auto route8_ret_next =
+      bir::route8_find_return_chain_next_operand_value(index, terminal_key);
+  const auto prepared_seed_terminal =
+      prepare::find_prepared_return_chain_terminal_value(
+          &prepared_return_chains, 0, 0, seed_name);
+  const auto prepared_seed_next =
+      prepare::find_prepared_return_chain_next_operand_value(
+          &prepared_return_chains, 0, 0, seed_name);
+  const auto prepared_ret_terminal =
+      prepare::find_prepared_return_chain_terminal_value(
+          &prepared_return_chains, 0, 1, ret_name);
+  const auto prepared_ret_next =
+      prepare::find_prepared_return_chain_next_operand_value(
+          &prepared_return_chains, 0, 1, ret_name);
+  if (prepared_seed_terminal == c4c::kInvalidValueName ||
+      prepared_seed_next == c4c::kInvalidValueName ||
+      prepared_ret_terminal == c4c::kInvalidValueName ||
+      prepared_ret_next != c4c::kInvalidValueName ||
+      terminal_identity.name !=
+          prepared.names.value_names.spelling(prepared_seed_terminal) ||
+      next_identity.name !=
+          prepared.names.value_names.spelling(prepared_seed_next) ||
+      !route8_ret_terminal ||
+      route8_ret_terminal.name !=
+          prepared.names.value_names.spelling(prepared_ret_terminal) ||
+      route8_ret_next) {
+    return fail(
+        "Route 8 and prepared return-chain helpers should expose matching accepted terminal answers");
+  }
+
   const bir::Block unsupported_opcode_block{
       .label = "entry",
       .insts =
