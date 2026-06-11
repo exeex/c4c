@@ -1,52 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/183_phase_e_route5_edge_join_source_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Or Expose Route 5 View Boundary
+Current Step ID: 3
+Current Step Title: Prefer Route 5 In The Selected Consumer
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added an indexed Route 5 current-block join-source boundary for
-`aarch64_codegen::build_current_block_join_prepared_query_routing(...)`.
-`mir::BirCurrentBlockJoinSourceRequest` can now carry a
-`Route5EdgeJoinSourceIndex`, and the MIR query uses
-`route5_find_current_block_join_source(...)` keyed by successor block,
-destination value, and source value when that index is supplied.
+Step 3 required no code change because Step 2 already completed the selected
+consumer preference behavior. `build_current_block_join_prepared_query_routing`
+builds a local `Route5EdgeJoinSourceIndex`, calls
+`mir::find_bir_current_block_join_source_identity(...)` with that indexed
+boundary, and returns Route 5-derived routing immediately when the identity is
+`Available`. Only absent, incomplete, or invalid Route 5 data reaches the
+prepared fallback path that builds/reuses `PreparedValueHomeLookups` and
+`PreparedEdgePublicationLookups`, then calls
+`prepare::prepare_current_block_join_parallel_copy_source_facts(...)`.
 
-The selected AArch64 consumer now builds the local Route 5 index from the
-current BIR function and passes it into the MIR semantic identity query before
-the existing prepared fallback path. The prepared fallback still builds/reuses
-`PreparedValueHomeLookups` and `PreparedEdgePublicationLookups`, then calls
-`prepare::prepare_current_block_join_parallel_copy_source_facts(...)` whenever
-the Route 5 identity is unavailable.
-
-`backend_prepared_lookup_helper` now directly covers the indexed MIR boundary
-for an available Route 5 identity and verifies an incomplete Route 5 index stays
-unavailable, preserving fail-closed prepared fallback behavior.
+The existing focused routing coverage already demonstrates the selected reader
+can route from Route 5 without attached prepared policy, and the prepared helper
+coverage demonstrates incomplete indexed Route 5 data remains unavailable so
+the selected reader can preserve prepared fallback.
 
 ## Suggested Next
 
-Execute Step 3 by switching the selected reader to prefer the valid Route 5
-semantic source records from the new indexed boundary, while keeping prepared
-helpers as fallback/oracle surfaces for absent, incomplete, or invalid Route 5
-data.
+Execute Step 4 by adding or tightening route/prepared equivalence coverage for
+the selected current-block join-source reader, including normal predecessor,
+missing-predecessor, no-source, memory-source, and absent-route cases without
+weakening existing oracle expectations.
 
 ## Watchouts
 
-- Keep Step 3 limited to the selected current-block join-source consumer.
 - The Route 5 boundary provides semantic source identity only; do not move
   prepared move-bundle, source/destination home, scheduling, or final edge-copy
   policy into BIR.
 - The indexed MIR query intentionally treats missing indexed publication data as
   unavailable so `build_current_block_join_prepared_query_routing(...)` can fall
   back to prepared facts.
+- Step 4 should focus on coverage, not broad prepared aggregate API churn.
 
 ## Proof
 
-Ran the supervisor-selected proof:
-
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'; } > test_after.log 2>&1`
-
-Result: passed; 3/3 focused tests passed. Proof log: `test_after.log`.
+No proof run for this packet because Step 3 required no production or test code
+change. The Step 2 focused proof passed and was rolled forward by the supervisor
+to `test_before.log`.
