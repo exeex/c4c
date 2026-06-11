@@ -250,6 +250,14 @@ def head_commit_paths() -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
+def is_docs_path(path: str) -> bool:
+    return path == "docs" or path.startswith("docs/")
+
+
+def review_relevant_paths(paths: set[str]) -> set[str]:
+    return {path for path in paths if not is_docs_path(path)}
+
+
 def ensure_state(todo_path: Path, state_path: Path) -> dict:
     state = load_state(state_path)
     if state is None:
@@ -478,14 +486,15 @@ def cmd_post_commit(args) -> int:
     should_print_code_review = False
     should_print_baseline_review = False
     changed_paths = head_commit_paths()
+    relevant_paths = review_relevant_paths(changed_paths)
     is_lifecycle_commit = head_has_lifecycle_tag()
 
-    if not is_lifecycle_commit and changed_paths:
+    if not is_lifecycle_commit and relevant_paths:
         state["counter"] += 1
         if state["counter"] >= state["review_limit"]:
             state["code_review_pending"] = True
 
-    if not is_lifecycle_commit:
+    if not is_lifecycle_commit and relevant_paths:
         state["test_baseline_counter"] += 1
         needs_new_baseline = (
             not args.baseline.exists()
