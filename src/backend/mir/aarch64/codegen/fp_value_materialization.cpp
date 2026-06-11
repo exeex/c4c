@@ -97,6 +97,36 @@ namespace {
   return false;
 }
 
+[[nodiscard]] std::optional<prepare::PreparedSameBlockGlobalLoadAccess>
+find_prepared_fp_same_block_global_load_access(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const bir::Inst* producer,
+    std::size_t producer_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      producer == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  prepare::PreparedEdgePublicationSourceProducer source{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = producer_index,
+      .load_global = &load_global,
+  };
+  return prepare::find_prepared_same_block_global_load_access(
+      context.function.prepared->names,
+      addressing,
+      prepare::PreparedSameBlockScalarProducer{
+          .producer = source,
+          .instruction = producer,
+          .instruction_index = producer_index,
+      });
+}
+
 }  // namespace
 
 [[nodiscard]] bool emit_fp_immediate_to_register(std::vector<std::string>& lines,
@@ -333,7 +363,23 @@ namespace {
     }
 
     if (context.function.prepared != nullptr) {
-      return false;
+      const auto producer_index = producer_instruction_index(context, producer);
+      if (!producer_index.has_value()) {
+        return false;
+      }
+      const auto prepared_access =
+          find_prepared_fp_same_block_global_load_access(context,
+                                                        *load_global,
+                                                        producer,
+                                                        *producer_index);
+      return prepared_access.has_value() &&
+             prepared_access->load_global != nullptr &&
+             prepared_access->access != nullptr &&
+             emit_prepared_fp_global_load_to_register(context,
+                                                      *prepared_access->access,
+                                                      *destination_view,
+                                                      gp_scratch_index,
+                                                      lines);
     }
 
     const auto address = abi::gp_register(gp_scratch_index, abi::RegisterView::X);
