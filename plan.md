@@ -1,165 +1,177 @@
-# PreparedFunctionLookups Aggregate Privacy Runbook
+# PreparedFunctionLookups Address Materialization Projection Runbook
 
 Status: Active
 Source Idea: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
-Activated from: idea 175 after idea 171 retired its Route 5 runbook and idea 177 closed the ambient AArch64 f64 readback dispatch debt.
+Continues: idea 175 after the `call_plans` aggregate field group was completed in commit `f1b5881d5`.
 
 ## Purpose
 
-Contract direct `PreparedFunctionLookups` aggregate exposure one projected field
-group at a time, after each selected group has a route-owned BIR replacement or
-a target-local owner.
+Continue contracting direct `PreparedFunctionLookups` aggregate exposure one
+projected field group at a time. The next selected group is
+`address_materializations`.
 
-Goal: replace one direct aggregate field consumer group with a narrow projection
-and prove the include/context contraction is behavior-preserving.
+Goal: replace the AArch64 traversal read of
+`prepared_lookups.address_materializations` with a narrow
+`PreparedAddressMaterializationLookups` projection, while leaving the aggregate
+available for all unselected fields.
 
-Core Rule: do not hide or replace the aggregate wholesale; each removed field
-consumer must have a real owner boundary, not a renamed lowering-plan aggregate.
+Core Rule: do not hide or replace the aggregate wholesale; this step only owns
+the `address_materializations` projection and must not become a renamed
+lowering-plan aggregate.
 
 ## Read First
 
 - `ideas/open/175_prepared_function_lookups_aggregate_privacy.md`
 - `docs/bir_prealloc_fusion/phase_c_private_cache_contraction.md`
+- `src/backend/prealloc/addressing.hpp`
 - `src/backend/prealloc/prepared_lookups.hpp`
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/codegen/traversal.cpp`
 
-## Current Targets
+## Current Target
 
-- `prepare::PreparedFunctionLookups`
-- `prepare::make_prepared_function_lookups(...)`
-- AArch64 `FunctionLoweringContext` aggregate and domain lookup pointers
-- One projected field group selected from the aggregate fields:
-  `call_plans`, `address_materializations`, `memory_accesses`, `move_bundles`,
-  `value_homes`, `edge_publications`, or
-  `edge_publication_source_producers`
+- Selected field group: `address_materializations`
+- Owner boundary: target-local `prepare::PreparedAddressMaterializationLookups`
+  built by `prepare::make_prepared_address_materialization_lookups(...)`
+- Current direct aggregate read to remove:
+  `function_context.address_materialization_lookups =
+  &prepared_lookups.address_materializations` in
+  `src/backend/mir/aarch64/codegen/traversal.cpp`
+- Expected context projection:
+  `FunctionLoweringContext::address_materialization_lookups`
+
+## Remaining Aggregate Fields
+
+- `move_bundles`: target-local value-location lookup projection; leave for a
+  later group.
+- `value_homes`: target-local value-location lookup projection; leave for a
+  later group.
+- `memory_accesses`: still read through broader aggregate consumers; do not
+  fold into this packet.
+- `edge_publications` and `edge_publication_source_producers`: still tied to
+  Route 4/Route 5/publication consumer migrations; do not fold into this
+  packet.
+- `return_chains`: out of scope for idea 175; idea 176 owns return-chain
+  owner/schema analysis.
 
 ## Non-Goals
 
-- Do not remove `PreparedFunctionLookups` before all projected fields have
-  route-owned or target-local replacements.
-- Do not hide or migrate `return_chains` through this runbook; idea 176 owns
-  return-chain owner/schema analysis.
-- Do not create a new BIR lowering-plan aggregate or generic facade clone.
-- Do not sweep unrelated context/module rewrites into an aggregate privacy
-  slice.
-- Do not weaken tests or expectations to claim cache contraction.
+- Do not remove `PreparedFunctionLookups` or
+  `make_prepared_function_lookups(...)`.
+- Do not migrate `return_chains`.
+- Do not move memory-access, publication, source-producer, move-bundle, or
+  value-home consumers under this address-materialization packet.
+- Do not copy `PreparedAddress` or stack-layout/frame payloads into BIR.
+- Do not weaken tests or expectations to claim aggregate privacy progress.
 
 ## Working Model
 
-- `PreparedFunctionLookups` is aggregate cache wiring, not the semantic owner of
-  every field it projects.
-- AArch64 traversal may continue building the aggregate while individual
-  consumers are moved to narrower projections.
-- Route-owned semantic facts stay in their typed route records/indexes.
-- Target-local facts such as homes, move bundles, addressing layout, call ABI,
-  stack layout, and publication emission policy stay outside BIR.
+- `PreparedFunctionLookups` remains aggregate cache wiring for fields not yet
+  projected separately.
+- `address_materializations` is a target-local addressing/layout lookup, not a
+  BIR semantic owner.
+- The selected projection should be built beside the existing
+  `call_plan_lookups` projection and wired only through the existing
+  `FunctionLoweringContext` pointer.
 
 ## Execution Rules
 
-- Select one projected field group before editing implementation code.
-- Prefer consumers already close to a route-owned BIR index or an existing
-  target-local `FunctionLoweringContext` pointer.
-- Keep the aggregate available for unselected fields.
-- Keep source idea edits unnecessary unless source intent genuinely changes.
-- For code-changing steps, prove with build or compile proof plus the selected
-  migrated route subset.
-- Escalate to broad backend regression when the aggregate type,
-  `FunctionLoweringContext`, or module/context projection changes.
+- Keep this packet behavior-preserving.
+- Prefer the existing builder in `addressing.hpp`; do not add a generic facade.
+- Keep unselected aggregate fields and consumers unchanged.
+- Contract includes only when the selected direct field read no longer requires
+  them.
+- If `FunctionLoweringContext`, aggregate type layout, or module/context
+  projections change beyond the selected pointer assignment, request broader
+  backend proof from the supervisor.
 
 ## Steps
 
-### Step 1: Inventory aggregate field consumers and choose the first group
+### Step 1: Confirm selected address-materialization group
 
-Goal: choose one direct aggregate field group that can be contracted without
-crossing idea 175 boundaries.
+Goal: verify the chosen group is still the narrowest safe continuation after
+the completed `call_plans` packet.
+
+Actions:
+
+- Confirm traversal still reads
+  `prepared_lookups.address_materializations` only to populate
+  `FunctionLoweringContext::address_materialization_lookups`.
+- Confirm `prepare::make_prepared_address_materialization_lookups(...)` is
+  available as the narrow builder.
+- Confirm direct publication/source-producer, memory-access, move-bundle,
+  value-home, and return-chain consumers remain outside this packet.
+
+Completion check:
+
+- `todo.md` names `address_materializations` as the selected field group and
+  points execution at Step 2.
+
+### Step 2: Project address-materialization lookups separately
+
+Goal: provide the existing AArch64 context pointer without reading the selected
+field from the aggregate.
 
 Primary targets:
 
-- `src/backend/prealloc/prepared_lookups.hpp`
-- `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/codegen/traversal.cpp`
-- AArch64 consumers that read `prepared_lookups->...`
+- `src/backend/prealloc/addressing.hpp`
 
 Actions:
 
-- List direct aggregate field reads by field group.
-- Classify each group as route-owned, target-local, return-chain, or still
-  blocked.
-- Reject `return_chains` for this runbook and leave it to idea 176.
-- Pick the smallest group with an existing owner boundary and a narrow proof
-  command.
-- Record the chosen group and proof route in `todo.md` before implementation.
+- Build a local `PreparedAddressMaterializationLookups` value with
+  `prepare::make_prepared_address_materialization_lookups(...)`.
+- Assign `function_context.address_materialization_lookups` from that local
+  projection.
+- Keep `function_context.prepared_lookups` and all unselected aggregate field
+  use unchanged.
+- Preserve object lifetimes for the full function-lowering loop, matching the
+  local `prepared_call_plan_lookups` pattern.
 
 Completion check:
 
-- `todo.md` names one selected field group, its owner boundary, direct consumer
-  files, and the exact proof command the supervisor should delegate to the
-  executor.
+- Production traversal no longer reads
+  `prepared_lookups.address_materializations`.
+- A compile proof plus the selected memory/addressing subset is green.
 
-### Step 2: Add or expose the narrow projection for the selected group
+### Step 3: Contract selected direct dependency exposure
 
-Goal: provide the selected consumers with a narrow BIR-backed or target-local
-projection that does not require reading the aggregate field directly.
+Goal: remove avoidable direct aggregate dependency tied only to the selected
+field group.
 
 Primary targets:
 
-- The selected consumer files from Step 1
-- `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/codegen/traversal.cpp`
-- The selected route-owned or target-local lookup header
+- Any selected local include made unnecessary by Step 2
 
 Actions:
 
-- Wire the selected projection through `FunctionLoweringContext` only as far as
-  the chosen consumers need it.
-- Avoid adding semantic payload copies or a generic aggregate replacement.
-- Keep unselected aggregate fields and consumers unchanged.
-- Preserve existing fallback behavior unless the selected owner already
-  provides fail-closed answers.
+- Remove only includes or direct aggregate dependencies made unnecessary by the
+  selected projection.
+- Keep `prepared_lookups.hpp` exposure where traversal or other AArch64
+  consumers still need unselected fields.
+- Treat fixture aggregate-field assignments as test compatibility unless the
+  supervisor explicitly delegates cleanup.
 
 Completion check:
 
-- The selected consumers no longer need the direct aggregate field read.
-- The code builds, and the narrow selected subset remains green.
+- No selected production consumer reads the contracted aggregate field
+  directly.
+- A compile proof demonstrates the contraction is behavior-preserving.
 
-### Step 3: Contract includes and direct aggregate dependency for the selected group
+### Step 4: Prove the selected address-materialization subset and decide next
 
-Goal: remove avoidable `prepared_lookups.hpp` exposure tied to the selected
-field group without disturbing unrelated fields.
-
-Primary targets:
-
-- Selected consumer includes
-- `src/backend/mir/aarch64/module/module.hpp`
-- Any local helper header that can now depend on the narrower owner
+Goal: validate the selected projection and hand lifecycle control back for the
+next group decision.
 
 Actions:
 
-- Remove only includes and aggregate pointer dependencies made unnecessary by
-  Step 2.
-- Keep compatibility attachment helpers in tests only where the aggregate is
-  still required for other fields.
-- Do not claim aggregate privacy from helper renames alone.
-
-Completion check:
-
-- A compile proof demonstrates the include/context contraction is
-  behavior-preserving.
-- No selected consumer reads the contracted aggregate field directly.
-
-### Step 4: Prove the selected route subset and decide the next lifecycle move
-
-Goal: validate the contracted field group and decide whether another group can
-continue under this runbook.
-
-Actions:
-
-- Run the selected narrow subset from Step 1.
-- If `FunctionLoweringContext`, the aggregate type, or module projections
-  changed, run a broader backend regression selected by the supervisor.
-- Update `todo.md` with proof results, remaining fields, and whether the next
-  executor packet should select another field group or request plan review.
+- Run the supervisor-selected proof command for AArch64 address/materialization
+  lowering.
+- If module/context projection changed more broadly than Step 2 requires, run
+  the broader backend check selected by the supervisor.
+- Update `todo.md` with proof results, remaining direct aggregate fields, and
+  whether the next field group can continue under idea 175.
 
 Completion check:
 

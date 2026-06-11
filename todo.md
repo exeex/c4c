@@ -1,57 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove the selected route subset and decide the next lifecycle move
+Current Step ID: Step 2
+Current Step Title: Project address-materialization lookups separately
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 from `plan.md`: reran the selected `call_plans` projection proof after
-the Step 2 projection split and Step 3 dependency check. The selected subset is
-green.
+Step 1 from `plan.md`: selected `address_materializations` as the next
+aggregate field group for idea 175.
 
-Selected field group result: `call_plans` now uses the narrow
-`FunctionLoweringContext::call_plan_lookups` projection built by
-`prepare::make_prepared_call_plan_lookups(...)` in traversal. The production
-`prepared_lookups.call_plans` aggregate field read was removed.
-
-Step 3 found no additional include/dependency contraction safe yet because
-`traversal.cpp` still builds and retains `PreparedFunctionLookups` for
-unselected fields: `address_materializations`, `move_bundles`, `value_homes`,
-and downstream aggregate `prepared_lookups` consumers.
+Selection basis: after the completed `call_plans` packet, traversal still only
+reads `prepared_lookups.address_materializations` to populate the existing
+`FunctionLoweringContext::address_materialization_lookups` pointer. The narrow
+builder `prepare::make_prepared_address_materialization_lookups(...)` already
+exists, so this follows the same target-local projection pattern as the
+completed `call_plans` group.
 
 ## Suggested Next
 
-Plan-owner lifecycle decision: either continue this runbook by selecting the
-next aggregate field group, or retire/split if the remaining fields need a
-fresh route review.
+Executor packet: perform Step 2 by building a local
+`PreparedAddressMaterializationLookups` projection in AArch64 traversal and
+assigning `function_context.address_materialization_lookups` from that
+projection instead of from `prepared_lookups.address_materializations`.
+
+Suggested narrow proof command for the supervisor to confirm or adjust:
+
+```sh
+cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure
+```
 
 ## Watchouts
 
-- Keep `PreparedFunctionLookups` available in traversal until a later packet
-  splits the remaining unselected fields: `address_materializations`,
-  `move_bundles`, `value_homes`, and aggregate `prepared_lookups` consumers.
-- Do not migrate or contract `return_chains` through this runbook.
-- Do not create a renamed aggregate or generic BIR lowering-plan facade.
-- Do not edit `ideas/open/175_prepared_function_lookups_aggregate_privacy.md`
-  for routine execution notes.
-- Do not select `return_chains`; that group remains rejected for this runbook.
-- Treat the AArch64 fixture aggregate-field assignments as test harness
-  compatibility unless the supervisor explicitly delegates test cleanup.
-- The direct `../../../prealloc/calls.hpp` include remains justified by
-  `prepare::make_prepared_call_plan_lookups`; removing it would rely on the
-  transitive `prepared_lookups.hpp` include through `traversal.hpp`.
+- Keep `PreparedFunctionLookups` available in traversal for unselected fields.
+- Do not change `move_bundles`, `value_homes`, `memory_accesses`,
+  `edge_publications`, `edge_publication_source_producers`, or `return_chains`
+  in this packet.
+- Do not migrate target addressing/layout payloads into BIR.
+- Do not remove `prepared_lookups.hpp` exposure while traversal and other
+  AArch64 consumers still need unselected aggregate fields.
+- Treat fixture aggregate-field assignments as test harness compatibility
+  unless the supervisor explicitly delegates test cleanup.
 
 ## Proof
 
-Supervisor-selected Step 4 proof passed and was captured in `test_after.log`:
-
-```sh
-cmake --build build --target backend_aarch64_call_boundary_owner_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_aarch64_instruction_dispatch)$' --output-on-failure
-```
-
-Result: `backend_aarch64_instruction_dispatch` and
-`backend_aarch64_call_boundary_owner` both passed. The proof log is
-`test_after.log`.
+Lifecycle-only reset. No code validation was run by plan-owner.
