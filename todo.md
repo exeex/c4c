@@ -1,29 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/172_route6_call_use_semantic_source_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove The Narrow Migration
+Current Step ID: 5
+Current Step Title: Contract Only Proven Prepared Surface
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3 by migrating the selected AArch64 scalar call-argument
-source-producer materialization consumer to read semantic source-producer facts
-from an indexed Route 6 call-use source record when one is available.
-
-`lower_scalar_call_argument_producers()` now builds a current-call
-`Route6CallUseSourceIndex`, and
-`find_scalar_call_argument_source_producer_materialization()` looks up the
-argument producer through `route6_find_call_argument_source_producer()`.
-Prepared source-producer lookup remains only as the fallback/oracle path when
-the indexed Route 6 record is unavailable or incomplete. ABI/layout-bound reads
-continue to use the prepared call argument plan.
+Completed plan Step 4 by rerunning the delegated narrow Route 6 migration
+proof. The selected Route 6 source-producer oracle
+(`backend_prepared_lookup_helper`) and the narrow AArch64 call-lowering subset
+(`backend_codegen_route_aarch64_prepared_call_boundary_scalability`) are green.
 
 ## Suggested Next
 
-Execute plan Step 4 by proving the narrow migration without treating the green
-subset as broad prepared-call cache contraction.
+Execute plan Step 5 by contracting only the prepared semantic-source surface
+proven redundant by the selected AArch64 scalar call-argument source-producer
+migration. Keep ABI/layout and broad prepared-call cache surfaces intact unless
+the supervisor delegates a narrower owned target.
 
 ## Watchouts
 
@@ -31,6 +26,10 @@ subset as broad prepared-call cache contraction.
 - Do not copy prepared call plans, aggregate transport, or helper/carrier
   policy into BIR.
 - Do not weaken call-boundary expectations to claim cache contraction.
+- Do not claim broad prepared-call cache contraction from the Step 4 green
+  subset; it proves only the selected Route 6 oracle and narrow AArch64
+  call-lowering path.
+- No expectation downgrades were made or validated as part of Step 4.
 - Do not broaden Step 2 or Step 3 into direct-global dependency,
   publication-source routing, indirect callee, result-source, or lane-source
   consumers; those are separate Route 6 classes.
@@ -44,8 +43,10 @@ subset as broad prepared-call cache contraction.
 
 ## Proof
 
-Passed delegated Step 3 proof; canonical log path is `test_after.log`.
+Passed delegated Step 4 proof; canonical log path is `test_after.log`.
 
 ```bash
 (cmake --build build --target c4cll backend_prepared_lookup_helper_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_codegen_route_aarch64_prepared_call_boundary_scalability)$' --output-on-failure) > test_after.log 2>&1
 ```
+
+Result: 2/2 tests passed.
