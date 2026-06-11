@@ -27416,6 +27416,24 @@ int block_entry_publication_register_uses_indexed_value_identity() {
                                                    1);
   const auto value =
       bir::Value::named(bir::TypeKind::I32, "%block.entry.indexed.value");
+  const auto route4_identity = mir::find_bir_block_entry_publication_identity(
+      mir::BirBlockEntryPublicationIdentityRequest{
+          .successor_block = join_context.bir_block,
+          .successor_label = std::string_view{join_route_block.label},
+          .successor_label_id = join_label,
+          .destination_value = &value,
+          .destination_value_id = prepare::PreparedValueId{720},
+          .destination_value_name = value.name,
+          .destination_value_name_id = value_name,
+          .destination_value_type = bir::TypeKind::I32,
+      });
+  if (!route4_identity ||
+      route4_identity.destination_value_id != prepare::PreparedValueId{720} ||
+      route4_identity.destination_value_name_id != value_name ||
+      route4_identity.destination_value_name != value.name ||
+      route4_identity.destination_value_type != value.type) {
+    return fail("expected Route 4 block-entry identity to match the prepared destination identity");
+  }
   const auto published =
       aarch64_codegen::current_block_entry_publication_register(
           join_context, value, aarch64_abi::RegisterView::W);
@@ -27454,6 +27472,22 @@ int block_entry_publication_register_uses_indexed_value_identity() {
       wrong_type_fallback->reg.index != 6 ||
       wrong_type_fallback->expected_view != aarch64_abi::RegisterView::W) {
     return fail("expected block-entry publication register to preserve prepared fallback for invalid Route 4 data");
+  }
+
+  auto wrong_name_route_block = join_route_block;
+  std::get<bir::PhiInst>(wrong_name_route_block.insts.front()).result.name =
+      "%block.entry.mismatched.value";
+  auto wrong_name_context = join_context;
+  wrong_name_context.bir_block = &wrong_name_route_block;
+  const auto wrong_name_fallback =
+      aarch64_codegen::current_block_entry_publication_register(
+          wrong_name_context, value, aarch64_abi::RegisterView::W);
+  if (!wrong_name_fallback.has_value() ||
+      wrong_name_fallback->value_id != prepare::PreparedValueId{720} ||
+      wrong_name_fallback->value_name != value_name ||
+      wrong_name_fallback->reg.index != 6 ||
+      wrong_name_fallback->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected block-entry publication register to preserve prepared fallback for mismatched Route 4 data");
   }
 
   auto missing_value_id_lookups = prepared_lookups;

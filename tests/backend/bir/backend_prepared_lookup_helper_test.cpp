@@ -7265,14 +7265,28 @@ int verify_bir_block_entry_publication_identity_lookup() {
           bir::RouteIndexValidationStatus::Diverged ||
       facade_entry_type_mismatch_ref.status !=
           indexed_entry_type_mismatch_ref.status ||
+      facade_entry_type_mismatch_ref.route_status !=
+          indexed_entry_type_mismatch_ref.route_status ||
       facade_entry_missing_ref.status != indexed_entry_missing_ref.status ||
+      facade_entry_missing_ref.route_status !=
+          indexed_entry_missing_ref.route_status ||
       facade_entry_missing_value_ref.status !=
           indexed_entry_missing_value_ref.status ||
+      facade_entry_missing_value_ref.route_status !=
+          indexed_entry_missing_value_ref.route_status ||
       facade_entry_stale_ref.status != indexed_entry_stale_ref.status ||
+      facade_entry_stale_ref.route_status !=
+          indexed_entry_stale_ref.route_status ||
       facade_entry_wrong_relationship_ref.status !=
           indexed_entry_wrong_relationship_ref.status ||
+      facade_entry_wrong_relationship_ref.route_status !=
+          indexed_entry_wrong_relationship_ref.route_status ||
       facade_entry_duplicate_ref.status != indexed_entry_duplicate_ref.status ||
-      facade_entry_diverged_ref.status != indexed_entry_diverged_ref.status) {
+      facade_entry_duplicate_ref.route_status !=
+          indexed_entry_duplicate_ref.route_status ||
+      facade_entry_diverged_ref.status != indexed_entry_diverged_ref.status ||
+      facade_entry_diverged_ref.route_status !=
+          indexed_entry_diverged_ref.route_status) {
     return fail("Route 4 block-entry publication facade should match direct reference validation for missing, type, stale, wrong-relationship, duplicate, and diverged cases");
   }
 
