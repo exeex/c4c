@@ -47,3 +47,12 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
   matching.
 - Tests are weakened, or invalid-reference/fallback cases are removed.
 - One selected consumer is claimed as route-wide comparison helper contraction.
+
+## Closure Note
+
+Closed after migrating the selected consumer
+`aarch64::codegen::lower_materialized_compare_condition_branch(...)` to prefer
+validated Route 7 materialized-condition provenance while preserving prepared
+and emitted-condition fallback behavior. Reviewer and supervisor validation
+accepted this as the intended one-consumer migration; route-wide helper
+contraction remains out of scope.
