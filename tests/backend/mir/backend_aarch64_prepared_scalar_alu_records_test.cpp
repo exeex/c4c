@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -838,6 +840,267 @@ int prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts() {
   return 0;
 }
 
+prepare::PreparedBirModule prepared_select_publication_module(bool direct_global,
+                                                              bool nested_chain) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("route2.select.publication");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("entry");
+  const auto selector_name = prepared.names.value_names.intern("%selector");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto inner_name = prepared.names.value_names.intern("%inner");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  const auto prepared_global_name = prepared.names.link_names.intern("route2.global");
+  const auto bir_global_name = prepared.module.names.link_names.intern("route2.global");
+
+  if (direct_global) {
+    prepared.module.globals.push_back(bir::Global{
+        .name = "route2.global",
+        .link_name_id = bir_global_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = bir_entry_label;
+  if (direct_global) {
+    entry.insts.push_back(bir::LoadGlobalInst{
+        .result = named_value(bir::TypeKind::I32, "%loaded"),
+        .global_name = "route2.global",
+        .global_name_id = bir_global_name,
+        .byte_offset = 0,
+        .align_bytes = 4,
+    });
+  }
+  if (nested_chain) {
+    entry.insts.push_back(bir::SelectInst{
+        .predicate = bir::BinaryOpcode::Eq,
+        .result = named_value(bir::TypeKind::I32, "%inner"),
+        .compare_type = bir::TypeKind::I32,
+        .lhs = named_value(bir::TypeKind::I32, "%selector"),
+        .rhs = bir::Value::immediate_i32(1),
+        .true_value = direct_global ? named_value(bir::TypeKind::I32, "%loaded")
+                                    : bir::Value::immediate_i32(7),
+        .false_value = bir::Value::immediate_i32(3),
+    });
+  }
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = named_value(bir::TypeKind::I32, "%selected"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = named_value(bir::TypeKind::I32, "%selector"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = nested_chain
+                        ? named_value(bir::TypeKind::I32, "%inner")
+                        : (direct_global ? named_value(bir::TypeKind::I32, "%loaded")
+                                         : bir::Value::immediate_i32(5)),
+      .false_value = bir::Value::immediate_i32(11),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  bir::Function function;
+  function.name = "route2.select.publication";
+  function.link_name_id = prepared.module.names.link_names.intern("route2.select.publication");
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{60},
+                  .function_name = function_name,
+                  .value_name = selector_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{60},
+                  .offset_bytes = std::size_t{8},
+                  .size_bytes = std::size_t{4},
+                  .align_bytes = std::size_t{4},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{61},
+                  .function_name = function_name,
+                  .value_name = loaded_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{61},
+                  .offset_bytes = std::size_t{12},
+                  .size_bytes = std::size_t{4},
+                  .align_bytes = std::size_t{4},
+              },
+              register_home(prepare::PreparedValueId{62}, function_name, inner_name, "w1"),
+              register_home(prepare::PreparedValueId{63}, function_name, selected_name, "w0"),
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              frame_slot_storage(prepare::PreparedValueId{60},
+                                 selector_name,
+                                 prepare::PreparedFrameSlotId{60},
+                                 8),
+              frame_slot_storage(prepare::PreparedValueId{61},
+                                 loaded_name,
+                                 prepare::PreparedFrameSlotId{61},
+                                 12),
+              register_storage(prepare::PreparedValueId{62}, inner_name, "w1"),
+              register_storage(prepare::PreparedValueId{63}, selected_name, "w0"),
+          },
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {
+              prepare::PreparedFrameSlot{
+                  .slot_id = prepare::PreparedFrameSlotId{60},
+                  .object_id = prepare::PreparedObjectId{60},
+                  .function_name = function_name,
+                  .offset_bytes = 8,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .fixed_location = true,
+              },
+              prepare::PreparedFrameSlot{
+                  .slot_id = prepare::PreparedFrameSlotId{61},
+                  .object_id = prepare::PreparedObjectId{61},
+                  .function_name = function_name,
+                  .offset_bytes = 12,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .fixed_location = true,
+              },
+          },
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .accesses = direct_global
+                      ? std::vector<prepare::PreparedMemoryAccess>{
+                            prepare::PreparedMemoryAccess{
+                                .function_name = function_name,
+                                .block_label = entry_label,
+                                .inst_index = 0,
+                                .result_value_name = loaded_name,
+                                .address =
+                                    prepare::PreparedAddress{
+                                        .base_kind =
+                                            prepare::PreparedAddressBaseKind::GlobalSymbol,
+                                        .symbol_name = prepared_global_name,
+                                        .byte_offset = 0,
+                                        .size_bytes = 4,
+                                        .align_bytes = 4,
+                                        .can_use_base_plus_offset = true,
+                                    },
+                            },
+                        }
+                      : std::vector<prepare::PreparedMemoryAccess>{},
+  });
+
+  return prepared;
+}
+
+std::optional<std::string> lower_select_publication_asm(prepare::PreparedBirModule& prepared) {
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& function = prepared.module.functions.front();
+  const auto& block = function.blocks.front();
+  const auto select_index =
+      static_cast<std::size_t>(std::find_if(block.insts.rbegin(),
+                                            block.insts.rend(),
+                                            [](const bir::Inst& inst) {
+                                              return std::get_if<bir::SelectInst>(&inst) !=
+                                                     nullptr;
+                                            })
+                               .base() -
+                               block.insts.begin() - 1);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+
+  c4c::backend::aarch64::module::BlockLoweringContext context{
+      .function =
+          c4c::backend::aarch64::module::FunctionLoweringContext{
+              .prepared = &prepared,
+              .target_profile = &prepared.target_profile,
+              .control_flow = &control_flow,
+              .bir_function = &function,
+              .value_locations = &prepared.value_locations.functions.front(),
+              .storage_plan = &prepared.storage_plans.functions.front(),
+              .prepared_lookups = &prepared_lookups,
+          },
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &block,
+  };
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  c4c::backend::aarch64::module::ModuleLoweringDiagnostics diagnostics;
+  auto lowered = aarch64_codegen::lower_scalar_control_value_instruction(
+      context, block.insts[select_index], select_index, scalar_state, diagnostics);
+  if (!lowered.has_value()) {
+    return std::nullopt;
+  }
+  const auto* assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(&lowered->target.payload);
+  if (assembler == nullptr || !assembler->has_inline_asm_payload) {
+    return std::nullopt;
+  }
+  return assembler->inline_asm_template;
+}
+
+bool contains_text(const std::string& text, const char* needle) {
+  return text.find(needle) != std::string::npos;
+}
+
+int select_result_publication_uses_route2_direct_global_materialization() {
+  auto prepared = prepared_select_publication_module(true, false);
+  const auto asm_text = lower_select_publication_asm(prepared);
+  if (!asm_text.has_value() ||
+      !contains_text(*asm_text, "b.eq 1f") ||
+      !contains_text(*asm_text, "2:") ||
+      contains_text(*asm_text, "csel ")) {
+    return fail("expected direct-global select result to use Route 2 chain materialization");
+  }
+  return 0;
+}
+
+int select_result_publication_without_direct_global_keeps_csel_path() {
+  auto prepared = prepared_select_publication_module(false, false);
+  const auto asm_text = lower_select_publication_asm(prepared);
+  if (!asm_text.has_value() ||
+      !contains_text(*asm_text, "csel w0,") ||
+      contains_text(*asm_text, "b.eq 1f")) {
+    return fail("expected non-direct-global select result to keep ordinary csel lowering");
+  }
+  return 0;
+}
+
+int nested_select_result_publication_uses_route2_chain_labels() {
+  auto prepared = prepared_select_publication_module(true, true);
+  const auto asm_text = lower_select_publication_asm(prepared);
+  if (!asm_text.has_value() ||
+      !contains_text(*asm_text, "b.eq 1f") ||
+      !contains_text(*asm_text, "b.eq 3f") ||
+      !contains_text(*asm_text, "4:") ||
+      contains_text(*asm_text, "csel ")) {
+    return fail("expected nested direct-global select result to use Route 2 chain labels");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_operands() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1401,6 +1664,18 @@ int main() {
     return status;
   }
   if (const int status = prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = select_result_publication_uses_route2_direct_global_materialization();
+      status != 0) {
+    return status;
+  }
+  if (const int status = select_result_publication_without_direct_global_keeps_csel_path();
+      status != 0) {
+    return status;
+  }
+  if (const int status = nested_select_result_publication_uses_route2_chain_labels();
       status != 0) {
     return status;
   }
