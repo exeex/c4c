@@ -10237,11 +10237,72 @@ int verify_bir_return_chain_schema_and_index_lookup() {
   auto manual_duplicate_index = index;
   const bir::Value conflicting_terminal =
       bir::Value::named(bir::TypeKind::I64, "%conflicting.ret");
-  auto conflicting_record = first_record;
-  conflicting_record.terminal_return_value =
+  auto terminal_conflict_record = first_record;
+  terminal_conflict_record.terminal_return_value =
       bir::route1_source_value_identity(conflicting_terminal);
-  manual_duplicate_index.records.push_back(conflicting_record);
-  const auto manual_duplicate_record = bir::route8_find_return_chain_record(
+  manual_duplicate_index.records.push_back(terminal_conflict_record);
+  auto prepared_terminal_conflict_lookups = prepared_return_chains;
+  const auto prepared_conflict_key =
+      prepare::prepared_return_chain_value_key(0, 0, seed_name);
+  prepared_terminal_conflict_lookups
+      .terminal_return_values_by_chain_value[prepared_conflict_key] =
+      c4c::kInvalidValueName;
+  prepared_terminal_conflict_lookups
+      .next_operand_values_by_chain_value[prepared_conflict_key] =
+      c4c::kInvalidValueName;
+  const auto manual_duplicate_terminal_record =
+      bir::route8_find_return_chain_record(manual_duplicate_index, first_key);
+  if (manual_duplicate_terminal_record ||
+      manual_duplicate_terminal_record.status !=
+          bir::Route8ReturnChainStatus::DuplicateRecord ||
+      bir::route8_find_return_chain_terminal_value(
+          manual_duplicate_index, first_key) ||
+      bir::route8_find_return_chain_next_operand_value(
+          manual_duplicate_index, first_key) ||
+      prepare::find_prepared_return_chain_terminal_value(
+          &prepared_terminal_conflict_lookups, 0, 0, seed_name) !=
+          c4c::kInvalidValueName ||
+      prepare::find_prepared_return_chain_next_operand_value(
+          &prepared_terminal_conflict_lookups, 0, 0, seed_name) !=
+          c4c::kInvalidValueName) {
+    return fail(
+        "Route 8 and prepared return-chain helpers should fail closed for duplicate terminal conflicts");
+  }
+
+  auto manual_next_duplicate_index = index;
+  const bir::Value conflicting_next =
+      bir::Value::named(bir::TypeKind::I64, "%conflicting.next");
+  auto next_conflict_record = first_record;
+  next_conflict_record.next_operand_value =
+      bir::route1_source_value_identity(conflicting_next);
+  manual_next_duplicate_index.records.push_back(next_conflict_record);
+  auto prepared_next_conflict_lookups = prepared_return_chains;
+  prepared_next_conflict_lookups
+      .terminal_return_values_by_chain_value[prepared_conflict_key] =
+      c4c::kInvalidValueName;
+  prepared_next_conflict_lookups
+      .next_operand_values_by_chain_value[prepared_conflict_key] =
+      c4c::kInvalidValueName;
+  const auto manual_duplicate_next_record = bir::route8_find_return_chain_record(
+      manual_next_duplicate_index, first_key);
+  if (manual_duplicate_next_record ||
+      manual_duplicate_next_record.status !=
+          bir::Route8ReturnChainStatus::DuplicateRecord ||
+      bir::route8_find_return_chain_terminal_value(
+          manual_next_duplicate_index, first_key) ||
+      bir::route8_find_return_chain_next_operand_value(
+          manual_next_duplicate_index, first_key) ||
+      prepare::find_prepared_return_chain_terminal_value(
+          &prepared_next_conflict_lookups, 0, 0, seed_name) !=
+          c4c::kInvalidValueName ||
+      prepare::find_prepared_return_chain_next_operand_value(
+          &prepared_next_conflict_lookups, 0, 0, seed_name) !=
+          c4c::kInvalidValueName) {
+    return fail(
+        "Route 8 and prepared return-chain helpers should fail closed for duplicate next-operand conflicts");
+  }
+
+  auto manual_duplicate_record = bir::route8_find_return_chain_record(
       manual_duplicate_index, first_key);
   if (manual_duplicate_record ||
       manual_duplicate_record.status !=
