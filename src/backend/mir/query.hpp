@@ -365,6 +365,23 @@ struct BirSameBlockLoadLocalSourceIdentity {
   }
 };
 
+struct BirSameBlockLoadLocalStoredValueSourceIdentity {
+  BirMemoryAccessIdentity load_memory_access;
+  BirMemoryAccessIdentity store_memory_access;
+  const bir::LoadLocalInst* load_local = nullptr;
+  const bir::StoreLocalInst* store_local = nullptr;
+  SameBlockValueIdentity loaded_value;
+  SameBlockValueIdentity stored_value;
+  std::string_view root_value_name;
+  bir::TypeKind root_value_type = bir::TypeKind::Void;
+  std::size_t before_instruction_index = 0;
+
+  [[nodiscard]] explicit operator bool() const {
+    return load_local != nullptr && store_local != nullptr &&
+           load_memory_access && store_memory_access && stored_value;
+  }
+};
+
 struct SameBlockProducerIndex {
   const bir::Inst* producer = nullptr;
   std::size_t instruction_index = 0;
@@ -471,6 +488,10 @@ find_bir_same_block_global_load_access_identity(
 
 [[nodiscard]] BirSameBlockLoadLocalSourceIdentity
 find_bir_same_block_load_local_source_identity(
+    BirSameBlockLoadLocalSourceRequest request);
+
+[[nodiscard]] BirSameBlockLoadLocalStoredValueSourceIdentity
+find_bir_same_block_load_local_stored_value_source_identity(
     BirSameBlockLoadLocalSourceRequest request);
 
 [[nodiscard]] BirCurrentBlockPublicationIdentity

@@ -8011,6 +8011,27 @@ find_prepared_indirect_callee_stored_value_source(
     const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     const bir::Value& value,
     std::size_t before_instruction_index) {
+  if (context.control_flow_block != nullptr && context.bir_block != nullptr) {
+    const auto route3 =
+        mir::find_bir_same_block_load_local_stored_value_source_identity(
+            mir::BirSameBlockLoadLocalSourceRequest{
+                .block = context.bir_block,
+                .block_label = context.bir_block->label,
+                .root_value = &value,
+                .root_value_name = value.kind == bir::Value::Kind::Named
+                                       ? std::string_view(value.name)
+                                       : std::string_view{},
+                .root_value_type = value.type,
+                .before_instruction_index = before_instruction_index,
+            });
+    if (route3 && route3.stored_value.value != nullptr) {
+      return prepare::PreparedSameBlockLoadLocalStoredValueSource{
+          .stored_value = *route3.stored_value.value,
+          .store_instruction_index =
+              route3.store_memory_access.instruction_index,
+      };
+    }
+  }
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr) {

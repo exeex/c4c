@@ -1366,6 +1366,9 @@ struct Route3MemoryAccessRecord {
   Route1SourceValueIdentity pointer_value;
   std::string_view string_constant_name;
   LinkNameId string_constant_name_id = kInvalidLinkName;
+  std::int64_t byte_offset = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
 
   [[nodiscard]] explicit operator bool() const { return available; }
 };
@@ -1423,6 +1426,22 @@ struct Route3SameBlockLoadLocalSourceRecord {
   }
 };
 
+struct Route3SameBlockLoadLocalStoredValueSourceRecord {
+  bool available = false;
+  bool source_available = false;
+  Route1SourceValueIdentity root_value;
+  Route1SourceValueIdentity stored_value;
+  std::optional<std::size_t> load_instruction_index;
+  Route3MemoryAccessRecord load_access;
+  std::optional<std::size_t> store_instruction_index;
+  Route3MemoryAccessRecord store_access;
+
+  [[nodiscard]] explicit operator bool() const {
+    return available && source_available && load_access && store_access &&
+           stored_value;
+  }
+};
+
 [[nodiscard]] Route3MemoryAccessNodeKind route3_memory_access_node_kind(
     const Inst& inst);
 
@@ -1469,6 +1488,11 @@ route3_find_same_block_global_load_access(
 
 [[nodiscard]] Route3SameBlockLoadLocalSourceRecord
 route3_find_same_block_load_local_source(
+    Route3MemoryAccessQuery query,
+    const Value& value);
+
+[[nodiscard]] Route3SameBlockLoadLocalStoredValueSourceRecord
+route3_find_same_block_load_local_stored_value_source(
     Route3MemoryAccessQuery query,
     const Value& value);
 

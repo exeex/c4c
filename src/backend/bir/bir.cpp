@@ -664,6 +664,30 @@ namespace {
          lhs.local_slot_name == rhs.local_slot_name;
 }
 
+[[nodiscard]] bool route3_same_local_range(
+    const Route3MemoryAccessRecord& lhs,
+    const Route3MemoryAccessRecord& rhs) {
+  return route3_same_local_slot(lhs, rhs) &&
+         lhs.byte_offset == rhs.byte_offset &&
+         lhs.size_bytes != 0 &&
+         lhs.size_bytes == rhs.size_bytes;
+}
+
+[[nodiscard]] bool route3_local_ranges_overlap(
+    const Route3MemoryAccessRecord& lhs,
+    const Route3MemoryAccessRecord& rhs) {
+  if (!route3_same_local_slot(lhs, rhs) ||
+      lhs.size_bytes == 0 ||
+      rhs.size_bytes == 0) {
+    return false;
+  }
+  const auto lhs_begin = lhs.byte_offset;
+  const auto rhs_begin = rhs.byte_offset;
+  const auto lhs_end = lhs_begin + static_cast<std::int64_t>(lhs.size_bytes);
+  const auto rhs_end = rhs_begin + static_cast<std::int64_t>(rhs.size_bytes);
+  return lhs_begin < rhs_end && rhs_begin < lhs_end;
+}
+
 }  // namespace
 
 Route3MemoryAccessRecord route3_memory_access_record(
@@ -695,6 +719,9 @@ Route3MemoryAccessRecord route3_memory_access_record(
       .address_space = address->address_space,
       .is_volatile = address->is_volatile,
       .base_kind = base_kind,
+      .byte_offset = address->byte_offset,
+      .size_bytes = address->size_bytes,
+      .align_bytes = address->align_bytes,
   };
   if (const auto* result = route3_result_value(inst); result != nullptr) {
     record.result_value = route1_source_value_identity(*result);
@@ -937,6 +964,70 @@ route3_find_same_block_load_local_source(
     return record;
   }
   record.source_available = true;
+  return record;
+}
+
+Route3SameBlockLoadLocalStoredValueSourceRecord
+route3_find_same_block_load_local_stored_value_source(
+    Route3MemoryAccessQuery query,
+    const Value& value) {
+  Route3SameBlockLoadLocalStoredValueSourceRecord record{
+      .available = value.kind == Value::Kind::Named && !value.name.empty(),
+      .root_value = route1_source_value_identity(value),
+  };
+  if (!query || !record.available) {
+    return {};
+  }
+  const Route3MemoryAccessRecord* load_access = nullptr;
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& candidate = *it;
+    if (!candidate ||
+        candidate.node_kind != Route3MemoryAccessNodeKind::LoadLocal ||
+        candidate.base_kind != Route3MemoryAccessBaseKind::LocalSlot ||
+        candidate.instruction_index >= query.before_instruction_index ||
+        candidate.result_value.value_kind != Value::Kind::Named ||
+        candidate.result_value.name != value.name ||
+        candidate.result_value.type != value.type) {
+      continue;
+    }
+    load_access = &candidate;
+    break;
+  }
+  if (load_access == nullptr) {
+    return record;
+  }
+  record.load_instruction_index = load_access->instruction_index;
+  record.load_access = *load_access;
+
+  for (auto it = query.index->records.rbegin();
+       it != query.index->records.rend();
+       ++it) {
+    const auto& candidate = *it;
+    if (!candidate ||
+        candidate.node_kind != Route3MemoryAccessNodeKind::StoreLocal ||
+        candidate.base_kind != Route3MemoryAccessBaseKind::LocalSlot ||
+        candidate.instruction_index >= load_access->instruction_index ||
+        !route3_same_local_slot(*load_access, candidate)) {
+      continue;
+    }
+    if (!route3_same_local_range(*load_access, candidate)) {
+      if (route3_local_ranges_overlap(*load_access, candidate)) {
+        return record;
+      }
+      continue;
+    }
+    if (!candidate.stored_value) {
+      return record;
+    }
+    record.store_instruction_index = candidate.instruction_index;
+    record.store_access = candidate;
+    record.stored_value = candidate.stored_value;
+    record.source_available = true;
+    return record;
+  }
+
   return record;
 }
 

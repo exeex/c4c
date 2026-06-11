@@ -179,6 +179,9 @@ namespace {
       .global_name_id = record.global_name_id,
       .pointer_value_name = record.pointer_value.name,
       .string_constant_name = record.string_constant_name,
+      .byte_offset = record.byte_offset,
+      .size_bytes = record.size_bytes,
+      .align_bytes = record.align_bytes,
   };
 }
 
@@ -1720,6 +1723,70 @@ find_bir_same_block_load_local_source_identity(
       .memory_access = memory_access,
       .load_local = load_local,
       .result_value = producer.produced_value,
+      .root_value_name = value_name,
+      .root_value_type = value_type,
+      .before_instruction_index = request.before_instruction_index,
+  };
+}
+
+[[nodiscard]] BirSameBlockLoadLocalStoredValueSourceIdentity
+find_bir_same_block_load_local_stored_value_source_identity(
+    BirSameBlockLoadLocalSourceRequest request) {
+  if (!request ||
+      (!request.block_label.empty() && request.block_label != request.block->label)) {
+    return {};
+  }
+  const auto value_name = root_value_name(request);
+  if (value_name.empty()) {
+    return {};
+  }
+  const auto value_type = root_value_type(request);
+  if (value_type == bir::TypeKind::Void) {
+    return {};
+  }
+  const auto index = bir::route3_build_memory_access_index(*request.block);
+  const auto before = std::min(request.before_instruction_index,
+                               request.block->insts.size());
+  const auto record =
+      bir::route3_find_same_block_load_local_stored_value_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &index,
+              .before_instruction_index = before,
+          },
+          bir::Value::named(value_type, std::string(value_name)));
+  if (!record) {
+    return {};
+  }
+  const auto* load_local =
+      record.load_access.instruction != nullptr
+          ? std::get_if<bir::LoadLocalInst>(record.load_access.instruction)
+          : nullptr;
+  const auto* store_local =
+      record.store_access.instruction != nullptr
+          ? std::get_if<bir::StoreLocalInst>(record.store_access.instruction)
+          : nullptr;
+  if (load_local == nullptr || store_local == nullptr) {
+    return {};
+  }
+  const auto load_memory_access =
+      route3_memory_access_to_mir(record.load_access);
+  const auto store_memory_access =
+      route3_memory_access_to_mir(record.store_access);
+  if (!load_memory_access ||
+      !store_memory_access ||
+      load_memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
+      store_memory_access.base_kind != BirMemoryAccessBaseKind::LocalSlot ||
+      load_memory_access.result_value_name != value_name) {
+    return {};
+  }
+  return BirSameBlockLoadLocalStoredValueSourceIdentity{
+      .load_memory_access = load_memory_access,
+      .store_memory_access = store_memory_access,
+      .load_local = load_local,
+      .store_local = store_local,
+      .loaded_value = route1_source_value_identity_to_same_block(record.root_value),
+      .stored_value =
+          route1_source_value_identity_to_same_block(record.stored_value),
       .root_value_name = value_name,
       .root_value_type = value_type,
       .before_instruction_index = request.before_instruction_index,

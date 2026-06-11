@@ -164,6 +164,64 @@ bool prepared_and_bir_load_local_source_match(
          mir_identity.result_value.type == value.type;
 }
 
+bool prepared_and_bir_load_local_stored_source_match(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedEdgePublicationSourceProducerLookups& source_producers,
+    c4c::BlockLabelId block_label,
+    const bir::Block& block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &addressing,
+          &source_producers,
+          block_label,
+          &block,
+          value,
+          before_instruction_index);
+  const auto mir_identity =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value = &value,
+              .root_value_name = value.kind == bir::Value::Kind::Named
+                                     ? std::string_view(value.name)
+                                     : std::string_view{},
+              .root_value_type = value.type,
+              .before_instruction_index = before_instruction_index,
+          });
+  const auto route3_index = bir::route3_build_memory_access_index(block);
+  const auto route3 =
+      bir::route3_find_same_block_load_local_stored_value_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &route3_index,
+              .before_instruction_index = before_instruction_index,
+          },
+          value);
+  if (prepared.has_value() != static_cast<bool>(mir_identity) ||
+      static_cast<bool>(mir_identity) != static_cast<bool>(route3)) {
+    return false;
+  }
+  if (!prepared.has_value()) {
+    return true;
+  }
+  return mir_identity.store_local != nullptr &&
+         mir_identity.store_local->value == prepared->stored_value &&
+         mir_identity.stored_value.name == prepared->stored_value.name &&
+         mir_identity.stored_value.type == prepared->stored_value.type &&
+         mir_identity.store_memory_access.instruction_index ==
+             prepared->store_instruction_index &&
+         mir_identity.load_memory_access.instruction_index ==
+             prepared->load_access->inst_index &&
+         route3.store_access.instruction_index ==
+             prepared->store_instruction_index;
+}
+
 int records_local_store_source_identity() {
   const auto source = bir::Value::named(bir::TypeKind::I64, "%stored");
   auto access = frame_slot_store_access(101, 7, 16);
@@ -884,6 +942,165 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
   return 0;
 }
 
+int route3_load_local_stored_value_source_matches_prepared_or_falls_back() {
+  prepare::PreparedNameTables names;
+  const auto block_label = c4c::BlockLabelId{23};
+  const auto slot_id = prepare::PreparedFrameSlotId{9};
+  const auto loaded_name = names.value_names.intern("%loaded");
+  const auto stored_name = names.value_names.intern("%stored");
+
+  prepare::PreparedStackLayout stack_layout;
+  stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = 4,
+      .function_name = 17,
+      .offset_bytes = 64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block block;
+  block.label = "entry";
+  block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I64, "%stored"),
+      .byte_offset = 0,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
+  });
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%loaded"),
+      .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .byte_offset = 0,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "slot",
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
+  });
+
+  const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[1]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .load_local = load,
+      });
+  prepare::PreparedAddressingFunction addressing;
+  auto store_access = frame_slot_store_access(stored_name, slot_id, 0);
+  store_access.inst_index = 0;
+  addressing.accesses = {
+      store_access,
+      frame_slot_load_access(loaded_name, slot_id, 1, 0),
+  };
+  const auto exact_prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &addressing,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          block.insts.size());
+  if (!exact_prepared.has_value()) {
+    return fail("expected prepared stored-value source for exact same-slot range");
+  }
+  const auto exact_route3_index = bir::route3_build_memory_access_index(block);
+  const auto exact_route3 =
+      bir::route3_find_same_block_load_local_stored_value_source(
+          bir::Route3MemoryAccessQuery{
+              .index = &exact_route3_index,
+              .before_instruction_index = block.insts.size(),
+          },
+          bir::Value::named(bir::TypeKind::I64, "%loaded"));
+  if (!exact_route3) {
+    return fail("expected raw Route 3 stored-value source for exact same-slot range");
+  }
+  const auto exact_mir =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = block.insts.size(),
+          });
+  if (!exact_mir) {
+    return fail("expected MIR Route 3 stored-value source for exact same-slot range");
+  }
+  if (exact_prepared->stored_value.name != "%stored" ||
+      exact_prepared->store_instruction_index != 0U ||
+      exact_route3.store_instruction_index !=
+          exact_prepared->store_instruction_index ||
+      exact_route3.stored_value.name != "%stored" ||
+      exact_mir.store_memory_access.instruction_index !=
+          exact_prepared->store_instruction_index ||
+      exact_mir.load_memory_access.instruction_index != 1U ||
+      exact_mir.stored_value.name != "%stored" ||
+      exact_mir.stored_value.type != bir::TypeKind::I64) {
+    return fail("expected Route 3 stored-value source to match prepared oracle");
+  }
+
+  bir::Block fallback_block = block;
+  auto* fallback_store = std::get_if<bir::StoreLocalInst>(&fallback_block.insts[0]);
+  auto* fallback_load = std::get_if<bir::LoadLocalInst>(&fallback_block.insts[1]);
+  if (fallback_store == nullptr || fallback_load == nullptr ||
+      !fallback_store->address.has_value() || !fallback_load->address.has_value()) {
+    return fail("expected fallback fixture to contain addressed store/load locals");
+  }
+  fallback_store->address->size_bytes = 0;
+  fallback_load->address->size_bytes = 0;
+  auto fallback_source_producers = source_producers;
+  fallback_source_producers.producers_by_value_name[loaded_name].load_local =
+      fallback_load;
+  const auto prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &addressing,
+          &fallback_source_producers,
+          block_label,
+          &fallback_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          fallback_block.insts.size());
+  const auto route3 =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &fallback_block,
+              .block_label = fallback_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = fallback_block.insts.size(),
+          });
+  if (!prepared.has_value()) {
+    return fail("expected prepared stored-value source despite missing Route 3 range authority");
+  }
+  if (route3) {
+    return fail("expected prepared fallback when Route 3 cannot answer stored-value source");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule cast_store_source_fixture() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("store_cast_source");
@@ -1381,6 +1598,11 @@ int main() {
     return rc;
   }
   if (int rc = finds_unpublished_load_local_source_from_indexed_authority();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          route3_load_local_stored_value_source_matches_prepared_or_falls_back();
       rc != 0) {
     return rc;
   }
