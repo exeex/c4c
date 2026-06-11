@@ -1,55 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/203_route4_publication_identity_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Success, Rejection, Fallback, And Output
+Current Step ID: 5
+Current Step Title: Broader Validation And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added focused acceptance coverage for the selected AArch64
-call-boundary current-block publication source reader.
+Step 5 ran the supervisor-selected broader backend validation for the selected
+Route 4 adapter slice.
 
-`backend_aarch64_instruction_dispatch_test.cpp` now proves the public
-`materialize_call_boundary_source_to_destination(...)` path can materialize the
-stack-source call-boundary value from Route 4 semantic identity with prepared
-producer lookups removed, preserves prepared fallback when the Route 4 owner
-label is stale/wrong, and fails closed when that stale Route 4 fact has no
-prepared fallback.
+The selected AArch64 call-boundary current-block publication source reader uses
+Route 4 only for semantic identity: destination/source value identity, source
+producer identity, producer instruction/index, source-producer kind, and
+block/program-point compatibility. Prepared publication lookup remains
+authoritative for mechanics and output-sensitive behavior, including
+move/home/storage policy, stack-source extension, block-order emission, wrapper
+formatting, immediate payload spelling, emitted strings, and prepared fallback
+when the selected reader contract allows it.
 
-`backend_prepare_frame_stack_call_contract_test.cpp` now pins the Route 4
-current-block reference statuses for successful validation plus missing,
-mismatched type/wrong-key, duplicate reference, stale owner, and
-wrong-relationship facts. Prepared publication mechanics and output-sensitive
-emission still remain outside Route 4.
+Additional Route 4 readers remain intentionally out of scope for this bounded
+idea. Any migration of block-entry, edge-publication, wrapper, or broader
+prepared-helper readers should be opened as a separate idea rather than
+expanding this completed adapter slice.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: run the supervisor-selected broader validation
-or review handoff for this first Route 4 adapter slice, then decide whether the
-source idea can close or needs a follow-up idea for additional readers.
+Supervisor handoff: decide whether to send this completed Step 5 slice to
+review/close through the plan-owner lifecycle, or open a separate idea for
+additional Route 4 publication identity readers.
 
 ## Watchouts
 
-Keep the adapter scoped to this reader. Do not replace all edge-publication
-lookups or move edge-copy emission, move/home/storage policy, stack-source
-extension, block-order emission, immediate publication payload spelling,
-wrapper formatting, or emitted strings into BIR schema.
-
-Step 5 should decide whether the targeted subset is enough for acceptance or
-whether to add broader `ctest`/regression-guard coverage because this slice
-touches output-sensitive AArch64 dispatch tests and BIR Route 4 reference
-contracts.
+Do not treat this handoff as approval to replace all edge-publication lookups,
+public prepared publication helper groups, wrapper readers, or output policy.
+The broader backend subset found no regression evidence for this selected
+reader, but any additional reader migration needs its own scoped proof for
+absence, mismatch, duplicate/ambiguous, wrong-reference, fallback, and output
+stability behavior.
 
 ## Proof
 
-Step 4 acceptance proof passed and was written to `test_after.log`:
+Step 5 broader backend proof passed and was written to `test_after.log`:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_prepared_lookup_helper)$' > test_after.log
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
 ```
 
-The subset covered `backend_prepare_frame_stack_call_contract`,
-`backend_aarch64_instruction_dispatch`, `backend_aarch64_return_lowering`, and
-`backend_prepared_lookup_helper`; all 4 tests passed.
+The subset covered all 180 tests matching `^backend_`; all 180 tests passed.
