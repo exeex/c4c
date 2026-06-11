@@ -1,7 +1,7 @@
 # Phase D MIR Consumer Switch Plan
 
 Source idea: `ideas/open/181_phase_d_mir_consumer_bir_view_switch_plan.md`
-Status: Step 4 migration ladder and follow-up summaries drafted.
+Status: Finalized for lifecycle closure decision.
 
 This artifact is the durable Phase D analysis surface for planning MIR/codegen
 consumer switches from `Prepared*` wrappers and aggregate lookup caches to BIR
@@ -239,6 +239,49 @@ Each follow-up idea should stay one-rung wide and use this payload shape:
   selected consumer plus existing route oracle tests and any target-policy
   preservation checks needed to prove no prepared policy moved into BIR.
 
-Step 5 should verify that the highest-priority ready rungs are concrete enough
-for plan-owner lifecycle work if the supervisor wants to create or activate
-follow-up `ideas/open/` candidates.
+## Step 5 Final Readiness And Lifecycle Handoff
+
+This artifact satisfies the Phase D source idea completion criteria and is ready
+for lifecycle closure review. It remains an analysis artifact only: it does not
+modify AArch64, x86, or riscv lowering, and it does not claim that selected
+consumer migrations from ideas 167-174 allow broad prepared API deletion.
+
+Completion criteria check:
+
+- Phase A-C and route-closure links are recorded in the Step 1 evidence table,
+  including the Phase A/B/C documents, closed route ideas 167-174, and the
+  separate return-chain owner/schema line.
+- Phase C residual-consumer findings are preserved: each route closure is
+  recorded as selected-consumer or narrow-facade progress, while prepared
+  helpers remain public oracles, fallbacks, target-owned policy surfaces, or
+  residual production/debug/test consumers until separate equivalence and
+  contraction work proves otherwise.
+- The Step 2 dependency map covers AArch64 traversal and dispatch, calls,
+  memory/addressing, value materialization and publication, comparison/ALU,
+  edge copies/control flow, wide values/runtime helpers, and future x86/riscv
+  interface-level consumers.
+- The Step 3 boundaries define route-specific BIR views and temporary adapters
+  without introducing broad BIR rescans, `PreparedFunctionLookups` clones,
+  target-policy ownership in BIR, or target-specific Phase D adapters ahead of
+  AArch64 route-view proof.
+- The Step 4 migration ladder gives each proposed follow-up a consumer group,
+  BIR route prerequisite or view, prepared oracle/fallback boundary,
+  out-of-scope target policy, and proof recommendation.
+- Return-chain remains a no-route blocker for this active Phase D route. It is
+  linked to `docs/bir_prealloc_fusion/return_chain_owner_schema_decision.md`
+  and closed ideas 176-180 as separate context, and is not absorbed into Route
+  1 producer identity, Route 7 comparison provenance, predecessor rescans, name
+  matching, or a generic route-index facade.
+- No implementation source changes are required or proposed by this Phase D
+  artifact.
+
+The clean route review in `review/phase_d_artifact_route_review.md` found no
+blocking route-quality issues and judged the artifact aligned with the source
+idea, on track, and sufficiently proven by narrow docs-only validation. The
+only review note was to keep lifecycle metadata cleanup in `todo.md`, not to
+rewrite the route.
+
+Plan-owner lifecycle work can now decide whether to close the active Phase D
+idea or create/activate separate follow-up implementation ideas from the Step 4
+ladder. Those follow-ups should remain one-rung slices and should not be
+created from this executor packet.
