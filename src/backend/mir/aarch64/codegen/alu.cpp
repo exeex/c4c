@@ -4294,20 +4294,14 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         if (result_register.has_value() && result_home != nullptr &&
             result_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
             authoritative_immediate.has_value() &&
-            context.function.prepared_lookups != nullptr &&
             context.function.value_locations != nullptr) {
-          const auto next_operand_value_name =
-              prepare::find_prepared_return_chain_next_operand_value(
-                  &context.function.prepared_lookups->return_chains,
-                  context.block_index,
-                  instruction_index,
-                  result_home->value_name);
+          const auto next_operand_identity =
+              find_route8_return_chain_next_operand_value(context,
+                                                          instruction_index,
+                                                          binary->result,
+                                                          result_home->value_name);
           const auto* other_home =
-              prepare::find_indexed_prepared_value_home(
-                  context.function.value_home_lookups,
-                  nullptr,
-                  context.function.value_locations,
-                  next_operand_value_name);
+              find_route8_identity_value_home(context, next_operand_identity);
           const auto other_reg =
               other_home != nullptr && other_home->register_name.has_value()
                   ? abi::parse_aarch64_register_name(*other_home->register_name)

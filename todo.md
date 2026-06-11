@@ -1,33 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/179_bir_return_chain_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Terminal Return-Chain Recovery
+Current Step ID: 4
+Current Step Title: Migrate Next-Operand Alias And Scratch Recovery
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Migrate Terminal Return-Chain Recovery changed
-`find_return_chain_register` in
-`src/backend/mir/aarch64/codegen/alu.cpp` to recover terminal return-chain
-identity from the AArch64 Route 8 adapter instead of
-`prepare::find_prepared_return_chain_terminal_value`.
+Step 4 - Migrate Next-Operand Alias And Scratch Recovery changed the
+rematerialized-immediate return-chain collision check in
+`src/backend/mir/aarch64/codegen/alu.cpp` to recover the next operand through
+the AArch64 Route 8 adapter instead of
+`prepare::find_prepared_return_chain_next_operand_value`.
 
-`lower_scalar_instruction` now passes `binary->result` as the chain BIR value.
-The Route 8 terminal identity is resolved back to the existing prepared
-value-home index, then mapped through the existing AArch64 before-return ABI
-register lookup and retargeted to the chain result home as before. The adapter
-keeps the prepared-name keyed query first and retries pure BIR identity only
-for Route 8 `NoMatch`, because function-built Route 8 records currently carry
-BIR names but not prepared name ids.
+`lower_scalar_instruction` now passes `binary->result` as the chain BIR value
+for next-operand identity lookup, resolves the Route 8 identity back through
+the existing AArch64 value-home lookup, and preserves the target-local register
+parsing, alias comparison, scalar view, scratch selection, and ALU record
+construction.
 
 ## Suggested Next
 
-Execute Step 4 by migrating the next-operand rematerialized-immediate collision
-check from `prepare::find_prepared_return_chain_next_operand_value` to the
-Route 8 next-operand identity adapter while preserving the existing AArch64
-scratch-register policy.
+Execute Step 5 by bounding or removing any remaining prepared return-chain
+fallback/read dependency from migrated AArch64 consumers without contracting the
+prepared API.
 
 ## Watchouts
 
@@ -35,12 +32,13 @@ scratch-register policy.
 - Do not contract prepared return-chain APIs in this plan.
 - Preserve fail-closed behavior for missing, invalid, or conflicting BIR route
   answers.
-- The next-operand prepared read remains intentionally in place for Step 4.
 - Route 8 records built directly from BIR do not carry prepared name ids, so
   the AArch64 adapter currently uses a `NoMatch` fallback to pure BIR identity.
 - The helper still builds the Route 8 function index per query. Reuse can be
   introduced later if it becomes necessary, but it is not required for this
   migration slice.
+- `rg` shows no `find_prepared_return_chain_next_operand_value` call remains in
+  `src/backend/mir/aarch64/codegen/alu.cpp`.
 
 ## Proof
 
