@@ -1,38 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/177_bir_return_chain_schema_index.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Focused Schema/Index Tests
+Current Step ID: 5
+Current Step Title: Validate and Hand Off
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed. Added focused Route 8 backend/BIR schema and index coverage in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, plus a narrow
-Route 8 key-matching fix in `src/backend/bir/bir.cpp`.
+Step 5 completed. Validated the Route 8 schema/index slice and left it ready for
+handoff without further implementation expansion.
 
-The new test covers positive same-block return-chain lookups for terminal return
-identity and immediate named next-operand identity through both function and
-block indexes. It also covers unsupported opcode, unnamed chain and terminal
-values, broken walks, non-return terminators, cross-block relationships, missing
-instruction keys, and duplicate conflicting records failing closed without
-comparing against prepared helpers. Positive lookups now build query keys from
-copied equivalent named BIR values to prove Route 8 matches stable `name_id` or
-`name`+`type` before falling back to value pointer identity.
+The delegated focused proof is green. Boundary checks confirm the Route 8 slice
+since activation touches only `src/backend/bir/bir.*`,
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, and `todo.md`; it
+does not modify `src/backend/prealloc/prepared_lookups.*` or
+`src/backend/mir/aarch64/codegen/alu.cpp`. Prepared return-chain helpers remain
+public, and AArch64 consumers were not migrated.
 
 ## Suggested Next
 
-Execute Step 5 by validating the Route 8 slice handoff: confirm the focused
-proof remains green, prepared return-chain helpers and AArch64 consumers remain
-unchanged, and identify idea 178 as the next oracle-equivalence prerequisite.
+Hand off to lifecycle/supervisor review. The next lifecycle prerequisite is
+`ideas/open/178_bir_return_chain_oracle_equivalence.md`, which should compare
+Route 8 answers against the public prepared return-chain helper oracle before
+any consumer migration or prepared API contraction.
 
 ## Watchouts
 
 - Keep the route target-neutral: no homes, registers, ABI placement, scratch
   policy, alias checks, ALU record construction, or emission order.
 - Do not migrate AArch64 consumers or hide prepared return-chain helpers in this
-  idea.
+  idea; Step 5 confirmed this slice did neither.
 - The Route 8 builder currently mirrors the prepared scalar binary opcode set
   and requires named chain and terminal values. Optional next-operand identity is
   published only when the immediate next operand is named.
@@ -55,4 +53,5 @@ Ran the delegated proof command:
 `(cmake --build build --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1`
 
 Result: passed. The `backend_prepared_lookup_helper_test` target built and CTest
-reported `backend_prepared_lookup_helper` passed. Proof log: `test_after.log`.
+reported `backend_prepared_lookup_helper` passed, with 1/1 test passing. Proof
+log: `test_after.log`.
