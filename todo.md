@@ -1,29 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/189_phase_e_cross_target_route_view_interface_reuse.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Interface Reuse and Fallback Coverage
+Current Step ID: Step 4
+Current Step Title: Final Route-Quality Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 made the x86 Route 6-through-`ConsumedPlans` interface and fallback
-coverage run in the default proof path by adding an always-built assertion to
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+Step 4 final route-quality check passed for the selected x86
+`ConsumedPlans` boundary.
 
-The new default-path coverage constructs a scalar named `i32` direct-call
+The accepted slice reuses the proven Route 6 call-use source view at one x86
+call-boundary selector, keeps x86 ABI placement, wrapper-kind decisions, frame
+layout, register selection, move bundles, value homes, and instruction spelling
+target-owned, and does not duplicate `PreparedFunctionLookups` under a
+BIR-owned name.
+
+The interface/fallback proof is now in the default proof path:
+`backend_prepared_lookup_helper` constructs a scalar named `i32` direct-call
 source fixture and proves that
 `find_consumed_scalar_i32_call_argument_source(...)` returns a Route 6
 `ArgumentValue` record only when Route 6 facts and the prepared
-`PreparedCallArgumentPlan` source id agree. The same assertion also checks that
-absent Route 6 facts and mismatched Route 6/prepared source ids fail closed
-while preserving the prepared call-argument selector for fallback.
+`PreparedCallArgumentPlan` source id agree. It also checks that absent Route 6
+facts and mismatched Route 6/prepared source ids fail closed while preserving
+the prepared call-argument selector for fallback.
 
 ## Suggested Next
 
-Supervisor review/acceptance for Step 3, including whether the current runbook
-is now ready for lifecycle close or needs a final broader validation packet.
+Plan-owner lifecycle review: the active runbook appears complete and ready for
+close unless the plan owner finds that the source idea needs a follow-up open
+initiative.
 
 ## Watchouts
 
@@ -35,11 +42,12 @@ is now ready for lifecycle close or needs a final broader validation packet.
   6/prepared agreement and fallback selector preservation without moving x86
   ABI placement, wrapper-kind decisions, frame layout, or instruction spelling
   into BIR.
+- A reviewer found the route aligned after Step 2 and recommended Step 3
+  coverage hardening rather than route reset or plan split.
 
 ## Proof
 
-Ran the supervisor-selected proof exactly, with combined output written to
-`test_after.log`:
+Step 3 narrow proof:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_x86_route_debug|backend_x86_handoff_boundary)$'
@@ -57,3 +65,11 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 ```
 
 Result: passed with no new failures.
+
+Final broader supervisor proof:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: passed, 180/180 backend tests.
