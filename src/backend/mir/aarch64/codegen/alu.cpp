@@ -1354,6 +1354,60 @@ find_prepared_load_local_source_producer(
   return reg;
 }
 
+[[nodiscard]] std::optional<bir::Route8ReturnChainRecord>
+find_route8_return_chain_record(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Value& chain_value,
+    c4c::ValueNameId chain_value_name) {
+  if (context.function.bir_function == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto index =
+      bir::route8_build_return_chain_index(*context.function.bir_function);
+  const auto key =
+      bir::route8_return_chain_value_key(context.function.bir_function,
+                                         *context.bir_block,
+                                         instruction_index,
+                                         chain_value,
+                                         chain_value_name);
+  const auto record = bir::route8_find_return_chain_record(index, key);
+  if (!record.available ||
+      record.status != bir::Route8ReturnChainStatus::Available) {
+    return std::nullopt;
+  }
+  return record;
+}
+
+[[maybe_unused, nodiscard]] bir::Route1SourceValueIdentity
+find_route8_return_chain_terminal_value(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Value& chain_value,
+    c4c::ValueNameId chain_value_name) {
+  const auto record = find_route8_return_chain_record(
+      context, instruction_index, chain_value, chain_value_name);
+  if (!record.has_value() || !record->terminal_return_value) {
+    return {};
+  }
+  return record->terminal_return_value;
+}
+
+[[maybe_unused, nodiscard]] bir::Route1SourceValueIdentity
+find_route8_return_chain_next_operand_value(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::Value& chain_value,
+    c4c::ValueNameId chain_value_name) {
+  const auto record = find_route8_return_chain_record(
+      context, instruction_index, chain_value, chain_value_name);
+  if (!record.has_value() || !record->next_operand_value) {
+    return {};
+  }
+  return record->next_operand_value;
+}
+
 [[nodiscard]] std::optional<RegisterOperand> find_return_chain_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
