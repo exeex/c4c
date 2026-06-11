@@ -1,65 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/180_bir_return_chain_prepared_api_contraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Contract Eligible Prepared API
+Current Step ID: 4
+Current Step Title: Retarget Tests And Diagnostics
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 3 - Contract Eligible Prepared API is complete. The public prepared
-return-chain semantic API was removed from
-`src/backend/prealloc/prepared_lookups.hpp` without changing Route 8
-return-chain semantics.
+Plan Step 4 - Retarget Tests And Diagnostics is complete as a
+verification-only packet. Focused inspection found that Step 3 already
+retargeted the Route 8 return-chain coverage and diagnostics; no code, test,
+or diagnostic edits are needed for Step 4.
 
-Contraction performed:
+Verification performed:
 
-- Removed public `PreparedReturnChainLookups`, including
-  `terminal_return_values_by_chain_value` and
-  `next_operand_values_by_chain_value`.
-- Removed `PreparedFunctionLookups::return_chains` and stopped
-  `make_prepared_function_lookups` from constructing a prepared return-chain
-  aggregate.
-- Removed public `prepared_return_chain_value_key`,
-  `make_prepared_return_chain_lookups`,
-  `find_prepared_return_chain_terminal_value`, and
-  `find_prepared_return_chain_next_operand_value`.
-- Deleted the now-unreferenced prepared return-chain implementation helpers in
-  `src/backend/prealloc/prepared_lookups.cpp`; no private prepared
-  return-chain construction/query helper was retained because no production
-  live dependency remained.
-- Retargeted `backend_prepared_lookup_helper_test` semantic and fail-closed
-  assertions to Route 8 only, including duplicate-conflict and
-  missing-instruction cases, so the test no longer preserves public prepared
-  helper access as an oracle.
+- Inspected `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+  around `verify_bir_return_chain_schema_and_index_lookup`. The coverage now
+  uses `bir::route8_build_return_chain_index`,
+  `bir::route8_return_chain_value_key`,
+  `bir::route8_find_return_chain_record`,
+  `bir::route8_find_return_chain_terminal_value`, and
+  `bir::route8_find_return_chain_next_operand_value`.
+- Confirmed the Route 8 test covers positive terminal/next-operand identity,
+  block-local indexing, unsupported opcode, unnamed chain value, unnamed
+  terminal value, broken same-block walk, non-return terminator, cross-block
+  boundary, missing instruction keys, duplicate terminal conflict, duplicate
+  next-operand conflict, and duplicate conflicting record fail-closed behavior.
+- Search for removed prepared return-chain API names returned no matches in
+  `src` or `tests`.
+- Search for return-chain helper/authority wording found Route 8-only test
+  diagnostics plus the AArch64 comment that Route 8 is the semantic
+  return-chain source and prepared access is limited to value-home
+  translation.
 
 ## Suggested Next
 
-Proceed to plan Step 4 with a post-contraction search/review packet that
-confirms no public prepared return-chain semantic surface remains and prepares
-the supervisor for broader acceptance or lifecycle review.
+Proceed to Step 5 validation. Suggested packet: run the supervisor-selected
+acceptance proof for the contraction, likely the prepared lookup helper test
+plus the AArch64 return-lowering subset or broader regression guard if the
+supervisor wants milestone confidence.
 
 ## Watchouts
 
-- Text search after the edit found no remaining references in `src` or `tests`
-  for `PreparedReturnChainLookups`, `.return_chains`,
-  `prepared_return_chain_value_key`, `make_prepared_return_chain_lookups`,
-  `find_prepared_return_chain_terminal_value`, or
-  `find_prepared_return_chain_next_operand_value`.
-- The delegated proof rebuilt AArch64 backend objects as part of the selected
-  targets and did not expose an unexpected live AArch64 dependency.
-- Route 8 assertions remain the semantic coverage for return-chain terminal,
-  next-operand, fail-closed, duplicate-conflict, and missing-instruction
-  behavior.
+- `rg -n "PreparedReturnChainLookups|return_chains\\b|prepared_return_chain_value_key|make_prepared_return_chain_lookups|find_prepared_return_chain_terminal_value|find_prepared_return_chain_next_operand_value" src tests`
+  exited with status 1 and no matches.
+- `rg -n "prepared return-chain|prepared return chain|return-chain helper|return-chain helpers|prepared return-chain helper|prepared return chain helper|prepared.*return-chain.*oracle|return-chain.*prepared.*oracle|prepared.*return-chain.*authority|return-chain.*prepared.*authority|Route 8.*prepared|prepared.*Route 8" src tests`
+  found only Route 8 helper wording in
+  `backend_prepared_lookup_helper_test.cpp` and the AArch64 comment in
+  `src/backend/mir/aarch64/codegen/alu.cpp`.
+- The remaining "Route 8 return-chain helper(s)" diagnostic text describes
+  `bir::route8_*` helpers, not prepared/prealloc helper authority.
 
 ## Proof
 
-Proof passed and is recorded in `test_after.log`.
+No build or test proof was delegated for this verification-only packet.
+`test_after.log` was not modified.
+
+Inspection commands used:
 
 ```sh
-(cmake --build build --target backend_aarch64_return_lowering_test backend_prepared_lookup_helper_test && ctest --test-dir build -R '^(backend_aarch64_return_lowering|backend_prepared_lookup_helper)$' --output-on-failure) > test_after.log 2>&1
+sed -n '9720,10130p' tests/backend/bir/backend_prepared_lookup_helper_test.cpp
+rg -n "PreparedReturnChainLookups|return_chains\\b|prepared_return_chain_value_key|make_prepared_return_chain_lookups|find_prepared_return_chain_terminal_value|find_prepared_return_chain_next_operand_value" src tests
+rg -n "prepared return-chain|prepared return chain|return-chain helper|return-chain helpers|prepared return-chain helper|prepared return chain helper|prepared.*return-chain.*oracle|return-chain.*prepared.*oracle|prepared.*return-chain.*authority|return-chain.*prepared.*authority|Route 8.*prepared|prepared.*Route 8" src tests
+rg -n "Route 8|return-chain|return chain" src/backend tests/backend/bir tests/backend/mir
 ```
-
-Result: build succeeded; `backend_aarch64_return_lowering` and
-`backend_prepared_lookup_helper` passed.
