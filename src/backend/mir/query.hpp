@@ -259,6 +259,7 @@ enum class BirCurrentBlockJoinSourceStatus {
 
 struct BirCurrentBlockJoinSourceRequest {
   const bir::Block* successor_block = nullptr;
+  const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
   std::string_view successor_label;
   c4c::BlockLabelId successor_label_id = c4c::kInvalidBlockLabel;
 

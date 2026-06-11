@@ -3055,6 +3055,39 @@ int verify_current_block_join_parallel_copy_source_query() {
   const auto& route5_join_block = route5_join_function.blocks.front();
   const auto route5_join_index =
       bir::route5_build_edge_join_source_index(route5_join_function);
+  const auto indexed_bir_query =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &route5_join_block,
+              .route5_edge_join_sources = &route5_join_index,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          });
+  if (indexed_bir_query.status !=
+          mir::BirCurrentBlockJoinSourceStatus::Available ||
+      indexed_bir_query.facts.size() != bir_query.facts.size() ||
+      !bir_value_identities_contain_name(
+          indexed_bir_query.incoming_expression_values, "%current.incoming") ||
+      !bir_value_identities_contain_name(
+          indexed_bir_query.source_values, "%current.destination")) {
+    return fail("indexed BIR current-block join query should expose Route 5 source identities");
+  }
+  const bir::Route5EdgeJoinSourceIndex empty_route5_join_index{
+      .function = &route5_join_function,
+  };
+  const auto empty_index_bir_query =
+      mir::find_bir_current_block_join_source_identity(
+          mir::BirCurrentBlockJoinSourceRequest{
+              .successor_block = &route5_join_block,
+              .route5_edge_join_sources = &empty_route5_join_index,
+              .successor_label = "current_join.succ",
+              .successor_label_id = successor_label,
+          });
+  if (empty_index_bir_query.status !=
+          mir::BirCurrentBlockJoinSourceStatus::MissingPublication ||
+      empty_index_bir_query.available) {
+    return fail("indexed BIR current-block join query should fail closed for incomplete Route 5 data");
+  }
   const auto indexed_route5_named_join =
       bir::route5_find_current_block_join_source(
           route5_join_index,

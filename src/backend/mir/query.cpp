@@ -768,6 +768,57 @@ route5_edge_record_to_mir(
   return result;
 }
 
+[[nodiscard]] std::vector<bir::Route5CurrentBlockJoinSourceRecord>
+route5_indexed_current_block_join_source_records(
+    const BirCurrentBlockJoinSourceRequest& request) {
+  std::vector<bir::Route5CurrentBlockJoinSourceRecord> records;
+  if (request.successor_block == nullptr) {
+    records.push_back(bir::Route5CurrentBlockJoinSourceRecord{
+        .status = bir::Route5PublicationStatus::MissingSuccessor,
+    });
+    return records;
+  }
+
+  bool saw_phi = false;
+  for (std::size_t instruction_index = 0;
+       instruction_index < request.successor_block->insts.size();
+       ++instruction_index) {
+    const auto& inst = request.successor_block->insts[instruction_index];
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    saw_phi = true;
+    for (const auto& incoming : phi->incomings) {
+      auto record = bir::route5_find_current_block_join_source(
+          *request.route5_edge_join_sources,
+          *request.successor_block,
+          phi->result,
+          incoming.value);
+      if (record.destination_instruction == nullptr) {
+        record.destination_instruction = &inst;
+        record.destination_phi = phi;
+        record.destination_instruction_index = instruction_index;
+      }
+      if (record.predecessor_label.empty()) {
+        record.predecessor_label = incoming.label;
+        record.predecessor_label_id = incoming.label_id;
+      }
+      records.push_back(record);
+    }
+  }
+
+  if (!saw_phi || records.empty()) {
+    records.push_back(bir::Route5CurrentBlockJoinSourceRecord{
+        .status = bir::Route5PublicationStatus::MissingPublication,
+        .successor_block = request.successor_block,
+        .successor_label = request.successor_block->label,
+        .successor_label_id = request.successor_block->label_id,
+    });
+  }
+  return records;
+}
+
 [[nodiscard]] BirSelectChainDirectGlobalDependency
 route2_select_chain_direct_global_dependency_to_mir(
     const bir::Route2SelectChainDirectGlobalDependencyRecord& record) {
@@ -1461,11 +1512,18 @@ find_bir_current_block_join_source_identity(
     return result;
   }
 
+  const bool use_route5_index = request.route5_edge_join_sources != nullptr;
   const auto join_records =
-      bir::route5_current_block_join_source_records(request.successor_block);
+      use_route5_index
+          ? route5_indexed_current_block_join_source_records(request)
+          : bir::route5_current_block_join_source_records(request.successor_block);
+  bool saw_missing_publication = false;
   for (const auto& record : join_records) {
     if (record.status == bir::Route5PublicationStatus::MissingPublication) {
-      continue;
+      if (!use_route5_index) {
+        continue;
+      }
+      saw_missing_publication = true;
     }
     BirCurrentBlockJoinSourceFact fact{
         .status = route5_join_status_to_mir(record.status),
@@ -1493,6 +1551,10 @@ find_bir_current_block_join_source_identity(
         .source_producer_instruction_index =
             record.source_producer_instruction_index,
     };
+    if (use_route5_index &&
+        fact.status == BirCurrentBlockJoinSourceStatus::MissingPublication) {
+      saw_missing_publication = true;
+    }
     append_unique_value_identity(result.source_values,
                                  fact.destination_value_identity);
     if (record.source_value_kind == bir::Value::Kind::Named) {
@@ -1560,9 +1622,13 @@ find_bir_current_block_join_source_identity(
       std::all_of(result.facts.begin(), result.facts.end(), [](const auto& fact) {
         return fact.status == BirCurrentBlockJoinSourceStatus::Available;
       });
-  result.status = result.available
-                      ? BirCurrentBlockJoinSourceStatus::Available
-                      : BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+  if (result.available) {
+    result.status = BirCurrentBlockJoinSourceStatus::Available;
+  } else if (saw_missing_publication) {
+    result.status = BirCurrentBlockJoinSourceStatus::MissingPublication;
+  } else {
+    result.status = BirCurrentBlockJoinSourceStatus::MissingSourceProducer;
+  }
   return result;
 }
 

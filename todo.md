@@ -1,88 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/183_phase_e_route5_edge_join_source_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select Consumer And Baseline Behavior
+Current Step ID: 2
+Current Step Title: Add Or Expose Route 5 View Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected `aarch64_codegen::build_current_block_join_prepared_query_routing(...)`
-as the Route 5 migration consumer. This AArch64 join parallel-copy
-source-recovery boundary feeds
-`current_block_join_prepared_query_incoming_expression(...)` and
-`current_block_join_prepared_query_source(...)` in
-`src/backend/mir/aarch64/codegen/dispatch.cpp`, where matching incoming/source
-instructions are skipped because prepared edge/join publication policy already
-owns the block-entry parallel copy behavior.
+Step 2 added an indexed Route 5 current-block join-source boundary for
+`aarch64_codegen::build_current_block_join_prepared_query_routing(...)`.
+`mir::BirCurrentBlockJoinSourceRequest` can now carry a
+`Route5EdgeJoinSourceIndex`, and the MIR query uses
+`route5_find_current_block_join_source(...)` keyed by successor block,
+destination value, and source value when that index is supplied.
 
-Current prepared fallback/oracle behavior to preserve:
+The selected AArch64 consumer now builds the local Route 5 index from the
+current BIR function and passes it into the MIR semantic identity query before
+the existing prepared fallback path. The prepared fallback still builds/reuses
+`PreparedValueHomeLookups` and `PreparedEdgePublicationLookups`, then calls
+`prepare::prepare_current_block_join_parallel_copy_source_facts(...)` whenever
+the Route 5 identity is unavailable.
 
-- The consumer first asks `mir::find_bir_current_block_join_source_identity(...)`
-  for semantic join-source identity and currently falls back when that query is
-  unavailable.
-- Fallback builds or reuses `PreparedValueHomeLookups` and
-  `PreparedEdgePublicationLookups`, then calls
-  `prepare::prepare_current_block_join_parallel_copy_source_facts(...)`.
-- The fallback preserves prepared value ids/names for incoming-expression
-  closure and source-value identity, including named, immediate, and stack
-  source cases.
-- Prepared move-bundle and edge-publication facts remain the oracle for move
-  policy: `PreparedMoveBundle`, `PreparedMoveResolution`,
-  `PreparedEdgePublicationLookups`, and the edge publication records attached
-  to `PreparedCurrentBlockJoinParallelCopySourceFacts`.
-- Fail-closed prepared statuses to preserve include missing edge-publication
-  lookups and unsupported moves; Route 5 fail-closed statuses already exercised
-  nearby include missing successor/block, missing publication/no PHI, missing
-  source producer, missing source value, missing destination, and destination
-  type mismatch.
-
-Focused existing coverage:
-
-- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
-  (`backend_aarch64_current_block_join_routing`) covers the selected consumer
-  with both available semantic identity and prepared fallback routing.
-- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
-  (`current_block_join_query_routing_uses_bir_identity_with_prepared_fallback`,
-  inside `backend_aarch64_instruction_dispatch`) covers the same routing through
-  the larger AArch64 dispatch test.
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-  (`verify_current_block_join_parallel_copy_source_query`, inside
-  `backend_prepared_lookup_helper`) covers prepared-vs-BIR current-block
-  join-source oracle equivalence, Route 5 current-block join records/indexes,
-  named/immediate/stack source cases, unsupported move fail-closed behavior,
-  and Route 5 missing/no-match cases.
+`backend_prepared_lookup_helper` now directly covers the indexed MIR boundary
+for an available Route 5 identity and verifies an incomplete Route 5 index stays
+unavailable, preserving fail-closed prepared fallback behavior.
 
 ## Suggested Next
 
-Execute Step 2 by adding or exposing a narrow local Route 5 query boundary for
-`build_current_block_join_prepared_query_routing(...)`, keyed by successor block,
-destination value, and source value through `Route5EdgeJoinSourceIndex` /
-`route5_find_current_block_join_source(...)`, while preserving the current
-prepared fallback path unchanged for absent, incomplete, or mismatched Route 5
+Execute Step 3 by switching the selected reader to prefer the valid Route 5
+semantic source records from the new indexed boundary, while keeping prepared
+helpers as fallback/oracle surfaces for absent, incomplete, or invalid Route 5
 data.
 
 ## Watchouts
 
-- Keep this migration to one selected consumer.
-- Preserve prepared edge-copy and move-bundle helpers as fallback/oracle
-  surfaces; Route 5 should provide only semantic current-block join-source
-  identity for this consumer.
-- Do not claim prepared API deletion or broad aggregate contraction.
-- Do not replace Route 5 owned records with predecessor or BIR rescans.
-- `mir::find_bir_current_block_join_source_identity(...)` currently rebuilds a
-  Route 5 index internally in `src/backend/mir/query.cpp`; Step 2 should avoid
-  broad rescans at the consumer by exposing a local/indexed boundary rather than
-  adding another whole-function scan.
+- Keep Step 3 limited to the selected current-block join-source consumer.
+- The Route 5 boundary provides semantic source identity only; do not move
+  prepared move-bundle, source/destination home, scheduling, or final edge-copy
+  policy into BIR.
+- The indexed MIR query intentionally treats missing indexed publication data as
+  unavailable so `build_current_block_join_prepared_query_routing(...)` can fall
+  back to prepared facts.
 
 ## Proof
 
-Discovery-only packet; no build/tests run and no `test_after.log` produced.
-Proposed implementation proof:
+Ran the supervisor-selected proof:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'; } > test_after.log 2>&1`
 
-Broader supervisor-requested backend proof, if needed after implementation:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+Result: passed; 3/3 focused tests passed. Proof log: `test_after.log`.
