@@ -1,28 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/179_bir_return_chain_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Bound Or Remove Prepared Fallbacks
+Current Step ID: 6
+Current Step Title: Acceptance Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Bound Or Remove Prepared Fallbacks verified that
-`src/backend/mir/aarch64/codegen/alu.cpp` has no remaining semantic calls to
-`find_prepared_return_chain_terminal_value` or
-`find_prepared_return_chain_next_operand_value`.
+Step 6 - Acceptance Validation validated the AArch64 return-chain consumer
+migration slice.
 
-The remaining prepared access in the Route 8 AArch64 return-chain helper is
-documented and bounded to translating an already-selected BIR Route 8 identity
-back into the existing target value-home table; it does not consult prepared
-return-chain fallback facts or contract the public prepared APIs.
+The focused AArch64 return lowering and Route 8 oracle tests are green. `rg`
+confirms `src/backend/mir/aarch64/codegen/alu.cpp` has no
+`find_prepared_return_chain_terminal_value`,
+`find_prepared_return_chain_next_operand_value`, or `prepared_return_chain`
+references, so the AArch64 consumer no longer reads the prepared return-chain
+helper facts. The prepared return-chain lookup APIs remain public and
+unchanged in `src/backend/prealloc/prepared_lookups.hpp` and are still covered
+by `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
 
 ## Suggested Next
 
-Supervisor should decide whether the active runbook is exhausted enough for
-plan-owner review/closure or whether a broader validation packet is needed
-before closure.
+Supervisor should hand off to plan-owner for lifecycle review. The next
+lifecycle prerequisite after this migration is
+`ideas/open/180_bir_return_chain_prepared_api_contraction.md`.
 
 ## Watchouts
 
@@ -38,9 +40,8 @@ before closure.
 - `rg` shows no `find_prepared_return_chain_terminal_value`,
   `find_prepared_return_chain_next_operand_value`, or `prepared_return_chain`
   reference remains in `src/backend/mir/aarch64/codegen/alu.cpp`.
-- The Step 5 code change is intentionally documentation/bounding only because
-  the remaining prepared lookup is a value-home bridge needed by target
-  register selection, not a semantic return-chain source.
+- Do not contract prepared return-chain APIs until
+  `ideas/open/180_bir_return_chain_prepared_api_contraction.md` is active.
 
 ## Proof
 
