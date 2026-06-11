@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/189_phase_e_cross_target_route_view_interface_reuse.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Thread the Proven Route View Through the Wrapper
+Current Step ID: Step 3
+Current Step Title: Prove Interface Reuse and Fallback Coverage
 
 # Current Packet
 
