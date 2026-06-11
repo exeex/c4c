@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/188_phase_e_route7_comparison_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Parity, Fallback, and Invalid-Reference Cases
+Current Step ID: none
+Current Step Title: none
 
 # Current Packet
 
