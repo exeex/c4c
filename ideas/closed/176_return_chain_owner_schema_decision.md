@@ -56,3 +56,11 @@ terminal and next-operand answers before API contraction.
   cases.
 - Prepared helpers are hidden before consumers have a replacement owner.
 - The route moves target-local ALU emission policy into BIR.
+
+## Closure
+
+Closed after the analysis-first runbook selected BIR-owned return-chain
+identity and recorded the implementation sequence in follow-up ideas 177-180.
+The decision keeps target-neutral terminal and next-operand identity in BIR,
+keeps AArch64 homes/registers/ABI/scratch/emission policy target-local, and
+leaves prepared helper contraction to later proof-backed follow-up work.
