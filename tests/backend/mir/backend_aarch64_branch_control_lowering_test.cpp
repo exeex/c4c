@@ -1326,6 +1326,147 @@ int materialized_compare_branch_does_not_reuse_clobbered_bool_register() {
   return 0;
 }
 
+int materialized_compare_branch_route7_provenance_matches_bir_identity() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto route7_record =
+      bir::route7_find_materialized_condition(route7_index,
+                                              block,
+                                              condition,
+                                              block.insts.size());
+  const auto route7_reference =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          condition,
+          block.insts.size());
+  const auto bir_identity =
+      bir::find_materialized_condition_producer_identity(
+          block, condition, block.insts.size());
+  if (!route7_record ||
+      !route7_reference ||
+      route7_reference.comparison_record == nullptr ||
+      !bir_identity.available ||
+      route7_record.instruction_index != bir_identity.instruction_index ||
+      route7_reference.comparison_record->binary != bir_identity.binary ||
+      bir_identity.binary == nullptr ||
+      bir_identity.binary->opcode != bir::BinaryOpcode::Sle) {
+    return fail("expected Route 7 materialized condition provenance to match BIR identity");
+  }
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator ||
+      machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail("expected selected materialized compare branch to lower from Route 7-compatible provenance");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  if (!printed.ok ||
+      printed.instruction_lines.size() != 6 ||
+      printed.instruction_lines[3] != "cmp w9, #0" ||
+      printed.instruction_lines[4].find("b.le ") != 0) {
+    return fail("expected selected materialized compare branch to lower from Route 7-compatible provenance");
+  }
+  return 0;
+}
+
+int materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  for (auto& home : prepared.value_locations.functions.front().value_homes) {
+    if (home.value_name == prepared.names.value_names.intern("%cond")) {
+      home.kind = prepare::PreparedValueHomeKind::Register;
+      home.register_name = std::string{"w21"};
+      home.slot_id = prepare::PreparedFrameSlotId{};
+      home.offset_bytes.reset();
+      home.size_bytes.reset();
+      home.align_bytes.reset();
+    }
+  }
+  for (auto& storage : prepared.storage_plans.functions.front().values) {
+    if (storage.value_name == prepared.names.value_names.intern("%cond")) {
+      storage.encoding = prepare::PreparedStorageEncodingKind::Register;
+      storage.slot_id = prepare::PreparedFrameSlotId{};
+      storage.stack_offset_bytes.reset();
+      storage.register_name = std::string{"w21"};
+      storage.occupied_register_names = {std::string{"w21"}};
+    }
+  }
+  auto& block = prepared.module.functions.front().blocks.front();
+  block.insts.insert(block.insts.begin() + 2,
+                     bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Sgt,
+                         .result = bir::Value::named(bir::TypeKind::I1, "%cond"),
+                         .operand_type = bir::TypeKind::I32,
+                         .lhs = bir::Value::named(bir::TypeKind::I32, "%advanced"),
+                         .rhs = bir::Value::immediate_i32(1),
+                     });
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto route7_reference =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          condition,
+          block.insts.size());
+  if (route7_reference ||
+      route7_reference.status != bir::RouteIndexValidationStatus::DuplicateReference ||
+      bir::find_materialized_condition_producer_identity(
+          block, condition, block.insts.size()).available) {
+    return fail("expected duplicate materialized condition provenance to be invalid");
+  }
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator ||
+      machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail("expected duplicate provenance to fall back to emitted condition branch: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(machine_block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  if (!printed.ok ||
+      printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0].find("cbnz ") != 0 ||
+      printed.instruction_lines[1].find("b ") != 0) {
+    return fail("expected invalid Route 7 materialized condition to preserve emitted-condition fallback");
+  }
+  return 0;
+}
+
 int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   auto prepared = prepared_with_fused_compare_conditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1746,6 +1887,16 @@ int main() {
   }
   if (const int status =
           materialized_compare_branch_does_not_reuse_clobbered_bool_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_route7_provenance_matches_bir_identity();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback();
       status != 0) {
     return status;
   }

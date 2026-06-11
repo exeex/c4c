@@ -273,6 +273,37 @@ find_prepared_fused_compare_operand_producer_facts(
       before_instruction_index);
 }
 
+[[nodiscard]] bir::MaterializedConditionProducerIdentity
+find_route7_materialized_condition_producer_identity(
+    const bir::Block& block,
+    const bir::Value& condition_value,
+    std::size_t before_instruction_index) {
+  const auto index = bir::route7_build_comparison_condition_index(block);
+  const auto record = bir::route7_find_materialized_condition(
+      index, block, condition_value, before_instruction_index);
+  const auto reference =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(index),
+          block,
+          condition_value,
+          before_instruction_index);
+  const auto* validated_record = reference.comparison_record;
+  if (!record ||
+      !reference ||
+      validated_record == nullptr ||
+      validated_record->binary == nullptr ||
+      validated_record->instruction_index != record.instruction_index ||
+      validated_record->binary != record.binary) {
+    return {};
+  }
+  return bir::MaterializedConditionProducerIdentity{
+      .available = true,
+      .binary = validated_record->binary,
+      .instruction_index = validated_record->instruction_index,
+      .condition_value_name = std::string(validated_record->condition_value.name),
+  };
+}
+
 void append_prepared_compare_branch_lines(
     std::vector<std::string>& lines,
     const PreparedFusedCompareBranchFacts& facts) {
@@ -1972,10 +2003,19 @@ lower_materialized_compare_condition_branch(
   if (condition_home == nullptr) {
     return std::nullopt;
   }
-  const auto producer = bir::find_materialized_condition_producer_identity(
-      *context.bir_block,
-      branch_condition.condition_value,
-      context.bir_block->insts.size());
+  const auto route7_producer =
+      find_route7_materialized_condition_producer_identity(
+          *context.bir_block,
+          branch_condition.condition_value,
+          context.bir_block->insts.size());
+  const auto bir_producer = route7_producer.available
+                                ? bir::MaterializedConditionProducerIdentity{}
+                                : bir::find_materialized_condition_producer_identity(
+                                      *context.bir_block,
+                                      branch_condition.condition_value,
+                                      context.bir_block->insts.size());
+  const auto& producer =
+      route7_producer.available ? route7_producer : bir_producer;
   const auto* binary = producer.available ? producer.binary : nullptr;
   if (binary == nullptr) {
     return std::nullopt;
