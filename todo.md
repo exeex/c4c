@@ -1,30 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/179_bir_return_chain_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Next-Operand Alias And Scratch Recovery
+Current Step ID: 5
+Current Step Title: Bound Or Remove Prepared Fallbacks
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Migrate Next-Operand Alias And Scratch Recovery changed the
-rematerialized-immediate return-chain collision check in
-`src/backend/mir/aarch64/codegen/alu.cpp` to recover the next operand through
-the AArch64 Route 8 adapter instead of
-`prepare::find_prepared_return_chain_next_operand_value`.
+Step 5 - Bound Or Remove Prepared Fallbacks verified that
+`src/backend/mir/aarch64/codegen/alu.cpp` has no remaining semantic calls to
+`find_prepared_return_chain_terminal_value` or
+`find_prepared_return_chain_next_operand_value`.
 
-`lower_scalar_instruction` now passes `binary->result` as the chain BIR value
-for next-operand identity lookup, resolves the Route 8 identity back through
-the existing AArch64 value-home lookup, and preserves the target-local register
-parsing, alias comparison, scalar view, scratch selection, and ALU record
-construction.
+The remaining prepared access in the Route 8 AArch64 return-chain helper is
+documented and bounded to translating an already-selected BIR Route 8 identity
+back into the existing target value-home table; it does not consult prepared
+return-chain fallback facts or contract the public prepared APIs.
 
 ## Suggested Next
 
-Execute Step 5 by bounding or removing any remaining prepared return-chain
-fallback/read dependency from migrated AArch64 consumers without contracting the
-prepared API.
+Supervisor should decide whether the active runbook is exhausted enough for
+plan-owner review/closure or whether a broader validation packet is needed
+before closure.
 
 ## Watchouts
 
@@ -37,8 +35,12 @@ prepared API.
 - The helper still builds the Route 8 function index per query. Reuse can be
   introduced later if it becomes necessary, but it is not required for this
   migration slice.
-- `rg` shows no `find_prepared_return_chain_next_operand_value` call remains in
-  `src/backend/mir/aarch64/codegen/alu.cpp`.
+- `rg` shows no `find_prepared_return_chain_terminal_value`,
+  `find_prepared_return_chain_next_operand_value`, or `prepared_return_chain`
+  reference remains in `src/backend/mir/aarch64/codegen/alu.cpp`.
+- The Step 5 code change is intentionally documentation/bounding only because
+  the remaining prepared lookup is a value-home bridge needed by target
+  register selection, not a semantic return-chain source.
 
 ## Proof
 

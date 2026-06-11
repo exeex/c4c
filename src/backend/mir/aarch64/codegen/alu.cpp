@@ -1431,6 +1431,9 @@ find_route8_return_chain_next_operand_value(
   }
 
   auto value_name = identity.name_id;
+  // Route 8 is the semantic return-chain source. Prepared access here is
+  // bounded to translating that BIR identity into the existing target value
+  // home; it must not consult prepared return-chain fallback facts.
   if (value_name == c4c::kInvalidValueName &&
       identity.value != nullptr &&
       identity.value->kind == bir::Value::Kind::Named &&
