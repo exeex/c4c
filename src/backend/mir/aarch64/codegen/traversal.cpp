@@ -80,12 +80,14 @@ std::vector<module::MachineFunction> lower_prepared_functions(
     const auto prepared_address_materialization_lookups =
         prepare::make_prepared_address_materialization_lookups(
             prepared, prepared_function.function_name);
+    const auto prepared_value_home_lookups =
+        prepare::make_prepared_value_home_lookups(function_context.value_locations);
     function_context.prepared_lookups = &prepared_lookups;
     function_context.call_plan_lookups = &prepared_call_plan_lookups;
     function_context.address_materialization_lookups =
         &prepared_address_materialization_lookups;
     function_context.move_bundle_lookups = &prepared_lookups.move_bundles;
-    function_context.value_home_lookups = &prepared_lookups.value_homes;
+    function_context.value_home_lookups = &prepared_value_home_lookups;
 
     module::MachineFunction function{
         .function_name = prepared_function.function_name,

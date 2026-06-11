@@ -1,34 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Confirm selected value-home group
+Current Step ID: Step 2
+Current Step Title: Project value-home lookups separately
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 from `plan.md`: confirmed `value_homes` remains the selected safe field
-group. Scan evidence:
+Step 2 from `plan.md`: projected value-home lookups separately in
+`src/backend/mir/aarch64/codegen/traversal.cpp`.
 
-- `src/backend/mir/aarch64/codegen/traversal.cpp` still reads
-  `prepared_lookups.value_homes` only to assign
-  `FunctionLoweringContext::value_home_lookups`.
-- `prepare::make_prepared_value_home_lookups(...)` is a narrow builder over
-  `PreparedValueLocationFunction::value_homes`; it only fills `homes_by_id` and
-  `value_ids`.
-- `move_bundles` remains out of scope for the next packet because equivalent
-  construction is not just value-home lookup wiring:
-  `make_prepared_function_lookups(...)` builds move-bundle lookups separately
-  and then calls `publish_prepared_after_call_result_lane_bindings(...)`.
+- Added a local `prepared_value_home_lookups` built with
+  `prepare::make_prepared_value_home_lookups(function_context.value_locations)`.
+- Wired `FunctionLoweringContext::value_home_lookups` to that standalone
+  projection.
+- Left `prepared_lookups` and `move_bundle_lookups` in place for unselected
+  aggregate fields.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: add the local
-`prepare::make_prepared_value_home_lookups(...)` construction in traversal and
-wire `FunctionLoweringContext::value_home_lookups` to the standalone lookup
-object, without changing `PreparedFunctionLookups::move_bundles` or other
-aggregate fields.
+Execute Step 3 from `plan.md`: inspect whether the value-home projection split
+made any selected direct aggregate dependency or include unnecessary. Leave
+`move_bundles` alone until its after-call result lane binding publication path
+is explicitly owned.
 
 ## Watchouts
 
@@ -48,10 +43,7 @@ aggregate fields.
 
 ## Proof
 
-No build proof required for this confirmation-only packet; scan evidence is
-recorded above.
-
-Step 2 proof command:
+Delegated Step 2 proof passed. Proof log: `test_after.log`.
 
 ```sh
 (cmake --build build --target backend_aarch64_operand_resolution_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_operand_resolution|backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
