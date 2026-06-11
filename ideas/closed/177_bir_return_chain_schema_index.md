@@ -44,6 +44,15 @@ Schema/index tests should prove that records are created or omitted for focused
 positive, negative, ambiguous, and conflict fixtures. Full prepared equivalence
 belongs to `ideas/open/178_bir_return_chain_oracle_equivalence.md`.
 
+## Completion Note
+
+Closed after the Route 8 schema/index runbook completed through Step 5.
+The implemented route records target-neutral return-chain identity, exposes a
+function-local lookup/index, fails closed for unsupported and conflicting cases,
+and leaves prepared helpers public with AArch64 consumers unmigrated. The next
+prerequisite remains oracle-equivalence coverage in
+`ideas/open/178_bir_return_chain_oracle_equivalence.md`.
+
 ## Reviewer Reject Signals
 
 - The route imports target homes, registers, ABI moves, scratch policy, or
