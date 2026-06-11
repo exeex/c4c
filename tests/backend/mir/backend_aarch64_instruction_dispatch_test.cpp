@@ -33641,6 +33641,7 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
                                .arg_index = 0,
                                .source_encoding =
                                    bir::CallArgumentSourceEncodingKind::Register,
+                               .source_value_id = std::size_t{432},
                                .source_value_name = std::string{"%sum.arg"},
                            }},
                        .return_type = bir::TypeKind::Void,
@@ -33886,6 +33887,157 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
     return fail("expected BIR source-producer materialization to emit the scalar add before the call: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
   }
+
+  struct ScalarArgumentProducerLowering {
+    bool ok = false;
+    std::size_t instruction_count = 0;
+    std::string assembly;
+  };
+  auto lower_current_scalar_argument_producers =
+      [&](const prepare::PreparedFunctionLookups& lookups)
+      -> ScalarArgumentProducerLowering {
+    auto current_function_context =
+        aarch64_codegen::make_function_lowering_context(
+            prepared, prepared.target_profile, function_cf);
+    attach_prepared_function_lookups(current_function_context, lookups);
+    const auto current_block_context =
+        aarch64_codegen::make_block_lowering_context(
+            current_function_context, function_cf.blocks.front(), 0);
+    const auto& current_block = prepared.module.functions.front().blocks.front();
+    const auto* current_call = std::get_if<bir::CallInst>(
+        &current_block.insts[1]);
+    if (current_call == nullptr) {
+      return {};
+    }
+    aarch64_codegen::BlockScalarLoweringState current_scalar_state;
+    aarch64_module::ModuleLoweringDiagnostics current_diagnostics;
+    const auto current_lowered =
+        aarch64_codegen::lower_scalar_call_argument_producers(
+            current_block_context,
+            prepared.call_plans.functions.front().calls.front(),
+            current_call->args,
+            1,
+            current_scalar_state,
+            current_diagnostics);
+    if (!current_diagnostics.empty()) {
+      return {};
+    }
+    aarch64_module::MachineBlock current_machine_block;
+    current_machine_block.instructions = current_lowered;
+    const auto current_printed =
+        print_route_block(function_name, current_machine_block);
+    return ScalarArgumentProducerLowering{
+        .ok = current_printed.ok,
+        .instruction_count = current_lowered.size(),
+        .assembly = current_printed.ok ? current_printed.assembly
+                                       : current_printed.diagnostic,
+    };
+  };
+  auto expects_prepared_fallback_add = [&](std::string_view message) {
+    const auto fallback =
+        lower_current_scalar_argument_producers(prepared_lookups);
+    return fallback.ok &&
+           fallback.assembly.find("add w9, w2, w3") != std::string::npos
+               ? 0
+               : fail(std::string{message} + ": " + fallback.assembly);
+  };
+  auto expects_route6_rejection_without_prepared = [&](std::string_view message) {
+    const auto rejected =
+        lower_current_scalar_argument_producers(route_only_lookups);
+    return rejected.ok &&
+           rejected.instruction_count == 0 &&
+           rejected.assembly.find("add w9, w2, w3") == std::string::npos
+               ? 0
+               : fail(std::string{message} + ": " + rejected.assembly);
+  };
+
+  auto& mutable_block = prepared.module.functions.front().blocks.front();
+  auto* mutable_call = std::get_if<bir::CallInst>(&mutable_block.insts[1]);
+  auto* mutable_sum = std::get_if<bir::BinaryInst>(&mutable_block.insts[0]);
+  if (mutable_call == nullptr || mutable_sum == nullptr ||
+      mutable_call->arg_sources.empty()) {
+    return fail("expected scalar producer fallback fixture to retain mutable call facts");
+  }
+  const auto original_arg_sources = mutable_call->arg_sources;
+  const auto original_sum_opcode = mutable_sum->opcode;
+
+  mutable_call->arg_sources.front().source_value_id = std::size_t{999};
+  if (const int status =
+          expects_prepared_fallback_add(
+              "expected source-id mismatch to fall back to prepared scalar producer");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          expects_route6_rejection_without_prepared(
+              "expected source-id mismatch to reject Route 6 without prepared producer lookup");
+      status != 0) {
+    return status;
+  }
+  mutable_call->arg_sources = original_arg_sources;
+
+  mutable_call->arg_sources.clear();
+  if (const int status =
+          expects_prepared_fallback_add(
+              "expected absent Route 6 facts to fall back to prepared scalar producer");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          expects_route6_rejection_without_prepared(
+              "expected absent Route 6 facts to leave no route-only producer materialization");
+      status != 0) {
+    return status;
+  }
+  mutable_call->arg_sources = original_arg_sources;
+
+  mutable_call->arg_sources.push_back(mutable_call->arg_sources.front());
+  if (const int status =
+          expects_prepared_fallback_add(
+              "expected duplicate Route 6 facts to fall back to prepared scalar producer");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          expects_route6_rejection_without_prepared(
+              "expected duplicate Route 6 facts to reject Route 6 without prepared producer lookup");
+      status != 0) {
+    return status;
+  }
+  mutable_call->arg_sources = original_arg_sources;
+
+  mutable_call->arg_sources.front().source_selection =
+      bir::CallArgumentSourceSelection{
+          .kind = bir::CallArgumentSourceSelectionKind::FrameSlotValue,
+          .source_value_id = std::size_t{432},
+          .source_value_name = std::string{"%sum.arg"},
+          .source_slot_id = c4c::SlotNameId{7},
+          .source_stack_offset_bytes = std::size_t{48},
+          .source_size_bytes = std::size_t{4},
+          .source_align_bytes = std::size_t{4},
+      };
+  if (const int status =
+          expects_prepared_fallback_add(
+              "expected ABI-bound Route 6 fact to fall back to prepared scalar producer");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          expects_route6_rejection_without_prepared(
+              "expected ABI-bound Route 6 fact to reject Route 6 without prepared producer lookup");
+      status != 0) {
+    return status;
+  }
+  mutable_call->arg_sources = original_arg_sources;
+
+  mutable_sum->opcode = bir::BinaryOpcode::UDiv;
+  if (const int status =
+          expects_route6_rejection_without_prepared(
+              "expected nonmaterializable Route 6 source producer to reject route-only materialization");
+      status != 0) {
+    return status;
+  }
+  mutable_sum->opcode = original_sum_opcode;
 
   return 0;
 }

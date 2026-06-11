@@ -1,74 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/205_route6_call_use_source_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select The Route 6 Adapter Boundary
+Current Step ID: 2
+Current Step Title: Add The Fail-Closed Route 6 Reader Adapter
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected the first Route 6 adapter boundary.
+Step 2 added the fail-closed Route 6 reader adapter around the selected
+AArch64 scalar call argument source-producer materialization path.
 
-Selected call instruction: the AArch64 BIR `CallInst` currently being lowered
-by `lower_scalar_call_argument_producers(...)`, identified only after
-`context.bir_block->insts[instruction_index]` is confirmed to be that
-`bir::CallInst`.
+`find_scalar_call_argument_source_producer_materialization(...)` now accepts
+Route 6 only when the selected call/argument key is unique, the Route 6 source
+value id/name/value agrees with the prepared `PreparedCallArgumentPlan`, the
+producer instruction points back into the current BIR block, and Route 6
+reports scalar materialization available. Absent Route 6, source-id mismatch,
+duplicate/ambiguous records, ABI-bound records, missing producers, stale
+producer pointers, and nonmaterializable producers fall back to the existing
+prepared source-producer lookup.
 
-Selected source role: one scalar call argument source-producer materialization,
-the `args[argument_index]` value used by
-`materialize_scalar_call_argument_value(...)` through
-`find_scalar_call_argument_source_producer_materialization(...)`.
+`materialize_scalar_call_argument_value(...)` now receives the prepared
+argument plan so the Route 6 adapter can validate source identity while
+prepared ABI/layout/policy facts remain authoritative.
 
-Route 6 may read only semantic identity facts for that selected role:
-
-- `route6_find_call_argument_source_producer(...)` status for the selected
-  block, call instruction index, callee, and argument index.
-- The selected argument/source relationship: `argument_value`,
-  `source_value`, `source_value_name`, `source_value_id`, `source_encoding`,
-  `source_kind`, and call-site ordinal fields.
-- Same-block source producer identity and materialization eligibility:
-  producer instruction pointer/index, producer kind, producer source value,
-  and `scalar_materialization_available`.
-- Existing fail-closed Route 6 statuses: missing call, wrong call, missing
-  argument, missing source relationship, missing source producer,
-  duplicate relationship, no match, and ABI-bound exclusion.
+Focused AArch64 coverage was added to the existing scalar call argument
+producer fixture for Route-6-only success, source-id mismatch fallback, absent
+Route 6 fallback, duplicate fallback, ABI-bound fallback, Route-6-only
+rejection for those bad facts, and nonmaterializable producer rejection.
 
 ## Suggested Next
 
-Execute Step 2 by adding a fail-closed adapter helper around the selected
-`find_scalar_call_argument_source_producer_materialization(...)` Route 6 path.
-It should validate Route 6/prepared source-id agreement for the selected scalar
-argument source-producer role, then fall back to the existing prepared producer
-lookup whenever Route 6 is absent, mismatched, ambiguous, ABI-bound, or missing
-a materializable producer.
+Execute Step 3 by reviewing/wiring the selected reader boundary now that the
+adapter is in place. Confirm the selected reader consumes only validated Route
+6 semantic identity and otherwise uses prepared fallback, with no migration of
+ABI placement, wrappers, clobbers, outgoing stack sizing, helper protocols,
+homes, move bundles, aggregate transport, publication policy, final call
+records, or output authority.
 
 ## Watchouts
 
-- Prepared call-plan facts remain authoritative for the selected boundary:
-  argument selection applicability, ABI destination placement, wrapper kind,
-  clobbers, outgoing stack sizing, byval lanes, variadic FPR counts,
-  helper/carrier protocols, value homes, move bundles, aggregate transport,
-  local aggregate address publication permission, direct-global publication
-  routing policy, final call records, selected machine output, and diagnostics.
-- Existing coverage already exercises Route 6 BIR record/index success,
-  missing/after-call producer failure, missing relationship, unnamed source,
-  wrong call, no match, ABI-bound rejection, duplicate relationship rejection,
-  and x86 missing-facts/source-id agreement fallback.
-- Targeted Step 2 coverage should add AArch64 adapter-level proof for prepared
-  source-id mismatch fallback, absent Route 6 fallback, duplicate/ambiguous
-  rejection, ABI-bound rejection, missing materializable producer fallback, and
-  unchanged AArch64 output for the selected scalar argument producer route.
-- Do not broaden this packet into result lanes, direct-global dependency
+- The adapter intentionally requires a prepared argument source id before
+  accepting Route 6, so Route 6 remains semantic identity gated by prepared
+  call-plan authority.
+- Route 6 nonmaterializable binary producers now fall back to prepared lookup;
+  with no prepared producer lookup, the selected route emits no scalar producer
+  materialization.
+- Do not broaden the next packet into result lanes, direct-global dependency
   routing, whole call plans, helper protocol changes, expected-output rewrites,
   or unsupported-test downgrades.
 
 ## Proof
 
-No build or test run required for this Step 1 selection-only packet.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Future Step 2 proof command:
+Passed: 180 backend tests.
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-`test_after.log` was not produced for this selection-only packet.
+Proof log: `test_after.log`.
