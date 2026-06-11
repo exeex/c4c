@@ -1,34 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Contract selected direct dependency exposure
+Current Step ID: Step 4
+Current Step Title: Prove the selected value-home subset and decide next
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md`: inspected direct dependency exposure in
-`src/backend/mir/aarch64/codegen/traversal.cpp` after the value-home projection
-split.
+Step 4 from `plan.md`: reran the selected value-home projection proof after
+the Step 2 projection split and Step 3 dependency check. The selected subset is
+green.
 
-- No further implementation contraction is safe in this packet.
-- `traversal.cpp` no longer reads `prepared_lookups.value_homes`; it constructs
-  `prepared_value_home_lookups` directly with
-  `prepare::make_prepared_value_home_lookups(function_context.value_locations)`.
-- `traversal.cpp` still must construct `PreparedFunctionLookups` because it
-  assigns `function_context.prepared_lookups = &prepared_lookups` for
-  unselected aggregate consumers and
-  `function_context.move_bundle_lookups = &prepared_lookups.move_bundles`.
-- The visible include exposure is still indirect through
-  `src/backend/mir/aarch64/module/module.hpp`, which defines
-  `FunctionLoweringContext` with `PreparedFunctionLookups`,
-  `PreparedMoveBundleLookups`, and `PreparedValueHomeLookups` pointers.
+Selected field group result: `value_homes` now uses the narrow
+`FunctionLoweringContext::value_home_lookups` projection built by
+`prepare::make_prepared_value_home_lookups(...)` in traversal. The production
+`prepared_lookups.value_homes` aggregate field read was removed.
+
+Step 3 found no additional include/dependency contraction safe yet because
+`traversal.cpp` still builds and retains `PreparedFunctionLookups` for
+unselected fields: `move_bundles` and downstream aggregate `prepared_lookups`
+consumers.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: continue with the next owned contraction or
-review packet selected by the supervisor.
+Plan-owner lifecycle decision: either continue this runbook by selecting the
+next aggregate field group, or retire/split if the remaining fields need a
+fresh route review.
 
 ## Watchouts
 
@@ -48,8 +46,12 @@ review packet selected by the supervisor.
 
 ## Proof
 
-Delegated Step 3 proof passed. Proof log: `test_after.log`.
+Supervisor-selected Step 4 proof passed and was captured in `test_after.log`.
 
 ```sh
 (cmake --build build --target backend_aarch64_operand_resolution_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_operand_resolution|backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
 ```
+
+Result: `backend_aarch64_operand_resolution`,
+`backend_aarch64_prepared_memory_operand_records`, and
+`backend_aarch64_instruction_dispatch` all passed.
