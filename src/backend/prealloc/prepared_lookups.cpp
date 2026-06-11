@@ -3,7 +3,6 @@
 #include "module.hpp"
 
 #include <algorithm>
-#include <functional>
 #include <string_view>
 #include <type_traits>
 #include <variant>
@@ -1077,17 +1076,6 @@ prepared_same_block_source_producer(
          static_cast<std::size_t>(source_value_id);
 }
 
-[[nodiscard]] std::size_t prepared_return_chain_value_key(
-    std::size_t block_index,
-    std::size_t instruction_index,
-    ValueNameId value_name) {
-  std::size_t seed = block_index;
-  seed ^= instruction_index + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
-  seed ^= std::hash<ValueNameId>{}(value_name) + 0x9e3779b97f4a7c15ULL +
-          (seed << 6U) + (seed >> 2U);
-  return seed;
-}
-
 [[nodiscard]] std::size_t prepared_memory_access_position_key(
     BlockLabelId block_label,
     std::size_t instruction_index) {
@@ -1333,159 +1321,6 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
-[[nodiscard]] bool prepared_return_chain_binary_opcode_is_scalar_publication(
-    bir::BinaryOpcode opcode) {
-  switch (opcode) {
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::UDiv:
-    case bir::BinaryOpcode::URem:
-      return true;
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      return false;
-  }
-  return false;
-}
-
-[[nodiscard]] bool prepared_value_matches_name(const bir::Value& value,
-                                               std::string_view name) {
-  return value.kind == bir::Value::Kind::Named && value.name == name;
-}
-
-void publish_prepared_return_chain(
-    PreparedReturnChainLookups& lookups,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    ValueNameId chain_value_name,
-    ValueNameId terminal_value_name,
-    ValueNameId next_operand_value_name) {
-  if (chain_value_name == kInvalidValueName ||
-      terminal_value_name == kInvalidValueName) {
-    return;
-  }
-  const auto key =
-      prepared_return_chain_value_key(block_index, instruction_index, chain_value_name);
-  const auto [it, inserted] =
-      lookups.terminal_return_values_by_chain_value.emplace(key, terminal_value_name);
-  if (!inserted && it->second != terminal_value_name) {
-    it->second = kInvalidValueName;
-  }
-  if (next_operand_value_name == kInvalidValueName) {
-    return;
-  }
-  const auto [next_it, next_inserted] =
-      lookups.next_operand_values_by_chain_value.emplace(key, next_operand_value_name);
-  if (!next_inserted && next_it->second != next_operand_value_name) {
-    next_it->second = kInvalidValueName;
-  }
-}
-
-[[nodiscard]] PreparedReturnChainLookups make_prepared_return_chain_lookups(
-    const PreparedBirModule& prepared,
-    const PreparedControlFlowFunction& function) {
-  PreparedReturnChainLookups lookups;
-  const auto* bir_function = prepared_bir_function(prepared, function);
-  if (bir_function == nullptr) {
-    return lookups;
-  }
-  const auto block_count = std::min(function.blocks.size(), bir_function->blocks.size());
-  for (std::size_t block_index = 0; block_index < block_count; ++block_index) {
-    const auto* bir_block =
-        prepared_bir_block(prepared, *bir_function, function.blocks[block_index]);
-    if (bir_block == nullptr ||
-        bir_block->terminator.kind != bir::TerminatorKind::Return ||
-        !bir_block->terminator.value.has_value() ||
-        bir_block->terminator.value->kind != bir::Value::Kind::Named) {
-      continue;
-    }
-    const auto terminal_value_name =
-        existing_prepared_value_name_id(prepared.names, *bir_block->terminator.value);
-    if (!terminal_value_name.has_value()) {
-      continue;
-    }
-
-    for (std::size_t instruction_index = 0;
-         instruction_index < bir_block->insts.size();
-         ++instruction_index) {
-      const auto* binary =
-          std::get_if<bir::BinaryInst>(&bir_block->insts[instruction_index]);
-      if (binary == nullptr ||
-          !prepared_return_chain_binary_opcode_is_scalar_publication(binary->opcode) ||
-          binary->result.kind != bir::Value::Kind::Named) {
-        continue;
-      }
-      const auto chain_value_name =
-          existing_prepared_value_name_id(prepared.names, binary->result);
-      if (!chain_value_name.has_value()) {
-        continue;
-      }
-
-      std::string current_name = binary->result.name;
-      ValueNameId next_operand_value_name = kInvalidValueName;
-      bool reaches_return = false;
-      for (std::size_t next_index = instruction_index + 1;
-           next_index < bir_block->insts.size();
-           ++next_index) {
-        const auto* next_binary =
-            std::get_if<bir::BinaryInst>(&bir_block->insts[next_index]);
-        if (next_binary == nullptr ||
-            !prepared_return_chain_binary_opcode_is_scalar_publication(
-                next_binary->opcode)) {
-          break;
-        }
-        const bool consumes_current =
-            prepared_value_matches_name(next_binary->lhs, current_name) ||
-            prepared_value_matches_name(next_binary->rhs, current_name);
-        if (!consumes_current ||
-            next_binary->result.kind != bir::Value::Kind::Named) {
-          break;
-        }
-        if (next_index == instruction_index + 1) {
-          const bir::Value& other_operand =
-              prepared_value_matches_name(next_binary->lhs, current_name)
-                  ? next_binary->rhs
-                  : next_binary->lhs;
-          if (const auto other_name =
-                  existing_prepared_value_name_id(prepared.names, other_operand);
-              other_name.has_value()) {
-            next_operand_value_name = *other_name;
-          }
-        }
-        current_name = next_binary->result.name;
-      }
-      reaches_return =
-          prepared_value_matches_name(*bir_block->terminator.value, current_name);
-      if (reaches_return) {
-        publish_prepared_return_chain(lookups,
-                                      block_index,
-                                      instruction_index,
-                                      *chain_value_name,
-                                      *terminal_value_name,
-                                      next_operand_value_name);
-      }
-    }
-  }
-  return lookups;
-}
-
 [[nodiscard]] PreparedValueHomeLookups make_prepared_value_home_lookups(
     const PreparedValueLocationFunction* value_locations) {
   PreparedValueHomeLookups lookups;
@@ -1705,7 +1540,6 @@ void publish_prepared_return_chain(
           make_prepared_address_materialization_lookups(prepared, function.function_name),
       .memory_accesses = std::move(memory_access_lookups),
       .move_bundles = std::move(move_bundle_lookups),
-      .return_chains = make_prepared_return_chain_lookups(prepared, function),
       .value_homes = std::move(value_home_lookups),
       .edge_publications = std::move(edge_publication_lookups),
       .edge_publication_source_producers = std::move(source_producer_lookups),
@@ -2190,36 +2024,6 @@ find_prepared_before_return_abi_move_by_source_and_destination_bank(
     }
   }
   return selected;
-}
-
-[[nodiscard]] ValueNameId find_prepared_return_chain_terminal_value(
-    const PreparedReturnChainLookups* lookups,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    ValueNameId value_name) {
-  if (lookups == nullptr || value_name == kInvalidValueName) {
-    return kInvalidValueName;
-  }
-  const auto it = lookups->terminal_return_values_by_chain_value.find(
-      prepared_return_chain_value_key(block_index, instruction_index, value_name));
-  return it != lookups->terminal_return_values_by_chain_value.end()
-             ? it->second
-             : kInvalidValueName;
-}
-
-[[nodiscard]] ValueNameId find_prepared_return_chain_next_operand_value(
-    const PreparedReturnChainLookups* lookups,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    ValueNameId value_name) {
-  if (lookups == nullptr || value_name == kInvalidValueName) {
-    return kInvalidValueName;
-  }
-  const auto it = lookups->next_operand_values_by_chain_value.find(
-      prepared_return_chain_value_key(block_index, instruction_index, value_name));
-  return it != lookups->next_operand_values_by_chain_value.end()
-             ? it->second
-             : kInvalidValueName;
 }
 
 PreparedCurrentBlockPublicationConsumption

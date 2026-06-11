@@ -51,76 +51,12 @@ prepare::PreparedControlFlowBlock cond_branch_block(c4c::BlockLabelId label,
   };
 }
 
-struct PreparedReturnChainFixture {
-  prepare::PreparedBirModule prepared;
-  prepare::PreparedReturnChainLookups lookups;
-};
-
-prepare::PreparedControlFlowFunction prepared_return_chain_control_flow(
-    prepare::PreparedNameTables& names,
-    const bir::Function& function) {
-  prepare::PreparedControlFlowFunction control_flow{
-      .function_name = names.function_names.intern(function.name),
-  };
-  for (const auto& block : function.blocks) {
-    prepare::PreparedControlFlowBlock prepared_block{
-        .block_label = names.block_labels.intern(block.label),
-        .terminator_kind = block.terminator.kind,
-    };
-    switch (block.terminator.kind) {
-      case bir::TerminatorKind::Return:
-        break;
-      case bir::TerminatorKind::Branch:
-        prepared_block.branch_target_label =
-            names.block_labels.intern(block.terminator.target_label);
-        break;
-      case bir::TerminatorKind::CondBranch:
-        prepared_block.true_label =
-            names.block_labels.intern(block.terminator.true_label);
-        prepared_block.false_label =
-            names.block_labels.intern(block.terminator.false_label);
-        break;
-    }
-    control_flow.blocks.push_back(prepared_block);
-  }
-  return control_flow;
-}
-
-PreparedReturnChainFixture make_prepared_return_chain_fixture(
-    const bir::Function& function,
-    const std::vector<std::string_view>& value_names) {
-  PreparedReturnChainFixture fixture;
-  for (const auto value_name : value_names) {
-    fixture.prepared.names.value_names.intern(value_name);
-  }
-  fixture.prepared.module.functions.push_back(function);
-  const auto control_flow =
-      prepared_return_chain_control_flow(fixture.prepared.names, function);
-  fixture.lookups =
-      prepare::make_prepared_return_chain_lookups(fixture.prepared, control_flow);
-  return fixture;
-}
-
-bool route8_and_prepared_return_chain_queries_fail_closed(
+bool route8_return_chain_queries_fail_closed(
     const bir::Route8ReturnChainIndex& route8_index,
     const bir::Route8ReturnChainValueKey& route8_key,
-    const PreparedReturnChainFixture& prepared_fixture,
-    std::size_t prepared_block_index,
-    std::size_t prepared_instruction_index,
-    c4c::ValueNameId prepared_value_name,
     std::string_view message) {
   if (bir::route8_find_return_chain_terminal_value(route8_index, route8_key) ||
-      bir::route8_find_return_chain_next_operand_value(route8_index, route8_key) ||
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_fixture.lookups,
-          prepared_block_index,
-          prepared_instruction_index,
-          prepared_value_name) != c4c::kInvalidValueName ||
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_fixture.lookups,
-          prepared_block_index,
-          prepared_instruction_index,
-          prepared_value_name) != c4c::kInvalidValueName) {
+      bir::route8_find_return_chain_next_operand_value(route8_index, route8_key)) {
     std::cerr << message << "\n";
     return false;
   }
@@ -9892,54 +9828,17 @@ int verify_bir_return_chain_schema_and_index_lookup() {
         "Route 8 block-local return-chain index should expose the same schema identities");
   }
 
-  prepare::PreparedBirModule prepared;
-  const auto function_name =
-      prepared.names.function_names.intern("route8_return_chain");
-  const auto entry_label = prepared.names.block_labels.intern("entry");
-  const auto seed_name = prepared.names.value_names.intern("%seed");
-  const auto named_next_name = prepared.names.value_names.intern("%named.next");
-  const auto ret_name = prepared.names.value_names.intern("%ret");
-  prepared.module.functions.push_back(function);
-  const prepare::PreparedControlFlowFunction control_flow{
-      .function_name = function_name,
-      .blocks = {return_block(entry_label)},
-  };
-  const auto prepared_return_chains =
-      prepare::make_prepared_return_chain_lookups(prepared, control_flow);
   const auto route8_ret_terminal =
       bir::route8_find_return_chain_terminal_value(index, terminal_key);
   const auto route8_ret_next =
       bir::route8_find_return_chain_next_operand_value(index, terminal_key);
-  const auto prepared_seed_terminal =
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_return_chains, 0, 0, seed_name);
-  const auto prepared_seed_next =
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_return_chains, 0, 0, seed_name);
-  const auto prepared_ret_terminal =
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_return_chains, 0, 1, ret_name);
-  const auto prepared_ret_next =
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_return_chains, 0, 1, ret_name);
-  if (prepared_seed_terminal == c4c::kInvalidValueName ||
-      prepared_ret_terminal == c4c::kInvalidValueName ||
-      terminal_identity.name !=
-          prepared.names.value_names.spelling(prepared_seed_terminal) ||
-      !route8_ret_terminal ||
-      route8_ret_terminal.name !=
-          prepared.names.value_names.spelling(prepared_ret_terminal)) {
+  if (!route8_ret_terminal || route8_ret_terminal.name != "%ret") {
     return fail(
-        "Route 8 and prepared return-chain helpers should expose matching accepted terminal answers");
+        "Route 8 return-chain helper should expose accepted terminal answers");
   }
-  if (prepared_seed_next == c4c::kInvalidValueName ||
-      !next_identity ||
-      next_identity.name !=
-          prepared.names.value_names.spelling(prepared_seed_next) ||
-      prepared_ret_next != c4c::kInvalidValueName ||
-      route8_ret_next) {
+  if (!next_identity || next_identity.name != "%named.next" || route8_ret_next) {
     return fail(
-        "Route 8 and prepared return-chain helpers should expose matching accepted next-operand answers");
+        "Route 8 return-chain helper should expose accepted next-operand answers");
   }
 
   const bir::Block unsupported_opcode_block{
@@ -9970,23 +9869,11 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should reject unsupported binary opcodes");
   }
-  const bir::Function unsupported_opcode_function{
-      .name = "route8_unsupported_opcode",
-      .blocks = {unsupported_opcode_block},
-  };
-  const auto unsupported_prepared = make_prepared_return_chain_fixture(
-      unsupported_opcode_function, {"%seed"});
-  const auto unsupported_seed_name =
-      unsupported_prepared.prepared.names.value_names.find("%seed");
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           unsupported_index,
           bir::route8_return_chain_value_key(
               nullptr, unsupported_opcode_block, 0, seed),
-          unsupported_prepared,
-          0,
-          0,
-          unsupported_seed_name,
-          "Route 8 and prepared return-chain helpers should fail closed for unsupported opcodes")) {
+          "Route 8 return-chain helpers should fail closed for unsupported opcodes")) {
     return 1;
   }
 
@@ -10019,21 +9906,11 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should reject unnamed chain values");
   }
-  const bir::Function unnamed_chain_function{
-      .name = "route8_unnamed_chain",
-      .blocks = {unnamed_chain_block},
-  };
-  const auto unnamed_chain_prepared =
-      make_prepared_return_chain_fixture(unnamed_chain_function, {});
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           unnamed_chain_index,
           bir::route8_return_chain_value_key(
               nullptr, unnamed_chain_block, 0, bir::Value::immediate_i64(15)),
-          unnamed_chain_prepared,
-          0,
-          0,
-          c4c::kInvalidValueName,
-          "Route 8 and prepared return-chain helpers should fail closed for unnamed chain values")) {
+          "Route 8 return-chain helpers should fail closed for unnamed chain values")) {
     return 1;
   }
 
@@ -10050,23 +9927,11 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should reject unnamed terminal return values");
   }
-  const bir::Function unnamed_terminal_function{
-      .name = "route8_unnamed_terminal",
-      .blocks = {unnamed_terminal_block},
-  };
-  const auto unnamed_terminal_prepared = make_prepared_return_chain_fixture(
-      unnamed_terminal_function, {"%seed", "%named.next", "%ret"});
-  const auto unnamed_terminal_seed_name =
-      unnamed_terminal_prepared.prepared.names.value_names.find("%seed");
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           unnamed_terminal_index,
           bir::route8_return_chain_value_key(
               nullptr, unnamed_terminal_block, 0, seed),
-          unnamed_terminal_prepared,
-          0,
-          0,
-          unnamed_terminal_seed_name,
-          "Route 8 and prepared return-chain helpers should fail closed for unnamed terminal return values")) {
+          "Route 8 return-chain helpers should fail closed for unnamed terminal return values")) {
     return 1;
   }
 
@@ -10088,23 +9953,11 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should fail closed for broken same-block walks");
   }
-  const bir::Function broken_walk_function{
-      .name = "route8_broken_walk",
-      .blocks = {broken_walk_block},
-  };
-  const auto broken_walk_prepared = make_prepared_return_chain_fixture(
-      broken_walk_function, {"%seed", "%named.next", "%ret", "%not.seed"});
-  const auto broken_walk_seed_name =
-      broken_walk_prepared.prepared.names.value_names.find("%seed");
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           broken_walk_index,
           bir::route8_return_chain_value_key(
               nullptr, broken_walk_block, 0, seed),
-          broken_walk_prepared,
-          0,
-          0,
-          broken_walk_seed_name,
-          "Route 8 and prepared return-chain helpers should fail closed for broken same-block walks")) {
+          "Route 8 return-chain helpers should fail closed for broken same-block walks")) {
     return 1;
   }
 
@@ -10123,23 +9976,11 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should reject non-return terminators");
   }
-  const bir::Function non_return_function{
-      .name = "route8_non_return",
-      .blocks = {non_return_block},
-  };
-  const auto non_return_prepared = make_prepared_return_chain_fixture(
-      non_return_function, {"%seed", "%named.next", "%ret"});
-  const auto non_return_seed_name =
-      non_return_prepared.prepared.names.value_names.find("%seed");
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           non_return_index,
           bir::route8_return_chain_value_key(
               nullptr, non_return_block, 0, seed),
-          non_return_prepared,
-          0,
-          0,
-          non_return_seed_name,
-          "Route 8 and prepared return-chain helpers should fail closed for non-return terminators")) {
+          "Route 8 return-chain helpers should fail closed for non-return terminators")) {
     return 1;
   }
 
@@ -10187,22 +10028,14 @@ int verify_bir_return_chain_schema_and_index_lookup() {
     return fail(
         "Route 8 return-chain index should not stitch return chains across blocks");
   }
-  const auto cross_block_prepared = make_prepared_return_chain_fixture(
-      cross_block_function, {"%seed"});
-  const auto cross_block_seed_name =
-      cross_block_prepared.prepared.names.value_names.find("%seed");
-  if (!route8_and_prepared_return_chain_queries_fail_closed(
+  if (!route8_return_chain_queries_fail_closed(
           cross_block_index,
           bir::route8_return_chain_value_key(
               &cross_block_function,
               cross_block_function.blocks.front(),
               0,
               seed),
-          cross_block_prepared,
-          0,
-          0,
-          cross_block_seed_name,
-          "Route 8 and prepared return-chain helpers should fail closed for cross-block return relationships")) {
+          "Route 8 return-chain helpers should fail closed for cross-block return relationships")) {
     return 1;
   }
 
@@ -10223,15 +10056,9 @@ int verify_bir_return_chain_schema_and_index_lookup() {
       bir::route8_find_return_chain_next_operand_value(
           index,
           bir::route8_return_chain_value_key(
-              &function, indexed_block, indexed_block.insts.size(), seed)) ||
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_return_chains, 0, indexed_block.insts.size(), seed_name) !=
-          c4c::kInvalidValueName ||
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_return_chains, 0, indexed_block.insts.size(), seed_name) !=
-          c4c::kInvalidValueName) {
+              &function, indexed_block, indexed_block.insts.size(), seed))) {
     return fail(
-        "Route 8 and prepared return-chain helpers should fail closed for missing instruction keys");
+        "Route 8 return-chain helpers should fail closed for missing instruction keys");
   }
 
   auto manual_duplicate_index = index;
@@ -10241,15 +10068,6 @@ int verify_bir_return_chain_schema_and_index_lookup() {
   terminal_conflict_record.terminal_return_value =
       bir::route1_source_value_identity(conflicting_terminal);
   manual_duplicate_index.records.push_back(terminal_conflict_record);
-  auto prepared_terminal_conflict_lookups = prepared_return_chains;
-  const auto prepared_conflict_key =
-      prepare::prepared_return_chain_value_key(0, 0, seed_name);
-  prepared_terminal_conflict_lookups
-      .terminal_return_values_by_chain_value[prepared_conflict_key] =
-      c4c::kInvalidValueName;
-  prepared_terminal_conflict_lookups
-      .next_operand_values_by_chain_value[prepared_conflict_key] =
-      c4c::kInvalidValueName;
   const auto manual_duplicate_terminal_record =
       bir::route8_find_return_chain_record(manual_duplicate_index, first_key);
   if (manual_duplicate_terminal_record ||
@@ -10258,15 +10076,9 @@ int verify_bir_return_chain_schema_and_index_lookup() {
       bir::route8_find_return_chain_terminal_value(
           manual_duplicate_index, first_key) ||
       bir::route8_find_return_chain_next_operand_value(
-          manual_duplicate_index, first_key) ||
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_terminal_conflict_lookups, 0, 0, seed_name) !=
-          c4c::kInvalidValueName ||
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_terminal_conflict_lookups, 0, 0, seed_name) !=
-          c4c::kInvalidValueName) {
+          manual_duplicate_index, first_key)) {
     return fail(
-        "Route 8 and prepared return-chain helpers should fail closed for duplicate terminal conflicts");
+        "Route 8 return-chain helpers should fail closed for duplicate terminal conflicts");
   }
 
   auto manual_next_duplicate_index = index;
@@ -10276,13 +10088,6 @@ int verify_bir_return_chain_schema_and_index_lookup() {
   next_conflict_record.next_operand_value =
       bir::route1_source_value_identity(conflicting_next);
   manual_next_duplicate_index.records.push_back(next_conflict_record);
-  auto prepared_next_conflict_lookups = prepared_return_chains;
-  prepared_next_conflict_lookups
-      .terminal_return_values_by_chain_value[prepared_conflict_key] =
-      c4c::kInvalidValueName;
-  prepared_next_conflict_lookups
-      .next_operand_values_by_chain_value[prepared_conflict_key] =
-      c4c::kInvalidValueName;
   const auto manual_duplicate_next_record = bir::route8_find_return_chain_record(
       manual_next_duplicate_index, first_key);
   if (manual_duplicate_next_record ||
@@ -10291,15 +10096,9 @@ int verify_bir_return_chain_schema_and_index_lookup() {
       bir::route8_find_return_chain_terminal_value(
           manual_next_duplicate_index, first_key) ||
       bir::route8_find_return_chain_next_operand_value(
-          manual_next_duplicate_index, first_key) ||
-      prepare::find_prepared_return_chain_terminal_value(
-          &prepared_next_conflict_lookups, 0, 0, seed_name) !=
-          c4c::kInvalidValueName ||
-      prepare::find_prepared_return_chain_next_operand_value(
-          &prepared_next_conflict_lookups, 0, 0, seed_name) !=
-          c4c::kInvalidValueName) {
+          manual_next_duplicate_index, first_key)) {
     return fail(
-        "Route 8 and prepared return-chain helpers should fail closed for duplicate next-operand conflicts");
+        "Route 8 return-chain helpers should fail closed for duplicate next-operand conflicts");
   }
 
   auto manual_duplicate_record = bir::route8_find_return_chain_record(
