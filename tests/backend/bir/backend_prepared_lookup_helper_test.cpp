@@ -3,6 +3,7 @@
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/backend/prealloc/publication_plans.hpp"
 #include "src/backend/mir/query.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -7978,6 +7979,133 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
       !indexed_route6_frame_source.abi_bound_excluded) {
     return fail(
         "Route 6 call argument publication record/index should explicitly exclude ABI-bound source selection facts");
+  }
+
+  const prepare::PreparedCallPlansFunction x86_call_plans{
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .wrapper_kind =
+                      prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"consume_x86_scalar"},
+                  .arguments =
+                      {
+                          prepare::PreparedCallArgumentPlan{
+                              .instruction_index = 0,
+                              .arg_index = 0,
+                              .source_value_id = prepare::PreparedValueId{301},
+                              .destination_register_name = std::string{"edi"},
+                              .destination_register_bank =
+                                  prepare::PreparedRegisterBank::Gpr,
+                          },
+                      },
+              },
+          },
+  };
+  const bir::CallInst x86_call{
+      .callee = "consume_x86_scalar",
+      .args = {bir::Value::named(bir::TypeKind::I32, "%x86.scalar")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_sources =
+          {
+              bir::CallArgumentSourceRelationship{
+                  .arg_index = 0,
+                  .source_encoding =
+                      bir::CallArgumentSourceEncodingKind::Register,
+                  .source_value_id = std::size_t{301},
+                  .source_value_name = std::string{"%x86.scalar"},
+              },
+          },
+      .return_type = bir::TypeKind::Void,
+  };
+  const bir::Block x86_block{
+      .label = "entry",
+      .insts = {x86_call},
+      .label_id = block_label,
+  };
+  const bir::Function x86_function{
+      .name = "x86_route6_consumed_plans",
+      .blocks = {x86_block},
+  };
+  const auto x86_route6_index =
+      bir::route6_build_call_use_source_index(x86_function);
+  const c4c::backend::x86::ConsumedPlans x86_consumed{
+      .calls = &x86_call_plans,
+      .route6_call_use_sources = x86_route6_index,
+  };
+  const auto* x86_indexed_call =
+      std::get_if<bir::CallInst>(&x86_function.blocks.front().insts.front());
+  if (x86_indexed_call == nullptr) {
+    return fail("x86 Route 6 consumed-plans fixture is malformed");
+  }
+  const auto x86_route6_source =
+      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          x86_consumed,
+          x86_function.blocks.front(),
+          *x86_indexed_call,
+          0,
+          0,
+          0,
+          x86_indexed_call->args.front());
+  const auto* x86_prepared_argument =
+      c4c::backend::x86::find_consumed_call_argument_plan(
+          x86_consumed, 0, 0, 0);
+  if (!x86_route6_source || x86_prepared_argument == nullptr ||
+      x86_route6_source->source_kind !=
+          bir::Route6CallUseSourceKind::ArgumentValue ||
+      !x86_route6_source->source_value_name.has_value() ||
+      *x86_route6_source->source_value_name != "%x86.scalar" ||
+      x86_route6_source->source_value_id !=
+          std::optional<std::size_t>{301} ||
+      x86_prepared_argument->source_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{301}}) {
+    return fail(
+        "x86 Route 6 consumed-plans helper should expose agreed scalar i32 ArgumentValue sources");
+  }
+
+  c4c::backend::x86::ConsumedPlans x86_no_route6 = x86_consumed;
+  x86_no_route6.route6_call_use_sources.reset();
+  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          x86_no_route6,
+          x86_function.blocks.front(),
+          *x86_indexed_call,
+          0,
+          0,
+          0,
+          x86_indexed_call->args.front())) {
+    return fail(
+        "x86 Route 6 consumed-plans helper should fail closed when Route 6 facts are absent");
+  }
+  if (c4c::backend::x86::find_consumed_call_argument_plan(
+          x86_no_route6, 0, 0, 0) == nullptr) {
+    return fail(
+        "x86 Route 6 consumed-plans fallback should preserve prepared call argument selection");
+  }
+
+  auto mismatched_call_plans = x86_call_plans;
+  mismatched_call_plans.calls.front().arguments.front().source_value_id =
+      prepare::PreparedValueId{302};
+  const c4c::backend::x86::ConsumedPlans x86_mismatched{
+      .calls = &mismatched_call_plans,
+      .route6_call_use_sources = x86_route6_index,
+  };
+  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          x86_mismatched,
+          x86_function.blocks.front(),
+          *x86_indexed_call,
+          0,
+          0,
+          0,
+          x86_indexed_call->args.front())) {
+    return fail(
+        "x86 Route 6 consumed-plans helper should fail closed when Route 6 and prepared source ids disagree");
+  }
+  if (c4c::backend::x86::find_consumed_call_argument_plan(
+          x86_mismatched, 0, 0, 0) == nullptr) {
+    return fail(
+        "x86 Route 6 consumed-plans mismatch fallback should preserve prepared call argument selection");
   }
 
   auto duplicate_call = call;

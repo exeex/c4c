@@ -8,54 +8,33 @@ Current Step Title: Prove Interface Reuse and Fallback Coverage
 
 ## Just Finished
 
-Step 2 threaded the Route 6 call-use source view through the x86
-`ConsumedPlans` call-boundary wrapper for scalar named `i32` call arguments.
-`ConsumedPlans` now carries an optional `bir::Route6CallUseSourceIndex`, exposes
-`shared_route6_call_use_source_index()`, and adds
-`find_consumed_scalar_i32_call_argument_source(...)`, which only returns a Route
-6 argument source record when the Route 6 source is available, the source class
-is `ArgumentValue`, and the Route 6 source value id matches the prepared
-`PreparedCallArgumentPlan` source id.
+Step 3 made the x86 Route 6-through-`ConsumedPlans` interface and fallback
+coverage run in the default proof path by adding an always-built assertion to
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
 
-The x86 direct-call wrappers in `src/backend/mir/x86/module/module.cpp` now
-pass that optional Route 6 source into scalar call-argument rendering while
-still requiring prepared BeforeCall bundles for ABI destinations and prepared
-value homes for final x86 register moves. When Route 6 facts are absent, the
-helper fails closed and the existing prepared call-plan/storage path emits the
-same assembly.
-
-Focused coverage in
-`tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
-checks that a scalar `printf` argument source threads through `ConsumedPlans`
-and that clearing Route 6 call-argument source facts preserves the prepared
-call-argument selector and unchanged fallback assembly.
+The new default-path coverage constructs a scalar named `i32` direct-call
+source fixture and proves that
+`find_consumed_scalar_i32_call_argument_source(...)` returns a Route 6
+`ArgumentValue` record only when Route 6 facts and the prepared
+`PreparedCallArgumentPlan` source id agree. The same assertion also checks that
+absent Route 6 facts and mismatched Route 6/prepared source ids fail closed
+while preserving the prepared call-argument selector for fallback.
 
 ## Suggested Next
 
-Delegate Step 3 to make the x86 Route 6-through-`ConsumedPlans` coverage
-acceptance-grade: either enable and run the focused x86 handoff-boundary test
-path in the standard proof route, or add an always-built backend test that
-observes the same interface reuse and fallback behavior without moving ABI
-placement, wrapper-kind decisions, frame layout, or instruction spelling out of
-x86.
+Supervisor review/acceptance for Step 3, including whether the current runbook
+is now ready for lifecycle close or needs a final broader validation packet.
 
 ## Watchouts
 
-- The current Route 6 selector is intentionally narrow: named scalar `i32`
-  arguments whose Route 6 source kind is `ArgumentValue` and whose source value
-  id agrees with the prepared call-argument plan.
-- The x86 wrappers still require prepared move bundles and value homes before
-  emitting; do not replace those target-owned ABI/storage checks with Route 6
-  facts.
-- `clang-format` was not available in this container, so formatting was kept
-  manual.
-- The delegated CTest regex selected the three prepared tests shown in
-  `test_after.log`; `backend_x86_route_debug` and
-  `backend_x86_handoff_boundary` did not appear in the selected CTest run.
-- A supervisor x86-enabled build of `backend_x86_handoff_boundary_test`
-  compiled the modified direct-extern test object, but the aggregate target was
-  blocked by unrelated existing compile errors in
-  `backend_x86_handoff_boundary_joined_branch_test.cpp`.
+- The default-build proof still selects only the three always-built prepared
+  tests in this workspace; `backend_x86_route_debug` and
+  `backend_x86_handoff_boundary` remain gated by `C4C_ENABLE_X86_BACKEND_TESTS`
+  and do not appear in the selected CTest run.
+- The always-built assertion is intentionally interface-level: it proves Route
+  6/prepared agreement and fallback selector preservation without moving x86
+  ABI placement, wrapper-kind decisions, frame layout, or instruction spelling
+  into BIR.
 
 ## Proof
 
@@ -78,15 +57,3 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 ```
 
 Result: passed with no new failures.
-
-Additional supervisor compile probe:
-
-```sh
-cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_BACKEND_TESTS=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON
-cmake --build build-x86 --target backend_x86_handoff_boundary_test
-```
-
-Result: the modified
-`backend_x86_handoff_boundary_direct_extern_call_test.cpp` object compiled, but
-the aggregate target stopped on unrelated stale call-site errors in
-`backend_x86_handoff_boundary_joined_branch_test.cpp`.
