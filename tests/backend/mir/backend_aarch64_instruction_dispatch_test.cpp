@@ -5299,6 +5299,15 @@ prepare::PreparedBirModule prepared_semantic_f128_constant_helper_operand() {
       });
 }
 
+prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
+                                                   const char* register_name);
+
+prepare::PreparedStoragePlanValue frame_slot_storage(prepare::PreparedValueId value_id,
+                                                     c4c::ValueNameId value_name,
+                                                     prepare::PreparedFrameSlotId slot_id,
+                                                     std::size_t offset_bytes);
+
 prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -5359,6 +5368,283 @@ prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee
                                             : std::optional<std::size_t>{24},
               },
       }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_selected_stored_indirect_callee(
+    bool erase_bir_memory_range,
+    bool mismatch_prepared_store_slot) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.indirect.stored.route3");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.indirect.stored.route3.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.indirect.stored.route3.entry");
+  const auto global_name = prepared.names.link_names.intern("dispatch_indirect_targets");
+  const auto bir_global_name =
+      prepared.module.names.link_names.intern("dispatch_indirect_targets");
+  const auto true_name = prepared.names.value_names.intern("%callee.true");
+  const auto false_name = prepared.names.value_names.intern("%callee.false");
+  const auto selected_name = prepared.names.value_names.intern("%callee.selected");
+  const auto loaded_name = prepared.names.value_names.intern("%callee.loaded");
+  constexpr auto kSlot = prepare::PreparedFrameSlotId{631};
+  constexpr auto kDecoySlot = prepare::PreparedFrameSlotId{634};
+  constexpr auto kTrueValue = prepare::PreparedValueId{630};
+  constexpr auto kFalseValue = prepare::PreparedValueId{631};
+  constexpr auto kSelectedValue = prepare::PreparedValueId{632};
+  constexpr auto kLoadedValue = prepare::PreparedValueId{633};
+  constexpr std::size_t kCallIndex = 5;
+
+  const auto local_address =
+      [erase_bir_memory_range]() -> std::optional<bir::MemoryAddress> {
+    return bir::MemoryAddress{
+        .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+        .base_name = "callee.slot",
+        .byte_offset = 0,
+        .size_bytes = erase_bir_memory_range ? 0U : 8U,
+        .align_bytes = 8,
+        .address_space = bir::AddressSpace::Default,
+        .base_slot_id = static_cast<c4c::SlotNameId>(kSlot),
+    };
+  };
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "dispatch_indirect_targets",
+      .link_name_id = bir_global_name,
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 16,
+      .align_bytes = 8,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.indirect.stored.route3",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.indirect.stored.route3.entry",
+          .insts =
+              {bir::LoadGlobalInst{
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%callee.true"),
+                   .global_name = "dispatch_indirect_targets",
+                   .global_name_id = bir_global_name,
+                   .byte_offset = 0,
+                   .align_bytes = 8,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                           .base_name = "dispatch_indirect_targets",
+                           .byte_offset = 0,
+                           .size_bytes = 8,
+                           .align_bytes = 8,
+                           .address_space = bir::AddressSpace::Default,
+                           .base_link_name_id = bir_global_name,
+                       },
+               },
+               bir::LoadGlobalInst{
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%callee.false"),
+                   .global_name = "dispatch_indirect_targets",
+                   .global_name_id = bir_global_name,
+                   .byte_offset = 8,
+                   .align_bytes = 8,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                           .base_name = "dispatch_indirect_targets",
+                           .byte_offset = 8,
+                           .size_bytes = 8,
+                           .align_bytes = 8,
+                           .address_space = bir::AddressSpace::Default,
+                           .base_link_name_id = bir_global_name,
+                       },
+               },
+               bir::SelectInst{
+                   .predicate = bir::BinaryOpcode::Eq,
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%callee.selected"),
+                   .compare_type = bir::TypeKind::I64,
+                   .lhs = bir::Value::immediate_i64(1),
+                   .rhs = bir::Value::immediate_i64(1),
+                   .true_value = bir::Value::named(bir::TypeKind::Ptr, "%callee.true"),
+                   .false_value = bir::Value::named(bir::TypeKind::Ptr, "%callee.false"),
+               },
+               bir::StoreLocalInst{
+                   .slot_name = "callee.slot",
+                   .slot_id = static_cast<c4c::SlotNameId>(kSlot),
+                   .value = bir::Value::named(bir::TypeKind::Ptr, "%callee.selected"),
+                   .byte_offset = 0,
+                   .align_bytes = 8,
+                   .address = local_address(),
+               },
+               bir::LoadLocalInst{
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%callee.loaded"),
+                   .slot_name = "callee.slot",
+                   .slot_id = static_cast<c4c::SlotNameId>(kSlot),
+                   .byte_offset = 0,
+                   .align_bytes = 8,
+                   .address = local_address(),
+               },
+               bir::CallInst{
+                   .callee_value =
+                       bir::Value::named(bir::TypeKind::Ptr, "%callee.loaded"),
+                   .return_type = bir::TypeKind::Void,
+                   .calling_convention = bir::CallingConv::C,
+                   .is_indirect = true,
+               }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = kTrueValue,
+               .function_name = function_name,
+               .value_name = true_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x10"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kFalseValue,
+               .function_name = function_name,
+               .value_name = false_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x11"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kSelectedValue,
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = kSlot,
+               .offset_bytes = std::size_t{32},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kLoadedValue,
+               .function_name = function_name,
+               .value_name = loaded_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x9"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(kTrueValue, true_name, "x10"),
+           register_storage(kFalseValue, false_name, "x11"),
+           frame_slot_storage(kSelectedValue, selected_name, kSlot, 32),
+           register_storage(kLoadedValue, loaded_name, "x9")},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = kCallIndex,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::Indirect,
+          .is_indirect = true,
+          .indirect_callee =
+              prepare::PreparedIndirectCalleePlan{
+                  .value_name = loaded_name,
+                  .value_id = kLoadedValue,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .register_name = std::string{"x9"},
+              },
+      }},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = kSlot,
+              .function_name = function_name,
+              .offset_bytes = 32,
+              .size_bytes = 8,
+              .align_bytes = 8,
+          },
+          prepare::PreparedFrameSlot{
+              .slot_id = kDecoySlot,
+              .function_name = function_name,
+              .offset_bytes = 40,
+              .size_bytes = 8,
+              .align_bytes = 8,
+          }},
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = true_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = false_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 8,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .stored_value_name = selected_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id =
+                           mismatch_prepared_store_slot ? kDecoySlot : kSlot,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 4,
+               .result_value_name = loaded_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = kSlot,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
   });
   return prepared;
 }
@@ -5482,10 +5768,6 @@ prepare::PreparedBirModule prepared_with_simple_fixed_frame() {
   });
   return prepared;
 }
-
-prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
-                                                   c4c::ValueNameId value_name,
-                                                   const char* register_name);
 
 prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
   prepare::PreparedBirModule prepared;
@@ -30410,6 +30692,94 @@ int block_dispatch_lowers_prepared_indirect_call_only_with_register_authority() 
   return 0;
 }
 
+int block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_source() {
+  auto prepared = prepared_with_selected_stored_indirect_callee(false, true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 6 || !result.visited_terminator ||
+      block.instructions.size() < 4 || !diagnostics.empty()) {
+    return fail("expected exact Route 3 stored indirect callee fixture to dispatch cleanly: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected exact Route 3 stored indirect callee fixture to print: " +
+                printed.diagnostic);
+  }
+  const auto compare = printed.assembly.find("cmp x");
+  const auto select = printed.assembly.find("csel x9", compare);
+  const auto call = printed.assembly.find("blr x9", select);
+  if (compare == std::string::npos || select == std::string::npos ||
+      call == std::string::npos || !(compare < select && select < call)) {
+    return fail("expected exact Route 3 stored-value source identity to retarget selected callee before blr: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy() {
+  auto prepared = prepared_with_selected_stored_indirect_callee(true, false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 6 || !result.visited_terminator ||
+      block.instructions.size() < 4 || !diagnostics.empty()) {
+    return fail("expected prepared fallback stored indirect callee fixture to dispatch cleanly: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected prepared fallback stored indirect callee fixture to print: " +
+                printed.diagnostic);
+  }
+  const auto compare = printed.assembly.find("cmp x");
+  const auto select = printed.assembly.find("csel x9", compare);
+  const auto call = printed.assembly.find("blr x9", select);
+  if (compare == std::string::npos || select == std::string::npos ||
+      call == std::string::npos || !(compare < select && select < call)) {
+    return fail("expected prepared stored-value fallback to preserve selected callee policy when Route 3 lacks range authority: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   auto prepared = prepared_with_reordered_retained_bir();
   const auto& function_cf = prepared.control_flow.functions[1];
@@ -35384,6 +35754,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_indirect_call_only_with_register_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_source();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy();
       status != 0) {
     return status;
   }
