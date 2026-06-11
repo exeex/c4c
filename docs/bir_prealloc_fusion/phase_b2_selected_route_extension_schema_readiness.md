@@ -1,9 +1,9 @@
 # Phase B2 Selected Route Extension Schema Readiness
 
-Status: Step 4 follow-up decisions recorded.
+Status: Closed; Step 5 closure evidence accepted.
 
 Source idea:
-`ideas/open/201_phase_b2_selected_route_extension_schema_readiness_audit.md`
+`ideas/closed/201_phase_b2_selected_route_extension_schema_readiness_audit.md`
 
 ## Scope
 
@@ -122,6 +122,43 @@ preserve prepared fallback and target-policy exclusions.
 - Deferred and rejected candidates have destinations or no-action reasons.
 - No retained-policy cleanup idea was created because the audit does not show a
   separate bounded initiative.
+
+## Step 5 Lifecycle Closure Evidence
+
+Closure payload link:
+`docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md`
+
+Source-idea output coverage:
+
+| Required output | Evidence |
+| --- | --- |
+| Per-route Route 1-8 schema-readiness table. | Present in `Step 2 Schema Sufficiency Classification`; every Route 1-8 row has a schema-readiness classification, existing record/index evidence, a reason, and a retained prepared fallback/oracle note. |
+| Accepted schema or index extension follow-up ideas, if any. | No schema/index extension idea is accepted in this phase. The audit records that Routes 1-7 have existing schema/index support for selected target-neutral semantic facts and Route 8 is no-action for schema/index extension. |
+| Deferred non-schema candidates and where they should go instead. | Present in `Step 4 Follow-Up Decisions`: Routes 3-6 were opened as bounded compatibility-adapter ideas, Route 7 as a diagnostic/oracle idea, Routes 1-2 deferred until a concrete selected consumer or visible diagnostic row is named, and Route 8 remains no-action unless a future visible diagnostic row is selected. |
+| Rejected surfaces and why they stay outside BIR. | Present in `Step 4 Follow-Up Decisions`: retained prepared-policy cleanup is rejected for this phase, and broad `PreparedFunctionLookups`, `PreparedBirModule`, wrapper, printer, target-policy, ABI/layout, move-scheduling, branch-policy, or final-emission contraction remains outside BIR schema scope under Phase A2. |
+| Bridge/oracle/fallback and proof-route recommendations. | Present in `Retained Cross-Cutting Surfaces`, every Step 2 retained fallback/oracle note, and every Step 3 proof/reject row. |
+
+Closure decision evidence:
+
+- The durable analysis artifact contains all required source evidence and says
+  missing required sources are none.
+- `review/phase_b2_step3_route_review.md` reported no blocking findings and
+  recommended continuing the current route into Step 4.
+- Step 4 opened only bounded follow-up ideas for Routes 3-7 and did not open
+  schema/index extension work, retained-policy cleanup, or broad prepared API
+  contraction.
+- The source idea's analysis-only output is satisfied by this artifact.
+
+Close-gate result:
+
+- Existing `test_before.log` and `test_after.log` cover the same command:
+  `ctest --test-dir build -j --output-on-failure -R '^ccc_review_'`.
+- Both logs show 9/9 tests passed after the supervisor rebuilt before each
+  run.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  exited with `PASS`; equal pass count is accepted for this docs/lifecycle
+  closure packet.
+- The plan-owner close gate is accepted and the source idea is closed.
 
 ## Step 2 Completion Check
 

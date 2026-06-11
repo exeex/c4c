@@ -120,6 +120,40 @@ The closure note must contain:
 - rejected surfaces and why they stay outside BIR;
 - bridge/oracle/fallback and proof-route recommendations.
 
+## Closure Note
+
+Closed by the Phase B2 schema-readiness audit.
+
+Durable closure artifact:
+`docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md`
+
+Closure summary:
+
+- The artifact contains the per-route Route 1-8 schema-readiness table and
+  records no missing required sources.
+- No schema/index extension follow-up was accepted in this phase.
+- Routes 3-6 were opened as bounded compatibility-adapter follow-up ideas, and
+  Route 7 was opened as a bounded diagnostic/oracle follow-up idea.
+- Routes 1-2 are deferred until a concrete selected consumer or visible
+  diagnostic row is named.
+- Route 8 remains no-action for schema/index extension unless a future visible
+  diagnostic row is selected.
+- Retained prepared-policy cleanup and broad `PreparedFunctionLookups`,
+  `PreparedBirModule`, wrapper, printer, target-policy, ABI/layout,
+  move-scheduling, branch-policy, or final-emission contraction are rejected
+  for this phase and remain outside BIR schema scope.
+- Bridge/oracle/fallback and proof-route recommendations are preserved in the
+  retained cross-cutting surfaces, Step 2 retained fallback/oracle notes, and
+  Step 3 proof/reject rows.
+
+Close gate:
+
+- Matching before/after regression logs cover
+  `ctest --test-dir build -j --output-on-failure -R '^ccc_review_'`.
+- Both logs show 9/9 tests passed after rebuild.
+- The maintenance-mode regression guard passed:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+
 ## Reviewer Reject Signals
 
 - Opening this as a brand-new residual route/schema program despite Phase A2
