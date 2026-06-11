@@ -49,3 +49,11 @@ changes.
 - The contraction changes accepted/rejected return-chain semantics.
 - Tests are weakened or deleted instead of being retargeted to the BIR route.
 - Public API cleanup is bundled with new schema behavior or consumer migration.
+
+## Closure
+
+Closed after the prepared return-chain API contraction runbook completed.
+The public prepared return-chain helper surface was removed from
+`src/backend/prealloc/prepared_lookups.hpp`; removed names had no remaining
+matches under `src` or `tests`; focused return-chain/prepared helper proof and
+the broader `^backend_` subset were green, with 180/180 backend tests passing.
