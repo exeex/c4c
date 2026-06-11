@@ -54,3 +54,21 @@ lookup headers change.
 - Missing or conflicting BIR answers are handled by choosing target-local
   winners instead of failing closed.
 - The migration weakens existing supported return-chain behavior.
+
+## Completion Notes
+
+Closed after the AArch64 return-chain consumer migration completed through
+Step 6 and was committed in `37d17e59b`.
+
+Acceptance facts:
+
+- `src/backend/mir/aarch64/codegen/alu.cpp` no longer reads
+  `find_prepared_return_chain_terminal_value`,
+  `find_prepared_return_chain_next_operand_value`, or
+  `prepared_return_chain` helper facts.
+- Focused proof passed for `backend_aarch64_return_lowering` and
+  `backend_prepared_lookup_helper`.
+- Regression guard passed for the canonical focused before/after logs with
+  non-decreasing pass-count policy: 2/2 before and 2/2 after.
+- Prepared return-chain lookup APIs remain public and available for follow-up
+  idea 180.
