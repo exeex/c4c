@@ -1,168 +1,167 @@
 Status: Active
 Source Idea Path: ideas/open/194_prepared_printer_debug_oracle_replacement_planning.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Prepared Diagnostic And Oracle Consumers
+Current Step ID: 2
+Current Step Title: Define Route-Native Replacement Diagnostics
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory for prepared diagnostic and oracle consumers that
-still read prepared route facts or `PreparedFunctionLookups`.
+Completed Step 2 replacement planning for the retained prepared diagnostic and
+oracle surfaces inventoried in Step 1. Each retained surface now has either a
+route-native replacement diagnostic plan or an explicit retained-oracle
+rationale.
 
-Consumer inventory grouped by surface and route family:
+Replacement and retention planning by surface:
 
-- Prepared printer surface [dump-only, debug-only]:
-  `src/backend/prealloc/prepared_printer.hpp` exposes
-  `prepare::print(const PreparedBirModule&)`, implemented by
-  `src/backend/prealloc/prepared_printer.cpp`. The printer appends prepared
-  sections through `append_function_summaries`,
-  `append_prepared_control_flow`, `append_value_locations`,
-  `append_stack_layout`, `append_frame_plan`, `append_dynamic_stack_plan`,
-  `append_call_plans`, `append_store_source_publications`,
-  `append_select_chain_materializations`, `append_variadic_entry_plans`,
-  `append_regalloc`, `append_storage_plans`, special carrier/runtime-helper
-  appenders, and `append_addressing`. Route families observed: Route 1
-  producer/constant and value-home facts, Route 2 select-chain/direct-global,
-  Route 3 memory/addressing/source, Route 4 publication, Route 5 edge/join
-  source, Route 6 call-use/call-boundary, Route 7 comparison/condition, plus
-  target/prepared-only frame, stack, regalloc, storage, variadic, carrier,
-  intrinsic, inline-asm, and runtime-helper facts.
+- Prepared printer surface:
+  `prepare::print(const PreparedBirModule&)` should remain a compatibility
+  diagnostic until route-native dumps can expose the same semantic route facts
+  without reading prepared storage. Route-native replacement output must cover
+  semantic facts by route family: Route 1 producer/constant/value-origin and
+  final value-home decisions; Route 2 select-chain and direct-global decisions;
+  Route 3 memory address, store source, load source, and addressing-mode
+  decisions; Route 4 block-entry/current publication decisions; Route 5
+  edge/join source and transfer decisions; Route 6 call-use, argument,
+  preserved-value, return, and call-boundary decisions; and Route 7 comparison,
+  fused-compare, branch-condition, and condition-materialization decisions.
+  Formatting replacement can preserve section grouping for readability, but
+  section names are not themselves route facts. Target policy such as stack
+  layout, frame plan, dynamic-stack restoration, regalloc, storage plans,
+  variadic entry plans, carrier plans, inline asm constraints, intrinsic
+  lowering, and runtime-helper choices should be emitted as target-policy or
+  target-lowering sections, not mixed into route-semantic sections. Prepared
+  compatibility facts such as prepared block/value labels and prepared-only
+  lookup ids may remain in the prepared printer while route-native diagnostics
+  mature. Temporary adapter: a route-native printer may use a narrow bridge
+  that maps route-view identities to existing prepared labels solely to keep
+  focus and diff stability while both dumps coexist; the adapter must not be a
+  semantic authority.
 
-- Prepared printer tests and expected snippets [oracle-only, dump-only]:
-  `tests/backend/bir/backend_prepared_printer_test.cpp` is the direct printer
-  oracle (`backend_prepared_printer` in `tests/backend/bir/CMakeLists.txt`).
-  CLI dump oracles in `tests/backend/bir/CMakeLists.txt` include
-  `backend_cli_dump_prepared_bir_is_prepared`,
-  `backend_cli_dump_prepared_bir_exposes_contract_sections`,
-  `backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg`,
-  `backend_cli_dump_prepared_bir_local_arg_call_contract`,
-  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff`,
-  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
-  and prepared focus tests for function, block, and value filtering. These
-  assert stable prepared section headers, function summaries, control-flow,
-  block-entry publications, stack/frame/dynamic-stack, call plans, storage,
-  addressing, publication, branch-condition, join-transfer, and focus
-  behavior. Ownership is clear: retained dump/oracle coverage.
+- Prepared printer tests and CLI prepared dump snippets:
+  `backend_prepared_printer` and `backend_cli_dump_prepared_bir_*` remain
+  retained oracles for the prepared compatibility surface. Their route-native
+  replacement should be a new dump oracle, not rewritten expectations on the
+  existing prepared dump. The new oracle must assert semantic route content
+  independently from formatting: route sections prove facts, focus behavior
+  proves selection semantics, and separate target-policy sections prove frame,
+  stack, storage, and call-lowering policy. Existing prepared snippets should
+  remain until equivalent route-native positive, negative, ambiguous, and
+  fallback expectations exist. Temporary adapter: CLI focus options may be
+  shared between prepared and route-native dump commands, but expected text for
+  prepared compatibility should stay isolated from route-native expected text.
 
-- Backend CLI dump routing [dump-only, route-debug-only]:
-  `src/apps/c4cll.cpp` owns public flags `--dump-prepared-bir`, `--dump-mir`,
-  `--trace-mir`, and focus options. `src/backend/backend.cpp` routes
-  `BackendDumpStage::PreparedBir` to `dump_generic_prepared_bir(...)` and
-  `prepare::print(prepared)`, while `BackendDumpStage::MirSummary` and
-  `BackendDumpStage::MirTrace` use `dump_target_local_prepared_mir(...)` for
-  target-local route debug. `dump_stage_uses_target_local_route_debug(...)`
-  keeps prepared BIR dumps distinct from MIR summary/trace. Route families:
-  all prepared-printer families for `--dump-prepared-bir`; x86 route/debug
-  families for `--dump-mir`/`--trace-mir`.
+- Backend CLI dump routing:
+  `--dump-prepared-bir` remains the prepared compatibility dump. Route-native
+  replacement should be a distinct stage or command path that dumps
+  route-native diagnostics from route views or target-local route state, not an
+  alias that re-labels `prepare::print(...)`. `--dump-mir` and `--trace-mir`
+  should continue to select target-local route-debug output where available.
+  Semantic route facts belong in the route-native diagnostic stage; MIR shape,
+  instruction spelling, register allocation, ABI, and target policy belong in
+  MIR summary/trace or target-policy sections. Temporary adapter: backend dump
+  dispatch may keep prepared and route-native stages side by side and share
+  focus/filter plumbing, but the route-native stage must report its data source
+  clearly enough that prepared facts are not mistaken for replacement facts.
 
-- x86 prepared route-debug surface [route-debug-only, compatibility-only]:
-  `src/backend/mir/x86/debug/debug.hpp/.cpp` expose
+- x86 MIR summary/trace route-debug:
   `summarize_prepared_module_routes(...)` and
-  `trace_prepared_module_routes(...)`; implementation funnels through
-  `render_report(...)` and grouped authority reporting such as
-  `append_grouped_authority(...)`. Public forwarding exists in
-  `src/backend/mir/x86/x86.hpp` and
-  `src/backend/mir/x86/codegen/route_debug.hpp`. Tests include
-  `tests/backend/bir/backend_x86_route_debug_test.cpp`, handoff checks in
-  `backend_x86_handoff_boundary_lir_test.cpp`, multi-defined rejection route
-  debug in `backend_x86_handoff_boundary_multi_defined_rejection_test.cpp`,
-  and frame/stack/call contract route-debug checks in
-  `backend_prepare_frame_stack_call_contract_test.cpp`. Route families:
-  wrapper/debug observations over x86 prepared fast-path, Route 6 call-use
-  reuse, short-circuit/compare routing, memory-return focus, grouped
-  spill/reload, and multi-function rejection summaries. Retain until equivalent
-  route-native summary/trace exists.
+  `trace_prepared_module_routes(...)` are retained route-debug compatibility
+  surfaces until x86 has equivalent route-native summary/trace output. The
+  replacement should report grouped route authority from x86 route views or
+  target-local lowering state: Route 6 call-use reuse, call-boundary and
+  preserved-value decisions; short-circuit, compare, branch, and condition
+  routing; memory-return and address/source routing; grouped spill/reload or
+  value-home routing; and multi-function rejection or fallback summaries.
+  Formatting such as grouped authority tables and trace ordering can remain
+  x86-specific. Target policy such as concrete registers, frame offsets,
+  instruction selection, and ABI details should be labeled as x86 target
+  policy, not route-semantic authority. Temporary adapter: the x86 route-debug
+  wrapper may consume existing prepared compatibility views while it also
+  exposes route-native authority groups, but tests should distinguish
+  compatibility-derived rows from route-native rows.
 
-- `PreparedFunctionLookups` aggregate and direct lookup consumers
-  [production-adjacent, compatibility-only, oracle-only]:
-  `src/backend/prealloc/prepared_lookups.hpp/.cpp` define
-  `PreparedFunctionLookups` with `call_plans`, `address_materializations`,
-  `memory_accesses`, `move_bundles`, `value_homes`, `edge_publications`, and
-  `edge_publication_source_producers`, built by
-  `make_prepared_function_lookups(...)`. AArch64 lowering constructs and
-  threads the aggregate in
-  `src/backend/mir/aarch64/codegen/traversal.cpp` into
-  `module::FunctionLoweringContext` fields declared in
-  `src/backend/mir/aarch64/module/module.hpp`. x86 compatibility consumes the
-  aggregate through `x86::ConsumedPlans::prepared_lookups`,
-  `shared_function_lookups()`, `shared_call_plan_lookups()`,
-  `consume_prepared_function_lookups(...)`, and `consume_plans(...)` in
-  `src/backend/mir/x86/x86.hpp`. RISC-V still builds prepared lookups in
-  `src/backend/mir/riscv/codegen/emit.cpp`. These are not all diagnostics, but
-  they block contraction and provide fallback/oracle context for diagnostic
-  replacement planning.
+- Prepared lookup helper oracle:
+  `backend_prepared_lookup_helper` remains an explicit retained oracle because
+  it tests prepared aggregate semantics, compatibility lookup status, and
+  fallback behavior that are not diagnostics by themselves. Route-native
+  replacement should be a helper-oracle family over route-native lookup APIs or
+  route views, with the same positive, negative, ambiguous, invalid,
+  missing-lookup, and fallback classes for call plans, prior preserved values,
+  move bundles, frame-address offsets, memory accesses, edge publications,
+  source producers, current/block-entry publication facts, same-block
+  producer/source facts, select-chain/direct global, store-source publication,
+  fused compare, and Route 6 compatibility consumption. Until that exists, the
+  prepared helper oracle is retained as a contraction blocker. Temporary
+  adapter: route-native helper tests may compare against prepared helper output
+  for transition auditing, but prepared helper results must not be treated as
+  the route-native source of truth.
 
-- AArch64 diagnostic-adjacent and oracle lookup tests [oracle-only,
-  production-adjacent]:
-  Prepared lookup threading is asserted across
-  `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`,
-  `backend_aarch64_branch_control_lowering_test.cpp`,
-  `backend_aarch64_current_block_join_routing_test.cpp`,
-  `backend_aarch64_prepared_scalar_alu_records_test.cpp`, and
-  `backend_aarch64_prepared_memory_operand_records_test.cpp`. These use
-  `make_prepared_function_lookups(...)`, attach the aggregate to
-  `FunctionLoweringContext`, and sometimes mutate lookup maps for negative or
-  fallback cases. Route families: Route 1 producer/constant, Route 2
-  select-chain, Route 3 memory/source, Route 4 publication, Route 5
-  edge/join-source, Route 6 call-use, Route 7 comparison, plus return-chain and
-  target-local home/storage/move facts.
+- AArch64 diagnostic-adjacent lookup oracles:
+  AArch64 tests that thread `PreparedFunctionLookups` through
+  `FunctionLoweringContext` remain production-adjacent compatibility oracles,
+  not route-native diagnostics. Their replacement belongs in target-local
+  route-view or context-construction tests that verify AArch64 receives
+  route-native facts for Route 1 producers/constants, Route 2 select/direct
+  global, Route 3 memory/source, Route 4 publication, Route 5 edge/join source,
+  Route 6 call-use, Route 7 comparison, return chains, and target-local home,
+  storage, and move facts. Semantic route facts should be asserted before
+  target policy; instruction dispatch, register choice, and assembly details
+  should be separate AArch64 lowering expectations. Temporary adapter:
+  `FunctionLoweringContext` may carry both prepared and route-native lookup
+  handles during migration, but tests should name which authority each
+  assertion uses.
 
-- Prepared lookup helper oracles [oracle-only]:
-  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` is the broad
-  prepared helper oracle (`backend_prepared_lookup_helper` in
-  `tests/backend/bir/CMakeLists.txt`). It covers aggregate construction and
-  positive, negative, ambiguous, invalid, missing-lookup, and fallback statuses
-  for call plans, prior preserved values, move bundles, frame-address offsets,
-  memory accesses, edge publications, source producers, current/block-entry
-  publication facts, same-block producer/source facts, select-chain/direct
-  global, store-source publication, fused compare, and x86 Route 6
-  `ConsumedPlans` compatibility. This is the main retained oracle surface for
-  Step 3 coverage equivalence.
+- Target wrapper compatibility:
+  x86 wrapper tests and RISC-V prepared edge-publication tests remain
+  compatibility-only/oracle-only surfaces. They do not need a user-facing
+  route-native diagnostic replacement before Step 3, but they need explicit
+  retained-oracle rationale: they protect wrapper behavior while target
+  lowerers consume prepared compatibility data. Future replacement should move
+  assertions to target wrapper inputs built from route-native views and should
+  keep compatibility assertions only for adapters that intentionally still read
+  prepared lookups. Temporary adapter: target wrappers may expose dual
+  prepared/route-native constructors or consumed-plan views, but route-native
+  wrapper tests must not depend on prepared lookup mutation to create semantic
+  cases.
 
-- Target wrapper compatibility tests [compatibility-only, oracle-only]:
-  x86 wrappers consume prepared lookups and route views in
-  `tests/backend/bir/backend_x86_prepared_decoded_home_storage_test.cpp`,
-  `backend_x86_handoff_boundary_direct_extern_call_test.cpp`, and related
-  handoff-boundary tests. RISC-V prepared edge-publication threading is covered
-  by `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`.
-  These are not route-native diagnostics, but they are compatibility consumers
-  that Step 2 must either preserve or explicitly exclude from diagnostic
-  replacement scope.
+- Ownership and expected-output references:
+  `tests/backend/OWNERSHIP.md` remains the ownership index for retained
+  prepared and route-debug surfaces. No separate expected-output files were
+  found for the inspected prepared dump or route-debug CLI snippets; inline
+  CMake snippets remain retained compatibility expectations. Route-native
+  replacement ownership should add new route-native dump/route-debug names
+  alongside existing prepared names instead of renaming the prepared tests.
+  Temporary adapter: ownership docs can describe coexistence, but ownership
+  labels are formatting/maintenance facts rather than semantic diagnostics.
 
-- Expected-output and ownership references [oracle-only, compatibility-only]:
-  `tests/backend/OWNERSHIP.md` names `backend_prepared_printer`,
-  `backend_cli_dump_bir_*`, `backend_cli_dump_prepared_bir_*`, and the
-  `backend_cli_dump_mir_*` / `backend_cli_trace_mir_*` route-debug tests as
-  retained ownership surfaces. Snippet expectations live inline in CMake test
-  definitions rather than separate expected-output files for the inspected
-  prepared dump and route-debug CLI cases.
+Unclear ownership resolved for Step 2:
 
-Unclear ownership:
-
-- No separate non-x86 generic route-debug implementation was found beyond the
-  shared backend dump dispatcher and x86 target-local summary/trace wrappers.
-  AArch64 has `print_prepared_machine_nodes(...)` in
-  `src/backend/mir/aarch64/codegen/asm_emitter.*`, but that is selected machine
-  node printing rather than a prepared route-debug replacement surface.
+- No generic non-x86 route-debug surface was found in Step 1. Treat x86
+  summary/trace as the only current target-local route-debug diagnostic
+  replacement candidate. AArch64 selected machine-node printing is target
+  machine output, not a prepared route-debug replacement, so it is excluded
+  from Step 2 diagnostic replacement scope unless a future idea explicitly
+  creates an AArch64 route-debug surface.
 
 ## Suggested Next
 
-Execute Step 2 by defining route-native replacement diagnostics for the
-prepared printer, CLI prepared dump, x86 MIR summary/trace route-debug, and
-retained lookup-helper oracle surfaces named above.
+Execute Step 3 by defining equivalent oracle coverage for each retained
+surface, including positive, negative, ambiguous, mismatch, and fallback
+coverage required before prepared diagnostics or oracles can contract.
 
 ## Watchouts
 
-Several inventory entries are production-adjacent or compatibility-only rather
-than diagnostics. Treat them as contraction blockers and fallback/oracle
-context, not as permission to implement consumer migrations under this planning
-route. Do not weaken inline CMake snippets, prepared-printer tests, x86
-route-debug tests, or `backend_prepared_lookup_helper` expectations.
+Do not collapse Step 3 into expectation rewrites. The key split from Step 2 is
+semantic route facts versus formatting, target policy, prepared compatibility
+facts, and temporary adapters. Prepared printer, prepared CLI dump, x86
+route-debug, prepared helper, AArch64 lookup threading, and target-wrapper
+compatibility expectations all remain retained until equivalent route-native
+coverage is explicitly planned.
 
 ## Proof
 
 Docs/lifecycle-only packet; no build required and no `test_after.log` produced.
-Verification was the targeted `rg` inventory plus this canonical `todo.md`
-update.
+Verification was this canonical `todo.md` planning update against the Step 1
+inventory and Step 2 completion check.
