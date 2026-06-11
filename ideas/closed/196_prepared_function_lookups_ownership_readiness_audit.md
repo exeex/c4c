@@ -69,3 +69,12 @@ about `PreparedBirModule` field ownership or compatibility adapters.
 - Leaving the exact old coupling behind a new facade name.
 - Collapsing this audit into broad `PreparedBirModule` retirement instead of
   producing the lookup-group map first.
+
+## Completion Note
+
+Closed after producing
+`docs/bir_prealloc_fusion/prepared_function_lookups_ownership_readiness_map.md`.
+The map inventories all seven `PreparedFunctionLookups` groups, names residual
+production, printer/debug, target-wrapper, and oracle readers where present,
+classifies ownership/readiness, and records one-boundary prerequisites for
+future aggregate contraction or compatibility-adapter work.
