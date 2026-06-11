@@ -1251,24 +1251,30 @@ find_bir_block_entry_publication_identity(
   const auto& indexed_successor = function.blocks.front();
   const auto route4_publications =
       bir::route4_build_publication_availability_index(function);
+  const auto route_index_facade =
+      bir::route_index_reference_facade(route4_publications);
+  const auto publication_ref =
+      bir::route_index_validate_block_entry_publication_reference(
+          route_index_facade,
+          indexed_successor,
+          bir::Value::named(value_type, std::string{value_name}));
+  const auto* publication_record = publication_ref.block_entry_record;
 
-  bir::Route4BlockEntryPublicationRecord publication;
-  const bir::Route4BlockEntryPublicationRecord* publication_record = nullptr;
-  if (value_type != bir::TypeKind::Void) {
-    publication = bir::route4_find_block_entry_publication(
-        route4_publications,
-        indexed_successor,
-        bir::Value::named(value_type, std::string{value_name}));
-    publication_record = &publication;
-  } else {
-    for (const auto& candidate : route4_publications.block_entry_records) {
-      if (candidate && candidate.destination_value_name == value_name) {
-        publication_record = &candidate;
-        break;
-      }
+  if (!publication_ref) {
+    switch (publication_ref.route_status) {
+      case bir::Route4PublicationAvailabilityStatus::MissingValue:
+      case bir::Route4PublicationAvailabilityStatus::NoMatch:
+        result.status = BirBlockEntryPublicationStatus::MissingDestinationValue;
+        return result;
+      case bir::Route4PublicationAvailabilityStatus::Unavailable:
+      case bir::Route4PublicationAvailabilityStatus::MissingBlock:
+      case bir::Route4PublicationAvailabilityStatus::MissingPublication:
+      case bir::Route4PublicationAvailabilityStatus::AlternateSource:
+      case bir::Route4PublicationAvailabilityStatus::Available:
+        result.status = BirBlockEntryPublicationStatus::MissingPublication;
+        return result;
     }
   }
-
   if (publication_record == nullptr) {
     result.status = BirBlockEntryPublicationStatus::MissingPublication;
     return result;
