@@ -1,5 +1,21 @@
 # 199 Full-suite baseline string-authority and timeout attribution
 
+Closed: accepted 2026-06-11.
+
+Closure evidence:
+- The accepted 3428/3428 baseline was preserved until first-bad attribution was
+  complete.
+- The string-authority failure was isolated to `1496a715d -> 9e4892bcd` and
+  repaired by adding the exact classification for
+  `src/backend/mir/aarch64/codegen/calls.cpp` /
+  `find_prepared_indirect_callee_stored_value_source_fallback`.
+- `c_testsuite_aarch64_backend_src_00040_c` was classified separately as
+  timeout/noise for this sequence and passed in isolated Step 5 proof.
+- Final proof passed the narrow string-authority guard, the isolated `00040`
+  test, and produced a non-regressive full-suite baseline candidate at
+  `42fbc68e851f1dc929097fda1c91da182aac17c7` with `3428/3428` tests passing.
+- The supervisor accepted that candidate into canonical `test_baseline.log`.
+
 ## Goal
 
 Find the exact step where the accepted 3428/3428 full-suite baseline drifted
