@@ -62,3 +62,12 @@ contraction readiness.
   expected-output file.
 - Combining unrelated production lowering changes into the diagnostic planning
   slice.
+
+## Closure Note
+
+Closed after producing
+`docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md`,
+which satisfies the diagnostic/oracle planning acceptance criteria. Future
+implementation work should be split by one diagnostic/oracle surface, route
+family, or consumer group at a time and must preserve prepared oracle strength
+until equivalent route-native coverage exists.
