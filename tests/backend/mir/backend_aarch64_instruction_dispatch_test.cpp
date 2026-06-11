@@ -27382,6 +27382,28 @@ int block_entry_publication_register_uses_indexed_value_identity() {
           }},
   });
 
+  bir::Block join_route_block;
+  join_route_block.label =
+      std::string{prepare::prepared_block_label(prepared.names, join_label)};
+  join_route_block.label_id = join_label;
+  join_route_block.insts.push_back(bir::PhiInst{
+      .result =
+          bir::Value::named(bir::TypeKind::I32, "%block.entry.indexed.value"),
+      .incomings =
+          {bir::PhiIncoming{
+              .label =
+                  std::string{prepare::prepared_block_label(prepared.names, pred_label)},
+              .value =
+                  bir::Value::named(bir::TypeKind::I32, "%block.entry.source"),
+              .label_id = pred_label,
+          }},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name =
+          std::string{prepare::prepared_function_name(prepared.names, function_name)},
+      .blocks = {join_route_block},
+  });
+
   const auto& function_cf = prepared.control_flow.functions.front();
   auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);

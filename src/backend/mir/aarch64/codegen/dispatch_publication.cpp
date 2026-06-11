@@ -22,6 +22,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 [[nodiscard]] std::optional<unsigned> integer_bit_width(bir::TypeKind type) {
@@ -210,6 +211,36 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
   }
   return false;
 }
+[[nodiscard]] mir::BirBlockEntryPublicationIdentity
+route4_current_block_entry_publication_identity(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const prepare::PreparedCurrentBlockEntryPublication& prepared_publication) {
+  if (context.bir_block == nullptr ||
+      context.function.prepared == nullptr ||
+      prepared_publication.destination_home == nullptr) {
+    return {};
+  }
+  return mir::find_bir_block_entry_publication_identity(
+      mir::BirBlockEntryPublicationIdentityRequest{
+          .successor_block = context.bir_block,
+          .successor_label = context.control_flow_block != nullptr
+                                 ? prepare::prepared_block_label(
+                                       context.function.prepared->names,
+                                       context.control_flow_block->block_label)
+                                 : std::string_view{},
+          .successor_label_id = context.control_flow_block != nullptr
+                                    ? context.control_flow_block->block_label
+                                    : c4c::kInvalidBlockLabel,
+          .destination_value = &value,
+          .destination_value_id =
+              prepared_publication.destination_home->value_id,
+          .destination_value_name = value.name,
+          .destination_value_name_id =
+              prepared_publication.destination_home->value_name,
+          .destination_value_type = value.type,
+      });
+}
 [[nodiscard]] std::optional<RegisterOperand> current_block_entry_publication_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -236,6 +267,13 @@ collect_current_block_entry_publications(const module::BlockLoweringContext& con
           publication.publication) ||
       publication.destination_home == nullptr ||
       !publication.publication.destination_register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto route4_identity =
+      route4_current_block_entry_publication_identity(context, value, publication);
+  if (route4_identity &&
+      (route4_identity.destination_value_name != value.name ||
+       route4_identity.destination_value_type != value.type)) {
     return std::nullopt;
   }
   const auto parsed = abi::parse_aarch64_register_name(
