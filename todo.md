@@ -1,49 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/192_residual_route_view_consumer_migration_map.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Write The Durable Migration Map
+Current Step ID: 5
+Current Step Title: Final Consistency Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 durable migration map complete for `plan.md` Step 4. Created
-`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md` from
-the Step 2 residual-consumer inventory and Step 3 candidate table.
+Step 5 final consistency check complete for `plan.md` Step 5. Reviewed
+`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`
+against source idea 192 acceptance criteria and reviewer reject signals.
 
-The artifact contains a Route 1-7 table covering selected-reader evidence,
-residual prepared consumers, consumer classification, candidate migrations,
-required route/facade facts, fallback/oracle surfaces, and proof expectations.
-It also includes separate sections for printer/debug/oracle consumers and for
-target-wrapper/retained-policy consumers, preserving these as blockers to
-prepared API contraction.
+The final artifact is
+`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`. It
+keeps selected-reader evidence from ideas 182-188 bounded, does not claim
+route-wide completion or prepared API retirement, represents printer/debug,
+oracle/test, target-wrapper, and retained-policy consumers, and names future
+candidate migrations as separable route-family slices with proof expectations
+that preserve nearby same-feature coverage.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: final consistency check against source idea 192
-acceptance criteria and reviewer reject signals. Confirm no implementation
-files changed, the durable map does not claim route-wide completion or prepared
-API retirement, and `todo.md` records a closure recommendation for supervisor
-review.
+Supervisor/plan-owner lifecycle review: idea 192 appears closure-ready as a
+docs/lifecycle slice. Recommended disposition is to close source idea 192 after
+supervisor review accepts the artifact and confirms commit scope.
 
 ## Watchouts
 
-- The artifact is descriptive and proposal-granular only. It does not
-  implement migrations, delete/privatize prepared APIs, or open draft 155.
-- Each route names one next selected-consumer candidate, but printer/debug,
-  oracle/test, target-wrapper, and retained prepared/target policy consumers
-  remain visible as blockers to broad retirement.
+No open questions or blockers found in the final consistency pass.
+
+- No implementation files are changed.
+- The map is descriptive and proposal-granular only. It does not implement
+  migrations, delete/privatize prepared APIs, weaken tests, or open draft 155.
 - Ideas 182-188 remain selected-reader evidence only; idea 189 remains one x86
   Route 6 reuse point only, with no riscv imported reuse proof.
-- Route 3 target-addressing policy, Route 6 ABI/call policy, Route 7 branch
-  policy, materialized-compare render policy, final emission policy, and
-  return-chain facts stay outside Route 1-7 semantic migration scope.
+- Target policy, ABI policy, address-materialization policy, final emission
+  policy, materialized-compare render policy, and return-chain facts remain
+  outside Route 1-7 semantic migration scope.
 
 ## Proof
 
-Docs/lifecycle-only packet; no build required. Verification checked that
-`docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`
-exists and contains the required Route 1-7 table plus separate
-printer/debug/oracle and target-wrapper/retained-policy sections. Existing
-`test_after.log` remains the proof log path; no implementation files changed.
+Docs/lifecycle-only packet; no build required and no implementation proof run.
+Proof log path remains `test_after.log`.
+
+Verification performed:
+- `git status --short` and `git diff --name-only` showed no implementation
+  file changes before this `todo.md` lifecycle update.
+- Source idea 192 acceptance criteria and reviewer reject signals were checked
+  against the durable map artifact.
+- The map contains a Route 1-7 table distinguishing migrated selected readers
+  from residual prepared consumers, classifying consumer roles, and naming
+  next selected-consumer proposals or retained-policy boundaries.
+- Printer/debug, oracle/test, target-wrapper, and retained-policy consumers
+  are represented as blockers to prepared API contraction.
+- Future candidates are route-family separable and keep proof expectations
+  focused on preserving, not weakening, nearby same-feature coverage.
