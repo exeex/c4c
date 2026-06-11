@@ -1,6 +1,6 @@
 # Phase C2 Selected Adapter Cache Contraction Readiness
 
-Status: Step 4 follow-up decisions and D2 guidance drafted.
+Status: Step 5 final consistency and proof check complete.
 
 Source idea:
 `ideas/open/202_phase_c2_selected_adapter_cache_contraction_readiness_audit.md`
@@ -338,11 +338,11 @@ not as broad cache/API migration. The recommended D2 shape is:
   one-surface work has already retired every public consumer and oracle for the
   relevant group.
 
-For the next active packet in this C2 plan, Step 5 should perform consistency
-and proof review against this document: every required source-idea item should
-appear here, every readiness result should be traceable to one working-model
-classification, and no follow-up should claim contraction from adapter
-greenness, backend CTest greenness, or full-suite baseline status alone.
+The Step 5 consistency review below checks this document against the source
+idea: every required source-idea item appears here, every readiness result is
+traceable to one working-model classification, and no follow-up claims
+contraction from adapter greenness, backend CTest greenness, or full-suite
+baseline status alone.
 
 ## Step 4 Result
 
@@ -351,3 +351,32 @@ empty, retained fallback/oracle and target/prepared policy surfaces are
 explicitly listed, diagnostic/oracle replacement prerequisites are named, no-go
 decisions are recorded, and D2 guidance is constrained to one-surface,
 retained-surface-aware continuation work.
+
+## Step 5 Final Consistency And Proof Check
+
+Final consistency review found that every required source-idea analysis item is
+represented in this C2 record:
+
+- required evidence sources are linked in the Evidence Sources section;
+- Route 3 through Route 7 rows each name the selected reader or diagnostic row,
+  prepared surface touched, public consumer removal status, retained fallback
+  or oracle, retained target/prepared policy, proof scope, one working-model
+  readiness classification, and contraction readiness result;
+- Route 3 memory/source helpers and `memory_accesses`, Route 4 publication
+  helpers and `edge_publications`, Route 5 edge/join-source helpers and
+  move/edge publication surfaces, Route 6 call-use helpers and `call_plans`,
+  and Route 7 comparison/provenance diagnostics and helper surfaces all have
+  explicit retained-surface results;
+- aggregate `PreparedFunctionLookups`, broad `PreparedBirModule`, and prepared
+  diagnostic/oracle/string-authority surfaces have separate blocker sections;
+- accepted micro-contraction follow-up candidates are explicitly empty;
+- retained public fallback/oracle surfaces, retained target/prepared policy
+  surfaces, diagnostic/oracle replacement prerequisites, no-go decisions, and
+  D2 guidance are recorded.
+
+No section claims contraction readiness from selected adapter greenness,
+backend CTest greenness, accepted full-suite baseline status, or unchanged
+string output alone. The accepted backend and baseline proof is used only as
+bounded adapter, fallback-preservation, and evidence-scope context. The
+document is ready for plan-owner lifecycle close review, with the remaining
+blocker being lifecycle review itself rather than a missing C2 analysis item.
