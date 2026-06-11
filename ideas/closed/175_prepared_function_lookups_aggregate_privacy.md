@@ -35,6 +35,16 @@ This idea comes from Phase C:
 - The aggregate remains available for fields not yet migrated.
 - Any include/context contraction is behavior-preserving and proven.
 
+## Completion Note
+
+Closed after the `move_bundles` aggregate field group was replaced by the
+standalone `prepare::PreparedMoveBundleLookups` projection and traversal include
+exposure was contracted. Proof handoff is recorded in commit `d2f41dbeb`.
+
+Remaining aggregate exposure is intentionally outside this closed idea:
+`memory_accesses`, `edge_publications`,
+`edge_publication_source_producers`, and `return_chains`.
+
 ## Proof Route
 
 Use compile proof for AArch64 module/context include contraction plus the
