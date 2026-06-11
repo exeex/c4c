@@ -3938,6 +3938,91 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: BIR current-block publication identity should match prepared semantic fields");
   }
+  bir::Function route4_function{
+      .name = "call_argument_source_producer_contract",
+      .blocks = {block},
+  };
+  const auto& route4_block = route4_function.blocks.front();
+  const auto route4_index =
+      bir::route4_build_publication_availability_index(route4_function);
+  const auto route4_sum_value = bir::Value::named(bir::TypeKind::I32, "%sum");
+  const auto route4_sum_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_index, route4_block, route4_sum_value, 3);
+  if (!route4_sum_reference ||
+      route4_sum_reference.status != bir::RouteIndexValidationStatus::Valid ||
+      route4_sum_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::Available ||
+      route4_sum_reference.current_block_record == nullptr ||
+      route4_sum_reference.current_block_record->source_producer_instruction_index != 1) {
+    return fail(
+        "call-argument producer materializability contract: Route 4 current-block reference should validate matching source identity");
+  }
+  const auto route4_missing_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_index,
+          route4_block,
+          bir::Value::named(bir::TypeKind::I32, "%missing"),
+          3);
+  const auto route4_wrong_type_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_index,
+          route4_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          3);
+  auto route4_duplicate_index = route4_index;
+  route4_duplicate_index.current_block_records.push_back(
+      route4_index.current_block_records[1]);
+  const auto route4_duplicate_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_duplicate_index, route4_block, route4_sum_value, 3);
+  const auto route4_stale_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_index, block, route4_sum_value, 3);
+  auto route4_wrong_relationship_index = route4_index;
+  route4_wrong_relationship_index.current_block_records.clear();
+  route4_wrong_relationship_index.value_records.push_back(
+      bir::Route4PublicationValueRecord{
+          .available = true,
+          .scope = bir::Route4PublicationScope::BlockEntry,
+          .status = bir::Route4PublicationAvailabilityStatus::Available,
+          .value_role = bir::Route4PublicationValueRole::Produced,
+          .value = bir::route1_source_value_identity(route4_sum_value, sum_name),
+          .block_label = route4_block.label,
+          .block_label_id = route4_block.label_id,
+          .instruction_index = 1,
+      });
+  const auto route4_wrong_relationship_reference =
+      bir::route4_validate_current_block_publication_reference(
+          route4_wrong_relationship_index, route4_block, route4_sum_value, 3);
+  if (route4_missing_reference ||
+      route4_missing_reference.status !=
+          bir::RouteIndexValidationStatus::MissingRecord ||
+      route4_missing_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::MissingPublication ||
+      route4_wrong_type_reference ||
+      route4_wrong_type_reference.status !=
+          bir::RouteIndexValidationStatus::WrongKey ||
+      route4_wrong_type_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::NoMatch ||
+      route4_duplicate_reference ||
+      route4_duplicate_reference.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference ||
+      route4_duplicate_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::NoMatch ||
+      route4_stale_reference ||
+      route4_stale_reference.status !=
+          bir::RouteIndexValidationStatus::StaleOwner ||
+      route4_stale_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::MissingBlock ||
+      route4_wrong_relationship_reference ||
+      route4_wrong_relationship_reference.status !=
+          bir::RouteIndexValidationStatus::WrongRelationship ||
+      route4_wrong_relationship_reference.route_status !=
+          bir::Route4PublicationAvailabilityStatus::MissingPublication) {
+    return fail(
+        "call-argument producer materializability contract: Route 4 current-block reference should reject missing, mismatched, duplicate, stale, and wrong-relationship facts");
+  }
 
   const auto join_label = names.block_labels.intern("call_contract.join");
   const auto join_value_name = names.value_names.intern("%join.arg");

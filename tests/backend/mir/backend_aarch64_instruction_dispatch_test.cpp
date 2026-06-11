@@ -33890,6 +33890,241 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
   return 0;
 }
 
+int call_boundary_stack_source_uses_route4_identity_with_prepared_fallback() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.route4.boundary");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.route4.boundary.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.route4.boundary.entry");
+  const auto callee_link = prepared.names.link_names.intern("consume_i32");
+  const auto sum_name = prepared.names.value_names.intern("%route4.boundary.sum");
+  constexpr prepare::PreparedValueId kSumValue{442};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.route4.boundary",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.call.route4.boundary.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I32,
+                                                   "%route4.boundary.sum"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::immediate_i32(2),
+                       .rhs = bir::Value::immediate_i32(3),
+                   },
+                   bir::CallInst{
+                       .callee = "consume_i32",
+                       .callee_link_name_id = callee_link,
+                       .args = {bir::Value::named(bir::TypeKind::I32,
+                                                  "%route4.boundary.sum")},
+                       .arg_types = {bir::TypeKind::I32},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = kSumValue,
+               .function_name = function_name,
+               .value_name = sum_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{442},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(kSumValue,
+                              sum_name,
+                              prepare::PreparedFrameSlotId{442},
+                              64)},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{442},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 80;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 1,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_i32"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 1,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = kSumValue,
+              .source_slot_id = prepare::PreparedFrameSlotId{442},
+              .source_stack_offset_bytes = std::size_t{64},
+              .destination_register_name = std::string{"w0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"w0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+      }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  const auto& bir_block = prepared.module.functions.front().blocks.front();
+  const auto& sum_inst = bir_block.insts.front();
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[sum_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = entry_label,
+          .instruction_index = std::size_t{0},
+          .binary = std::get_if<bir::BinaryInst>(&sum_inst),
+      };
+
+  auto make_context = [&](const prepare::PreparedFunctionLookups& lookups) {
+    auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    attach_prepared_function_lookups(function_context, lookups);
+    return aarch64_codegen::make_block_lowering_context(function_context,
+                                                        function_cf.blocks.front(),
+                                                        0);
+  };
+  auto make_instruction = [&]() {
+    aarch64_module::MachineInstruction instruction;
+    instruction.target = aarch64_codegen::InstructionRecord{
+        .family = aarch64_codegen::InstructionFamily::CallBoundary,
+        .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+        .function_name = function_name,
+        .block_label = entry_label,
+        .block_index = 0,
+        .instruction_index = 1,
+        .payload =
+            aarch64_codegen::CallBoundaryMoveInstructionRecord{
+                .function_name = function_name,
+                .phase = prepare::PreparedMovePhase::BeforeCall,
+                .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+                .block_index = 0,
+                .instruction_index = 1,
+                .move = prepare::PreparedMoveResolution{
+                    .from_value_id = kSumValue,
+                    .destination_kind =
+                        prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                    .destination_storage_kind =
+                        prepare::PreparedMoveStorageKind::Register,
+                    .destination_register_name = std::string{"w0"},
+                    .destination_contiguous_width = 1,
+                    .destination_occupied_register_names = {"w0"},
+                    .block_index = 0,
+                    .instruction_index = 1,
+                    .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                    .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+                },
+                .source_memory =
+                    aarch64_codegen::MemoryOperand{
+                        .surface =
+                            aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+                        .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                        .function_name = function_name,
+                        .block_label = entry_label,
+                        .instruction_index = 1,
+                        .result_value_id = kSumValue,
+                        .result_value_name = sum_name,
+                        .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+                        .frame_slot_id = prepare::PreparedFrameSlotId{442},
+                        .byte_offset = 64,
+                        .size_bytes = 4,
+                        .align_bytes = 4,
+                        .can_use_base_plus_offset = true,
+                    },
+                .destination_register =
+                    aarch64_codegen::RegisterOperand{
+                        .reg = aarch64_abi::w_register(0),
+                        .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                        .value_id = kSumValue,
+                        .value_name = sum_name,
+                        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                        .expected_view = aarch64_abi::RegisterView::W,
+                    },
+            },
+    };
+    return instruction;
+  };
+  auto lower_and_print = [&](auto context) -> std::optional<std::string> {
+    auto instruction = make_instruction();
+    aarch64_codegen::BlockScalarLoweringState scalar_state;
+    auto materialized =
+        aarch64_codegen::materialize_call_boundary_source_to_destination(
+            context, instruction, 1, scalar_state);
+    if (!materialized.has_value()) {
+      return std::nullopt;
+    }
+    aarch64_module::MachineBlock block;
+    block.instructions.push_back(*materialized);
+    const auto printed = print_route_block(function_name, block);
+    return printed.ok ? std::optional<std::string>{printed.assembly}
+                      : std::nullopt;
+  };
+
+  auto route_only_lookups = prepared_lookups;
+  route_only_lookups.edge_publication_source_producers.producers_by_value_name.clear();
+  const auto route_only_assembly = lower_and_print(make_context(route_only_lookups));
+  if (!route_only_assembly.has_value() ||
+      (route_only_assembly->find("add w0") == std::string::npos &&
+       route_only_assembly->find("mov w0, #5") == std::string::npos) ||
+      route_only_assembly->find("ldr w0, [sp, #64]") != std::string::npos) {
+    return fail("expected call-boundary source reader to use Route 4 identity without prepared producer fallback");
+  }
+
+  prepared.module.functions.front().blocks.front().label =
+      "dispatch.call.route4.boundary.stale";
+  auto fallback_context = make_context(prepared_lookups);
+  const auto fallback_assembly = lower_and_print(fallback_context);
+  if (!fallback_assembly.has_value() ||
+      (fallback_assembly->find("add w0") == std::string::npos &&
+       fallback_assembly->find("mov w0, #5") == std::string::npos) ||
+      fallback_assembly->find("ldr w0, [sp, #64]") != std::string::npos) {
+    return fail("expected call-boundary source reader to preserve prepared fallback when Route 4 reference is stale or wrong-owner");
+  }
+
+  auto no_prepared_context = fallback_context;
+  auto no_producer_lookups = prepared_lookups;
+  no_producer_lookups.edge_publication_source_producers.producers_by_value_name.clear();
+  attach_prepared_function_lookups(no_prepared_context.function,
+                                   no_producer_lookups);
+  if (lower_and_print(no_prepared_context).has_value()) {
+    return fail("expected call-boundary source reader to fail closed when stale Route 4 data has no prepared fallback");
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
   auto prepared = prepared_with_f64_scalar_alu(bir::BinaryOpcode::Add, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -35375,6 +35610,11 @@ int main() {
   }
   if (const int status =
           edge_publication_dependency_uses_prepared_root_producer();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          call_boundary_stack_source_uses_route4_identity_with_prepared_fallback();
       status != 0) {
     return status;
   }
