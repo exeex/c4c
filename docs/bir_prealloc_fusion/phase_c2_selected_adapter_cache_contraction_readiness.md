@@ -1,6 +1,6 @@
 # Phase C2 Selected Adapter Cache Contraction Readiness
 
-Status: Step 3 aggregate coupling and diagnostic authority classification drafted.
+Status: Step 4 follow-up decisions and D2 guidance drafted.
 
 Source idea:
 `ideas/open/202_phase_c2_selected_adapter_cache_contraction_readiness_audit.md`
@@ -11,8 +11,8 @@ This document records whether the Phase B2 selected Route 3 through Route 7
 adapter and diagnostic closures make any prepared lookup, cache, diagnostic, or
 API surface ready for contraction. Steps 2 and 3 classify route-specific touched
 surfaces, aggregate `PreparedFunctionLookups` and `PreparedBirModule` coupling,
-and prepared diagnostic/oracle authority. Final follow-up decisions and D2
-guidance are classified in later steps.
+and prepared diagnostic/oracle authority. Step 4 records follow-up decisions and
+D2 guidance from those retained-surface findings.
 
 The classification rule is conservative: adapter greenness, backend CTest
 greenness, and existing full-suite baseline success are evidence for bounded
@@ -192,3 +192,162 @@ Step 4 should convert these retained-surface findings into follow-up decisions
 and D2 guidance. It should not open broad D2, draft 155, or aggregate
 retirement work unless a later delegated packet explicitly asks for a separate
 one-surface idea and the C2 evidence shows that one surface is actually ready.
+
+## Step 4 Follow-Up Decisions
+
+Accepted micro-contraction follow-up candidates: none from the current Phase C2
+evidence. No Route 3 through Route 7 selected adapter row, aggregate lookup
+section, prepared-module section, or diagnostic/oracle section proves public
+consumer exhaustion plus fallback, policy, wrapper, oracle, pass-context, and
+string-authority replacement for a single cache/API surface.
+
+The correct follow-up posture is therefore retained-surface guidance, not idea
+creation. This packet does not open new `ideas/open/` work because the Step 2
+and Step 3 findings independently classify every touched surface as retained
+public fallback/oracle, retained target/prepared policy, diagnostic/oracle
+replacement prerequisite, or blocked aggregate work.
+
+Bounded future work remains possible only when a later packet identifies one
+specific surface and proves all of the following:
+
+- the public production consumer boundary is gone or replaced for that exact
+  surface;
+- prepared fallback remains available or has equivalent route-native behavior
+  with positive, absent, invalid, duplicate/conflict, mismatch, and fallback
+  coverage;
+- target/prepared policy such as ABI, layout, addressing, move scheduling,
+  branch spelling, emitted records, and helper protocols is either explicitly
+  out of scope or has a named replacement owner;
+- printer, CLI dump, route-debug, helper-oracle, target-wrapper, baseline, and
+  expected-string authority stay non-regressive without relabeling or
+  expectation weakening;
+- the follow-up is one cache/API surface only, not aggregate
+  `PreparedFunctionLookups`, broad `PreparedBirModule`, draft 155, or a D2
+  migration ladder.
+
+## Retained Public Fallback And Oracle Surfaces
+
+The audit retains these public fallback/oracle surfaces until surface-specific
+replacement evidence exists:
+
+- Route 3 `memory_accesses`, prepared memory/source helpers, memory/frame/stack
+  oracles, and target-addressing fallback.
+- Route 4 `edge_publications`, current/block-entry publication helpers,
+  publication wrappers, debug/output rows, and publication compatibility
+  fallback.
+- Route 5 edge-publication/source-producer helpers, current-block join-source
+  helpers, move-bundle lookup surfaces, wrapper oracles, and edge/join
+  fallback.
+- Route 6 `call_plans`, call argument/result helper surfaces, prepared call
+  printer/debug rows, call-boundary oracles, and x86 `ConsumedPlans`
+  compatibility context.
+- Route 7 prepared fused-compare and materialized-condition fallbacks,
+  branch-policy oracles, route-debug/printer/debug rows, and comparison
+  expected-string authority.
+- `backend_prepared_lookup_helper`, AArch64 lookup-threading tests,
+  target-wrapper tests, and baseline/string guardrails for success, no-match,
+  absent, invalid, duplicate/conflict, mismatch, fallback, and unchanged output.
+
+These surfaces are not cleanup leftovers. They are active compatibility,
+validation, and fallback authorities for the selected adapters and must remain
+public until a later follow-up replaces a named surface with equivalent proof.
+
+## Retained Target And Prepared Policy Surfaces
+
+The selected adapters do not move target or prepared policy into route
+ownership. D2 and later work must retain or explicitly re-own these policy
+surfaces before any contraction claim:
+
+- ABI placement, call wrapper kind, clobber/preserve sets, outgoing stack
+  sizing, byval lanes, variadic FPR counts, helper/carrier protocols, aggregate
+  transport layout, call records, and final call emission.
+- Address formation, frame/global/TLS relocation, stack/frame offsets,
+  addressing-mode legality, volatile/address-space lowering, materialization,
+  final operands, and source-home policy.
+- Parallel-copy scheduling, source/destination homes, move bundles, cycle
+  temporary routing, execution-site placement, branch spelling, storage choice,
+  edge-copy records, and final emitted output.
+- Branch target choice, condition suffix mapping, fused legality, hazard
+  handling, emitted-register state, final instruction order, assembler rows,
+  and compare/branch instruction selection.
+- Prepared module and aggregate lookup context threading for AArch64, x86, and
+  riscv target wrappers.
+
+Any follow-up that touches these surfaces must be framed as ownership and
+policy migration work, not cache contraction from selected adapter greenness.
+
+## Diagnostic And Oracle Replacement Prerequisites
+
+Diagnostic/oracle replacement is the main prerequisite category for Route 7 and
+for any later route-native proof route. Before contracting a diagnostic,
+oracle, or expected-string surface, the replacement work must name:
+
+- the single diagnostic or oracle row being replaced;
+- the route facts that become authoritative for that row;
+- the prepared fallback or compatibility adapter that remains during the
+  transition;
+- the expected output owner for printer, CLI dump, route-debug, helper-oracle,
+  target-wrapper, and baseline strings;
+- equivalent coverage for positive, negative, ambiguous, invalid, mismatch, and
+  fallback cases without expectation rewrites, unsupported downgrades, helper
+  renames, or output relabeling.
+
+Route 7 materialized-condition provenance is therefore useful as a prerequisite
+for future route-native diagnostics, but it is not itself a contraction
+candidate. The same rule applies to other selected adapters: agreement-gated
+semantic reads can support future diagnostics, but they do not remove prepared
+oracle authority until equivalent route-native diagnostics exist.
+
+## Explicit No-Go Decisions
+
+The following work is not justified by this C2 audit:
+
+- Do not open broad D2 work that treats selected adapter success as a migration
+  ladder for prepared caches.
+- Do not open draft 155 from these findings.
+- Do not open aggregate `PreparedFunctionLookups` retirement or privatization.
+- Do not open aggregate `PreparedBirModule` retirement, clone, rename-only
+  facade, or deletion work.
+- Do not contract `memory_accesses`, `edge_publications`,
+  `edge_publication_source_producers`, `call_plans`, comparison helpers, or
+  diagnostic/string surfaces from adapter greenness alone.
+- Do not weaken expectations, downgrade supported paths, rename helper oracles,
+  relabel output, or classify unchanged baseline success as contraction proof.
+
+These are no-go decisions for the current evidence set, not permanent bans. A
+later active plan can revisit one surface if it brings replacement evidence
+that satisfies the bounded proof shape above.
+
+## D2 Rewrite And Open Guidance
+
+D2 should be opened or rewritten as retained-surface-aware continuation work,
+not as broad cache/API migration. The recommended D2 shape is:
+
+- start from one retained public fallback/oracle surface or one
+  diagnostic/oracle replacement prerequisite;
+- state whether the goal is semantic reader migration, diagnostic replacement,
+  public fallback removal, or policy ownership migration;
+- name the exact prepared surface that remains public and the exact condition
+  that would make it contractible later;
+- keep target/prepared policy surfaces out of scope unless the packet includes
+  a concrete replacement owner and proof plan;
+- require positive, negative, mismatch, absent, duplicate/conflict, fallback,
+  printer/debug, wrapper, and expected-string proof before any contraction
+  claim;
+- reject aggregate retirement and migration-ladder language unless earlier
+  one-surface work has already retired every public consumer and oracle for the
+  relevant group.
+
+For the next active packet in this C2 plan, Step 5 should perform consistency
+and proof review against this document: every required source-idea item should
+appear here, every readiness result should be traceable to one working-model
+classification, and no follow-up should claim contraction from adapter
+greenness, backend CTest greenness, or full-suite baseline status alone.
+
+## Step 4 Result
+
+Step 4 opens no follow-up idea. The accepted micro-contraction candidate list is
+empty, retained fallback/oracle and target/prepared policy surfaces are
+explicitly listed, diagnostic/oracle replacement prerequisites are named, no-go
+decisions are recorded, and D2 guidance is constrained to one-surface,
+retained-surface-aware continuation work.
