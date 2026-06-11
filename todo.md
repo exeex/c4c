@@ -1,33 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Contract selected direct dependency exposure
+Current Step ID: Step 4
+Current Step Title: Prove the selected address-materialization subset and decide next
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md`: inspected AArch64 traversal for dependency exposure
-that became unnecessary after the address-materialization projection split.
+Step 4 from `plan.md`: reran the selected address-materialization projection
+proof after the Step 2 projection split and Step 3 dependency check. The
+selected subset is green.
 
-No implementation contraction was safe in this packet. `traversal.cpp` still
-needs `PreparedFunctionLookups` because `lower_prepared_functions(...)` builds
-the aggregate with `prepare::make_prepared_function_lookups(...)`, assigns
-`function_context.prepared_lookups`, and exposes unselected aggregate fields via
-`function_context.move_bundle_lookups = &prepared_lookups.move_bundles` and
-`function_context.value_home_lookups = &prepared_lookups.value_homes`. The
-address-materialization consumer now uses the separate
-`function_context.address_materialization_lookups` projection, but the remaining
-aggregate dependencies prevent removing the aggregate construction or its header
-dependency from traversal.
+Selected field group result: `address_materializations` now uses the narrow
+`FunctionLoweringContext::address_materialization_lookups` projection built by
+`prepare::make_prepared_address_materialization_lookups(...)` in traversal. The
+production `prepared_lookups.address_materializations` aggregate field read was
+removed.
+
+Step 3 found no additional include/dependency contraction safe yet because
+`traversal.cpp` still builds and retains `PreparedFunctionLookups` for
+unselected fields: `move_bundles`, `value_homes`, and downstream aggregate
+`prepared_lookups` consumers.
 
 ## Suggested Next
 
-Executor packet: perform Step 4 by handing the remaining
-`PreparedFunctionLookups` aggregate exposure to the next lifecycle route, with
-the Step 3 evidence that traversal itself has no address-materialization-only
-dependency left to contract safely.
+Plan-owner lifecycle decision: either continue this runbook by selecting the
+next aggregate field group, or retire/split if the remaining fields need a
+fresh route review.
 
 ## Watchouts
 
@@ -47,8 +47,11 @@ dependency left to contract safely.
 
 ## Proof
 
-Passed. Proof log: `test_after.log`.
+Supervisor-selected Step 4 proof passed and was captured in `test_after.log`.
 
 ```sh
 (cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
 ```
+
+Result: `backend_aarch64_prepared_memory_operand_records` and
+`backend_aarch64_instruction_dispatch` both passed.
