@@ -530,12 +530,30 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
                         .slot_name = "%lv.stack",
                         .slot_id = local_stack_slot,
                         .align_bytes = 4,
+                        .address =
+                            bir::MemoryAddress{
+                                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                                .base_name = "%lv.stack",
+                                .byte_offset = 0,
+                                .size_bytes = 4,
+                                .align_bytes = 4,
+                                .base_slot_id = local_stack_slot,
+                            },
                     },
                     bir::LoadLocalInst{
                         .result = named_value(bir::TypeKind::I32, "%loaded.register"),
                         .slot_name = "%lv.register",
                         .slot_id = local_register_slot,
                         .align_bytes = 4,
+                        .address =
+                            bir::MemoryAddress{
+                                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                                .base_name = "%lv.register",
+                                .byte_offset = 0,
+                                .size_bytes = 4,
+                                .align_bytes = 4,
+                                .base_slot_id = local_register_slot,
+                            },
                     },
                     bir::BinaryInst{
                         .opcode = bir::BinaryOpcode::Add,
@@ -685,6 +703,50 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
       lhs->result_value_name != stack_load_name ||
       rhs->result_value_name != register_load_name) {
     return fail("expected scalar consumer to read load-local source homes");
+  }
+
+  prepared.addressing.functions.back().accesses.front().inst_index = 1;
+  const auto mismatched_prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, control_flow);
+  c4c::backend::aarch64::module::BlockLoweringContext mismatched_context{
+      .function =
+          c4c::backend::aarch64::module::FunctionLoweringContext{
+              .prepared = &prepared,
+              .target_profile = &prepared.target_profile,
+              .control_flow = &control_flow,
+              .bir_function = &function,
+              .value_locations = &prepared.value_locations.functions.back(),
+              .storage_plan = &prepared.storage_plans.functions.back(),
+              .prepared_lookups = &mismatched_prepared_lookups,
+          },
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &block,
+  };
+  aarch64_codegen::BlockScalarLoweringState mismatched_scalar_state;
+  c4c::backend::aarch64::module::ModuleLoweringDiagnostics mismatched_diagnostics;
+  auto mismatched_lowered = aarch64_codegen::lower_scalar_instruction(
+      mismatched_context, block.insts[2], 2, mismatched_scalar_state,
+      mismatched_diagnostics);
+  if (!mismatched_lowered.has_value()) {
+    return fail("expected scalar consumer with mismatched Route 3 source to fall back");
+  }
+  const auto* mismatched_scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &mismatched_lowered->target.payload);
+  if (mismatched_scalar == nullptr ||
+      !mismatched_scalar->scalar_alu.has_value() ||
+      mismatched_scalar->inputs.size() != 2) {
+    return fail("expected mismatched source fallback to keep scalar ALU record");
+  }
+  const auto* mismatched_lhs =
+      std::get_if<aarch64_codegen::MemoryOperand>(
+          &mismatched_scalar->inputs[0].payload);
+  if (mismatched_lhs == nullptr ||
+      mismatched_lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      mismatched_lhs->byte_offset == 16 ||
+      mismatched_lhs->result_value_name != stack_load_name) {
+    return fail(
+        "expected Route 3/prepared source mismatch to reject source-home operand");
   }
   return 0;
 }

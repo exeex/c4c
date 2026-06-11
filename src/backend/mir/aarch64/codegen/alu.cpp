@@ -1127,6 +1127,53 @@ find_prepared_load_local_source_producer(
   return reg.has_value() && abi::is_gp_register(*reg);
 }
 
+[[nodiscard]] bool route3_load_local_source_matches_prepared(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    const prepare::PreparedScalarLoadLocalSourceProducer& source,
+    const bir::LoadLocalInst& load) {
+  if (context.bir_block == nullptr ||
+      context.function.prepared == nullptr ||
+      source.source_access == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return false;
+  }
+  const auto prepared_result_name =
+      prepared_named_value_id(context, load.result);
+  const auto prepared_root_name =
+      prepared_named_value_id(context, value);
+  if (!prepared_result_name.has_value() ||
+      !prepared_root_name.has_value() ||
+      source.source_access->result_value_name != prepared_result_name ||
+      *prepared_result_name != *prepared_root_name) {
+    return false;
+  }
+  const auto route3 =
+      mir::find_bir_same_block_load_local_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = context.bir_block,
+              .block_label = context.bir_block->label,
+              .root_value = &value,
+              .root_value_name = std::string_view(value.name),
+              .root_value_type = value.type,
+              .before_instruction_index = before_instruction_index,
+          });
+  if (!route3 ||
+      route3.load_local != &load ||
+      route3.memory_access.instruction_index != source.source_access->inst_index ||
+      route3.memory_access.node_kind != mir::BirMemoryAccessNodeKind::LoadLocal ||
+      route3.memory_access.base_kind != mir::BirMemoryAccessBaseKind::LocalSlot ||
+      route3.memory_access.result_value_name != std::string_view(value.name) ||
+      route3.result_value.name != value.name ||
+      route3.result_value.type != value.type) {
+    return false;
+  }
+  return source.source_access->address.base_kind ==
+         prepare::PreparedAddressBaseKind::FrameSlot;
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_unpublished_load_local_source_operand(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1145,6 +1192,10 @@ find_prepared_load_local_source_producer(
         &context.bir_block->insts[source->source_access->inst_index]);
   }
   if (load == nullptr) {
+    return std::nullopt;
+  }
+  if (!route3_load_local_source_matches_prepared(
+          context, value, before_instruction_index, *source, *load)) {
     return std::nullopt;
   }
   const auto* home = find_named_value_home(load->result, context.function);
