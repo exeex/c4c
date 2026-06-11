@@ -8823,6 +8823,12 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
                   .rhs = bir::Value::named(bir::TypeKind::I64, "%folded"),
               },
           },
+      .terminator =
+          bir::CondBranchTerminator{
+              .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+              .true_label = "then",
+              .false_label = "else",
+          },
       .label_id = block_label,
   };
 
@@ -8888,11 +8894,19 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       bir::route7_build_comparison_condition_index(block);
   const auto route7_fused = bir::route7_find_fused_compare_operand_producer_facts(
       route7_index, block, *fused_condition.lhs, *fused_condition.rhs, 3);
+  const auto route7_consumer_boundary =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          block.insts.size());
   const auto route7_fused_instruction =
       bir::route7_comparison_instruction_record(&block, 3);
   if (!prepared_fused.has_value() ||
       !bir_fused.available ||
       !route7_fused.available ||
+      !route7_consumer_boundary.available ||
       !prepared_and_bir_comparison_operand_producer_match(
           names, block, prepared_fused->lhs, *fused_condition.lhs, 3) ||
       !prepared_and_bir_comparison_operand_producer_match(
@@ -8910,6 +8924,16 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       !route7_fused.rhs.has_value() ||
       route7_fused.rhs->integer_constant !=
           bir_fused.rhs->integer_constant ||
+      !route7_consumer_boundary.lhs.has_value() ||
+      route7_consumer_boundary.lhs->producer_kind !=
+          bir::ComparisonProducerKind::Select ||
+      route7_consumer_boundary.lhs->producer_instruction !=
+          prepared_fused->lhs->instruction ||
+      route7_consumer_boundary.lhs->producer_instruction_index !=
+          prepared_fused->lhs->instruction_index ||
+      !route7_consumer_boundary.rhs.has_value() ||
+      route7_consumer_boundary.rhs->integer_constant !=
+          prepared_fused->rhs->integer_constant ||
       !route7_fused_instruction ||
       route7_fused_instruction.status !=
           bir::Route7ComparisonStatus::Available ||
@@ -9048,6 +9072,120 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
           bir::RouteIndexValidationStatus::WrongRelationship) {
     return fail(
         "Route 7 fused compare operand route-index validation should reject wrong-key and wrong-role references");
+  }
+
+  const auto bir_consumer_boundary =
+      bir::find_fused_compare_operand_producer_facts(
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          block.insts.size());
+  bir::Route7ComparisonConditionIndex unavailable_route7_index;
+  const auto unavailable_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          unavailable_route7_index,
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          block.insts.size());
+  auto missing_producer_index = route7_index;
+  for (auto& record : missing_producer_index.operand_records) {
+    if (record.role == bir::Route7ComparisonOperandRole::Lhs &&
+        record.value.name == "%selected") {
+      record.available = false;
+      record.status = bir::Route7ComparisonStatus::MissingOperandProducer;
+      record.producer_kind = bir::ComparisonProducerKind::Unknown;
+      record.producer_instruction = nullptr;
+      record.producer_instruction_index = 0;
+      record.produced_value = {};
+    }
+  }
+  for (auto& record : missing_producer_index.branch_condition_records) {
+    if (record.kind == bir::Route7BranchConditionKind::FusedCompare) {
+      record.comparison.lhs.available = false;
+      record.comparison.lhs.status =
+          bir::Route7ComparisonStatus::MissingOperandProducer;
+      record.comparison.lhs.producer_kind =
+          bir::ComparisonProducerKind::Unknown;
+      record.comparison.lhs.producer_instruction = nullptr;
+      record.comparison.lhs.producer_instruction_index = 0;
+      record.comparison.lhs.produced_value = {};
+    }
+  }
+  const auto missing_producer_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          missing_producer_index,
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          block.insts.size());
+  auto duplicate_reference_index = route7_index;
+  if (!duplicate_reference_index.branch_condition_records.empty()) {
+    duplicate_reference_index.branch_condition_records.push_back(
+        duplicate_reference_index.branch_condition_records.front());
+  }
+  const auto duplicate_reference_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          duplicate_reference_index,
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          block.insts.size());
+  auto wrong_key_index = route7_index;
+  for (auto& record : wrong_key_index.operand_records) {
+    if (record.role == bir::Route7ComparisonOperandRole::Lhs &&
+        record.value.name == "%selected") {
+      record.before_instruction_index = 2;
+    }
+  }
+  wrong_key_index.branch_condition_records.clear();
+  const auto wrong_key_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          wrong_key_index, block, *fused_condition.lhs, *fused_condition.rhs, 3);
+  auto wrong_relationship_index = route7_index;
+  for (auto& record : wrong_relationship_index.operand_records) {
+    if (record.role == bir::Route7ComparisonOperandRole::Lhs &&
+        record.value.name == "%selected") {
+      record.role = bir::Route7ComparisonOperandRole::Rhs;
+    }
+  }
+  wrong_relationship_index.branch_condition_records.clear();
+  const auto wrong_relationship_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          wrong_relationship_index,
+          block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          3);
+  auto stale_owner_block = block;
+  const auto stale_owner_route7_consumer =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          stale_owner_block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          stale_owner_block.insts.size());
+  const auto bir_stale_owner_consumer =
+      bir::find_fused_compare_operand_producer_facts(
+          stale_owner_block,
+          *fused_condition.lhs,
+          *fused_condition.rhs,
+          stale_owner_block.insts.size());
+  if (!bir_consumer_boundary.available ||
+      !bir_consumer_boundary.lhs.has_value() ||
+      !bir_consumer_boundary.rhs.has_value() ||
+      unavailable_route7_consumer.available ||
+      missing_producer_route7_consumer.lhs.has_value() ||
+      !missing_producer_route7_consumer.rhs.has_value() ||
+      duplicate_reference_route7_consumer.available ||
+      wrong_key_route7_consumer.lhs.has_value() ||
+      !wrong_key_route7_consumer.rhs.has_value() ||
+      wrong_relationship_route7_consumer.lhs.has_value() ||
+      !wrong_relationship_route7_consumer.rhs.has_value() ||
+      !bir_stale_owner_consumer.available ||
+      stale_owner_route7_consumer.available) {
+    return fail(
+        "Route 7 fused compare consumer-boundary facts should fail closed for unavailable, missing-producer, duplicate-reference, wrong-key, wrong-relationship, and stale-reference cases without broad BIR fallback");
   }
 
   const auto prepared_condition =
