@@ -1,34 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/178_bir_return_chain_oracle_equivalence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Positive Terminal Equivalence Coverage
+Current Step ID: 3
+Current Step Title: Add Positive Next-Operand Equivalence Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 positive terminal-equivalence coverage completed in
+Step 3 positive next-operand equivalence coverage completed in
 `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
-`verify_bir_return_chain_schema_and_index_lookup()` now builds a matching
-prepared return-chain lookup surface for the existing same-block `%seed` ->
-`%ret` fixture and compares the prepared terminal/next helper answers against
-the real Route 8 answers returned from
-`route8_build_return_chain_index(function)`. Prepared answers are asserted to
-have valid `ValueNameId`s, and Route 8 identity spellings are compared against
-`prepared.names.value_names.spelling(...)` for `%seed`, `%named.next`, and the
-terminal `%ret` no-next case.
+`verify_bir_return_chain_schema_and_index_lookup()` now has an explicit
+next-operand oracle-equivalence assertion for the existing same-block `%seed`
+-> `%ret` fixture. The assertion compares the Route 8 immediate next operand
+for `%seed` against
+`find_prepared_return_chain_next_operand_value(...)`, and also checks that both
+Route 8 and the prepared helper agree that terminal `%ret` has no next operand.
 
 ## Suggested Next
 
-Supervisor should review/commit the Step 2 coverage slice, then choose the next
-packet from the active plan.
+Supervisor should choose the next coherent packet from the active plan, likely
+Step 4 rejected and ambiguous fail-closed equivalence coverage.
 
 ## Watchouts
 
-- Route 8 automatic index construction does not carry prepared `ValueNameId`s;
-  this coverage intentionally compares its normal accepted identity spelling
-  against the prepared table spelling for each valid prepared answer.
+- Route 8 automatic index construction still does not carry prepared
+  `ValueNameId`s; this coverage compares normal Route 8 identity spellings
+  against prepared table spellings for valid prepared answers.
 - Prepared return-chain helpers stayed public and unchanged; no AArch64
   consumer migration was attempted.
 

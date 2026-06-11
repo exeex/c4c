@@ -9847,19 +9847,23 @@ int verify_bir_return_chain_schema_and_index_lookup() {
       prepare::find_prepared_return_chain_next_operand_value(
           &prepared_return_chains, 0, 1, ret_name);
   if (prepared_seed_terminal == c4c::kInvalidValueName ||
-      prepared_seed_next == c4c::kInvalidValueName ||
       prepared_ret_terminal == c4c::kInvalidValueName ||
-      prepared_ret_next != c4c::kInvalidValueName ||
       terminal_identity.name !=
           prepared.names.value_names.spelling(prepared_seed_terminal) ||
-      next_identity.name !=
-          prepared.names.value_names.spelling(prepared_seed_next) ||
       !route8_ret_terminal ||
       route8_ret_terminal.name !=
-          prepared.names.value_names.spelling(prepared_ret_terminal) ||
-      route8_ret_next) {
+          prepared.names.value_names.spelling(prepared_ret_terminal)) {
     return fail(
         "Route 8 and prepared return-chain helpers should expose matching accepted terminal answers");
+  }
+  if (prepared_seed_next == c4c::kInvalidValueName ||
+      !next_identity ||
+      next_identity.name !=
+          prepared.names.value_names.spelling(prepared_seed_next) ||
+      prepared_ret_next != c4c::kInvalidValueName ||
+      route8_ret_next) {
+    return fail(
+        "Route 8 and prepared return-chain helpers should expose matching accepted next-operand answers");
   }
 
   const bir::Block unsupported_opcode_block{
