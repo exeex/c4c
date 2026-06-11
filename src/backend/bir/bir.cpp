@@ -4436,6 +4436,37 @@ route_index_validate_block_entry_publication_reference(
       *facade.route4_publications, successor_block, destination_value);
 }
 
+Route7IndexReferenceValidation route_index_validate_comparison_operand_reference(
+    const RouteIndexReferenceFacade& facade,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role) {
+  if (facade.route7_comparisons == nullptr) {
+    return Route7IndexReferenceValidation{
+        .valid = false,
+        .status = RouteIndexValidationStatus::MissingRecord,
+        .route_status = Route7ComparisonStatus::MissingBlock,
+        .reference =
+            RouteIndexRecordReference{
+                .route = RouteIndexRoute::Route7ComparisonCondition,
+                .owner_scope = RouteIndexOwnerScope::None,
+                .record_category = RouteIndexRecordCategory::Route7ComparisonOperand,
+                .relationship = RouteIndexRelationshipKind::Route7Operand,
+                .block = &block,
+                .block_label = block.label,
+                .block_label_id = block.label_id,
+                .instruction_index = before_instruction_index,
+                .before_instruction_index = before_instruction_index,
+                .value = route1_source_value_identity(value),
+                .operand_role = role,
+            },
+    };
+  }
+  return route7_validate_comparison_operand_reference(
+      *facade.route7_comparisons, block, value, before_instruction_index, role);
+}
+
 Route7IndexReferenceValidation
 route_index_validate_materialized_condition_reference(
     const RouteIndexReferenceFacade& facade,
@@ -4506,6 +4537,53 @@ route7_operand_record_to_public(const Route7ComparisonOperandRecord& record) {
 }
 
 }  // namespace
+
+FusedCompareOperandProducerFacts route7_find_fused_compare_operand_producer_facts(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& lhs,
+    const Value& rhs,
+    std::size_t before_instruction_index) {
+  const auto facade = route_index_reference_facade(index);
+  const auto lhs_reference = route_index_validate_comparison_operand_reference(
+      facade,
+      block,
+      lhs,
+      before_instruction_index,
+      Route7ComparisonOperandRole::Lhs);
+  const auto rhs_reference = route_index_validate_comparison_operand_reference(
+      facade,
+      block,
+      rhs,
+      before_instruction_index,
+      Route7ComparisonOperandRole::Rhs);
+  FusedCompareOperandProducerFacts result{
+      .lhs = lhs_reference.operand_record == nullptr
+                 ? std::nullopt
+                 : route7_operand_record_to_public(*lhs_reference.operand_record),
+      .rhs = rhs_reference.operand_record == nullptr
+                 ? std::nullopt
+                 : route7_operand_record_to_public(*rhs_reference.operand_record),
+  };
+  result.available = result.lhs.has_value() || result.rhs.has_value();
+  if (result.available || before_instruction_index != block.insts.size()) {
+    return result;
+  }
+
+  const auto branch_reference =
+      route7_validate_branch_condition_reference(index, block);
+  const auto* branch_record = branch_reference.branch_condition_record;
+  if (!branch_reference || branch_record == nullptr ||
+      branch_record->kind != Route7BranchConditionKind::FusedCompare ||
+      !route7_value_matches(branch_record->comparison.lhs_value, lhs) ||
+      !route7_value_matches(branch_record->comparison.rhs_value, rhs)) {
+    return result;
+  }
+  result.lhs = route7_operand_record_to_public(branch_record->comparison.lhs);
+  result.rhs = route7_operand_record_to_public(branch_record->comparison.rhs);
+  result.available = result.lhs.has_value() || result.rhs.has_value();
+  return result;
+}
 
 MaterializedConditionProducerIdentity find_materialized_condition_producer_identity(
     const Block& block,

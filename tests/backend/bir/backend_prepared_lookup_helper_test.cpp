@@ -8884,10 +8884,15 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
           names, &source_producers, block_label, &block, fused_condition, 3);
   const auto bir_fused = bir::find_fused_compare_operand_producer_facts(
       block, *fused_condition.lhs, *fused_condition.rhs, 3);
+  const auto route7_index =
+      bir::route7_build_comparison_condition_index(block);
+  const auto route7_fused = bir::route7_find_fused_compare_operand_producer_facts(
+      route7_index, block, *fused_condition.lhs, *fused_condition.rhs, 3);
   const auto route7_fused_instruction =
       bir::route7_comparison_instruction_record(&block, 3);
   if (!prepared_fused.has_value() ||
       !bir_fused.available ||
+      !route7_fused.available ||
       !prepared_and_bir_comparison_operand_producer_match(
           names, block, prepared_fused->lhs, *fused_condition.lhs, 3) ||
       !prepared_and_bir_comparison_operand_producer_match(
@@ -8896,6 +8901,15 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       bir_fused.lhs->producer_kind != bir::ComparisonProducerKind::Select ||
       !bir_fused.rhs.has_value() ||
       bir_fused.rhs->integer_constant != std::optional<std::int64_t>{12} ||
+      !route7_fused.lhs.has_value() ||
+      route7_fused.lhs->producer_kind != bir::ComparisonProducerKind::Select ||
+      route7_fused.lhs->producer_instruction !=
+          prepared_fused->lhs->instruction ||
+      route7_fused.lhs->producer_instruction_index !=
+          prepared_fused->lhs->instruction_index ||
+      !route7_fused.rhs.has_value() ||
+      route7_fused.rhs->integer_constant !=
+          bir_fused.rhs->integer_constant ||
       !route7_fused_instruction ||
       route7_fused_instruction.status !=
           bir::Route7ComparisonStatus::Available ||
@@ -8919,6 +8933,22 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
           names, &source_producers, block_label, &block, immediate_condition, 3);
   const auto bir_immediate = bir::find_fused_compare_operand_producer_facts(
       block, *immediate_condition.lhs, *immediate_condition.rhs, 3);
+  auto immediate_compare_block = block;
+  auto* immediate_compare =
+      std::get_if<bir::BinaryInst>(&immediate_compare_block.insts[3]);
+  if (immediate_compare == nullptr) {
+    return fail("Route 7 immediate fused compare fixture is malformed");
+  }
+  immediate_compare->lhs = *immediate_condition.lhs;
+  const auto route7_immediate_index =
+      bir::route7_build_comparison_condition_index(immediate_compare_block);
+  const auto route7_immediate =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_immediate_index,
+          immediate_compare_block,
+          *immediate_condition.lhs,
+          *immediate_condition.rhs,
+          3);
   const auto route7_immediate_operand =
       bir::route7_comparison_operand_record(
           &block,
@@ -8931,6 +8961,11 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       !bir_immediate.lhs.has_value() ||
       bir_immediate.lhs->producer_kind != bir::ComparisonProducerKind::Immediate ||
       bir_immediate.lhs->integer_constant != std::optional<std::int64_t>{9} ||
+      !route7_immediate.lhs.has_value() ||
+      route7_immediate.lhs->producer_kind !=
+          bir::ComparisonProducerKind::Immediate ||
+      route7_immediate.lhs->integer_constant !=
+          prepared_immediate->lhs->integer_constant ||
       !route7_immediate_operand ||
       route7_immediate_operand.producer_kind !=
           bir::ComparisonProducerKind::Immediate ||
@@ -8947,14 +8982,26 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
           names, &source_producers, block_label, &block, rhs_only_condition, 3);
   const auto bir_rhs_only = bir::find_fused_compare_operand_producer_facts(
       block, *rhs_only_condition.lhs, *rhs_only_condition.rhs, 3);
+  const auto route7_rhs_only =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          block,
+          *rhs_only_condition.lhs,
+          *rhs_only_condition.rhs,
+          3);
   if (!prepared_rhs_only.has_value() ||
       prepared_rhs_only->lhs.has_value() ||
       !prepared_rhs_only->rhs.has_value() ||
       !bir_rhs_only.available ||
       bir_rhs_only.lhs.has_value() ||
-      !bir_rhs_only.rhs.has_value()) {
+      !bir_rhs_only.rhs.has_value() ||
+      !route7_rhs_only.available ||
+      route7_rhs_only.lhs.has_value() ||
+      !route7_rhs_only.rhs.has_value() ||
+      route7_rhs_only.rhs->integer_constant !=
+          bir_rhs_only.rhs->integer_constant) {
     return fail(
-        "prepared and BIR fused compare producer facts should match rhs-only availability");
+        "prepared, BIR, and Route 7 fused compare producer facts should match rhs-only availability");
   }
 
   auto materialized_bool = fused_condition;
@@ -8968,9 +9015,39 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
           bir::Value::named(bir::TypeKind::I64, "%missing"),
           bir::Value::named(bir::TypeKind::I64, "%also.missing"),
           3)
+          .available ||
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%missing"),
+          bir::Value::named(bir::TypeKind::I64, "%also.missing"),
+          3)
           .available) {
     return fail(
-        "prepared and BIR fused compare producer facts should fail closed for unavailable/non-fused paths");
+        "prepared, BIR, and Route 7 fused compare producer facts should fail closed for unavailable/non-fused paths");
+  }
+  const auto wrong_key_route7_ref =
+      bir::route_index_validate_comparison_operand_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          *fused_condition.lhs,
+          2,
+          bir::Route7ComparisonOperandRole::Lhs);
+  const auto wrong_role_route7_ref =
+      bir::route_index_validate_comparison_operand_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          *fused_condition.lhs,
+          3,
+          bir::Route7ComparisonOperandRole::Rhs);
+  if (wrong_key_route7_ref ||
+      wrong_key_route7_ref.status !=
+          bir::RouteIndexValidationStatus::WrongKey ||
+      wrong_role_route7_ref ||
+      wrong_role_route7_ref.status !=
+          bir::RouteIndexValidationStatus::WrongRelationship) {
+    return fail(
+        "Route 7 fused compare operand route-index validation should reject wrong-key and wrong-role references");
   }
 
   const auto prepared_condition =
@@ -9102,10 +9179,18 @@ int verify_production_bir_comparison_condition_producer_equivalence() {
   const auto route7_branch = bir::route7_branch_condition_record(&block);
   const auto route7_production_index =
       bir::route7_build_comparison_condition_index(*function);
+  const auto route7_fused =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_production_index,
+          block,
+          *branch_condition.lhs,
+          *branch_condition.rhs,
+          block.insts.size());
   const auto indexed_route7_branch =
       bir::route7_find_branch_condition(route7_production_index, block);
   if (!prepared_fused.has_value() ||
       !bir_fused.available ||
+      !route7_fused.available ||
       !branch_condition.can_fuse_with_branch ||
       branch_condition.kind != prepare::PreparedBranchConditionKind::FusedCompare ||
       !prepared_and_bir_comparison_operand_producer_match(
@@ -9118,6 +9203,12 @@ int verify_production_bir_comparison_condition_producer_equivalence() {
       !bir_fused.rhs.has_value() ||
       bir_fused.lhs->integer_constant != std::optional<std::int64_t>{15} ||
       bir_fused.rhs->integer_constant != std::optional<std::int64_t>{21} ||
+      !route7_fused.lhs.has_value() ||
+      !route7_fused.rhs.has_value() ||
+      route7_fused.lhs->integer_constant !=
+          bir_fused.lhs->integer_constant ||
+      route7_fused.rhs->integer_constant !=
+          bir_fused.rhs->integer_constant ||
       !route7_branch ||
       route7_branch.status != bir::Route7ComparisonStatus::Available ||
       route7_branch.kind != bir::Route7BranchConditionKind::FusedCompare ||

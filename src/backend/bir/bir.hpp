@@ -2588,6 +2588,12 @@ FusedCompareOperandProducerFacts find_fused_compare_operand_producer_facts(
     const Value& lhs,
     const Value& rhs,
     std::size_t before_instruction_index);
+FusedCompareOperandProducerFacts route7_find_fused_compare_operand_producer_facts(
+    const Route7ComparisonConditionIndex& index,
+    const Block& block,
+    const Value& lhs,
+    const Value& rhs,
+    std::size_t before_instruction_index);
 MaterializedConditionProducerIdentity find_materialized_condition_producer_identity(
     const Block& block,
     const Value& condition_value,
@@ -2678,6 +2684,13 @@ route_index_validate_block_entry_publication_reference(
     const RouteIndexReferenceFacade& facade,
     const Block& successor_block,
     const Value& destination_value);
+[[nodiscard]] Route7IndexReferenceValidation
+route_index_validate_comparison_operand_reference(
+    const RouteIndexReferenceFacade& facade,
+    const Block& block,
+    const Value& value,
+    std::size_t before_instruction_index,
+    Route7ComparisonOperandRole role);
 [[nodiscard]] Route7IndexReferenceValidation
 route_index_validate_materialized_condition_reference(
     const RouteIndexReferenceFacade& facade,

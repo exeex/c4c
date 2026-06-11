@@ -2402,11 +2402,23 @@ bool fused_compare_uses_selected_operand(
   if (context.bir_block == nullptr) {
     return false;
   }
-  const auto producer_facts = bir::find_fused_compare_operand_producer_facts(
+  const auto route7_index =
+      bir::route7_build_comparison_condition_index(*context.bir_block);
+  const auto route7_producer_facts =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          *context.bir_block,
+          branch_facts->lhs,
+          branch_facts->rhs,
+          context.bir_block->insts.size());
+  const auto bir_producer_facts = bir::find_fused_compare_operand_producer_facts(
       *context.bir_block,
       branch_facts->lhs,
       branch_facts->rhs,
       context.bir_block->insts.size());
+  const auto& producer_facts =
+      route7_producer_facts.available ? route7_producer_facts
+                                      : bir_producer_facts;
   return producer_facts.available &&
          (fused_compare_operand_has_select_producer(producer_facts.lhs) ||
           fused_compare_operand_has_select_producer(producer_facts.rhs));
