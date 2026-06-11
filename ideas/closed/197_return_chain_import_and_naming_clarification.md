@@ -65,3 +65,13 @@ policy.
   negative, ambiguous, and conflict coverage.
 - Claiming progress through naming-only changes while leaving the import
   ambiguity unresolved.
+
+## Completion Note
+
+Closed after creating
+`docs/bir_prealloc_fusion/return_chain_import_and_naming.md`. The note imports
+the return-chain owner/schema result as `Route 8 return-chain owner/schema
+line`, cites the decision doc and closed ideas 176-180, separates
+target-neutral BIR return-chain identity from target-local policy, and records
+the old public prepared return-chain helper names as historical/absent after
+idea 180.
