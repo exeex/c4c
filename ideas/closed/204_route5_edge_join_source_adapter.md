@@ -49,6 +49,21 @@ selected edge/join-source identity or wrapper adapter.
 - Proof covers success, no-source, memory-source, duplicate/conflict,
   absent/mismatch fallback, and output stability where relevant.
 
+## Closure Note
+
+Closed after selecting `build_current_block_join_prepared_query_routing` as the
+bounded reader boundary and adding fail-closed indexed Route 5 current-block
+join-source validation through `mir::find_bir_current_block_join_source_identity`.
+The selected AArch64 boundary consumes Route 5 only for semantic identity
+bitsets when the adapter reports availability, while prepared scheduling,
+storage, wrappers, branch policy, final edge-copy records, and emitted output
+remain authoritative.
+
+Close proof used backend CTest before/after logs for the same
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+scope. The close-time guard passed with 180 backend tests passing before and
+after, no new failures, and no pass-count decrease.
+
 ## Reviewer Reject Signals
 
 - Reject a slice that uses Route 5 join identity as ownership of move
