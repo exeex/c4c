@@ -1330,54 +1330,6 @@ Route4CurrentBlockPublicationRecord route4_find_current_block_publication(
   return result;
 }
 
-Route4BlockEntryPublicationRecord route4_find_block_entry_publication(
-    const Route4PublicationAvailabilityIndex& index,
-    const Block& successor_block,
-    const Value& destination_value) {
-  Route4BlockEntryPublicationRecord result{
-      .status = Route4PublicationAvailabilityStatus::Unavailable,
-      .successor_block = &successor_block,
-      .successor_label = successor_block.label,
-      .successor_label_id = successor_block.label_id,
-      .destination_value = route1_source_value_identity(destination_value),
-      .destination_value_name =
-          destination_value.kind == Value::Kind::Named
-              ? std::string_view{destination_value.name}
-              : std::string_view{},
-      .destination_value_type = destination_value.type,
-  };
-  if (!index) {
-    result.status = Route4PublicationAvailabilityStatus::MissingBlock;
-    return result;
-  }
-  if (destination_value.kind != Value::Kind::Named ||
-      destination_value.name.empty()) {
-    result.status = Route4PublicationAvailabilityStatus::MissingValue;
-    return result;
-  }
-  const Route4BlockEntryPublicationRecord* type_mismatch = nullptr;
-  for (const auto& candidate : index.block_entry_records) {
-    if (!candidate ||
-        !route4_record_matches_block(*index.function,
-                                     candidate.successor_block,
-                                     candidate.successor_label,
-                                     candidate.successor_label_id,
-                                     successor_block) ||
-        candidate.destination_value_name != destination_value.name) {
-      continue;
-    }
-    if (candidate.destination_value_type != destination_value.type) {
-      type_mismatch = &candidate;
-      continue;
-    }
-    return candidate;
-  }
-  result.status = type_mismatch != nullptr
-                      ? Route4PublicationAvailabilityStatus::NoMatch
-                      : Route4PublicationAvailabilityStatus::MissingPublication;
-  return result;
-}
-
 Route4IndexReferenceValidation
 route4_validate_current_block_publication_reference(
     const Route4PublicationAvailabilityIndex& index,

@@ -1630,12 +1630,6 @@ route4_find_current_block_publication(
     const Value& value,
     std::size_t before_instruction_index);
 
-[[nodiscard]] Route4BlockEntryPublicationRecord
-route4_find_block_entry_publication(
-    const Route4PublicationAvailabilityIndex& index,
-    const Block& successor_block,
-    const Value& destination_value);
-
 enum class Route5PublicationStatus : unsigned char {
   Unavailable,
   Available,
