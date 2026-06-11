@@ -3958,12 +3958,12 @@ namespace {
       query_value.name_id != kInvalidValueName) {
     return record_value.name_id == query_value.name_id;
   }
-  if (record_value.value != nullptr || query_value.value != nullptr) {
-    return record_value.value == query_value.value;
-  }
   if (!record_value.name.empty() || !query_value.name.empty()) {
     return record_value.name == query_value.name &&
            record_value.type == query_value.type;
+  }
+  if (record_value.value != nullptr || query_value.value != nullptr) {
+    return record_value.value == query_value.value;
   }
   if (record_value.integer_constant.has_value() ||
       query_value.integer_constant.has_value()) {

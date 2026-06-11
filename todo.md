@@ -1,31 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/177_bir_return_chain_schema_index.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Build Function-Local Index and Lookup Helpers
+Current Step ID: 4
+Current Step Title: Add Focused Schema/Index Tests
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed. Implemented the Route 8 return-chain index builders in
-`src/backend/bir/bir.cpp` for function and block owner scopes. Builders now walk
-same-block named scalar `BinaryInst` chains that reach a named return terminator,
-publish accepted records keyed by function/block/instruction index plus chain
-value identity, and preserve the optional immediate next-operand identity when
-that operand is named.
+Step 4 completed. Added focused Route 8 backend/BIR schema and index coverage in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, plus a narrow
+Route 8 key-matching fix in `src/backend/bir/bir.cpp`.
 
-Lookup helpers now operate over populated indexes: positive record lookups return
-terminal return identity and optional next operand identity, while unsupported
-opcodes, unnamed chain or terminal values, broken walks, non-return terminators,
-cross-block relationships, missing instruction keys, and conflicting duplicate
-publications fail closed without selecting a winner.
+The new test covers positive same-block return-chain lookups for terminal return
+identity and immediate named next-operand identity through both function and
+block indexes. It also covers unsupported opcode, unnamed chain and terminal
+values, broken walks, non-return terminators, cross-block relationships, missing
+instruction keys, and duplicate conflicting records failing closed without
+comparing against prepared helpers. Positive lookups now build query keys from
+copied equivalent named BIR values to prove Route 8 matches stable `name_id` or
+`name`+`type` before falling back to value pointer identity.
 
 ## Suggested Next
 
-Execute Step 4 by adding focused backend/BIR schema and index tests for Route 8
-positive terminal and next-operand lookups plus negative unsupported, unnamed,
-broken-walk, non-return, cross-block, and duplicate-conflict cases.
+Execute Step 5 by validating the Route 8 slice handoff: confirm the focused
+proof remains green, prepared return-chain helpers and AArch64 consumers remain
+unchanged, and identify idea 178 as the next oracle-equivalence prerequisite.
 
 ## Watchouts
 
@@ -45,6 +45,9 @@ broken-walk, non-return, cross-block, and duplicate-conflict cases.
 - Keep oracle equivalence against prepared helpers for idea 178.
 - Function/block key stability is owner-local: rebuild the Route 8 index after
   mutating indexed BIR functions, blocks, instructions, or value names.
+- Route 8 lookup keys intentionally prefer stable named value identity over
+  raw `Value*` identity so copied/equivalent named BIR values can query indexed
+  records.
 
 ## Proof
 

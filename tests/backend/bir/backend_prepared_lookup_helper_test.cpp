@@ -9733,6 +9733,276 @@ int verify_bir_call_result_source_identity_lookup() {
   return 0;
 }
 
+int verify_bir_return_chain_schema_and_index_lookup() {
+  const bir::Value seed = bir::Value::named(bir::TypeKind::I64, "%seed");
+  const bir::Value named_next =
+      bir::Value::named(bir::TypeKind::I64, "%named.next");
+  const bir::Value ret = bir::Value::named(bir::TypeKind::I64, "%ret");
+  const bir::Block block{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = seed,
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::immediate_i64(10),
+                  .rhs = bir::Value::immediate_i64(5),
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sub,
+                  .result = ret,
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = seed,
+                  .rhs = named_next,
+              },
+          },
+      .terminator =
+          bir::Terminator{bir::ReturnTerminator{
+              .value = ret,
+          }},
+  };
+  const bir::Function function{
+      .name = "route8_return_chain",
+      .blocks = {block},
+  };
+  const auto& indexed_block = function.blocks.front();
+  const auto* indexed_seed_binary =
+      std::get_if<bir::BinaryInst>(&indexed_block.insts[0]);
+  const auto* indexed_ret_binary =
+      std::get_if<bir::BinaryInst>(&indexed_block.insts[1]);
+  if (indexed_seed_binary == nullptr || indexed_ret_binary == nullptr) {
+    return fail("Route 8 positive fixture is malformed");
+  }
+  const auto index = bir::route8_build_return_chain_index(function);
+  const auto first_key =
+      bir::route8_return_chain_value_key(&function, indexed_block, 0, seed);
+  const auto terminal_key =
+      bir::route8_return_chain_value_key(&function, indexed_block, 1, ret);
+  const auto first_record =
+      bir::route8_find_return_chain_record(index, first_key);
+  const auto terminal_record =
+      bir::route8_find_return_chain_record(index, terminal_key);
+  const auto terminal_identity =
+      bir::route8_find_return_chain_terminal_value(index, first_key);
+  const auto next_identity =
+      bir::route8_find_return_chain_next_operand_value(index, first_key);
+  if (!first_record ||
+      first_record.status != bir::Route8ReturnChainStatus::Available ||
+      first_record.key.instruction_index != 0 ||
+      first_record.key.chain_value.name != "%seed" ||
+      first_record.terminal_return_value.name != "%ret" ||
+      first_record.next_operand_value.name != "%named.next" ||
+      !terminal_record ||
+      terminal_record.status != bir::Route8ReturnChainStatus::Available ||
+      terminal_record.key.instruction_index != 1 ||
+      terminal_record.terminal_return_value.name != "%ret" ||
+      terminal_record.next_operand_value ||
+      terminal_identity.name != "%ret" ||
+      next_identity.name != "%named.next") {
+    return fail(
+        "Route 8 return-chain index should expose terminal and immediate named next-operand identities");
+  }
+
+  const auto block_index = bir::route8_build_return_chain_index(indexed_block);
+  const auto block_key =
+      bir::route8_return_chain_value_key(nullptr, indexed_block, 0, seed);
+  const auto block_record =
+      bir::route8_find_return_chain_record(block_index, block_key);
+  if (!block_record ||
+      block_record.terminal_return_value.name != "%ret" ||
+      block_record.next_operand_value.name != "%named.next") {
+    return fail(
+        "Route 8 block-local return-chain index should expose the same schema identities");
+  }
+
+  const bir::Block unsupported_opcode_block{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Eq,
+                  .result = seed,
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::immediate_i64(1),
+                  .rhs = bir::Value::immediate_i64(1),
+              },
+          },
+      .terminator =
+          bir::Terminator{bir::ReturnTerminator{
+              .value = seed,
+          }},
+  };
+  const auto unsupported_index =
+      bir::route8_build_return_chain_index(unsupported_opcode_block);
+  const auto unsupported_record = bir::route8_find_return_chain_record(
+      unsupported_index,
+      bir::route8_return_chain_value_key(
+          nullptr, unsupported_opcode_block, 0, seed));
+  if (unsupported_record ||
+      unsupported_record.status != bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should reject unsupported binary opcodes");
+  }
+
+  const bir::Block unnamed_chain_block{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::immediate_i64(15),
+                  .operand_type = bir::TypeKind::I64,
+                  .lhs = bir::Value::immediate_i64(10),
+                  .rhs = bir::Value::immediate_i64(5),
+              },
+          },
+      .terminator =
+          bir::Terminator{bir::ReturnTerminator{
+              .value = bir::Value::immediate_i64(15),
+          }},
+  };
+  const auto unnamed_chain_index =
+      bir::route8_build_return_chain_index(unnamed_chain_block);
+  const auto unnamed_chain_record = bir::route8_find_return_chain_record(
+      unnamed_chain_index,
+      bir::route8_return_chain_value_key(
+          nullptr, unnamed_chain_block, 0, bir::Value::immediate_i64(15)));
+  if (unnamed_chain_record ||
+      unnamed_chain_record.status !=
+          bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should reject unnamed chain values");
+  }
+
+  auto unnamed_terminal_block = block;
+  unnamed_terminal_block.terminator.value = bir::Value::immediate_i64(25);
+  const auto unnamed_terminal_index =
+      bir::route8_build_return_chain_index(unnamed_terminal_block);
+  const auto unnamed_terminal_record = bir::route8_find_return_chain_record(
+      unnamed_terminal_index,
+      bir::route8_return_chain_value_key(
+          nullptr, unnamed_terminal_block, 0, seed));
+  if (unnamed_terminal_record ||
+      unnamed_terminal_record.status != bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should reject unnamed terminal return values");
+  }
+
+  auto broken_walk_block = block;
+  auto* broken_next =
+      std::get_if<bir::BinaryInst>(&broken_walk_block.insts[1]);
+  if (broken_next == nullptr) {
+    return fail("Route 8 broken-walk fixture is malformed");
+  }
+  broken_next->lhs = bir::Value::named(bir::TypeKind::I64, "%not.seed");
+  const auto broken_walk_index =
+      bir::route8_build_return_chain_index(broken_walk_block);
+  const auto broken_walk_record = bir::route8_find_return_chain_record(
+      broken_walk_index,
+      bir::route8_return_chain_value_key(
+          nullptr, broken_walk_block, 0, seed));
+  if (broken_walk_record ||
+      broken_walk_record.status != bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should fail closed for broken same-block walks");
+  }
+
+  auto non_return_block = block;
+  non_return_block.terminator = bir::Terminator{bir::BranchTerminator{
+      .target_label = "exit",
+  }};
+  const auto non_return_index =
+      bir::route8_build_return_chain_index(non_return_block);
+  const auto non_return_record = bir::route8_find_return_chain_record(
+      non_return_index,
+      bir::route8_return_chain_value_key(
+          nullptr, non_return_block, 0, seed));
+  if (non_return_record ||
+      non_return_record.status != bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should reject non-return terminators");
+  }
+
+  const bir::Function cross_block_function{
+      .name = "route8_cross_block",
+      .blocks =
+          {
+              bir::Block{
+                  .label = "entry",
+                  .insts =
+                      {
+                          bir::BinaryInst{
+                              .opcode = bir::BinaryOpcode::Add,
+                              .result = seed,
+                              .operand_type = bir::TypeKind::I64,
+                              .lhs = bir::Value::immediate_i64(10),
+                              .rhs = bir::Value::immediate_i64(5),
+                          },
+                      },
+                  .terminator =
+                      bir::Terminator{bir::BranchTerminator{
+                          .target_label = "exit",
+                      }},
+              },
+              bir::Block{
+                  .label = "exit",
+                  .terminator =
+                      bir::Terminator{bir::ReturnTerminator{
+                          .value = seed,
+                      }},
+              },
+          },
+  };
+  const auto cross_block_index =
+      bir::route8_build_return_chain_index(cross_block_function);
+  const auto cross_block_record = bir::route8_find_return_chain_record(
+      cross_block_index,
+      bir::route8_return_chain_value_key(
+          &cross_block_function,
+          cross_block_function.blocks.front(),
+          0,
+          seed));
+  if (cross_block_record ||
+      cross_block_record.status != bir::Route8ReturnChainStatus::NoMatch) {
+    return fail(
+        "Route 8 return-chain index should not stitch return chains across blocks");
+  }
+
+  const auto missing_instruction_record = bir::route8_find_return_chain_record(
+      index,
+      bir::route8_return_chain_value_key(
+          &function, indexed_block, indexed_block.insts.size(), seed));
+  if (missing_instruction_record ||
+      missing_instruction_record.status !=
+          bir::Route8ReturnChainStatus::MissingInstruction) {
+    return fail(
+        "Route 8 return-chain index should report missing instruction keys");
+  }
+
+  auto manual_duplicate_index = index;
+  const bir::Value conflicting_terminal =
+      bir::Value::named(bir::TypeKind::I64, "%conflicting.ret");
+  auto conflicting_record = first_record;
+  conflicting_record.terminal_return_value =
+      bir::route1_source_value_identity(conflicting_terminal);
+  manual_duplicate_index.records.push_back(conflicting_record);
+  const auto manual_duplicate_record = bir::route8_find_return_chain_record(
+      manual_duplicate_index, first_key);
+  if (manual_duplicate_record ||
+      manual_duplicate_record.status !=
+          bir::Route8ReturnChainStatus::DuplicateRecord ||
+      bir::route8_find_return_chain_terminal_value(
+          manual_duplicate_index, first_key) ||
+      bir::route8_find_return_chain_next_operand_value(
+          manual_duplicate_index, first_key)) {
+    return fail(
+        "Route 8 return-chain lookups should fail closed for duplicate conflicting records");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -9827,6 +10097,10 @@ int main() {
     return result;
   }
   if (const int result = verify_bir_call_result_source_identity_lookup();
+      result != 0) {
+    return result;
+  }
+  if (const int result = verify_bir_return_chain_schema_and_index_lookup();
       result != 0) {
     return result;
   }
