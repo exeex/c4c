@@ -1318,6 +1318,21 @@ make_prepared_address_materialization_lookups(const PreparedBirModule& prepared,
   return lookups;
 }
 
+[[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function) {
+  const auto* value_locations =
+      find_prepared_value_location_function(prepared, function.function_name);
+  const auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
+  auto lookups = make_prepared_move_bundle_lookups(value_locations);
+  publish_prepared_after_call_result_lane_bindings(lookups,
+                                                   prepared,
+                                                   function,
+                                                   value_locations,
+                                                   value_home_lookups);
+  return lookups;
+}
+
 [[nodiscard]] bool prepared_return_chain_binary_opcode_is_scalar_publication(
     bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -1679,12 +1694,7 @@ void publish_prepared_return_chain(
   auto value_home_lookups = make_prepared_value_home_lookups(value_locations);
   auto memory_access_lookups =
       make_prepared_memory_access_lookups(addressing, &value_home_lookups);
-  auto move_bundle_lookups = make_prepared_move_bundle_lookups(value_locations);
-  publish_prepared_after_call_result_lane_bindings(move_bundle_lookups,
-                                                   prepared,
-                                                   function,
-                                                   value_locations,
-                                                   value_home_lookups);
+  auto move_bundle_lookups = make_prepared_move_bundle_lookups(prepared, function);
   auto source_producer_lookups =
       make_prepared_edge_publication_source_producer_lookups(prepared, function);
   auto edge_publication_lookups = make_prepared_edge_publication_lookups(

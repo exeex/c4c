@@ -48,6 +48,10 @@ struct PreparedFunctionLookups {
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
 
+[[nodiscard]] PreparedMoveBundleLookups make_prepared_move_bundle_lookups(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function);
+
 [[nodiscard]] ValueNameId find_prepared_return_chain_terminal_value(
     const PreparedReturnChainLookups* lookups,
     std::size_t block_index,
