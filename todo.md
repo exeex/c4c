@@ -8,28 +8,30 @@ Current Step Title: Prove Success, Rejection, And Fallback
 
 ## Just Finished
 
-Step 3/4 strengthened selected-reader proof for
-`make_unpublished_load_local_source_operand(...)` without touching production
-code. The focused AArch64 scalar-consumer fixture now reuses one local lowering
-helper, preserves the success case where prepared addressing supplies the
-source-home frame-slot operands, keeps the prepared-instruction-index mismatch
-fallback, and adds a missing Route 3 BIR local-slot identity case that rejects
-the source-home operand and falls back instead.
+Step 4 repaired the Route 3 load-local adapter regression exposed by
+`c_testsuite_aarch64_backend_src_00164_c`. The selected reader now
+distinguishes absent Route 3 identity from a contradictory Route 3/prepared
+mismatch: absent Route 3 evidence can use the already validated prepared
+load-local source fallback, while actual Route 3/prepared mismatches still
+reject the source-home operand.
 
-This proves an additional fail-closed/fallback case beyond the prior prepared
-instruction-index mismatch while preserving target-addressing authority in
-prepared lookup and `make_prepared_scalar_load_source(...)`.
+The focused AArch64 scalar-consumer fixture now proves that missing Route 3
+identity preserves the prepared source fallback instead of falling through to an
+uninitialized loaded-value home. The existing prepared instruction-index
+mismatch case still rejects the source-home operand.
 
 Files changed:
 
+- `src/backend/mir/aarch64/codegen/alu.cpp`
 - `tests/backend/mir/backend_aarch64_prepared_scalar_alu_records_test.cpp`
 - `todo.md`
 
 ## Suggested Next
 
 Select the next Step 5 packet from `plan.md`: run the broader validation and
-handoff route if the supervisor accepts the current selected-reader evidence,
-or request review if another fail-closed case is needed before broad proof.
+handoff route if the supervisor accepts this regression repair and the current
+selected-reader evidence, or request review if another fail-closed case is
+needed before broad proof.
 
 ## Watchouts
 
@@ -42,17 +44,19 @@ memory/frame/stack helper groups.
 
 The missing-Route-3-identity coverage mutates only the BIR address base kind
 away from `LocalSlot`; it does not add testcase-shaped production matching.
-`src/backend/mir/aarch64/codegen/alu.cpp` was not changed in this packet.
+The production repair is semantic fallback-boundary handling, not a special case
+for `00164.c`.
 
 ## Proof
 
 Supervisor-selected proof command run exactly:
 
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_prepared_scalar_alu_records|backend_store_source_publication_plan|backend_prepared_lookup_helper)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_prepared_scalar_alu_records|backend_store_source_publication_plan|backend_prepared_lookup_helper|c_testsuite_aarch64_backend_src_00164_c)$' > test_after.log`
 
-Result: passed after the final edit. `test_after.log` contains 3/3 passing tests:
+Result: passed after the final edit. `test_after.log` contains 4/4 passing tests:
 `backend_store_source_publication_plan`,
-`backend_aarch64_prepared_scalar_alu_records`, and
-`backend_prepared_lookup_helper`.
+`backend_aarch64_prepared_scalar_alu_records`,
+`backend_prepared_lookup_helper`, and
+`c_testsuite_aarch64_backend_src_00164_c`.
 
 Additional validation: `git diff --check` passed.

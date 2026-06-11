@@ -746,7 +746,7 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   missing_route3_load->address->base_kind = bir::MemoryAddress::BaseKind::None;
   auto missing_route3_lowered = lower_scalar_consumer(missing_route3_identity);
   if (!missing_route3_lowered.has_value()) {
-    return fail("expected scalar consumer with missing Route 3 identity to fall back");
+    return fail("expected scalar consumer with missing Route 3 identity to lower");
   }
   const auto* missing_route3_scalar =
       std::get_if<aarch64_codegen::ScalarInstructionRecord>(
@@ -754,16 +754,16 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   if (missing_route3_scalar == nullptr ||
       !missing_route3_scalar->scalar_alu.has_value() ||
       missing_route3_scalar->inputs.size() != 2) {
-    return fail("expected missing Route 3 identity fallback to keep scalar ALU record");
+    return fail("expected missing Route 3 identity to keep scalar ALU record");
   }
   const auto* missing_route3_lhs =
       std::get_if<aarch64_codegen::MemoryOperand>(
           &missing_route3_scalar->inputs[0].payload);
   if (missing_route3_lhs == nullptr ||
       missing_route3_lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
-      missing_route3_lhs->byte_offset == 16 ||
+      missing_route3_lhs->byte_offset != 16 ||
       missing_route3_lhs->result_value_name != stack_load_name) {
-    return fail("expected missing Route 3 identity to reject source-home operand");
+    return fail("expected missing Route 3 identity to preserve prepared source fallback");
   }
   return 0;
 }
