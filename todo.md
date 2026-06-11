@@ -1,34 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/183_phase_e_route5_edge_join_source_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prefer Route 5 In The Selected Consumer
+Current Step ID: 4
+Current Step Title: Add Route/Prepared Equivalence Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 required no code change because Step 2 already completed the selected
-consumer preference behavior. `build_current_block_join_prepared_query_routing`
-builds a local `Route5EdgeJoinSourceIndex`, calls
-`mir::find_bir_current_block_join_source_identity(...)` with that indexed
-boundary, and returns Route 5-derived routing immediately when the identity is
-`Available`. Only absent, incomplete, or invalid Route 5 data reaches the
-prepared fallback path that builds/reuses `PreparedValueHomeLookups` and
-`PreparedEdgePublicationLookups`, then calls
-`prepare::prepare_current_block_join_parallel_copy_source_facts(...)`.
-
-The existing focused routing coverage already demonstrates the selected reader
-can route from Route 5 without attached prepared policy, and the prepared helper
-coverage demonstrates incomplete indexed Route 5 data remains unavailable so
-the selected reader can preserve prepared fallback.
+Step 4 tightened `backend_aarch64_current_block_join_routing` around the
+selected current-block join-source reader. The fixture now checks explicit
+per-instruction route/prepared routing bits for normal predecessor coverage
+with and without attached prepared policy, a missing predecessor-block shape,
+no-source fallback, load-local stack/memory-source routing, and absent-route
+prepared fallback. The expectations stay strict and do not weaken existing
+oracles.
 
 ## Suggested Next
 
-Execute Step 4 by adding or tightening route/prepared equivalence coverage for
-the selected current-block join-source reader, including normal predecessor,
-missing-predecessor, no-source, memory-source, and absent-route cases without
-weakening existing oracle expectations.
+Supervisor should decide whether Step 4 is sufficient for closure or whether a
+review/plan-owner handoff is needed for the next lifecycle action.
 
 ## Watchouts
 
@@ -38,10 +29,16 @@ weakening existing oracle expectations.
 - The indexed MIR query intentionally treats missing indexed publication data as
   unavailable so `build_current_block_join_prepared_query_routing(...)` can fall
   back to prepared facts.
-- Step 4 should focus on coverage, not broad prepared aggregate API churn.
+- The current-block Route 5 identity is semantic source identity; the prepared
+  fallback still owns value-home and move-policy details.
+- The missing predecessor-block fixture documents current selected-reader
+  behavior: the current-block source identity remains available because this
+  reader reasons from the join block source expression, not from predecessor
+  edge-copy policy.
 
 ## Proof
 
-No proof run for this packet because Step 3 required no production or test code
-change. The Step 2 focused proof passed and was rolled forward by the supervisor
-to `test_before.log`.
+Ran the delegated proof exactly:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$'; } > test_after.log 2>&1`
+
+Result: passed. Proof log: `test_after.log`.
