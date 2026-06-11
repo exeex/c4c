@@ -1,53 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/205_route6_call_use_source_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Wire The Selected Reader To The Adapter
+Current Step ID: 4
+Current Step Title: Prove Adapter Completeness And Route Quality
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 verified that no additional implementation wiring is needed for the
-selected AArch64 scalar call argument source-producer boundary.
+Step 4 completed as a proof-only packet. Existing focused coverage is enough
+for the selected AArch64 scalar call argument source-producer adapter; no
+additional tests were needed.
 
-`lower_scalar_call_argument_producers(...)` already builds the Route 6 call-use
-source index for the selected `CallInst`, finds the prepared argument plan for
-the argument index, and passes both into
-`materialize_scalar_call_argument_value(...)`.
+`scalar_call_argument_source_producer_reads_bir_materialization()` proves the
+adapter accepts Route 6 only when the BIR call argument source agrees with the
+prepared source id/name/value and same-block producer materialization is
+available. It also proves absent Route 6 facts, source-id mismatch, duplicate
+Route 6 facts, ABI-bound source-selection facts, and nonmaterializable producer
+facts fall back to prepared producer lookup when present and reject route-only
+materialization when no prepared producer lookup exists.
 
-`materialize_scalar_call_argument_value(...)` already routes the selected
-top-level call argument through
-`find_scalar_call_argument_source_producer_materialization(...)`, which accepts
-only validated Route 6 semantic source identity and otherwise falls back to the
-prepared source-producer lookup. Recursive producer operand materialization
-passes no selected call/argument key, so Route 6 does not broaden beyond the
-selected call argument source role.
+`verify_bir_call_argument_source_routing()` and
+`verify_bir_call_argument_source_producer_materialization_lookup()` cover the
+shared Route 6 record/index side: source-id agreement, missing/out-of-range
+arguments, wrong calls, duplicate relationships, ABI-bound exclusion,
+missing/future producers, load-local producers, binary producers, and
+nonmaterializable producer status.
 
-Prepared ABI placement, wrappers, clobbers, outgoing stack sizing, byval lanes,
-variadic FPR counts, helper protocols, homes, move bundles, aggregate
-transport, publication policy, final call records, and output authority remain
-unchanged. No code or test churn was needed.
+Unchanged-output coverage remains in the backend subset: the AArch64 selected
+boundary still prints only the expected scalar producer materialization before
+the call, direct-global call-argument dependency/fallback tests keep prepared
+call-carrier behavior stable, and the x86 consumed-plan Route 6 helper tests
+prove x86 Route 6 source reads fail closed while preserving prepared call
+argument selection. This slice did not touch output expectations, unsupported
+contracts, result lanes, direct-global dependency routing, whole call-plan
+helpers, or ABI/layout/policy authority.
 
 ## Suggested Next
 
-Execute Step 4 by proving adapter completeness and route quality for the
-selected Route 6 scalar call argument source-producer boundary.
+Ask the supervisor to decide whether to accept the completed Route 6
+call-argument source-producer adapter slice, request reviewer scrutiny, or send
+the lifecycle to plan-owner for closure.
 
 ## Watchouts
 
-- The adapter intentionally requires a prepared argument source id before
-  accepting Route 6, so Route 6 remains semantic identity gated by prepared
-  call-plan authority.
-- Route 6 nonmaterializable binary producers now fall back to prepared lookup;
-  with no prepared producer lookup, the selected route emits no scalar producer
-  materialization.
-- Step 4 should assess whether the existing success, absent fallback,
-  source-id mismatch, duplicate, ABI-bound, nonmaterializable, prepared
-  fallback, and unchanged-output coverage is enough for route-quality proof.
-- Do not broaden into result lanes, direct-global dependency routing, whole
-  call plans, helper protocol changes, expected-output rewrites, or
-  unsupported-test downgrades.
+- Route 6 remains semantic identity only for this selected scalar call
+  argument source-producer role; prepared call plans remain authoritative for
+  ABI placement, wrappers, clobbers, outgoing stack sizing, byval lanes,
+  variadic FPR counts, helper protocols, homes, move bundles, aggregate
+  transport, publication policy, final call records, and emitted output.
+- Remaining Route 6 boundaries, including result lanes, direct-global
+  dependency routing, and whole call-plan helper groups, are non-goals for this
+  runbook and should be handled as separate lifecycle work if needed.
 
 ## Proof
 
