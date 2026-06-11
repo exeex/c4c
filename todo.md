@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/184_phase_e_route1_producer_constant_view_consumer_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build the narrow Route 1 consumer view
+Current Step ID: 3
+Current Step Title: Migrate the selected consumer route-first
 
 # Current Packet
 
@@ -47,8 +47,8 @@ prepared fallback behavior for route-unavailable/out-of-scope answers.
 
 ## Proof
 
-Ran and passed:
+Step 2 ran and passed:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper)$'; } > test_after.log 2>&1`
 
-Proof log: `test_after.log`
+Accepted proof log: `test_before.log` after supervisor roll-forward.
