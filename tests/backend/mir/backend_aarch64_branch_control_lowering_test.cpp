@@ -954,6 +954,136 @@ prepare::PreparedBirModule prepared_with_materialized_compare_condition_clobber(
   return prepared;
 }
 
+void move_materialized_condition_home_to_register(
+    prepare::PreparedBirModule& prepared,
+    std::string register_name = "w21") {
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  for (auto& home : prepared.value_locations.functions.front().value_homes) {
+    if (home.value_name == condition_name) {
+      home.kind = prepare::PreparedValueHomeKind::Register;
+      home.register_name = register_name;
+      home.slot_id = prepare::PreparedFrameSlotId{};
+      home.offset_bytes.reset();
+      home.size_bytes.reset();
+      home.align_bytes.reset();
+    }
+  }
+  for (auto& storage : prepared.storage_plans.functions.front().values) {
+    if (storage.value_name == condition_name) {
+      storage.encoding = prepare::PreparedStorageEncodingKind::Register;
+      storage.slot_id = prepare::PreparedFrameSlotId{};
+      storage.stack_offset_bytes.reset();
+      storage.register_name = register_name;
+      storage.occupied_register_names = {register_name};
+    }
+  }
+}
+
+int expect_materialized_compare_condition_fallback(
+    prepare::PreparedBirModule prepared,
+    std::string_view failure_message) {
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator ||
+      machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail(std::string{failure_message} + ": dispatch failed");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  bool saw_cbnz = false;
+  bool saw_cmp = false;
+  for (const auto& line : printed.instruction_lines) {
+    saw_cbnz = saw_cbnz || line.find("cbnz ") == 0;
+    saw_cmp = saw_cmp || line.find("cmp ") == 0;
+  }
+  if (!printed.ok ||
+      printed.instruction_lines.empty() ||
+      !saw_cbnz ||
+      saw_cmp ||
+      printed.instruction_lines.back().find("b ") != 0) {
+    std::string actual = printed.ok ? std::string{} : std::string{"<unprintable>"};
+    for (const auto& line : printed.instruction_lines) {
+      if (!actual.empty()) {
+        actual += " | ";
+      }
+      actual += line;
+    }
+    return fail(std::string{failure_message} +
+                ": expected emitted-condition fallback, got " + actual);
+  }
+  return 0;
+}
+
+int expect_materialized_compare_condition_selected_fallback(
+    prepare::PreparedBirModule prepared,
+    std::string_view failure_message) {
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator ||
+      machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail(std::string{failure_message} + ": dispatch failed");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  bool saw_cmp = false;
+  bool saw_cbnz = false;
+  bool saw_conditional_branch = false;
+  for (const auto& line : printed.instruction_lines) {
+    saw_cmp = saw_cmp || line.find("cmp ") == 0;
+    saw_cbnz = saw_cbnz || line.find("cbnz ") == 0;
+    saw_conditional_branch = saw_conditional_branch ||
+                             line.find("b.le ") == 0 ||
+                             line.find("b.lt ") == 0 ||
+                             line.find("b.eq ") == 0 ||
+                             line.find("b.ne ") == 0;
+  }
+  if (!printed.ok ||
+      !saw_cmp ||
+      saw_cbnz ||
+      !saw_conditional_branch ||
+      printed.instruction_lines.empty() ||
+      printed.instruction_lines.back().find("b ") != 0) {
+    std::string actual = printed.ok ? std::string{} : std::string{"<unprintable>"};
+    for (const auto& line : printed.instruction_lines) {
+      if (!actual.empty()) {
+        actual += " | ";
+      }
+      actual += line;
+    }
+    return fail(std::string{failure_message} +
+                ": expected selected compare fallback, got " + actual);
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_late_conditional_successor_after_return() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1389,25 +1519,7 @@ int materialized_compare_branch_route7_provenance_matches_bir_identity() {
 
 int materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback() {
   auto prepared = prepared_with_materialized_compare_condition_clobber();
-  for (auto& home : prepared.value_locations.functions.front().value_homes) {
-    if (home.value_name == prepared.names.value_names.intern("%cond")) {
-      home.kind = prepare::PreparedValueHomeKind::Register;
-      home.register_name = std::string{"w21"};
-      home.slot_id = prepare::PreparedFrameSlotId{};
-      home.offset_bytes.reset();
-      home.size_bytes.reset();
-      home.align_bytes.reset();
-    }
-  }
-  for (auto& storage : prepared.storage_plans.functions.front().values) {
-    if (storage.value_name == prepared.names.value_names.intern("%cond")) {
-      storage.encoding = prepare::PreparedStorageEncodingKind::Register;
-      storage.slot_id = prepare::PreparedFrameSlotId{};
-      storage.stack_offset_bytes.reset();
-      storage.register_name = std::string{"w21"};
-      storage.occupied_register_names = {std::string{"w21"}};
-    }
-  }
+  move_materialized_condition_home_to_register(prepared);
   auto& block = prepared.module.functions.front().blocks.front();
   block.insts.insert(block.insts.begin() + 2,
                      bir::BinaryInst{
@@ -1432,39 +1544,155 @@ int materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallbac
     return fail("expected duplicate materialized condition provenance to be invalid");
   }
 
-  const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks.front();
-  auto function_context = aarch64_codegen::make_function_lowering_context(
-      prepared, prepared.target_profile, function_cf);
-  const auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, function_cf);
-  attach_prepared_function_lookups(function_context, prepared_lookups);
-  const auto block_context =
-      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+  return expect_materialized_compare_condition_fallback(
+      std::move(prepared),
+      "expected invalid Route 7 materialized condition to preserve emitted-condition fallback");
+}
 
-  aarch64_module::MachineBlock machine_block;
-  aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto result =
-      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
-  if (!result.visited_terminator ||
-      machine_block.instructions.empty() ||
-      !diagnostics.empty()) {
-    return fail("expected duplicate provenance to fall back to emitted condition branch: visited=" +
-                std::to_string(result.visited_operations) +
-                " emitted=" + std::to_string(result.emitted_instructions) +
-                " block_size=" + std::to_string(machine_block.instructions.size()) +
-                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+int materialized_compare_branch_absent_route7_provenance_uses_emitted_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  move_materialized_condition_home_to_register(prepared);
+  auto& block = prepared.module.functions.front().blocks.front();
+  block.insts.erase(block.insts.begin() + 1);
+
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto route7_record =
+      bir::route7_find_materialized_condition(route7_index,
+                                              block,
+                                              condition,
+                                              block.insts.size());
+  if (route7_record ||
+      (route7_record.status != bir::Route7ComparisonStatus::MissingBlock &&
+       route7_record.status != bir::Route7ComparisonStatus::NoMatch)) {
+    return fail("expected absent materialized condition provenance");
   }
-  const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(
-          machine_block.instructions.back().target);
-  if (!printed.ok ||
-      printed.instruction_lines.size() != 2 ||
-      printed.instruction_lines[0].find("cbnz ") != 0 ||
-      printed.instruction_lines[1].find("b ") != 0) {
-    return fail("expected invalid Route 7 materialized condition to preserve emitted-condition fallback");
+
+  return expect_materialized_compare_condition_fallback(
+      std::move(prepared),
+      "expected absent Route 7 materialized condition to preserve emitted-condition fallback");
+}
+
+int materialized_compare_branch_condition_name_mismatch_uses_emitted_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  move_materialized_condition_home_to_register(prepared);
+  const auto other_condition_name = prepared.names.value_names.intern("%other_cond");
+  prepared.value_locations.functions.front().value_homes.push_back(
+      prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{55},
+          .function_name = prepared.control_flow.functions.front().function_name,
+          .value_name = other_condition_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"w22"},
+      });
+  prepared.storage_plans.functions.front().values.push_back(
+      prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{55},
+          .value_name = other_condition_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .register_name = std::string{"w22"},
+          .occupied_register_names = {std::string{"w22"}},
+      });
+  auto& compare =
+      std::get<bir::BinaryInst>(prepared.module.functions.front().blocks.front().insts[1]);
+  compare.result = bir::Value::named(bir::TypeKind::I1, "%other_cond");
+
+  return expect_materialized_compare_condition_fallback(
+      std::move(prepared),
+      "expected mismatched Route 7 materialized condition name to preserve emitted-condition fallback");
+}
+
+int materialized_compare_branch_invalid_route7_reference_rejected() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  auto& block = prepared.module.functions.front().blocks.front();
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  auto route7_index = bir::route7_build_comparison_condition_index(block);
+  for (auto& record : route7_index.comparison_records) {
+    if (record.condition_value.name == "%cond") {
+      record.instruction = nullptr;
+      break;
+    }
+  }
+
+  const auto route7_reference =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          condition,
+          block.insts.size());
+  if (route7_reference ||
+      route7_reference.status != bir::RouteIndexValidationStatus::StaleOwner) {
+    return fail("expected invalid Route 7 materialized condition reference to reject stale producer index: status=" +
+                std::to_string(static_cast<unsigned>(route7_reference.status)));
   }
   return 0;
+}
+
+int materialized_compare_branch_lhs_provenance_mismatch_uses_emitted_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  move_materialized_condition_home_to_register(prepared);
+  auto& block = prepared.module.functions.front().blocks.front();
+  block.insts.insert(block.insts.begin() + 1,
+                     bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Add,
+                         .result = bir::Value::named(bir::TypeKind::I32, "%advanced"),
+                         .operand_type = bir::TypeKind::I32,
+                         .lhs = bir::Value::named(bir::TypeKind::I32, "%src"),
+                         .rhs = bir::Value::immediate_i32(32),
+                     });
+
+  return expect_materialized_compare_condition_selected_fallback(
+      std::move(prepared),
+      "expected lhs provenance mismatch to preserve selected compare fallback");
+}
+
+int materialized_compare_branch_rhs_provenance_mismatch_uses_emitted_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  move_materialized_condition_home_to_register(prepared);
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  prepared.value_locations.functions.front().value_homes.push_back(
+      prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{54},
+          .function_name = prepared.control_flow.functions.front().function_name,
+          .value_name = rhs_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"w14"},
+      });
+  prepared.storage_plans.functions.front().values.push_back(
+      prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{54},
+          .value_name = rhs_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .register_name = std::string{"w14"},
+          .occupied_register_names = {std::string{"w14"}},
+      });
+  auto& block = prepared.module.functions.front().blocks.front();
+  auto& compare = std::get<bir::BinaryInst>(block.insts[1]);
+  compare.rhs = bir::Value::named(bir::TypeKind::I32, "%rhs");
+  block.insts.insert(block.insts.begin() + 1,
+                     bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Add,
+                         .result = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                         .operand_type = bir::TypeKind::I32,
+                         .lhs = bir::Value::named(bir::TypeKind::I32, "%src"),
+                         .rhs = bir::Value::immediate_i32(1),
+                     });
+  block.insts.insert(block.insts.begin() + 2,
+                     bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Add,
+                         .result = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                         .operand_type = bir::TypeKind::I32,
+                         .lhs = bir::Value::named(bir::TypeKind::I32, "%src"),
+                         .rhs = bir::Value::immediate_i32(2),
+                     });
+
+  return expect_materialized_compare_condition_selected_fallback(
+      std::move(prepared),
+      "expected rhs provenance mismatch to preserve selected compare fallback");
 }
 
 int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
@@ -1897,6 +2125,31 @@ int main() {
   }
   if (const int status =
           materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_absent_route7_provenance_uses_emitted_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_condition_name_mismatch_uses_emitted_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_invalid_route7_reference_rejected();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_lhs_provenance_mismatch_uses_emitted_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_rhs_provenance_mismatch_uses_emitted_fallback();
       status != 0) {
     return status;
   }
