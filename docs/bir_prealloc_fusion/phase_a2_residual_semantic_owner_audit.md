@@ -1,6 +1,6 @@
 # Phase A2 Residual Prepared Surface Semantic-Owner Audit
 
-Status: Step 3 cross-target wrappers and diagnostic/oracle surfaces classified.
+Status: Step 4 ownership decisions and follow-up payloads drafted.
 
 Source idea: `ideas/open/200_phase_a2_residual_prepared_surface_semantic_owner_audit.md`
 
@@ -12,10 +12,11 @@ analysis-only: it does not add route schemas, migrate consumers, contract
 prepared APIs, open draft 155, or claim `PreparedBirModule` retirement
 readiness.
 
-Rows below are seeded from the source idea and prior Phase A-D artifacts. Step 3
-adds cross-target wrapper, prepared printer/debug/dump/helper, and oracle
-compatibility classifications. Final accepted/rejected decision grouping remains
-deferred to Step 4.
+Rows below are seeded from the source idea and prior Phase A-D artifacts. Steps
+1-3 classified aggregate, lookup, cross-target wrapper, prepared
+printer/debug/dump/helper, and oracle compatibility surfaces. Step 4 converts
+those row-level classifications into ownership decisions and follow-up payloads
+without changing schemas, consumers, prepared APIs, tests, or lifecycle state.
 
 ## Evidence Inventory
 
@@ -81,35 +82,157 @@ Missing required inputs: none.
 
 ## Accepted Route Candidates
 
-No accepted new route candidates are finalized through Step 3. The table names
-existing narrow route-extension boundaries and future wrapper/diagnostic
-candidates, but Step 4 must still group accepted candidates by semantic fact,
-owner, excluded policy, proof route, and reject signals.
+No accepted brand-new BIR route is justified by this audit. The audit accepts
+only narrow existing Route 1-8 extension candidates where the table already
+identifies a target-neutral semantic fact and also identifies retained
+prepared/target policy.
+
+| Accepted candidate | Semantic fact | Owner category | Excluded target/prepared policy | Proof route | Reject signals |
+| --- | --- | --- | --- | --- | --- |
+| Route 1 selected producer/constant consumer or diagnostic row | Same-block producer identity, integer constant identity, and scalar producer/constant status for one selected consumer or visible row. | Existing Route 1 extension candidate. | Scalar materialization sequence, target operand selection, publication/call/memory context, prepared fallback, prepared printer/helper status wording, and expected-output authority. | Prove route/prepared agreement for producer, constant, no-producer, and non-constant cases; prove unchanged prepared-printer/helper output for any diagnostic replacement. | Aggregate source-producer lookup replacement; accepting printer diffs as cleanup; weakening no-producer/non-constant messages; claiming AArch64 reader success retires helper/oracle surfaces. |
+| Route 2 selected select-chain/direct-global consumer or diagnostic row | Select-root identity and direct-global dependency identity for one selected chain or direct-global use. | Existing Route 2 extension candidate. | Materialization policy, direct-global target policy, publication/call/memory context, scalar eligibility policy, fallback helper behavior, and printer/oracle rendering. | Prove route/prepared agreement for direct-global present/absent, nested select, scalar eligibility, source-producer, and fallback cases before replacing one consumer or one diagnostic row. | Treating select-chain cache removal as semantic proof; broad replacement of prepared select-chain helpers; expected-string refreshes that hide lost fallback rows. |
+| Route 3 selected memory/source identity consumer | Memory access identity, same-block global-load access identity, or load-local stored-value source identity for one selected reader. | Existing Route 3 extension candidate. | Address formation, frame/global/TLS relocation, stack/frame offsets, volatile/address-space policy, materialization, final operands, and prepared target-addressing fallback. | Prove route/prepared agreement plus absent/mismatch fallback for the selected reader; include idea 190 baseline discipline so target-addressing regressions cannot be hidden by baseline or string rewrites. | Moving frame/addressing policy into BIR; dropping prepared fallback; proving only a narrow happy path; refreshing expectations to mask target-addressing changes. |
+| Route 4 selected publication identity or wrapper adapter | Publication destination/source identity for one current/block-entry or edge-publication use. | Existing Route 4 extension candidate. | Edge-copy emission, move/home/storage policy, block-order emission, wrapper formatting, and prepared edge-publication lookup authority. | Prove predecessor/successor or block-entry agreement, destination/source ids, unique match, duplicate/ambiguous rejection, absent/mismatch fallback, and unchanged emitted/debug strings. | Whole `edge_publications` lookup replacement; wrapper migration without emitted-output proof; weakening x86/riscv compatibility tests or fail-closed behavior. |
+| Route 5 selected edge/join-source identity or wrapper adapter | Join-edge/source identity for one edge publication, join, or compare/join wrapper use. | Existing Route 5 extension candidate. | Parallel-copy scheduling, source/destination homes, move bundles, branch spelling, scratch policy, final edge-copy records, and wrapper formatting. | Prove route/prepared agreement for join edge/source, duplicate/conflict rejection, prepared fallback, and adjacent branch/parallel-copy sanity. | Treating route join identity as ownership of move scheduling; changing branch/edge-copy output; accepting wrapper-only proof without conflict and fallback coverage. |
+| Route 6 selected call-use source adapter | Call argument or result source identity for one call instruction and one role, including the x86 scalar source gate when route and prepared agree. | Existing Route 6 extension candidate. | ABI placement, call wrapper kind, clobbers, outgoing stack, byval lanes, variadic FPR counts, helper/carrier protocols, value homes, move bundles, publication routing, and final call records. | Prove route/prepared source-id agreement, absent Route 6 fail-closed behavior, mismatched source-id fail-closed behavior, preserved prepared call-plan fallback, and unchanged AArch64/x86 output. | Whole call-plan replacement; claiming prepared fallback is unnecessary; moving ABI policy into BIR; weakening direct-call or helper-oracle messages. |
+| Route 7 selected comparison provenance reader | Comparison provenance for one fused, materialized, or branch-condition reader. | Existing Route 7 extension candidate. | Branch spelling, condition-code choice, fused legality, hazards, emitted-register state, and final instruction order. | Prove provenance equality for fused, materialized, unfused fallback, absent-route, and invalid-reference cases while keeping branch policy target-owned. | Treating provenance as ownership of branch emission; replacing debug/handoff rows without expected-string proof; ignoring invalid-reference or fallback paths. |
+| Route 8 return-chain citation or diagnostic row | Target-neutral same-block return-chain identity already imported into Route 8. | Existing Route 8 extension/import candidate. | Return ABI, homes, registers, scratch policy, ALU record emission, final return emission order, and helper/oracle expected strings. | Usually citation-only. Any diagnostic replacement must prove helper-oracle equivalence for terminal/next operand, unsupported, unnamed, broken-walk, cross-block, missing-instruction, and duplicate/conflict cases. | Reintroducing deleted prepared helper names; claiming return ABI ownership; replacing helper expected strings without full fail-closed coverage. |
 
 ## Rejected Retained Surfaces
 
-Step 3 table rows classify many surfaces as retained target/prepared policy,
-transient pass context, or diagnostic/printer/oracle compatibility. Step 4 must
-still collect those row-level classifications into the final rejected/retained
-surface list with concrete rationale.
+These surfaces are rejected as BIR route candidates for this audit. They remain
+outside BIR until a later, narrower idea proves one target-neutral semantic
+fact and preserves the retained policy or compatibility obligations.
+
+| Rejected retained surface | Retained owner | Rationale |
+| --- | --- | --- |
+| `PreparedBirModule` as a whole | Mixed prepared/prealloc aggregate plus route-owned subfacts, target/prepared policy, transient pass context, and diagnostic/oracle compatibility. | The aggregate mixes BIR, target profile, names/control-flow, locations, frame/stack/dynamic-stack, calls, publication, storage, carriers, atomics, helpers, inline asm, and notes. Whole-aggregate BIR cloning, facade renaming, deletion, demotion, or retirement readiness would hide field-level ownership and fallback obligations. |
+| `PreparedFunctionLookups` as a whole | Transient pass context/private construction cache with field-level mixed owners. | The aggregate is a per-function cache/facade. Replacing it as a unit would conflate route facts with address, memory, move, value-home, edge-publication, and source-producer policy while leaving public target wrappers and oracles unresolved. |
+| Address materialization, value homes, frame, dynamic stack, storage, and special target-entry surfaces | Target/prepared policy. | These encode layout, offsets, homes, materialization, stack adjustment, ABI/entry policy, and operand rendering. No row proves a pure route-native fact that can own those policies. |
+| Move bundles, call-plan ABI fields, wide carriers, runtime helper protocols, variadic entry helpers, intrinsic helpers, inline-asm helpers, and atomic helper policy | Target/prepared policy plus diagnostic compatibility where printed or tested. | These carry scheduling, ABI, helper protocol, target lowering, constraints, clobbers, width/order, scratch resources, and final record policy. Route source identities may feed inputs but do not own these target decisions. |
+| AArch64 lookup threading and lowering context | Transient pass context/private construction cache plus retained target/prepared policy. | Threading `PreparedBirModule` and `PreparedFunctionLookups` through `FunctionLoweringContext` is delivery and pass state, not a semantic BIR fact. It should be reduced only by selected consumer migrations, one consumed fact at a time. |
+| x86 broad `prepared::Query`, `ConsumedPlans`, and wrapper facade | Target/prepared policy and wrapper compatibility, except for the accepted narrow Route 6 source identity gate. | The facade reads addressing, locations, calls, regalloc, storage, BIR lookup, decoded homes, call-boundary moves, formal publication, and block-entry publications. Broad migration would move target-local wrapper policy into BIR. |
+| riscv prepared wrapper emission | Target/prepared policy and target-wrapper compatibility. | Current evidence shows no accepted route-view reuse point. Register naming, stack/immediate handling, extension policy, scratch registers, emitted strings, and fail-closed unsupported behavior remain target-local. |
+| Prepared printer, prepared CLI dump, x86 route-debug summary/trace, and prepared lookup-helper oracle | Diagnostic/printer/oracle compatibility surface. | These are string and behavior authorities, not production ownership. They render route facts alongside target policy and prepared phase products; replacement requires exact or intentionally versioned visible-output proof under idea 199. |
+| Target-wrapper compatibility tests | Diagnostic/oracle compatibility plus retained target/prepared policy. | These tests preserve emitted-output stability, absent/mismatch prepared fallback, fail-closed policy, and wrapper behavior. They prove obligations for future adapters but are not route ownership evidence. |
+| Baseline and string-authority discipline | Cross-cutting proof guardrail outside BIR. | Ideas 190 and 199 forbid using baseline refreshes, unsupported downgrades, expected-string rewrites, or timeout/string-authority weakening as evidence of ownership progress. |
 
 ## Blocked Unknowns
 
-Step 3 found no missing target-wrapper, diagnostic, or oracle evidence for the
-delegated classification. Remaining unknowns are candidate-specific future
-proof questions recorded in the row follow-up payload notes, not blockers for
-Step 3 completion.
+No surface remains blocked or unknown for this Phase A2 classification. The
+audit does identify future proof work, but those are follow-up payloads for
+separate route-extension, retained-policy cleanup, or diagnostic/oracle
+replacement ideas rather than blockers for the ownership decision artifact.
 
 ## Follow-Up Payloads
 
-No follow-up payload is finalized through Step 3. Step 4 should draft payloads
-from the row notes only after each candidate identifies:
+Payloads below are draft idea bodies for a later plan owner to file as separate
+`ideas/open/` records if the supervisor chooses. They are intentionally narrow;
+none authorizes schema work, consumer migration, prepared API contraction, or
+draft 155 retirement by itself.
 
-- the exact semantic fact or retained surface;
-- the primary owner category;
-- the excluded target/prepared policy;
-- required route/prepared agreement or diagnostic/oracle proof;
-- reject signals that would indicate route drift or testcase overfit.
+### Payload: Phase B2 Selected Route Consumer Extensions
+
+Intent: extend existing Routes 1-7 only for selected consumers where the audit
+accepts a target-neutral semantic fact and explicitly excludes target/prepared
+policy.
+
+Candidate slices:
+
+- Route 1 producer/constant selected consumer or diagnostic row.
+- Route 2 select-chain/direct-global selected consumer or diagnostic row.
+- Route 3 memory/source selected consumer, with idea 190 fallback discipline.
+- Route 4 publication identity selected consumer or wrapper adapter.
+- Route 5 edge/join-source selected consumer or wrapper adapter.
+- Route 6 call-use source selected call role, especially the x86 scalar gate.
+- Route 7 comparison provenance selected reader.
+- Route 8 citation/import or diagnostic row only.
+
+Required proof for every slice: route/prepared agreement for success cases;
+absent, mismatched, ambiguous, duplicate/conflict, and invalid-reference
+fail-closed coverage where applicable; preserved prepared fallback; unchanged
+target output or intentionally versioned diagnostic output; no baseline,
+unsupported-marker, or expected-string weakening.
+
+Reject signals: aggregate lookup replacement, wrapper-wide migration, facade
+renaming, moving ABI/layout/storage/branch/helper policy into BIR, claiming one
+production reader retires diagnostics/oracles, or proving only a named testcase
+without adjacent fallback and conflict cases.
+
+### Payload: Retained Target/Prepared Policy Cleanup Map
+
+Intent: create a cleanup map for retained target/prepared policy surfaces that
+should remain outside BIR while future code can reduce public prepared facade
+pressure.
+
+Retained surfaces to map: address materializations, memory target-addressing
+policy, value homes, move bundles, frame, dynamic stack, storage, special
+target entries, wide carriers, runtime helper protocols, variadic entry,
+intrinsics, inline asm, atomics, x86 broad `prepared::Query`, and riscv edge
+emission policy.
+
+Required output: one row per retained surface with the public API, current
+consumers, target/prepared policy reason, any route facts that may feed it, the
+required fallback/oracle tests, and the precise condition under which one API
+could be made private or target-local.
+
+Reject signals: declaring private/deletion readiness without a real consumer
+boundary reduction; moving storage, layout, ABI, scratch, helper, branch, or
+string authority into BIR; using expectation rewrites as cleanup evidence.
+
+### Payload: Prepared Diagnostic And Oracle Replacement Ladder
+
+Intent: replace prepared diagnostic/oracle compatibility one visible row family
+at a time only after route-native output authority is proven.
+
+Candidate row families: prepared printer route-owned sections, prepared CLI
+dump snippets, x86 route-debug summary/trace rows, prepared lookup-helper route
+families, and target-wrapper compatibility rows.
+
+Required proof: exact or explicitly versioned output equivalence for the row
+family; focus/filter behavior where applicable; success, no-match, absent,
+mismatched, duplicate/conflict, policy-excluded, unsupported, and fallback
+cases; no weakening of expected strings or baseline/string-authority guards
+from idea 199.
+
+Reject signals: replacing printer/dump/debug output because production lowering
+already uses a route fact; removing prepared dump equality before replacement
+authority exists; narrowing tests to a single happy-path route row.
+
+### Payload: Prepared Aggregate Retirement Prerequisite Audit
+
+Intent: prepare, but not execute, a later field-by-field prerequisite map for
+draft 155 `PreparedBirModule` retirement.
+
+Required scope: every `PreparedBirModule` field and every
+`PreparedFunctionLookups` field, mapped to one of: existing route fact,
+retained target/prepared policy, transient pass context/private cache,
+diagnostic/oracle compatibility, or blocked/unknown.
+
+Required proof: for each field, list current consumers, replacement owner,
+fallback/oracle obligations, and whether any public API boundary can be reduced
+without schema or behavior changes.
+
+Reject signals: whole-aggregate BIR clone, rename-only facade,
+classification-only deletion readiness, or treating this Phase A2 audit as
+approval to open draft 155.
+
+### Payload: Focused Blocked-Surface Audits If New Evidence Appears
+
+Intent: reserve a route for later method-level audits when a future source
+inspection finds a pure semantic reader inside a currently retained surface.
+
+Eligible surfaces: one intrinsic helper method, one inline-asm helper method,
+one atomic helper reader, one runtime-helper record, one riscv edge-publication
+adapter method, or one x86 `prepared::Query` method.
+
+Required proof: name the method, the exact semantic fact, the current consumers,
+the excluded target/prepared policy, route/prepared agreement and fallback
+cases, and diagnostic/oracle strings affected.
+
+Reject signals: broad helper-family migration, route candidates based only on
+type names, or reducing wrapper/test coverage before the method-level owner is
+proven.
 
 ## Closure Notes
 
@@ -140,3 +263,18 @@ Step 3 completion state:
   policy, baselines, and dump/printer/debug/helper strings.
 - No Step 3 row omits x86 or riscv prepared wrapper contracts merely because
   they are not on the AArch64 production path.
+
+Step 4 completion state:
+
+- Accepted candidates are limited to existing Route 1-8 extension/import
+  boundaries; no brand-new route or aggregate BIR clone is accepted.
+- Each accepted candidate names the semantic fact, owner category, excluded
+  target/prepared policy, proof route, and reject signals.
+- Rejected retained surfaces are grouped by target/prepared policy, transient
+  pass context/cache, diagnostic/printer/oracle compatibility, wrapper
+  compatibility, and baseline/string-authority guardrails.
+- No blocked or unknown surfaces remain for Phase A2 classification; future
+  unknowns are represented as follow-up payload conditions.
+- Follow-up payloads are specific enough for later plan-owner filing while
+  preserving the analysis-only boundary and rejecting testcase-overfit,
+  expectation rewrites, and prepared API contraction claims.
