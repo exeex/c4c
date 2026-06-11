@@ -1,74 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/197_return_chain_import_and_naming_clarification.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Classify Neutral Facts and Target Policy
+Current Step ID: Step 3
+Current Step Title: Define Naming and Future Citation Rules
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classification is complete. Return-chain should be imported as its own
-Route 8 / return-chain owner-schema line with target-neutral identity facts
-kept separate from target-local AArch64 lowering policy and historical prepared
-oracle surfaces.
+Step 3 naming and future citation rules are complete. The accepted durable
+name is `Route 8 return-chain owner/schema line`; acceptable short forms are
+`return-chain owner/schema line` when the route number is not the focus, and
+`Route 8 return-chain line` in compact tables.
 
-| Surface | Classification | Current import rule |
-| --- | --- | --- |
-| Function/block scope | Target-neutral return-chain identity. The record is function-local and block-local. | Route 8 may key by function plus BIR block or stable block identity; it must not stitch chains across blocks. |
-| Instruction position/reference | Target-neutral route key. | The key may use the current instruction index or an equivalent stable instruction reference, and must be rebuilt or invalidated after relevant BIR order changes. |
-| Chain value | Target-neutral route key and semantic subject. | The value must be the named scalar binary result at the keyed instruction, with stable BIR/prepared name identity. |
-| Accepted chain shape | Target-neutral route acceptance. | Same-block scalar binary chains ending at a named return terminator value are accepted only for the proven scalar publication opcodes from the decision doc. |
-| Terminal return value | Target-neutral route answer. | Route 8 owns the named value consumed by the return terminator when the walked chain reaches it. |
-| Immediate next operand | Target-neutral optional route answer. | Route 8 owns the first next binary's other operand only when that operand has a stable name; otherwise the next-operand answer is absent. |
-| Rejected, ambiguous, and conflicting cases | Target-neutral fail-closed route status. | Unsupported opcodes, unnamed values, non-return terminators, broken walks, cross-block relationships, missing keys, and duplicate conflicting records produce no usable semantic answer rather than target-selected fallback data. |
-| ABI return moves and destination bank | AArch64/target-local policy. | AArch64 chooses before-return ABI moves and destination banks after Route 8 identifies the terminal value. |
-| Value homes and prepared-name translation | AArch64/prepared materialization policy. | AArch64 may translate a Route 8 BIR identity through prepared names/value homes to reuse existing target lowering, but this is not return-chain identity ownership. |
-| Register conversion/parsing and scalar register view | AArch64/target-local policy. | Prepared-register names, AArch64 register parsing/conversion, expected scalar views, and retargeted `RegisterOperand` metadata stay in lowering. |
-| Alias checks and scratch selection | AArch64/target-local policy. | Next-operand alias detection and reserved GP scratch choice remain target policy after the route answers the identity question. |
-| Final ALU records and emission order | AArch64/target-local policy. | Scalar ALU record construction, before-return placement, and final instruction order are not Route 8 facts. |
-| Historical prepared terminal/next helpers | Historical migration oracle. | Ideas 176-179 used public prepared helpers as oracle and migration fallback surfaces while Route 8 was introduced and AArch64 consumers were migrated. |
-| Current public prepared return-chain helpers | Absent after idea 180 API contraction. | `PreparedReturnChainLookups`, `find_prepared_return_chain_terminal_value`, `find_prepared_return_chain_next_operand_value`, `prepared_return_chain_value_key`, and the terminal/next map names have no current `src`/`tests` matches. Future docs should not list them as retained public blockers. |
-| Current prepared-owned residual surface | Diagnostic/materialization support only. | AArch64 still uses prepared value-location/name data to materialize Route 8 identities into target homes/registers, but it must not consult prepared return-chain fallback facts. |
+Future `PreparedFunctionLookups` readiness analysis should cite this line as
+one completed target-neutral return-chain identity route. It may say that the
+old public prepared return-chain lookup/helper surface is absent after idea
+180, and that current AArch64 return-chain lowering reads BIR Route 8 answers
+plus target/prepared materialization data. It must not treat Route 8 as proof
+that other `PreparedFunctionLookups` groups are ready to contract.
 
-Route 8 remains distinct from Route 1 producer identity and Route 7 comparison
-provenance. Its semantic answer is not "who produced this value" or "which
-comparison/branch provenance applies"; it is the same-block relation from a
-scalar binary chain value to the terminal return value and optional immediate
-next operand. It also must not be described as predecessor rescan, name
-matching, or a generic route-index facade.
+Future `PreparedBirModule` readiness analysis should cite this line as imported
+source evidence for return-chain identity only. It may use the decision doc and
+closed ideas 176-180 to separate BIR-owned identity from target-owned return
+ABI, value homes, registers, alias handling, scratch selection, ALU records,
+and emission order. It must not treat Route 8 as broad module-retirement or
+draft-155 readiness.
+
+Negative citation rules:
+
+| Do not cite Route 8 as... | Required replacement wording |
+| --- | --- |
+| Route 1 producer identity progress | Route 8 answers terminal return-chain and optional immediate next-operand identity; Route 1 remains source-producer identity. |
+| Route 7 comparison/condition progress | Route 8 is not comparison provenance, materialized-condition provenance, or branch-condition evidence. |
+| Predecessor rescan cleanup | The line is a function/block/instruction/value-keyed BIR route, not a fresh predecessor search. |
+| Name matching | Stable names participate in route keys and answers, but the accepted fact is the same-block return-chain relation, not string equality. |
+| Generic route-index progress | Route 8 has a distinct schema and index; do not flatten it into route-index facade completion. |
+| Retained public prepared helper evidence | Ideas 176-179 used public prepared helpers historically, but idea 180 removed the public helper surface. Current `src`/`tests` searches show `PreparedReturnChainLookups`, `find_prepared_return_chain_terminal_value`, `find_prepared_return_chain_next_operand_value`, and `prepared_return_chain_value_key` absent. |
+| x86/riscv wrapper readiness | The return-chain line proves no x86 or riscv wrapper migration boundary. Cite target-specific wrapper readiness separately. |
+| Broad aggregate/module retirement readiness | The line resolves one return-chain owner/schema import ambiguity only. It is not `PreparedFunctionLookups` contraction or `PreparedBirModule` retirement evidence by itself. |
 
 ## Suggested Next
 
-Execute Step 3: define the durable name and citation rules for future docs.
-Suggested accepted spelling: `Route 8 return-chain owner/schema line`, with
-`return-chain owner/schema line` acceptable when the route number is not the
-main point. Step 3 should state how `PreparedFunctionLookups` and
-`PreparedBirModule` readiness may cite the completed line without implying
-Routes 1 or 7, retained public prepared helpers, predecessor rescans, name
-matching, or broad aggregate retirement progress.
+Execute Step 4: write `docs/bir_prealloc_fusion/return_chain_import_and_naming.md`
+as the durable import note. The note should cite the decision doc and closed
+ideas 176-180, use the accepted `Route 8 return-chain owner/schema line` name,
+separate target-neutral identity from target-local AArch64/prepared policy,
+and include the negative citation rules above.
 
 ## Watchouts
 
-- Keep the public prepared helper status time-aware: closed ideas 176-179 and
-  the decision doc describe a historical public oracle surface; closed idea 180
-  removed that public API, and current `src`/`tests` searches confirm absence.
-- Do not let AArch64 target policy leak into the route identity. Homes,
-  registers, ABI moves, alias handling, scratch selection, ALU records, and
-  emission order are downstream lowering policy only.
-- Do not use Route 8 as evidence that `PreparedFunctionLookups` or
-  `PreparedBirModule` is broadly ready for retirement. It is one completed
-  return-chain line, not a replacement for field-by-field lookup ownership.
-- Do not reopen implementation, tests, expectations, unsupported markers, or
-  closed idea files in this docs/lifecycle-only plan.
+- Keep the status time-aware. Closed ideas 176-179 and the decision doc used
+  public prepared helpers as oracle and migration surfaces; closed idea 180
+  removed the public helper API, and current source/test searches show it is
+  absent.
+- Do not let Step 4 revive stale Phase C wording that says public prepared
+  return-chain helpers remain retained blockers; cite that only as historical
+  pre-contraction context.
+- Do not import AArch64 target policy into the route line. ABI moves, homes,
+  registers, alias checks, scratch choice, final ALU records, and emission
+  order remain lowering policy.
+- Do not use this naming packet to edit implementation, tests, expectations,
+  unsupported markers, source ideas, closed ideas, or `plan.md`.
 
 ## Proof
 
-Docs/lifecycle-only classification. Read the active plan/source idea, the
-return-chain decision doc, closed ideas 176-180, current Route 8 declarations
-in `src/backend/bir/bir.hpp`, and the AArch64 Route 8 consumer boundary in
-`src/backend/mir/aarch64/codegen/alu.cpp`. Ran targeted `rg` scans for
-return-chain, Route 8, and removed prepared helper names under `src`, `tests`,
-`docs/bir_prealloc_fusion`, `ideas/open`, and `ideas/closed`; the removed
-public prepared helper names have no current `src`/`tests` matches. No
-build/test subset was required and no `test_after.log` was generated.
+Docs/lifecycle-only naming and citation packet. Read active `plan.md`, source
+idea 197, current `todo.md`, the return-chain decision doc, closed ideas
+176-180, and current readiness docs under `docs/bir_prealloc_fusion`. Ran
+targeted `rg` scans for `Route 8`, `return-chain`, `PreparedFunctionLookups`,
+and `PreparedBirModule` across the return-chain docs/ideas/readiness docs. Ran
+current source/test searches for `PreparedReturnChainLookups`,
+`find_prepared_return_chain_terminal_value`,
+`find_prepared_return_chain_next_operand_value`, and
+`prepared_return_chain_value_key`; no matches were found under `src` or
+`tests`. No build/test subset was required and no `test_after.log` was
+generated.
