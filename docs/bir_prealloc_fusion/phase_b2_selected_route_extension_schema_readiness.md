@@ -1,6 +1,6 @@
 # Phase B2 Selected Route Extension Schema Readiness
 
-Status: Step 3 proof and reject coverage recorded.
+Status: Step 4 follow-up decisions recorded.
 
 Source idea:
 `ideas/open/201_phase_b2_selected_route_extension_schema_readiness_audit.md`
@@ -85,6 +85,43 @@ Missing required sources: none.
   expectations require route/prepared agreement or fail-closed fallback rather
   than schema ownership of target policy.
 - No follow-up idea files are created in Step 3.
+
+## Step 4 Follow-Up Decisions
+
+No new schema/index extension idea is accepted in this phase. Routes 1-7 have
+existing schema/index support for the selected target-neutral semantic facts,
+and Route 8 remains no-action for schema/index extension. The accepted
+follow-ups below are compatibility adapter or diagnostic/oracle contracts that
+preserve prepared fallback and target-policy exclusions.
+
+### Accepted Follow-Up Ideas
+
+| Route candidate | Decision | Destination | Reason |
+| --- | --- | --- | --- |
+| Route 3 selected memory/source identity consumer, with idea 190 fallback discipline. | Open bounded compatibility-adapter idea. | `ideas/open/202_route3_memory_source_identity_adapter.md` | Existing Route 3 schema covers the selected memory/source identity, while the audit shows a bounded adapter route for one reader plus mandatory prepared target-addressing fallback and idea 190 baseline discipline. |
+| Route 4 selected publication identity or wrapper adapter. | Open bounded compatibility-adapter idea. | `ideas/open/203_route4_publication_identity_adapter.md` | Existing Route 4 schema covers publication identity, but wrapper or edge-publication consumers need one-reader proof for absent/mismatch/duplicate/wrong-reference cases and unchanged output. |
+| Route 5 selected edge/join-source identity or wrapper adapter. | Open bounded compatibility-adapter idea. | `ideas/open/204_route5_edge_join_source_adapter.md` | Existing Route 5 schema covers edge and join-source identity, but wrapper or edge-copy readers need one-reader proof for no-source, memory-source, conflict, fallback, and output stability. |
+| Route 6 selected call-use source adapter. | Open bounded compatibility-adapter idea. | `ideas/open/205_route6_call_use_source_adapter.md` | Existing Route 6 schema covers one argument/result source identity role, and the audit gives a narrow proof route that preserves prepared call-plan fallback for ABI/layout policy. |
+| Route 7 selected comparison provenance reader or diagnostic row. | Open bounded diagnostic/oracle idea. | `ideas/open/206_route7_comparison_provenance_diagnostic_oracle.md` | Existing Route 7 schema covers comparison provenance; the follow-up is limited to one visible reader or diagnostic/oracle row with invalid-reference, duplicate, mismatch, fallback, and string-authority proof. |
+
+### Deferred Or Rejected Candidates
+
+| Candidate | Decision | Destination or reason |
+| --- | --- | --- |
+| Route 1 selected producer/constant consumer or diagnostic row. | Defer. | No immediate idea is opened because the audit found existing schema sufficient and did not identify a concrete selected consumer or visible diagnostic row that needs migration now. Future work should open one route-specific adapter or diagnostic idea only after naming that row and preserving no-producer, non-constant, mismatch, fallback, and string-authority proof. |
+| Route 2 selected select-chain/direct-global consumer or diagnostic row. | Defer. | No immediate idea is opened because the audit found existing schema sufficient and did not identify a concrete selected consumer or visible diagnostic row that needs migration now. Future work should open one route-specific adapter or diagnostic idea only after naming that row and preserving absent direct-global, nested-select, scalar-eligibility mismatch, fallback, and string-authority proof. |
+| Route 8 return-chain citation/import or diagnostic row. | No action for schema/index extension. | Route 8 already has the return-chain owner/schema line, records, indexes, lookups, and fail-closed behavior. A future diagnostic row may be opened only if it is visible and proves terminal/next operand, unsupported, unnamed, broken-walk, cross-block, missing-instruction, duplicate/conflict, and helper-equivalence behavior. |
+| Retained prepared-policy cleanup. | Rejected for this phase. | The audit did not show a separate bounded cleanup initiative. Prepared fallback/oracle surfaces remain compatibility requirements, not cleanup work. |
+| Broad `PreparedFunctionLookups`, `PreparedBirModule`, wrapper, printer, target-policy, ABI/layout, move-scheduling, branch-policy, or final-emission contraction. | Rejected. | These surfaces remain outside BIR schema scope under Phase A2 and this audit. Any future work must be a separate source idea with a narrow selected surface and explicit proof/reject coverage. |
+
+## Step 4 Completion Check
+
+- Accepted follow-up ideas are route-specific and map to concrete Phase B2
+  candidates.
+- Every new idea includes concrete reviewer reject signals.
+- Deferred and rejected candidates have destinations or no-action reasons.
+- No retained-policy cleanup idea was created because the audit does not show a
+  separate bounded initiative.
 
 ## Step 2 Completion Check
 

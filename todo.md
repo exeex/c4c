@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/201_phase_b2_selected_route_extension_schema_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Produce Ownership Decisions And Follow-Up Payloads
+Current Step ID: Step 5
+Current Step Title: Prepare Lifecycle Closure Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3: Define Proof And Reject Coverage. Updated
+Completed plan Step 4: Open Bounded Follow-Up Ideas. Updated
 `docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md`
-with proof recommendations and concrete reviewer reject signals for every
-Route 1-8 classification. Each row now names the minimum route/prepared
-agreement, fail-closed, fallback, oracle, and string-authority proof expected
-before future implementation or diagnostic work, while keeping rejected
-target/prepared policy outside BIR schema scope.
+with accepted, deferred, rejected, and no-action follow-up decisions. Opened
+bounded route-specific follow-up ideas for Route 3 memory/source identity,
+Route 4 publication identity, Route 5 edge/join-source identity, Route 6
+call-use source identity, and Route 7 comparison provenance diagnostics. No
+schema/index extension ideas and no retained-policy cleanup idea were created.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: open only the bounded follow-up ideas justified
-by the completed audit, keeping each idea route-specific and proof/reject
-coverage-driven.
+Execute Step 5 from `plan.md`: verify the audit artifact contains the required
+closure payload, record inspection proof, and ask the plan owner to decide
+closure only after source-idea output is satisfied.
 
 ## Watchouts
 
@@ -35,16 +35,20 @@ coverage-driven.
 - Routes 1-7 are generally schema sufficient for selected semantic facts, but
   wrappers, diagnostics, target policy, and aggregate lookup contraction remain
   separate adapter/oracle work.
-- Step 3 did not create follow-up idea files; Step 4 should decide whether any
-  are justified.
+- Routes 1 and 2 were deferred because the audit did not name a concrete
+  selected consumer or visible diagnostic row that needs migration now.
+- Route 8 remains no-action for schema/index extension in this phase.
+- No retained-policy cleanup idea was created because retained prepared
+  fallback/oracle surfaces remain compatibility requirements, not cleanup work.
 
 ## Proof
 
-Docs-only inspection and targeted searches. Delegated searches run for Step 3:
+Docs-only inspection and targeted searches for Step 4:
 
-- `rg -n "negative|ambiguous|mismatch|invalid-reference|duplicate|conflict|policy-sensitive|string-authority|fail-closed|fallback|oracle|Route [1-8]|route8|Route8" docs/bir_prealloc_fusion/phase_a2_residual_semantic_owner_audit.md docs/bir_prealloc_fusion/phase_a_normalization_candidates.md docs/bir_prealloc_fusion/phase_b_annotation_schema_candidates.md docs/bir_prealloc_fusion/return_chain_import_and_naming.md docs/bir_prealloc_fusion/prepared_function_lookups_ownership_readiness_map.md docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md ideas/closed/190_full_suite_baseline_99_percent_regression_attribution.md ideas/closed/199_full_suite_baseline_string_authority_timeout_attribution.md`
-- `rg -n "Route[1-8].*(fail|invalid|duplicate|conflict|mismatch|ambiguous|unsupported)|fail_closed|fail-closed|invalid-reference|duplicate|conflict|mismatch|ambiguous|route8" src tests docs/bir_prealloc_fusion -g '!docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md'`
-- `rg -n "negative|ambiguous|mismatch|invalid-reference|duplicate|conflict|policy-sensitive|string-authority|proof|reject|fallback|oracle|Route [1-8]" docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md todo.md`
+- `rg -n "Step 4 Follow-Up Decisions|Accepted Follow-Up Ideas|Deferred Or Rejected Candidates|ideas/open/202_route3|ideas/open/203_route4|ideas/open/204_route5|ideas/open/205_route6|ideas/open/206_route7|Retained prepared-policy cleanup|No retained-policy cleanup" docs/bir_prealloc_fusion/phase_b2_selected_route_extension_schema_readiness.md todo.md ideas/open/202_route3_memory_source_identity_adapter.md ideas/open/203_route4_publication_identity_adapter.md ideas/open/204_route5_edge_join_source_adapter.md ideas/open/205_route6_call_use_source_adapter.md ideas/open/206_route7_comparison_provenance_diagnostic_oracle.md`
+- `rg -n "## Reviewer Reject Signals|testcase|unsupported|expected-string|fallback|schema|policy|broad|whole|one selected|exactly one" ideas/open/202_route3_memory_source_identity_adapter.md ideas/open/203_route4_publication_identity_adapter.md ideas/open/204_route5_edge_join_source_adapter.md ideas/open/205_route6_call_use_source_adapter.md ideas/open/206_route7_comparison_provenance_diagnostic_oracle.md`
+- `rg -n "Current Step ID: Step 5|Current Step Title: Prepare Lifecycle Closure Evidence|Completed plan Step 4" todo.md`
+- `git diff --check`
 
 No build or tests were run because this packet was docs-only. `test_after.log`
 was not touched because the packet explicitly listed it under Do Not Touch.
