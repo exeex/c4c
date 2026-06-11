@@ -1,45 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove the selected address-materialization subset and decide next
+Current Step ID: Step 1
+Current Step Title: Confirm selected value-home group
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 from `plan.md`: reran the selected address-materialization projection
-proof after the Step 2 projection split and Step 3 dependency check. The
-selected subset is green.
-
-Selected field group result: `address_materializations` now uses the narrow
-`FunctionLoweringContext::address_materialization_lookups` projection built by
-`prepare::make_prepared_address_materialization_lookups(...)` in traversal. The
-production `prepared_lookups.address_materializations` aggregate field read was
-removed.
-
-Step 3 found no additional include/dependency contraction safe yet because
-`traversal.cpp` still builds and retains `PreparedFunctionLookups` for
-unselected fields: `move_bundles`, `value_homes`, and downstream aggregate
-`prepared_lookups` consumers.
+Lifecycle reset after Step 4 of the address-materialization runbook. The
+completed group was `address_materializations`; production traversal no longer
+reads `prepared_lookups.address_materializations`, and the selected proof in
+`test_after.log` was green.
 
 ## Suggested Next
 
-Plan-owner lifecycle decision: either continue this runbook by selecting the
-next aggregate field group, or retire/split if the remaining fields need a
-fresh route review.
+Execute Step 1 from `plan.md`: confirm `value_homes` remains the next safe
+field group, then proceed to Step 2 if the narrow
+`prepare::make_prepared_value_home_lookups(...)` projection still matches the
+current traversal shape.
 
 ## Watchouts
 
 - Keep `PreparedFunctionLookups` available in traversal while unselected fields
-  still require `prepared_lookups`, `move_bundles`, or `value_homes`.
-- `traversal.cpp` no longer reads `prepared_lookups.address_materializations`;
-  further contraction would need a broader plan for the remaining aggregate
-  fields, not an address-materialization-only edit.
+  still require `prepared_lookups` or `move_bundles`.
+- Do not select `move_bundles` inside this packet; aggregate-equivalent
+  move-bundle construction also publishes after-call result lane bindings.
 - Do not change `memory_accesses`, `edge_publications`,
   `edge_publication_source_producers`, or `return_chains` without an explicit
   packet that owns those dependencies.
-- Do not migrate target addressing/layout payloads into BIR.
+- Do not migrate target value-location, storage-plan, register-allocation, or
+  move-record policy into BIR.
 - Do not remove `prepared_lookups.hpp` exposure while traversal and other
   AArch64 consumers still need unselected aggregate fields.
 - Treat fixture aggregate-field assignments as test harness compatibility
@@ -47,11 +38,6 @@ fresh route review.
 
 ## Proof
 
-Supervisor-selected Step 4 proof passed and was captured in `test_after.log`.
-
-```sh
-(cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
-```
-
-Result: `backend_aarch64_prepared_memory_operand_records` and
-`backend_aarch64_instruction_dispatch` both passed.
+No proof run by plan-owner for this lifecycle-only reset. The next executor
+packet should run the supervisor-selected compile and value-location/AArch64
+lowering subset after code changes.
