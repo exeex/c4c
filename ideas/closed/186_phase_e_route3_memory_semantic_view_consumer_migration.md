@@ -38,6 +38,15 @@ Source: `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md`.
 - Address-materialization tests continue to prove target policy remains
   prepared-owned.
 
+## Completion Note
+
+Closed after migrating the selected AArch64 indirect-callee stored-value source
+consumer to the narrow Route 3 stored-source view with prepared fallback
+preserved. Post-commit review found the route aligned with this idea, with no
+testcase overfit or plan rewrite needed. Canonical four-test proof passed 4/4,
+supervisor broader backend validation passed 180/180, and the close-time
+regression guard passed in non-decreasing mode for the lifecycle-only closure.
+
 ## Reviewer Reject Signals
 
 - The slice moves target addressing or operand-formation policy into BIR.
