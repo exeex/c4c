@@ -1,70 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/197_return_chain_import_and_naming_clarification.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Write the Durable Import Note
+Current Step ID: Step 5
+Current Step Title: Final Consistency Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 durable import note is complete in
+Step 5 final consistency check is complete for
 `docs/bir_prealloc_fusion/return_chain_import_and_naming.md`.
 
-The note cites `docs/bir_prealloc_fusion/return_chain_owner_schema_decision.md`
-and closed ideas 176-180 as the source material chain. It uses the accepted
-durable name `Route 8 return-chain owner/schema line`, with short forms for
-compact references, and keeps Route 8 separate from Route 1 producer identity,
-Route 7 comparison/condition provenance, predecessor rescans, name matching,
-and generic route-index facade progress.
+The artifact satisfies idea 197 acceptance criteria: it cites the decision doc
+and closed ideas 176-180, uses `Route 8 return-chain owner/schema line` as the
+durable name, separates target-neutral BIR return-chain facts from AArch64 and
+target-local policy, and records that the old public prepared return-chain
+helper surface is absent after idea 180.
 
-The artifact separates target-neutral facts from target-local policy:
-Route 8 owns same-function, same-block BIR return-chain identity, terminal
-return value identity, optional immediate next-operand identity, and
-fail-closed schema/index behavior. AArch64 and target lowering retain value
-homes, ABI return placement, register parsing/conversion, alias checks, scalar
-register views, scratch selection, final ALU/return records, and emission
-order.
+The note keeps Route 8 separate from Route 1 producer identity, Route 7
+comparison/condition provenance, predecessor rescans, name matching, and
+generic route-index facade progress. It explains `PreparedFunctionLookups` and
+`PreparedBirModule` readiness use as return-chain identity evidence only,
+without claiming broad aggregate contraction, broad module retirement, draft
+155 readiness, x86/riscv wrapper readiness, or target policy migration.
 
-The note records the prepared helper/oracle timeline: public prepared
-return-chain helpers were historical through ideas 176-179 as decision,
-oracle, and migration surfaces; idea 180 removed the public helper API; current
-source/test searches show the old public helper names absent. It also states
-how future `PreparedFunctionLookups` and `PreparedBirModule` readiness analysis
-should cite Route 8 without claiming broad aggregate contraction, broad module
-retirement, draft 155 readiness, x86/riscv wrapper readiness, or target policy
-migration.
+The idea-197 committed range is limited to lifecycle/docs files:
+`docs/bir_prealloc_fusion/return_chain_import_and_naming.md` and `todo.md`.
+No implementation, test, expectation, unsupported-marker, source idea, or
+closed idea edits are present in the range.
 
 ## Suggested Next
 
-Execute Step 5 final consistency check. Verify the new artifact against the
-source idea acceptance criteria and reviewer reject signals, confirm the diff
-contains only lifecycle/docs changes, and run formatting or whitespace checks
-for the changed Markdown files. If clean, recommend the source idea for
-plan-owner close.
+Ask the plan owner to close idea 197. The source idea is ready for lifecycle
+closure if the supervisor accepts this docs-only proof.
 
 ## Watchouts
 
 - Some older Phase C/D docs still contain stale pre-contraction phrasing about
   public prepared return-chain helpers remaining public blockers. Treat that as
   historical context unless paired with the idea-180 contraction result.
-- The Step 5 checker should specifically reject any wording that converts
-  Route 8 into Route 1, Route 7, a generic route-index facade, or broad
-  `PreparedFunctionLookups`/`PreparedBirModule` readiness.
-- This packet did not touch implementation, tests, expectations, unsupported
-  markers, source ideas, closed ideas, or `plan.md`; preserve that boundary in
-  Step 5.
+- Keep the final closure lifecycle-only unless the plan owner finds a true
+  source-intent mismatch. Do not fold Route 8 into Route 1, Route 7, a generic
+  route-index facade, or broad `PreparedFunctionLookups`/`PreparedBirModule`
+  readiness.
 
 ## Proof
 
-Docs/lifecycle-only artifact packet. Read active `plan.md`, source idea 197,
-current `todo.md`, `docs/bir_prealloc_fusion/return_chain_owner_schema_decision.md`,
-and closed ideas 176-180. Ran targeted `rg` scans for `Route 8`,
-`return-chain`, `PreparedFunctionLookups`, and `PreparedBirModule` across
-return-chain docs, current readiness docs, and closed ideas. Ran current
-source/test searches for `PreparedReturnChainLookups`,
-`find_prepared_return_chain_terminal_value`,
-`find_prepared_return_chain_next_operand_value`, and
-`prepared_return_chain_value_key`; no matches were found under `src` or
-`tests`. No build/test subset was required and no new `test_after.log` was
+Docs/lifecycle-only final check. Read active `plan.md`, source idea 197,
+current `todo.md`, and
+`docs/bir_prealloc_fusion/return_chain_import_and_naming.md`.
+
+Ran:
+- `rg -n "return_chain_owner_schema_decision|176_return_chain_owner_schema_decision|177_bir_return_chain_schema_index|178_bir_return_chain_oracle_equivalence|179_bir_return_chain_consumer_migration|180_bir_return_chain_prepared_api_contraction|Route 8|PreparedFunctionLookups|PreparedBirModule" docs/bir_prealloc_fusion/return_chain_import_and_naming.md`
+- `rg -n "PreparedReturnChainLookups|find_prepared_return_chain_terminal_value|find_prepared_return_chain_next_operand_value|prepared_return_chain_value_key" src tests`
+- `git diff --name-status 71173da5c..HEAD`
+- `git diff --check 71173da5c..HEAD`
+
+The citation/search check found the required decision doc, closed idea
+citations, Route 8 naming, and readiness boundaries. The removed public helper
+name search returned no matches under `src` or `tests`. The idea-197 range
+contains only the return-chain docs artifact and `todo.md`. Whitespace checks
+passed. No build/test subset was required and no new `test_after.log` was
 generated for this packet.
