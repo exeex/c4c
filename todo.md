@@ -1,87 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/196_prepared_function_lookups_ownership_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory lookup groups and readers
+Current Step ID: 2
+Current Step Title: Classify ownership and readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 of `plan.md`: inventoried the
-`PreparedFunctionLookups` aggregate fields, construction/publication paths, and
-current reader categories.
+Completed Step 2 of `plan.md`: classified ownership/readiness for every
+`PreparedFunctionLookups` lookup group from the Step 1 inventory without
+renaming, splitting, deleting, privatizing, or weakening oracle coverage.
 
-Declaration and construction:
+Classification table:
 
-- Aggregate declaration:
-  `src/backend/prealloc/prepared_lookups.hpp` declares seven lookup groups:
-  `call_plans`, `address_materializations`, `memory_accesses`, `move_bundles`,
-  `value_homes`, `edge_publications`, and
-  `edge_publication_source_producers`.
-- Aggregate construction:
-  `make_prepared_function_lookups(...)` in
-  `src/backend/prealloc/prepared_lookups.cpp` builds every group from the
-  per-function prepared module state. It finds call plans, value locations, and
-  addressing; builds value-home lookups first; uses them while building memory
-  accesses and edge publications; separately builds move bundles and source
-  producers; then returns the aggregate.
-- Production publication/threading:
-  AArch64 traversal constructs one stack-local aggregate per prepared function,
-  stores `FunctionLoweringContext::prepared_lookups`, and also publishes
-  separately rebuilt domain pointers for `call_plan_lookups`,
-  `address_materialization_lookups`, `move_bundle_lookups`, and
-  `value_home_lookups`.
-- Target-wrapper publication:
-  x86 stores `std::optional<PreparedFunctionLookups>` in
-  `ConsumedPlans`, exposes it through `shared_function_lookups()`, and exposes
-  `call_plans` through `shared_call_plan_lookups()`. RISC-V prepared emission
-  builds local lookups with `make_prepared_function_lookups(...)` and passes
-  pointers into edge-publication helpers.
+| Lookup group | Classification | Semantic route facts vs target/prepared policy | Partial route-view replacements | Fallback/oracle surfaces keeping it public | Residual reader or missing evidence blocking deletion/privatization |
+| --- | --- | --- | --- | --- | --- |
+| `call_plans` | Target/prepared policy; compatibility adapter; retained oracle. Route-native only for narrow Route 6 semantic source subfacts. | Route 6 may own argument/result source identity and direct-global/source-producer provenance for one role class at a time. ABI register/stack placement, variadic FPR counts, byval lanes, clobber/preserve facts, outgoing stack sizing, late publication, helper/carrier protocols, and call-record spelling stay prepared/target-owned. | Ideas 187 and 189 prove selected Route 6 reads: one AArch64 direct-global select-chain call-argument materialization consumer and one x86 scalar argument-source interface reuse point. | `PreparedCallPlanLookups`, `find_indexed_prepared_call_plan(...)`, call argument/result plan selectors, immediate-argument and preserved-value helpers, block-entry republication effects, prepared call-boundary/frame-stack tests, and x86 `ConsumedPlans::shared_call_plan_lookups()` remain public fallback/oracle surfaces. | AArch64 `calls.cpp` still consumes projected call-plan lookups for production lowering. x86 `ConsumedPlans` stores the aggregate and exposes `call_plans` through a compatibility adapter. Oracle tests attach `&prepared_lookups.call_plans`. No evidence exists that whole call plans, ABI placement, result lanes, or call-boundary policy can move to BIR. |
+| `address_materializations` | Target/prepared policy; retained oracle. Not ready for BIR annotation ownership. | Route 3 may own semantic memory/source identity only. Address base kind, offsets, frame/stack objects, TLS/global relocation choice, pointer materialization, base-plus-offset legality, volatile/address-space behavior, and final memory operands stay prepared/AArch64-owned or target-owned. | Route 3 selected work proves a semantic stored-source/memory identity boundary, not address-materialization policy. No partial replacement for frame-address offset or target address materialization policy was found. | `PreparedAddressMaterializationLookups`, indexed address-materialization helpers, frame-address-offset helpers, address-materialization tests, memory/addressing oracle tests, and AArch64 prepared-memory-operand tests remain prepared surfaces. | AArch64 `globals.cpp`, `memory.cpp`, and `memory_store_retargeting.*` still read projected address-materialization lookups. Tests attach `&prepared_lookups.address_materializations`. Deletion is blocked by target-addressing policy ownership and lack of a route-native address-policy replacement, which the readiness docs explicitly reject as BIR-owned. |
+| `memory_accesses` | BIR annotation candidate for semantic access identity; transient pass context and retained oracle today; blocked/unknown for aggregate contraction. | Semantic memory/access identity, source value/global identity, access kind, and block provenance can move toward Route 3. Target address formation, load/store operand selection, frame/TLS/global relocation, volatile/address-space behavior, and materialization policy remain prepared/target-owned. | Idea 186 proves one AArch64 indirect-callee stored-value source consumer; idea 193 hardens the Route 3 prepared-fallback and target-policy boundary. The residual map names future single-reader Route 3 memory/source candidates. | `PreparedMemoryAccessLookups`, `find_prepared_memory_access(...)`, global-load/same-block global-load/load-local source helpers, store-source publication helper inputs, `backend_prepared_lookup_helper`, store-source publication tests, and memory/frame/stack oracles remain public. | AArch64 `alu.cpp` still directly reads `context.function.prepared_lookups->memory_accesses` for return-chain/value-home fallback paths, and publication-plans helpers still take memory-access lookup inputs. Route 3 does not yet cover every memory/source reader or policy-sensitive fallback, so privatization is blocked by direct production readers and missing per-consumer equivalence evidence. |
+| `move_bundles` | Target/prepared policy; transient pass context; retained oracle. Not a BIR annotation owner. | Route 5 can own edge/join-source identity; Route 6 can own call-use source identity. Move ordering, before-call argument moves, before-return ABI moves, after-call result lane bindings, out-of-SSA placement, cycle temporaries, execution sites, homes, storage, and final move records remain prepared/target-owned. | Route 5 current-block join-source and Route 6 call-use migrations touch adjacent semantic questions, but no route view replaces move-bundle policy. | `PreparedMoveBundleLookups`, indexed move-bundle helpers, call-argument move helpers, return-ABI move helpers, after-call result lane helpers, AArch64 branch/current-block/dispatch tests, and prepared lookup helper tests remain public. | AArch64 `memory.cpp`, `calls.cpp`, `alu.cpp`, and `module.cpp` still consume projected move-bundle lookups. Tests attach `&prepared_lookups.move_bundles` and use empty/mutated move lookups for negative oracle coverage. Deletion is blocked because move scheduling and ABI move policy remain target/prepared-owned, not route facts. |
+| `value_homes` | Target/prepared policy; transient pass context; retained oracle. Route-owned status is blocked except as compatibility metadata. | Route facts may reference source/destination values, but storage/home ownership, register choice, stack slot/offset, rematerialization spelling, formal publication inputs, and decoded-home/rendering policy remain prepared/target-owned. | Routes 1, 4, 5, and 6 use semantic value identities around producer/publication/edge/call facts, but no route view replaces home/storage policy. Existing x86 decoded-home adapter use passes `value_home_lookups = nullptr`, so it is not deletion evidence. | `PreparedValueHomeLookups`, indexed value-home/id helpers, decoded-home/formal-publication inputs, AArch64 operand/prologue/dispatch/publication/call/memory consumers, BIR/prealloc value-home oracles, and prepared-memory-operand tests remain public. | Many AArch64 production files still consume projected `context.function.value_home_lookups`, and tests attach or pass `lookups.value_homes`. Privatization is blocked by production home/storage policy readers and by oracle coverage that still checks prepared home answers. |
+| `edge_publications` | BIR annotation candidate for publication/edge semantic identity; compatibility adapter; retained oracle; target/prepared policy for publication mechanics. | Route 4 may own current/block-entry publication identity and Route 5 may own edge/join-source identity. Publication record construction, block-order emission, move/homes/storage policy, stack-source extension, and final edge-copy records remain prepared/target-owned. | Ideas 182 and 183 prove selected Route 4 and Route 5 readers. x86/riscv edge-publication wrapper reuse is only future-candidate status from the cross-target map; riscv has no ready route-view reuse. | `PreparedEdgePublicationLookups`, indexed/unique edge-publication helpers, edge-copy source facts, block-entry parallel-copy helpers, stack-source and publication-match helpers, AArch64 dispatch/memory/publication fallbacks, x86 prepared dispatch, riscv prepared emission, wrapper tests, and prepared lookup helper tests remain public. | AArch64 `dispatch_producers.cpp`, `dispatch_edge_copies.cpp`, and `memory.cpp` directly read `context.function.prepared_lookups->edge_publications`. x86 and riscv wrappers still consume edge publications through prepared aggregate compatibility paths. Deletion is blocked by direct production readers, target-wrapper readers, and missing route-native wrapper evidence. |
+| `edge_publication_source_producers` | BIR annotation candidate for source-producer/select-chain semantic facts; target/prepared policy for materialization/call/publication use; retained oracle and printer/debug surface. | Routes 1, 2, 5, 6, and 7 may own narrow semantic producer, constant, select-chain, join-source, call-use, and comparison provenance facts. Materialization sequence choice, direct-global policy where coupled to call/memory/publication contexts, storage/home/move policy, call/publication routing policy, and final records remain prepared/target-owned. | Ideas 184, 185, 187, and 188 prove selected source-producer, select-chain, call-use, and comparison consumers; Route 5 covers one join-source reader. These are partial route-first replacements with prepared fallback, not route-wide replacement of the source-producer lookup group. | Source-producer helpers for same-block scalar producers, current-block publication consumption, select-chain/direct-global dependencies, scalar materialization, store-source, comparison, call/publication helpers, prepared printer select-chain output, dispatch tests, lookup helper tests, store-source publication tests, prepared-memory-operand tests, and frame/stack/call contract tests remain public. | AArch64 `dispatch_producers.cpp`, `dispatch_edge_copies.cpp`, `memory.cpp`, `calls.cpp`, `comparison.cpp`, and `alu.cpp` directly read `context.function.prepared_lookups->edge_publication_source_producers` or local fallback lookups. `prepared_printer/select_chains.cpp` is a printer/debug reader. Deletion is blocked by broad residual production use, retained printer/debug oracle status, and missing route-native diagnostics/oracles. |
 
-Lookup group inventory and current reader set:
+Readiness summary:
 
-| Lookup group | Exposed sublookups/helpers | Production readers | Printer/debug readers | Target-wrapper readers | Oracle-test readers | Unknown/none |
-| --- | --- | --- | --- | --- | --- | --- |
-| `call_plans` | `PreparedCallPlanLookups::{calls_by_position,outgoing_stack_argument_areas_by_position,immediate_arguments_by_position_and_abi,prior_preserved_by_value,first_stack_preserved_by_call_index,block_entry_republication_effects_by_block}` plus `find_indexed_prepared_call_plan`, immediate-argument, prior-preserved, first-stack-preserved, outgoing-stack-area, and block-entry-republication helpers. | AArch64 `calls.cpp` consumes the projected `context.function.call_plan_lookups` through helper calls. Construction in AArch64 traversal rebuilds this group directly, not by projecting from the aggregate. | None found as a direct `PreparedFunctionLookups::call_plans` reader. | x86 `ConsumedPlans::shared_call_plan_lookups()` returns `&shared_function_lookups()->call_plans`; `find_consumed_call_plan` and related wrapper helpers consume it through the adapter. | AArch64 branch/current-block/dispatch tests attach `&prepared_lookups.call_plans`; dispatch tests also inspect the projected pointer. | No unknown readers found. |
-| `address_materializations` | `PreparedAddressMaterializationLookups::materializations_by_block` plus indexed address-materialization and frame-address-offset helpers. | AArch64 `globals.cpp`, `memory.cpp`, and `memory_store_retargeting.*` consume the projected `context.function.address_materialization_lookups` through helpers. Traversal rebuilds this group directly. | None found as a direct aggregate reader. | None found. | AArch64 branch/current-block/dispatch tests attach `&prepared_lookups.address_materializations`; prepared lookup helper tests use standalone address-materialization lookups for oracle coverage. | No unknown readers found. |
-| `memory_accesses` | `PreparedMemoryAccessLookups::{accesses_by_position,accesses_by_result_value_name,accesses_by_result_value_id}` plus indexed/unique memory-access lookup helpers. | AArch64 `alu.cpp` directly reads `context.function.prepared_lookups->memory_accesses` for return-chain/value-home fallback paths. Shared publication-plans helpers consume memory-access lookup pointers when building store-source publication facts. | None found. | None found. | `backend_prepared_lookup_helper_test.cpp` reads `&lookups.memory_accesses`; store-source publication tests build standalone memory-access lookups. | No unknown readers found. |
-| `move_bundles` | `PreparedMoveBundleLookups::{bundles_by_position,before_call_argument_moves_by_position_and_abi,before_return_abi_moves_by_source_and_bank,after_call_result_lane_bindings,after_call_result_lane_bindings_by_position_and_value}` plus indexed move-bundle, call-argument move, return-ABI move, and after-call lane helpers. | AArch64 `memory.cpp`, `calls.cpp`, `alu.cpp`, and `module.cpp` consume the projected `context.function.move_bundle_lookups` through helpers. Traversal rebuilds this group directly. | None found as a direct aggregate reader. | None found. | AArch64 branch/current-block/dispatch tests attach `&prepared_lookups.move_bundles`; dispatch tests install empty move lookups for negative cases; prepared lookup helper tests cover standalone move-bundle lookups. | No unknown readers found. |
-| `value_homes` | `PreparedValueHomeLookups::{homes_by_id,value_ids}` plus indexed value-home/id lookup helpers and decoded-home/formal-publication inputs. | Many AArch64 production files consume projected `context.function.value_home_lookups`: `memory.cpp`, `calls.cpp`, `comparison.cpp`, `dispatch_producers.cpp`, `dispatch_publication.cpp`, `select_materialization.cpp`, `operands.cpp`, `prologue.cpp`, and `dispatch_lookup.cpp`. AArch64 memory operand record helpers also read `lookups->value_homes` when a fixture passes the aggregate. | None found. | x86 prepared wrapper helpers pass `value_home_lookups = nullptr` in several decoded-home adapter inputs, so no aggregate value-home wrapper reader was found. | AArch64 branch/current-block/dispatch tests attach `&prepared_lookups.value_homes`; prepared-memory-operand tests set fixture inputs from `lookups.value_homes`; BIR/prealloc tests build standalone value-home lookups for oracle coverage. | No unknown readers found. |
-| `edge_publications` | `PreparedEdgePublicationLookups::{publications,publications_by_edge_destination}` plus indexed/unique edge-publication, edge-copy-source-facts, block-entry parallel-copy, stack-source, and publication-match helpers. | AArch64 `dispatch_producers.cpp`, `dispatch_edge_copies.cpp`, and `memory.cpp` directly read `context.function.prepared_lookups->edge_publications`, sometimes with local rebuilt fallback lookups. Shared publication-plans helpers consume this group through helper inputs. | None found. | RISC-V prepared emission reads `lookups->edge_publications` and iterates local `lookups.edge_publications.publications`; x86 prepared dispatch reads `lookups->edge_publications` through `ConsumedPlans::shared_function_lookups()`. | RISC-V and x86 wrapper tests read `lookups.edge_publications`; AArch64 dispatch tests mutate/read `prepared_lookups.edge_publications.publications`; prepared lookup helper tests use `lookups.edge_publications` extensively. | No unknown readers found. |
-| `edge_publication_source_producers` | `PreparedEdgePublicationSourceProducerLookups::producers_by_value_name` plus source-producer, same-block scalar producer, current-block publication-consumption, select-chain/direct-global dependency, scalar-materialization, store-source, comparison, and call/publication helper APIs. | AArch64 `dispatch_producers.cpp`, `dispatch_edge_copies.cpp`, `memory.cpp`, `calls.cpp`, `comparison.cpp`, and `alu.cpp` directly read `context.function.prepared_lookups->edge_publication_source_producers` or use a locally generated fallback. Shared prepared helpers in `select_chain_lookups`, `call_plans`, `publication_plans`, `addressing`, and `comparison` consume source-producer pointers. | `src/backend/prealloc/prepared_printer/select_chains.cpp` consumes `PreparedEdgePublicationSourceProducerLookups` directly for select-chain printer/debug output. | None found as a x86/RISC-V wrapper field reader of the aggregate source-producer group. | AArch64 dispatch tests mutate/read `prepared_lookups.edge_publication_source_producers`; prepared lookup helper, store-source publication, prepared-memory-operand, and frame/stack/call contract tests build or pass source-producer lookup groups directly. | No unknown readers found. |
-
-Reader mode summary:
-
-- Direct aggregate field readers: AArch64 production code reads
-  `memory_accesses`, `edge_publications`, and
-  `edge_publication_source_producers`; AArch64 `alu.cpp` can also construct a
-  local compatibility aggregate fallback and read its source producers.
-- Helper/projection readers: AArch64 production usually consumes
-  `call_plans`, `address_materializations`, `move_bundles`, and `value_homes`
-  through projected domain pointers on `FunctionLoweringContext`, not by
-  dereferencing the aggregate field at the use site.
-- Compatibility adapters: x86 `ConsumedPlans` wraps the full aggregate and
-  exposes `shared_function_lookups()`/`shared_call_plan_lookups()`; RISC-V
-  prepared emission builds local aggregate lookups for edge-publication
-  consumption.
-- Oracle-test readers: backend BIR/prealloc tests and AArch64/x86/RISC-V
-  target tests directly build, attach, mutate, or inspect aggregate lookup
-  fields for coverage.
+- No lookup group is ready for deletion or privatization from Step 2 evidence.
+- `memory_accesses`, `edge_publications`, and
+  `edge_publication_source_producers` contain semantic facts that can move
+  toward BIR annotation ownership one selected consumer at a time, but each
+  still has direct AArch64 aggregate readers and prepared fallback/oracle
+  surfaces.
+- `call_plans` has a narrow Route 6 semantic source path and x86 compatibility
+  reuse point, but whole call-plan ownership remains prepared/target policy.
+- `address_materializations`, `move_bundles`, and `value_homes` are primarily
+  target/prepared policy or transient pass-context groups with retained oracle
+  coverage. Route views may cite identities around them, but Step 2 found no
+  evidence that their policy payloads should become BIR-owned.
+- x86/riscv aggregate use is compatibility-adapter or target-wrapper evidence,
+  not proof of prepared aggregate retirement. x86 has only the selected Route 6
+  scalar source reuse; riscv edge-publication consumption remains prepared.
 
 ## Suggested Next
 
-Execute Step 2 by classifying each lookup group as BIR annotation,
-transient pass context, target/prepared policy, compatibility adapter,
-retained oracle, or blocked/unknown. Use the reader-mode split above to avoid
-mistaking projected helper use for ownership readiness.
+Execute Step 3 by converting this classification into concrete prerequisites:
+for each lookup group, name the smallest adapter boundary, retained-ownership
+reason, replacement diagnostic/oracle requirement, or missing-evidence
+follow-up needed before future aggregate contraction work.
 
 ## Watchouts
 
 - Do not rename, split, delete, or privatize `PreparedFunctionLookups` fields
   under this audit.
 - Do not classify target/prepared policy as BIR-owned just because a selected
-  route consumer moved.
+  route consumer moved. Route facts are semantic identities; ABI, addressing,
+  homes, storage, moves, emission records, and wrapper policy remain
+  target/prepared-owned unless a separate implementation idea proves otherwise.
 - Do not weaken oracle coverage, tests, unsupported markers, or expectations to
   make a lookup group appear ready.
 - `memory_accesses`, `edge_publications`, and
@@ -89,21 +64,28 @@ mistaking projected helper use for ownership readiness.
   readers; aggregate contraction cannot treat the projected-pointer fields as
   representative of the whole type.
 - `edge_publication_source_producers` is also a printer/debug input; Step 2
-  should distinguish printer/debug retention from production fallback needs.
+  retained it separately from production fallback needs.
 - x86 and RISC-V are compatibility-adapter readers of the aggregate, not proof
   that all aggregate fields have cross-target semantic route ownership.
+- Treat every compatibility adapter as transitional. Adapter presence keeps the
+  prepared surface public until the route-native source and equivalent oracle
+  coverage exist.
 
 ## Proof
 
-Docs/lifecycle-only inventory packet. No build/test proof was required and no
+Docs/lifecycle-only classification packet. No build/test proof was required and no
 `test_after.log` was generated. Validation/searches performed:
 
-- `rg -n "PreparedFunctionLookups" -S .`
-- `rg -n "prepared_function_lookups|function_lookups|lookups\\." ...`
-- field-specific `rg` scans for `call_plans`, `address_materializations`,
-  `memory_accesses`, `move_bundles`, `value_homes`, `edge_publications`, and
-  `edge_publication_source_producers`
-- targeted reads of `prepared_lookups.hpp/.cpp`, AArch64 traversal/context,
-  x86 `ConsumedPlans`, RISC-V prepared edge-publication fixtures, and the
-  lookup owner headers for calls, addressing, value locations, publication
-  plans, and select-chain/source-producer helpers
+- Read active `plan.md`, source idea 196, and the Step 1 inventory in
+  `todo.md`.
+- Read readiness and migration artifacts:
+  `docs/bir_prealloc_fusion/phase_d_followup_pre_phase_e_readiness.md`,
+  `docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`,
+  and
+  `docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md`.
+- Ran targeted `rg` scans for `PreparedFunctionLookups`,
+  `prepared_lookups`, `shared_function_lookups`,
+  `shared_call_plan_lookups`, and direct field references to all seven lookup
+  groups in `src` and `tests`.
+- Ran a docs cross-check for route family, fallback, and lookup-group mentions
+  under `docs/bir_prealloc_fusion`.
