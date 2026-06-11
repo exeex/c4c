@@ -1,7 +1,7 @@
 # Phase D MIR Consumer Switch Plan
 
 Source idea: `ideas/open/181_phase_d_mir_consumer_bir_view_switch_plan.md`
-Status: Step 2 consumer-family map drafted.
+Status: Step 3 BIR view and adapter boundaries drafted.
 
 This artifact is the durable Phase D analysis surface for planning MIR/codegen
 consumer switches from `Prepared*` wrappers and aggregate lookup caches to BIR
@@ -122,3 +122,61 @@ Step 3 should also write durable non-migration boundaries for call ABI,
 storage/home/move policy, memory operand formation, wide-value carriers,
 runtime helpers, debug/printer oracle surfaces, x86/riscv interface wrappers,
 and return-chain as a no-route blocker.
+
+## Step 3 BIR View and Adapter Boundaries
+
+Step 3 defines the consumer-facing boundary shape for the mapped families. A
+Phase D BIR view is a narrow semantic query over route-owned records, typed
+indexes, or an already validated facade. It is not a replacement
+`PreparedFunctionLookups` aggregate, not a BIR rescan hook, and not a place to
+store target lowering policy. Each adapter must be keyed by the consumer's
+existing semantic handle, fail closed when the route record is absent, and keep
+the matching prepared helper public as the oracle/fallback until route/prepared
+equivalence is proven for that consumer group.
+
+| Route/family boundary | Route-backed BIR view or adapter | Prepared fallback/oracle boundary | Durable non-migration boundary |
+| --- | --- | --- | --- |
+| Route 1 producer and constant identity | Expose a producer/constant view keyed by the consuming BIR value or instruction-local operand reference. The view may answer same-block scalar producer identity and integer-constant facts already recorded by Route 1 annotations or typed indexes. | Keep `find_prepared_same_block_scalar_producer(...)`, `evaluate_prepared_same_block_integer_constant(...)`, scalar operand helpers, and prepared value-publication paths available as comparison or fallback answers. | Do not move value homes, storage encodings, rematerialization spelling, register choice, or emitted machine records into the Route 1 view. |
+| Route 2 select-chain and direct-global dependency | Expose a select-chain/direct-global view keyed by the selected value, root instruction, or publication/materialization operand. It should return only select-root identity, root instruction index, scalar eligibility, and direct-global dependency presence. | Keep prepared select-chain materialization and direct-global dependency helpers public until each materialization, publication, call, memory, and ALU consumer proves equivalent route reads. | Do not encode target materialization sequence choice, storage/home selection, memory operand formation, or call/publication policy in the Route 2 view. |
+| Route 3 memory/access identity | Expose a memory semantic view keyed by a load/store/global-load access or source-value relationship. It may answer access identity, same-block global-load identity, and load-local stored-value source relationships. | Keep `PreparedMemoryAccessLookups`, `find_prepared_memory_access(...)`, `find_prepared_global_load_access(...)`, `find_prepared_same_block_global_load_access(...)`, and load-local source helpers as public oracles. | Keep address base kind, offsets, stack/frame objects, TLS/global relocation data, pointer materialization, base-plus-offset legality, volatile/address-space behavior, and final memory operand records prepared/AArch64-owned or target-owned. |
+| Route 4 publication availability | Expose a current/block-entry publication view through typed Route 4 references or the existing validated facade style. It should answer publication identity and availability facts for a single consumer path. | Keep prepared current-block and block-entry publication helpers, edge-publication lookup surfaces, prepared printer consumers, x86 wrappers, and route-oracle tests public while each selected publication path migrates. | Do not move value-home lookup, move planning, storage availability bookkeeping, final publication record construction, or block-order emission into Route 4. |
+| Route 5 edge join-source identity | Expose an edge/join-source view keyed by the edge, predecessor, destination block, and copied value role. It should answer join-source identity, missing-predecessor, no-source, and memory-source semantic cases through typed Route 5 records. | Keep `PreparedEdgePublicationLookups`, `PreparedEdgePublicationSourceProducerLookups`, `find_prepared_current_block_join_parallel_copy_source(...)`, and move-bundle helpers as equivalence or fallback surfaces. | Keep parallel-copy scheduling, out-of-SSA execution placement, source/destination homes, move bundles, branch instruction spelling, and final edge-copy records in prepared or target code. |
+| Route 6 call-use source facts | Expose a call-use source view keyed by call instruction plus argument/result role and value role. It should answer semantic source-producer, direct-global, and publication-source facts one argument/result class at a time. | Keep `PreparedCallPlanLookups`, call argument/result plans, publication-routing helpers, `find_prepared_call_argument_source_producer_materialization(...)`, value-home lookups, move-bundle lookups, and call-boundary effect plans public. | Keep ABI register/stack placement, variadic FPR counts, clobber/preserve sets, byval lanes, outgoing stack sizing, late-publication mechanics, helper resources, carrier protocols, and call machine-record spelling target-owned. |
+| Route 7 comparison and materialized-condition provenance | Expose a condition/comparison provenance view keyed by the comparison or branch operand consumer. It should answer materialized-condition identity and fused-compare operand provenance without deciding target branch lowering. | Keep comparison prepared helpers, scalar producer/select-chain fallbacks, Route 7 facade validation surfaces, and fused-compare oracle tests visible until each branch/comparison consumer has equivalence coverage. | Keep branch spelling, fused legality, condition-code selection, hazard handling, emitted-register state, final branch/compare record ordering, and ALU result storage outside BIR ownership. |
+
+## Step 3 Cross-Consumer Adapter Rules
+
+- AArch64 traversal should continue to build and thread `PreparedBirModule` and
+  the prepared lookup bundle as pass-local context. Follow-up migrations may add
+  narrow route-view parameters beside the prepared context, but must not replace
+  the bundle with a BIR-owned clone of `PreparedFunctionLookups`.
+- Adapters should be route-specific and consumer-specific: one publication
+  adapter, call-use adapter, memory semantic adapter, or comparison provenance
+  adapter at a time. They should never scan all BIR nodes to rediscover a fact
+  that the route index does not already own.
+- Prepared printer, debug output, x86 route-debug summaries, and oracle tests
+  remain public validation surfaces. Production AArch64 consumer migration does
+  not by itself justify hiding these APIs.
+- x86 and riscv remain interface-level consumers in this Phase D ladder. After
+  AArch64 proves a semantic route view, those targets can consume the same
+  route-facing interface while keeping their own instruction selection, frame,
+  register-allocation, target formatting, and call ABI policy local.
+- Wide-value carriers, runtime helper protocols, variadic entry helpers,
+  intrinsics, inline asm, atomics, dynamic stack, frame helpers, and special
+  target entries are explicit non-migration surfaces for Routes 1-7. A route
+  view may expose only an underlying semantic source identity that such helpers
+  already reference; carrier layout, lane transport, scratch resources, helper
+  calls, and target records stay prepared/AArch64-owned or target-owned.
+- Return-chain remains a no-route blocker for this active plan. Consumers of
+  `PreparedReturnChainLookups`, terminal return-chain values, and next-operand
+  values need the separate owner/schema decision before any migration, and must
+  not be hidden under Route 1 producer identity, Route 7 comparison provenance,
+  predecessor rescans, name matching, or a generic route-index facade.
+
+## Step 3 Handoff To Step 4
+
+Step 4 should order the migration ladder by choosing bounded follow-up ideas
+from these boundaries. Each follow-up should name one route-backed consumer
+group, the exact BIR view or facade it will read, the prepared oracle it will
+compare against, the target/layout/codegen policy it refuses to migrate, and
+the proof ladder needed before any prepared API contraction claim.

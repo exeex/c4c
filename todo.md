@@ -1,29 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/181_phase_d_mir_consumer_bir_view_switch_plan.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Map Prepared Consumer Families
+Current Step ID: 3
+Current Step Title: Define BIR View and Adapter Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 from `plan.md` is complete. Updated
+Step 3 from `plan.md` is complete. Updated
 `docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` with a concrete
-consumer-family dependency map for live MIR/codegen reads of
-`PreparedBirModule`, `PreparedFunctionLookups`, and domain `Prepared*` query
-structs.
+boundary section that defines route-backed BIR views and adapters for Routes
+1-7, prepared fallback/oracle surfaces, durable target-policy non-migration
+surfaces, and return-chain as a no-route blocker.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: turn the route-backed rows from the Step 2 map
-into explicit BIR view and adapter boundaries, while naming prepared fallbacks,
-durable target-policy surfaces, and no-route blockers.
+Execute Step 4 from `plan.md`: turn the Step 2 map and Step 3 boundaries into
+an ordered migration ladder with bounded follow-up idea summaries, proof
+recommendations, prepared oracle boundaries, and out-of-scope target policy for
+each proposed consumer switch.
 
 ## Watchouts
 
 - Phase D is analysis-only; do not edit backend implementation files.
 - Do not turn `PreparedFunctionLookups` into a BIR-owned aggregate clone.
+- Step 4 should order migrations by consumer group and route-backed view, not by
+  broad prepared aggregate removal.
 - Keep target/layout/codegen policy out of BIR views: call ABI placement,
   storage/home/move policy, memory operand formation, wide-value carrier
   layout, runtime helper protocols, and final machine-record spelling stay
@@ -38,9 +41,10 @@ durable target-policy surfaces, and no-route blockers.
 
 Docs-only analysis packet; no build/test required by the delegated proof. Local
 verification checked that
-`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` contains a Step 2
-consumer-family dependency map with the four classifications from `plan.md` and
-covers AArch64 traversal/dispatch, calls, memory/addressing, value
-materialization/publication, comparison/ALU, edge copies/control flow, wide
-values/runtime helpers, future x86/riscv interfaces, and return-chain as a
-no-route blocker.
+`docs/bir_prealloc_fusion/phase_d_mir_consumer_switch_plan.md` contains a Step 3
+BIR view and adapter boundary section naming route-backed BIR views for Routes
+1-7 where applicable, prepared fallback/oracle boundaries, durable
+target/layout/codegen policy non-migration boundaries, x86/riscv
+interface-level boundaries, and return-chain as a no-route blocker. No
+`test_after.log` was produced because the delegated proof explicitly required
+no build/test.
