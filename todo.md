@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/201_phase_b2_selected_route_extension_schema_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define Proof And Reject Coverage
+Current Step ID: Step 4
+Current Step Title: Produce Ownership Decisions And Follow-Up Payloads
 
 # Current Packet
 
