@@ -566,8 +566,6 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
           .label_id = bir_block_label,
       }},
   });
-  auto& function = prepared.module.functions.back();
-  const auto& block = function.blocks.front();
 
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
@@ -576,7 +574,6 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
           .terminator_kind = bir::TerminatorKind::Return,
       }},
   });
-  auto& control_flow = prepared.control_flow.functions.back();
 
   prepared.stack_layout.frame_slots = {
       prepare::PreparedFrameSlot{
@@ -662,27 +659,35 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
   };
   prepared.value_locations.functions.push_back(locations);
   prepared.storage_plans.functions.push_back(storage);
-  const auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, control_flow);
 
-  c4c::backend::aarch64::module::BlockLoweringContext context{
-      .function =
-          c4c::backend::aarch64::module::FunctionLoweringContext{
-              .prepared = &prepared,
-              .target_profile = &prepared.target_profile,
-              .control_flow = &control_flow,
-              .bir_function = &function,
-              .value_locations = &prepared.value_locations.functions.back(),
-              .storage_plan = &prepared.storage_plans.functions.back(),
-              .prepared_lookups = &prepared_lookups,
-          },
-      .control_flow_block = &control_flow.blocks.front(),
-      .bir_block = &block,
+  auto lower_scalar_consumer = [](prepare::PreparedBirModule& module) {
+    const auto& lowered_function = module.module.functions.back();
+    const auto& lowered_block = lowered_function.blocks.front();
+    const auto& lowered_control_flow = module.control_flow.functions.back();
+    const auto lowered_lookups =
+        prepare::make_prepared_function_lookups(module, lowered_control_flow);
+    c4c::backend::aarch64::module::BlockLoweringContext lowered_context{
+        .function =
+            c4c::backend::aarch64::module::FunctionLoweringContext{
+                .prepared = &module,
+                .target_profile = &module.target_profile,
+                .control_flow = &lowered_control_flow,
+                .bir_function = &lowered_function,
+                .value_locations = &module.value_locations.functions.back(),
+                .storage_plan = &module.storage_plans.functions.back(),
+                .prepared_lookups = &lowered_lookups,
+            },
+        .control_flow_block = &lowered_control_flow.blocks.front(),
+        .bir_block = &lowered_block,
+    };
+    aarch64_codegen::BlockScalarLoweringState lowered_scalar_state;
+    c4c::backend::aarch64::module::ModuleLoweringDiagnostics lowered_diagnostics;
+    return aarch64_codegen::lower_scalar_instruction(
+        lowered_context, lowered_block.insts[2], 2, lowered_scalar_state,
+        lowered_diagnostics);
   };
-  aarch64_codegen::BlockScalarLoweringState scalar_state;
-  c4c::backend::aarch64::module::ModuleLoweringDiagnostics diagnostics;
-  auto lowered = aarch64_codegen::lower_scalar_instruction(
-      context, block.insts[2], 2, scalar_state, diagnostics);
+
+  auto lowered = lower_scalar_consumer(prepared);
   if (!lowered.has_value()) {
     return fail("expected scalar consumer of load-local values to lower");
   }
@@ -705,28 +710,9 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
     return fail("expected scalar consumer to read load-local source homes");
   }
 
-  prepared.addressing.functions.back().accesses.front().inst_index = 1;
-  const auto mismatched_prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, control_flow);
-  c4c::backend::aarch64::module::BlockLoweringContext mismatched_context{
-      .function =
-          c4c::backend::aarch64::module::FunctionLoweringContext{
-              .prepared = &prepared,
-              .target_profile = &prepared.target_profile,
-              .control_flow = &control_flow,
-              .bir_function = &function,
-              .value_locations = &prepared.value_locations.functions.back(),
-              .storage_plan = &prepared.storage_plans.functions.back(),
-              .prepared_lookups = &mismatched_prepared_lookups,
-          },
-      .control_flow_block = &control_flow.blocks.front(),
-      .bir_block = &block,
-  };
-  aarch64_codegen::BlockScalarLoweringState mismatched_scalar_state;
-  c4c::backend::aarch64::module::ModuleLoweringDiagnostics mismatched_diagnostics;
-  auto mismatched_lowered = aarch64_codegen::lower_scalar_instruction(
-      mismatched_context, block.insts[2], 2, mismatched_scalar_state,
-      mismatched_diagnostics);
+  auto mismatched_prepared = prepared;
+  mismatched_prepared.addressing.functions.back().accesses.front().inst_index = 1;
+  auto mismatched_lowered = lower_scalar_consumer(mismatched_prepared);
   if (!mismatched_lowered.has_value()) {
     return fail("expected scalar consumer with mismatched Route 3 source to fall back");
   }
@@ -747,6 +733,37 @@ int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_
       mismatched_lhs->result_value_name != stack_load_name) {
     return fail(
         "expected Route 3/prepared source mismatch to reject source-home operand");
+  }
+
+  auto missing_route3_identity = prepared;
+  auto& missing_route3_block =
+      missing_route3_identity.module.functions.back().blocks.front();
+  auto* missing_route3_load =
+      std::get_if<bir::LoadLocalInst>(&missing_route3_block.insts.front());
+  if (missing_route3_load == nullptr || !missing_route3_load->address.has_value()) {
+    return fail("expected first load-local fixture instruction to carry an address");
+  }
+  missing_route3_load->address->base_kind = bir::MemoryAddress::BaseKind::None;
+  auto missing_route3_lowered = lower_scalar_consumer(missing_route3_identity);
+  if (!missing_route3_lowered.has_value()) {
+    return fail("expected scalar consumer with missing Route 3 identity to fall back");
+  }
+  const auto* missing_route3_scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &missing_route3_lowered->target.payload);
+  if (missing_route3_scalar == nullptr ||
+      !missing_route3_scalar->scalar_alu.has_value() ||
+      missing_route3_scalar->inputs.size() != 2) {
+    return fail("expected missing Route 3 identity fallback to keep scalar ALU record");
+  }
+  const auto* missing_route3_lhs =
+      std::get_if<aarch64_codegen::MemoryOperand>(
+          &missing_route3_scalar->inputs[0].payload);
+  if (missing_route3_lhs == nullptr ||
+      missing_route3_lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      missing_route3_lhs->byte_offset == 16 ||
+      missing_route3_lhs->result_value_name != stack_load_name) {
+    return fail("expected missing Route 3 identity to reject source-home operand");
   }
   return 0;
 }
