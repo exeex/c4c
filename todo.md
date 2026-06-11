@@ -1,53 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/195_cross_target_route_view_reuse_beyond_x86_route6.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Produce the durable cross-target reuse table
+Current Step ID: 5
+Current Step Title: Validate lifecycle and proof sufficiency
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 of `plan.md`: created the durable cross-target route-view
-reuse audit artifact at
-`docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`.
+Completed Step 5 of `plan.md`: validated that the committed cross-target
+route-view reuse audit stayed docs/lifecycle-only and did not turn into
+implementation drift or testcase-overfit evidence.
 
-The artifact consolidates the Step 1 wrapper inventory, Step 2 readiness
-classification, and Step 3 proof-route decisions into a citation-ready table
-covering target, wrapper boundary, consumed fact/helper, required route view,
-required agreement and fallback checks, retained target-local policy, readiness,
-and proof route.
+Confirmed `docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`
+exists and satisfies the source idea acceptance criteria: it names x86 and
+riscv wrapper candidates, required route views, fallback behavior, retained
+target policy, readiness, proof routes, explicit riscv status, and
+one-wrapper-boundary future scopes.
 
-It preserves the key Step 3 conclusion: the existing x86 Route 6 scalar helper
-is the only ready reuse point, and no additional x86 or riscv boundary has a
-clear proof route yet. riscv status is explicit and remains not ready.
+Confirmed the idea-195 commit range changed only the audit artifact and
+lifecycle state. No implementation files, test source files, expectation files,
+unsupported rewrites, or named-case shortcuts changed as evidence.
 
 ## Suggested Next
 
-Start Step 5 by validating lifecycle and proof sufficiency for the audit: check
-that only docs/lifecycle files changed, no implementation or expectation files
-were touched, no named-case shortcuts or unsupported rewrites were used, and
-the durable artifact gives the supervisor enough information to decide whether
-idea 195 should close or spawn narrower implementation ideas.
+Supervisor should commit this Step 5 lifecycle validation and ask the plan
+owner to decide whether idea 195 is complete, should close, or should spawn
+narrower follow-up implementation ideas.
 
 ## Watchouts
 
-- The artifact intentionally does not claim riscv readiness.
-- The future implementation boundaries are advisory only; the supervisor and
-  plan owner still own whether to close idea 195 or create new ideas.
-- Do not treat x86 Route 6 scalar helper evidence as proof for whole call plans,
-  `ConsumedPlans`, `x86::prepared::Query`, x86 edge/memory wrappers, or any
-  riscv wrapper.
-- Any code-changing follow-up must remain one wrapper boundary wide and include
-  build proof plus target-specific narrow tests and adjacent same-feature
-  sanity cases.
+- The artifact intentionally does not claim riscv readiness; riscv remains
+  explicit and not inferred from x86.
+- The only ready reuse point remains the already-proven x86 Route 6 scalar
+  helper sub-boundary. The artifact does not claim broad x86/riscv route-view
+  readiness.
+- Future implementation ideas must remain one wrapper boundary wide, preserve
+  prepared fallback, and include build proof plus target-specific narrow tests
+  and adjacent same-feature sanity cases.
 
 ## Proof
 
-Lifecycle/docs-only packet. Used the Step 1 inventory from `git show
-HEAD~2:todo.md`, the Step 2 classification from `git show HEAD~1:todo.md`, the
-current Step 3 proof-route decision in `todo.md`, and targeted `rg`
-confirmation for `find_consumed_scalar_i32_call_argument_source`,
-`route6_find_call_argument_source`, riscv `consume_edge_publication_move_intent`,
-and `prepare_same_width_i32_stack_source_publication`. No build or test proof
-was required by the delegated packet, and no `test_after.log` was generated.
+Lifecycle/docs-only validation packet. Checked `git status --short`,
+`git diff --name-status 1d14178ff..HEAD`, and
+`git diff --name-status 1d14178ff..HEAD -- src tests '*.expected' '*.expect'
+'*.unsupported'`; the idea-195 committed range contains only
+`docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`, `plan.md`, and
+`todo.md`, with no implementation, test source, or expectation-file changes.
+
+Reviewed the source idea, active plan, current `todo.md`, and
+`docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`; targeted `rg`
+checks confirmed explicit fallback, target-local policy, riscv not-ready
+status, and one-wrapper-boundary future scopes. No build was required by the
+delegated docs/lifecycle-only packet, and no `test_after.log` was generated.
