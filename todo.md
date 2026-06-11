@@ -8,32 +8,30 @@ Current Step Title: Project address-materialization lookups separately
 
 ## Just Finished
 
-Step 1 from `plan.md`: selected `address_materializations` as the next
-aggregate field group for idea 175.
+Step 2 from `plan.md`: projected address-materialization lookups separately in
+AArch64 traversal.
 
-Selection basis: after the completed `call_plans` packet, traversal still only
-reads `prepared_lookups.address_materializations` to populate the existing
-`FunctionLoweringContext::address_materialization_lookups` pointer. The narrow
-builder `prepare::make_prepared_address_materialization_lookups(...)` already
-exists, so this follows the same target-local projection pattern as the
-completed `call_plans` group.
+`lower_prepared_functions(...)` now builds a local
+`PreparedAddressMaterializationLookups` with
+`prepare::make_prepared_address_materialization_lookups(prepared,
+prepared_function.function_name)` and assigns
+`function_context.address_materialization_lookups` from that projection.
+`PreparedFunctionLookups` remains available for unselected aggregate fields, but
+traversal no longer reads `prepared_lookups.address_materializations` directly.
 
 ## Suggested Next
 
-Executor packet: perform Step 2 by building a local
-`PreparedAddressMaterializationLookups` projection in AArch64 traversal and
-assigning `function_context.address_materialization_lookups` from that
-projection instead of from `prepared_lookups.address_materializations`.
-
-Suggested narrow proof command for the supervisor to confirm or adjust:
-
-```sh
-cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure
-```
+Executor packet: perform Step 3 by contracting address-materialization
+dependencies so consumers prefer
+`FunctionLoweringContext::address_materialization_lookups` and only keep
+aggregate access where another unselected field still requires it.
 
 ## Watchouts
 
 - Keep `PreparedFunctionLookups` available in traversal for unselected fields.
+- Step 3 should verify whether any address-materialization consumer still
+  reaches the same data through `prepared_lookups` before removing or narrowing
+  dependencies.
 - Do not change `move_bundles`, `value_homes`, `memory_accesses`,
   `edge_publications`, `edge_publication_source_producers`, or `return_chains`
   in this packet.
@@ -45,4 +43,8 @@ cmake --build build --target backend_aarch64_prepared_memory_operand_records_tes
 
 ## Proof
 
-Lifecycle-only reset. No code validation was run by plan-owner.
+Passed. Proof log: `test_after.log`.
+
+```sh
+(cmake --build build --target backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
+```
