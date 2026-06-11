@@ -1,29 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/175_prepared_function_lookups_aggregate_privacy.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Project value-home lookups separately
+Current Step ID: Step 3
+Current Step Title: Contract selected direct dependency exposure
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 from `plan.md`: projected value-home lookups separately in
-`src/backend/mir/aarch64/codegen/traversal.cpp`.
+Step 3 from `plan.md`: inspected direct dependency exposure in
+`src/backend/mir/aarch64/codegen/traversal.cpp` after the value-home projection
+split.
 
-- Added a local `prepared_value_home_lookups` built with
+- No further implementation contraction is safe in this packet.
+- `traversal.cpp` no longer reads `prepared_lookups.value_homes`; it constructs
+  `prepared_value_home_lookups` directly with
   `prepare::make_prepared_value_home_lookups(function_context.value_locations)`.
-- Wired `FunctionLoweringContext::value_home_lookups` to that standalone
-  projection.
-- Left `prepared_lookups` and `move_bundle_lookups` in place for unselected
-  aggregate fields.
+- `traversal.cpp` still must construct `PreparedFunctionLookups` because it
+  assigns `function_context.prepared_lookups = &prepared_lookups` for
+  unselected aggregate consumers and
+  `function_context.move_bundle_lookups = &prepared_lookups.move_bundles`.
+- The visible include exposure is still indirect through
+  `src/backend/mir/aarch64/module/module.hpp`, which defines
+  `FunctionLoweringContext` with `PreparedFunctionLookups`,
+  `PreparedMoveBundleLookups`, and `PreparedValueHomeLookups` pointers.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: inspect whether the value-home projection split
-made any selected direct aggregate dependency or include unnecessary. Leave
-`move_bundles` alone until its after-call result lane binding publication path
-is explicitly owned.
+Execute Step 4 from `plan.md`: continue with the next owned contraction or
+review packet selected by the supervisor.
 
 ## Watchouts
 
@@ -43,7 +48,7 @@ is explicitly owned.
 
 ## Proof
 
-Delegated Step 2 proof passed. Proof log: `test_after.log`.
+Delegated Step 3 proof passed. Proof log: `test_after.log`.
 
 ```sh
 (cmake --build build --target backend_aarch64_operand_resolution_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_instruction_dispatch_test -j && ctest --test-dir build -R '^(backend_aarch64_operand_resolution|backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch)$' --output-on-failure) > test_after.log 2>&1
