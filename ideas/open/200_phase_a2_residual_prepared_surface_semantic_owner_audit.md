@@ -41,8 +41,7 @@ This phase must read:
 - `docs/bir_prealloc_fusion/cross_target_route_view_reuse_map.md`
 - `docs/bir_prealloc_fusion/return_chain_import_and_naming.md`
 - `ideas/closed/190_full_suite_baseline_99_percent_regression_attribution.md`
-- `ideas/open/199_full_suite_baseline_string_authority_timeout_attribution.md`
-  if still open, or its closure if completed
+- `ideas/closed/199_full_suite_baseline_string_authority_timeout_attribution.md`
 - `ideas/draft/155_phase_e_prepared_bir_module_retirement_plan.md`
 
 This phase must write its durable analysis payload to:
