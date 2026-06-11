@@ -53,3 +53,12 @@ changed.
 - The BIR route is treated as correct without comparing against the prepared
   oracle.
 - Prepared helpers are hidden before the oracle suite is green.
+
+## Closure
+
+Closed after completing the return-chain oracle-equivalence runbook through
+Step 6. Focused proof for `backend_prepared_lookup_helper` passed 1/1, and the
+close-time regression guard passed under the delegated non-decreasing policy.
+Prepared return-chain helpers remain public, AArch64 consumers were not
+migrated, and the next lifecycle prerequisite is
+`ideas/open/179_bir_return_chain_consumer_migration.md`.
