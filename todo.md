@@ -1,44 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Nearby Metadata Stability
+Current Step ID: 4
+Current Step Title: Validate And Prepare Acceptance Notes
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: `Prove Nearby Metadata Stability` inspected the existing
-helper/handoff-boundary coverage for the shared `control_flow.hpp`
-selected-value-chain repair and found the focused coverage sufficient.
+Step 4 validation and acceptance notes are complete for idea 236.
 
-Existing coverage records the required stability surface:
+Implementation summary:
 
-- missing roots fail closed in `backend_prepared_lookup_helper` through the
-  direct-global select-chain, scalar materialization, BIR identity, and Route 2
-  record/index checks.
-- contradictory/drifted authoritative roots fail closed in the x86
-  handoff-boundary compare-join cases that reject drifted prepared branch
-  contracts and missing authoritative prepared branch records instead of
-  reopening raw recovery.
-- unsupported pointer bases are guarded by `classify_computed_value(...)`
-  rejecting pointer-backed loads unless the address base is a same-module
-  `GlobalSymbol` with a resolved root name/id and zero address offset.
-- non-global pointer-backed paths are guarded by the prepared helper
-  non-global/mismatched-root fail-closed checks and by the x86 return-arm
-  ownership checks for extern/thread-local/non-`Ptr` roots and missing or
-  mismatched pointer initializers.
-- unsupported selected-value-chain operations are guarded by the shared
-  classifier accepting only supported immediate binary extensions and by the
-  x86 renderer rejecting unsupported selected-value/trailing operations before
-  emission.
+- `src/backend/prealloc/control_flow.hpp` now interns display-only BIR global
+  names into the prepared link-name table before publishing
+  `PreparedSameModuleGlobalRef`.
+- This preserves distinct semantic ids for the true/false pointer-root and
+  global-base selected-value chains, so pointer-backed same-module global
+  return contexts retain their global-root chain and immediate operation.
+- The repair is semantic prepared metadata publication, not fixture-name,
+  label, block-shape, expected-string, or assertion matching.
 
-No tests or implementation files were changed for Step 3.
+Guarded behavior:
+
+- idea 234 x86 compare-join stack-home handoff remains covered by
+  `backend_x86_handoff_boundary`.
+- idea 235 Route 6 consumed scalar i32 source publication remains covered by
+  `backend_prepared_lookup_helper`, `backend_x86_route_debug`, and the
+  handoff-boundary path.
+- Existing helper/handoff-boundary coverage is sufficient for missing roots,
+  contradictory/drifted roots, unsupported pointer bases, non-global
+  pointer-backed paths, and unsupported selected-value-chain operations.
 
 ## Suggested Next
 
-Advance to Step 4 acceptance notes for idea 236, with supervisor-selected
-broader validation as the next packet.
+Supervisor can ask the plan owner to close idea 236. Ideas 234 and 235 remain
+open/parked and should be considered for closure now that the shared validation
+subset passes through all three repaired assertions.
 
 ## Watchouts
 
@@ -49,22 +47,31 @@ broader validation as the next packet.
   address offsets, extern/thread-local globals, non-`Ptr` pointer roots, cycles,
   non-i32 values, unsupported binary shapes, and non-immediate chain
   operations.
-- The delegated Step 3 proof is focused. Since `control_flow.hpp` is shared
-  prepared metadata, supervisor still owns whether Step 4 needs broader
-  validation before lifecycle closure.
+- Full `^backend_` on `build-x86` is not a useful close gate in this checkout:
+  many CLI/codegen/runtime tests fail because `/workspaces/c4c/build-x86/c4cll`
+  and several generated test executables are absent until those targets are
+  built.
+- The supervisor-selected broader validation built the relevant
+  prepared/prealloc/handoff targets and passed the prepared metadata subset.
 - Ideas 234 and 235 remain open, not active. Their implementation slices now
   pass the delegated guard subset, but their source acceptance criteria still
   require supervisor-selected broader validation before lifecycle closure.
 
 ## Proof
 
-Ran the delegated Step 3 proof:
+Focused Step 3 proof passed:
 
 ```bash
 cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
 ```
 
-Result: passed. `backend_prepared_lookup_helper`, `backend_x86_route_debug`,
-and `backend_x86_handoff_boundary` all pass. The delegated proof is sufficient
-for the Step 3 coverage check; no narrow test gap was identified. Proof log:
-`test_after.log`.
+Result: passed.
+
+Supervisor-selected broader prepared metadata validation also passed:
+
+```bash
+cmake --build build-x86 --target backend_prepare_phi_materialize_test backend_prepare_block_only_control_flow_test backend_prepare_authoritative_join_ownership_test backend_prepare_structured_context_test backend_prepare_liveness_test backend_prepare_stack_layout_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_prealloc_decoded_home_storage_test backend_prealloc_call_boundary_classification_test backend_prealloc_formal_publications_test backend_prealloc_block_entry_publications_test backend_prepared_lookup_helper_test backend_x86_route_debug_test backend_x86_handoff_boundary_test
+ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_prepare_.*|backend_prealloc_.*|backend_prepared_.*|backend_x86_handoff_boundary|backend_x86_route_debug)$' > test_after.log 2>&1
+```
+
+Result: passed, 15/15 tests. Proof log: `test_after.log`.
