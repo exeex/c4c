@@ -1,48 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Required Fallback And Nearby Coverage
+Current Step ID: 4
+Current Step Title: Validate And Hand Off For Lifecycle Review
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for
+Completed `plan.md` Step 4 for
 `find_prepared_control_flow_branch_target_labels(...)`.
 
-Confirmed and completed the required fallback proof surface in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`. The selected
-helper now has focused coverage for prepared-only nearby same-feature lookup,
-absent prepared block fail-closed behavior, positive agreement with structured
-BIR successor ids, raw output/string label drift stability, invalid BIR id
-fallback, BIR/prepared mismatch fallback, non-conditional BIR policy fallback,
-and invalid prepared source-label rejection.
+Validated the selected helper implementation slice with the supervisor-delegated
+build and focused backend CTest subset. The selected helper slice appears ready
+for supervisor review and plan-owner lifecycle review: code/tests were not
+modified in this Step 4 packet, the focused proof is green, and the prior Step 3
+notes still describe the helper contract and coverage surface.
 
-Duplicate/conflict is not separately detectable by this selected helper's
-current first-match prepared block lookup contract; the Step 3 conflict class
-is accounted for through the direct BIR/prepared mismatch fallback assertion.
-No helper names, baselines, expected strings, branch spelling, edge-copy
-scheduling, move policy, wrapper behavior, printer/debug rows, or helper-oracle
-output were weakened or rewritten.
+Remaining candidate helper scope, if the lifecycle review chooses to continue
+the broader initiative, is outside this selected slice. The current slice only
+contracts `find_prepared_control_flow_branch_target_labels(...)`; it does not
+claim compare-branch condition policy migration, wrapper behavior changes,
+printer/debug row changes, helper-oracle output changes, or contraction of other
+candidate helpers.
 
 ## Suggested Next
 
-Supervisor should decide whether to delegate `plan.md` Step 4 validation and
-lifecycle handoff for this selected helper slice.
+Supervisor should review the completed selected-helper slice, decide commit
+readiness, and route to plan-owner lifecycle review for close, replacement, or
+next-scope selection.
 
 ## Watchouts
 
-- `clang-format` is not installed in this environment, so no formatter command
-  was available after the Step 3 test patch.
+- `clang-format` is not installed in this environment, so the earlier Step 3
+  test patch could not be formatter-verified here.
 - The selected helper remains agreement-gated: raw BIR labels and mismatched
   structured ids do not override prepared labels.
-- Do not interpret this slice as compare-branch condition policy migration;
-  compare predicate facts remain prepared-owned.
+- Duplicate/conflict remains represented through the direct BIR/prepared
+  mismatch fallback assertion because this helper's first-match prepared block
+  lookup contract does not expose a separate duplicate/conflict signal.
+- Step 4 did not inspect or modify implementation files; route-quality and
+  source-idea alignment remain supervisor/reviewer responsibilities.
 
 ## Proof
 
-Ran the delegated Step 3 proof command exactly:
+Ran the delegated Step 4 proof command exactly:
 
 `( cmake --build --preset default --target backend_prepare_structured_context_test backend_prepare_block_only_control_flow_test backend_prepared_lookup_helper_test backend_aarch64_prepared_branch_records_test && ctest --test-dir build -R '^(backend_prepare_structured_context|backend_prepare_block_only_control_flow|backend_prepared_lookup_helper|backend_aarch64_prepared_branch_records)$' --output-on-failure ) > test_after.log 2>&1`
 
