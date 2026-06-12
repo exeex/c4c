@@ -1,41 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/211_route5_current_block_join_source_semantic_reader.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Fail-Closed Join-Source Behavior
+Current Step ID: Step 4
+Current Step Title: Preserve Joined-Branch and Prepared Output Strings
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 proved the selected
-`current_block_join_prepared_query_source(...)` reader fails closed across the
-Route 5 join-source cases the fixture can observe. The
-`backend_aarch64_current_block_join_routing` fixture now includes a
-`DuplicateSource` route shape with duplicate indexed Route 5 join records: the
-direct Route 5 scan can still see the duplicated PHIs, but the indexed Route 5
-identity used by the reader is unavailable, so the selected source reader keeps
-the prepared source bit.
+Step 4 proved the selected
+`current_block_join_prepared_query_source(...)` Route 5 migration leaves the
+joined-branch, prepared-printer, and configured wrapper surfaces stable. The
+existing joined-branch ownership, prepared-printer, riscv edge-publication, and
+aarch64 dispatch/current-join tests were sufficient for their surfaces.
 
-The same focused test continues to prove positive agreement, no prepared
-policy, absent Route 5 source facts, missing/invalid named source evidence,
-route/prepared source disagreement, memory-source disagreement, and prepared
-fallback for the selected reader. The adjacent
-`current_block_join_prepared_query_incoming_expression(...)` reader was not
-migrated or weakened.
+One narrow byte-stability freeze was added to
+`backend_x86_prepared_handoff_label_authority_test.cpp`: the valid prepared
+handoff case now compares the exact existing x86 contract-first wrapper stub
+text instead of only checking for the stub marker substring. No expected string
+was rewritten to accommodate changed behavior.
 
 ## Suggested Next
 
-Execute Step 4 by proving joined-branch, prepared-output, and wrapper output
-surfaces remain byte-stable for the selected Route 5 reader migration. Keep the
-packet to proof and only add assertions if a byte-stability surface is missing.
+Execute Step 5 acceptance review for idea 211. Compare the final diff against
+the source idea and verify the Route 5 reader migration stayed limited to the
+selected semantic source reader with prepared fallback.
 
 ## Watchouts
 
 - Do not move branch, parallel-copy, execution-site, value-home, move-bundle,
   output, wrapper, or expected-string policy into Route 5.
-- Do not rewrite expected strings as Step 4 proof; use existing byte-stable
-  surfaces unless a separate approved semantic change requires otherwise.
 - Duplicate/conflicting Route 5 join evidence is observable at this reader via
   the indexed Route 5 path becoming unavailable while prepared fallback remains
   active.
@@ -46,8 +40,8 @@ packet to proof and only add assertions if a byte-stability surface is missing.
 
 ## Proof
 
-Passed the exact delegated proof command. `test_after.log` records 5/5 passing:
+Passed the exact delegated proof command. `test_after.log` records 7/7 passing:
 
 ```bash
-cmake --build --preset default --target backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test backend_prepared_printer_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper|backend_prepared_printer|backend_riscv_prepared_edge_publication)$' > test_after.log
+cmake --build --preset default --target backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test backend_prepared_printer_test backend_riscv_prepared_edge_publication_test backend_prepare_authoritative_join_ownership_test backend_x86_prepared_handoff_label_authority_test && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper|backend_prepared_printer|backend_riscv_prepared_edge_publication|backend_prepare_authoritative_join_ownership|backend_x86_prepared_handoff_label_authority)$' > test_after.log
 ```

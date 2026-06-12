@@ -117,10 +117,29 @@ void drift_raw_bir_label_spelling(prepare::PreparedBirModule& prepared) {
   function.blocks[2].label = "raw.else.drift";
 }
 
-bool emit_accepts(prepare::PreparedBirModule prepared) {
+std::string_view expected_valid_handoff_assembly() {
+  return ".intel_syntax noprefix\n"
+         ".text\n"
+         "# x86 backend contract-first module emitter\n"
+         ".globl prepared_label_authority\n"
+         ".type prepared_label_authority, @function\n"
+         "prepared_label_authority:\n"
+         "    # x86 backend contract-first stub\n"
+         "    # behavior recovery will replace this body\n"
+         "    xor eax, eax\n"
+         "    ret\n";
+}
+
+bool emit_matches_valid_handoff_stub(prepare::PreparedBirModule prepared) {
   drift_raw_bir_label_spelling(prepared);
   const auto assembly = c4c::backend::x86::module::emit(prepared);
-  return assembly.find("x86 backend contract-first stub") != std::string::npos;
+  if (assembly == expected_valid_handoff_assembly()) {
+    return true;
+  }
+  std::cerr << "[FAIL] x86 prepared handoff wrapper output changed\n";
+  std::cerr << "--- expected ---\n" << expected_valid_handoff_assembly();
+  std::cerr << "--- actual ---\n" << assembly;
+  return false;
 }
 
 bool emit_rejects_with_handoff_message(prepare::PreparedBirModule prepared) {
@@ -136,8 +155,8 @@ bool emit_rejects_with_handoff_message(prepare::PreparedBirModule prepared) {
 
 int check_valid_handoff_consumes_prepared_ids() {
   auto prepared = legalize_x86_branch_module();
-  if (!emit_accepts(std::move(prepared))) {
-    return fail("x86 handoff rejected valid prepared control-flow label ids");
+  if (!emit_matches_valid_handoff_stub(std::move(prepared))) {
+    return fail("x86 handoff rejected valid prepared control-flow label ids or changed wrapper output");
   }
   return 0;
 }
