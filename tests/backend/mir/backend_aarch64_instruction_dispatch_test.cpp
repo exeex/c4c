@@ -29386,9 +29386,9 @@ int non_hfa_va_arg_byte_loads_publish_stack_bytes_before_observing_call() {
   return 0;
 }
 
-int load_global_call_argument_uses_got_for_got_required_global() {
-  auto prepared = prepared_with_load_global_call_argument(
-      bir::GlobalAddressMaterializationPolicy::GotRequired);
+int expect_got_required_global_load_call_route(
+    prepare::PreparedBirModule prepared,
+    std::string_view scenario) {
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -29404,7 +29404,8 @@ int load_global_call_argument_uses_got_for_got_required_global() {
   if (result.visited_operations != 2 || !result.visited_terminator ||
       result.emitted_instructions != 4 || block.instructions.size() != 4 ||
       !diagnostics.empty()) {
-    return fail("expected GOT-required global load call route to select load/move/call/return");
+    return fail("expected GOT-required global load call route to select load/move/call/return for " +
+                std::string{scenario});
   }
 
   const auto* got_load =
@@ -29420,22 +29421,26 @@ int load_global_call_argument_uses_got_for_got_required_global() {
           "ldr x2, [x2, :got_lo12:external_data_symbol]") ==
           std::string::npos ||
       got_load->inline_asm_template.find("ldr x2, [x2]") == std::string::npos) {
-    return fail("expected GOT-required global load to use GOT page/low12 materialization");
+    return fail("expected GOT-required global load to use GOT page/low12 materialization for " +
+                std::string{scenario});
   }
   if (got_load->inline_asm_template.find(":lo12:external_data_symbol") !=
       std::string::npos) {
-    return fail("GOT-required global load must not use direct :lo12: relocation");
+    return fail("GOT-required global load must not use direct :lo12: relocation for " +
+                std::string{scenario});
   }
   if (move == nullptr || !move->source_register.has_value() ||
       !move->destination_register.has_value() ||
       move->source_register->reg != aarch64_abi::x_register(2) ||
       move->destination_register->reg != aarch64_abi::x_register(0)) {
-    return fail("expected call move to consume the GOT-materialized global value");
+    return fail("expected call move to consume the GOT-materialized global value for " +
+                std::string{scenario});
   }
 
   const auto printed = print_route_block(function_cf.function_name, block);
   if (!printed.ok) {
-    return fail("expected GOT-required global route to print: " + printed.diagnostic);
+    return fail("expected GOT-required global route to print for " +
+                std::string{scenario} + ": " + printed.diagnostic);
   }
   if (printed.assembly.find("adrp x2, :got:external_data_symbol") ==
           std::string::npos ||
@@ -29444,8 +29449,90 @@ int load_global_call_argument_uses_got_for_got_required_global() {
       printed.assembly.find("adrp x2, external_data_symbol") !=
           std::string::npos ||
       printed.assembly.find(":lo12:external_data_symbol") != std::string::npos) {
-    return fail("expected printed GOT-required route to avoid direct external relocation");
+    return fail("expected printed GOT-required route to avoid direct external relocation for " +
+                std::string{scenario});
   }
+  return 0;
+}
+
+int load_global_call_argument_uses_got_for_got_required_global() {
+  return expect_got_required_global_load_call_route(
+      prepared_with_load_global_call_argument(
+          bir::GlobalAddressMaterializationPolicy::GotRequired),
+      "matching Route 3 identity");
+}
+
+int load_global_call_argument_preserves_prepared_got_for_route3_fallbacks() {
+  {
+    auto prepared = prepared_with_load_global_call_argument(
+        bir::GlobalAddressMaterializationPolicy::GotRequired);
+    auto* load = std::get_if<bir::LoadGlobalInst>(
+        &prepared.module.functions.front().blocks.front().insts.front());
+    if (load == nullptr) {
+      return fail("expected fallback fixture to start with a global load");
+    }
+    load->address.reset();
+    if (const int status = expect_got_required_global_load_call_route(
+            std::move(prepared), "absent Route 3 address");
+        status != 0) {
+      return status;
+    }
+  }
+
+  {
+    auto prepared = prepared_with_load_global_call_argument(
+        bir::GlobalAddressMaterializationPolicy::GotRequired);
+    auto* load = std::get_if<bir::LoadGlobalInst>(
+        &prepared.module.functions.front().blocks.front().insts.front());
+    if (load == nullptr || !load->address.has_value()) {
+      return fail("expected fallback fixture to start with an addressed global load");
+    }
+    load->address->base_kind = bir::MemoryAddress::BaseKind::StringConstant;
+    load->address->base_name = ".L.route3.not.global";
+    load->address->base_link_name_id = c4c::kInvalidLinkName;
+    if (const int status = expect_got_required_global_load_call_route(
+            std::move(prepared), "non-global Route 3 base");
+        status != 0) {
+      return status;
+    }
+  }
+
+  {
+    auto prepared = prepared_with_load_global_call_argument(
+        bir::GlobalAddressMaterializationPolicy::GotRequired);
+    auto* load = std::get_if<bir::LoadGlobalInst>(
+        &prepared.module.functions.front().blocks.front().insts.front());
+    if (load == nullptr || !load->address.has_value()) {
+      return fail("expected fallback fixture to start with an addressed global load");
+    }
+    const auto other_global =
+        prepared.module.names.link_names.intern("different_external_data_symbol");
+    load->address->base_name = "different_external_data_symbol";
+    load->address->base_link_name_id = other_global;
+    if (const int status = expect_got_required_global_load_call_route(
+            std::move(prepared), "mismatched Route 3 global symbol");
+        status != 0) {
+      return status;
+    }
+  }
+
+  {
+    auto prepared = prepared_with_load_global_call_argument(
+        bir::GlobalAddressMaterializationPolicy::GotRequired);
+    auto* load = std::get_if<bir::LoadGlobalInst>(
+        &prepared.module.functions.front().blocks.front().insts.front());
+    if (load == nullptr || !load->address.has_value()) {
+      return fail("expected fallback fixture to start with an addressed global load");
+    }
+    load->address->address_space = bir::AddressSpace::Gs;
+    load->address->is_volatile = true;
+    if (const int status = expect_got_required_global_load_call_route(
+            std::move(prepared), "mismatched Route 3 memory flags");
+        status != 0) {
+      return status;
+    }
+  }
+
   return 0;
 }
 
@@ -36046,6 +36133,11 @@ int main() {
   }
   if (const int status =
           load_global_call_argument_uses_got_for_got_required_global();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          load_global_call_argument_preserves_prepared_got_for_route3_fallbacks();
       status != 0) {
     return status;
   }

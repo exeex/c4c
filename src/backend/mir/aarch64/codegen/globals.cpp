@@ -9,6 +9,7 @@
 #include "frame_slot_address.hpp"
 #include "memory.hpp"
 #include "select_materialization.hpp"
+#include "../../query.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,7 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace prepare = c4c::backend::prepare;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
@@ -159,6 +161,50 @@ std::string prefixed_relocation_operand(std::string_view prefix, std::string_vie
              : nullptr;
 }
 
+[[nodiscard]] bool route3_global_load_access_agrees_with_prepared(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::size_t route3_before_instruction_index,
+    const bir::LoadGlobalInst& load_global,
+    const prepare::PreparedSameBlockGlobalLoadAccess& prepared_access,
+    const mir::BirSameBlockGlobalLoadAccessIdentity& route3) {
+  if (context.control_flow_block == nullptr ||
+      prepared_access.access == nullptr ||
+      prepared_access.load_global == nullptr ||
+      prepared_access.access->inst_index >= context.bir_block->insts.size() ||
+      prepared_access.load_global != &load_global ||
+      route3.load_global != &load_global ||
+      route3.producer.inst != &context.bir_block->insts[prepared_access.access->inst_index] ||
+      route3.producer.instruction_index != prepared_access.access->inst_index ||
+      route3.producer.before_instruction_index != route3_before_instruction_index ||
+      route3.memory_access.inst != route3.producer.inst ||
+      route3.memory_access.instruction_index != prepared_access.access->inst_index ||
+      route3.memory_access.node_kind != mir::BirMemoryAccessNodeKind::LoadGlobal ||
+      route3.memory_access.base_kind != mir::BirMemoryAccessBaseKind::GlobalSymbol ||
+      route3.memory_access.block_label != context.bir_block->label ||
+      route3.result_value.name != load_global.result.name ||
+      route3.result_value.type != load_global.result.type ||
+      route3.root_value_name != std::string_view{load_global.result.name} ||
+      route3.root_value_type != load_global.result.type ||
+      route3.before_instruction_index != route3_before_instruction_index ||
+      prepared_access.access->block_label != context.control_flow_block->block_label ||
+      prepared_access.access->result_value_name != prepared_named_value_id(context, load_global.result) ||
+      route3.memory_access.result_value_name != std::string_view{load_global.result.name} ||
+      prepared_access.access->address.base_kind !=
+          prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !prepared_access.access->address.symbol_name.has_value() ||
+      route3.memory_access.global_name_id !=
+          *prepared_access.access->address.symbol_name ||
+      route3.memory_access.address_space != prepared_access.access->address_space ||
+      route3.memory_access.is_volatile != prepared_access.access->is_volatile ||
+      route3.memory_access.byte_offset != prepared_access.access->address.byte_offset ||
+      route3.memory_access.size_bytes != prepared_access.access->address.size_bytes ||
+      route3.memory_access.align_bytes != prepared_access.access->address.align_bytes) {
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] std::optional<prepare::PreparedSameBlockGlobalLoadAccess>
 prepared_current_global_load_access(
     const module::BlockLoweringContext& context,
@@ -172,12 +218,48 @@ prepared_current_global_load_access(
   const auto* addressing =
       prepare::find_prepared_addressing(*context.function.prepared,
                                         context.function.control_flow->function_name);
-  return prepare::find_prepared_global_load_access(
+  auto prepared_access = prepare::find_prepared_global_load_access(
       context.function.prepared->names,
       addressing,
       context.control_flow_block->block_label,
       instruction_index,
       load_global);
+  if (!prepared_access.has_value() ||
+      context.bir_block == nullptr ||
+      load_global.result.kind != bir::Value::Kind::Named ||
+      load_global.result.name.empty()) {
+    return prepared_access;
+  }
+
+  const auto route3_before_instruction_index =
+      instruction_index < context.bir_block->insts.size()
+          ? instruction_index + 1U
+          : instruction_index;
+  const auto route3 =
+      mir::find_bir_same_block_global_load_access_identity(
+          mir::BirSameBlockGlobalLoadAccessRequest{
+              .block = context.bir_block,
+              .block_label = context.bir_block->label,
+              .root_value = &load_global.result,
+              .root_value_name = std::string_view{load_global.result.name},
+              .root_value_type = load_global.result.type,
+              .before_instruction_index = route3_before_instruction_index,
+          });
+  if (!route3 ||
+      !route3_global_load_access_agrees_with_prepared(
+          context,
+          instruction_index,
+          route3_before_instruction_index,
+          load_global,
+          *prepared_access,
+          route3)) {
+    return prepared_access;
+  }
+
+  return prepare::PreparedSameBlockGlobalLoadAccess{
+      .load_global = route3.load_global,
+      .access = prepared_access->access,
+  };
 }
 
 std::string tls_relocation_prefix(prepare::PreparedTlsRelocationKind kind) {
