@@ -8,123 +8,81 @@ Current Step Title: Validate Existing Agreement-Gated Evidence Path
 
 ## Just Finished
 
-Completed Step 1 - Locate The Row Family And Proof Surface.
+Completed Step 2 - Validate Existing Agreement-Gated Evidence Path.
 
-Exact row family:
+Validation result: the existing selected-row implementation satisfies the
+agreement-gated evidence contract; no semantic code defect was found and no
+implementation/test/log file was edited.
 
-- Selected helper-oracle family is the non-compare conditional branch target
-  path in `find_prepared_conditional_branch_facts(...)`, where
-  `has_compare_branch_facts == false`.
-- Current behavior seeds `facts.targets` from
-  `PreparedBranchCondition::{true_label,false_label}`, then if prepared
-  control-flow has a conditional target row it uses
-  `find_prepared_control_flow_branch_target_labels(...)`; if private BIR
-  successor evidence agrees it uses
-  `read_agreeing_bir_branch_target_labels(...)`; otherwise it keeps the
-  prepared control-flow targets.
-- This covers materialized-bool conditional branch rows with no compare
-  predicate/type/lhs/rhs facts, not the fused-compare row and not
-  materialized compare join retargeting.
+Confirmed implementation facts:
 
-Implementation target files:
+- `find_prepared_conditional_branch_facts(...)` seeds
+  `facts.targets` from `PreparedBranchCondition::{true_label,false_label}`
+  before any BIR evidence is considered.
+- The selected row is the non-compare/materialized-bool path where
+  `has_compare_branch_facts == false`; the fused-compare path still exits this
+  row and uses `resolve_prepared_compare_branch_target_labels(...)`.
+- In that selected row, prepared control-flow targets are read with the public
+  two-argument
+  `find_prepared_control_flow_branch_target_labels(function_cf, block_label)`.
+- The row replaces `facts.targets` with BIR structured successor ids only when
+  `prepare::detail::read_agreeing_bir_branch_target_labels(...)` returns
+  labels for `BranchTargetIdentityPassContext{.source_block =
+  context.bir_block}` and those ids agree with the prepared labels.
+- If the private reader returns `std::nullopt`, the selected row keeps the
+  prepared control-flow targets; if no prepared control-flow target row exists,
+  it keeps the original branch-condition target seed.
+- `apply_prepared_conditional_branch_targets(...)` then copies the selected
+  `facts.targets` into the emitted branch record target pair.
 
-- `src/backend/mir/aarch64/codegen/comparison.cpp`: selected consumer row in
-  `find_prepared_conditional_branch_facts(...)`, currently around lines
-  147-169; downstream target application is
-  `apply_prepared_conditional_branch_targets(...)`.
-- `src/backend/prealloc/control_flow.hpp`: helper family definitions,
-  `find_prepared_control_flow_branch_target_labels(...)`,
-  `detail::BranchTargetIdentityPassContext`, and
-  `detail::read_agreeing_bir_branch_target_labels(...)`.
+Confirmed fail-closed boundary:
 
-Relevant callers and surfaces:
+- Absent consumer context (`context.function.prepared == nullptr`,
+  `context.function.bir_function == nullptr`, or `context.bir_block ==
+  nullptr`) returns the prepared branch-condition target seed without entering
+  the BIR reader path.
+- Private absent context, invalid ids, mismatched ids, conflicting structured
+  ids, non-conditional BIR terminators, and non-agreement all fail closed at
+  `read_agreeing_bir_branch_target_labels(...)` by returning `std::nullopt`.
+- The public three-argument helper preserves the prepared fallback when the
+  private reader rejects; the public two-argument prepared helper remains
+  available and is the selected row's prepared target source.
+- Raw BIR label text drift does not override prepared labels when structured
+  ids agree; helper-level coverage already proves this for the reader and
+  three-argument helper.
 
-- `find_prepared_fused_compare_branch_facts(...)` calls
-  `find_prepared_conditional_branch_facts(...)` but only after this row has
-  chosen branch targets.
-- `lower_prepared_conditional_branch_terminator(...)` consumes the facts,
-  validates the raw terminator, and calls
-  `apply_prepared_conditional_branch_targets(...)` before emission.
-- Public prepared helper fallback remains the two-argument
-  `find_prepared_control_flow_branch_target_labels(function_cf, block_label)`;
-  the three-argument overload with `bir::Block` first gets prepared labels and
-  falls back to them if the private agreement reader rejects.
+Step 3 proof additions to make:
 
-Evidence path:
-
-- `BranchTargetIdentityPassContext` currently carries
-  `const bir::Block* source_block`.
-- `read_agreeing_bir_branch_target_labels(...)` returns structured BIR
-  `{true_label_id,false_label_id}` only when the source block exists, the BIR
-  terminator is `CondBranch`, both ids are valid, and both ids equal the
-  prepared labels.
-- Absent context, invalid ids, mismatched ids, and non-conditional BIR all
-  return `std::nullopt`, leaving the caller to preserve prepared fallback.
-
-Existing positive and fallback tests:
-
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`:
-  `verify_control_flow_branch_target_labels_use_agreeing_structured_ids()`
-  covers prepared-only lookup, private absent context rejection, private
-  agreeing structured ids, raw label text drift with agreeing ids, absent
-  prepared block, public three-arg agreeing lookup, public fallback on raw text
-  drift, public fallback on invalid id, public fallback on mismatch, private
-  invalid id rejection, private conflicting id rejection, private
-  non-conditional rejection, public fallback on non-conditional BIR, and
-  invalid prepared source label rejection.
-- `tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp`:
+- Add a focused selected-row AArch64 consumer-boundary test in
+  `tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp` near
   `direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node()`
-  covers the selected non-compare/materialized-bool AArch64 row under normal
-  prepared/BIR agreement.
-- `tests/backend/mir/backend_aarch64_prepared_branch_records_test.cpp`:
-  `conditional_branch_record_preserves_materialized_bool_facts()` covers the
-  record-level target pair for the same materialized-bool branch shape.
-- Nearby same-feature coverage exists for fused/compare branches in
-  `backend_aarch64_branch_control_lowering_test.cpp`
-  (`direct_dispatch_lowers_fused_compare_conditional_branch_to_selected_node()`,
-  `materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback()`) and
-  for compare branch records in
-  `backend_aarch64_prepared_branch_records_test.cpp`
-  (`conditional_branch_record_preserves_fused_compare_facts()`).
-
-Proof gaps before implementation:
-
-- No selected AArch64 consumer-boundary test currently isolates absent
-  `context.bir_block` for this row; helper-level absent context coverage exists
-  only in `backend_prepared_lookup_helper`.
-- No selected AArch64 row test mutates invalid BIR successor ids, mismatched
-  ids, conflicting/duplicate-like ids, or non-conditional BIR and proves the
-  emitted branch payload remains prepared.
-- No selected AArch64 row test proves public two-argument prepared helper
-  fallback is byte-stable after the consumer change.
-- No selected AArch64 row test distinguishes prepared control-flow labels from
-  raw BIR label text while structured ids still agree; helper-level proof
-  exists, but row-level output proof is missing.
-- Duplicate/conflict coverage is represented by a private conflicting-id case;
-  there is no richer duplicate-row source for this helper because the context
-  is a single `bir::Block*` rather than an indexed multi-record table.
-- Nearby same-feature coverage exists, but Step 3 should add at least one
-  focused selected-row fallback matrix test so progress is not only inferred
-  from helper-unit coverage plus normal dispatch.
-
-Lifecycle repair:
-
-- The active plan was repaired after Step 1 found that the selected row already
-  calls `prepare::detail::read_agreeing_bir_branch_target_labels(...)`.
-- The former Step 2 implementation packet was stale/no-op and is now replaced
-  by validation of the existing agreement-gated path.
-- Remaining work is selected-row fallback and nearby same-feature proof, not
-  adding an already-present evidence path.
+  that mutates `prepared_with_materialized_bool_conditional_branch()` so BIR
+  raw `true_label`/`false_label` text drifts while structured successor ids
+  still agree, then asserts the emitted selected branch payload and block
+  successors preserve the prepared `block_cf.true_label` and
+  `block_cf.false_label`.
+- Add a focused selected-row fallback matrix test in the same file, reusing the
+  materialized-bool fixture, that proves prepared branch payloads are retained
+  for at least invalid structured successor id, mismatched id, conflicting
+  structured ids, and non-conditional BIR terminator cases. The helper-level
+  absent-context rejection is already covered; consumer-level absent
+  `context.bir_block` is not naturally reachable through
+  `dispatch_prepared_block(...)` without lower-level context construction, so
+  include it only if Step 3 introduces a small local lowering helper.
+- Keep nearby same-feature proof mapped to existing tests:
+  `direct_dispatch_lowers_fusable_compare_branch_to_selected_node()`,
+  `materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback()`,
+  `direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids()`,
+  and
+  `tests/backend/mir/backend_aarch64_prepared_branch_records_test.cpp`'s
+  `conditional_branch_record_preserves_fused_compare_facts()`.
 
 ## Suggested Next
 
-Step 2 should validate that the existing selected non-compare/materialized-bool
-conditional branch row already consumes the private
-`BranchTargetIdentityPassContext` /
-`read_agreeing_bir_branch_target_labels(...)` path exactly under prepared
-agreement, then name the focused selected-row fallback proof to add in Step 3.
-Do not perform a no-op implementation change for the already-present reader
-call. Suggested narrow proof command if the supervisor delegates execution:
+Step 3 should add selected-row proof only: raw label text drift with agreeing
+structured ids, plus a fallback matrix for invalid id, mismatch, conflict, and
+non-conditional BIR on the materialized-bool AArch64 consumer row. Suggested
+narrow proof command if the supervisor delegates execution:
 
 `cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_branch_control_lowering_test backend_aarch64_prepared_branch_records_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering|backend_aarch64_prepared_branch_records)$' --output-on-failure`
 
@@ -139,6 +97,8 @@ call. Suggested narrow proof command if the supervisor delegates execution:
   requests a separate indexed-context design.
 - Preserve prepared fallback for absent context, invalid ids, conflict,
   mismatch, non-conditional BIR, non-agreement, and prepared-only paths.
+- Do not add code for the agreement reader path in Step 3; Step 2 validated it
+  is already present.
 - Do not rewrite expected strings, baselines, wrapper output, printer/debug
   output, branch-control output, branch spelling, edge-copy scheduling, target
   policy, or emitted-output behavior.
@@ -146,6 +106,9 @@ call. Suggested narrow proof command if the supervisor delegates execution:
 
 ## Proof
 
-Discovery-only lifecycle packet. No build/test required by the delegated
-packet. Ran symbol/text inspection only; `git diff --check -- todo.md` and
-`git status --short` are the local proof commands for this packet.
+Validation/discovery lifecycle packet. No build/test required by the delegated
+packet. Ran AST-backed symbol inspection with `c4c-clang-tool-ccdb` plus
+focused source/test inspection. Local proof commands for this packet:
+
+- `git diff --check -- todo.md`
+- `git status --short`
