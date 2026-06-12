@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Read Inputs and Anchor E2 Scope
+Current Step ID: 2
+Current Step Title: Inventory Public Consumers by Candidate Surface
 
 # Current Packet
 
