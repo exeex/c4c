@@ -101,3 +101,29 @@ consumer or identity helper before code changes.
   masking, or expected-string rewrites as evidence.
 - Reject preserving prepared-only behavior behind a route-named facade without
   actually replacing one duplicate semantic identity read.
+
+## Closure Note
+
+Closed after the selected-helper runbook completed for Route 7 comparison
+provenance: AArch64
+`find_prepared_fused_compare_operand_producer_facts(...)`, consumed by
+`lower_prepared_conditional_branch_terminator(...)`.
+
+The completed slice added a Route 7/prepared agreement gate in
+`src/backend/mir/aarch64/codegen/comparison.cpp` while preserving prepared
+fallback and output authority for non-agreement paths. It did not open broad
+Route 1 through Route 7 migration, generic route facades, aggregate route view
+replacement, prepared aggregate retirement, target-policy movement, wrapper or
+printer/debug changes, helper-oracle changes, or expected-string rewrites.
+
+Closure proof recorded in `todo.md`:
+
+- focused selected-helper proof passed 2/2;
+- close-time regression guard passed with `--allow-non-decreasing-passed`,
+  before 2/2 and after 2/2 with no new failures;
+- broader `^backend_` subset passed 180/180 after the code slice.
+
+Residual route identity helper candidates named by this idea remain outside
+this closed one-helper source scope. Any further route identity helper
+contraction should be opened or activated as a separate lifecycle initiative
+rather than silently extending this completed runbook.
