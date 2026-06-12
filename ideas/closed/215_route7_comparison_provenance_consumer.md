@@ -53,3 +53,23 @@ for branch behavior and output.
 - Reject moving AArch64 branch policy into Route 7.
 - Reject preserving the old prepared/generic fallback behavior under a new
   route-provenance facade.
+
+## Closure Note
+
+Closed on 2026-06-12 after active Route 7 execution completed all runbook
+steps and acceptance review
+`review/215_route7_comparison_provenance_acceptance_review.md` reported no
+blocking findings. The accepted implementation moved exactly one consumer,
+`lower_materialized_compare_condition_branch`, to Route 7 route/prepared/BIR
+agreement while preserving prepared/AArch64 authority for branch behavior and
+expected-string output.
+
+Close proof used matching canonical logs for:
+
+```sh
+ctest --test-dir build -R '^(backend_aarch64_branch_control_lowering|backend_prepared_lookup_helper|backend_aarch64_machine_printer)$' --output-on-failure
+```
+
+`test_before.log` and `test_after.log` both recorded 3/3 passing tests, and the
+regression guard passed with non-decreasing allowance. No follow-up split is
+needed for this source idea.
