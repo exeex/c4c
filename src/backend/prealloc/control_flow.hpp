@@ -802,9 +802,13 @@ resolve_prepared_bir_link_name_ref(PreparedNameTables& names,
   if (display_name.empty()) {
     return std::nullopt;
   }
+  const LinkNameId prepared_name_id = names.link_names.intern(display_name);
+  if (prepared_name_id == kInvalidLinkName) {
+    return std::nullopt;
+  }
   return PreparedSameModuleGlobalRef{
-      .name = display_name,
-      .name_id = kInvalidLinkName,
+      .name = prepared_link_name(names, prepared_name_id),
+      .name_id = prepared_name_id,
   };
 }
 
