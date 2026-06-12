@@ -8,59 +8,57 @@ Current Step Title: Broader Validation And Closeout Readiness
 
 ## Just Finished
 
-Completed Step 4 - Add Focused Agreement And Fallback Proof by extending
-`verify_control_flow_branch_target_labels_use_agreeing_structured_ids()` in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+Completed Step 5 - Broader Validation And Closeout Readiness.
 
-Covered private boundary cases:
+The completed slice contracted the control-flow branch-target helper family by
+moving only the agreement-proven BIR structured successor label read behind the
+private pass-context boundary:
 
-- positive agreement through
-  `prepare::detail::BranchTargetIdentityPassContext` and
-  `prepare::detail::read_agreeing_bir_branch_target_labels(...)`
-- absent BIR context rejection
-- raw label spelling drift with agreeing structured IDs still accepted
-- invalid structured ID rejection
-- conflicting/mismatched structured ID rejection
-- non-conditional BIR terminator rejection
+- `prepare::detail::BranchTargetIdentityPassContext`
+- `prepare::detail::read_agreeing_bir_branch_target_labels(...)`
 
-Retained public fallback coverage in the same focused test:
+Consumer accounting is closed for this runbook:
 
-- prepared-only target lookup still succeeds
-- absent prepared block still fails closed
-- agreeing BIR IDs still return the expected targets through the public helper
-- raw BIR spelling drift, invalid IDs, mismatched IDs, and non-conditional BIR
-  terminators preserve prepared fallback
-- invalid prepared source labels still fail closed
+- the public control-flow helper still attempts prepared lookup first and
+  preserves prepared fallback for absent prepared blocks, invalid structured
+  IDs, mismatches, non-conditional BIR terminators, and non-agreement paths
+- the AArch64 compare consumer now uses the private boundary only after its
+  prepared fallback lookup
+- prepared printer/debug behavior and helper-oracle coverage remain on the
+  retained prepared surface
+- focused tests cover positive private agreement plus absent context, invalid
+  IDs, conflict/mismatch, raw-label drift with agreeing IDs, non-conditional
+  rejection, and same-feature public fallback behavior
 
-No helper-oracle statuses/strings, supported-path statuses, expected strings,
-printer/debug output, wrapper output, or unrelated backend code were changed.
+Closeout guardrails held: no aggregate `PreparedControlFlow`,
+`PreparedFunctionLookups`, or `PreparedBirModule` retirement entered this slice;
+no E3, E4, Route 8, draft 155, or E5 work entered this slice; no unsupported
+downgrades, expected-string rewrites, prepared printer/debug changes, wrapper
+changes, helper-oracle weakening, baseline refreshes, or output-policy changes
+were used.
 
 ## Suggested Next
 
-Proceed to Step 5: close out the private pass-context branch-target helper
-slice, including any final lifecycle handoff or review the supervisor requests.
+Ready for plan-owner completion judgment on the active control-flow
+branch-target helper plan.
 
 ## Watchouts
 
-- Step 5 should remain a closeout/lifecycle handoff for this idea, not aggregate
-  API retirement or facade reshaping.
-- Keep the compare resolver policy byte-stable; it is intentionally retained
-  on the public/prepared surface.
-- Keep prepared printer/debug rows, x86 joined-branch wrapper outputs,
-  helper-oracle strings/statuses, and expected strings byte-stable.
-- The focused Step 4 proof directly covers private agreement plus absent,
-  invalid-id, conflict/mismatch, non-conditional, and same-feature public
-  fallback behavior.
+Plan-owner close review should treat aggregate API retirement, facade
+reshaping, E3/E4/Route 8/draft 155/E5 work, and any output-contract changes as
+separate future initiatives, not implicit leftovers from this plan.
 
 ## Proof
 
 Supervisor-selected proof command ran exactly:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering' > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` records 2/2 passing:
+Result: passed. `test_after.log` records 180/180 backend tests passing.
 
-- `backend_aarch64_branch_control_lowering`
-- `backend_prepared_lookup_helper`
+The delegated broader backend proof is sufficient for Step 5 closeout
+readiness because it rebuilt the tree and exercised all `backend_` tests after
+the narrow helper-family implementation and focused fallback coverage had
+already passed.
