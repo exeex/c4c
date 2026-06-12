@@ -436,7 +436,9 @@ int check_current_block_entry_publication_query() {
               "current-block entry publication query should resolve BIR named values") ||
       !expect(by_bir_value.destination_value_id == prepare::PreparedValueId{1} &&
                   by_bir_value.destination_value_name == published_value_name,
-              "BIR value query should preserve resolved prepared value identity")) {
+              "BIR value query should preserve resolved prepared value identity") ||
+      !expect(!by_bir_value.route4_block_entry_publication_attributed,
+              "current-block entry publication should not claim Route 4 attribution without route evidence")) {
     return 1;
   }
 
@@ -474,12 +476,45 @@ int check_current_block_entry_publication_query() {
       },
   });
 
+  const auto& published_phi =
+      std::get<bir::PhiInst>(successor.insts.front()).result;
+  const prepare::PreparedCurrentBlockEntryPublicationQueryInputs route4_query{
+      .names = &names,
+      .value_locations = &fixture.locations,
+      .value_home_lookups = &named_value_home_lookups,
+      .successor_label = fixture.successor_label,
+      .route4_successor_block = &successor,
+      .route4_destination_value = &published_phi,
+  };
+  const auto route4_attributed =
+      prepare::find_prepared_current_block_entry_publication(
+          route4_query, bir::Value::named(bir::TypeKind::I32, "%published"));
+  if (!expect(route4_attributed.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "Route 4 agreement should preserve prepared availability") ||
+      !expect(route4_attributed.route4_block_entry_publication_attributed,
+              "agreeing Route 4 evidence should attribute the available block-entry publication") ||
+      !expect(route4_attributed.route4_block_entry_publication_status ==
+                  bir::RouteIndexValidationStatus::Valid,
+              "agreeing Route 4 block-entry publication should validate through the route index") ||
+      !expect(route4_attributed.route4_block_entry_publication_route_status ==
+                  bir::Route4PublicationAvailabilityStatus::Available,
+              "agreeing Route 4 block-entry publication should preserve route availability") ||
+      !expect(route4_attributed.route4_block_entry_publication_instruction_index ==
+                  std::size_t{0},
+              "Route 4 attribution should preserve the PHI instruction index") ||
+      !expect(route4_attributed.publication.destination_register_name ==
+                  std::optional<std::string>{"r9"},
+              "Route 4 attribution should not rewrite prepared register spelling")) {
+    return 1;
+  }
+
   const auto bir_available = mir::find_bir_block_entry_publication_identity(
       mir::BirBlockEntryPublicationIdentityRequest{
           .successor_block = &successor,
           .successor_label = successor.label,
           .successor_label_id = fixture.successor_label,
-          .destination_value = &std::get<bir::PhiInst>(successor.insts.front()).result,
+          .destination_value = &published_phi,
           .destination_value_id = by_bir_value.destination_value_id,
           .destination_value_name = "%published",
           .destination_value_name_id = by_bir_value.destination_value_name,
@@ -500,6 +535,25 @@ int check_current_block_entry_publication_query() {
   bir::Block no_phi_successor;
   no_phi_successor.label = "successor";
   no_phi_successor.label_id = fixture.successor_label;
+  const prepare::PreparedCurrentBlockEntryPublicationQueryInputs missing_route4_query{
+      .names = &names,
+      .value_locations = &fixture.locations,
+      .value_home_lookups = &named_value_home_lookups,
+      .successor_label = fixture.successor_label,
+      .route4_successor_block = &no_phi_successor,
+      .route4_destination_value = &published_phi,
+  };
+  const auto missing_route4_attribution =
+      prepare::find_prepared_current_block_entry_publication(
+          missing_route4_query, bir::Value::named(bir::TypeKind::I32, "%published"));
+  if (!expect(missing_route4_attribution.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "missing Route 4 evidence should preserve prepared availability") ||
+      !expect(!missing_route4_attribution.route4_block_entry_publication_attributed,
+              "missing Route 4 evidence should fall back without attribution")) {
+    return 1;
+  }
+
   const auto bir_missing_fallback_phi =
       mir::find_bir_block_entry_publication_identity(
           mir::BirBlockEntryPublicationIdentityRequest{
@@ -520,6 +574,30 @@ int check_current_block_entry_publication_query() {
                   bir_missing_fallback_phi.status ==
                       mir::BirBlockEntryPublicationStatus::MissingPublication,
               "prepared home/register readiness should not imply BIR PHI-entry identity")) {
+    return 1;
+  }
+
+  const auto& stack_phi =
+      std::get<bir::PhiInst>(successor.insts[1]).result;
+  const prepare::PreparedCurrentBlockEntryPublicationQueryInputs mismatched_route4_query{
+      .names = &names,
+      .value_locations = &fixture.locations,
+      .value_home_lookups = &named_value_home_lookups,
+      .successor_label = fixture.successor_label,
+      .route4_successor_block = &successor,
+      .route4_destination_value = &stack_phi,
+  };
+  const auto mismatched_route4_attribution =
+      prepare::find_prepared_current_block_entry_publication(
+          mismatched_route4_query, bir::Value::named(bir::TypeKind::I32, "%published"));
+  if (!expect(mismatched_route4_attribution.status ==
+                  prepare::PreparedCurrentBlockEntryPublicationStatus::Available,
+              "mismatched Route 4 evidence should preserve prepared availability") ||
+      !expect(!mismatched_route4_attribution.route4_block_entry_publication_attributed,
+              "mismatched Route 4 destination evidence should fall back without attribution") ||
+      !expect(mismatched_route4_attribution.route4_block_entry_publication_status ==
+                  bir::RouteIndexValidationStatus::Valid,
+              "mismatched Route 4 evidence should still record the validated route fact")) {
     return 1;
   }
 

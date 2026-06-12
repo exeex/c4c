@@ -249,6 +249,8 @@ struct PreparedCurrentBlockEntryPublicationQueryInputs {
   const PreparedValueLocationFunction* value_locations = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   BlockLabelId successor_label = kInvalidBlockLabel;
+  const bir::Block* route4_successor_block = nullptr;
+  const bir::Value* route4_destination_value = nullptr;
 };
 
 struct PreparedCurrentBlockEntryPublication {
@@ -258,6 +260,12 @@ struct PreparedCurrentBlockEntryPublication {
   const PreparedValueHome* destination_home = nullptr;
   PreparedValueId destination_value_id = 0;
   ValueNameId destination_value_name = kInvalidValueName;
+  bool route4_block_entry_publication_attributed = false;
+  bir::RouteIndexValidationStatus route4_block_entry_publication_status =
+      bir::RouteIndexValidationStatus::MissingRecord;
+  bir::Route4PublicationAvailabilityStatus route4_block_entry_publication_route_status =
+      bir::Route4PublicationAvailabilityStatus::MissingPublication;
+  std::size_t route4_block_entry_publication_instruction_index = 0;
 };
 
 struct PreparedValueLocations {
