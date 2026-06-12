@@ -1,6 +1,6 @@
 # Phase E3 Prepared Diagnostic/Oracle Replacement Readiness
 
-Status: Step 3 durable readiness document drafted.
+Status: Step 4 accepted follow-up source ideas created.
 
 Source idea:
 `ideas/open/226_phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
@@ -58,8 +58,8 @@ masking, or section-label matching are not E3 replacement evidence.
 
 ## Accepted Follow-Up Implementation Candidates
 
-E3 accepts the following candidates for later source-idea drafting. Step 3 does
-not create those ideas and does not start implementation.
+E3 accepts the following candidates for later source-idea drafting. Step 4
+created the linked source ideas without activating or implementing them.
 
 | Accepted candidate | Scoped row or row family | Positive owner | Required proof before ownership can change |
 | --- | --- | --- | --- |
@@ -70,6 +70,16 @@ not create those ideas and does not start implementation.
 | Route 5 current-block join-source helper-oracle row | One current-block join-source helper-oracle row. | Route 5 current-block join-source metadata after prepared edge/join agreement. | Positive helper-oracle row, absent, invalid, duplicate/conflicting, memory-source, mismatch, unsupported, branch/parallel-copy fallback, prepared-printer retention, wrapper no-change, unchanged helper-oracle strings, expected strings, and no edge-publication, move-bundle, or prepared-printer migration. |
 | Route 6 x86 scalar `i32` argument-source route-debug row | One x86 scalar argument-source route-debug row. | Route 6 scalar argument-source agreement while retaining `ConsumedPlans`. | Positive row, absent, invalid, duplicate/conflict, mismatch, compatibility with `ConsumedPlans`, unchanged ABI/call wrapper behavior, prepared call printer/debug, direct-call/helper-oracle families, wrappers, and expected strings. |
 | Route 7 materialized-condition helper-oracle row | One materialized-condition helper-oracle row in `verify_prepared_bir_comparison_condition_producer_equivalence`. | Route 7 comparison evidence under prepared agreement. | Positive materialized-condition row, absent-route, invalid-reference, duplicate/conflict, mismatch, unfused fallback, prepared fallback, unchanged oracle assertion strength, branch-control output, wrappers, final assembler behavior, helper-oracle strings, and expected strings. |
+
+Accepted source ideas:
+
+- [Branch-target helper-oracle follow-up](../../ideas/open/227_phase_e3_branch_target_helper_oracle_follow_up.md)
+- [Fused-compare operand-producer helper-oracle follow-up](../../ideas/open/228_phase_e3_fused_compare_operand_producer_helper_oracle_follow_up.md)
+- [Route 3 memory/source stored-value helper-oracle follow-up](../../ideas/open/229_phase_e3_route3_memory_source_stored_value_helper_oracle_follow_up.md)
+- [Route 4 block-entry publication printer/debug follow-up](../../ideas/open/230_phase_e3_route4_block_entry_publication_printer_debug_follow_up.md)
+- [Route 5 current-block join-source helper-oracle follow-up](../../ideas/open/231_phase_e3_route5_current_block_join_source_helper_oracle_follow_up.md)
+- [Route 6 x86 scalar `i32` argument-source route-debug follow-up](../../ideas/open/232_phase_e3_route6_x86_scalar_i32_argument_source_route_debug_follow_up.md)
+- [Route 7 materialized-condition helper-oracle follow-up](../../ideas/open/233_phase_e3_route7_materialized_condition_helper_oracle_follow_up.md)
 
 No accepted E3 follow-up may use a baseline refresh, expected-string rewrite,
 helper rename, unsupported downgrade, timeout mask, section relabel, or broad

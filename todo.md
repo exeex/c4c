@@ -1,20 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/226_phase_e3_prepared_diagnostic_oracle_replacement_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Draft The E3 Readiness Document
+Current Step ID: 4
+Current Step Title: Create Accepted Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 - Draft The E3 Readiness Document correction for Phase E3.
-The durable readiness analysis at
+Completed Step 4 - Create Accepted Follow-Up Ideas for Phase E3. The durable
+readiness analysis at
 `docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
-now narrows the Route 5 accepted candidate to one current-block join-source
-helper-oracle row. The adjacent prepared printer row is recorded as
-retained/deferred authority unless a future separate idea names it exactly. No
-follow-up ideas, source ideas, implementation files, tests, baselines,
+now links exactly seven accepted follow-up source ideas:
+`ideas/open/227_phase_e3_branch_target_helper_oracle_follow_up.md`,
+`ideas/open/228_phase_e3_fused_compare_operand_producer_helper_oracle_follow_up.md`,
+`ideas/open/229_phase_e3_route3_memory_source_stored_value_helper_oracle_follow_up.md`,
+`ideas/open/230_phase_e3_route4_block_entry_publication_printer_debug_follow_up.md`,
+`ideas/open/231_phase_e3_route5_current_block_join_source_helper_oracle_follow_up.md`,
+`ideas/open/232_phase_e3_route6_x86_scalar_i32_argument_source_route_debug_follow_up.md`,
+and
+`ideas/open/233_phase_e3_route7_materialized_condition_helper_oracle_follow_up.md`.
+Each idea is scoped to the accepted row or row family, preserves retained
+prepared fallback/oracle or target authority, and includes reviewer reject
+signals against testcase-shaped shortcuts, expectation rewrites, unsupported
+downgrades, broad replacements, and target-policy migration. No follow-up was
+activated or implemented, and no implementation files, tests, baselines,
 expected strings, or logs were changed.
 
 ## Evidence Inventory
@@ -62,26 +72,25 @@ expected strings, or logs were changed.
 
 ## Suggested Next
 
-Proceed to Step 4 - Create Accepted Follow-Up Ideas. Draft only the accepted
-one-row or tightly scoped row-family follow-up ideas listed in
-`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`,
-without activating or implementing any follow-up and without mutating
-baselines, expected strings, logs, tests, or implementation files.
+Proceed to Step 5 - Closeout Review. Re-read the source idea and verify the E3
+output contract is satisfied by the readiness document plus the seven linked
+follow-up source ideas. Check the diff for accidental implementation,
+baseline, expected-string, unsupported-path, target-policy, or broad
+replacement changes before handing the active plan to closure review.
 
 ## Watchouts
 
 - E3 remains analysis-only until separate lifecycle work activates a specific
   implementation idea.
-- The durable document accepts seven follow-up candidates for later drafting:
-  branch-target helper-oracle, fused-compare operand-producer helper-oracle,
-  Route 3 memory/source helper-oracle, Route 4 block-entry publication
-  printer/debug, Route 5 current-block join-source helper-oracle,
-  Route 6 x86 scalar source route-debug, and Route 7 materialized-condition
-  helper-oracle.
-- Accepted candidates are draft-readiness only; they do not authorize
-  implementation, baseline refresh, expected-string rewrite, unsupported
-  downgrade, helper rename, broad diagnostic/oracle replacement, or target
-  policy movement.
+- The seven accepted follow-up ideas remain inactive open ideas. A separate
+  lifecycle transition is required before any implementation begins.
+- The Route 5 follow-up is only the current-block join-source helper-oracle row.
+  There is no either/or prepared-printer idea, and the adjacent prepared
+  printer row remains retained/deferred unless a future separate idea names it
+  exactly.
+- The accepted ideas do not authorize implementation, baseline refresh,
+  expected-string rewrite, unsupported downgrade, helper rename, broad
+  diagnostic/oracle replacement, or target-policy movement.
 - Proof-harness rows must not be promoted into branch-control, machine-printer,
   wrapper, or emitted-output ownership without a separate one-row idea.
 - Draft 155/E5, Route 8, aggregate `PreparedBirModule`,
@@ -90,8 +99,10 @@ baselines, expected strings, logs, tests, or implementation files.
 
 ## Proof
 
-Analysis-only docs/lifecycle packet; no build or test required by supervisor.
-Delegated proof run and passed:
-`git diff --check -- docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md todo.md`.
-Final status check run: `git status --short` reported `M todo.md` and
-`?? docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`.
+Analysis-only lifecycle packet; no build or test required by supervisor.
+Required Step 4 proof run and passed:
+`git diff --check -- docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md todo.md ideas/open`.
+Final status check run: `git status --short` reported modified
+`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
+and `todo.md`, plus the seven new accepted follow-up ideas under
+`ideas/open/227` through `ideas/open/233`.
