@@ -8,19 +8,18 @@ Current Step Title: Close Out E2 Analysis
 
 ## Just Finished
 
-Completed plan.md Step 4: created the two accepted follow-up implementation
-ideas for the only Step 3 ready-to-draft helper families and linked them from
-`docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`.
+Completed plan.md Step 5: finalized the E2 durable analysis document for
+lifecycle closure review without claiming implementation progress.
 
-New follow-up ideas:
-
-- `ideas/open/224_phase_e2_control_flow_branch_target_helper_private_pass_context.md`
-- `ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md`
+The document now maps the source idea expected output to the durable E2
+analysis payload, candidate readiness table, accepted follow-up ideas,
+no-action decisions, deferrals, proof requirements, and unopened draft 155 /
+E5 and aggregate `PreparedFunctionLookups` retirement statement.
 
 ## Suggested Next
 
-Start plan.md Step 5: close out the E2 analysis document and prepare lifecycle
-closure review without claiming implementation progress.
+Ask the plan owner to perform lifecycle closure review for
+`ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md`.
 
 ## Watchouts
 
@@ -38,17 +37,20 @@ closure review without claiming implementation progress.
   not ready for direct E2 contraction.
 - Draft 155 / E5 and aggregate `PreparedFunctionLookups` retirement remain
   unopened.
+- The active lifecycle state is ready for plan-owner closure review, not for
+  an implementation-progress claim.
 
 ## Proof
 
-Docs-only Step 4 packet. No build, ctest, or root-level log was required or
-run. Proof is document/source-idea completeness:
+Docs-only Step 5 packet. No build, ctest, or root-level log was required or
+run. Proof is E2 document completeness against the source idea expected output:
 
-- both new follow-up ideas are under `ideas/open/` and each is scoped to one
-  helper family;
-- each idea names the proven BIR/route semantic owner, retained prepared
-  fallback/policy/oracle, public consumers still present, and proof required
-  before privatization or deletion can be claimed;
-- each idea includes concrete reviewer reject signals;
-- the E2 durable document links both ideas and states that all other candidate
-  surfaces remain retained, deferred, or no-action.
+- the durable analysis link, candidate-by-candidate readiness table, accepted
+  follow-up ideas, explicit no-action decisions, deferrals, proof
+  requirements, and unopened E5/draft 155 statement are present;
+- no implementation edits, expected-string rewrites, baseline refreshes,
+  unsupported downgrades, facade renames, wrapper moves, construction
+  reshuffles, or aggregate hiding were used as proof;
+- `docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`
+  states that the active E2 lifecycle state is ready for plan-owner closure
+  review without claiming implementation progress.

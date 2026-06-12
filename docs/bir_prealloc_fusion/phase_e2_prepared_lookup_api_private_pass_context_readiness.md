@@ -1,6 +1,6 @@
 # Phase E2 Prepared Lookup API Private Pass-Context Readiness
 
-Status: Step 4 accepted follow-up ideas complete.
+Status: Step 5 complete; ready for lifecycle closure review.
 
 Source idea:
 `ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md`
@@ -114,6 +114,18 @@ E3, E4, Route 8, and E5 remain separate owner lines:
   follow-up. If it depends on return-chain ownership or broad prepared
   retirement, it is outside E2 and defers to Route 8 or E5 respectively.
 
+## Step 1 Completion Check
+
+- All required source idea, Phase E0, Phase E1, D2, ownership-map, header,
+  baseline, and local hook-state inputs were inspected.
+- The two closed E1 helpers are recorded as selected-helper proof only, not as
+  proof of whole lookup-group deletion, aggregate construction retirement, or
+  fallback/oracle privatization.
+- Aggregate lookup construction, public fallback/oracle APIs, E3, E4, Route 8,
+  E5, and draft 155 are explicitly outside E2 implementation scope.
+- The candidate list covers the surfaces named by the source idea and leaves
+  consumer inventory and readiness classification for later steps.
+
 ## Step 2 Consumer Inventory
 
 Step 2 inventories current public consumers only. It deliberately does not
@@ -221,14 +233,30 @@ deferred-owner decisions.
 - No implementation file was changed, and no follow-up idea claims aggregate
   lookup construction, draft 155, or E5 readiness.
 
-## Step 1 Completion Check
+## Step 5 Closure Review Payload
 
-- All required source idea, Phase E0, Phase E1, D2, ownership-map, header,
-  baseline, and local hook-state inputs were inspected.
-- The two closed E1 helpers are recorded as selected-helper proof only, not as
-  proof of whole lookup-group deletion, aggregate construction retirement, or
-  fallback/oracle privatization.
-- Aggregate lookup construction, public fallback/oracle APIs, E3, E4, Route 8,
-  E5, and draft 155 are explicitly outside E2 implementation scope.
-- The candidate list covers the surfaces named by the source idea and leaves
-  consumer inventory and readiness classification for later steps.
+The source idea's expected output is represented by this document and the two
+accepted follow-up ideas:
+
+| Expected closure item | E2 output location |
+| --- | --- |
+| Link to durable analysis payload | This file: `docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`. |
+| Candidate-by-candidate readiness table for all E2 surfaces | `Step 3 Readiness Classification` covers `call_plans`, `memory_accesses`, `edge_publications`, `edge_publication_source_producers`, mixed Route 1/2/5/6/7 source-producer/printer/oracle rows, identity-only `move_bundles`, identity-only `value_homes`, the two proven E1 helpers, and aggregate lookup construction/delivery. |
+| Accepted implementation follow-up ideas | `ideas/open/224_phase_e2_control_flow_branch_target_helper_private_pass_context.md` and `ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md`; both are listed in `Step 4 Accepted Follow-Up Ideas`. |
+| Explicit no-action decisions | Step 3 and Step 4 record no action for aggregate lookup construction, aggregate `PreparedFunctionLookups` retirement, broad lookup-group contraction, target-policy/fallback/oracle surfaces, draft 155, and E5. |
+| Deferrals outside E2 ownership | Step 3 defers named surfaces to E1, E3, E4, Route 8, or E5 where E2 is not the correct owner. |
+| Proof requirements for accepted implementation ideas | Step 4 records positive, absent, invalid, duplicate/conflict, mismatch, public-consumer, fallback/policy, printer/debug, wrapper, oracle, expected-string, and nearby same-feature proof requirements for both accepted helper-family ideas. |
+| Unopened draft 155 / E5 and aggregate retirement statement | Step 1, Step 3, and Step 4 state that draft 155 / E5 and aggregate `PreparedFunctionLookups` retirement remain unopened. |
+
+Step 5 uses document completeness against the source idea as proof. No
+implementation edits, expected-string rewrites, baseline refreshes,
+unsupported downgrades, facade renames, wrapper moves, construction reshuffles,
+or aggregate hiding were used as evidence for E2 closure.
+
+## Step 5 Completion Check
+
+- The linkable analysis payload, candidate readiness table, accepted follow-up
+  ideas, no-action decisions, deferrals, proof requirements, and unopened
+  E5/draft 155 statement are present.
+- The active E2 lifecycle state is ready for plan-owner closure review without
+  claiming implementation progress.
