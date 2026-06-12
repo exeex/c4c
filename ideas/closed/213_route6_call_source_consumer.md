@@ -52,3 +52,29 @@ layout, helper, storage, movement, and final call behavior.
   route/prepared agreement for the named consumer.
 - Reject preserving the old prepared-only behavior behind a route-named access
   path.
+
+## Closure Note
+
+Closed after acceptance review in
+`review/213_route6_call_source_consumer_acceptance_review.md`.
+
+The selected consumer was the primary non-`result_lanes_only` AArch64
+call-result source-register publication. The implementation supplies Route 6
+evidence only under route/prepared agreement and preserves prepared fallback
+for missing, invalid, duplicate/conflicting, and mismatched facts. ABI,
+wrapper, aggregate transport, final call records, printer behavior, storage,
+movement, and emitted behavior remain prepared or target-owned.
+
+Regression guard used the available matching `test_before.log` and
+`test_after.log` four-test backend proof. The strict-increase checker reported
+no new failures but rejected equal pass count; the lifecycle-only close gate
+was accepted with the documented non-decreasing allowance:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Residual note: x86 route-debug byte-stability was unavailable in this build
+because `C4C_ENABLE_X86_BACKEND_TESTS:BOOL=OFF`; no x86 proof was claimed, and
+the acceptance review treated this as a non-blocking proof limitation because
+the slice did not touch x86 files or expected strings.
