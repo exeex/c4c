@@ -2118,6 +2118,14 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
     return fail("control-flow target helper missed prepared-only successor ids");
   }
 
+  const auto private_absent_context_labels =
+      prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{},
+          *prepared_only_labels);
+  if (private_absent_context_labels.has_value()) {
+    return fail("private branch-target identity should reject absent BIR context");
+  }
+
   bir::Block source_block;
   source_block.label = "raw.branch.entry";
   source_block.label_id = entry_label;
@@ -2128,6 +2136,30 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
       .true_label_id = true_label,
       .false_label_id = false_label,
   };
+
+  const auto private_agreeing_labels =
+      prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{.source_block = &source_block},
+          *prepared_only_labels);
+  if (!private_agreeing_labels.has_value() ||
+      private_agreeing_labels->true_label != true_label ||
+      private_agreeing_labels->false_label != false_label) {
+    return fail("private branch-target identity missed agreeing structured successor ids");
+  }
+
+  auto private_raw_name_drift_block = source_block;
+  private_raw_name_drift_block.terminator.true_label = "raw.branch.other";
+  private_raw_name_drift_block.terminator.false_label = "raw.branch.other";
+  const auto private_raw_name_drift_labels =
+      prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{
+              .source_block = &private_raw_name_drift_block},
+          *prepared_only_labels);
+  if (!private_raw_name_drift_labels.has_value() ||
+      private_raw_name_drift_labels->true_label != true_label ||
+      private_raw_name_drift_labels->false_label != false_label) {
+    return fail("private branch-target identity should trust agreeing structured ids over raw labels");
+  }
 
   if (prepare::find_prepared_control_flow_branch_target_labels(
           control_flow, other_label, source_block)
@@ -2170,11 +2202,40 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
     return fail("control-flow target helper did not preserve prepared fallback on id mismatch");
   }
 
+  auto private_invalid_id_block = source_block;
+  private_invalid_id_block.terminator.false_label_id = c4c::kInvalidBlockLabel;
+  if (prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{
+              .source_block = &private_invalid_id_block},
+          *prepared_only_labels)
+          .has_value()) {
+    return fail("private branch-target identity should reject invalid structured ids");
+  }
+
+  auto private_conflict_block = source_block;
+  private_conflict_block.terminator.true_label_id = other_label;
+  private_conflict_block.terminator.false_label_id = true_label;
+  if (prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{
+              .source_block = &private_conflict_block},
+          *prepared_only_labels)
+          .has_value()) {
+    return fail("private branch-target identity should reject conflicting structured ids");
+  }
+
   auto non_conditional_block = source_block;
   non_conditional_block.terminator = bir::BranchTerminator{
       .target_label = "raw.branch.true",
       .target_label_id = true_label,
   };
+  if (prepare::detail::read_agreeing_bir_branch_target_labels(
+          prepare::detail::BranchTargetIdentityPassContext{
+              .source_block = &non_conditional_block},
+          *prepared_only_labels)
+          .has_value()) {
+    return fail("private branch-target identity should reject non-conditional BIR terminators");
+  }
+
   const auto non_conditional_labels =
       prepare::find_prepared_control_flow_branch_target_labels(
           control_flow, entry_label, non_conditional_block);
