@@ -152,7 +152,9 @@ find_prepared_conditional_branch_facts(
   if (!has_compare_branch_facts) {
     if (const auto control_flow_targets =
             prepare::find_prepared_control_flow_branch_target_labels(
-                *context.function.control_flow, context.control_flow_block->block_label);
+                *context.function.control_flow,
+                context.control_flow_block->block_label,
+                *context.bir_block);
         control_flow_targets.has_value()) {
       facts.targets = *control_flow_targets;
     }

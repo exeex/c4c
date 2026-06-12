@@ -2093,6 +2093,92 @@ int verify_diamond_function_lookup() {
   return 0;
 }
 
+int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
+  prepare::PreparedNameTables names;
+  const auto function_id = names.function_names.intern("branch_identity");
+  const auto entry_label = names.block_labels.intern("branch.entry");
+  const auto true_label = names.block_labels.intern("branch.true");
+  const auto false_label = names.block_labels.intern("branch.false");
+  const auto other_label = names.block_labels.intern("branch.other");
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_id,
+      .blocks = {
+          cond_branch_block(entry_label, true_label, false_label),
+          return_block(true_label),
+          return_block(false_label),
+      },
+  };
+
+  bir::Block source_block;
+  source_block.label = "raw.branch.entry";
+  source_block.label_id = entry_label;
+  source_block.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .true_label = "raw.branch.true",
+      .false_label = "raw.branch.false",
+      .true_label_id = true_label,
+      .false_label_id = false_label,
+  };
+
+  const auto agreeing_labels = prepare::find_prepared_control_flow_branch_target_labels(
+      control_flow, entry_label, source_block);
+  if (!agreeing_labels.has_value() || agreeing_labels->true_label != true_label ||
+      agreeing_labels->false_label != false_label) {
+    return fail("control-flow target helper missed agreeing structured BIR successor ids");
+  }
+
+  auto raw_drift_block = source_block;
+  raw_drift_block.terminator.true_label = "raw.branch.other";
+  raw_drift_block.terminator.false_label = "raw.branch.other";
+  const auto raw_drift_labels = prepare::find_prepared_control_flow_branch_target_labels(
+      control_flow, entry_label, raw_drift_block);
+  if (!raw_drift_labels.has_value() || raw_drift_labels->true_label != true_label ||
+      raw_drift_labels->false_label != false_label) {
+    return fail("control-flow target helper let raw BIR label drift override prepared labels");
+  }
+
+  auto invalid_id_block = source_block;
+  invalid_id_block.terminator.true_label_id = c4c::kInvalidBlockLabel;
+  const auto invalid_id_labels = prepare::find_prepared_control_flow_branch_target_labels(
+      control_flow, entry_label, invalid_id_block);
+  if (!invalid_id_labels.has_value() || invalid_id_labels->true_label != true_label ||
+      invalid_id_labels->false_label != false_label) {
+    return fail("control-flow target helper did not preserve prepared fallback for invalid ids");
+  }
+
+  auto mismatch_block = source_block;
+  mismatch_block.terminator.true_label_id = other_label;
+  const auto mismatch_labels = prepare::find_prepared_control_flow_branch_target_labels(
+      control_flow, entry_label, mismatch_block);
+  if (!mismatch_labels.has_value() || mismatch_labels->true_label != true_label ||
+      mismatch_labels->false_label != false_label) {
+    return fail("control-flow target helper did not preserve prepared fallback on id mismatch");
+  }
+
+  auto non_conditional_block = source_block;
+  non_conditional_block.terminator = bir::BranchTerminator{
+      .target_label = "raw.branch.true",
+      .target_label_id = true_label,
+  };
+  const auto non_conditional_labels =
+      prepare::find_prepared_control_flow_branch_target_labels(
+          control_flow, entry_label, non_conditional_block);
+  if (!non_conditional_labels.has_value() ||
+      non_conditional_labels->true_label != true_label ||
+      non_conditional_labels->false_label != false_label) {
+    return fail("control-flow target helper did not preserve prepared fallback for non-cond BIR");
+  }
+
+  if (prepare::find_prepared_control_flow_branch_target_labels(
+          control_flow, c4c::kInvalidBlockLabel, source_block)
+          .has_value()) {
+    return fail("control-flow target helper should reject invalid prepared source labels");
+  }
+
+  return 0;
+}
+
 int verify_edge_publication_lookup_key_preserves_full_tuple() {
   const auto successor_destination_a = prepare::prepared_edge_publication_key(
       c4c::BlockLabelId{10},
@@ -11066,6 +11152,11 @@ int main() {
     return result;
   }
   if (const int result = verify_diamond_function_lookup(); result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_control_flow_branch_target_labels_use_agreeing_structured_ids();
+      result != 0) {
     return result;
   }
   if (const int result = verify_edge_publication_lookup_key_preserves_full_tuple();

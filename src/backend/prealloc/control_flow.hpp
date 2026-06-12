@@ -488,6 +488,31 @@ find_prepared_control_flow_branch_target_labels(
   };
 }
 
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+find_prepared_control_flow_branch_target_labels(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId block_label,
+    const bir::Block& source_block) {
+  const auto prepared_labels =
+      find_prepared_control_flow_branch_target_labels(function_cf, block_label);
+  if (!prepared_labels.has_value() ||
+      source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
+      source_block.terminator.true_label_id == kInvalidBlockLabel ||
+      source_block.terminator.false_label_id == kInvalidBlockLabel) {
+    return prepared_labels;
+  }
+
+  if (source_block.terminator.true_label_id != prepared_labels->true_label ||
+      source_block.terminator.false_label_id != prepared_labels->false_label) {
+    return prepared_labels;
+  }
+
+  return PreparedBranchTargetLabels{
+      .true_label = source_block.terminator.true_label_id,
+      .false_label = source_block.terminator.false_label_id,
+  };
+}
+
 [[nodiscard]] inline const PreparedBranchCondition*
 find_prepared_i32_immediate_branch_condition(const PreparedNameTables& names,
                                              const PreparedControlFlowFunction& function_cf,
@@ -571,7 +596,8 @@ resolve_prepared_compare_branch_target_labels(const PreparedNameTables& names,
   }
 
   const auto control_flow_target_labels =
-      find_prepared_control_flow_branch_target_labels(*function_cf, source_block_label_id);
+      find_prepared_control_flow_branch_target_labels(
+          *function_cf, source_block_label_id, source_block);
   if (!control_flow_target_labels.has_value()) {
     return branch_target_labels;
   }
