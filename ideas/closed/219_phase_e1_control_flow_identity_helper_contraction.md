@@ -84,3 +84,28 @@ bounded implementation runbook. It is not permission to retire
   masking, or expected-string rewrites as evidence.
 - Reject retaining prepared-only behavior behind a newly route- or BIR-named
   facade without actually replacing one duplicate semantic identity read.
+
+## Closure Note
+
+Closed after the selected-helper runbook completed for
+`find_prepared_control_flow_branch_target_labels(...)`.
+
+The completed slice added an agreement-gated BIR structured successor id path
+for the selected branch-target label helper, updated the AArch64 caller, and
+added focused fallback coverage while preserving prepared behavior for
+non-agreement paths. It did not retire aggregate `PreparedControlFlow`, delete
+public prepared APIs, move branch/output policy into BIR or route authority,
+change wrapper/printer/debug/helper-oracle behavior, or rewrite expected
+strings.
+
+Closure proof recorded in `todo.md`:
+
+- focused selected-helper proof passed 4/4;
+- close-time regression guard passed with `--allow-non-decreasing-passed`,
+  before 4/4 and after 4/4 with no new failures;
+- broader `^backend_` subset passed 180/180 after the code slice.
+
+Residual control-flow candidate helpers named by this idea remain outside this
+closed one-helper source scope. Any further helper contraction should be opened
+or activated as a separate lifecycle initiative rather than silently extending
+this completed runbook.
