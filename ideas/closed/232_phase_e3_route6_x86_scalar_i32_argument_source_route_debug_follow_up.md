@@ -46,6 +46,19 @@ direct-call/helper-oracle families, public fallback, and expected strings.
 - No broad call wrapper, ABI, baseline, or expected-string migration is required
   to claim progress.
 
+## Closure Notes
+
+Closed after the Route 6 x86 scalar `i32` argument-source route-debug row was
+accepted for the selected row with prepared agreement and `ConsumedPlans`
+compatibility intact. The accepted scoped proof is the `build-x86`
+`backend_x86_route_debug` plus `backend_prepared_lookup_helper` route-debug and
+prepared-lookup check, 2/2 passing, with close-time regression guard passing
+for the same scope.
+
+The aggregate x86 compare-join stack-backed parameter-home handoff failure is
+not part of this idea. It remains tracked separately by
+`ideas/open/234_phase_e3_x86_compare_join_stack_home_handoff_follow_up.md`.
+
 ## Reviewer Reject Signals
 
 - The route-debug change is shaped around one x86 `i32` testcase instead of
