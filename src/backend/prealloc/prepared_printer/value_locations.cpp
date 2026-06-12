@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -79,6 +80,93 @@ void append_register_placement(std::ostringstream& out,
       << prepared_register_slot_pool_name(placement->pool)
       << "#" << placement->slot_index
       << "/w" << placement->contiguous_width;
+}
+
+[[nodiscard]] const bir::Function* find_bir_function(const PreparedBirModule& module,
+                                                     FunctionNameId function_name) {
+  const std::string_view name = maybe_function_name(module.names, function_name);
+  if (name.empty() || name == "<none>") {
+    return nullptr;
+  }
+  for (const auto& function : module.module.functions) {
+    if (function.name == name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Block* find_bir_block(const bir::Function* function,
+                                               const PreparedNameTables& names,
+                                               BlockLabelId label_id) {
+  if (function == nullptr || label_id == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  const std::string_view label = maybe_block_label(names, label_id);
+  for (const auto& block : function->blocks) {
+    if (block.label_id == label_id || (!label.empty() && block.label == label)) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Value* find_block_entry_phi_result(
+    const bir::Block* block,
+    const PreparedNameTables& names,
+    ValueNameId value_name) {
+  if (block == nullptr || value_name == kInvalidValueName) {
+    return nullptr;
+  }
+  const std::string_view name = maybe_value_name(names, value_name);
+  if (name.empty() || name == "<none>") {
+    return nullptr;
+  }
+  for (const auto& inst : block->insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (phi->result.name == name) {
+      return &phi->result;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<PreparedCurrentBlockEntryPublication>
+find_agreeing_route4_block_entry_publication(
+    const PreparedBirModule& module,
+    const PreparedValueLocationFunction& function_locations,
+    const PreparedValueHomeLookups& value_home_lookups,
+    BlockLabelId successor_label,
+    const PreparedBlockEntryPublication& publication) {
+  if (!prepared_block_entry_publication_available(publication)) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_bir_function(module, function_locations.function_name);
+  const auto* successor_block = find_bir_block(function, module.names, successor_label);
+  const auto* destination_value =
+      find_block_entry_phi_result(successor_block, module.names,
+                                  publication.destination_value_name);
+  const PreparedCurrentBlockEntryPublicationQueryInputs query{
+      .names = &module.names,
+      .value_locations = &function_locations,
+      .value_home_lookups = &value_home_lookups,
+      .successor_label = successor_label,
+      .route4_successor_block = successor_block,
+      .route4_destination_value = destination_value,
+  };
+  auto attributed = find_prepared_current_block_entry_publication(
+      query, publication.destination_value_id);
+  if (attributed.status != PreparedCurrentBlockEntryPublicationStatus::Available ||
+      !attributed.route4_block_entry_publication_attributed ||
+      attributed.publication.bundle != publication.bundle ||
+      attributed.publication.move != publication.move) {
+    return std::nullopt;
+  }
+  return attributed;
 }
 
 }  // namespace
@@ -176,6 +264,8 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
 
   out << "--- prepared-block-entry-publications ---\n";
   for (const auto& function_locations : module.value_locations.functions) {
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(&function_locations);
     std::vector<BlockLabelId> successor_labels;
     for (const auto& bundle : function_locations.move_bundles) {
       if (bundle.phase != PreparedMovePhase::BlockEntry ||
@@ -205,26 +295,36 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
       const auto publications =
           collect_prepared_block_entry_publications(&function_locations, successor_label);
       for (const auto& publication : publications) {
+        const auto attributed_publication =
+            find_agreeing_route4_block_entry_publication(module,
+                                                         function_locations,
+                                                         value_home_lookups,
+                                                         successor_label,
+                                                         publication);
+        const auto& row_publication =
+            attributed_publication.has_value()
+                ? attributed_publication->publication
+                : publication;
         out << "  block_entry_publication successor="
             << maybe_block_label(module.names, successor_label)
             << " status="
-            << prepared_block_entry_publication_status_name(publication.status)
-            << " to_value_id=" << publication.destination_value_id
-            << " to=" << maybe_value_name(module.names, publication.destination_value_name)
+            << prepared_block_entry_publication_status_name(row_publication.status)
+            << " to_value_id=" << row_publication.destination_value_id
+            << " to=" << maybe_value_name(module.names, row_publication.destination_value_name)
             << " home_kind="
-            << (publication.home == nullptr
+            << (row_publication.home == nullptr
                     ? std::string_view{"<none>"}
-                    : prepared_value_home_kind_name(publication.home->kind))
+                    : prepared_value_home_kind_name(row_publication.home->kind))
             << " destination_kind="
-            << move_destination_kind_name(publication.destination_kind)
+            << move_destination_kind_name(row_publication.destination_kind)
             << " destination_storage="
-            << move_storage_kind_name(publication.destination_storage_kind);
-        if (publication.destination_register_name.has_value()) {
-          out << " reg=" << *publication.destination_register_name;
+            << move_storage_kind_name(row_publication.destination_storage_kind);
+        if (row_publication.destination_register_name.has_value()) {
+          out << " reg=" << *row_publication.destination_register_name;
         }
-        if (publication.bundle != nullptr) {
-          out << " block_index=" << publication.bundle->block_index
-              << " instruction_index=" << publication.bundle->instruction_index;
+        if (row_publication.bundle != nullptr) {
+          out << " block_index=" << row_publication.bundle->block_index
+              << " instruction_index=" << row_publication.bundle->instruction_index;
         }
         out << "\n";
       }
