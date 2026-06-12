@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/203_phase_d2_retained_surface_consumer_switch_analysis.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Define Proof Shapes
+Current Step ID: Step 5
+Current Step Title: Write Durable Outputs
 
 # Current Packet
 
