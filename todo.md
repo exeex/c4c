@@ -1,61 +1,79 @@
 Status: Active
 Source Idea Path: ideas/open/233_phase_e3_route7_materialized_condition_helper_oracle_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Fallback And Nearby Same-Feature Stability
+Current Step ID: 4
+Current Step Title: Validate And Prepare Acceptance Notes
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the selected materialized-condition
-helper-oracle row in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+Completed `plan.md` Step 3 as a todo-only proof slice. I reviewed the Step 2
+helper-oracle assertions against the nearby same-feature branch-control and
+instruction-dispatch tests and found no concrete missing assertion that justifies
+touching test code in this packet.
 
-Assertions added inside
-`verify_prepared_bir_comparison_condition_producer_equivalence()`:
+Coverage recorded:
 
-- Added a local `route7_materialized_condition_agrees(...)` predicate that
-  accepts Route 7 evidence only when the indexed materialized-condition record,
-  `route_index_validate_materialized_condition_reference(...)`, prepared
-  producer, BIR identity, and lhs/rhs operand reference validation agree.
-- Tightened the positive `%cond` row so Route 7/BIR/prepared agreement is
-  required for the same binary producer, instruction index `3`, condition value,
-  prepared condition value name, and lhs/rhs producer facts.
-- Kept the existing absent-route fallback and added local fail-closed checks for
-  invalid/stale Route 7 reference, duplicate `%cond` materialized-condition
-  record, Route 7/prepared producer mismatch, unfused/non-comparison lookup, and
-  missing lhs producer evidence.
-- Preserved the existing helper-oracle failure strings; no expected strings,
-  baselines, branch-control output, machine-printer output, wrappers, final
-  assembler behavior, route-index public contracts, or supported/unsupported
-  contracts were changed.
+- Positive Route 7/BIR/prepared agreement: covered locally by
+  `verify_prepared_bir_comparison_condition_producer_equivalence()` requiring
+  `route7_find_materialized_condition(...)`,
+  `route_index_validate_materialized_condition_reference(...)`,
+  `find_materialized_condition_producer_identity(...)`, and
+  `find_prepared_materialized_condition_producer(...)` to agree for `%cond`;
+  covered nearby in
+  `materialized_compare_branch_route7_provenance_matches_bir_identity()`.
+- Absent-route fallback: covered locally by the empty
+  `Route7ComparisonConditionIndex`/`RouteIndexReferenceFacade` checks and nearby
+  by `materialized_compare_branch_absent_route7_provenance_uses_emitted_fallback()`.
+- Invalid-reference fallback: covered locally by the stale/null instruction
+  Route 7 record check and nearby by
+  `materialized_compare_branch_invalid_route7_reference_rejected()`.
+- Duplicate/conflict fallback: covered locally by the duplicate `%cond`
+  materialized-condition record check and nearby by
+  `materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback()`.
+- Mismatch fallback: covered locally by Route 7/prepared producer mismatch and
+  missing lhs producer evidence; covered nearby by condition-name mismatch,
+  stale prepared lookup, lhs provenance mismatch, and rhs provenance mismatch
+  branch-control cases.
+- Unfused/non-comparison fallback: covered locally by the non-comparison
+  materialized-condition lookup and nearby by fused-compare fallback coverage in
+  `public_selected_fused_compare_operand_producer_fallbacks_keep_prepared_row()`.
+- Prepared fallback/non-agreement: covered locally by requiring the local
+  agreement predicate to return false while prepared/BIR facts remain available;
+  covered nearby by stale prepared lookup and lhs/rhs provenance mismatch
+  branch-control cases.
+- Same-feature stability: covered by the delegated
+  `backend_aarch64_branch_control_lowering` same-feature materialized-compare
+  cases plus `backend_aarch64_instruction_dispatch`, including
+  `materialized_compare_branch_reuses_emitted_latch_operand()`.
+
+No test edit was made because Step 2's local helper-oracle assertions already
+cover the requested matrix and the delegated nearby tests cover production
+branch-control/instruction-dispatch stability without output-contract changes.
 
 ## Suggested Next
 
-Delegate Step 3 to prove fallback and nearby same-feature stability.
+Delegate Step 4 to validate and prepare acceptance notes.
 
 Suggested packet:
 
-- Review the Step 2 helper-oracle diff against
-  `backend_aarch64_branch_control_lowering_test.cpp` same-feature cases and add
-  only focused tests if the supervisor wants extra coverage beyond the current
-  local helper-oracle assertions plus delegated branch-control and instruction
-  dispatch proof.
+- Run the supervisor-selected acceptance validation, compare against
+  `test_before.log` if requested by regression-guard workflow, and summarize the
+  retained prepared authority plus unchanged output/string surfaces.
 
 ## Watchouts
 
-- Step 2 stayed helper-oracle-local and did not expose production agreement
-  predicates.
-- Remaining Step 3 proof gaps are mostly acceptance confidence rather than known
-  missing local assertions: compare the helper-oracle row with nearby
-  branch-control positive/fallback cases, and decide whether same-feature
-  stability needs additional focused tests or only documented proof from the
-  already-run subset.
-- Keep rejecting any follow-up that changes helper-oracle strings, expected
-  strings, baselines, branch-control output, machine-printer output, wrappers,
-  final assembler behavior, route-index public contracts, or supported/unsupported
-  contracts.
+- Step 3 found no remaining local proof gap for positive agreement, absent-route,
+  invalid-reference, duplicate/conflict, mismatch, unfused/non-comparison,
+  prepared fallback/non-agreement, or nearby same-feature stability within the
+  delegated three-test proof scope.
+- Step 4 acceptance notes should still explicitly state that no helper-oracle
+  strings, expected strings, baselines, branch-control output, machine-printer
+  output, wrappers, final assembler behavior, route-index public contracts, or
+  supported/unsupported contracts changed.
+- If the supervisor wants higher confidence, broaden validation rather than
+  adding testcase-shaped assertions to the selected helper row.
 
 ## Proof
 
