@@ -8,33 +8,22 @@ Current Step Title: Repair Prepared Stack-Home Handoff Semantics
 
 ## Just Finished
 
-Absorbed `review/234_step2_dirty_route_review.md` for idea 234 Step 2.
+Completed idea 234 Step 2 cleanup: isolated the x86 compare-join stack-home
+consumer repair in `src/backend/mir/x86/module/module.cpp` and removed the
+out-of-scope Route 6 consumed-plan mutation from
+`src/backend/prealloc/call_plans.cpp`.
 
-Lifecycle decision: keep idea 234 active, but reject the dirty Step 2 route as
-too broad. The `src/backend/mir/x86/module/module.cpp` compare-join consumer
-changes are plausibly aligned with idea 234 but still need isolated proof. The
-`src/backend/prealloc/call_plans.cpp` Route 6 consumed-plan repair is out of
-scope for idea 234 and is now tracked by
-`ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md`.
-The later pointer-backed same-module global selected-value-chain metadata
-failure is also out of scope for idea 234 and is now tracked by
-`ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md`.
+The isolated x86 repair validates prepared compare-join edge-publication facts,
+rejects drifted move-bundle destinations, and skips dead non-i32 carrier moves
+while preserving valid i32 register publication moves. The original stack-home
+handoff assertion stayed advanced after the Route 6 mutation was removed.
 
 ## Suggested Next
 
-Supervisor should isolate/reprove idea 234 Step 2 as a narrow x86
-compare-join stack-home packet:
-
-- Keep or rework only the `src/backend/mir/x86/module/module.cpp`
-  compare-join consumer changes that repair authoritative prepared stack-home
-  handoff through compare-join entry and return.
-- Do not accept the `src/backend/prealloc/call_plans.cpp` Route 6
-  consumed-plan mutation as idea 234 progress.
-- Do not continue into pointer-backed selected-value-chain metadata under idea
-  234; use idea 236 when that initiative is activated.
-- Re-run the supervisor-selected narrow proof for
-  `backend_x86_handoff_boundary`, `backend_x86_route_debug`, and
-  `backend_prepared_lookup_helper` after the idea 234 diff is isolated.
+Supervisor can review and commit the isolated idea 234 Step 2 slice if the
+remaining `src/backend/mir/x86/module/module.cpp` diff is acceptable. The next
+implementation packet should use idea 235 for the Route 6 consumed scalar i32
+call-argument source failure.
 
 ## Watchouts
 
@@ -50,16 +39,22 @@ compare-join stack-home packet:
 - Do not testcase-match `branch_join_adjust_then_xor`, labels, assertion text,
   or expected strings. The fix should follow prepared stack-home authority, not
   the shape of one named case.
+- `src/backend/prealloc/call_plans.cpp` is intentionally clean in this slice;
+  the observed Route 6 failure is split to idea 235.
 
 ## Proof
 
-No new code validation was run by the plan owner. The reviewer report recorded
-the last dirty proof command:
+Ran the supervisor-selected proof:
 
 ```bash
 cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
 ```
 
-That proof is not acceptance proof for idea 234 because it included
-out-of-scope Route 6 consumed-plan changes and then failed on an out-of-scope
-selected-value-chain assertion.
+Result: failed with exit 8 after a successful build. `backend_prepared_lookup_helper`
+and `backend_x86_route_debug` passed. `backend_x86_handoff_boundary` advanced
+past the original idea 234 stack-home assertion and failed at the split-out
+idea 235 assertion:
+
+`x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans`
+
+Proof log: `test_after.log`.

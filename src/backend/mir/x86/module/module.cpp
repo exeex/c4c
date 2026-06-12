@@ -2461,6 +2461,20 @@ void append_prepared_i32_leaf_return(
   function_out.append_line("    ret");
 }
 
+bool prepared_edge_publication_move_has_i32_operands(
+    const c4c::backend::x86::prepared::EdgePublicationMoveIntent& intent) {
+  if (intent.publication == nullptr ||
+      intent.publication->destination_value.type != c4c::backend::bir::TypeKind::I32 ||
+      intent.source_operand.find('[') != std::string::npos ||
+      intent.destination_operand.find('[') != std::string::npos) {
+    return false;
+  }
+  return c4c::backend::x86::abi::narrow_i32_register_name(intent.source_operand) ==
+             intent.source_operand &&
+         c4c::backend::x86::abi::narrow_i32_register_name(intent.destination_operand) ==
+             intent.destination_operand;
+}
+
 void append_prepared_compare_join_parallel_copy(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::x86::ConsumedPlans& consumed,
@@ -2469,7 +2483,8 @@ void append_prepared_compare_join_parallel_copy(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     c4c::BlockLabelId predecessor_label,
-    c4c::BlockLabelId successor_label) {
+    c4c::BlockLabelId successor_label,
+    bool emit_publication_moves) {
   const auto* parallel_copy =
       c4c::backend::prepare::find_prepared_parallel_copy_bundle(
           control_flow, predecessor_label, successor_label);
@@ -2486,6 +2501,13 @@ void append_prepared_compare_join_parallel_copy(
     throw_prepared_value_location_handoff_error(
         "compare-join edge has no authoritative prepared out-of-SSA move bundle");
   }
+  for (const auto& move : move_bundle->moves) {
+    if (c4c::backend::prepare::find_prepared_value_home(function_locations,
+                                                        move.to_value_id) == nullptr) {
+      throw_prepared_value_location_handoff_error(
+          "compare-join edge parallel-copy step has no shared prepared edge-publication fact");
+    }
+  }
   for (std::size_t step_index = 0; step_index < parallel_copy->steps.size(); ++step_index) {
     const auto* parallel_copy_move =
         c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
@@ -2497,24 +2519,27 @@ void append_prepared_compare_join_parallel_copy(
       throw_prepared_value_location_handoff_error(
           "compare-join edge parallel-copy step drifted from prepared move authority");
     }
-    std::string edge_copy_output;
     const auto intent =
-        c4c::backend::x86::prepared::append_edge_publication_move_instruction(
-            edge_copy_output,
-            consumed,
-            predecessor_label,
-            successor_label,
-            value_location_move->to_value_id);
+        c4c::backend::x86::prepared::consume_edge_publication_move_intent(
+            consumed, predecessor_label, successor_label, value_location_move->to_value_id);
     switch (intent.status) {
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::Available:
-        function_out.append_raw(edge_copy_output);
+        if (emit_publication_moves &&
+            prepared_edge_publication_move_has_i32_operands(intent)) {
+          function_out.append_line("    " + intent.instruction_text);
+        }
         break;
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::MissingSharedLookups:
         throw_prepared_control_flow_handoff_error(
             "compare-join edge has no shared prepared edge-publication lookup authority");
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::MissingPublication:
-        throw_prepared_value_location_handoff_error(
-            "compare-join edge parallel-copy step has no shared prepared edge-publication fact");
+        if (emit_publication_moves &&
+            c4c::backend::prepare::find_prepared_value_home(
+                function_locations, value_location_move->to_value_id) == nullptr) {
+          throw_prepared_value_location_handoff_error(
+              "compare-join edge parallel-copy step has no shared prepared edge-publication fact");
+        }
+        break;
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::
           UnsupportedPublication:
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::
@@ -2531,6 +2556,26 @@ void append_prepared_compare_join_parallel_copy(
           "compare-join edge immediate source drifted from prepared move authority");
     }
   }
+}
+
+const c4c::backend::prepare::PreparedValueHome& require_prepared_i32_compare_join_return_home(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& join_block) {
+  if (join_block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !join_block.terminator.value.has_value() ||
+      join_block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      join_block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' has an unsupported compare-join return terminator");
+  }
+  return require_prepared_i32_value_home(module,
+                                        function_locations,
+                                        function,
+                                        join_block.terminator.value->name,
+                                        "compare-join returned value");
 }
 
 void append_prepared_i32_compare_join_return_arm(
@@ -2553,20 +2598,8 @@ void append_prepared_i32_compare_join_return_arm(
         "defined function '" + function.name +
         "' compare-join return context drifted from prepared join block");
   }
-  if (join_block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-      !join_block.terminator.value.has_value() ||
-      join_block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-      join_block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
-    throw_prepared_value_location_handoff_error(
-        "defined function '" + function.name +
-        "' has an unsupported compare-join return terminator");
-  }
   const auto& joined_return_home =
-      require_prepared_i32_value_home(module,
-                                      function_locations,
-                                      function,
-                                      join_block.terminator.value->name,
-                                      "compare-join returned value");
+      require_prepared_i32_compare_join_return_home(module, function_locations, function, join_block);
   if (return_move.from_value_id != joined_return_home.value_id) {
     throw_prepared_value_location_handoff_error(
         "defined function '" + function.name +
@@ -2869,7 +2902,8 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                                *control_flow,
                                                *function_locations,
                                                join_context.true_transfer->predecessor_label,
-                                               join_context.true_transfer->successor_label);
+                                               join_context.true_transfer->successor_label,
+                                               true);
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
@@ -2892,7 +2926,8 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                                *control_flow,
                                                *function_locations,
                                                join_context.false_transfer->predecessor_label,
-                                               join_context.false_transfer->successor_label);
+                                               join_context.false_transfer->successor_label,
+                                               true);
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
