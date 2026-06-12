@@ -354,6 +354,9 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
 enum class BlockEntryPublicationRouteEvidence {
   None,
   Agreeing,
+  MissingPhi,
+  WrongDestination,
+  WrongSuccessorBlock,
   WrongInstructionIndex,
   Duplicate,
 };
@@ -405,8 +408,14 @@ prepare::PreparedBirModule prepared_block_entry_publication_printer_row_module(
     function.name = "block_entry_publication_dump_contract";
 
     bir::Block join;
-    join.label = "join";
-    join.label_id = successor_label;
+    if (route_evidence ==
+        BlockEntryPublicationRouteEvidence::WrongSuccessorBlock) {
+      join.label = "not_join";
+      join.label_id = prepared.names.block_labels.intern("not_join");
+    } else {
+      join.label = "join";
+      join.label_id = successor_label;
+    }
 
     auto append_phi = [&](std::string name) {
       join.insts.push_back(bir::PhiInst{
@@ -420,17 +429,23 @@ prepare::PreparedBirModule prepared_block_entry_publication_printer_row_module(
       });
     };
 
-    if (route_evidence == BlockEntryPublicationRouteEvidence::WrongInstructionIndex) {
-      append_phi("published");
-    } else {
-      append_phi("route4.pad0");
-      append_phi("route4.pad1");
-      append_phi("route4.pad2");
-      append_phi("route4.pad3");
-      append_phi("route4.pad4");
-      append_phi("published");
-      if (route_evidence == BlockEntryPublicationRouteEvidence::Duplicate) {
+    if (route_evidence != BlockEntryPublicationRouteEvidence::MissingPhi) {
+      if (route_evidence ==
+          BlockEntryPublicationRouteEvidence::WrongInstructionIndex) {
         append_phi("published");
+      } else {
+        append_phi("route4.pad0");
+        append_phi("route4.pad1");
+        append_phi("route4.pad2");
+        append_phi("route4.pad3");
+        append_phi("route4.pad4");
+        append_phi(route_evidence ==
+                           BlockEntryPublicationRouteEvidence::WrongDestination
+                       ? "not_published"
+                       : "published");
+        if (route_evidence == BlockEntryPublicationRouteEvidence::Duplicate) {
+          append_phi("published");
+        }
       }
     }
 
@@ -5027,6 +5042,71 @@ int main() {
   if (!expect_contains(route4_block_entry_publication_dump,
                        block_entry_publication_row,
                        "Route 4 attributed block-entry publication row text")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto missing_phi_block_entry_publication_prepared =
+      prepared_block_entry_publication_printer_row_module(
+          BlockEntryPublicationRouteEvidence::MissingPhi);
+  const auto missing_phi_block_entry_publication_agreement =
+      find_block_entry_publication_printer_row_agreement(
+          missing_phi_block_entry_publication_prepared);
+  const std::string missing_phi_block_entry_publication_dump =
+      prepare::print(missing_phi_block_entry_publication_prepared);
+  if (missing_phi_block_entry_publication_agreement.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      missing_phi_block_entry_publication_agreement
+          .route4_block_entry_publication_attributed) {
+    std::cerr << "[FAIL] missing-PHI Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(missing_phi_block_entry_publication_dump,
+                       block_entry_publication_row,
+                       "missing-PHI fallback block-entry publication row text")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto wrong_destination_block_entry_publication_prepared =
+      prepared_block_entry_publication_printer_row_module(
+          BlockEntryPublicationRouteEvidence::WrongDestination);
+  const auto wrong_destination_block_entry_publication_agreement =
+      find_block_entry_publication_printer_row_agreement(
+          wrong_destination_block_entry_publication_prepared);
+  const std::string wrong_destination_block_entry_publication_dump =
+      prepare::print(wrong_destination_block_entry_publication_prepared);
+  if (wrong_destination_block_entry_publication_agreement.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      wrong_destination_block_entry_publication_agreement
+          .route4_block_entry_publication_attributed) {
+    std::cerr << "[FAIL] wrong-destination Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          wrong_destination_block_entry_publication_dump,
+          block_entry_publication_row,
+          "wrong-destination fallback block-entry publication row text")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto wrong_successor_block_entry_publication_prepared =
+      prepared_block_entry_publication_printer_row_module(
+          BlockEntryPublicationRouteEvidence::WrongSuccessorBlock);
+  const auto wrong_successor_block_entry_publication_agreement =
+      find_block_entry_publication_printer_row_agreement(
+          wrong_successor_block_entry_publication_prepared);
+  const std::string wrong_successor_block_entry_publication_dump =
+      prepare::print(wrong_successor_block_entry_publication_prepared);
+  if (wrong_successor_block_entry_publication_agreement.status !=
+          prepare::PreparedCurrentBlockEntryPublicationStatus::Available ||
+      wrong_successor_block_entry_publication_agreement
+          .route4_block_entry_publication_attributed) {
+    std::cerr << "[FAIL] wrong-successor Route 4 evidence should preserve the prepared block-entry printer row without attribution\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          wrong_successor_block_entry_publication_dump,
+          block_entry_publication_row,
+          "wrong-successor fallback block-entry publication row text")) {
     return EXIT_FAILURE;
   }
 
