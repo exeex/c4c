@@ -53,3 +53,23 @@ emitted output.
 - Reject testcase-shaped join-source handling without general fail-closed
   route/prepared agreement for the named reader.
 - Reject old prepared-only failure behavior hidden behind a new route API.
+
+## Closure Note
+
+Closed after migrating exactly one selected reader,
+`current_block_join_prepared_query_source(...)`, to Route 5 route/prepared
+agreement while retaining prepared fallback for absent, invalid, duplicate, and
+mismatched route facts.
+
+The accepted implementation preserved prepared and target ownership for join,
+edge, move-bundle, branch, parallel-copy, output, and wrapper behavior. The
+acceptance review found no implementation drift, scope creep, or
+testcase-overfit.
+
+Close proof used matching seven-test before/after logs for:
+`backend_aarch64_current_block_join_routing`,
+`backend_aarch64_instruction_dispatch`, `backend_prepared_lookup_helper`,
+`backend_prepared_printer`, `backend_riscv_prepared_edge_publication`,
+`backend_prepare_authoritative_join_ownership`, and
+`backend_x86_prepared_handoff_label_authority`. The close-time regression guard
+passed with 7/7 before and 7/7 after, with no new failures.
