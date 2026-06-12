@@ -8,56 +8,65 @@ Current Step Title: Broader Backend Proof And Closeout Readiness
 
 ## Just Finished
 
-Step 4 - Add Focused Helper-Family Proof is complete.
+Step 5 - Broader Backend Proof And Closeout Readiness is complete.
 
-Added focused helper-family tests for the private fused compare operand
-producer agreement boundary. The positive case proves matching Route
-7/prepared agreement for the existing select plus folded-binary comparison
-provenance fixture. Fallback coverage now explicitly covers absent-route,
-invalid producer reference, duplicate/conflicting Route 7 records, mismatched
-operand facts, unfused paths, and partial non-agreement, all retaining prepared
-fallback behavior by requiring the private Route 7 agreement layer to decline
-authority.
+Ran the supervisor-selected broad backend proof after the fused compare operand
+producer helper slice. The active plan is ready for plan-owner closure review.
 
-No helper-oracle names, statuses, failure-mode strings, supported-path status,
-wrappers, printer/debug output, expected strings, or output policy were
-changed. The only production edit is a tiny non-header test bridge in the
-AArch64 comparison implementation for the existing private agreement reader and
-predicate.
+Completed scope:
+
+- Step 1 inventoried public consumers and confirmed the selected production
+  path is the AArch64 Route 7 fused compare operand producer read used by
+  conditional branch lowering.
+- Step 2 extracted the selected Route 7/prepared agreeing fused compare
+  operand producer read behind a private pass-context boundary.
+- Step 3 confirmed the production consumer already reaches that private
+  boundary through the local wrapper, with no extra migration needed.
+- Step 4 added focused proof for positive agreement and fallback behavior.
+- Step 5 proved the broader backend subset.
+
+Consumer accounting:
+
+- `lower_prepared_conditional_branch_terminator(...)` remains the selected
+  production consumer for the fused compare operand producer read.
+- `fused_compare_uses_selected_operand(...)` remains branch-support policy, not
+  a migrated prepared lookup API.
+- The focused helper tests exercise the private agreement boundary through a
+  small non-header `_for_testing` bridge only.
+
+Retained public surfaces and guardrails:
+
+- No aggregate Route 1-7 migration entered this slice.
+- No prepared aggregate retirement entered this slice.
+- No branch target policy movement entered this slice.
+- No printer/debug, wrapper, helper-oracle, expected-string, output policy, or
+  supported-path status changes entered this slice.
+- No unsupported downgrades, baseline refreshes, timeout masking, expectation
+  rewrites, or testcase-shaped shortcuts entered this slice.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: run the supervisor-selected broader backend
-proof, check for accidental scope expansion, and update `todo.md` for
-plan-owner closure review.
+Hand the active plan to the plan owner for closure review.
 
 ## Watchouts
 
-- The `_for_testing` bridge is intentionally not declared in a production
-  header; it exists only so the helper-family test can exercise the private
-  agreement seam directly.
-- Step 5 should not migrate aggregate BIR/Route 7 lookup APIs, retire prepared
-  aggregate surfaces, change branch target policy, or touch printer/debug,
-  wrapper, helper-oracle, or expected-string output.
-- Treat unsupported downgrades, baseline refreshes, timeout masking, and
-  expectation rewrites as non-progress.
+- Closure should preserve the distinction between the completed private
+  Route 7 fused compare operand producer agreement boundary and broader
+  aggregate/prepared API migration work.
+- The `_for_testing` bridge remains intentionally local and non-header.
 
 ## Proof
 
-Supervisor-selected proof ran exactly:
+Supervisor-selected broad backend proof ran exactly:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering|backend_aarch64_machine_printer' > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1
 ```
 
-Result: passed, 3/3 tests.
-
-Additional check: `git diff --check` passed.
+Result: passed, 180/180 backend tests.
 
 Test subset:
 
-- `backend_prepared_lookup_helper`
-- `backend_aarch64_branch_control_lowering`
-- `backend_aarch64_machine_printer`
+- all `backend_` tests
 
 Proof log path: `test_after.log`
