@@ -1,6 +1,6 @@
 # Phase E1 Semantic Duplicate Candidate Triage
 
-Status: Step 3 accepted follow-up idea drafting complete.
+Status: Step 4 deferral and no-action recording complete.
 
 Source idea: `ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md`
 
@@ -153,6 +153,52 @@ context; liveness and intrinsic metadata still need narrower consumer analysis;
 row-scoped diagnostic/oracle replacement remains E3-owned unless a row is only
 the proof harness for a named E1 semantic reader. Draft 155 / E5 remains
 unopened.
+
+## Step 4 Deferrals And No-Action Decisions
+
+Step 4 separates the two Step 3 accepted follow-ups from surfaces that E1 must
+defer, block, or leave untouched. The only ready E1 follow-ups are the
+control-flow identity helper contraction idea and the Route 1 through Route 7
+identity helper contraction idea. Every other surface below is outside the
+current E1 implementation-ready set.
+
+### Ready Follow-Ups
+
+| Surface | Step 4 decision |
+| --- | --- |
+| control-flow identity helpers | Ready follow-up already drafted as `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md`; later execution must still choose one identity-only helper or reader and preserve prepared policy, diagnostics, wrappers, fallback/oracle behavior, and strings. |
+| route source/publication/join/call/comparison identity helpers | Ready follow-up already drafted as `ideas/open/220_phase_e1_route_identity_helper_contraction.md`; later execution must still choose one route family plus one selected consumer or identity helper and preserve target/prepared policy, diagnostics, wrappers, fallback/oracle behavior, and strings. |
+
+### Explicit Deferrals
+
+| Deferred surface | Deferral owner | Step 4 decision |
+| --- | --- | --- |
+| liveness identity helpers | E2 or later consumer-audit work | Deferred because current evidence has not separated one pure semantic liveness reader from allocation pressure, stack-object association, ABI/helper policy, regalloc, or call/helper outcomes. |
+| intrinsic metadata adapters | E2 or later metadata consumer-audit work | Deferred because current evidence has not isolated one metadata-only adapter from carrier completeness, feature policy, call plans, operand/result homes, helper protocols, target lowering, or missing-fact diagnostics. |
+| row-scoped diagnostic/oracle helpers | E3 | Deferred to E3 unless a row is only the proof harness for a named E1 semantic reader; broad printer/debug, helper-oracle, expected-string, and diagnostic replacement is not an E1 action. |
+| target policy movement into BIR | E4 or later target-policy design | Deferred because target profile, ABI placement, register/stack/layout/address policy, move scheduling, branch spelling, helper protocols, wrapper behavior, and emitted output remain prepared/target-owned. |
+| Route 8 return-chain schema and consumers | Route 8-specific design | Deferred because E1 has no imported return-chain owner/schema proof; future Route 8 facts must be opened separately before any helper contraction can depend on them. |
+| draft 155 / E5 prepared rewrite or broad prepared retirement | E5 only after separate rewrite criteria are met | Deferred and unopened; E1 does not open draft 155 / E5, does not claim broad `PreparedBirModule` or `PreparedFunctionLookups` retirement, and does not treat accepted E1 helper ideas as aggregate replacement. |
+
+### Blockers
+
+| Blocked surface | Blocking reason |
+| --- | --- |
+| aggregate `PreparedBirModule` semantic forwarding | Blocked as aggregate compatibility and pass context. Selected forwarding helpers may become later narrow evidence, but aggregate deletion, facade renaming, public entry-point reshuffling, and prepared aggregate replacement are not code-size-positive E1 proof. |
+| aggregate `PreparedFunctionLookups` replacement | Blocked because lookup groups still combine selected route-native subfacts with prepared compatibility, public construction, fallback/oracle behavior, and target/prepared policy. No lookup group is deletion-, privatization-, or aggregate-replacement-ready in E1. |
+| broad prepared API privatization | Blocked until every public production, wrapper, printer/debug, fallback/oracle, and compatibility consumer for a named helper family is accounted for by a separate implementation idea and proof. |
+
+### No-Action Decisions
+
+| Surface | No-action decision |
+| --- | --- |
+| aggregate surfaces | No action in E1 on aggregate deletion, aggregate replacement, broad prepared retirement, public aggregate entry points, aggregate facade naming, or construction reshuffling. These do not count as semantic duplicate helper contraction. |
+| target-policy surfaces | No action in E1 on target profile, ABI placement, register/stack/layout/address policy, move scheduling, branch spelling, helper protocols, wrapper behavior, final records, emitted output, or expected target-specific behavior. |
+| fallback/oracle surfaces | No action in E1 on prepared fallback authority, helper-oracle assertions, absent/invalid/duplicate/conflict/mismatch paths, unsupported-path behavior, baseline authority, or expected-string authority except as preserved proof around one named semantic helper. |
+| diagnostic/string surfaces | No action in E1 on broad printer/debug replacement, route-debug row migration, diagnostic string edits, expected-string rewrites, baseline refreshes, helper renames, unsupported downgrades, timeout masking, or row text changes. |
+| cross-target compatibility surfaces | No action in E1 on x86/riscv wrapper output, cross-target handoff behavior, compatibility delivery, CLI/dump snippets, or public prepared artifacts that still bridge target-specific lowering. |
+
+Draft 155 / E5 remains unopened.
 
 ## Baseline And Proof Guardrails
 

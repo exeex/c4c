@@ -1,31 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Draft Accepted Follow-Up Ideas
+Current Step ID: 4
+Current Step Title: Record Deferrals and No-Action Decisions
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 of `plan.md`: drafted accepted follow-up ideas only for the
-Step 2 families classified as `ready to draft one implementation idea`.
+Completed Step 4 of `plan.md`: recorded explicit deferrals, blockers, and
+no-action decisions in the durable E1 triage document.
 
-New accepted follow-up idea files:
-
-- `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md`
-- `ideas/open/220_phase_e1_route_identity_helper_contraction.md`
-
-The durable E1 triage document now links both accepted follow-up ideas,
-explains why each ready family is ready, and records that no aggregate,
-liveness, intrinsic metadata, row-scoped diagnostic/oracle, E2, E3, E4,
-Route 8, broad prepared retirement, or draft 155 / E5 idea was drafted.
+The durable E1 triage document now separates the two Step 3 ready follow-ups
+from E2/E3/E4/Route 8 deferrals, aggregate blockers, and E1 no-action surfaces.
+It records no-action decisions for aggregate, target-policy, fallback/oracle,
+diagnostic/string, and cross-target compatibility surfaces, and states that
+draft 155 / E5 remains unopened.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 4 is lifecycle closure, plan-owner
-review, or another docs-only packet. This executor packet did not inspect or
-modify `plan.md`.
+Suggested Step 5 packet: have the plan owner or supervisor decide whether the
+analysis-only E1 runbook is now ready for lifecycle closure, replacement, or
+another explicitly scoped docs-only step. This executor packet did not inspect
+or modify `plan.md`.
 
 ## Watchouts
 
@@ -40,6 +37,10 @@ modify `plan.md`.
   names, supported-path status, baselines, and expected strings.
 - Step 3 deliberately drafted only two ideas: control-flow identity helper
   contraction and route identity helper contraction.
+- Step 4 does not authorize new ideas or implementation work for E2, E3, E4,
+  Route 8, aggregate retirement, target-policy movement, fallback/oracle
+  replacement, diagnostic/string edits, cross-target compatibility migration,
+  or draft 155 / E5.
 - Each accepted idea still requires a later runbook to choose one helper or one
   reader before code changes.
 - Row-scoped diagnostic/oracle helpers remain E3-owned unless a row is only the
@@ -48,17 +49,15 @@ modify `plan.md`.
 ## Proof
 
 Docs-only proof selected by supervisor; no build was required and no
-`test_after.log` was written for this packet because the proof commands are
-document content checks and the packet forbids touching canonical log files.
+`test_after.log` was written for this packet because the proof command is a
+document content check and the packet forbids touching canonical log files.
 
-Commands:
+Command:
 
 ```sh
-rg -n "Accepted follow-up|ideas/open/|draft 155|E5 remains unopened" docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md
-ls ideas/open | sort
+rg -n "Deferrals|No-action|E2|E3|E4|Route 8|Draft 155 / E5 remains unopened|no-action" docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md
 ```
 
-Result: passed. The commands found the accepted follow-up section, both new
-`ideas/open/` links, and draft 155 / E5 guardrails in the durable E1 document.
-The open-idea listing shows the active E1 idea plus the two accepted follow-up
-idea files.
+Result: passed. The command found the Step 4 status, the new `Step 4
+Deferrals And No-Action Decisions` section, explicit E2/E3/E4/Route 8
+deferral rows, the no-action table, and `Draft 155 / E5 remains unopened`.
