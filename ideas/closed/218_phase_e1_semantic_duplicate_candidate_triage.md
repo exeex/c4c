@@ -135,3 +135,24 @@ The closure note must contain:
 - Weakening diagnostics, helper-oracle names, supported-path status, baselines,
   or expected strings.
 - Opening draft 155 or claiming broad prepared retirement from E1 triage.
+
+## Closure Note
+
+Closed after the Phase E1 analysis-only runbook completed all five steps. The
+durable output is
+`docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md`.
+
+Accepted follow-up ideas:
+
+- `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md`
+- `ideas/open/220_phase_e1_route_identity_helper_contraction.md`
+
+The durable E1 document records the six-family candidate triage, accepted
+follow-ups, E2/E3/E4/Route 8 deferrals, no-action decisions, implementation
+proof requirements, reviewer reject signal validation, and the explicit
+statement that draft 155 / E5 remains unopened.
+
+Close proof used existing canonical `test_before.log` and `test_after.log`
+string-authority guard runs. The close-time regression guard passed with
+`--allow-non-decreasing-passed` because this lifecycle/docs-only closure had
+equal 1/1 passing counts and no new failures.
