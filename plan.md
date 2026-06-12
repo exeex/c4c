@@ -54,6 +54,10 @@ output, and expected strings remain authoritative everywhere else.
 - Byte-stable x86 wrapper behavior, ABI/call wrapper policy, prepared
   call/debug output, direct-call/helper-oracle families, route-debug text,
   expected strings, and nearby same-feature cases.
+- The aggregate `backend_x86_handoff_boundary` compare-join stack-backed
+  parameter-home semantic failure is tracked separately in
+  `ideas/open/234_phase_e3_x86_compare_join_stack_home_handoff_follow_up.md`;
+  it must not be folded into this Route 6 route-debug row slice.
 
 ## Non-Goals
 
@@ -98,6 +102,9 @@ output, and expected strings remain authoritative everywhere else.
   acceptance if the implementation touches shared x86 wrapper, module
   lowering, prepared dispatch, `ConsumedPlans`, MIR query, direct-call, or
   helper-oracle behavior beyond the selected row.
+- If a broader aggregate handoff proof exposes compare-join stack-home
+  prepared-module consumer semantics unrelated to the selected route-debug row,
+  record or follow the separate handoff idea instead of expanding this runbook.
 
 ## Steps
 
@@ -175,15 +182,17 @@ Completion check:
 ### Step 3: Prove Fallback And Nearby Same-Feature Stability
 
 Goal: prove the implementation is semantic and not shaped around one known
-fixture.
+fixture, while keeping compare-join stack-home handoff semantics out of this
+Route 6 route-debug row slice.
 
 Primary targets:
 
 - `tests/backend/bir/backend_x86_route_debug_test.cpp`
 - `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
-- nearby x86 handoff boundary tests exposing scalar argument-source behavior
 - prepared printer/debug, direct-call, and helper-oracle tests selected by the
   supervisor
+- the separate handoff idea for aggregate compare-join stack-home failures:
+  `ideas/open/234_phase_e3_x86_compare_join_stack_home_handoff_follow_up.md`
 
 Actions:
 
@@ -197,6 +206,10 @@ Actions:
 - Preserve x86 wrapper behavior, ABI/call wrapper policy, prepared call/debug
   output, direct-call/helper-oracle families, route-debug row text, expected
   strings, baselines, and supported/unsupported contracts.
+- Treat the broader `backend_x86_handoff_boundary` compare-against-zero
+  compare-join lane with stack-backed parameter-home failure as separate
+  prepared-module consumer handoff work when the selected row proof and
+  fallback matrix remain green.
 
 Completion check:
 
@@ -205,6 +218,8 @@ Completion check:
 - Nearby same-feature coverage demonstrates this is not a named-case shortcut.
 - No wrapper, ABI/call policy, direct-call/helper-oracle, expected-string,
   baseline, or supported/unsupported change is part of the diff.
+- Any aggregate handoff failure outside the selected route-debug row is linked
+  to a separate open idea before Step 3 is treated as complete.
 
 ### Step 4: Validate And Prepare Acceptance Notes
 
