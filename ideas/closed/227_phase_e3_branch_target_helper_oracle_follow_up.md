@@ -50,6 +50,23 @@ retaining prepared fallback and output authority.
 - No expected string, baseline, wrapper, printer/debug, branch-control, or
   emitted-output authority changes are required to claim progress.
 
+## Closure Note
+
+Closed after the active runbook completed Step 4. The selected materialized-bool
+AArch64 conditional branch row has focused consumer proof for prepared
+true/false successor retention and emitted branch payload stability under raw
+BIR label drift, including invalid, mismatched, and conflicting structured
+successor ids. Nearby same-feature proof remains covered by the focused
+backend subset. Non-conditional BIR remains a helper-reader-level fallback case
+because the selected consumer API rejects that terminator shape before the row
+is reachable.
+
+Closeout guard used the canonical focused logs:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed with 3/3 tests before and after, 0 new failures.
+
 ## Reviewer Reject Signals
 
 - The change special-cases one branch-target testcase or symbol name instead of
