@@ -30780,7 +30780,7 @@ int block_dispatch_lowers_prepared_indirect_call_only_with_register_authority() 
 }
 
 int block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_source() {
-  auto prepared = prepared_with_selected_stored_indirect_callee(false, true);
+  auto prepared = prepared_with_selected_stored_indirect_callee(false, false);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -30818,6 +30818,48 @@ int block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_sour
   if (compare == std::string::npos || select == std::string::npos ||
       call == std::string::npos || !(compare < select && select < call)) {
     return fail("expected exact Route 3 stored-value source identity to retarget selected callee before blr: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int block_dispatch_falls_back_for_stored_indirect_callee_route3_prepared_mismatch() {
+  auto prepared = prepared_with_selected_stored_indirect_callee(false, true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  attach_prepared_function_lookups(function_context, prepared_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 6 || !result.visited_terminator ||
+      block.instructions.size() < 4 || !diagnostics.empty()) {
+    return fail("expected mismatched Route 3/prepared stored indirect callee fixture to dispatch cleanly: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected mismatched Route 3/prepared stored indirect callee fixture to print: " +
+                printed.diagnostic);
+  }
+  const auto route3_select = printed.assembly.find("csel x9");
+  const auto call = printed.assembly.find("blr x9");
+  if (call == std::string::npos || route3_select != std::string::npos) {
+    return fail("expected stored indirect callee mismatch to preserve prepared fallback without Route 3 retarget: " +
                 printed.assembly);
   }
   return 0;
@@ -36345,6 +36387,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_source();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_falls_back_for_stored_indirect_callee_route3_prepared_mismatch();
       status != 0) {
     return status;
   }

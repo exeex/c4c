@@ -8363,6 +8363,7 @@ enum class IndirectCalleeStoredValueSourceKind : unsigned char {
 struct IndirectCalleeStoredValueSource {
   bir::Value stored_value;
   std::size_t store_instruction_index = 0;
+  std::size_t load_instruction_index = 0;
   IndirectCalleeStoredValueSourceKind kind =
       IndirectCalleeStoredValueSourceKind::PreparedFallback;
 };
@@ -8393,6 +8394,7 @@ find_route3_indirect_callee_stored_value_source_identity(
   return IndirectCalleeStoredValueSource{
       .stored_value = *route3.stored_value.value,
       .store_instruction_index = route3.store_memory_access.instruction_index,
+      .load_instruction_index = route3.load_memory_access.instruction_index,
       .kind = IndirectCalleeStoredValueSourceKind::Route3Identity,
   };
 }
@@ -8427,6 +8429,8 @@ find_prepared_indirect_callee_stored_value_source_fallback(
   return IndirectCalleeStoredValueSource{
       .stored_value = prepared->stored_value,
       .store_instruction_index = prepared->store_instruction_index,
+      .load_instruction_index =
+          prepared->load_access != nullptr ? prepared->load_access->inst_index : 0,
       .kind = IndirectCalleeStoredValueSourceKind::PreparedFallback,
   };
 }
@@ -8437,16 +8441,24 @@ find_indirect_callee_stored_value_source(
     const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  // Route 3 can only answer target-neutral source identity here. Absent,
-  // mismatched, ambiguous, or policy-sensitive cases stay on prepared fallback.
-  if (const auto route3 =
-          find_route3_indirect_callee_stored_value_source_identity(
-              context, value, before_instruction_index);
-      route3.has_value()) {
+  const auto prepared =
+      find_prepared_indirect_callee_stored_value_source_fallback(
+          context, source_producers, value, before_instruction_index);
+  if (!prepared.has_value()) {
+    return std::nullopt;
+  }
+
+  // Route 3 can only answer target-neutral source identity here. Use it only
+  // when prepared same-block load-local stored-value behavior agrees.
+  if (auto route3 = find_route3_indirect_callee_stored_value_source_identity(
+          context, value, before_instruction_index);
+      route3.has_value() &&
+      route3->stored_value == prepared->stored_value &&
+      route3->store_instruction_index == prepared->store_instruction_index &&
+      route3->load_instruction_index == prepared->load_instruction_index) {
     return route3;
   }
-  return find_prepared_indirect_callee_stored_value_source_fallback(
-      context, source_producers, value, before_instruction_index);
+  return prepared;
 }
 
 [[nodiscard]] bool emit_indirect_callee_value_to_register_with_csel(
