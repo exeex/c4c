@@ -1,67 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/215_route7_comparison_provenance_consumer.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Route/Prepared Agreement
+Current Step ID: Step 3
+Current Step Title: Prove Negative and Fallback Cases
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added route/prepared agreement for exactly the selected consumer,
-`lower_materialized_compare_condition_branch`.
+Step 3 proved negative and fallback coverage for exactly the selected
+consumer, `lower_materialized_compare_condition_branch`, after the Step 2
+route/prepared agreement change.
 
 Changed files:
 
-- `src/backend/mir/aarch64/codegen/comparison.cpp`
-- `tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp`
 - `todo.md`
 
-Implementation completed:
+Coverage confirmed:
 
-- Split the materialized-condition producer lookup into valid Route 7 evidence
-  and explicit generic BIR fallback at the selected consumer.
-- Added a prepared materialized-condition producer query local to
-  `comparison.cpp`.
-- Accepted Route 7 only when it agrees with generic BIR identity and prepared
-  materialized-condition authority for the same binary pointer,
-  instruction/index, predicate/opcode, compare type, lhs/rhs values and
-  operand producer identities, and prepared value name.
-- Preserved the existing BIR fallback for absent, invalid,
-  duplicate/conflicting, stale, or route/prepared-mismatched Route 7 facts.
-- Left branch condition identity, true/false targets, suffix mapping inputs,
-  branch policy, fused legality, final ordering, and emitted assembler rows
-  under existing prepared/AArch64 ownership.
+- Positive route/prepared agreement:
+  `materialized_compare_branch_route7_provenance_matches_bir_identity` proves
+  Route 7, generic BIR identity, and prepared producer agreement before
+  selected lowering.
+- Absent Route 7:
+  `materialized_compare_branch_absent_route7_provenance_uses_emitted_fallback`
+  proves consumer-reachable emitted-condition fallback (`cbnz`, no `cmp`).
+- Duplicate/conflicting Route 7 facts:
+  `materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback`
+  proves duplicate materialized-condition provenance is rejected and preserves
+  emitted-condition fallback.
+- Condition mismatch:
+  `materialized_compare_branch_condition_name_mismatch_uses_emitted_fallback`
+  proves mismatched condition identity preserves emitted-condition fallback.
+- Route/prepared mismatch:
+  `materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback` proves
+  stale prepared lookup disagreement preserves selected generic BIR compare
+  fallback (`cmp`/conditional branch, no `cbnz`).
+- Operand mismatch:
+  `materialized_compare_branch_lhs_provenance_mismatch_uses_emitted_fallback`
+  and `materialized_compare_branch_rhs_provenance_mismatch_uses_emitted_fallback`
+  prove selected BIR fallback for lhs and rhs provenance disagreement.
+- Invalid/stale Route 7 reference handling:
+  `materialized_compare_branch_invalid_route7_reference_rejected` covers the
+  helper-level stale-owner rejection. This remains non-injectable for the
+  selected consumer because `lower_materialized_compare_condition_branch`
+  builds its Route 7 index internally from the current block immediately before
+  validation; injecting a mutated stale-owner index would broaden beyond the
+  selected consumer packet.
 
-Proof added:
-
-- `materialized_compare_branch_route7_provenance_matches_bir_identity` now also
-  asserts agreement with the prepared materialized-condition producer.
-- `materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback` covers
-  a selected-consumer route/prepared mismatch shape by attaching stale prepared
-  producer lookups while current Route 7/BIR facts remain valid, then verifies
-  selected BIR compare fallback (`cmp`/conditional branch, no `cbnz`).
+No new assertion was needed: the current branch-control/helper coverage already
+separates consumer-reachable emitted fallback, selected generic BIR fallback,
+and helper-level invalid/stale reference rejection without weakening expected
+strings.
 
 ## Suggested Next
 
-Proceed to Step 3: Prove Negative and Fallback Cases for the same selected
-consumer. Tighten any remaining consumer-reachable negative proof around
-absent, duplicate/conflict, condition-name mismatch, operand-provenance
-mismatch, and selected BIR fallback without changing expected strings or
-branch-policy ownership.
+Proceed to Step 4: Prove Expected-String Stability. Keep the next packet
+limited to confirming branch-control and machine-printer expected strings are
+unchanged under the selected Route 7 provenance consumer change.
 
 ## Watchouts
 
-- Stale invalid Route 7 materialized-condition references remain helper-level
-  because `lower_materialized_compare_condition_branch` builds the Route 7
-  index internally from the current block immediately before validation; there
-  is no consumer API that can inject a mutated stale-owner index without
-  broadening ownership.
-- The branch-control negative tests already provide consumer-reachable
-  fail-closed/fallback shapes for absent Route 7, duplicate/conflicting
-  materialized-condition provenance, condition-name mismatch, lhs/rhs
-  provenance mismatch, and stale prepared producer disagreement.
-- Do not expand Step 3 into fused compare consumers, Route 8, generic route
+- Step 4 still needs explicit expected-string stability proof; this Step 3
+  packet intentionally did not edit branch-control or machine-printer expected
+  strings.
+- Do not expand Step 4 into fused compare consumers, Route 8, generic route
   facades, branch policy, suffix/target ownership, machine-printer expected
   strings, or final assembler baseline rewrites.
 
