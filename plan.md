@@ -47,10 +47,26 @@ fixture-specific matching.
   `backend_x86_route_debug` and `backend_prepared_lookup_helper`.
 - Focused nearby same-feature coverage for compare-join stack-home handoff.
 
+## Review Reset
+
+`review/234_step2_dirty_route_review.md` rejected the dirty Step 2 route as
+drifting beyond this source idea. The next Step 2 executor packet must isolate
+and reprove only the `src/backend/mir/x86/module/module.cpp` compare-join
+consumer repair for the stack-home handoff case. Route 6 consumed-plan
+call-argument source work belongs to
+`ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md`.
+The pointer-backed same-module global selected-value-chain metadata failure
+belongs to
+`ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md`.
+
 ## Non-Goals
 
 - Do not change Route 6 route-debug row spelling, expected strings, fallback
   behavior, wrappers, prepared call/debug output, or helper-oracle behavior.
+- Do not touch Route 6 consumed-plan/call-plan source backfill code as part of
+  idea 234; that is tracked by idea 235.
+- Do not chase pointer-backed selected-value-chain metadata failures as part
+  of idea 234; that is tracked by idea 236.
 - Do not start broad ABI/call wrapper migration, E4 wrapper migration, draft
   155, E5, or prepared diagnostic/oracle retirement.
 - Do not downgrade supported assertions, mark the handoff-boundary case
@@ -136,6 +152,10 @@ Primary targets:
 
 Actions:
 
+- Isolate this packet from the dirty Route 6 consumed-plan change before
+  proving idea 234 progress. The acceptable Step 2 implementation surface is
+  the x86 compare-join consumer path unless fresh localization proves a
+  smaller same-idea owner.
 - Repair the semantic handoff path so the compare-join lane retains or
   reacquires the authoritative prepared stack home through entry and return.
 - Use prepared or handoff state that naturally explains the failing case and
@@ -144,6 +164,9 @@ Actions:
   assertion strings.
 - Preserve Route 6 route-debug row spelling, fallback behavior, expected
   strings, wrappers, prepared call/debug output, and helper-oracle behavior.
+- Treat any need for `src/backend/prealloc/call_plans.cpp`, `ConsumedPlans`,
+  prepared call/debug, or selected-value-chain metadata changes as a stop
+  signal for idea 234 and route it through the separate open ideas.
 - Build the touched target and run the supervisor-delegated narrow proof.
 
 Completion check:
@@ -152,7 +175,9 @@ Completion check:
   weakening the assertion.
 - The implementation follows semantic prepared stack-home authority rather
   than fixture-specific matching.
-- The delegated narrow proof passes without expectation or baseline rewrites.
+- The delegated narrow proof passes without expectation or baseline rewrites
+  and without depending on Route 6 consumed-plan or selected-value-chain
+  metadata repairs.
 
 ### Step 3: Prove Nearby Handoff Stability
 
