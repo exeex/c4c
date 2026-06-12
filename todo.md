@@ -8,68 +8,63 @@ Current Step Title: Prove Nearby Metadata Stability
 
 ## Just Finished
 
-Step 2: `Repair Global-Root Chain Publication` completed the focused
-prepared metadata repair in `src/backend/prealloc/control_flow.hpp`.
+Step 3: `Prove Nearby Metadata Stability` inspected the existing
+helper/handoff-boundary coverage for the shared `control_flow.hpp`
+selected-value-chain repair and found the focused coverage sufficient.
 
-`resolve_prepared_bir_link_name_ref(...)` now interns display-only BIR global
-names into the prepared link-name table before publishing
-`PreparedSameModuleGlobalRef` facts. This preserves distinct true/false
-same-module global identities for pointer-backed selected-value chains, so
-`classify_computed_value(...)` can keep the correct pointer-root/global-base
-facts and the selected-value operation chain:
+Existing coverage records the required stability surface:
 
-- true arm: `PointerBackedGlobalI32Load` from `selected_zero_backing`, pointer
-  root `selected_zero_root`, operations exactly `[Add immediate 4]`
-- false arm: `PointerBackedGlobalI32Load` from `selected_nonzero_backing`,
-  pointer root `selected_nonzero_root`, operations exactly `[Sub immediate 1]`
+- missing roots fail closed in `backend_prepared_lookup_helper` through the
+  direct-global select-chain, scalar materialization, BIR identity, and Route 2
+  record/index checks.
+- contradictory/drifted authoritative roots fail closed in the x86
+  handoff-boundary compare-join cases that reject drifted prepared branch
+  contracts and missing authoritative prepared branch records instead of
+  reopening raw recovery.
+- unsupported pointer bases are guarded by `classify_computed_value(...)`
+  rejecting pointer-backed loads unless the address base is a same-module
+  `GlobalSymbol` with a resolved root name/id and zero address offset.
+- non-global pointer-backed paths are guarded by the prepared helper
+  non-global/mismatched-root fail-closed checks and by the x86 return-arm
+  ownership checks for extern/thread-local/non-`Ptr` roots and missing or
+  mismatched pointer initializers.
+- unsupported selected-value-chain operations are guarded by the shared
+  classifier accepting only supported immediate binary extensions and by the
+  x86 renderer rejecting unsupported selected-value/trailing operations before
+  emission.
 
-No expected strings, baselines, helper-oracle output, Route 6 consumed-plan
-behavior, or x86 stack-home code were changed.
+No tests or implementation files were changed for Step 3.
 
 ## Suggested Next
 
-Execute Step 3: decide and run the supervisor-selected validation packet for
-nearby selected-value-chain metadata stability.
-
-Recommended packet:
-
-- Inspect existing helper/handoff-boundary coverage around missing roots,
-  contradictory roots, unsupported pointer bases, non-global pointer-backed
-  paths, and unsupported selected-value-chain operations.
-- Add or tighten focused fail-closed coverage only if existing coverage is
-  insufficient for the shared `control_flow.hpp` repair.
-- Re-run the delegated guard subset:
-
-```bash
-cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
-```
-
-If Step 3 confirms coverage is already sufficient, advance directly to Step 4
-acceptance notes and supervisor-selected broader validation.
+Advance to Step 4 acceptance notes for idea 236, with supervisor-selected
+broader validation as the next packet.
 
 ## Watchouts
 
 - The repair is semantic link-name publication, not fixture-name or assertion
   matching.
-- Existing fail-closed paths remain important for Step 3: missing or
+- Existing fail-closed paths remain important for acceptance: missing or
   unresolved names, non-`GlobalSymbol` pointer address bases, nonzero pointer
-  address offsets, extern/thread-local globals, non-`Ptr` pointer roots,
-  cycles, non-i32 values, unsupported binary shapes, and non-immediate chain
+  address offsets, extern/thread-local globals, non-`Ptr` pointer roots, cycles,
+  non-i32 values, unsupported binary shapes, and non-immediate chain
   operations.
-- Because `control_flow.hpp` is shared prepared metadata, supervisor should
-  choose whether Step 3 needs focused coverage beyond the already-green
-  handoff-boundary/helper/route-debug subset before acceptance.
+- The delegated Step 3 proof is focused. Since `control_flow.hpp` is shared
+  prepared metadata, supervisor still owns whether Step 4 needs broader
+  validation before lifecycle closure.
 - Ideas 234 and 235 remain open, not active. Their implementation slices now
   pass the delegated guard subset, but their source acceptance criteria still
   require supervisor-selected broader validation before lifecycle closure.
 
 ## Proof
 
-Ran the delegated Step 2 proof:
+Ran the delegated Step 3 proof:
 
 ```bash
 cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
 ```
 
 Result: passed. `backend_prepared_lookup_helper`, `backend_x86_route_debug`,
-and `backend_x86_handoff_boundary` all pass. Proof log: `test_after.log`.
+and `backend_x86_handoff_boundary` all pass. The delegated proof is sufficient
+for the Step 3 coverage check; no narrow test gap was identified. Proof log:
+`test_after.log`.
