@@ -1,43 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/210_route4_block_entry_publication_printer_debug_row.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Fail-Closed Diagnostics
+Current Step ID: Step 4
+Current Step Title: Preserve Row Text and Wrapper Stability
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 made the remaining fail-closed diagnostics observable for the selected
-prepared-printer block-entry publication row:
+Step 4 preserved the selected prepared-printer block-entry publication row text
+and wrapper behavior.
 
 `block_entry_publication successor=<label> status=available to_value_id=<id> to=<value> home_kind=register destination_kind=value destination_storage=register reg=<register> block_index=<block_index> instruction_index=<instruction_index>`
 
-`backend_prealloc_block_entry_publications` now proves that Route 4 evidence
-falls closed without attribution while preserving prepared availability for
-wrong successor identity, wrong value/type key, and duplicate block-entry
-publication facts. Existing Step 2 coverage still proves no-route fallback,
-positive Route 4 attribution, missing Route 4 PHI fallback, and mismatched
-destination fallback.
+`backend_prepared_printer` now freezes the concrete current row spelling:
 
-No selected row spelling, prepared-printer expected string, wrapper behavior,
-or production lookup behavior was changed in this packet.
+`block_entry_publication successor=join status=available to_value_id=42 to=published home_kind=register destination_kind=value destination_storage=register reg=r9 block_index=3 instruction_index=5`
+
+`backend_x86_publication_plan_reuse` remains the wrapper no-change proof for
+the shared publication-plan consumer surface. No production lookup behavior,
+wrapper logic, CLI section names, or existing expected strings were rewritten.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: preserve row text and wrapper stability by
-re-running the selected prepared-printer/dump string proof and wrapper proof
-without changing expected strings.
+Execute Step 5 from `plan.md`: acceptance review against the source idea,
+checking for route drift, expectation weakening, wrapper-family expansion,
+prepared API contraction, and aggregate migration.
 
 ## Watchouts
 
-- Keep subsequent work on the same available-register
+- Keep review on the same available-register
   `block_entry_publication` row class.
 - The duplicate case is observable through
   `RouteIndexValidationStatus::DuplicateReference`; there is no separate
   ambiguous status for this selected Route 4 block-entry row.
-- Step 4 should be proof-only unless a missing wrapper/string check requires
-  a narrow test registration update.
+- The new prepared-printer assertion is a narrow byte-stability freeze for the
+  selected row text, not an expected-string refresh.
 - Do not add a printed attribution column or rewrite expected row strings.
 
 ## Proof

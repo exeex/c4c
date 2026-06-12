@@ -349,6 +349,48 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepared_block_entry_publication_printer_row_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+
+  const auto function_name =
+      prepared.names.function_names.intern("block_entry_publication_dump_contract");
+  const auto successor_label = prepared.names.block_labels.intern("join");
+  const auto value_name = prepared.names.value_names.intern("published");
+
+  prepare::PreparedValueLocationFunction function_locations;
+  function_locations.function_name = function_name;
+  function_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 42,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"r9"},
+  });
+
+  prepare::PreparedMoveBundle bundle;
+  bundle.function_name = function_name;
+  bundle.phase = prepare::PreparedMovePhase::BlockEntry;
+  bundle.authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  bundle.block_index = 3;
+  bundle.instruction_index = 5;
+  bundle.source_parallel_copy_successor_label = successor_label;
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .to_value_id = 42,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = std::string{"r9"},
+      .block_index = 3,
+      .instruction_index = 5,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .source_parallel_copy_successor_label = successor_label,
+  });
+  function_locations.move_bundles.push_back(std::move(bundle));
+
+  prepared.value_locations.functions.push_back(std::move(function_locations));
+  return prepared;
+}
+
 prepare::PreparedBirModule legalize_critical_edge_parallel_copy_module() {
   bir::Module module;
 
@@ -4838,6 +4880,19 @@ int main() {
   if (!expect_not_contains(unpublished_parallel_copy_dump,
                            "authority execution_site=predecessor_terminator execution_block=body",
                            "recomputed parallel-copy execution block after removing publication")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto block_entry_publication_prepared =
+      prepared_block_entry_publication_printer_row_module();
+  const std::string block_entry_publication_dump =
+      prepare::print(block_entry_publication_prepared);
+  if (!expect_contains(block_entry_publication_dump,
+                       "block_entry_publication successor=join status=available "
+                       "to_value_id=42 to=published home_kind=register "
+                       "destination_kind=value destination_storage=register "
+                       "reg=r9 block_index=3 instruction_index=5",
+                       "block-entry publication prepared-printer row")) {
     return EXIT_FAILURE;
   }
 
