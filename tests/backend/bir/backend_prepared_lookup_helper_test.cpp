@@ -10146,6 +10146,18 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       block, bir::Value::named(bir::TypeKind::I1, "%cond"), block.insts.size());
   const auto route7_condition =
       bir::route7_comparison_instruction_record(&block, 3);
+  const auto indexed_route7_condition =
+      bir::route7_find_materialized_condition(
+          route7_index,
+          block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          block.insts.size());
+  const auto route7_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(route7_index),
+          block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          block.insts.size());
   if (!prepared_condition.has_value() ||
       !bir_condition.available ||
       bir_condition.binary != prepared_condition->binary ||
@@ -10159,7 +10171,40 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       route7_condition.instruction_index !=
           prepared_condition->instruction_index ||
       names.value_names.find(route7_condition.condition_value.name) !=
-          prepared_condition->condition_value_name) {
+          prepared_condition->condition_value_name ||
+      !indexed_route7_condition ||
+      indexed_route7_condition.status !=
+          bir::Route7ComparisonStatus::Available ||
+      indexed_route7_condition.binary != prepared_condition->binary ||
+      indexed_route7_condition.instruction_index !=
+          prepared_condition->instruction_index ||
+      names.value_names.find(indexed_route7_condition.condition_value.name) !=
+          prepared_condition->condition_value_name ||
+      !indexed_route7_condition.lhs ||
+      indexed_route7_condition.lhs.producer_kind !=
+          bir_condition.lhs->producer_kind ||
+      indexed_route7_condition.lhs.producer_instruction !=
+          bir_condition.lhs->producer_instruction ||
+      indexed_route7_condition.lhs.producer_instruction_index !=
+          bir_condition.lhs->producer_instruction_index ||
+      !indexed_route7_condition.rhs ||
+      indexed_route7_condition.rhs.producer_kind !=
+          bir_condition.rhs->producer_kind ||
+      indexed_route7_condition.rhs.producer_instruction !=
+          bir_condition.rhs->producer_instruction ||
+      indexed_route7_condition.rhs.producer_instruction_index !=
+          bir_condition.rhs->producer_instruction_index ||
+      indexed_route7_condition.rhs.integer_constant !=
+          bir_condition.rhs->integer_constant ||
+      !route7_condition_ref ||
+      route7_condition_ref.status != bir::RouteIndexValidationStatus::Valid ||
+      route7_condition_ref.reference.relationship !=
+          bir::RouteIndexRelationshipKind::Route7MaterializedCondition ||
+      route7_condition_ref.comparison_record == nullptr ||
+      route7_condition_ref.comparison_record->binary !=
+          prepared_condition->binary ||
+      route7_condition_ref.comparison_record->instruction_index !=
+          prepared_condition->instruction_index) {
     return fail(
         "prepared and BIR materialized condition producer facts and Route 7 records should match binary condition producers");
   }
