@@ -30867,6 +30867,84 @@ int block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy() {
   return 0;
 }
 
+int block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy() {
+  auto prepared = prepared_with_selected_stored_indirect_callee(false, false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  auto decoy_select = std::get<bir::SelectInst>(
+      prepared.module.functions.front().blocks.front().insts[2]);
+  decoy_select.rhs = bir::Value::immediate_i64(0);
+  const auto selected_name = prepared.names.value_names.find("%callee.selected");
+  prepared_lookups.edge_publication_source_producers
+      .producers_by_value_name[selected_name]
+      .select = &decoy_select;
+
+  auto lower_and_print =
+      [&](const prepare::PreparedFunctionLookups& lookups)
+          -> std::optional<std::string> {
+    auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    attach_prepared_function_lookups(function_context, lookups);
+    auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 6 || !result.visited_terminator ||
+        block.instructions.size() < 4 || !diagnostics.empty()) {
+      return std::nullopt;
+    }
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return printed.ok ? std::optional<std::string>{printed.assembly}
+                      : std::nullopt;
+  };
+  auto preserves_selected_callee_output =
+      [](const std::optional<std::string>& printed) {
+        if (!printed.has_value()) {
+          return false;
+        }
+        const auto compare = printed->find("cmp x");
+        const auto call = printed->find("blr x9", compare);
+        return compare != std::string::npos &&
+               call != std::string::npos &&
+               compare < call;
+      };
+  auto uses_original_route4_select_identity =
+      [&](const std::optional<std::string>& printed) {
+        if (!preserves_selected_callee_output(printed)) {
+          return false;
+        }
+        const auto compare = printed->find("cmp x");
+        const auto compare_end = printed->find('\n', compare);
+        const auto compare_line = printed->substr(compare, compare_end - compare);
+        return compare_line.find(", #1") != std::string::npos &&
+               compare_line.find(", #0") == std::string::npos;
+      };
+  const auto agreeing_route4 = lower_and_print(prepared_lookups);
+  if (!uses_original_route4_select_identity(agreeing_route4)) {
+    return fail("expected agreeing Route 4 indirect-callee source producer to use the indexed BIR select identity instead of stale prepared payload");
+  }
+
+  auto wrong_reference_lookups = prepared_lookups;
+  const auto loaded_name = prepared.names.value_names.find("%callee.loaded");
+  wrong_reference_lookups.edge_publication_source_producers
+      .producers_by_value_name[loaded_name]
+      .instruction_index = std::size_t{3};
+  wrong_reference_lookups.edge_publication_source_producers
+      .producers_by_value_name[selected_name]
+      .instruction_index = std::size_t{3};
+  const auto wrong_reference = lower_and_print(wrong_reference_lookups);
+  if (!preserves_selected_callee_output(wrong_reference)) {
+    return fail("expected wrong-reference Route 4 indirect-callee source producer data to preserve prepared fallback output");
+  }
+
+  return 0;
+}
+
 int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   auto prepared = prepared_with_reordered_retained_bir();
   const auto& function_cf = prepared.control_flow.functions[1];
@@ -36248,6 +36326,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy();
       status != 0) {
     return status;
   }
