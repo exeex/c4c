@@ -56,6 +56,42 @@ std::string render_optional_grouped_span(
                              occupied_register_names);
 }
 
+void append_route6_scalar_call_argument_sources(
+    std::ostringstream& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    c4c::FunctionNameId function_name) {
+  const auto consumed = c4c::backend::x86::consume_plans(module, function_name);
+  std::size_t call_index = 0;
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr) {
+        continue;
+      }
+      for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+        const auto& argument = call->args[arg_index];
+        const auto route6_source =
+            c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+                consumed, block, *call, block_index, instruction_index, arg_index, argument);
+        if (!route6_source.has_value()) {
+          continue;
+        }
+        out << "    route6 scalar arg call#" << call_index
+            << " block=" << block.label
+            << " inst#" << instruction_index
+            << " callee=" << call->callee
+            << " arg#" << arg_index
+            << " source=" << argument.name
+            << " kind=ArgumentValue\n";
+      }
+      ++call_index;
+    }
+  }
+}
+
 void append_grouped_authority(std::ostringstream& out,
                               const c4c::backend::prepare::PreparedBirModule& module,
                               c4c::FunctionNameId function_name,
@@ -399,6 +435,7 @@ std::string render_report(const c4c::backend::prepare::PreparedBirModule& module
       const auto function_name =
           c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
       if (function_name.has_value()) {
+        append_route6_scalar_call_argument_sources(out, module, function, *function_name);
         append_grouped_authority(out, module, *function_name, trace);
       }
     }

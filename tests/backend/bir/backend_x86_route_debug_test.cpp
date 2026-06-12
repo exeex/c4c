@@ -1048,6 +1048,12 @@ prepare::PreparedBirModule legalize_single_block_same_module_scalar_call_wrapper
       .callee = "addip0",
       .args = {bir::Value::named(bir::TypeKind::I32, "%t1")},
       .arg_types = {bir::TypeKind::I32},
+      .arg_sources = {bir::CallArgumentSourceRelationship{
+          .arg_index = 0,
+          .source_encoding = bir::CallArgumentSourceEncodingKind::Register,
+          .source_value_id = std::size_t{7},
+          .source_value_name = "%t1",
+      }},
       .return_type_name = "i32",
       .return_type = bir::TypeKind::I32,
   });
@@ -1631,6 +1637,9 @@ int main() {
       !expect_contains(single_block_void_call_sequence_miss_trace,
                        "x86 route trace",
                        "single-block void call-sequence trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       "    route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue\n",
+                       "single-block same-module scalar call Route 6 source row") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_summary,
                        "x86 route summary",
                        "module-level rejection summary header") ||
