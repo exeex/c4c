@@ -1,6 +1,6 @@
 # Phase E0 Prepared/BIR Merge Readiness
 
-Status: Step 4 E1-E5 readiness synthesis complete.
+Status: Step 5 final validation complete.
 
 Source idea: `ideas/open/217_phase_e0_prepared_bir_merge_readiness_and_ownership_boundary_audit.md`
 
@@ -423,3 +423,56 @@ Route constraints:
   not implementation permission. Final validation still needs to check this
   document against every source-idea expected output and reject signal before
   any later execution plan treats the recommendations as acceptance-ready.
+
+## Final Validation Against Source Idea
+
+This section validates the durable Phase E0 payload against the active source
+idea requirements in
+`ideas/open/217_phase_e0_prepared_bir_merge_readiness_and_ownership_boundary_audit.md`.
+It is acceptance validation only. It does not implement, delete, privatize,
+rename, weaken diagnostics/tests, or open draft 155 / E5.
+
+### Expected Output Checklist
+
+| Source idea expected output | Coverage in this document | Validation result |
+| --- | --- | --- |
+| Link to `docs/bir_prealloc_fusion/phase_e0_prepared_bir_merge_readiness.md` | This file is the durable analysis payload at that path; the active source idea is linked at the top of the document and in this validation section. | Covered. |
+| `PreparedBirModule` field-by-field ownership map | `PreparedBirModule Ownership Classification` classifies every field inventoried from `src/backend/prealloc/module.hpp`, including semantic candidates, retained target/prepared policy, fallback/oracle, diagnostics, wrappers, and proof requirements. | Covered. |
+| `PreparedFunctionLookups` group-by-group ownership map | `PreparedFunctionLookups Ownership Classification` classifies every lookup group inventoried from `src/backend/prealloc/prepared_lookups.hpp` and separates route-native subfacts from retained policy/fallback/oracle surfaces. | Covered. |
+| Target-end-state table for BIR semantics, prepared policy, private pass context, and duplicate semantic helper deletion candidates | `Target End-State Map` organizes the later-phase state by those four ownership lanes and keeps target policy and fallback/oracle authority retained. | Covered. |
+| Semantic duplicate surfaces that are candidates for E1 | `E1 Semantic Duplicate Candidates` names aggregate BIR semantic forwarding, control-flow identity helpers, route source/publication/join/call/comparison identity helpers, liveness identity helpers, intrinsic metadata adapters, and row-scoped diagnostic/oracle helpers. | Covered. |
+| Public prepared APIs that are candidates for E2 | `E2 Public API And Private Pass-Context Candidates` and `PreparedFunctionLookups E2 Candidate Summary` name one-reader or one-row API contraction candidates while rejecting aggregate lookup/module deletion. | Covered. |
+| Helper/API families where code-size reduction is realistic and proof required before deletion | `Code-Size Reduction Candidates And Required Proof` names the helper/API families and requires agreement, failure-mode fallback, byte-stable diagnostics where relevant, and no stranded public fallback/oracle consumer. | Covered. |
+| Surfaces where code-size reduction is not realistic because they are target policy, diagnostics/oracle, cross-target compatibility, or retained fallback | `Surfaces Where Code-Size Reduction Is Not Realistic Yet` lists aggregate deletion, target-policy fields/groups, diagnostic/string authority, cross-target wrappers, retained fallback, and Route 8 blockers. | Covered. |
+| Diagnostic/oracle replacement prerequisites for E3 | `E3 Diagnostic And Oracle Prerequisites` requires positive route/BIR facts, retained prepared fallback for failure modes, byte-stable output or retained authority, no weakening, and target-policy separation. | Covered. |
+| Cross-target wrapper blockers for E4 | `E4 Cross-Target Wrapper Blockers` records AArch64-first proof, x86 `ConsumedPlans` and wrapper/string blockers, riscv no-import status, and retained target-local policy. | Covered. |
+| Exact criteria for when draft 155 / E5 can be rewritten or opened | `Draft 155 And E5 Rewrite Criteria` requires complete field and lookup ownership, E1-E4 proof, retained fallback/oracle and diagnostic authority, cross-target wrapper proof, and concrete code-deletion targets before E5 opens. | Covered. |
+| Follow-up implementation or analysis ideas needed before E1-E5 | The E1-E5 sections identify the next safe shapes: one semantic duplicate family, one public prepared API contraction, one diagnostic/oracle row, one cross-target wrapper boundary, or one separate Route 8 owner/schema analysis. | Covered. |
+
+### Reviewer Reject Signal Checklist
+
+| Reject signal | Guard in this document | Validation result |
+| --- | --- | --- |
+| Treating selected route-first readers as proof of broad prepared retirement | The evidence inventory, route constraints, E1/E2 sections, and draft 155 criteria repeatedly limit route-reader evidence to one selected consumer or one row under route/prepared agreement. Aggregate `PreparedBirModule` and `PreparedFunctionLookups` deletion remains rejected. | Not present. |
+| Classifying target policy as BIR-owned only to make deletion look easier | Field and lookup maps retain ABI, layout, registers, stack, addressing, move scheduling, call policy, helper protocols, wrappers, final records, target output spelling, and emission behavior as prepared/target-owned. | Not present. |
+| Treating a container merge, facade rename, or wrapper move as code reduction | The target-end-state map and code-size sections require deletion of duplicate semantic helper authority and explicitly exclude facade moves, container reshuffles, wrapper renames, and aggregate type demotions. | Not present. |
+| Treating prepared printer/debug/oracle surfaces as optional | Diagnostic, printer/debug, route-debug, helper-oracle, baseline, expected-string, fallback, and mismatch authority are retained throughout the field map, lookup map, E3 prerequisites, and no-reduction list. | Not present. |
+| Recommending draft 155 before field ownership, fallback/oracle, diagnostic, string, and public-consumer blockers are mapped | Draft 155 is evidence only. The E5 criteria require complete ownership maps, E1-E4 proof, retained fallback/oracle and diagnostic authority, cross-target wrapper proof, and concrete code deletion before draft 155 is rewritten or opened. | Not present. |
+| Failing to identify duplicate semantic helper families as the primary deletion target | The target end state, E1 candidates, E2 candidates, and code-size table make duplicate semantic helpers and one-row semantic/oracle helpers the primary code-deletion path. | Not present. |
+| Combining implementation with this analysis | This document is analysis-only and names no implementation patch. No implementation or header/source file is modified by this Step 5 validation. | Not present. |
+
+### Proof Applicability
+
+No executable proof applies to Step 5 because the slice changes only the
+durable analysis document, `todo.md`, and the delegated proof log. The relevant
+validation is checklist coverage against the active source idea, not compiler
+behavior. The docs-only proof command is:
+
+```sh
+printf 'docs-only Step 5 final analysis validation; no executable proof applies\n' > test_after.log
+```
+
+This is sufficient for this final analysis-validation slice. Later E1-E5
+implementation work will need executable proof scoped to the specific semantic
+reader, API contraction, diagnostic/oracle row, or wrapper boundary being
+changed.
