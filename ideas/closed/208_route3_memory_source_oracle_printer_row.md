@@ -49,3 +49,11 @@ fallback behavior without changing strings.
 - Reject target-addressing policy movement into Route 3.
 - Reject hiding the old prepared diagnostic failure mode behind new route
   terminology.
+
+## Closure Note
+
+Closed 2026-06-12 after completing the `backend_prepared_lookup_helper`
+stored-value helper-oracle row for same-slot Route 3 memory/source agreement.
+Prepared diagnostics remain authoritative for fallback and non-agreement paths.
+Accepted proof: `backend_prepared_lookup_helper` passed 1/1 with the fallback
+matrix and byte-stable row text recorded.
