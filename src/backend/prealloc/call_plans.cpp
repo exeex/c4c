@@ -2621,10 +2621,103 @@ find_prepared_call_argument_source_producer_materialization(
               std::optional<PreparedValueId>{move.to_value_id});
 }
 
+[[nodiscard]] std::optional<bir::CallArgumentSourceEncodingKind>
+route6_named_scalar_i32_source_encoding(PreparedStorageEncodingKind encoding) {
+  switch (encoding) {
+    case PreparedStorageEncodingKind::Register:
+      return bir::CallArgumentSourceEncodingKind::Register;
+    case PreparedStorageEncodingKind::FrameSlot:
+      return bir::CallArgumentSourceEncodingKind::FrameSlot;
+    case PreparedStorageEncodingKind::None:
+    case PreparedStorageEncodingKind::Immediate:
+    case PreparedStorageEncodingKind::ComputedAddress:
+    case PreparedStorageEncodingKind::SymbolAddress:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+void publish_route6_named_scalar_i32_call_argument_source(
+    const PreparedNameTables& names,
+    bir::CallInst& call,
+    const PreparedCallArgumentPlan& argument,
+    std::optional<ValueNameId> source_value_name) {
+  if (argument.arg_index >= call.args.size()) {
+    return;
+  }
+  const auto& value = call.args[argument.arg_index];
+  if (value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::I32 ||
+      value.name.empty() ||
+      !argument.source_value_id.has_value() ||
+      !source_value_name.has_value() ||
+      *source_value_name == kInvalidValueName ||
+      argument.source_selection.has_value() ||
+      argument.direct_global_select_chain_dependency.available) {
+    return;
+  }
+
+  const auto source_encoding =
+      route6_named_scalar_i32_source_encoding(argument.source_encoding);
+  if (!source_encoding.has_value()) {
+    return;
+  }
+
+  const std::string_view prepared_source_name =
+      names.value_names.spelling(*source_value_name);
+  if (prepared_source_name.empty() || prepared_source_name != value.name) {
+    return;
+  }
+
+  bir::CallArgumentSourceRelationship* existing = nullptr;
+  for (auto& relationship : call.arg_sources) {
+    if (relationship.arg_index != argument.arg_index) {
+      continue;
+    }
+    if (existing != nullptr) {
+      return;
+    }
+    existing = &relationship;
+  }
+
+  const std::size_t source_value_id =
+      static_cast<std::size_t>(*argument.source_value_id);
+  if (existing == nullptr) {
+    call.arg_sources.push_back(bir::CallArgumentSourceRelationship{
+        .arg_index = argument.arg_index,
+        .source_encoding = *source_encoding,
+        .source_value_id = source_value_id,
+        .source_value_name = std::string{prepared_source_name},
+    });
+    return;
+  }
+
+  if (existing->source_selection.has_value() ||
+      existing->direct_global_select_chain_dependency.has_value()) {
+    return;
+  }
+  if (existing->source_encoding != bir::CallArgumentSourceEncodingKind::None &&
+      existing->source_encoding != *source_encoding) {
+    return;
+  }
+  if (existing->source_value_id.has_value() &&
+      *existing->source_value_id != source_value_id) {
+    return;
+  }
+  if (existing->source_value_name.has_value() &&
+      *existing->source_value_name != prepared_source_name) {
+    return;
+  }
+
+  existing->source_encoding = *source_encoding;
+  existing->source_value_id = source_value_id;
+  existing->source_value_name = std::string{prepared_source_name};
+}
+
 void populate_call_plans(PreparedBirModule& prepared) {
   prepared.call_plans.functions.clear();
 
-  for (const auto& function : prepared.module.functions) {
+  for (auto& function : prepared.module.functions) {
     if (function.is_declaration) {
       continue;
     }
@@ -2660,11 +2753,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
     PreparedCallPlanLookups prior_preserved_lookups;
 
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-      const auto& block = function.blocks[block_index];
+      auto& block = function.blocks[block_index];
       const BlockLabelId block_label =
           prepared_block_label_for_index(control_flow_function, function, block_index);
       for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
-        const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+        auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
         if (call == nullptr) {
           continue;
         }
@@ -2819,6 +2912,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
               arg_plan.source_selection->kind ==
                   PreparedCallArgumentSourceSelectionKind::
                       LocalFrameAddressMaterialization;
+          publish_route6_named_scalar_i32_call_argument_source(
+              prepared.names, *call, arg_plan, source.value_name);
 
           call_plan.arguments.push_back(std::move(arg_plan));
         }
