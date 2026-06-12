@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/228_phase_e3_fused_compare_operand_producer_helper_oracle_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate The Row Family And Proof Surface
+Current Step ID: 2
+Current Step Title: Validate Existing Agreement-Gated Route 7 Evidence
 
 # Current Packet
 
@@ -104,10 +104,13 @@ Proof gaps for Step 2/3:
 
 ## Suggested Next
 
-Start Step 2 - Add Agreement-Gated Route 7 Evidence only if the supervisor
-confirms the existing implementation still needs adjustment. Otherwise move to
-Step 3 and add focused public-boundary tests for the missing fallback matrix
-above, with no expected-string, baseline, wrapper, branch-control,
+Start Step 2 - Validate Existing Agreement-Gated Route 7 Evidence. Confirm the
+private AArch64 helper path already calls
+`detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)`,
+accepts converted Route 7 facts only when both sides match prepared facts, and
+falls back to prepared facts on non-agreement. Record any real semantic gap;
+otherwise proceed to Step 3 public-boundary fallback and nearby same-feature
+proof with no expected-string, baseline, wrapper, branch-control,
 machine-printer, suffix, fused-legality, hazard, or output-policy rewrites.
 
 Suggested narrow proof command for Step 2/3:

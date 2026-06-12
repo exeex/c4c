@@ -5,16 +5,17 @@ Source Idea: ideas/open/228_phase_e3_fused_compare_operand_producer_helper_oracl
 
 ## Purpose
 
-Augment or replace one selected
-`find_prepared_fused_compare_operand_producer_facts(...)` helper-oracle
-operand-producer row family with Route 7 comparison provenance evidence while
-preserving prepared fallback and output authority.
+Validate the existing agreement-gated Route 7 comparison provenance path for
+one selected `find_prepared_fused_compare_operand_producer_facts(...)`
+helper-oracle operand-producer row family, then fill the public-boundary
+fallback and nearby same-feature proof gaps while preserving prepared fallback
+and output authority.
 
 ## Goal
 
-Use Route 7 comparison provenance only when the private Route 7 agreement
-reader agrees with prepared fused-compare operand-producer data, and prove that
-all non-agreement paths retain current prepared helper-oracle behavior.
+Keep Route 7 comparison provenance limited to the existing private agreement
+reader path, and prove that public AArch64 helper/caller fallback keeps current
+prepared helper-oracle behavior for all non-agreement paths.
 
 ## Core Rule
 
@@ -31,16 +32,18 @@ ownership.
 - `ideas/closed/227_phase_e3_branch_target_helper_oracle_follow_up.md`
 - `docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
 - Existing implementation and tests around:
-  `find_prepared_fused_compare_operand_producer_facts(...)` and the private
-  Route 7 fused-compare comparison provenance agreement reader
+  `find_prepared_fused_compare_operand_producer_facts(...)`,
+  `detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)`,
+  and public AArch64 conditional branch lowering callers
 
 ## Current Targets
 
 - One selected helper-oracle row family tied to
   `find_prepared_fused_compare_operand_producer_facts(...)`
-- Positive Route 7 comparison provenance under prepared agreement
+- Existing positive Route 7 comparison provenance under prepared agreement
 - Prepared fallback for absent route, invalid references, duplicate or conflict
   cases, mismatch, unfused input, non-agreement paths, and prepared-only data
+- Public AArch64 helper/caller fallback proof for those non-agreement paths
 - Nearby same-feature fused-compare tests that prove this is not shaped around
   one named fixture
 
@@ -65,9 +68,15 @@ ownership.
 - Phase E3 classified the matching helper-oracle positive row family as ready
   while retaining public prepared fallback, branch-control, machine-printer,
   wrapper, and expected-string authority.
-- The implementation should consume the private Route 7 agreement reader for
-  the positive row and fail closed to the existing prepared result everywhere
-  else.
+- Step 1 inventory found that
+  `src/backend/mir/aarch64/codegen/comparison.cpp` already consumes
+  `detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)` at
+  the private AArch64 helper boundary, accepts converted Route 7 facts only
+  when both sides match prepared facts, and falls back to prepared facts on
+  non-agreement.
+- Remaining work is proof-oriented: verify the existing private path, add or
+  adjust focused public-boundary fallback coverage where missing, and prove
+  nearby same-feature fused-compare behavior.
 
 ## Execution Rules
 
@@ -80,7 +89,7 @@ ownership.
   available through the private agreement reader.
 - Prefer semantic use of the private Route 7 agreement reader; do not add
   testcase-shaped matching or fixture-name shortcuts.
-- Every implementation step needs fresh build or compile proof plus the
+- Every implementation or test step needs fresh build or compile proof plus the
   delegated test subset. Escalate to broader validation before acceptance if
   the diff touches shared comparison lowering, branch-control, machine-printer,
   wrappers, or expected-output surfaces.
@@ -119,43 +128,53 @@ Completion check:
   suffix, fused-legality, hazard, or output-policy change is made in this step
   unless the executor is explicitly delegated to start implementation.
 
-### Step 2: Add Agreement-Gated Route 7 Evidence
+### Step 2: Validate Existing Agreement-Gated Route 7 Evidence
 
-Goal: route the selected positive helper-oracle row through Route 7 comparison
-provenance only after prepared agreement.
+Goal: prove the existing private Route 7 agreement-reader path is the selected
+positive helper-oracle evidence source and identify only public-boundary proof
+gaps that still require tests.
 
 Primary targets:
 
-- The helper-oracle row family found in Step 1
-- The private Route 7 fused-compare comparison provenance agreement reader
+- `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)`
 - Existing prepared fallback helper behavior
+- Existing private agreement-reader tests
 
 Actions:
 
-- Thread or consume the private Route 7 agreement reader at the selected
-  helper-oracle boundary using existing local patterns.
-- Use Route 7 comparison provenance for the positive agreement path.
-- Preserve the existing prepared helper result for absent route, invalid
-  references, duplicates/conflicts, mismatches, unfused input, non-agreement,
-  and prepared-only fallback.
-- Keep public prepared helper fallback available and byte-stable.
+- Confirm the private AArch64 helper calls
+  `detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)`
+  before returning prepared fused-compare operand-producer facts.
+- Confirm the reader converts Route 7 comparison operands to prepared facts and
+  accepts them only when both converted sides match prepared facts.
+- Confirm all absent route, invalid reference, duplicate/conflict, mismatch,
+  unfused, non-agreement, and prepared-only cases return `std::nullopt` from
+  the reader or otherwise fall back to prepared helper behavior.
+- Inventory which of those fallback cases already have direct private-reader
+  proof and which still need public AArch64 helper/caller proof.
+- Do not add another agreement-reader implementation path unless inspection
+  finds a real semantic gap in the existing one.
 
 Completion check:
 
-- The selected positive row can be explained by Route 7 comparison provenance
-  under prepared agreement.
-- All non-agreement paths retain the same prepared helper-oracle authority and
-  externally visible behavior.
-- The slice builds and the delegated narrow proof passes without expectation or
-  baseline rewrites.
+- `todo.md` records that the private agreement-reader implementation path is
+  present or names the exact semantic gap if one is found.
+- The public-boundary fallback and nearby same-feature proof gaps to cover in
+  Step 3 are explicit.
+- No code is changed unless a real semantic gap is found; no expectation,
+  baseline, wrapper, branch-control, machine-printer, suffix, fused-legality,
+  hazard, or output-policy rewrite is made.
 
-### Step 3: Cover Fallback And Nearby Same-Feature Cases
+### Step 3: Prove Public Fallback And Nearby Same-Feature Cases
 
-Goal: prove that the implementation is semantic and not shaped around one
-named fused-compare testcase.
+Goal: prove that the existing agreement-gated implementation is semantic at
+the public AArch64 helper/caller boundary and not shaped around one named
+fused-compare testcase.
 
 Primary targets:
 
+- Public AArch64 conditional branch lowering tests
 - Existing fused-compare helper-oracle tests
 - Nearby same-feature comparison provenance and fused-compare cases
 - Negative/fallback cases for absent, invalid, conflicting, mismatched,
@@ -163,10 +182,14 @@ Primary targets:
 
 Actions:
 
-- Add or adjust focused tests only where coverage is missing for the selected
-  row family and fallback matrix.
-- Prefer tests that assert unchanged helper-oracle behavior while exercising
-  the new Route 7 agreement path.
+- Add or adjust focused tests only where Step 2 confirms coverage is missing
+  for the selected row family and fallback matrix.
+- Prefer tests that mutate Route 7 evidence at the public AArch64
+  helper/caller boundary and assert unchanged prepared compare operand rows.
+- Cover prepared-only fallback at the public boundary when usable Route 7
+  evidence is withheld or unavailable.
+- Include nearby same-feature fused-compare coverage for at least one case
+  beyond the select-plus-folded-constant fixture.
 - Do not weaken supported-path expectations, expected strings, wrappers,
   branch-control output, machine-printer output, suffix mapping, fused
   legality, hazard checks, or emitted output.
@@ -174,7 +197,7 @@ Actions:
 Completion check:
 
 - Positive agreement and every required fallback path are covered by focused
-  tests or explicit proof.
+  public-boundary tests or explicit proof.
 - Nearby same-feature coverage demonstrates the route is not a named-case
   shortcut.
 - Expected strings, baselines, wrappers, branch-control output,
