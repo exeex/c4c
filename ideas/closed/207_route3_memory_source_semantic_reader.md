@@ -41,6 +41,22 @@ lookups and target-addressing policy remain authoritative.
   prepared-owned.
 - Printer/debug, wrapper, and expected-string proof shows no output changes.
 
+## Closure Note
+
+Closed after the Route 3 global-load semantic reader slice completed the
+runbook. The implemented reader consumes Route 3 source identity only through
+route/prepared agreement and keeps prepared memory/addressing authoritative for
+target policy, GOT-vs-direct selection, final operands, scratch/target
+registers, relocation spelling, and emission.
+
+Close proof used the accepted four-test backend scope:
+`backend_aarch64_prepared_memory_operand_records`,
+`backend_aarch64_instruction_dispatch`,
+`backend_x86_shared_producer_query`, and
+`backend_x86_prepared_handoff_label_authority`, with 4/4 tests passing in both
+`test_before.log` and `test_after.log`. The lifecycle-only close gate accepted
+equal pass counts with no new failures.
+
 ## Reviewer Reject Signals
 
 - Reject testcase-shaped matching for a named memory case instead of a semantic
