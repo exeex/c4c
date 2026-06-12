@@ -2110,6 +2110,14 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
       },
   };
 
+  const auto prepared_only_labels =
+      prepare::find_prepared_control_flow_branch_target_labels(control_flow, entry_label);
+  if (!prepared_only_labels.has_value() ||
+      prepared_only_labels->true_label != true_label ||
+      prepared_only_labels->false_label != false_label) {
+    return fail("control-flow target helper missed prepared-only successor ids");
+  }
+
   bir::Block source_block;
   source_block.label = "raw.branch.entry";
   source_block.label_id = entry_label;
@@ -2120,6 +2128,12 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
       .true_label_id = true_label,
       .false_label_id = false_label,
   };
+
+  if (prepare::find_prepared_control_flow_branch_target_labels(
+          control_flow, other_label, source_block)
+          .has_value()) {
+    return fail("control-flow target helper should fail closed for absent prepared blocks");
+  }
 
   const auto agreeing_labels = prepare::find_prepared_control_flow_branch_target_labels(
       control_flow, entry_label, source_block);
