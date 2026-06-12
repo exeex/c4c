@@ -1,6 +1,6 @@
 # Phase E2 Prepared Lookup API Private Pass-Context Readiness
 
-Status: Step 2 consumer inventory complete.
+Status: Step 3 readiness classification complete.
 
 Source idea:
 `ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md`
@@ -143,6 +143,50 @@ those decisions belong to Step 3.
 - The retained public surfaces include both aggregate/pass-context delivery
   (`PreparedFunctionLookups` and AArch64 lookup handles) and the two proven E1
   helpers as separate public prepared API boundaries.
+
+## Step 3 Readiness Classification
+
+Step 3 classifies the candidate surfaces one boundary at a time using only the
+source idea readiness buckets. A readiness row is not implementation
+permission; accepted implementation ideas, if any, belong to Step 4 and must
+remain scoped to exactly one public prepared API boundary or one helper family.
+
+| Candidate surface | Readiness bucket | Boundary decision | No-action, deferral, and proof notes |
+| --- | --- | --- | --- |
+| Route 6 call-use source adapter paths in `call_plans` | Private pass-context candidate only after another named E1 semantic helper contraction. | Do not draft a public `call_plans` contraction from this E2 row yet. A future E1 follow-up would need to isolate exactly one Route 6 call-use source helper or adapter boundary whose BIR/route semantic owner is proven under prepared agreement. | No action on aggregate `call_plans`, call-plan lookup construction, x86 `ConsumedPlans`, helper/carrier protocol, ABI/layout policy, wrappers, printer/debug rows, call oracles, fallback, or expected strings. E3 owns broad call oracle/debug replacement; E4 owns cross-target wrapper migration; E5 owns broad prepared/module retirement. Proof for any later one-boundary idea must preserve positive, absent, invalid, duplicate/conflict, mismatch, fallback, printer/debug, wrapper, and expected-string behavior. |
+| Route 3 memory/source adapter paths in `memory_accesses` | Private pass-context candidate only after another named E1 semantic helper contraction. | Do not draft a `memory_accesses` lookup-group contraction. A later E1 follow-up may name one Route 3 memory/source identity reader, such as one indirect-callee or load-local source boundary, if it proves route/prepared agreement while retaining prepared address policy. | No action on `memory_accesses`, `address_materializations`, target-addressing fallback, frame/global/TLS relocation, offsets, volatile/base-plus-offset policy, target wrappers, memory/address diagnostics, or prepared dump strings. E3 owns diagnostic/oracle replacement; E4 owns wrapper migration; E5 owns broad prepared retirement. |
+| Route 4/5 publication, edge, and join adapter paths in `edge_publications` and `edge_publication_source_producers` | Private pass-context candidate only after another named E1 semantic helper contraction. | Do not draft contraction of either public publication lookup group. A later E1 follow-up may target exactly one publication, edge, or join-source identity helper/adapter after proving the Route 4 or Route 5 semantic owner and preserving prepared fallback. | No action on publication record construction, block-order emission, edge-copy mechanics, move/home/storage policy, stack-source extension, immediate payload spelling, wrappers, printer/debug rows, helper-oracle behavior, or emitted output. E3 owns broad oracle/debug parity; E4 owns x86/riscv wrapper migration; Route 8 remains separate if a return-chain edge is implicated. |
+| Route 1/2/5/6/7 source-producer helper or printer/oracle rows | Diagnostic/oracle prerequisite owned by E3. | Do not draft an E2 public API contraction for the mixed helper/printer/oracle row family. These rows combine selected semantic source facts with retained helper-oracle names, route-debug formatting, prepared `select_chains`, fallback strings, and expected-output contracts. | No action on helper-oracle strings, route-debug rows, expected strings, direct-global policy coupled to memory/call/publication contexts, or materialization sequence policy. If one semantic helper is separable, it must first become a named E1 contraction candidate; broad printer/debug/oracle replacement stays in E3. |
+| Identity-only `move_bundles` audit candidates | Retained target/prepared policy. | Do not draft a `move_bundles` public API contraction from the current evidence. The visible consumers are dominated by move scheduling, out-of-SSA placement, cycle temporaries, storage/home policy, ABI move phases, execution sites, target rendering, wrapper compatibility, and fallback. | No action on `PreparedFunctionLookups::move_bundles`, `FunctionLoweringContext::move_bundle_lookups`, move-bundle oracles, wrapper behavior, or expected strings. Any future source-identity-only reader would need a new named E1 helper contraction before E2 can reconsider private pass-context readiness. |
+| Identity-only `value_homes` audit candidates | Retained target/prepared policy. | Do not draft a `value_homes` public API contraction from the current evidence. The public surface still carries register choice, stack slot/offset, rematerialization spelling, decoded-home/formal-publication inputs, operand rendering, wrapper compatibility, value-home oracle behavior, and fallback. | No action on `PreparedFunctionLookups::value_homes`, `FunctionLoweringContext::value_home_lookups`, storage authority, target-record compatibility, or expected strings. If a selected value/source identity reader emerges, it defers to a named E1 contraction before E2 can classify it as private pass-context ready. |
+| Proven E1 helper `find_prepared_control_flow_branch_target_labels(...)` | Ready to draft one public API contraction implementation idea. | Step 4 may draft one follow-up idea for this helper family only. The draft must preserve the public prepared fallback/oracle surface while moving the selected agreement-gated BIR structured successor identity read behind private pass context where all callers can be accounted for. | No action on aggregate control-flow APIs, branch spelling, edge-copy scheduling, block-order emission, move policy, wrapper output, printer/debug rows, helper-oracle names, mismatch/non-agreement fallback, or expected strings. E3 owns any broad control-flow diagnostic/oracle replacement; E4 owns wrapper migration. Proof must cover positive, absent, invalid-id, mismatch, fallback, printer/debug, wrapper, and expected-string behavior. |
+| Proven E1 helper `find_prepared_fused_compare_operand_producer_facts(...)` | Ready to draft one public API contraction implementation idea. | Step 4 may draft one follow-up idea for this helper family only. The draft must preserve prepared/AArch64 fallback and target branch policy while moving the selected Route 7/prepared agreement identity read behind private pass context for the comparison-lowering boundary. | No action on branch targets, suffix mapping, fused legality, hazards, emitted-register state, final instruction order, final assembler rows, printer/debug, helper-oracle names, wrappers, fallback, or expected strings. E3 owns broad helper-oracle/debug replacement; E4 owns wrapper migration if a cross-target surface appears; Route 8 is not opened by this comparison-provenance helper. |
+| Aggregate lookup construction and delivery: `make_prepared_function_lookups(...)`, `make_prepared_move_bundle_lookups(...)`, and aggregate `PreparedFunctionLookups` | No-action. | E2 does not draft aggregate construction privatization, aggregate facade hiding, aggregate field movement, or aggregate retirement. The aggregate remains a compatibility/pass-context delivery surface while public consumers exist. | Draft 155 / E5 and aggregate `PreparedFunctionLookups` retirement remain unopened. `PreparedBirModule` demotion or broad prepared retirement is E5 work, not E2. |
+
+Step 3 accepts only the two proven E1 helper families as ready for Step 4
+follow-up idea drafting. Every lookup-group or mixed helper/oracle surface is
+either deferred to a named E1 prerequisite, retained as public fallback/oracle
+or target/prepared policy, deferred to E3/E4/Route 8/E5, or marked no-action
+for aggregate construction. No row claims broad deletion, lookup-group
+privatization, facade replacement, wrapper migration, oracle replacement,
+baseline refresh, expected-string rewrite, unsupported downgrade, draft 155,
+or aggregate `PreparedFunctionLookups` retirement.
+
+## Step 3 Completion Check
+
+- The readiness table covers every source-idea candidate surface:
+  `call_plans`, `memory_accesses`, `edge_publications`,
+  `edge_publication_source_producers`, mixed Route 1/2/5/6/7
+  source-producer/printer/oracle rows, identity-only `move_bundles`,
+  identity-only `value_homes`, and the two proven E1 helpers.
+- Aggregate lookup construction has an explicit no-action row, and target
+  policy, fallback, oracle, wrapper, printer/debug, and expected-string
+  surfaces are retained or deferred instead of treated as E2 implementation
+  permission.
+- Deferrals to E1, E3, E4, Route 8, and E5 are explicit where E2 is not the
+  owner.
+- Draft 155 / E5 and aggregate `PreparedFunctionLookups` retirement remain
+  unopened.
 
 ## Step 1 Completion Check
 
