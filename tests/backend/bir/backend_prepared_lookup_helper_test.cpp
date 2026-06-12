@@ -7019,6 +7019,7 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   const auto function_name = names.function_names.intern("stored_source");
   const auto block_label = names.block_labels.intern("entry");
   const auto stored_name = names.value_names.intern("%stored");
+  const auto conflict_name = names.value_names.intern("%conflict");
   const auto loaded_name = names.value_names.intern("%loaded");
   const auto slot_id = prepare::PreparedFrameSlotId{21};
 
@@ -7130,6 +7131,89 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
           bir::Value::named(bir::TypeKind::I64, "%loaded"))) {
     return fail("Route 3 stored-value source should match prepared for exact same-slot ranges");
   }
+  const auto exact_prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &addressing,
+          &source_producers,
+          block_label,
+          &exact_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          exact_block.insts.size());
+  const auto exact_route3 =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &exact_block,
+              .block_label = exact_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = exact_block.insts.size(),
+          });
+  if (!exact_prepared.has_value() || !exact_route3) {
+    return fail("Route 3 same-slot stored-value source evidence should be present with prepared positive identity");
+  }
+  if (exact_route3.store_local == nullptr ||
+      exact_route3.store_local->value != exact_prepared->stored_value ||
+      exact_route3.load_memory_access.instruction_index !=
+          exact_prepared->load_access->inst_index ||
+      exact_route3.store_memory_access.instruction_index !=
+          exact_prepared->store_instruction_index) {
+    return fail("Route 3 same-slot stored-value source evidence should match prepared load/store instruction identity");
+  }
+  if (exact_route3.load_memory_access.byte_offset !=
+          exact_prepared->load_access->address.byte_offset ||
+      exact_route3.store_memory_access.byte_offset !=
+          exact_prepared->store_access->address.byte_offset) {
+    return fail("Route 3 same-slot stored-value source evidence should match prepared byte offsets");
+  }
+  if (exact_route3.load_memory_access.size_bytes !=
+          exact_prepared->load_access->address.size_bytes ||
+      exact_route3.store_memory_access.size_bytes !=
+          exact_prepared->store_access->address.size_bytes) {
+    return fail("Route 3 same-slot stored-value source evidence should match prepared byte sizes");
+  }
+  if (exact_route3.load_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::LoadLocal ||
+      exact_route3.store_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::StoreLocal ||
+      exact_route3.load_memory_access.base_kind !=
+          mir::BirMemoryAccessBaseKind::LocalSlot ||
+      exact_route3.store_memory_access.base_kind !=
+          mir::BirMemoryAccessBaseKind::LocalSlot) {
+    return fail("Route 3 same-slot stored-value source evidence should stay local-slot memory evidence");
+  }
+  if (exact_route3.root_value_name != "%loaded" ||
+      exact_route3.root_value_type != bir::TypeKind::I64 ||
+      exact_route3.load_memory_access.result_value_name != "%loaded" ||
+      exact_route3.stored_value.name != "%stored" ||
+      exact_route3.stored_value.type != bir::TypeKind::I64) {
+    return fail("Route 3 same-slot stored-value source evidence should match prepared value identities");
+  }
+  if (exact_route3.load_memory_access.local_slot_id !=
+          static_cast<c4c::SlotNameId>(slot_id) ||
+      exact_route3.store_memory_access.local_slot_id !=
+          static_cast<c4c::SlotNameId>(slot_id)) {
+    return fail("Route 3 same-slot stored-value source evidence should match prepared local slot identity");
+  }
+  if (mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &exact_block,
+              .block_label = "other",
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = exact_block.insts.size(),
+          }) ||
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &exact_block,
+              .block_label = exact_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::Void,
+              .before_instruction_index = exact_block.insts.size(),
+          })) {
+    return fail("Route 3 stored-value source evidence should fail closed for invalid references");
+  }
 
   bir::Block missing_route3_range_block = exact_block;
   auto* missing_store =
@@ -7168,6 +7252,158 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
           });
   if (!prepared.has_value() || route3) {
     return fail("prepared fallback should remain available when Route 3 lacks range authority");
+  }
+  if (prepared_and_bir_same_block_load_local_stored_source_match(
+          names,
+          stack_layout,
+          addressing,
+          missing_route3_range_producers,
+          block_label,
+          missing_route3_range_block,
+          missing_route3_range_block.insts.size(),
+          bir::Value::named(bir::TypeKind::I64, "%loaded"))) {
+    return fail("Route 3 stored-value source agreement should not accept prepared-only fallback");
+  }
+
+  auto target_policy_addressing = addressing;
+  target_policy_addressing.accesses[1].address.can_use_base_plus_offset = false;
+  const auto target_policy_prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &target_policy_addressing,
+          &source_producers,
+          block_label,
+          &exact_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          exact_block.insts.size());
+  if (!target_policy_prepared.has_value() ||
+      !target_policy_prepared->load_access ||
+      target_policy_prepared->load_access->address.can_use_base_plus_offset) {
+    return fail("prepared target-addressing policy should remain authoritative outside Route 3 source identity");
+  }
+
+  auto mismatched_addressing = addressing;
+  mismatched_addressing.accesses[0].address.byte_offset = 16;
+  const auto mismatched_prepared =
+      prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &mismatched_addressing,
+          &source_producers,
+          block_label,
+          &exact_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          exact_block.insts.size());
+  if (mismatched_prepared.has_value() ||
+      !exact_route3 ||
+      prepared_and_bir_same_block_load_local_stored_source_match(
+          names,
+          stack_layout,
+          mismatched_addressing,
+          source_producers,
+          block_label,
+          exact_block,
+          exact_block.insts.size(),
+          bir::Value::named(bir::TypeKind::I64, "%loaded"))) {
+    return fail("prepared/Route 3 stored-value source mismatch should preserve prepared rejection");
+  }
+
+  bir::Block conflict_block = exact_block;
+  conflict_block.insts.insert(
+      conflict_block.insts.begin() + 1,
+      bir::StoreLocalInst{
+          .slot_name = "local0",
+          .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          .value = bir::Value::named(bir::TypeKind::I64, "%conflict"),
+          .byte_offset = 12,
+          .align_bytes = 8,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                  .base_name = "local0",
+                  .byte_offset = 12,
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+                  .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+              },
+      });
+  auto* conflict_load =
+      std::get_if<bir::LoadLocalInst>(&conflict_block.insts[2]);
+  if (conflict_load == nullptr) {
+    return fail("conflict stored-source fixture should keep load-local producer");
+  }
+  auto conflict_producers = source_producers;
+  conflict_producers.producers_by_value_name[loaded_name].instruction_index = 2;
+  conflict_producers.producers_by_value_name[loaded_name].load_local =
+      conflict_load;
+  const prepare::PreparedAddressingFunction conflict_addressing{
+      .function_name = function_name,
+      .accesses =
+          {
+              addressing.accesses[0],
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .stored_value_name = conflict_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind =
+                              prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = slot_id,
+                          .byte_offset = 12,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 2,
+                  .result_value_name = loaded_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind =
+                              prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = slot_id,
+                          .byte_offset = 8,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  };
+  if (prepare::find_prepared_same_block_load_local_stored_value_source(
+          names,
+          stack_layout,
+          &conflict_addressing,
+          &conflict_producers,
+          block_label,
+          &conflict_block,
+          bir::Value::named(bir::TypeKind::I64, "%loaded"),
+          conflict_block.insts.size())
+          .has_value() ||
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &conflict_block,
+              .block_label = conflict_block.label,
+              .root_value_name = "%loaded",
+              .root_value_type = bir::TypeKind::I64,
+              .before_instruction_index = conflict_block.insts.size(),
+          }) ||
+      !prepared_and_bir_same_block_load_local_stored_source_match(
+          names,
+          stack_layout,
+          conflict_addressing,
+          conflict_producers,
+          block_label,
+          conflict_block,
+          conflict_block.insts.size(),
+          bir::Value::named(bir::TypeKind::I64, "%loaded"))) {
+    return fail("overlapping same-slot stored-value conflict should fail closed under prepared authority");
   }
 
   return 0;
