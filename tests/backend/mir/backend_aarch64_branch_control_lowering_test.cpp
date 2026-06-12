@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
+#include "src/backend/mir/aarch64/codegen/comparison.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
@@ -10,6 +11,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -607,6 +609,136 @@ prepare::PreparedBirModule prepared_with_stack_homed_constant_binary_bound_branc
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_selected_folded_fused_compare_branch() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("selected.folded.fn");
+  const auto entry_label =
+      prepared.names.block_labels.intern("selected.folded.entry");
+  const auto then_label =
+      prepared.names.block_labels.intern("selected.folded.then");
+  const auto else_label =
+      prepared.names.block_labels.intern("selected.folded.else");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  prepared.names.value_names.intern("%folded");
+  prepared.names.value_names.intern("%padding");
+  const auto function_link_name =
+      prepared.module.names.link_names.intern("selected.folded.fn");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("selected.folded.entry");
+  const auto bir_then_label =
+      prepared.module.names.block_labels.intern("selected.folded.then");
+  const auto bir_else_label =
+      prepared.module.names.block_labels.intern("selected.folded.else");
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto selected = bir::Value::named(bir::TypeKind::I64, "%selected");
+  const auto folded = bir::Value::named(bir::TypeKind::I64, "%folded");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::CondBranch,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+      .branch_conditions = {prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = entry_label,
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = condition,
+          .predicate = bir::BinaryOpcode::Sge,
+          .compare_type = bir::TypeKind::I64,
+          .lhs = selected,
+          .rhs = folded,
+          .can_fuse_with_branch = true,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{80},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{81},
+                  .function_name = function_name,
+                  .value_name = selected_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{81},
+          .value_name = selected_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .register_placement = caller_saved_gpr(0),
+      }},
+  });
+
+  bir::Block entry;
+  entry.label = "selected.folded.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = selected,
+      .compare_type = bir::TypeKind::I1,
+      .lhs = bir::Value::named(bir::TypeKind::I1, "%flag"),
+      .rhs = bir::Value::immediate_i1(false),
+      .true_value = bir::Value::immediate_i64(4),
+      .false_value = bir::Value::immediate_i64(8),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::UDiv,
+      .result = folded,
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(24),
+      .rhs = bir::Value::immediate_i64(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "%padding"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(1),
+      .rhs = bir::Value::immediate_i64(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sge,
+      .result = condition,
+      .operand_type = bir::TypeKind::I64,
+      .lhs = selected,
+      .rhs = folded,
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = condition,
+      .true_label = "selected.folded.then",
+      .false_label = "selected.folded.else",
+      .true_label_id = bir_then_label,
+      .false_label_id = bir_else_label,
+  };
+
+  bir::Function function;
+  function.name = "selected.folded.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(entry);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_loop_header_fused_compare_branch() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1182,6 +1314,169 @@ int expect_materialized_compare_condition_selected_fallback(
     }
     return fail(std::string{failure_message} +
                 ": expected selected compare fallback, got " + actual);
+  }
+  return 0;
+}
+
+struct LoweredConditionalBranch {
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  std::optional<aarch64_module::MachineInstruction> instruction;
+};
+
+LoweredConditionalBranch lower_public_conditional_branch(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedFunctionLookups* prepared_lookups = nullptr) {
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  if (prepared_lookups != nullptr) {
+    attach_prepared_function_lookups(function_context, *prepared_lookups);
+  }
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  LoweredConditionalBranch result;
+  result.instruction = aarch64_codegen::lower_prepared_conditional_branch_terminator(
+      block_context, result.diagnostics);
+  return result;
+}
+
+const aarch64_codegen::BranchConditionRecord* selected_branch_condition_record(
+    const aarch64_module::MachineInstruction& instruction) {
+  const auto* branch =
+      std::get_if<aarch64_codegen::BranchInstructionRecord>(
+          &instruction.target.payload);
+  if (branch == nullptr || !branch->condition_record.has_value()) {
+    return nullptr;
+  }
+  return &*branch->condition_record;
+}
+
+bool same_compare_value_record(
+    const aarch64_codegen::CompareValueRecord& actual,
+    const aarch64_codegen::CompareValueRecord& expected) {
+  return actual.value_id == expected.value_id &&
+         actual.value_name == expected.value_name &&
+         actual.type == expected.type &&
+         actual.source_value == expected.source_value;
+}
+
+bool same_compare_operand_pair_record(
+    const aarch64_codegen::CompareOperandPairRecord& actual,
+    const aarch64_codegen::CompareOperandPairRecord& expected) {
+  return actual.compare_type == expected.compare_type &&
+         same_compare_value_record(actual.lhs, expected.lhs) &&
+         same_compare_value_record(actual.rhs, expected.rhs);
+}
+
+std::optional<aarch64_codegen::CompareOperandPairRecord>
+public_fused_compare_operand_row(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedFunctionLookups* prepared_lookups,
+    std::string_view failure_context) {
+  const auto lowered =
+      lower_public_conditional_branch(prepared, prepared_lookups);
+  if (!lowered.instruction.has_value() || !lowered.diagnostics.empty()) {
+    std::cerr << failure_context
+              << ": expected public conditional branch lowering to succeed, diagnostics="
+              << lowered.diagnostics.entries.size() << "\n";
+    for (const auto& diagnostic : lowered.diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return std::nullopt;
+  }
+  if (lowered.instruction->target.opcode !=
+          aarch64_codegen::MachineOpcode::CompareBranch ||
+      lowered.instruction->target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected) {
+    std::cerr << failure_context
+              << ": expected selected public compare-branch node\n";
+    return std::nullopt;
+  }
+  const auto* condition =
+      selected_branch_condition_record(*lowered.instruction);
+  if (condition == nullptr ||
+      condition->form != aarch64_codegen::BranchConditionForm::FusedCompare ||
+      !condition->compare_operands.has_value()) {
+    std::cerr << failure_context
+              << ": expected fused compare operand row on public branch node\n";
+    return std::nullopt;
+  }
+  return condition->compare_operands;
+}
+
+bool selected_folded_row_has_prepared_shape(
+    const aarch64_codegen::CompareOperandPairRecord& row,
+    const prepare::PreparedBirModule& prepared) {
+  const auto selected_name = prepared.names.value_names.find("%selected");
+  return selected_name != c4c::kInvalidValueName &&
+         row.compare_type == bir::TypeKind::I64 &&
+         row.lhs.value_name == selected_name &&
+         row.lhs.value_id == std::optional<prepare::PreparedValueId>{
+                                 prepare::PreparedValueId{81}} &&
+         row.lhs.source_value ==
+             bir::Value::named(bir::TypeKind::I64, "%selected") &&
+         !row.rhs.value_id.has_value() &&
+         row.rhs.value_name == c4c::kInvalidValueName &&
+         row.rhs.source_value == bir::Value::immediate_i64(12);
+}
+
+bool route7_selected_folded_facts_match_public_row(
+    const prepare::PreparedBirModule& prepared) {
+  const auto& block = prepared.module.functions.front().blocks.front();
+  const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto route7 =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%selected"),
+          bir::Value::named(bir::TypeKind::I64, "%folded"),
+          block.insts.size());
+  return route7.available &&
+         route7.lhs.has_value() &&
+         route7.lhs->producer_kind == bir::ComparisonProducerKind::Select &&
+         route7.lhs->producer_instruction == &block.insts[0] &&
+         route7.lhs->producer_instruction_index == 0 &&
+         route7.rhs.has_value() &&
+         route7.rhs->producer_kind == bir::ComparisonProducerKind::Binary &&
+         route7.rhs->producer_instruction == &block.insts[1] &&
+         route7.rhs->producer_instruction_index == 1 &&
+         route7.rhs->integer_constant == std::optional<std::int64_t>{12};
+}
+
+template <typename Mutate>
+int expect_selected_folded_public_fallback_row(
+    std::string_view failure_context,
+    Mutate mutate) {
+  auto baseline_prepared = prepared_with_selected_folded_fused_compare_branch();
+  const auto baseline_row =
+      public_fused_compare_operand_row(baseline_prepared, nullptr, failure_context);
+  if (!baseline_row.has_value() ||
+      !selected_folded_row_has_prepared_shape(*baseline_row, baseline_prepared)) {
+    return fail(std::string{failure_context} +
+                ": expected baseline selected/folded public row from prepared facts");
+  }
+  if (!route7_selected_folded_facts_match_public_row(baseline_prepared)) {
+    return fail(std::string{failure_context} +
+                ": expected baseline Route 7 facts to match the public row");
+  }
+
+  auto prepared = prepared_with_selected_folded_fused_compare_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  auto prepared_lookups =
+      prepare::make_prepared_function_lookups(prepared, function_cf);
+  mutate(prepared);
+  if (route7_selected_folded_facts_match_public_row(prepared)) {
+    return fail(std::string{failure_context} +
+                ": expected mutated Route 7 facts not to agree with the selected row");
+  }
+  const auto fallback_row =
+      public_fused_compare_operand_row(prepared, &prepared_lookups, failure_context);
+  if (!fallback_row.has_value() ||
+      !same_compare_operand_pair_record(*fallback_row, *baseline_row)) {
+    return fail(std::string{failure_context} +
+                ": expected public fallback to keep the prepared compare operand row");
   }
   return 0;
 }
@@ -1905,6 +2200,92 @@ int materialized_compare_branch_rhs_provenance_mismatch_uses_emitted_fallback() 
       "expected rhs provenance mismatch to preserve selected compare fallback");
 }
 
+int public_selected_fused_compare_operand_producer_fallbacks_keep_prepared_row() {
+  if (const int status = expect_selected_folded_public_fallback_row(
+          "absent Route 7 fused-compare evidence",
+          [](prepare::PreparedBirModule& prepared) {
+            auto& compare = std::get<bir::BinaryInst>(
+                prepared.module.functions.front().blocks.front().insts[3]);
+            compare.result = bir::Value::named(bir::TypeKind::I1, "%other.cond");
+          });
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_selected_folded_public_fallback_row(
+          "duplicate/conflicting selected operand evidence",
+          [](prepare::PreparedBirModule& prepared) {
+            prepared.module.functions.front().blocks.front().insts[2] =
+                bir::SelectInst{
+                    .predicate = bir::BinaryOpcode::Eq,
+                    .result = bir::Value::named(bir::TypeKind::I64, "%selected"),
+                    .compare_type = bir::TypeKind::I1,
+                    .lhs = bir::Value::named(bir::TypeKind::I1, "%flag"),
+                    .rhs = bir::Value::immediate_i1(true),
+                    .true_value = bir::Value::immediate_i64(6),
+                    .false_value = bir::Value::immediate_i64(10),
+                };
+          });
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_selected_folded_public_fallback_row(
+          "mismatched Route 7 fused-compare operands",
+          [](prepare::PreparedBirModule& prepared) {
+            auto& compare = std::get<bir::BinaryInst>(
+                prepared.module.functions.front().blocks.front().insts[3]);
+            compare.rhs = bir::Value::immediate_i64(13);
+          });
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_selected_folded_public_fallback_row(
+          "unfused Route 7 branch-condition evidence",
+          [](prepare::PreparedBirModule& prepared) {
+            auto& compare = std::get<bir::BinaryInst>(
+                prepared.module.functions.front().blocks.front().insts[3]);
+            compare.opcode = bir::BinaryOpcode::Add;
+          });
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_selected_folded_public_fallback_row(
+          "partial non-agreement from duplicate rhs producer evidence",
+          [](prepare::PreparedBirModule& prepared) {
+            prepared.module.functions.front().blocks.front().insts[2] =
+                bir::BinaryInst{
+                    .opcode = bir::BinaryOpcode::UDiv,
+                    .result = bir::Value::named(bir::TypeKind::I64, "%folded"),
+                    .operand_type = bir::TypeKind::I64,
+                    .lhs = bir::Value::immediate_i64(48),
+                    .rhs = bir::Value::immediate_i64(4),
+                };
+          });
+      status != 0) {
+    return status;
+  }
+  return 0;
+}
+
+int public_register_immediate_fused_compare_prepared_only_row_is_available() {
+  const auto prepared = prepared_with_fused_compare_conditional_branch();
+  const auto row =
+      public_fused_compare_operand_row(prepared, nullptr, "prepared-only fused compare row");
+  const auto lhs_name = prepared.names.value_names.find("%lhs");
+  if (!row.has_value() ||
+      lhs_name == c4c::kInvalidValueName ||
+      row->compare_type != bir::TypeKind::I32 ||
+      row->lhs.value_id != std::optional<prepare::PreparedValueId>{
+                                prepare::PreparedValueId{10}} ||
+      row->lhs.value_name != lhs_name ||
+      row->lhs.source_value != bir::Value::named(bir::TypeKind::I32, "%lhs") ||
+      row->rhs.value_id.has_value() ||
+      row->rhs.value_name != c4c::kInvalidValueName ||
+      row->rhs.source_value != bir::Value::immediate_i32(0)) {
+    return fail("expected nearby register/immediate fused compare row to lower from prepared-only public facts");
+  }
+  return 0;
+}
+
 int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   auto prepared = prepared_with_fused_compare_conditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -2374,6 +2755,16 @@ int main() {
   }
   if (const int status =
           materialized_compare_branch_rhs_provenance_mismatch_uses_emitted_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          public_selected_fused_compare_operand_producer_fallbacks_keep_prepared_row();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          public_register_immediate_fused_compare_prepared_only_row_is_available();
       status != 0) {
     return status;
   }
