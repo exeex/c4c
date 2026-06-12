@@ -158,3 +158,33 @@ The closure note must contain:
   `PreparedBirModule` retirement is ready from C2 evidence.
 - Weakening tests, diagnostics, baselines, helper-oracle names, supported-path
   status, or expected strings.
+
+## Closure Note
+
+Closed after the active D2 runbook completed Step 5. The durable analysis
+artifact is
+`docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`.
+It records the retained-surface consumer dependency map, accepted one-surface
+or one-row follow-up proof shapes, explicit no-action decisions for aggregate,
+policy-owned, pass-context, wrapper-family, baseline/string, and Route 8
+surfaces, and the remaining blockers to `PreparedFunctionLookups` and
+`PreparedBirModule` retirement.
+
+The completed analysis opened ten follow-up ideas:
+
+- `ideas/open/207_route3_memory_source_semantic_reader.md`
+- `ideas/open/208_route3_memory_source_oracle_printer_row.md`
+- `ideas/open/209_route4_publication_source_semantic_reader.md`
+- `ideas/open/210_route4_block_entry_publication_printer_debug_row.md`
+- `ideas/open/211_route5_current_block_join_source_semantic_reader.md`
+- `ideas/open/212_route5_edge_join_oracle_printer_row.md`
+- `ideas/open/213_route6_call_source_consumer.md`
+- `ideas/open/214_route6_x86_scalar_source_route_debug_row.md`
+- `ideas/open/215_route7_comparison_provenance_consumer.md`
+- `ideas/open/216_route7_comparison_oracle_row.md`
+
+No implementation, test, prepared API deletion, direct consumer migration, or
+aggregate contraction work was part of this idea. Draft 155, broad
+`PreparedFunctionLookups` retirement, and broad `PreparedBirModule` retirement
+remain not ready without separate field-by-field ownership, fallback/oracle,
+diagnostic/string, and public-consumer proof.
