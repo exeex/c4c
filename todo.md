@@ -8,78 +8,56 @@ Current Step Title: Validate And Prepare Acceptance Notes
 
 ## Just Finished
 
-Attempted `plan.md` Step 3, `Prove Fallback And Nearby Same-Feature
-Stability`.
+Completed `plan.md` Step 4, `Validate And Prepare Acceptance Notes`, for the
+accepted Route 6 x86 scalar `i32` route-debug row slice.
 
-Completed the validation-enabling compile-signature repair in
-`tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp`: the
-three stale
-`find_prepared_param_zero_materialized_compare_join_context(...)` calls now
-pass `prepared.module.names` to the current block/param overload. This was only
-a handoff aggregate compile repair; no Route 6 route-debug behavior, row text,
-expected strings, wrappers, prepared call/debug output, helper-oracle strings,
-supported/unsupported contracts, public fallback behavior, or baselines were
-changed.
-
-The delegated proof now builds all three requested targets and runs the ctest
-subset. `backend_prepared_lookup_helper` and `backend_x86_route_debug` pass,
-covering the selected positive row, absent/invalid/duplicate-conflict/mismatch
-fallbacks, `ConsumedPlans` compatibility fallback, and no-change helper/debug
-surfaces already present in those tests.
-
-Lifecycle review accepted the Route 6 Step 3 row proof as scoped to the
-selected route-debug row and fallback matrix. The broader
-`backend_x86_handoff_boundary` failure is a separate prepared-module consumer
-handoff semantic issue, now captured in
-`ideas/open/234_phase_e3_x86_compare_join_stack_home_handoff_follow_up.md`.
-
-The deferred handoff assertion is:
+The selected route-debug row remains:
 
 ```text
-scalar-control-flow compare-against-zero compare-join lane with stack-backed parameter home:
-x86 prepared-module consumer stopped following the authoritative prepared stack home through compare-join entry and return
+    route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue
 ```
 
-Step 3 is complete for the active Route 6 runbook because the selected row
-behavior was confirmed, `backend_x86_route_debug` and
-`backend_prepared_lookup_helper` passed, and the aggregate compare-join
-stack-home handoff failure has been split into a separate open idea instead of
-being absorbed into this route-debug slice.
+The row is still limited to
+`single_block_same_module_scalar_call_wrapper_miss` after prepared agreement
+for call `addip0`, argument `0`, block `entry`, instruction `2`, source `%t1`.
+The accepted scoped proof covers the positive row plus absent Route 6 facts,
+invalid source id, duplicate/conflicting Route 6 facts, Route 6/prepared
+mismatch fallback, and `ConsumedPlans` compatibility agreement metadata through
+the Route 6 call-use source index.
+
+No Step 4 edits changed implementation files, tests, expected strings,
+route-debug row text, wrappers, prepared call/debug output, helper-oracle
+strings, baselines other than refreshing `test_after.log`, public fallback
+behavior, or supported/unsupported contracts. The same-feature proof accepted
+for idea 232 is the scoped `backend_x86_route_debug` plus
+`backend_prepared_lookup_helper` proof; the aggregate compare-join stack-home
+handoff semantic failure remains split to
+`ideas/open/234_phase_e3_x86_compare_join_stack_home_handoff_follow_up.md`.
 
 ## Suggested Next
 
-Delegate `plan.md` Step 4, `Validate And Prepare Acceptance Notes`, for the
-Route 6 route-debug slice. The supervisor can separately activate or schedule
-idea 234 for the remaining `backend_x86_handoff_boundary` compare-join
-stack-backed parameter-home semantic failure.
+Ask the supervisor/plan-owner to decide whether the active idea 232 lifecycle
+state should close, deactivate, or be replaced now that all runbook steps are
+complete. Schedule idea 234 separately for the deferred compare-join
+stack-backed parameter-home handoff issue.
 
 ## Watchouts
 
-The deferred failure is not in the joined-branch compile-repair call sites; it
-comes from the aggregate `backend_x86_handoff_boundary` test after linking
-succeeds. Do not repair it under idea 232 unless the supervisor intentionally
-switches to idea 234 or explicitly broadens the active route.
+Residual risk is intentionally outside this route-debug row slice: the
+aggregate `backend_x86_handoff_boundary` compare-against-zero compare-join lane
+with a stack-backed parameter home still needs idea 234. Do not fold that
+prepared-module consumer handoff work back into idea 232 unless the supervisor
+switches lifecycle state or explicitly broadens the route.
 
 ## Proof
 
-Delegated Step 3 proof command:
+Delegated Step 4 proof command:
 
 ```sh
-cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_route_debug|backend_x86_handoff_boundary|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
+cmake --build build-x86 --target backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
 ```
 
-Result: build passed; ctest passed 2/3 and failed only on
-`backend_x86_handoff_boundary`. The two Route 6-scoped tests in the subset,
-`backend_x86_route_debug` and `backend_prepared_lookup_helper`, passed.
-`test_after.log` is the canonical proof log for the attempted broader command;
-the remaining semantic failure is deferred to idea 234.
-
-Supervisor build-only validation for the compile-signature repair:
-
-```sh
-cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test
-```
-
-Result: passed / no work to do after the repair. Step 3 is complete for the
-accepted Route 6 route-debug row scope; Step 4 remains next for final active
-slice validation and acceptance notes.
+Result: passed. The build completed with no work to do after CMake
+regeneration, and ctest passed 2/2:
+`backend_prepared_lookup_helper` and `backend_x86_route_debug`.
+`test_after.log` is the canonical proof log for this Step 4 acceptance run.
