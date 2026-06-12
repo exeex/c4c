@@ -1,38 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/216_route7_comparison_oracle_row.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Negative and Fallback Semantics
+Current Step ID: Step 4
+Current Step Title: Prove Expected-String and Wrapper Stability
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 proved negative and fallback semantics for the selected materialized-condition helper-oracle row.
+Step 4 proved expected-string and wrapper stability for the selected Route 7 materialized-condition helper-oracle row.
 
-Changed files:
+Proof passed:
 
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`: added a focused selected-row absent-Route-7 assertion beside the existing `%cond` materialized-condition row. The new check proves an empty Route 7 authority and missing route-index facade fail closed as `MissingBlock`/`MissingRecord` while the prepared and BIR materialized-condition facts remain available.
-- `todo.md`: recorded Step 3 completion and proof.
+- `backend_prepared_lookup_helper`
+- `backend_aarch64_branch_control_lowering`
+- `backend_aarch64_machine_printer`
 
-Coverage confirmed:
+Stability confirmed:
 
-- Positive selected-row Route 7 query/reference evidence remains covered in `verify_prepared_bir_comparison_condition_producer_equivalence`.
-- Absent Route 7 helper authority is now covered directly for the selected row; branch-control also covers absent materialized-condition provenance falling back to emitted-condition behavior.
-- Invalid/stale reference is covered by `materialized_compare_branch_invalid_route7_reference_rejected`.
-- Duplicate/conflict is covered by `materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback` and the helper duplicate producer/reference checks.
-- Route/prepared mismatch is covered by `materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback`.
-- Unfused/prepared fallback behavior remains covered by the materialized-bool/unavailable helper checks and branch-control emitted/selected fallback tests.
+- No implementation files, tests, `plan.md`, source ideas, docs, review artifacts, expected strings, wrapper files, branch-control files, or machine-printer files were edited in this packet.
+- The delegated branch-control and machine-printer proof stayed green without expected-string edits, helper renames, wrapper contraction, branch suffix/target changes, final assembler changes, unsupported downgrades, or weaker supported-path contracts.
+- `test_after.log` contains the fresh green three-test proof.
 
 ## Suggested Next
 
-Step 4 should prove expected-string and wrapper stability for the same selected materialized-condition row by rerunning the delegated branch-control and machine-printer proof, confirming no expected strings, wrapper behavior, branch suffixes, branch targets, final assembler output, helper names, or supported-path contracts changed.
+Step 5: Acceptance Handoff should confirm the slice is ready for supervisor acceptance by summarizing the selected row, implementation scope, proof results, unchanged source idea, no testcase-overfit signs, and no branch-policy, printer/debug, wrapper, final-assembler, Route 8, or generic route-index migration.
 
 ## Watchouts
 
-- Step 3 intentionally did not broaden into fused-compare row replacement, branch-policy migration, wrappers, expected strings, Route 8 code, generic route-index facades, implementation files, or unrelated tests.
-- Remaining Step 4 proof needs are expected-string and wrapper stability only; no Step 3 fallback ambiguity is currently open for the selected materialized-condition row.
-- Expected-string rewrites, unsupported downgrades, weaker contracts, and testcase-shaped oracle handling remain blockers.
+- Residual risk is limited to supervisor acceptance/reviewer scrutiny of the already committed Step 2/3 slice; this packet made no code or expected-string changes.
+- Expected-string rewrites, unsupported downgrades, weaker contracts, wrapper contraction, branch-policy migration, final assembler changes, Route 8 work, generic route-index work, and testcase-shaped oracle handling remain blockers.
 
 ## Proof
 
