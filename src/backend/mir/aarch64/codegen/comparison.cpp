@@ -150,13 +150,21 @@ find_prepared_conditional_branch_facts(
       branch_condition->lhs.has_value() &&
       branch_condition->rhs.has_value();
   if (!has_compare_branch_facts) {
-    if (const auto control_flow_targets =
+    if (const auto prepared_control_flow_targets =
             prepare::find_prepared_control_flow_branch_target_labels(
                 *context.function.control_flow,
-                context.control_flow_block->block_label,
-                *context.bir_block);
-        control_flow_targets.has_value()) {
-      facts.targets = *control_flow_targets;
+                context.control_flow_block->block_label);
+        prepared_control_flow_targets.has_value()) {
+      facts.targets = *prepared_control_flow_targets;
+      if (const auto bir_control_flow_targets =
+              prepare::detail::read_agreeing_bir_branch_target_labels(
+                  prepare::detail::BranchTargetIdentityPassContext{
+                      .source_block = context.bir_block,
+                  },
+                  *prepared_control_flow_targets);
+          bir_control_flow_targets.has_value()) {
+        facts.targets = *bir_control_flow_targets;
+      }
     }
     return facts;
   }
