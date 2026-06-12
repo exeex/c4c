@@ -156,3 +156,37 @@ The closure note must contain:
 - Failing to identify duplicate semantic helper families as the primary
   deletion target.
 - Combining implementation with this analysis.
+
+## Closure Note
+
+Closed on 2026-06-12 after active Phase E0 execution completed all five
+analysis steps and produced the durable payload:
+
+- `docs/bir_prealloc_fusion/phase_e0_prepared_bir_merge_readiness.md`
+
+The accepted analysis covers every expected output: complete
+`PreparedBirModule` field ownership, complete `PreparedFunctionLookups` lookup
+group ownership, E1-E5 readiness synthesis, code-size-positive helper/API
+candidates with required proof, retained no-reduction surfaces, E3 diagnostic
+and oracle prerequisites, E4 cross-target blockers, draft 155 / E5 rewrite
+criteria, and follow-up implementation or analysis shapes.
+
+The closure keeps the original reject signals intact: selected route-first
+readers are not treated as broad prepared retirement proof, target policy
+remains outside target-neutral BIR, facade/container/wrapper moves are not
+counted as code reduction, printer/debug/oracle surfaces stay visible, draft
+155 remains unopened, duplicate semantic helper families remain the primary
+future deletion target, and no implementation work was mixed into this
+analysis.
+
+Close proof used matching canonical logs for:
+
+```sh
+ctest --test-dir build -j --output-on-failure -R '^string_authority_guard$'
+```
+
+`test_before.log` and `test_after.log` both recorded 1/1 passing tests, and
+the regression guard passed with non-decreasing allowance. Later E1-E5 work
+should be opened as separately scoped initiatives, one semantic duplicate
+family, public prepared API contraction, diagnostic/oracle row, cross-target
+wrapper boundary, or Route 8 owner/schema analysis at a time.
