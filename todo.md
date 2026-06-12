@@ -8,20 +8,20 @@ Current Step Title: Write Durable Outputs
 
 ## Just Finished
 
-Completed `plan.md` Step 4 by adding proof shapes for every accepted Step 3 follow-up candidate in `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`. Each proof shape names one-surface or one-row scope, retained prepared fallback or policy boundary, evidence source, applicable positive/absent/invalid/duplicate-conflict/mismatch/fallback/printer-debug/wrapper/expected-string cases, and explicit no-contraction-without-proof language.
+Completed `plan.md` Step 5 by finalizing `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md` and opening lifecycle-ready follow-up ideas only for the ten accepted Step 4 proof-shape rows. The D2 artifact now records durable outputs, preserves the route-review finding that the route is on track, links each one-surface or one-row follow-up idea, and keeps aggregate, wrapper-family, draft 155, `PreparedFunctionLookups` retirement, and `PreparedBirModule` retirement work out of scope.
 
 ## Suggested Next
 
-Execute `plan.md` Step 5 by writing durable outputs: finalize the D2 analysis artifact and draft only lifecycle-ready follow-up idea files whose scope matches the Step 4 proof shapes.
+Supervisor should review the lifecycle-only Step 5 diff, confirm no implementation/test files changed, and decide whether to close or deactivate the active D2 plan before selecting one of the new one-surface follow-up ideas for activation.
 
 ## Watchouts
 
-- Keep D2 analysis-only unless the supervisor delegates Step 5 follow-up idea drafting.
-- Step 4 named concrete proof shapes for all ten accepted candidates, including the previously conditional Route 4 block-entry publication printer/debug row and Route 6 x86 scalar source agreement route-debug row.
-- Public fallback removal remains blocked; no contraction is valid without the exact Step 4 one-surface proof shape.
+- D2 remained analysis-only; the Step 5 changes are docs/lifecycle artifacts only.
+- New follow-up ideas are deliberately one Step 4 row each. Do not merge semantic-reader and diagnostic/oracle work during activation.
+- Public fallback removal remains blocked; no contraction is valid without the exact Step 4 one-surface proof shape for the selected idea.
 - `PreparedFunctionLookups`, `PreparedBirModule`, AArch64 pass-context threading, cross-target wrappers, baseline/string authority, and Route 8 return-chain remain explicit no-action surfaces for contraction.
 - Draft 155, broad migration/API contraction, aggregate retirement, prepared-module retirement, expectation rewrites, helper renames, unsupported downgrades, and baseline refreshes remain rejected readiness evidence.
 
 ## Proof
 
-Docs-only proof-shape packet; no build required and no implementation files or tests touched. Proof is the Step 4 proof-shape section in `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`, including concrete one-surface scopes, retained authority boundaries, evidence sources, required proof cases, and no-contraction-without-proof language.
+Docs/lifecycle-only Step 5 packet; no build required and no implementation files or tests touched. Proof is the finalized D2 artifact plus the ten new one-surface or one-row follow-up idea files, each carrying goal, scope, acceptance criteria, and concrete reviewer reject signals.

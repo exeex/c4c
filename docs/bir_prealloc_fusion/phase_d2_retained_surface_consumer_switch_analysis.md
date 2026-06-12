@@ -1,6 +1,6 @@
 # Phase D2 Retained-Surface Consumer Switch Analysis
 
-Status: Step 3 follow-up viability classification complete.
+Status: Step 5 durable outputs complete; follow-up ideas opened for the accepted one-surface proof shapes.
 
 Source idea:
 `ideas/open/203_phase_d2_retained_surface_consumer_switch_analysis.md`
@@ -328,3 +328,47 @@ expected-string cases without weakening supported-path status.
   contraction, prepared-module contraction, broad wrapper migration, baseline
   refresh, helper rename, unsupported downgrade, or expected-string change
   without separate proof.
+
+## Step 5 Durable Outputs
+
+Step 5 finalizes this analysis as the closure-ready D2 artifact. The route
+review in `review/phase_d2_step4_route_review.md` found the D2 route on track:
+no broad migration/API contraction drift, no testcase-overfit, no expectation
+weakening, and accepted follow-up proof shapes scoped tightly enough for idea
+drafting. The Step 5 cleanup updates the stale status line and turns only the
+accepted Step 4 rows into lifecycle-ready follow-up ideas.
+
+Opened follow-up ideas, each copied from exactly one Step 4 proof-shape row:
+
+- `ideas/open/207_route3_memory_source_semantic_reader.md`
+- `ideas/open/208_route3_memory_source_oracle_printer_row.md`
+- `ideas/open/209_route4_publication_source_semantic_reader.md`
+- `ideas/open/210_route4_block_entry_publication_printer_debug_row.md`
+- `ideas/open/211_route5_current_block_join_source_semantic_reader.md`
+- `ideas/open/212_route5_edge_join_oracle_printer_row.md`
+- `ideas/open/213_route6_call_source_consumer.md`
+- `ideas/open/214_route6_x86_scalar_source_route_debug_row.md`
+- `ideas/open/215_route7_comparison_provenance_consumer.md`
+- `ideas/open/216_route7_comparison_oracle_row.md`
+
+No follow-up idea was opened for broad aggregate, wrapper-family, draft 155,
+`PreparedFunctionLookups` retirement, `PreparedBirModule` retirement,
+AArch64 pass-context threading, cross-target wrapper migration, baseline/string
+authority, or Route 8 return-chain work.
+
+Public fallback removal remains blocked for every row above. Any later removal
+or contraction claim must first satisfy the exact one-surface proof shape in
+Step 4 and must preserve prepared fallback, target/prepared policy, wrapper,
+printer/debug, oracle, and expected-string authority where named.
+
+## Step 5 Completion Check
+
+- The D2 analysis artifact is finalized with source, evidence, consumer map,
+  classification, proof-shape, and durable-output sections.
+- Ten accepted follow-up ideas were opened, each scoped to exactly one Step 4
+  proof-shape row.
+- No implementation files, tests, closed ideas, review artifacts, aggregate
+  retirement ideas, wrapper-family ideas, draft 155 ideas, or prepared-module
+  retirement ideas were edited or created.
+- `todo.md` records Step 5 completion and recommends supervisor review,
+  validation as docs/lifecycle-only, and lifecycle transition selection.
