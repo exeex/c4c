@@ -517,6 +517,18 @@ InstructionDispatchResult dispatch_prepared_block(
       }
       return *address_materialization_index;
     };
+    std::optional<bir::Route6CallUseSourceIndex> route6_call_use_source_index;
+    auto current_route6_call_use_source_index =
+        [&]() -> const bir::Route6CallUseSourceIndex* {
+      if (context.function.bir_function == nullptr) {
+        return nullptr;
+      }
+      if (!route6_call_use_source_index.has_value()) {
+        route6_call_use_source_index =
+            bir::route6_build_call_use_source_index(*context.function.bir_function);
+      }
+      return &*route6_call_use_source_index;
+    };
     std::size_t prepared_memory_instruction_index = 0;
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
@@ -693,7 +705,12 @@ InstructionDispatchResult dispatch_prepared_block(
           clear_call_clobbered_emitted_scalar_registers(scalar_state);
           if (call_plan != nullptr) {
             record_call_result_source_register(
-                context, instruction_index, *call_plan, scalar_state);
+                context,
+                instruction_index,
+                *call_plan,
+                scalar_state,
+                false,
+                current_route6_call_use_source_index());
             auto after_call_moves =
                 lower_after_call_moves(context, *call_plan, instruction_index, diagnostics);
             for (auto& after_call_move : after_call_moves) {

@@ -541,6 +541,206 @@ int scalar_call_result_publishes_gpr_to_prepared_stack_home() {
   return 0;
 }
 
+enum class Route6ResultSourceRegisterCase : unsigned char {
+  Matching,
+  NullIndex,
+  MissingFact,
+  InvalidBoundary,
+  DuplicateFact,
+  PreparedMismatch,
+};
+
+std::string_view route6_result_source_register_case_name(
+    Route6ResultSourceRegisterCase test_case) {
+  switch (test_case) {
+    case Route6ResultSourceRegisterCase::Matching:
+      return "matching";
+    case Route6ResultSourceRegisterCase::NullIndex:
+      return "null-index";
+    case Route6ResultSourceRegisterCase::MissingFact:
+      return "missing-fact";
+    case Route6ResultSourceRegisterCase::InvalidBoundary:
+      return "invalid-boundary";
+    case Route6ResultSourceRegisterCase::DuplicateFact:
+      return "duplicate-fact";
+    case Route6ResultSourceRegisterCase::PreparedMismatch:
+      return "prepared-mismatch";
+  }
+  return "unknown";
+}
+
+int route6_result_source_register_case_preserves_prepared_publication(
+    Route6ResultSourceRegisterCase test_case) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("route6.result.source.consumer");
+  const auto block_label =
+      prepared.names.block_labels.intern("route6.result.source.consumer.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("route6.result.source.consumer.entry");
+  const auto result_value_name = prepared.names.value_names.intern("%call.result");
+  const auto mismatched_prepared_value_name =
+      prepared.names.value_names.intern("%prepared.result");
+  constexpr auto result_value_id = prepare::PreparedValueId{4703};
+  const auto home_value_name =
+      test_case == Route6ResultSourceRegisterCase::PreparedMismatch
+          ? mismatched_prepared_value_name
+          : result_value_name;
+  const auto result_value = bir::Value::named(bir::TypeKind::I64, "%call.result");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "route6.result.source.consumer",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "route6.result.source.consumer.entry",
+          .insts =
+              {
+                  bir::CallInst{
+                      .result = result_value,
+                      .callee = "produce_count",
+                      .return_type = bir::TypeKind::I64,
+                  },
+              },
+          .label_id = bir_block_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  });
+  prepared.value_locations.functions.push_back(
+      prepare::PreparedValueLocationFunction{
+          .function_name = function_name,
+          .value_homes = {prepare::PreparedValueHome{
+              .value_id = result_value_id,
+              .function_name = function_name,
+              .value_name = home_value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x20"},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      });
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"produce_count"},
+      .result = prepare::PreparedCallResultPlan{
+          .instruction_index = 0,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_value_id = result_value_id,
+          .source_register_name = std::string{"x0"},
+          .source_contiguous_width = 1,
+          .source_occupied_register_names = {"x0"},
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      },
+  };
+
+  const auto& bir_function = prepared.module.functions.front();
+  const auto& bir_block = bir_function.blocks.front();
+  const auto& control_flow = prepared.control_flow.functions.front();
+  const auto& value_locations = prepared.value_locations.functions.front();
+  const auto value_home_lookups =
+      prepare::make_prepared_value_home_lookups(&value_locations);
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &control_flow,
+      .bir_function = &bir_function,
+      .value_locations = &value_locations,
+      .value_home_lookups = &value_home_lookups,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &bir_block,
+      .block_index = 0,
+  };
+
+  auto route6_index = bir::route6_build_call_use_source_index(bir_function);
+  bir::Value conflicting_result =
+      bir::Value::named(bir::TypeKind::I64, "%conflicting.result");
+  switch (test_case) {
+    case Route6ResultSourceRegisterCase::Matching:
+    case Route6ResultSourceRegisterCase::NullIndex:
+    case Route6ResultSourceRegisterCase::PreparedMismatch:
+      break;
+    case Route6ResultSourceRegisterCase::MissingFact:
+      route6_index.result_records.clear();
+      break;
+    case Route6ResultSourceRegisterCase::InvalidBoundary:
+      if (!route6_index.result_records.empty()) {
+        route6_index.result_records.front().call_instruction_index = 1;
+      }
+      break;
+    case Route6ResultSourceRegisterCase::DuplicateFact:
+      if (!route6_index.result_records.empty()) {
+        auto duplicate = route6_index.result_records.front();
+        duplicate.result_value = &conflicting_result;
+        duplicate.result_identity =
+            bir::route1_source_value_identity(conflicting_result);
+        route6_index.result_records.push_back(duplicate);
+      }
+      break;
+  }
+
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  const auto* route6_index_ptr =
+      test_case == Route6ResultSourceRegisterCase::NullIndex ? nullptr
+                                                             : &route6_index;
+  const auto evidence =
+      aarch64_codegen::record_call_result_source_register(block_context,
+                                                          0,
+                                                          call_plan,
+                                                          scalar_state,
+                                                          false,
+                                                          route6_index_ptr);
+  const auto expected_evidence =
+      test_case == Route6ResultSourceRegisterCase::Matching
+          ? aarch64_codegen::CallResultSourceRegisterRoute6Evidence::Agreed
+          : aarch64_codegen::CallResultSourceRegisterRoute6Evidence::Fallback;
+  if (evidence != expected_evidence) {
+    return fail("unexpected Route 6 call-result source evidence status for " +
+                std::string(route6_result_source_register_case_name(test_case)));
+  }
+  const auto emitted =
+      aarch64_codegen::find_emitted_scalar_register(scalar_state, home_value_name);
+  if (!emitted.has_value() ||
+      emitted->reg != aarch64_abi::x_register(0) ||
+      emitted->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      emitted->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      emitted->value_id != result_value_id ||
+      emitted->value_name != home_value_name ||
+      emitted->occupied_registers != std::vector<std::string_view>{"x0"}) {
+    return fail("prepared call-result source register publication was not preserved for " +
+                std::string(route6_result_source_register_case_name(test_case)));
+  }
+  return 0;
+}
+
+int route6_result_source_register_evidence_preserves_prepared_publication() {
+  int status = 0;
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::Matching);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::NullIndex);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::MissingFact);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::InvalidBoundary);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::DuplicateFact);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::PreparedMismatch);
+  return status;
+}
+
 int hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle() {
   constexpr auto function_name = c4c::FunctionNameId{4451};
   constexpr auto block_label = c4c::BlockLabelId{4452};
@@ -980,6 +1180,7 @@ int main() {
   status |= byval_callee_entry_consumes_byval_frame_slot();
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
   status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
+  status |= route6_result_source_register_evidence_preserves_prepared_publication();
   status |= hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle();
   status |= f128_hfa_lane0_call_result_publishes_q_register_to_prepared_stack_home();
   status |= f128_call_result_publishes_q_register_to_prepared_register_home();

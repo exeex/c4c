@@ -95,12 +95,19 @@ materialize_indirect_call_callee_to_prepared_register(
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
 
-void record_call_result_source_register(
+enum class CallResultSourceRegisterRoute6Evidence : unsigned char {
+  NotChecked,
+  Agreed,
+  Fallback,
+};
+
+CallResultSourceRegisterRoute6Evidence record_call_result_source_register(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state,
-    bool result_lanes_only = false);
+    bool result_lanes_only = false,
+    const bir::Route6CallUseSourceIndex* call_use_source_index = nullptr);
 
 void retarget_fpr_call_result_store_value_to_emitted_scalar(
     const module::BlockLoweringContext& context,
