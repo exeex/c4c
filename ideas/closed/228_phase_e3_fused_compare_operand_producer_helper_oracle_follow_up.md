@@ -65,3 +65,34 @@ machine-printer, wrapper, and expected-string authority.
   unsupported downgrades, or baseline refreshes.
 - It keeps the prepared-only oracle result under a new abstraction name without
   consuming the proven Route 7 provenance fact.
+
+## Closure Notes
+
+Closed on 2026-06-12 after the active runbook completed Step 4.
+
+The completed slice proves the selected/folded public AArch64 conditional
+branch lowering path tied to
+`find_prepared_fused_compare_operand_producer_facts(...)`. Route 7
+fused-compare operand-producer evidence is accepted only through the private
+agreement reader after both operands convert to prepared facts that match the
+prepared helper row.
+
+Public-boundary and private-reader proof covers absent or withheld Route 7
+evidence, invalid or stale producer references, wrong-key or wrong-role
+consumer records, duplicate or conflicting records, mismatched operands,
+unfused or unavailable evidence, prepared-only fallback, and partial
+non-agreement. Nearby same-feature coverage includes a prepared-only
+register/immediate public-boundary fused-compare row, so the result is not
+limited to one select-plus-folded-constant fixture.
+
+Close-time proof used:
+
+`cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_branch_control_lowering_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering|backend_aarch64_instruction_dispatch)$' --output-on-failure > test_after.log 2>&1`
+
+Regression guard compared `test_before.log` and `test_after.log` for the same
+three-test focused backend scope. The default strict-growth mode reported equal
+pass counts because the supervisor had already rolled the accepted proof into
+`test_before.log`; the documented non-decreasing mode passed with 3/3 tests
+passing before and after, no new failures, and no timeout regressions.
+
+No leftover in-scope lifecycle action remains for this source idea.
