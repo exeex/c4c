@@ -8,24 +8,33 @@ Current Step Title: Read Inputs and Anchor E2 Scope
 
 ## Just Finished
 
-Activation created the Phase E2 analysis runbook from the source idea. No
-executor packet has run yet.
+Completed plan.md Step 1: read the required Phase E0/E1/D2 inputs, ownership
+map, prepared lookup headers, current baseline notes, and local hook-state
+surface; created the Phase E2 durable analysis document with source links,
+scoped baseline, assumptions, and the source-idea candidate list.
 
 ## Suggested Next
 
-Start plan.md Step 1: read the required Phase E0/E1/D2 inputs and prepared
-lookup headers, then create or update the E2 durable analysis document with a
-scoped baseline and candidate list.
+Start plan.md Step 2: inventory production, printer/debug, target-wrapper,
+oracle, fallback, and expected-string consumers for each E2 candidate surface
+in the durable document.
 
 ## Watchouts
 
 - This plan is analysis-only; do not edit implementation files.
-- Do not treat the two closed E1 helpers as proof that whole lookup groups,
-  aggregate `PreparedFunctionLookups`, or public fallback/oracle APIs can be
-  deleted.
-- Accepted follow-up ideas must each name exactly one public prepared API
-  boundary or one helper family.
+- The Step 1 baseline explicitly prevents treating the two closed E1 helpers
+  as proof that whole lookup groups, aggregate `PreparedFunctionLookups`, or
+  public fallback/oracle APIs can be deleted.
+- Step 2 should keep consumer inventory separate from readiness
+  classification; classification belongs to Step 3.
+- Accepted follow-up ideas later must each name exactly one public prepared
+  API boundary or one helper family.
 
 ## Proof
 
-Lifecycle activation only. No build or test proof required for this packet.
+Docs-only Step 1 packet. No build, ctest, or root-level log was required or
+run. Proof is document completeness in
+`docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`:
+required source links, scoped baseline, explicit E1-helper limitation,
+out-of-scope aggregate/fallback/oracle/E3/E4/Route 8/E5 guardrails,
+assumptions, and candidate list are present.
