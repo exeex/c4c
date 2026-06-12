@@ -28,6 +28,7 @@ enum class CurrentJoinRouteShape {
   MemorySource,
   AbsentRoute,
   MismatchedSource,
+  DuplicateSource,
 };
 
 int fail(std::string_view message) {
@@ -80,7 +81,8 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
   const bool route_has_named_source =
       route_shape == CurrentJoinRouteShape::NormalPredecessor ||
       route_shape == CurrentJoinRouteShape::MissingPredecessor ||
-      route_shape == CurrentJoinRouteShape::MismatchedSource;
+      route_shape == CurrentJoinRouteShape::MismatchedSource ||
+      route_shape == CurrentJoinRouteShape::DuplicateSource;
   const bool route_uses_operand_source =
       route_shape == CurrentJoinRouteShape::MismatchedSource;
   const bool route_has_missing_source =
@@ -112,6 +114,18 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
                 .label_id = bir_pred_label,
             }},
     });
+    if (route_shape == CurrentJoinRouteShape::DuplicateSource) {
+      join_insts.push_back(bir::PhiInst{
+          .result = bir::Value::named(bir::TypeKind::I32,
+                                      "%current.join.routing.destination"),
+          .incomings =
+              {bir::PhiIncoming{
+                  .label = "dispatch.current.join.routing.pred",
+                  .value = incoming_value,
+                  .label_id = bir_pred_label,
+              }},
+      });
+    }
   }
   if (route_has_named_source || route_shape == CurrentJoinRouteShape::AbsentRoute) {
     join_insts.push_back(bir::BinaryInst{
@@ -322,7 +336,9 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
                                 bool expect_bir_available,
                                 bool attach_prepared_policy,
                                 std::vector<bool> expected_incoming,
-                                std::vector<bool> expected_sources) {
+                                std::vector<bool> expected_sources,
+                                std::optional<bool> expect_indexed_bir_available =
+                                    std::nullopt) {
   const auto& function_cf = prepared.control_flow.functions.front();
   auto prepared_lookups =
       prepare::make_prepared_function_lookups(prepared, function_cf);
@@ -361,10 +377,12 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
                                                   : nullptr,
               .successor_label_id = function_cf.blocks[1].block_label,
           });
+  const bool expected_indexed_bir_available =
+      expect_indexed_bir_available.value_or(expect_bir_available);
   if ((indexed_bir_identity.status ==
        mir::BirCurrentBlockJoinSourceStatus::Available) !=
-      expect_bir_available) {
-    return fail(expect_bir_available
+      expected_indexed_bir_available) {
+    return fail(expected_indexed_bir_available
                     ? "expected indexed Route 5 current-block join identity"
                     : "expected absent indexed Route 5 current-block join identity");
   }
@@ -439,6 +457,14 @@ int main() {
           make_current_join_routing_prepared(CurrentJoinRouteShape::NoSource,
                                              true),
           false, true, {false, true, true}, {false, false, true});
+      status != 0) {
+    return status;
+  }
+  if (const int status = verify_current_join_routing(
+          make_current_join_routing_prepared(CurrentJoinRouteShape::DuplicateSource,
+                                             true),
+          true, true, {false, false, true, true}, {false, false, true, false},
+          false);
       status != 0) {
     return status;
   }
