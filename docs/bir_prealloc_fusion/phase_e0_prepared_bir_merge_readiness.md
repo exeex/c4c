@@ -1,6 +1,6 @@
 # Phase E0 Prepared/BIR Merge Readiness
 
-Status: Step 3 `PreparedFunctionLookups` ownership classification complete.
+Status: Step 4 E1-E5 readiness synthesis complete.
 
 Source idea: `ideas/open/217_phase_e0_prepared_bir_merge_readiness_and_ownership_boundary_audit.md`
 
@@ -8,8 +8,8 @@ Source idea: `ideas/open/217_phase_e0_prepared_bir_merge_readiness_and_ownership
 
 This document is the durable Phase E0 analysis surface for the future
 Prepared/BIR merge readiness map. Step 1 is inventory only: it records the
-inputs, structural surfaces, and retained-boundary evidence that later steps
-must classify. It does not implement, delete, privatize, rename, or weaken
+inputs, structural surfaces, and retained-boundary evidence that the later
+sections classify. It does not implement, delete, privatize, rename, or weaken
 prepared APIs, diagnostics, tests, or target behavior.
 
 ### Sources Read
@@ -207,6 +207,160 @@ delivery boundaries until all public production, wrapper, printer/debug, and
 oracle consumers for a named sub-surface have an equivalent route-native or
 retained-owner path.
 
+## E1-E5 Readiness Synthesis
+
+This Step 4 synthesis converts the field and lookup maps into a conditional
+later-phase path. It does not claim that `PreparedBirModule`,
+`PreparedFunctionLookups`, or their aggregate construction/delivery APIs are
+deletion-ready. The only currently realistic code-size-positive targets are
+named duplicate semantic helper/API families, one selected consumer or
+diagnostic row at a time, with prepared policy, fallback, oracle, and
+cross-target compatibility preserved until replacement proof exists.
+
+### Target End-State Map
+
+| End-state owner | Surfaces that can move or contract | Surfaces that must stay retained | Readiness recommendation |
+| --- | --- | --- | --- |
+| BIR owns semantics | Target-neutral module/function/block/value identity; CFG facts; route source, publication, join, call-use, and comparison provenance annotations; liveness/use-def annotations; intrinsic metadata facts; future Route 8 return-chain schema if designed as its own owner line. | ABI/layout/register/stack/addressing/move/call/helper/emission policy; wrapper behavior; prepared fallback and printer/oracle strings. | E1 should add or reuse BIR/route facts only where a selected reader can prove route/prepared agreement and failure-mode fallback. Do not build a BIR-owned clone of prepared policy containers. |
+| Prepared owns policy | `target_profile`, register overrides, regalloc, frame and dynamic stack plans, address materialization, value-home storage policy, move scheduling, call ABI, carrier/helper protocols, atomic/inline-asm lowering, final records, and target output spelling. | Narrow source identity or metadata subfacts may be read from BIR after proof, but the policy decision remains prepared/target-owned. | Later phases should keep policy APIs public or pass-context-owned until a separate target-policy owner exists. Moving these fields into BIR would be route drift. |
+| Prepared APIs become private pass context | One-reader adapters for Route 3 memory/source, Route 4/5 publication or edge/join identity, Route 6 call-use source, Route 1/2/5/6/7 source-producer rows, and identity-only audits through `move_bundles` or `value_homes`. | Aggregate lookup construction, public fallback/oracle paths, wrapper inputs, diagnostic rows, and cross-target compatibility handles. | E2 can contract only a named public prepared lookup/helper after all direct public consumers of that selected semantic read move behind a private pass-context or route-native adapter. |
+| Duplicate semantic helpers are deletion candidates | Helpers that only rediscover BIR identity, selected route source/publication/join/call/comparison facts, liveness identity, intrinsic metadata, or one byte-stable diagnostic/oracle row already reproduced from route-native facts. | Any helper carrying target policy, expected-string authority, fallback decisions, or wrapper compatibility. | Deletion is conditional on replacing every semantic consumer in the helper family, preserving prepared fallback for non-agreement paths, and proving byte-stable diagnostics where the helper had oracle authority. |
+
+### E1 Semantic Duplicate Candidates
+
+E1 should focus on semantic duplicate candidates where the existing maps name a
+clear replacement fact and a retained owner for everything else:
+
+| Candidate | Replacement semantic authority | Retained boundary |
+| --- | --- | --- |
+| Aggregate BIR semantic forwarding | Direct `bir::Module` graph, stable BIR function/block/value/link identity, and route annotations. | `PreparedBirModule` wrapper delivery, target-profile threading, prepared printers/dumps, and fallback/oracle calls. |
+| Control-flow identity helpers | BIR function/block graph, terminator successors, block labels, route edge/join annotations, and any future separate return-chain schema. | Edge-copy scheduling, branch policy, block-order emission, wrappers, route-debug rows, and expected strings. |
+| Route source/publication identity helpers | Route 1-7 source, publication, join, call-use, and comparison provenance annotations under route/prepared agreement. | Addressing, value homes, storage, move scheduling, call ABI, publication mechanics, wrappers, printer/debug rows, and helper oracles. |
+| Liveness identity helpers | BIR use/def, live interval, address-taken, and requires-home annotations. | Prepared pass ordering, stack-object association, allocation-policy consumers, and diagnostics. |
+| Intrinsic metadata adapters | BIR intrinsic family, operation, feature, operand-role, memory, and side-effect facts. | Carrier completeness, required-feature policy, call plans, operand/result homes, helper protocols, and missing-fact diagnostics. |
+| Row-scoped diagnostic/oracle helpers | Route-native or BIR-native facts for one positive row. | Prepared fallback for absent, invalid, duplicate/conflict, mismatch, unsupported, target-policy-sensitive, and compatibility-sensitive paths. |
+
+### E2 Public API And Private Pass-Context Candidates
+
+E2 should be scoped as public prepared API contraction into private pass context,
+not aggregate API removal:
+
+| Candidate | API family or lookup group | Required E2 shape |
+| --- | --- | --- |
+| Route 6 call-use source adapter | Selected `call_plans` source lookup/helper path. | One argument/result source reader moves to route-native or private pass-context delivery while call ABI/layout policy, `ConsumedPlans`, wrappers, printer/debug, and call oracles remain retained. |
+| Route 3 memory/source adapter | Selected `memory_accesses` lookup/helper path. | One AArch64 memory/source identity consumer moves behind a route-native adapter while address formation, materialization, relocation, value homes, target wrappers, and fallback diagnostics remain prepared-owned. |
+| Route 4/5 publication or edge/join adapter | Selected `edge_publications` and `edge_publication_source_producers` paths. | One publication, edge, or join identity reader moves to route-native/private delivery while publication construction, move/home/storage policy, block-order output, wrappers, and oracles remain retained. |
+| Route 1/2/5/6/7 source-producer row | Selected source-producer helper, route-debug, printer, or helper-oracle row. | One route family gets byte-stable route-native diagnostics with prepared fallback retained for all non-agreement cases. |
+| Identity-only audit adapter | Selected `move_bundles` or `value_homes` consumer proven not to need policy. | Only the identity subquestion contracts; move scheduling, storage/home policy, target rendering, decoded-home/formal-publication behavior, wrappers, and oracles remain retained. |
+
+`make_prepared_function_lookups(...)`,
+`make_prepared_move_bundle_lookups(...)`, and aggregate
+`PreparedBirModule` construction are not E2 candidates until every public
+production, wrapper, printer/debug, and oracle consumer for a named sub-surface
+has either moved to a route-native/private context or been assigned an explicit
+retained owner.
+
+### Code-Size Reduction Candidates And Required Proof
+
+Realistic code-size reduction is limited to helper/API families where the code
+being deleted stops duplicating semantic authority rather than merely renaming
+or rewrapping the same prepared state:
+
+| Helper/API family | Why reduction is realistic | Required proof before deletion |
+| --- | --- | --- |
+| Selected route source/publication/join/call/comparison identity helpers | Route 1-7 evidence already has agreement-gated semantic readers for narrow facts. | Positive route/prepared agreement, absent/invalid/ambiguous-or-conflict/mismatch fallback, unchanged policy-sensitive output, and no public fallback/oracle consumer left behind for that helper family. |
+| BIR identity and control-flow forwarding helpers | BIR already owns function/block/value identity and CFG shape. | All consumers in the helper family read BIR identity directly, printer/debug labels remain byte-stable, and branch/edge-copy/output policy stays prepared-owned. |
+| Liveness identity helper adapters | Liveness facts can become BIR annotations where they are pure use/def/live-interval questions. | Equivalent annotation reads, preserved stack-object ambiguity diagnostics, and no allocation-policy behavior removed. |
+| Intrinsic metadata adapters | Some intrinsic family/operation/feature facts are semantic BIR facts. | Metadata consumers read BIR facts directly while carrier completeness, feature policy, helper calls, operand/result homes, and missing-fact diagnostics remain prepared-owned. |
+| Row-scoped diagnostic/oracle helpers | Existing route rows show that one byte-stable row can move without broad retirement. | Byte-stable positive row output plus retained prepared authority for every failure, fallback, unsupported, and target-policy-sensitive path. |
+
+### Surfaces Where Code-Size Reduction Is Not Realistic Yet
+
+These surfaces should not be counted as code-size-positive Phase E progress:
+
+- Aggregate `PreparedBirModule` or `PreparedFunctionLookups` deletion,
+  construction removal, or facade renaming.
+- Target policy fields and lookup groups: `target_profile`,
+  `register_group_overrides`, `regalloc`, `stack_layout`, `addressing`,
+  `frame_plan`, `dynamic_stack_plan`, `address_materializations`,
+  `value_homes` policy, move scheduling, call ABI, carriers, atomics,
+  inline asm, runtime helpers, final records, and emitted output.
+- Public fallback/oracle and diagnostic/string authority: `invariants`,
+  `notes`, prepared printer/debug rows, route-debug rows, helper-oracle names,
+  baselines, and expected strings.
+- Cross-target wrappers and compatibility handles, including x86
+  `ConsumedPlans`, riscv wrapper-boundary behavior, target-local formatting,
+  frame/register/ABI rendering, and wrapper input/output compatibility.
+- Route 8 return-chain contraction, unless a separate return-chain owner/schema
+  is designed and proven; it must not be hidden inside Route 1, Route 7,
+  predecessor rescans, name matching, or a generic route-index facade.
+
+### E3 Diagnostic And Oracle Prerequisites
+
+E3 can start only after a named diagnostic or oracle row has:
+
+- A route-native or BIR-native source fact for the positive row.
+- Explicit prepared fallback for absent, invalid, duplicate/conflict,
+  ambiguous, mismatch, unsupported, target-policy-sensitive, and
+  compatibility-sensitive cases.
+- Byte-stable printer/debug, route-debug, helper-oracle, baseline, and
+  expected-string output, or an explicit retained prepared authority for that
+  output.
+- No weakening of supported-path status, expected strings, or helper-oracle
+  coverage.
+- Target-policy separation: the replacement row must not infer register,
+  stack, ABI, address, move, branch, helper, or final-emission decisions from
+  target-neutral BIR semantics.
+
+### E4 Cross-Target Wrapper Blockers
+
+E4 cross-target work is blocked until each wrapper boundary names both the
+route-native semantic input and the retained target-local owner:
+
+- AArch64 remains the primary proof target; selected-reader proof there is
+  required before importing a similar boundary to x86 or riscv.
+- x86 currently has only narrow Route 6 scalar source evidence through
+  `ConsumedPlans` and one route-debug row. `ConsumedPlans`, call wrapper
+  compatibility, route-debug strings, frame/register/ABI formatting, and
+  instruction-selection/emission behavior remain blockers.
+- riscv has no imported route-view migration proof; edge-publication and
+  wrapper-boundary output remain prepared/target-owned until AArch64 evidence
+  plus riscv-specific formatting/emission proof exists.
+- Wrapper candidates must preserve target-local address formation, value homes,
+  move bundles, register/stack policy, call ABI, publication mechanics,
+  branch/fused-compare policy, helper protocols, final records, and expected
+  strings.
+
+### Draft 155 And E5 Rewrite Criteria
+
+Draft 155 / E5 should remain unopened as an execution plan and unrevised as a
+retirement plan until all of these criteria are met:
+
+1. Field ownership is complete for every `PreparedBirModule` field, with target
+   policy, fallback/oracle, diagnostics, wrappers, and compatibility surfaces
+   explicitly retained or assigned to a concrete replacement owner.
+2. Lookup-group ownership is complete for every `PreparedFunctionLookups`
+   group, with aggregate construction/delivery separated from one-reader
+   semantic adapters and diagnostic rows.
+3. E1 has proven the selected semantic duplicate families through
+   route/prepared agreement and failure-mode fallback without moving target
+   policy into BIR.
+4. E2 has contracted only named public prepared APIs into private pass context
+   after every public consumer, wrapper, printer/debug row, and oracle for that
+   selected surface has a replacement or retained-owner path.
+5. E3 has byte-stable diagnostic/oracle replacements or explicit retained
+   prepared authority for positive and failure paths.
+6. E4 has cross-target wrapper proof for AArch64-first boundaries and separate
+   x86/riscv compatibility proof where those targets participate.
+7. The proposed E5 work can name concrete helper/API deletions and expected net
+   code removal. Facade moves, container reshuffles, wrapper renames, and
+   aggregate type demotions do not qualify.
+
+Until those criteria are satisfied, draft 155 remains evidence for retirement
+intent and reject signals only. E5 must not claim broad prepared retirement,
+aggregate `PreparedBirModule` deletion, aggregate `PreparedFunctionLookups`
+deletion, target-policy migration into BIR, or diagnostic/oracle weakening.
+
 ### Phase D, D2, And Route 1-8 Constraints
 
 Phase D constraints:
@@ -260,10 +414,12 @@ Route constraints:
 
 - No required Step 1 source was missing.
 - Draft 155 supplies retirement intent and reject signals, not executable
-  ownership decisions. Later steps must still classify fields, lookup groups,
-  wrappers, diagnostics, compatibility adapters, proof criteria, and blockers
-  before any retirement or demotion recommendation can be treated as ready.
-- The inventory is not yet a classification. Field-by-field
-  `PreparedBirModule` ownership, lookup-group ownership, duplicate helper/API
-  deletion candidates, and E1-E5 readiness recommendations belong to later
-  steps.
+  ownership decisions. The Step 2 through Step 4 maps classify fields, lookup
+  groups, wrappers, diagnostics, compatibility adapters, proof criteria, and
+  blockers as readiness analysis only; final validation must still confirm
+  every expected output and reject signal before any retirement or demotion
+  recommendation can be treated as ready.
+- The field, lookup-group, and E1-E5 readiness maps are now analysis outputs,
+  not implementation permission. Final validation still needs to check this
+  document against every source-idea expected output and reject signal before
+  any later execution plan treats the recommendations as acceptance-ready.
