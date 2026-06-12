@@ -393,6 +393,33 @@ route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
   return converted;
 }
 
+namespace detail {
+
+struct FusedCompareOperandProducerIdentityPassContext {
+  const module::BlockLoweringContext& context;
+  const prepare::PreparedBranchCondition& branch_condition;
+  std::size_t before_instruction_index = 0;
+};
+
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
+read_agreeing_route7_fused_compare_operand_producer_facts(
+    const FusedCompareOperandProducerIdentityPassContext& pass_context,
+    const prepare::PreparedFusedCompareOperandProducerFacts& prepared) {
+  const auto route7_index =
+      bir::route7_build_comparison_condition_index(*pass_context.context.bir_block);
+  const auto route7 =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          *pass_context.context.bir_block,
+          *pass_context.branch_condition.lhs,
+          *pass_context.branch_condition.rhs,
+          pass_context.before_instruction_index);
+  return route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
+      pass_context.context, prepared, route7);
+}
+
+}  // namespace detail
+
 [[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
 find_prepared_fused_compare_operand_producer_facts(
     const module::BlockLoweringContext& context,
@@ -434,18 +461,12 @@ find_prepared_fused_compare_operand_producer_facts(
     return prepared;
   }
 
-  const auto route7_index =
-      bir::route7_build_comparison_condition_index(*context.bir_block);
-  const auto route7 =
-      bir::route7_find_fused_compare_operand_producer_facts(
-          route7_index,
-          *context.bir_block,
-          *branch_condition.lhs,
-          *branch_condition.rhs,
-          before_instruction_index);
   if (const auto agreed =
-          route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
-              context, *prepared, route7);
+          detail::read_agreeing_route7_fused_compare_operand_producer_facts(
+              {.context = context,
+               .branch_condition = branch_condition,
+               .before_instruction_index = before_instruction_index},
+              *prepared);
       agreed.has_value()) {
     return agreed;
   }
