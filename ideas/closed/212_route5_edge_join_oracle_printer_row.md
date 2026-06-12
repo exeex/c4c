@@ -49,3 +49,23 @@ and adjacent wrapper output.
   unsupported move, conflict, mismatch, or fallback proof.
 - Reject moving branch/parallel-copy policy into Route 5.
 - Reject retaining the old diagnostic failure behind a route-native name.
+
+## Closure Note
+
+Closed after implementing the selected
+`PreparedCurrentBlockJoinParallelCopySourceFact` helper-oracle row for the
+named current-block join source success case. Route 5 evidence is attached as
+diagnostic metadata only after agreement with prepared edge/join semantics,
+while absent, invalid, duplicate/conflicting, memory-source, mismatch,
+unsupported, branch/parallel-copy, printer, and wrapper paths retain prepared
+or target-owned behavior.
+
+Close proof used matching seven-test `test_before.log` and `test_after.log`
+scope:
+`backend_prepared_lookup_helper`, `backend_prepared_printer`,
+`backend_prealloc_block_entry_publications`,
+`backend_aarch64_current_block_join_routing`,
+`backend_prepare_authoritative_join_ownership`,
+`backend_x86_prepared_handoff_label_authority`, and
+`backend_riscv_prepared_edge_publication`. The close-time regression guard
+passed with 7/7 before and 7/7 after, with no new failures.
