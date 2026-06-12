@@ -1,6 +1,6 @@
 # Phase E1 Semantic Duplicate Candidate Triage
 
-Status: Step 4 deferral and no-action recording complete.
+Status: Step 5 completeness validation complete.
 
 Source idea: `ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md`
 
@@ -210,6 +210,34 @@ Draft 155 / E5 remains unopened.
   candidate records equivalent positive, absent, invalid, duplicate/conflict,
   mismatch, fallback, printer/debug, wrapper, and expected-string proof.
 - Draft 155 / E5 remains unopened.
+
+## Step 5 Expected Output Checklist
+
+This final completeness check validates the durable E1 analysis against the
+source idea expected-output checklist in
+`ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md`.
+
+| Expected output item | E1 document status |
+| --- | --- |
+| Link to this durable analysis document | Satisfied by this document path: `docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md`. |
+| candidate-by-candidate triage table for the six E0 E1 families | Satisfied by `Step 2 Candidate Family Classification`, which covers aggregate BIR semantic forwarding, control-flow identity helpers, route source/publication/join/call/comparison identity helpers, liveness identity helpers, intrinsic metadata adapters, and row-scoped diagnostic/oracle helpers. |
+| Accepted follow-up ideas scoped to exactly one semantic duplicate helper family or one row-scoped semantic/oracle surface | Satisfied by `Step 3 Accepted Follow-Up Ideas`: `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md` for control-flow identity helpers and `ideas/open/220_phase_e1_route_identity_helper_contraction.md` for route identity helpers. No accepted follow-up is drafted for aggregates, liveness, intrinsics, E2, E3, E4, Route 8, broad prepared retirement, or draft 155 / E5. |
+| Deferrals to E2, E3, E4, or Route 8 where E1 is not the right owner | Satisfied by `Step 4 Deferrals And No-Action Decisions`, including liveness and intrinsic consumer-audit deferrals, E3 row-scoped diagnostic/oracle ownership, E4 target-policy/cross-target ownership, Route 8 return-chain deferral, and E5-only prepared rewrite deferral. |
+| No-action decisions for aggregate, target-policy, fallback/oracle, diagnostic/string, and cross-target compatibility surfaces | Satisfied by the Step 4 no-action table, which explicitly preserves aggregate surfaces, target-policy surfaces, fallback/oracle surfaces, diagnostic/string surfaces, and cross-target compatibility surfaces. |
+| Proof requirements for accepted implementation ideas | Satisfied by the Step 2 proof-shape cells and Step 3 accepted follow-up summaries. Control-flow proof requires one identity-only helper or reader with positive, absent, invalid, duplicate/conflict, mismatch, policy-fallback, printer/debug, wrapper, and expected-string stability. Route identity proof requires one route family plus one selected consumer or identity helper with route/prepared agreement, absent, invalid, ambiguous/conflict, mismatch, policy-sensitive fallback, nearby same-feature coverage, unchanged printer/debug/oracle strings, and no public fallback/oracle consumer left behind. |
+| Draft 155 / E5 remains unopened | Satisfied by Step 3, Step 4, and baseline guardrail statements: Draft 155 / E5 remains unopened. |
+
+### Reviewer Reject Signal Check
+
+| Reviewer Reject signal | E1 validation result |
+| --- | --- |
+| E0 candidate categories treated as implementation permission | Not present; E0 categories are evidence only, and the only accepted outputs are two narrow follow-up ideas. |
+| Broad migration plan covering multiple helper families | Not present; accepted ideas are split into control-flow identity and route identity helper contraction only. |
+| Facade renames, wrapper moves, or container reshuffles counted as code reduction | Not present; aggregate deletion, facade naming, wrapper moves, construction reshuffling, and aggregate replacement are recorded as no-action or blocked. |
+| Target/prepared policy moved into BIR | Not present; target profile, ABI, layout, register/stack/address policy, scheduling, branch spelling, helper protocols, wrappers, final records, emitted output, and expected target behavior remain prepared/target-owned. |
+| Prepared fallback/oracle surfaces deleted before equivalent proof exists | Not present; fallback/oracle surfaces are preserved until a later helper-specific proof covers positive, absent, invalid, duplicate/conflict, mismatch, fallback, printer/debug, wrapper, helper-oracle, and expected-string behavior. |
+| Diagnostics, helper-oracle names, supported-path status, baselines, or expected strings weakened | Not present; diagnostic/string surfaces are no-action in E1, and baseline proof guardrails reject baseline refreshes, expected-string rewrites, helper renames, unsupported downgrades, and timeout masking as evidence. |
+| Draft 155 opened or broad prepared retirement claimed from E1 triage | Not present; draft 155 / E5 remains unopened, and broad `PreparedBirModule` / `PreparedFunctionLookups` retirement is blocked outside E1. |
 
 ## Step 1 Completion Check
 
