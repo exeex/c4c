@@ -10426,29 +10426,137 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
     return 1;
   }
 
+  const auto condition_value = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto route7_operand_agrees =
+      [](const bir::Route7ComparisonOperandRecord& route7_operand,
+         const bir::Route7IndexReferenceValidation& route7_reference,
+         const std::optional<bir::ComparisonOperandProducer>& bir_operand,
+         const bir::Value& value,
+         std::size_t before_instruction_index,
+         bir::Route7ComparisonOperandRole role) {
+        if (!route7_operand ||
+            !route7_reference ||
+            route7_reference.operand_record == nullptr ||
+            !bir_operand.has_value() ||
+            route7_operand.status != bir::Route7ComparisonStatus::Available ||
+            route7_operand.role != role ||
+            route7_operand.before_instruction_index !=
+                before_instruction_index ||
+            route7_operand.producer_kind != bir_operand->producer_kind ||
+            route7_operand.producer_kind !=
+                route7_reference.operand_record->producer_kind ||
+            route7_operand.integer_constant != bir_operand->integer_constant ||
+            route7_operand.integer_constant !=
+                route7_reference.operand_record->integer_constant ||
+            route7_operand.value.value_kind != value.kind ||
+            route7_operand.value.type != value.type) {
+          return false;
+        }
+        if (value.kind == bir::Value::Kind::Immediate) {
+          return route7_operand.producer_kind ==
+                     bir::ComparisonProducerKind::Immediate &&
+                 route7_operand.integer_constant.has_value() &&
+                 *route7_operand.integer_constant == value.immediate;
+        }
+        return route7_operand.producer_instruction != nullptr &&
+               route7_reference.operand_record->producer_instruction ==
+                   route7_operand.producer_instruction &&
+               route7_operand.producer_instruction ==
+                   bir_operand->producer_instruction &&
+               route7_operand.producer_instruction_index ==
+                   bir_operand->producer_instruction_index &&
+               route7_operand.producer_instruction_index <
+                   before_instruction_index;
+      };
+  const auto route7_materialized_condition_agrees =
+      [&](const bir::Route7ComparisonConditionIndex& index,
+          const std::optional<prepare::PreparedMaterializedConditionProducer>&
+              prepared,
+          const bir::MaterializedConditionProducerIdentity& bir_identity,
+          const bir::Value& condition,
+          std::size_t before_instruction_index) {
+        const auto route7_condition =
+            bir::route7_find_materialized_condition(
+                index, block, condition, before_instruction_index);
+        const auto route7_condition_ref =
+            bir::route_index_validate_materialized_condition_reference(
+                bir::route_index_reference_facade(index),
+                block,
+                condition,
+                before_instruction_index);
+        const auto* route7_record = route7_condition_ref.comparison_record;
+        if (!prepared.has_value() ||
+            !bir_identity.available ||
+            !route7_condition ||
+            route7_condition.status != bir::Route7ComparisonStatus::Available ||
+            !route7_condition_ref ||
+            route7_condition_ref.status !=
+                bir::RouteIndexValidationStatus::Valid ||
+            route7_condition_ref.reference.relationship !=
+                bir::RouteIndexRelationshipKind::Route7MaterializedCondition ||
+            route7_record == nullptr ||
+            route7_record->binary == nullptr ||
+            route7_record->instruction == nullptr ||
+            route7_record->instruction_index >= before_instruction_index ||
+            route7_record->binary != prepared->binary ||
+            route7_record->binary != bir_identity.binary ||
+            route7_record->instruction_index != prepared->instruction_index ||
+            route7_record->instruction_index != bir_identity.instruction_index ||
+            names.value_names.find(route7_record->condition_value.name) !=
+                prepared->condition_value_name ||
+            names.value_names.find(bir_identity.condition_value_name) !=
+                prepared->condition_value_name ||
+            !bir_identity.lhs.has_value() ||
+            !bir_identity.rhs.has_value()) {
+          return false;
+        }
+        const auto route7_lhs_ref =
+            bir::route_index_validate_comparison_operand_reference(
+                bir::route_index_reference_facade(index),
+                block,
+                route7_record->binary->lhs,
+                route7_record->instruction_index,
+                bir::Route7ComparisonOperandRole::Lhs);
+        const auto route7_rhs_ref =
+            bir::route_index_validate_comparison_operand_reference(
+                bir::route_index_reference_facade(index),
+                block,
+                route7_record->binary->rhs,
+                route7_record->instruction_index,
+                bir::Route7ComparisonOperandRole::Rhs);
+        return route7_operand_agrees(route7_record->lhs,
+                                     route7_lhs_ref,
+                                     bir_identity.lhs,
+                                     route7_record->binary->lhs,
+                                     route7_record->instruction_index,
+                                     bir::Route7ComparisonOperandRole::Lhs) &&
+               route7_operand_agrees(route7_record->rhs,
+                                     route7_rhs_ref,
+                                     bir_identity.rhs,
+                                     route7_record->binary->rhs,
+                                     route7_record->instruction_index,
+                                     bir::Route7ComparisonOperandRole::Rhs);
+      };
   const auto prepared_condition =
       prepare::find_prepared_materialized_condition_producer(
           names,
           &source_producers,
           block_label,
           &block,
-          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          condition_value,
           block.insts.size());
   const auto bir_condition = bir::find_materialized_condition_producer_identity(
-      block, bir::Value::named(bir::TypeKind::I1, "%cond"), block.insts.size());
+      block, condition_value, block.insts.size());
   const auto route7_condition =
       bir::route7_comparison_instruction_record(&block, 3);
   const auto indexed_route7_condition =
       bir::route7_find_materialized_condition(
-          route7_index,
-          block,
-          bir::Value::named(bir::TypeKind::I1, "%cond"),
-          block.insts.size());
+          route7_index, block, condition_value, block.insts.size());
   const auto route7_condition_ref =
       bir::route_index_validate_materialized_condition_reference(
           bir::route_index_reference_facade(route7_index),
           block,
-          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          condition_value,
           block.insts.size());
   if (!prepared_condition.has_value() ||
       !bir_condition.available ||
@@ -10496,7 +10604,12 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       route7_condition_ref.comparison_record->binary !=
           prepared_condition->binary ||
       route7_condition_ref.comparison_record->instruction_index !=
-          prepared_condition->instruction_index) {
+          prepared_condition->instruction_index ||
+      !route7_materialized_condition_agrees(route7_index,
+                                            prepared_condition,
+                                            bir_condition,
+                                            condition_value,
+                                            block.insts.size())) {
     return fail(
         "prepared and BIR materialized condition producer facts and Route 7 records should match binary condition producers");
   }
@@ -10505,14 +10618,69 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       bir::route7_find_materialized_condition(
           bir::Route7ComparisonConditionIndex{},
           block,
-          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          condition_value,
           block.insts.size());
   const auto absent_route7_condition_ref =
       bir::route_index_validate_materialized_condition_reference(
           bir::RouteIndexReferenceFacade{},
           block,
-          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          condition_value,
           block.insts.size());
+  auto invalid_reference_route7_index = route7_index;
+  for (auto& record : invalid_reference_route7_index.comparison_records) {
+    if (record.condition_value.name == "%cond") {
+      record.instruction = nullptr;
+      break;
+    }
+  }
+  const auto invalid_reference_route7_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(invalid_reference_route7_index),
+          block,
+          condition_value,
+          block.insts.size());
+  auto duplicate_route7_index = route7_index;
+  duplicate_route7_index.comparison_records.push_back(indexed_route7_condition);
+  const auto duplicate_route7_condition =
+      bir::route7_find_materialized_condition(
+          duplicate_route7_index, block, condition_value, block.insts.size());
+  const auto duplicate_route7_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(duplicate_route7_index),
+          block,
+          condition_value,
+          block.insts.size());
+  auto mismatch_route7_index = route7_index;
+  for (auto& record : mismatch_route7_index.comparison_records) {
+    if (record.condition_value.name == "%cond") {
+      record.binary = folded;
+      break;
+    }
+  }
+  const auto mismatch_route7_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::route_index_reference_facade(mismatch_route7_index),
+          block,
+          condition_value,
+          block.insts.size());
+  const auto unfused_route7_condition =
+      bir::route7_find_materialized_condition(
+          route7_index,
+          block,
+          bir::Value::named(bir::TypeKind::I64, "%folded"),
+          block.insts.size());
+  auto missing_operand_route7_index = route7_index;
+  for (auto& record : missing_operand_route7_index.comparison_records) {
+    if (record.condition_value.name == "%cond") {
+      record.lhs.available = false;
+      record.lhs.status = bir::Route7ComparisonStatus::MissingOperandProducer;
+      record.lhs.producer_kind = bir::ComparisonProducerKind::Unknown;
+      record.lhs.producer_instruction = nullptr;
+      record.lhs.producer_instruction_index = 0;
+      record.lhs.produced_value = {};
+      break;
+    }
+  }
   if (!prepared_condition.has_value() ||
       !bir_condition.available ||
       absent_route7_condition ||
@@ -10522,7 +10690,45 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
       absent_route7_condition_ref.status !=
           bir::RouteIndexValidationStatus::MissingRecord ||
       absent_route7_condition_ref.route_status !=
-          bir::Route7ComparisonStatus::MissingBlock) {
+          bir::Route7ComparisonStatus::MissingBlock ||
+      route7_materialized_condition_agrees(bir::Route7ComparisonConditionIndex{},
+                                           prepared_condition,
+                                           bir_condition,
+                                           condition_value,
+                                           block.insts.size()) ||
+      invalid_reference_route7_condition_ref ||
+      invalid_reference_route7_condition_ref.status !=
+          bir::RouteIndexValidationStatus::StaleOwner ||
+      route7_materialized_condition_agrees(invalid_reference_route7_index,
+                                           prepared_condition,
+                                           bir_condition,
+                                           condition_value,
+                                           block.insts.size()) ||
+      duplicate_route7_condition ||
+      duplicate_route7_condition.status !=
+          bir::Route7ComparisonStatus::DuplicateProducer ||
+      duplicate_route7_condition_ref ||
+      duplicate_route7_condition_ref.status !=
+          bir::RouteIndexValidationStatus::DuplicateReference ||
+      route7_materialized_condition_agrees(duplicate_route7_index,
+                                           prepared_condition,
+                                           bir_condition,
+                                           condition_value,
+                                           block.insts.size()) ||
+      !mismatch_route7_condition_ref ||
+      route7_materialized_condition_agrees(mismatch_route7_index,
+                                           prepared_condition,
+                                           bir_condition,
+                                           condition_value,
+                                           block.insts.size()) ||
+      unfused_route7_condition ||
+      unfused_route7_condition.status !=
+          bir::Route7ComparisonStatus::NonComparison ||
+      route7_materialized_condition_agrees(missing_operand_route7_index,
+                                           prepared_condition,
+                                           bir_condition,
+                                           condition_value,
+                                           block.insts.size())) {
     return fail(
         "selected materialized condition helper row should keep prepared/BIR facts when Route 7 reference authority is absent");
   }
