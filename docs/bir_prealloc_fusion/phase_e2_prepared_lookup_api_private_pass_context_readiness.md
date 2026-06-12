@@ -1,6 +1,6 @@
 # Phase E2 Prepared Lookup API Private Pass-Context Readiness
 
-Status: Step 3 readiness classification complete.
+Status: Step 4 accepted follow-up ideas complete.
 
 Source idea:
 `ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md`
@@ -187,6 +187,39 @@ or aggregate `PreparedFunctionLookups` retirement.
   owner.
 - Draft 155 / E5 and aggregate `PreparedFunctionLookups` retirement remain
   unopened.
+
+## Step 4 Accepted Follow-Up Ideas
+
+Step 4 created follow-up implementation ideas only for the two Step 3
+ready-to-draft helper families. Every lookup-group or mixed helper/oracle row
+remains retained, deferred, or no-action as recorded in Step 3.
+
+| Accepted follow-up idea | Scoped public boundary or helper family | Proven BIR/route semantic owner | Retained prepared fallback, policy, and oracle | Public consumers still present | Proof required before privatization or deletion can be claimed |
+| --- | --- | --- | --- | --- | --- |
+| `ideas/open/224_phase_e2_control_flow_branch_target_helper_private_pass_context.md` | `find_prepared_control_flow_branch_target_labels(...)` and its immediate public helper family only. | BIR structured control-flow identity: function/block graph, block labels, terminator successor facts, and the E1 agreement gate for the selected branch-target label identity read. | Prepared retains absent, invalid-id, duplicate/conflict, mismatch, non-agreement fallback, branch spelling, edge-copy scheduling, block-order emission, join-transfer records, move policy, wrapper output, prepared printer/debug rows, helper-oracle names/statuses/strings, expected strings, and supported-path status. | Public helper definitions and wrappers in `src/backend/prealloc/control_flow.hpp`; helper-oracle tests in `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`; prepared control-flow printer/debug rows; x86 module lowering and joined-branch wrapper coverage; target tests and expected strings for branch/wrapper output. | Positive agreement, absent, invalid, duplicate/conflict, mismatch, public-consumer, policy fallback, byte-stable printer/debug/wrapper/oracle/expected-string, and nearby same-feature proof. |
+| `ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md` | `find_prepared_fused_compare_operand_producer_facts(...)` and its immediate public helper family only. | Route 7 comparison provenance under route/prepared agreement for the selected AArch64 conditional-branch comparison-provenance identity read. | Prepared/AArch64 retains absent-route, invalid-reference, duplicate/conflict, mismatch, unfused, non-agreement fallback, branch targets, suffix mapping, fused legality, hazards, emitted-register state, final instruction order, final assembler rows, printer/debug and machine-printer output, helper-oracle names/statuses/strings, wrappers, expected strings, and aggregate route/lookup public surfaces outside this helper family. | AArch64 comparison lowering in `src/backend/mir/aarch64/codegen/comparison.cpp`; AArch64 branch lowering policy in the same file; prepared helper-oracle tests; AArch64 branch-control and machine-printer expected-string tests; retained route/prepared aggregate or lookup public surfaces needed for fallback and oracle behavior. | Positive agreement, absent-route, invalid-reference, duplicate/conflict, mismatch, public-consumer, target-policy fallback, byte-stable printer/debug/wrapper/oracle/expected-string, and nearby same-feature proof. |
+
+No follow-up idea was created for `call_plans`, `memory_accesses`,
+`edge_publications`, `edge_publication_source_producers`, mixed Route
+1/2/5/6/7 source-producer/printer/oracle rows, `move_bundles`,
+`value_homes`, aggregate lookup construction, draft 155, or E5. Those surfaces
+remain governed by the Step 3 no-action, retained-public, retained-policy, or
+deferred-owner decisions.
+
+## Step 4 Completion Check
+
+- Both Step 3 ready-to-draft helper families now have one scoped source idea
+  under `ideas/open/`.
+- Each follow-up idea names exactly one helper family, the proven BIR/route
+  semantic owner, retained prepared fallback/policy/oracle, public consumers
+  still present, and required proof before privatization or deletion can be
+  claimed.
+- Each follow-up idea includes concrete reviewer reject signals for
+  testcase-shaped shortcuts, unsupported downgrades, expectation rewrites,
+  facade-only changes, broad rewrites, and retained old failure modes under
+  new names.
+- No implementation file was changed, and no follow-up idea claims aggregate
+  lookup construction, draft 155, or E5 readiness.
 
 ## Step 1 Completion Check
 

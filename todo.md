@@ -1,27 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/223_phase_e2_prepared_lookup_api_private_pass_context_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Write Accepted Follow-Up Ideas
+Current Step ID: 5
+Current Step Title: Close Out E2 Analysis
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 3: classified every E2 candidate surface in
+Completed plan.md Step 4: created the two accepted follow-up implementation
+ideas for the only Step 3 ready-to-draft helper families and linked them from
 `docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`.
-The readiness table covers each source-idea candidate, records the two proven
-E1 helpers as ready for Step 4 draft consideration, keeps lookup-group and
-mixed helper/oracle rows deferred or retained, and records explicit no-action
-decisions for aggregate lookup construction plus target-policy,
-fallback/oracle, wrapper, printer/debug, and expected-string surfaces.
+
+New follow-up ideas:
+
+- `ideas/open/224_phase_e2_control_flow_branch_target_helper_private_pass_context.md`
+- `ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md`
 
 ## Suggested Next
 
-Start plan.md Step 4: write accepted follow-up ideas only for the Step 3
-ready-to-draft helper families, each scoped to exactly one public prepared API
-boundary or helper family with retained fallback/policy/oracle and proof
-requirements named.
+Start plan.md Step 5: close out the E2 analysis document and prepare lifecycle
+closure review without claiming implementation progress.
 
 ## Watchouts
 
@@ -32,7 +31,7 @@ requirements named.
 - Step 3 accepts only
   `find_prepared_control_flow_branch_target_labels(...)` and
   `find_prepared_fused_compare_operand_producer_facts(...)` as ready for Step 4
-  draft consideration.
+  draft consideration; Step 4 created exactly those two follow-up ideas.
 - `call_plans`, `memory_accesses`, `edge_publications`,
   `edge_publication_source_producers`, mixed Route 1/2/5/6/7
   source-producer/printer/oracle rows, `move_bundles`, and `value_homes` are
@@ -42,11 +41,14 @@ requirements named.
 
 ## Proof
 
-Docs-only Step 3 packet. No build, ctest, or root-level log was required or
-run. Proof is document completeness in
-`docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`:
-the Step 3 readiness table covers every candidate surface named in the source
-idea, limits classifications to the source idea buckets, includes explicit
-no-action/deferral statements for aggregate lookup construction and
-target-policy/fallback/oracle surfaces, and states that draft 155 / E5 plus
-aggregate `PreparedFunctionLookups` retirement remain unopened.
+Docs-only Step 4 packet. No build, ctest, or root-level log was required or
+run. Proof is document/source-idea completeness:
+
+- both new follow-up ideas are under `ideas/open/` and each is scoped to one
+  helper family;
+- each idea names the proven BIR/route semantic owner, retained prepared
+  fallback/policy/oracle, public consumers still present, and proof required
+  before privatization or deletion can be claimed;
+- each idea includes concrete reviewer reject signals;
+- the E2 durable document links both ideas and states that all other candidate
+  surfaces remain retained, deferred, or no-action.
