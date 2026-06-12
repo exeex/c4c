@@ -49,3 +49,14 @@ policy remain authoritative.
 - Reject testcase-shaped handling of one publication case without a general
   route/prepared agreement rule for the named reader.
 - Reject retaining the old prepared-only behavior behind a route-named wrapper.
+
+## Closure Summary
+
+Closed after the indirect-callee publication-source reader was migrated to the
+Route 4 route/prepared agreement gate while retaining prepared fallback for
+invalid, ambiguous, absent, and mismatched publication facts. Output stability
+and wrapper/prepared-surface non-goals remained unchanged.
+
+Accepted proof: `backend_aarch64_instruction_dispatch` and
+`backend_prepared_lookup_helper` passed 2/2 after Step 4, and the close-time
+regression guard compared matching 2/2 before/after logs with no new failures.
