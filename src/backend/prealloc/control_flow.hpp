@@ -488,6 +488,36 @@ find_prepared_control_flow_branch_target_labels(
   };
 }
 
+namespace detail {
+
+struct BranchTargetIdentityPassContext {
+  const bir::Block* source_block = nullptr;
+};
+
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+read_agreeing_bir_branch_target_labels(
+    const BranchTargetIdentityPassContext& context,
+    const PreparedBranchTargetLabels& prepared_labels) {
+  if (context.source_block == nullptr ||
+      context.source_block->terminator.kind != bir::TerminatorKind::CondBranch ||
+      context.source_block->terminator.true_label_id == kInvalidBlockLabel ||
+      context.source_block->terminator.false_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  if (context.source_block->terminator.true_label_id != prepared_labels.true_label ||
+      context.source_block->terminator.false_label_id != prepared_labels.false_label) {
+    return std::nullopt;
+  }
+
+  return PreparedBranchTargetLabels{
+      .true_label = context.source_block->terminator.true_label_id,
+      .false_label = context.source_block->terminator.false_label_id,
+  };
+}
+
+}  // namespace detail
+
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
 find_prepared_control_flow_branch_target_labels(
     const PreparedControlFlowFunction& function_cf,
@@ -495,22 +525,18 @@ find_prepared_control_flow_branch_target_labels(
     const bir::Block& source_block) {
   const auto prepared_labels =
       find_prepared_control_flow_branch_target_labels(function_cf, block_label);
-  if (!prepared_labels.has_value() ||
-      source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
-      source_block.terminator.true_label_id == kInvalidBlockLabel ||
-      source_block.terminator.false_label_id == kInvalidBlockLabel) {
+  if (!prepared_labels.has_value()) {
     return prepared_labels;
   }
 
-  if (source_block.terminator.true_label_id != prepared_labels->true_label ||
-      source_block.terminator.false_label_id != prepared_labels->false_label) {
+  const auto bir_labels = detail::read_agreeing_bir_branch_target_labels(
+      detail::BranchTargetIdentityPassContext{.source_block = &source_block},
+      *prepared_labels);
+  if (!bir_labels.has_value()) {
     return prepared_labels;
   }
 
-  return PreparedBranchTargetLabels{
-      .true_label = source_block.terminator.true_label_id,
-      .false_label = source_block.terminator.false_label_id,
-  };
+  return bir_labels;
 }
 
 [[nodiscard]] inline const PreparedBranchCondition*
