@@ -51,3 +51,24 @@ fallback, and string behavior.
 - Reject moving branch policy or final assembler behavior into Route 7.
 - Reject hiding the existing prepared oracle failure mode behind a route-native
   label.
+
+## Closure Note
+
+Closed on 2026-06-12 after active Route 7 execution completed all runbook
+steps and acceptance review
+`review/216_route7_comparison_oracle_row_acceptance_review.md` reported no
+blocking findings. The accepted implementation augmented exactly one
+materialized-condition helper-oracle row in
+`verify_prepared_bir_comparison_condition_producer_equivalence` with
+Route 7-native evidence while preserving the prepared oracle assertion,
+fallback behavior, wrappers, branch-control output, and expected strings.
+
+Close proof used matching canonical logs for:
+
+```sh
+ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering|backend_aarch64_machine_printer)$' --output-on-failure
+```
+
+`test_before.log` and `test_after.log` both recorded 3/3 passing tests, and the
+regression guard passed with non-decreasing allowance. No follow-up split is
+needed for this source idea.
