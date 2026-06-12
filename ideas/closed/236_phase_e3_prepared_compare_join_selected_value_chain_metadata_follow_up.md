@@ -54,6 +54,23 @@ of idea 234's stack-backed parameter-home handoff repair.
   surface touched by the repair receives supervisor-selected broader
   validation.
 
+## Closure Notes
+
+- 2026-06-12: Closed after commit `30093b137` repaired prepared
+  selected-value-chain metadata publication by interning display-only BIR
+  global names into the prepared link-name table before publishing
+  `PreparedSameModuleGlobalRef`.
+- Focused proof advanced the original pointer-backed same-module global
+  selected-value-chain failure without weakening the assertion and kept the
+  idea 234 stack-home and idea 235 Route 6 guard tests green.
+- Supervisor-selected broader prepared metadata validation passed 15/15 tests
+  in `test_after.log`: `backend_prepare_.*`, `backend_prealloc_.*`,
+  `backend_prepared_.*`, `backend_x86_handoff_boundary`, and
+  `backend_x86_route_debug`.
+- Close-time regression guard was run against the available canonical logs and
+  reported PASS with no new failing tests; the available after log is the
+  broader close-scope validation requested by the supervisor.
+
 ## Reviewer Reject Signals
 
 - The change matches the pointer-backed global testcase name, label text,
@@ -67,4 +84,3 @@ of idea 234's stack-backed parameter-home handoff repair.
   stack-home compare-join consumer behavior as part of this metadata repair.
 - The exact old global-root selected-value-chain failure remains present
   behind a renamed helper or alternate diagnostic path.
-

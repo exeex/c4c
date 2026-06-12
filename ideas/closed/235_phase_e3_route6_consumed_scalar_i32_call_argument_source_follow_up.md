@@ -63,6 +63,19 @@ then failed at the split-out idea 236 selected-value-chain assertion. Idea 235
 remains open, not active, until supervisor-selected close validation can be run
 without being blocked by idea 236.
 
+## Closure Notes
+
+- 2026-06-12: Closed after the split-out idea 236 blocker was repaired by
+  commit `30093b137`.
+- Commit `ea2b3a133` satisfied this idea's Route 6 source-publication scope:
+  named scalar i32 call-argument source facts are published from prepared
+  call-plan authority while fail-closed lookup behavior remains unchanged.
+- Supervisor-selected broader prepared metadata validation in `test_after.log`
+  passed `backend_prepared_lookup_helper`, `backend_x86_route_debug`, and
+  `backend_x86_handoff_boundary`, plus the broader prepared/prealloc subset.
+- Close-time regression guard was run against the available canonical logs and
+  reported PASS with no new failing tests.
+
 ## Reviewer Reject Signals
 
 - The change matches a direct extern call testcase name, label text, block

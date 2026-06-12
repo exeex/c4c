@@ -72,6 +72,19 @@ lowering work.
   Idea 234 is parked, not closed, until downstream validation can confirm the
   stack-home handoff acceptance criteria without being blocked by idea 235.
 
+## Closure Notes
+
+- 2026-06-12: Closed after the downstream idea 235 and idea 236 blockers were
+  repaired by commits `ea2b3a133` and `30093b137`.
+- Commit `ab5b854db` satisfied this idea's x86 compare-join stack-home handoff
+  scope without changing Route 6 route-debug row behavior or helper contracts.
+- Supervisor-selected broader prepared metadata validation in `test_after.log`
+  passed `backend_x86_handoff_boundary`, `backend_x86_route_debug`, and
+  `backend_prepared_lookup_helper`, confirming the stack-home handoff assertion
+  remains past the original failure under the completed downstream repairs.
+- Close-time regression guard was run against the available canonical logs and
+  reported PASS with no new failing tests.
+
 ## Reviewer Reject Signals
 
 - The change matches the failing compare-join testcase name, label text, block
