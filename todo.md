@@ -1,129 +1,91 @@
 Status: Active
 Source Idea Path: ideas/open/229_phase_e3_route3_memory_source_stored_value_helper_oracle_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Validate Route 3 Agreement And Fail-Closed Boundaries
+Current Step ID: 3
+Current Step Title: Wire Or Prove The Selected Helper-Oracle Row
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 discovery completed for the selected Route 3 memory/source
+Step 2 validation completed for the selected Route 3 memory/source
 stored-value helper-oracle row.
 
-Selected row:
+Agreement gate found:
 
-- `backend_prepared_lookup_helper` row:
-  `verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back`
-  in `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
-- Positive row shape: same-block `StoreLocal %stored` / `LoadLocal %loaded`
-  over the same local slot, byte range, and type; prepared success comes from
-  `prepare::find_prepared_same_block_load_local_stored_value_source(...)`.
-- Production consumer row to keep aligned: selected indirect-callee stored
-  source in `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`,
-  fixture `prepared_with_selected_stored_indirect_callee(...)`, where
-  `StoreLocal %callee.selected` at instruction 3 feeds `LoadLocal
-  %callee.loaded` at instruction 4 before the indirect call at instruction 5.
+- The selected helper row,
+  `verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back`,
+  has an explicit prepared/Route 3 agreement check through
+  `prepared_and_bir_same_block_load_local_stored_source_match(...)`.
+- The positive helper row requires prepared and Route 3 to agree on the
+  load-local producer, stored value, store/load instruction indexes, local-slot
+  memory kind, local slot id, byte offset, byte size, root value, loaded value,
+  and stored-value type/name.
+- `mir::find_bir_same_block_load_local_stored_value_source_identity(...)` is
+  target-neutral Route 3 source identity only. It rejects wrong block labels,
+  void roots, missing memory records, non-local-slot memory, non-LoadLocal /
+  non-StoreLocal evidence, zero-sized ranges, overlapping same-slot conflicts,
+  and missing stored-value records before returning identity.
 
-Route 3 evidence path:
+Fallback matrix validated:
 
-- `src/backend/mir/query.cpp`:
-  `mir::find_bir_same_block_load_local_stored_value_source_identity(...)`
-  builds a Route 3 memory access index and reads
-  `bir::route3_find_same_block_load_local_stored_value_source(...)`.
-- Route 3 evidence must be `LoadLocal` + `StoreLocal` over `LocalSlot`, with
-  matching root value name/type, loaded value, stored value, load/store
-  instruction indexes, local slot id, byte offset, and byte size.
-- Production Route 3 read is currently
-  `find_route3_indirect_callee_stored_value_source_identity(...)` in
-  `src/backend/mir/aarch64/codegen/calls.cpp`, selected by
-  `find_indirect_callee_stored_value_source(...)` before prepared fallback.
+- Absent Route 3 evidence: zero-sized BIR memory ranges make Route 3 unavailable
+  while `prepare::find_prepared_same_block_load_local_stored_value_source(...)`
+  remains available; production fallback dispatch also passes when BIR range
+  authority is erased.
+- Invalid Route 3 evidence: wrong block label and void root type fail closed in
+  the helper row; production falls through to prepared when Route 3 returns
+  `std::nullopt`.
+- Ambiguous evidence: overlapping same-slot stores reject the helper agreement
+  path under prepared authority.
+- Mismatched evidence: prepared byte-offset mismatch rejects helper agreement
+  even when Route 3 can still see the same-slot BIR fact.
+- Non-memory evidence: the Route 3 stored-value identity reader cannot return
+  without a local-slot `LoadLocal` and preceding local-slot `StoreLocal`; nearby
+  memory-record tests cover unsupported or mismatched memory facts failing
+  closed.
+- Non-agreement evidence: helper agreement is fail-closed when prepared and
+  Route 3 availability or identity differs.
 
-Prepared fallback authority:
+Semantic gap for Step 3:
 
-- `src/backend/prealloc/prepared_lookups.cpp`:
-  `prepare::find_prepared_same_block_load_local_stored_value_source(...)`
-  remains the fallback/oracle for prepared source-producer facts, prepared
-  memory access lookup, frame-slot identity, overlapping range ambiguity, exact
-  range match, and target-policy-sensitive prepared address fields.
-- `src/backend/mir/aarch64/codegen/calls.cpp`:
-  `find_prepared_indirect_callee_stored_value_source_fallback(...)` remains the
-  production fallback when Route 3 evidence is absent, invalid, mismatched, or
-  not authoritative for policy-sensitive behavior.
-
-Target files for Step 2 inspection/proof:
-
-- Implementation/readers: `src/backend/mir/query.cpp`,
-  `src/backend/bir/bir.cpp`, `src/backend/bir/bir.hpp`,
-  `src/backend/prealloc/prepared_lookups.cpp`,
-  `src/backend/prealloc/prepared_lookups.hpp`,
-  `src/backend/mir/aarch64/codegen/calls.cpp`.
-- Tests: `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`,
-  `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`,
-  `tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp`,
-  `tests/backend/mir/backend_aarch64_memory_operand_records_test.cpp`.
-- CTest names: `backend_prepared_lookup_helper`,
-  `backend_aarch64_instruction_dispatch`,
-  `backend_aarch64_prepared_memory_operand_records`, and
-  `backend_aarch64_memory_operand_records`.
-
-Positive/fallback coverage found:
-
-- Positive helper-oracle coverage exists for exact same-slot stored-value
-  agreement in `verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back`.
-- Invalid Route 3 references are covered by wrong block label and void root
-  type in the helper row.
-- Absent/invalid Route 3 range authority is covered by zero-sized BIR memory
-  ranges while prepared lookup remains available.
-- Prepared/Route 3 mismatch is covered by changing prepared store byte offset
-  while Route 3 still sees the BIR same-slot fact.
-- Alias/address ambiguity is covered by an overlapping conflicting same-slot
-  store that must fail closed under prepared authority.
-- Target-policy retention is covered by changing prepared
-  `can_use_base_plus_offset` and confirming prepared policy remains outside
-  Route 3 source identity.
-- Nearby same-feature Route 3 memory/source coverage exists in
-  `backend_aarch64_prepared_memory_operand_records_test.cpp` and
-  `backend_aarch64_memory_operand_records_test.cpp` for memory access records,
-  stored-value records, load/store local/global records, node/base mismatch,
-  missing prepared access, result/stored identity mismatch, and address fact
-  mismatch.
-- Production positive/fallback coverage exists in
+- The production AArch64 indirect-callee path in
+  `src/backend/mir/aarch64/codegen/calls.cpp` does not use the helper-row
+  agreement gate. `find_indirect_callee_stored_value_source(...)` accepts
+  `find_route3_indirect_callee_stored_value_source_identity(...)` before
+  consulting `find_prepared_indirect_callee_stored_value_source_fallback(...)`.
+- Existing dispatch coverage proves the gap:
   `block_dispatch_uses_route3_stored_indirect_callee_identity_for_selected_source`
-  and
-  `block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy`.
-- Adjacent non-agreement fallback coverage exists in
-  `block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy`
-  for missing, mismatched, and wrong-reference Route 4 source-producer data
-  around the same indirect-callee selected source path.
+  calls `prepared_with_selected_stored_indirect_callee(false, true)`, where
+  Route 3 is present but the prepared store slot is deliberately mismatched,
+  and the production path still uses Route 3 selected-source identity.
+- Target-addressing, materialization, addressing legality, and final operands
+  remain prepared-authoritative: Route 3 only supplies stored source identity
+  and store index, while prepared still owns call-plan callee register,
+  target-policy fields, direct-global dependency checks, address formation,
+  materialization, legality, and emitted final operands.
 
 ## Suggested Next
 
-Step 2 - Validate Route 3 Agreement And Fail-Closed Boundaries. Confirm that
-the selected helper-oracle row and production indirect-callee row require an
-explicit Route 3/prepared agreement gate, or record that the existing
-Route 3-first plus prepared-fallback split is already sufficient for the
-selected row without moving target-addressing policy.
+Step 3 - Wire Or Prove The Selected Helper-Oracle Row. Add a narrow production
+agreement gate for the AArch64 indirect-callee stored-value source path, or
+route that consumer through an equivalent prepared/Route 3 agreement helper,
+so Route 3 is used only when prepared same-block load-local stored-value source
+behavior agrees.
 
 ## Watchouts
 
-Proof gaps for Step 2:
-
-- Non-memory negative coverage for this exact stored-value helper row is not
-  explicit yet; current Route 3 stored-value evidence requires local-slot
-  `LoadLocal`/`StoreLocal`, but Step 2 should decide whether an explicit
-  non-memory helper-row assertion is needed.
-- Prepared/Route 3 mismatch coverage exists for prepared byte-offset mismatch;
-  Step 2 should verify whether slot-id, stored-value name/type, result name,
-  and instruction-index mismatch paths need focused assertions before any
-  behavior change.
-- Production fallback coverage proves missing Route 3 range authority and one
-  mismatched prepared store slot through dispatch output, but it does not yet
-  isolate every absent, invalid, ambiguous, and non-agreement helper-oracle
-  status at the selected row.
-- Nearby memory/source tests cover Route 3 record mechanics, but Step 2 should
-  name the exact subset that prevents this from becoming a named-fixture
-  shortcut.
+- Do not preserve the current production Route 3-first behavior for
+  `prepared_with_selected_stored_indirect_callee(false, true)` as success
+  unless the supervisor changes source intent; under the active plan it is the
+  concrete non-agreement gap.
+- Step 3 should add or adjust focused tests for production prepared/Route 3
+  mismatch fallback. The helper row already covers prepared byte-offset
+  mismatch, invalid references, absent Route 3 range authority, ambiguity, and
+  target-policy separation.
+- Consider an explicit non-memory assertion for the selected helper row only if
+  Step 3 needs extra proof beyond the current Route 3 local-slot
+  LoadLocal/StoreLocal construction and nearby memory-record fail-closed tests.
 - Do not change helper-oracle strings, wrappers, expected strings, prepared
   addressing printer output, address formation, materialization, addressing
   legality, final operands, target policy, baselines, or supported-path
@@ -131,8 +93,10 @@ Proof gaps for Step 2:
 
 ## Proof
 
-Delegated proof for this discovery-only packet:
-`git diff --check -- todo.md && git status --short`.
+Delegated proof passed:
+`cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_instruction_dispatch_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_memory_operand_records_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_records)$' --output-on-failure > test_after.log 2>&1`.
 
-No build or test subset was delegated for Step 1. The delegated proof does not
-produce `test_after.log`; no alternate log was created.
+`test_after.log` contains 4/4 passing tests:
+`backend_prepared_lookup_helper`, `backend_aarch64_instruction_dispatch`,
+`backend_aarch64_prepared_memory_operand_records`, and
+`backend_aarch64_memory_operand_records`.
