@@ -1,65 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/213_route6_call_source_consumer.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Route-Native Evidence for the Consumer
+Current Step ID: Step 3
+Current Step Title: Prove Fail-Closed Call-Use Diagnostics
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added agreement-gated Route 6 evidence for idea 213's selected consumer:
-`aarch64::codegen::record_call_result_source_register(...)` primary
-call-result source-register publication, limited to the non-`result_lanes_only`
-branch.
+Step 3 independently proved the fail-closed Route 6 diagnostics for idea 213's
+selected consumer: `record_call_result_source_register(...)` primary
+call-result source-register publication.
 
-Changed files:
-- `src/backend/mir/aarch64/codegen/calls.hpp`
-- `src/backend/mir/aarch64/codegen/calls.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`
+No additional implementation or test edit was needed. The existing
+`backend_aarch64_call_boundary_owner_test` coverage already proves:
+- matching Route 6/prepared agreement returns `Agreed` while preserving the
+  prepared `x0` call-result source publication
+- null Route 6 index and missing result fact return `Fallback` and retain the
+  prepared source publication
+- invalid call-boundary key and duplicate/conflicting result facts return
+  `Fallback`
+- route/prepared result-value mismatch returns `Fallback` while retaining the
+  prepared home selected by the call plan
+- adjacent call-plan behavior remains prepared-owned for ABI register
+  selection, byval aggregate transport, stack-result stores, f128 carriers, and
+  preservation republication
 
-Implementation completed:
-- `record_call_result_source_register(...)` now returns a small
-  `CallResultSourceRegisterRoute6Evidence` status and accepts an optional
-  `bir::Route6CallUseSourceIndex`.
-- The new reader uses `bir::route6_find_call_result_source(...)` only after
-  confirming a unique Route 6 result record for the selected call key and only
-  to validate that the BIR result value identity agrees with the prepared
-  destination value home.
-- Prepared late-publication data remains authoritative for the actual
-  source-register publication: ABI register name/bank/view, destination home,
-  occupied registers, result-lane binding, after-call moves, stores, wrapper
-  behavior, final records, printer output, and emitted output are not supplied
-  or overridden by Route 6.
-- Dispatch builds a `Route6CallUseSourceIndex` lazily from the retained BIR
-  function and passes it only to the primary non-`result_lanes_only` publication
-  call; the later result-lane-only pass remains on the prepared path.
-- `backend_aarch64_call_boundary_owner_test` now covers matching Route 6
-  agreement plus null index, missing fact, invalid boundary, duplicate/conflict,
-  and route/prepared result-value mismatch fallbacks. Every fallback case
-  verifies the prepared x0 source-register publication is preserved.
+The delegated printer proof also stayed green, so Step 3 found no remaining
+fail-closed implementation or focused AArch64 test gap.
 
 ## Suggested Next
 
-Step 3 should independently review that the Route 6 evidence path stays
-consumer-local and byte-stable, then decide whether Step 4 should close the
-idea or add one more non-x86 proof slice for any supervisor-selected gap.
+Step 4 should prove byte-stable prepared printer and x86 route-debug surfaces
+for the selected call-result source consumer, or record the exact unavailable
+x86 target/test gap if the current build still cannot run that proof.
 
 ## Watchouts
 
-- Do not expand this slice into result-lane binding, after-call move lowering,
-  stack-result stores, wrapper kind, aggregate transport, printer output, x86,
-  or emitted-output changes.
-- The evidence status is intentionally diagnostic/test-observable; production
-  callers may ignore it because prepared publication remains authoritative.
-- The delegated proof intentionally omitted x86 because this build has no
-  `backend_x86_route_debug` target/test. x86 route-debug byte-stability remains
-  a supervisor follow-up gap, not an executor blocker for this packet.
+- Step 3 did not add code; only `todo.md` changed.
+- Remaining Step 4 gaps are byte-stability proof surfaces: prepared printer is
+  included in the current green subset, while x86 route-debug proof was not
+  part of this delegated command and remains the named follow-up.
+- Keep Route 6 scoped to evidence for this selected source consumer; do not
+  expand into result-lane binding, after-call move lowering, stack-result
+  stores, wrapper kind, aggregate transport, printer output, x86, or
+  emitted-output changes.
 
 ## Proof
 
-Passed. Proof log: `test_after.log`.
+Passed. Proof log: `test_after.log`. This proof was sufficient for Step 3's
+fail-closed diagnostics and adjacent prepared-owned AArch64 behavior; it does
+not close the Step 4 x86 route-debug byte-stability gap.
 
 ```bash
 cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_instruction_dispatch_test backend_aarch64_call_boundary_owner_test backend_prepared_printer_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch|backend_aarch64_call_boundary_owner|backend_prepared_printer)$' --output-on-failure | tee test_after.log
