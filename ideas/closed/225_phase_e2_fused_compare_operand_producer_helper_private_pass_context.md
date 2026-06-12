@@ -133,3 +133,37 @@ Retain prepared/AArch64 authority for:
 - Reject retaining the old public prepared failure mode behind a new
   private-pass-context name without actually removing the duplicate public
   semantic identity read for this helper family.
+
+## Closure Note
+
+Closed after completing the bounded Phase E2 helper contraction for the fused
+compare operand producer family.
+
+The implementation extracted a private Route 7/prepared agreement reader for
+the selected fused compare operand producer identity read in AArch64 comparison
+lowering. The production conditional-branch comparison path reaches the private
+boundary through the retained local wrapper, while the public prepared helper
+surface remains responsible for retained fallback and non-production
+consumers.
+
+Proof and retained guardrails:
+
+- Step 1 inventoried public consumers and selected only the AArch64
+  conditional-branch comparison-lowering read for private boundary treatment.
+- Step 2 added the private pass-context boundary for the selected Route 7 and
+  prepared agreement read.
+- Step 3 confirmed the production consumer reaches that boundary without
+  moving branch-support policy.
+- Step 4 added focused helper-family coverage for positive agreement,
+  absent-route, invalid-reference, duplicate/conflict, mismatch, unfused, and
+  non-agreement fallback paths.
+- Step 5 passed the broader backend proof:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+- Close-time regression guard passed with `test_before.log` and
+  `test_after.log`: 180/180 backend tests before and after, no new failures.
+
+Retained outside route authority: public prepared fallback, branch target
+policy, suffix mapping, fused legality, hazard handling, emitted-register
+state, final instruction order, final assembler rows, printer/debug output,
+wrapper behavior, helper-oracle strings and statuses, expected strings,
+supported-path status, aggregate route views, and prepared aggregate ownership.
