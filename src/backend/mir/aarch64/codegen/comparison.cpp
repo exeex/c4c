@@ -238,6 +238,153 @@ find_prepared_fused_compare_branch_facts(
   };
 }
 
+[[nodiscard]] std::optional<prepare::PreparedEdgePublicationSourceProducerKind>
+prepared_producer_kind_for_route7(bir::ComparisonProducerKind kind) {
+  switch (kind) {
+    case bir::ComparisonProducerKind::Immediate:
+      return prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
+    case bir::ComparisonProducerKind::LoadLocal:
+      return prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+    case bir::ComparisonProducerKind::LoadGlobal:
+      return prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal;
+    case bir::ComparisonProducerKind::Cast:
+      return prepare::PreparedEdgePublicationSourceProducerKind::Cast;
+    case bir::ComparisonProducerKind::Binary:
+      return prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+    case bir::ComparisonProducerKind::Select:
+      return prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+    case bir::ComparisonProducerKind::Unknown:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducer>
+route7_comparison_operand_producer_to_prepared(
+    const module::BlockLoweringContext& context,
+    const bir::ComparisonOperandProducer& route7) {
+  if (!route7.available) {
+    return std::nullopt;
+  }
+  const auto prepared_kind =
+      prepared_producer_kind_for_route7(route7.producer_kind);
+  if (!prepared_kind.has_value()) {
+    return std::nullopt;
+  }
+  prepare::PreparedFusedCompareOperandProducer prepared{
+      .kind = *prepared_kind,
+      .instruction = route7.producer_instruction,
+      .instruction_index = route7.producer_instruction_index,
+      .integer_constant = route7.integer_constant,
+  };
+  if (route7.producer_kind == bir::ComparisonProducerKind::Immediate) {
+    return prepared;
+  }
+  if (context.function.prepared == nullptr ||
+      route7.producer_instruction == nullptr ||
+      route7.produced_value == nullptr ||
+      route7.produced_value->kind != bir::Value::Kind::Named ||
+      route7.produced_value->name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = prepare::resolve_prepared_value_name_id(
+      context.function.prepared->names, route7.produced_value->name);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  prepared.value_name = *value_name;
+  switch (route7.producer_kind) {
+    case bir::ComparisonProducerKind::LoadLocal:
+      prepared.load_local =
+          std::get_if<bir::LoadLocalInst>(route7.producer_instruction);
+      break;
+    case bir::ComparisonProducerKind::LoadGlobal:
+      prepared.load_global =
+          std::get_if<bir::LoadGlobalInst>(route7.producer_instruction);
+      break;
+    case bir::ComparisonProducerKind::Cast:
+      prepared.cast = std::get_if<bir::CastInst>(route7.producer_instruction);
+      break;
+    case bir::ComparisonProducerKind::Binary:
+      prepared.binary =
+          std::get_if<bir::BinaryInst>(route7.producer_instruction);
+      break;
+    case bir::ComparisonProducerKind::Select:
+      prepared.select =
+          std::get_if<bir::SelectInst>(route7.producer_instruction);
+      break;
+    case bir::ComparisonProducerKind::Immediate:
+    case bir::ComparisonProducerKind::Unknown:
+      return std::nullopt;
+  }
+  if ((route7.producer_kind == bir::ComparisonProducerKind::LoadLocal &&
+       prepared.load_local == nullptr) ||
+      (route7.producer_kind == bir::ComparisonProducerKind::LoadGlobal &&
+       prepared.load_global == nullptr) ||
+      (route7.producer_kind == bir::ComparisonProducerKind::Cast &&
+       prepared.cast == nullptr) ||
+      (route7.producer_kind == bir::ComparisonProducerKind::Binary &&
+       prepared.binary == nullptr) ||
+      (route7.producer_kind == bir::ComparisonProducerKind::Select &&
+       prepared.select == nullptr)) {
+    return std::nullopt;
+  }
+  return prepared;
+}
+
+[[nodiscard]] bool prepared_fused_compare_operand_producer_matches(
+    const std::optional<prepare::PreparedFusedCompareOperandProducer>& actual,
+    const std::optional<prepare::PreparedFusedCompareOperandProducer>& expected) {
+  if (actual.has_value() != expected.has_value()) {
+    return false;
+  }
+  if (!actual.has_value()) {
+    return true;
+  }
+  return actual->kind == expected->kind &&
+         actual->instruction == expected->instruction &&
+         actual->instruction_index == expected->instruction_index &&
+         actual->value_name == expected->value_name &&
+         actual->cast == expected->cast &&
+         actual->load_local == expected->load_local &&
+         actual->load_global == expected->load_global &&
+         actual->binary == expected->binary &&
+         actual->select == expected->select &&
+         actual->integer_constant == expected->integer_constant;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
+route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedFusedCompareOperandProducerFacts& prepared,
+    const bir::FusedCompareOperandProducerFacts& route7) {
+  if (!route7.available) {
+    return std::nullopt;
+  }
+  prepare::PreparedFusedCompareOperandProducerFacts converted;
+  if (route7.lhs.has_value()) {
+    converted.lhs =
+        route7_comparison_operand_producer_to_prepared(context, *route7.lhs);
+    if (!converted.lhs.has_value()) {
+      return std::nullopt;
+    }
+  }
+  if (route7.rhs.has_value()) {
+    converted.rhs =
+        route7_comparison_operand_producer_to_prepared(context, *route7.rhs);
+    if (!converted.rhs.has_value()) {
+      return std::nullopt;
+    }
+  }
+  if (!prepared_fused_compare_operand_producer_matches(converted.lhs,
+                                                       prepared.lhs) ||
+      !prepared_fused_compare_operand_producer_matches(converted.rhs,
+                                                       prepared.rhs)) {
+    return std::nullopt;
+  }
+  return converted;
+}
+
 [[nodiscard]] std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
 find_prepared_fused_compare_operand_producer_facts(
     const module::BlockLoweringContext& context,
@@ -253,26 +400,48 @@ find_prepared_fused_compare_operand_producer_facts(
   }
 
   const auto before_instruction_index = context.bir_block->insts.size();
+  std::optional<prepare::PreparedFusedCompareOperandProducerFacts> prepared;
   if (context.function.prepared_lookups != nullptr) {
-    return prepare::find_prepared_fused_compare_operand_producer_facts(
+    prepared = prepare::find_prepared_fused_compare_operand_producer_facts(
         context.function.prepared->names,
         &context.function.prepared_lookups->edge_publication_source_producers,
         context.control_flow_block->block_label,
         context.bir_block,
         branch_condition,
         before_instruction_index);
+  } else {
+    const auto source_producers =
+        prepare::make_prepared_edge_publication_source_producer_lookups(
+            *context.function.prepared,
+            *context.function.control_flow);
+    prepared = prepare::find_prepared_fused_compare_operand_producer_facts(
+        context.function.prepared->names,
+        &source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        branch_condition,
+        before_instruction_index);
   }
-  const auto source_producers =
-      prepare::make_prepared_edge_publication_source_producer_lookups(
-          *context.function.prepared,
-          *context.function.control_flow);
-  return prepare::find_prepared_fused_compare_operand_producer_facts(
-      context.function.prepared->names,
-      &source_producers,
-      context.control_flow_block->block_label,
-      context.bir_block,
-      branch_condition,
-      before_instruction_index);
+  if (!prepared.has_value()) {
+    return prepared;
+  }
+
+  const auto route7_index =
+      bir::route7_build_comparison_condition_index(*context.bir_block);
+  const auto route7 =
+      bir::route7_find_fused_compare_operand_producer_facts(
+          route7_index,
+          *context.bir_block,
+          *branch_condition.lhs,
+          *branch_condition.rhs,
+          before_instruction_index);
+  if (const auto agreed =
+          route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
+              context, *prepared, route7);
+      agreed.has_value()) {
+    return agreed;
+  }
+  return prepared;
 }
 
 [[nodiscard]] bir::MaterializedConditionProducerIdentity

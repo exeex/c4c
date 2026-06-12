@@ -1,71 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/220_phase_e1_route_identity_helper_contraction.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select One Route Identity Surface
+Current Step ID: 2
+Current Step Title: Add Agreement-Gated Route Identity Read
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by inspecting the Route 1 through Route 7 candidate
-identity surfaces and selecting one implementation surface.
+Completed `plan.md` Step 2 by adding the smallest Route 7/prepared
+agreement-gated identity read inside the selected AArch64
+`find_prepared_fused_compare_operand_producer_facts(...)` wrapper in
+`src/backend/mir/aarch64/codegen/comparison.cpp`.
 
-Selected route family: Route 7 comparison provenance.
+The wrapper still computes the existing prepared
+`PreparedFusedCompareOperandProducerFacts` result first. It now builds a local
+Route 7 comparison condition index for the same `context.bir_block`, same
+prepared fused-compare branch lhs/rhs operands, and same
+`before_instruction_index`, then returns Route 7-derived prepared-shaped facts
+only when Route 7 is available and structurally agrees with the prepared facts.
 
-Selected helper/consumer: AArch64
-`find_prepared_fused_compare_operand_producer_facts(...)` in
-`src/backend/mir/aarch64/codegen/comparison.cpp`, the local wrapper consumed by
-`lower_prepared_conditional_branch_terminator(...)`.
+Agreement checks cover producer availability, producer kind, producer
+instruction pointer/index, produced prepared value name, typed producer pointer,
+and folded integer constant identity. Absent Route 7 facts, invalid or
+unconvertible route facts, route/prepared mismatch, and missing prepared facts
+continue to return the current prepared result.
 
-Why this is identity-only: the selected surface answers only fused-compare
-operand producer identity for the current branch condition: lhs/rhs value
-identity, producer kind, producer instruction/index, and folded integer
-constant provenance. It does not decide whether a branch may fuse, which
-condition suffix to print, which targets to branch to, which hazards or
-emitted-register state are legal, or which final assembler rows are emitted.
-
-route/prepared agreement owner: Route 7 `Route7ComparisonConditionIndex`,
-`route7_find_fused_compare_operand_producer_facts(...)`, and Route 7 operand
-reference validation own the route identity fact only when it agrees with the
-prepared `PreparedFusedCompareOperandProducerFacts` oracle for the same
-prepared branch condition and BIR block boundary.
-
-retained prepared fallback/policy/output owners: prepared branch-condition
-facts, prepared fused-compare operand producer helpers,
-`PreparedEdgePublicationSourceProducerLookups`, scalar producer and integer
-constant fallback, AArch64 branch-control lowering, branch suffix and
-fused-legality policy, branch target labels, machine-printer/debug rows,
-helper-oracle strings, wrapper behavior, and expected output remain prepared or
-AArch64-owned for absent, invalid, ambiguous/conflict, mismatch, non-fused,
-policy-sensitive, and output-sensitive paths.
-
-Current callers/tests/route notes inspected: candidate list and readiness notes
-in `ideas/open/220_phase_e1_route_identity_helper_contraction.md` and
-`docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md`;
-Route 7 retained-surface notes in
-`docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`
-and `docs/bir_prealloc_fusion/residual_route_view_consumer_migration_map.md`;
-Route 7 closure notes `ideas/closed/215_route7_comparison_provenance_consumer.md`
-and `ideas/closed/216_route7_comparison_oracle_row.md`; helper definitions in
-`src/backend/prealloc/comparison.hpp` and
-`src/backend/prealloc/comparison.cpp`; the selected AArch64 wrapper and caller
-in `src/backend/mir/aarch64/codegen/comparison.cpp`; Route 7 BIR records and
-indexes in `src/backend/bir/bir.cpp`; existing proof coverage in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` and
-`tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp`.
+No branch suffix, branch target, fused-legality, materialized-condition,
+assembler-row, helper-oracle string, wrapper, printer/debug, or expected-string
+behavior was moved to Route 7 authority.
 
 ## Suggested Next
 
-Delegate Step 2 to add a Route 7/prepared agreement-gated identity read inside
-the selected AArch64
-`find_prepared_fused_compare_operand_producer_facts(...)` wrapper only. The
-next packet should prefer Route 7 fused-compare operand facts only when Route 7
-is available and agrees with prepared facts; otherwise it should return the
-current prepared result.
-
-Recommended narrow proof command for that code-changing packet:
-`cmake --build build --target c4c_backend backend_prepared_lookup_helper_test backend_aarch64_branch_control_lowering_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$' --output-on-failure`
+Delegate Step 3 to prove required fallback, output, and nearby coverage for the
+selected Route 7/AArch64 fused-compare operand-producer identity surface.
 
 ## Watchouts
 
@@ -82,16 +50,31 @@ Recommended narrow proof command for that code-changing packet:
   timeout masking, or expectation rewrites as proof.
 - The selected helper must not absorb materialized-condition migration; that
   path already has Route 7 agreement gating and is a separate surface.
-- The Step 2 implementation should not move branch suffixes, branch targets,
-  fused legality, final assembler lines, helper-oracle strings, or expected
-  strings into Route 7 authority.
-- Existing Route 7 lookup-helper coverage already exercises positive,
-  immediate, rhs-only, absent/unavailable, missing-producer,
-  duplicate-reference, wrong-key, wrong-relationship, stale-reference, and
-  production branch-condition cases; Step 2 should add only the narrow
-  production/consumer proof needed for this selected wrapper.
+- Step 3 should decide whether existing Route 7 lookup-helper coverage plus the
+  AArch64 branch-control lowering proof is sufficient for positive,
+  absent/unavailable, invalid, mismatch, policy-sensitive fallback, output, and
+  nearby same-feature coverage, or whether a narrow owned test addition is
+  still needed.
+- The selected helper must continue returning prepared fallback for all
+  non-agreement paths; Route 7 must not absorb suffix, target, fused-legality,
+  final assembler, helper-oracle string, wrapper, printer/debug, or expected
+  string ownership.
 
 ## Proof
 
-Inspection-only packet. No build required. Delegated proof command:
-`rg -n "Selected route family|Selected helper|Selected consumer|identity-only|route/prepared agreement|retained prepared|fallback|policy" todo.md`.
+Delegated proof command completed successfully:
+`( cmake --build --preset default --target c4c_backend backend_prepared_lookup_helper_test backend_aarch64_branch_control_lowering_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$' --output-on-failure ) > test_after.log 2>&1`
+
+Proof log: `test_after.log`.
+
+Supervisor regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed, before 2/2 and after 2/2 with no new failures.
+
+Broader supervisor validation:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed, 180/180 backend tests green.
