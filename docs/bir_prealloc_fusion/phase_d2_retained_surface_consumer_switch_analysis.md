@@ -1,6 +1,6 @@
 # Phase D2 Retained-Surface Consumer Switch Analysis
 
-Status: Step 2 current-consumer map complete.
+Status: Step 3 follow-up viability classification complete.
 
 Source idea:
 `ideas/open/203_phase_d2_retained_surface_consumer_switch_analysis.md`
@@ -171,3 +171,116 @@ Common anchors used by the dependency map:
 - Each row records the retained fallback, policy, or oracle authority and the
   adapter effect for later Step 3 follow-up classification.
 - No implementation files or tests were changed.
+
+## Step 3 Classification Rules
+
+Step 3 uses only the categories allowed by the source idea:
+
+- semantic reader migration;
+- diagnostic/oracle replacement;
+- public fallback removal after replacement evidence;
+- retained-owner adapter clarification;
+- target/prepared policy ownership migration;
+- no-action because the surface is aggregate, policy-owned, or still blocked.
+
+An accepted follow-up below is not a contraction claim. It is only a viable
+later implementation idea when it is exactly one prepared surface or one
+diagnostic/oracle row wide, keeps the retained prepared fallback in scope, and
+refuses aggregate migration, draft 155, `PreparedFunctionLookups` retirement,
+`PreparedBirModule` retirement, baseline weakening, and expected-string
+rewrites.
+
+## Step 3 Follow-Up Viability Classification
+
+| Candidate | Category | Decision | Rationale and retained boundary |
+| --- | --- | --- | --- |
+| Route 3 memory/source | Semantic reader migration | Accepted follow-up candidate: one AArch64 semantic reader that consumes selected Route 3 memory/source identity while retaining prepared memory/address fallback. | Step 2 found production readers still using `find_prepared_memory_access(...)`, `memory_accesses`, address-materialization lookups, and load-local source fallback. The viable scope is one consumer of source identity only; address formation, frame/global/TLS relocation, offsets, address spaces, materialization, final operands, target-addressing policy, and idea 190 fallback stay prepared/target-owned. |
+| Route 3 diagnostic/oracle rows | Diagnostic/oracle replacement | Accepted follow-up candidate only for one named memory/source helper-oracle or prepared addressing printer row. | A row-wide replacement could be analysis-worthy if it proves route-native positive, absent, non-memory, ambiguous, mismatch, fallback, and unchanged string behavior. No whole memory oracle family, printer section, target-wrapper migration, or expected-string refresh is accepted. |
+| Route 4 publication identity | Semantic reader migration | Accepted follow-up candidate: one publication-source consumer beside the existing current-block publication reader. | The selected Route 4 adapter affects one current-block publication source boundary. A follow-up may move one semantic source read, but prepared publication fallback remains authority for missing/ambiguous/wrong-reference cases, publication mechanics, move/home/storage policy, immediate spelling, wrapper compatibility, and emitted/debug output. |
+| Route 4 diagnostic/wrapper rows | Diagnostic/oracle replacement | No action for broad wrapper or diagnostic migration; accepted only if Step 4 later names one exact wrapper row or diagnostic row. | Step 2 retained prepared printer/debug, x86/riscv wrapper, CLI dump, and expected-string consumers. Route 4 does not own wrapper formatting, emitted strings, block-entry publication mechanics, or target policy, so no route-wide wrapper/debug work is viable. |
+| Route 5 edge/join-source | Semantic reader migration | Accepted follow-up candidate: one current-block join-source semantic reader. | Route 5 proves one join-source validation boundary. Prepared edge-publication, source-producer, value-home, and move-bundle surfaces remain authority for no-source, memory-source, duplicate/conflict, execution-site, cycle temporaries, branch/parallel-copy sanity, final move records, and emitted output. |
+| Route 5 diagnostic/oracle rows | Diagnostic/oracle replacement | Accepted follow-up candidate only for one named helper-oracle or prepared printer row. | A row-wide replacement can be considered if it preserves no-source, memory-source, unsupported move, duplicate/conflict, absent/mismatch fallback, wrapper output stability, and branch/parallel-copy sanity. Whole edge-publication, source-producer, move-bundle, or x86 joined-branch migration is no-action. |
+| Route 6 call-use source | Semantic reader migration | Accepted follow-up candidate: one call argument or result source consumer under route/prepared agreement. | Route 6 can identify selected call-use source identity, including the existing scalar x86 agreement point, but prepared call plans remain authority for ABI placement, wrapper kind, clobbers, outgoing stack sizing, byval lanes, variadic counts, helper/carrier protocol, value homes, move bundles, aggregate transport, final call records, storage, movement, and emitted output. |
+| Route 6 wrapper/debug rows | Diagnostic/oracle replacement | No action for broad x86 route-debug, call printer, or wrapper migration; accepted only if later narrowed to one exact row. | Prepared call printer/debug, x86 route-debug, `ConsumedPlans` fallback, direct-call/helper-oracle messages, and expected strings are still authorities. A viable later row must prove route-native parity without changing the prepared output contract. |
+| Route 7 comparison provenance | Semantic reader migration | Accepted follow-up candidate: one comparison provenance consumer, not branch policy. | The Route 7 materialized-condition/fused-compare provenance adapter can validate selected provenance, but prepared/AArch64 branch facts still own targets, suffix mapping, fused legality, hazards, emitted-register state, final order, final assembler rows, and branch-policy oracle behavior. |
+| Route 7 diagnostic/oracle rows | Diagnostic/oracle replacement | Accepted follow-up candidate: one Route 7 fused-compare or materialized-condition helper-oracle row. | A row-wide diagnostic replacement is viable only if it preserves fused, materialized, unfused fallback, absent-route, invalid-reference, duplicate, mismatch, expected-string, and prepared fallback behavior. Branch-policy cleanup, printer/debug contraction, and expected-string weakening remain no-action. |
+| `PreparedFunctionLookups` aggregate | No-action because aggregate/pass-context blocked | No action. | Step 2 confirmed the aggregate still delivers prepared fallback to AArch64 traversal, x86 `ConsumedPlans`, riscv emission, printer/debug, wrappers, and helper-oracles. Aggregate deletion, clone, rename-only facade, broad privatization, and broad retirement are rejected. Future work must name one lookup group and one consumer or diagnostic row. |
+| `PreparedBirModule` aggregate | No-action because aggregate/policy blocked | No action. | The module remains the prepared phase artifact and public handoff for target policy, printer/debug, dumps, wrappers, and tests. Draft 155 and broad `PreparedBirModule` clone/facade/deletion/retirement are rejected until a separate field-by-field ownership map and proof strategy exist. |
+| AArch64 lookup threading and pass context | No-action because pass-context/policy-owned | No action. | Threading prepared lookup handles through AArch64 context is delivery infrastructure, not semantic ownership. A later idea may name one route fact delivery boundary, but context threading itself is not contraction-ready and must keep prepared fallback plus target policy available. |
+| Cross-target wrappers | No-action because target-wrapper/policy-owned | No action. | x86 and riscv wrappers remain target-local frame, register, ABI, formatting, and emission authorities. Only an already proven single route-view wrapper input could be considered later; route-wide x86/riscv migration is rejected. |
+| Baseline and string authority | No-action because proof guardrail | No action. | Expected strings, helper names, supported-path status, c_testsuite contracts, baseline recovery, and timeout/string-authority rules are proof constraints. Edits that mainly rewrite expected output, relabel helpers, refresh baselines, or downgrade supported paths are non-progress. |
+| Return-chain boundary | No-action because separate imported owner/schema line | No action. | Route 8 return-chain identity is outside Route 3-7 retained-surface contraction. It must not be folded into Route 1 producer identity, Route 7 comparison provenance, predecessor rescans, generic route-index facades, or this D2 follow-up set. |
+
+## Step 3 Accepted Follow-Up Set
+
+The accepted set is intentionally limited to one-surface or one-row candidates:
+
+- Route 3: one AArch64 memory/source semantic reader, with prepared memory and
+  target-addressing fallback retained.
+- Route 3: one memory/source helper-oracle or prepared addressing printer row.
+- Route 4: one publication-source semantic reader, with publication mechanics
+  and output policy retained.
+- Route 4: one exact publication wrapper or diagnostic row, only if Step 4 can
+  name the row and proof shape.
+- Route 5: one current-block join-source semantic reader.
+- Route 5: one edge/join helper-oracle or prepared printer row.
+- Route 6: one call argument or result source consumer under route/prepared
+  agreement.
+- Route 6: one exact call wrapper/debug/oracle row, only if Step 4 can name the
+  row and proof shape.
+- Route 7: one comparison provenance consumer.
+- Route 7: one fused-compare or materialized-condition helper-oracle row.
+
+None of these accepted candidates supports public fallback removal yet. Public
+fallback removal remains a later category that is blocked until a named
+one-surface replacement has positive, negative, mismatch, fallback,
+printer/debug or wrapper, and expected-string proof.
+
+## Step 3 Explicit No-Action Decisions
+
+- `PreparedFunctionLookups` aggregate work is no-action: aggregate deletion,
+  broad privatization, clone/facade work, and retirement are still blocked.
+- `PreparedBirModule` aggregate work is no-action: draft 155 and broad module
+  retirement are not ready from Route 3-7 selected adapter evidence.
+- AArch64 lookup threading/pass-context work is no-action as a contraction
+  target: it may only supply a future one-route-fact delivery boundary.
+- Cross-target wrapper work is no-action unless narrowed to one already proven
+  route-view wrapper input and one target-local row.
+- Baseline and string authority are no-action as implementation targets:
+  expected-output rewrites, baseline refreshes, helper renames, unsupported
+  downgrades, and timeout masking are rejected as readiness evidence.
+- Return-chain work is no-action for D2 retained-surface contraction because
+  it belongs to the separate Route 8 owner/schema line.
+
+## Step 3 Retirement Blockers
+
+`PreparedFunctionLookups` retirement remains blocked by active production,
+pass-context, target-wrapper, printer/debug, and oracle consumers across
+`call_plans`, `address_materializations`, `memory_accesses`, `move_bundles`,
+`value_homes`, `edge_publications`, and
+`edge_publication_source_producers`. The current evidence supports only
+single lookup-group plus single consumer or single diagnostic-row follow-ups;
+it does not support aggregate deletion, broad privatization, facade-only
+renaming, or compatibility-wrapper removal.
+
+`PreparedBirModule` retirement remains blocked by its role as the prepared
+phase artifact and public handoff for target profile, names/control flow,
+value locations, stack/frame/dynamic-stack, addressing, liveness, regalloc,
+call, publication, variadic, storage, wide-carrier, atomic, intrinsic,
+inline-asm, runtime-helper, phase, note, printer/debug, dump, wrapper, and
+test authority. Broad retirement needs a separate field-by-field owner map,
+fallback/oracle replacement plan, diagnostic/string proof plan, and public
+consumer strategy before draft 155 or module contraction can be reopened.
+
+## Step 3 Completion Check
+
+- Every Step 2 candidate has an accepted or no-action decision.
+- Accepted candidates are limited to one prepared surface or one
+  diagnostic/oracle row and preserve retained prepared fallback.
+- Aggregate, policy-owned, pass-context, baseline/string, return-chain, and
+  blocked retirement surfaces have explicit no-action decisions.
+- Draft 155, broad `PreparedFunctionLookups` retirement, broad
+  `PreparedBirModule` retirement, broad migration/API contraction, and
+  expectation weakening remain rejected.
+- Remaining blockers to `PreparedFunctionLookups` and `PreparedBirModule`
+  retirement are recorded for Step 4/Step 5 proof planning.

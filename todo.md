@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_phase_d2_retained_surface_consumer_switch_analysis.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Map Current Consumers
+Current Step ID: Step 3
+Current Step Title: Classify Follow-Up Viability
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by mapping current production, printer/debug, target-wrapper, oracle/expected-string, pass-context, and aggregate-coupling consumers for every Step 1 retained-surface candidate, then appending the cited consumer dependency map to `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`.
+Completed `plan.md` Step 3 by classifying every Step 2 retained-surface candidate in `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md` as either an accepted one-surface/one-row follow-up candidate or an explicit no-action surface.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3 by using the Step 1 evidence list and Step 2 consumer map to classify which, if any, one-surface follow-up is viable, while rejecting aggregate/API contraction, draft 155, and expectation-weakening routes.
+Execute `plan.md` Step 4 by attaching proof shapes to each accepted follow-up candidate before any implementation idea is drafted.
 
 ## Watchouts
 
 - Keep D2 analysis-only.
-- Do not migrate consumers, delete prepared APIs, privatize caches, or open broad retirement work.
-- Preserve C2 retained-surface classifications unless new surface-specific evidence is recorded.
-- Any follow-up idea must cover exactly one prepared surface or one diagnostic/oracle row.
-- Route 3 retained target-addressing fallback is a hard boundary from idea 190, and baseline/string-authority expectations remain non-regressive under idea 199.
-- Step 2 found no broad contraction-ready surface: `PreparedFunctionLookups`, `PreparedBirModule`, AArch64 pass-context threading, target wrappers, prepared diagnostics/oracles, expected strings, and Route 8 return-chain boundaries all remain retained or separate.
-- Viable Step 3 candidates, if any, must name one lookup group or diagnostic row, one consumer, the route fact used as authority, the retained prepared fallback, the target/prepared policy excluded from scope, and positive/negative/mismatch/fallback proof needs.
+- Step 3 accepted only one-surface or one diagnostic/oracle row follow-ups; it did not accept any public fallback removal yet.
+- Public fallback removal remains blocked until a named one-surface replacement has positive, negative, mismatch, fallback, printer/debug or wrapper, and expected-string proof.
+- `PreparedFunctionLookups`, `PreparedBirModule`, AArch64 pass-context threading, cross-target wrappers, baseline/string authority, and Route 8 return-chain are explicit no-action surfaces for contraction.
+- Draft 155, broad migration/API contraction, aggregate retirement, prepared-module retirement, expectation rewrites, helper renames, unsupported downgrades, and baseline refreshes remain rejected readiness evidence.
+- Step 4 should convert each accepted candidate into a concrete proof shape before any Step 5 follow-up idea file is created.
 
 ## Proof
 
-Docs-only consumer-mapping packet; no build required and no implementation files or tests touched. Proof is the cited Step 2 dependency map in `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`, covering production, printer/debug, target-wrapper, oracle/expected-string, pass-context, aggregate-coupling consumers, retained fallback/policy/oracle authority, and adapter effect for each plausible candidate.
+Docs-only classification packet; no build required and no implementation files or tests touched. Proof is the Step 3 accepted/no-action classification section in `docs/bir_prealloc_fusion/phase_d2_retained_surface_consumer_switch_analysis.md`, including explicit no-action decisions and remaining blockers to `PreparedFunctionLookups` and `PreparedBirModule` retirement.
