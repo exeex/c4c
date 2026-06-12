@@ -8,72 +8,57 @@ Current Step Title: Validate And Prepare Acceptance Notes
 
 ## Just Finished
 
-Completed `plan.md` Step 3 as a todo-only proof slice. I reviewed the Step 2
-helper-oracle assertions against the nearby same-feature branch-control and
-instruction-dispatch tests and found no concrete missing assertion that justifies
-touching test code in this packet.
+Completed `plan.md` Step 4 as a todo-only acceptance packet.
 
-Coverage recorded:
+Acceptance notes:
 
-- Positive Route 7/BIR/prepared agreement: covered locally by
-  `verify_prepared_bir_comparison_condition_producer_equivalence()` requiring
+- The selected row in
+  `verify_prepared_bir_comparison_condition_producer_equivalence()` now uses
+  Route 7 materialized-condition evidence only when that evidence agrees with
+  prepared materialized-condition producer facts and BIR identity for `%cond`.
+- Positive agreement is covered by requiring
   `route7_find_materialized_condition(...)`,
   `route_index_validate_materialized_condition_reference(...)`,
   `find_materialized_condition_producer_identity(...)`, and
-  `find_prepared_materialized_condition_producer(...)` to agree for `%cond`;
-  covered nearby in
-  `materialized_compare_branch_route7_provenance_matches_bir_identity()`.
-- Absent-route fallback: covered locally by the empty
-  `Route7ComparisonConditionIndex`/`RouteIndexReferenceFacade` checks and nearby
-  by `materialized_compare_branch_absent_route7_provenance_uses_emitted_fallback()`.
-- Invalid-reference fallback: covered locally by the stale/null instruction
-  Route 7 record check and nearby by
-  `materialized_compare_branch_invalid_route7_reference_rejected()`.
-- Duplicate/conflict fallback: covered locally by the duplicate `%cond`
-  materialized-condition record check and nearby by
-  `materialized_compare_branch_duplicate_route7_provenance_uses_emitted_fallback()`.
-- Mismatch fallback: covered locally by Route 7/prepared producer mismatch and
-  missing lhs producer evidence; covered nearby by condition-name mismatch,
-  stale prepared lookup, lhs provenance mismatch, and rhs provenance mismatch
-  branch-control cases.
-- Unfused/non-comparison fallback: covered locally by the non-comparison
-  materialized-condition lookup and nearby by fused-compare fallback coverage in
-  `public_selected_fused_compare_operand_producer_fallbacks_keep_prepared_row()`.
-- Prepared fallback/non-agreement: covered locally by requiring the local
-  agreement predicate to return false while prepared/BIR facts remain available;
-  covered nearby by stale prepared lookup and lhs/rhs provenance mismatch
-  branch-control cases.
-- Same-feature stability: covered by the delegated
-  `backend_aarch64_branch_control_lowering` same-feature materialized-compare
-  cases plus `backend_aarch64_instruction_dispatch`, including
-  `materialized_compare_branch_reuses_emitted_latch_operand()`.
-
-No test edit was made because Step 2's local helper-oracle assertions already
-cover the requested matrix and the delegated nearby tests cover production
-branch-control/instruction-dispatch stability without output-contract changes.
+  `find_prepared_materialized_condition_producer(...)` to agree on the same
+  binary producer, instruction index, condition value name, and lhs/rhs producer
+  facts.
+- Prepared/BIR authority remains covered for absent Route 7 authority,
+  invalid/stale Route 7 references, duplicate/conflicting `%cond` records,
+  Route 7/prepared mismatch, unfused/non-comparison lookup, missing operand
+  evidence, and partial non-agreement.
+- Nearby same-feature stability remains covered by
+  `backend_aarch64_branch_control_lowering` and
+  `backend_aarch64_instruction_dispatch`, including positive materialized
+  compare provenance, emitted fallback paths, lhs/rhs provenance mismatch, stale
+  prepared lookup, and materialized compare dispatch reuse.
+- Unchanged surfaces: helper-oracle strings, expected strings, baselines,
+  branch-control output, machine-printer output, wrappers, final assembler
+  behavior, route-index public contracts, and supported/unsupported contracts.
+- No implementation files, test files, `plan.md`, or source idea files were
+  touched in this Step 4 packet.
 
 ## Suggested Next
 
-Delegate Step 4 to validate and prepare acceptance notes.
+Supervisor may proceed with regression-guard review and lifecycle/commit
+handling for the completed four-step slice.
 
 Suggested packet:
 
-- Run the supervisor-selected acceptance validation, compare against
-  `test_before.log` if requested by regression-guard workflow, and summarize the
-  retained prepared authority plus unchanged output/string surfaces.
+- Compare `test_before.log` and `test_after.log` under the supervisor's
+  regression-guard workflow; the direct diff observed only a timing-field change
+  for `backend_aarch64_instruction_dispatch`.
 
 ## Watchouts
 
-- Step 3 found no remaining local proof gap for positive agreement, absent-route,
-  invalid-reference, duplicate/conflict, mismatch, unfused/non-comparison,
-  prepared fallback/non-agreement, or nearby same-feature stability within the
-  delegated three-test proof scope.
-- Step 4 acceptance notes should still explicitly state that no helper-oracle
-  strings, expected strings, baselines, branch-control output, machine-printer
-  output, wrappers, final assembler behavior, route-index public contracts, or
-  supported/unsupported contracts changed.
-- If the supervisor wants higher confidence, broaden validation rather than
-  adding testcase-shaped assertions to the selected helper row.
+- Acceptance validation used the delegated three-test scope only. Any broader
+  confidence decision belongs to the supervisor.
+- Do not treat this helper-oracle follow-up as Route 7-wide comparison
+  migration, branch-control replacement, machine-printer replacement, wrapper
+  migration, final assembler policy movement, or route-index public contract
+  migration.
+- The before/after proof logs have matching pass/fail outcomes; their direct
+  text diff is not byte-identical only because one elapsed-time field changed.
 
 ## Proof
 
@@ -84,3 +69,6 @@ Passed delegated proof:
   `backend_prepared_lookup_helper`,
   `backend_aarch64_branch_control_lowering`, and
   `backend_aarch64_instruction_dispatch`.
+- `test_before.log` and `test_after.log` have matching selected tests and
+  pass/fail results; the only direct text difference observed was one timing
+  field changing from `0.01 sec` to `0.00 sec`.
