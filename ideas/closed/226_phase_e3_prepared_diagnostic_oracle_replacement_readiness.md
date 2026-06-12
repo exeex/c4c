@@ -149,3 +149,63 @@ The closure note must contain:
   timeout masking, or baseline refreshes as progress.
 - Moving target policy or emitted-output authority into BIR/route diagnostics.
 - Opening draft 155 or claiming broad prepared retirement from E3 readiness.
+
+## Closure Note
+
+Closed after Phase E3 produced its durable analysis payload:
+`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`.
+
+The durable document contains the candidate-by-candidate diagnostic/oracle
+readiness table, retained-authority decisions, deferrals, accepted follow-up
+implementation candidates, and proof requirements. E3 remains analysis-only:
+it made no implementation, baseline, expected-string, unsupported-path,
+prepared fallback/oracle, target-policy, wrapper, or emitted-output changes.
+
+Accepted follow-up ideas created and left inactive:
+
+- `ideas/open/227_phase_e3_branch_target_helper_oracle_follow_up.md`
+- `ideas/open/228_phase_e3_fused_compare_operand_producer_helper_oracle_follow_up.md`
+- `ideas/open/229_phase_e3_route3_memory_source_stored_value_helper_oracle_follow_up.md`
+- `ideas/open/230_phase_e3_route4_block_entry_publication_printer_debug_follow_up.md`
+- `ideas/open/231_phase_e3_route5_current_block_join_source_helper_oracle_follow_up.md`
+- `ideas/open/232_phase_e3_route6_x86_scalar_i32_argument_source_route_debug_follow_up.md`
+- `ideas/open/233_phase_e3_route7_materialized_condition_helper_oracle_follow_up.md`
+
+Closeout classification summary:
+
+| Candidate row or row family | Closeout decision |
+| --- | --- |
+| `find_prepared_control_flow_branch_target_labels(...)` helper-oracle branch-target label row | Follow-up idea `227`; prepared fallback/oracle, branch/output policy, wrappers, printer/debug, helper-oracle strings, expected strings, and aggregate APIs remain retained. |
+| Adjacent branch-target printer/debug, wrapper, branch-control, edge-copy, or emitted-output rows | Retained target/prepared policy or emitted-output authority; no E3 replacement. |
+| `find_prepared_fused_compare_operand_producer_facts(...)` helper-oracle operand-producer row | Follow-up idea `228`; prepared fallback/oracle, helper-oracle names/statuses, expected strings, printer/debug, wrappers, aggregate route views, and prepared aggregate ownership remain retained. |
+| Fused-compare branch-control and machine-printer rows adjacent to the selected Route 7 fact | Proof harness only; retained target/prepared output authority. |
+| Route 3 memory/source stored-value helper-oracle success row | Follow-up idea `229`; prepared diagnostics, target addressing policy, row text, wrappers, and expected strings remain retained for non-agreement and policy paths. |
+| Route 3 prepared addressing printer row | Retained target/prepared policy or emitted-output authority. |
+| Route 4 `block_entry_publication` available-register printer/debug row | Follow-up idea `230`; prepared publication mechanics, block/output policy, wrappers, row text, CLI dump scope, and expected strings remain retained. |
+| Route 5 current-block join-source helper-oracle row | Follow-up idea `231`; prepared edge/join behavior, prepared-printer authority, wrappers, and expected strings remain retained. |
+| Route 6 x86 scalar `i32` argument-source route-debug row | Follow-up idea `232`; `ConsumedPlans`, ABI/call wrapper behavior, prepared call printer/debug, direct-call/helper-oracle families, wrappers, and expected strings remain retained. |
+| Route 7 materialized-condition helper-oracle row | Follow-up idea `233`; prepared oracle assertion strength, branch policy, branch-control output, wrappers, final assembler behavior, helper-oracle strings, and expected strings remain retained. |
+| Route 7 fused-compare branch-control or machine-printer rows beyond the materialized-condition row | Proof harness only; retained target/prepared output authority. |
+| Mixed Route 1/2/5/6/7 helper, printer, or oracle rows without completed row-specific route closure | Retained prepared oracle/fallback authority until a future source idea proves one concrete row plus fallback boundary. |
+| AArch64 lookup threading or private pass-context plumbing around retained lookup groups | Proof harness only; E2/private-pass-context work owns API contraction. |
+| Cross-target wrapper output and wrapper compatibility rows | E4 prerequisite; wrapper behavior remains byte-stable. |
+| Baseline files, expected strings, supported/unsupported markers, and helper-oracle names/status labels | Blocked by expected-string, baseline, or unsupported-path authority; not replacement evidence. |
+| `PreparedFunctionLookups`, `PreparedBirModule`, aggregate lookup construction, route facades, Route 8, draft 155, E5, and broad prepared retirement | No action; separate lifecycle ownership required if reopened. |
+
+Required proof for every accepted follow-up includes positive route/BIR-native
+row evidence plus absent, invalid, duplicate/conflict, mismatch, fallback,
+wrapper, printer/debug or route-debug, helper-oracle string/status/assertion,
+expected-string, baseline-stability, and nearby same-feature coverage. For
+target-sensitive rows, proof must also show no migration of ABI, layout,
+address, move, branch, call, wrapper, final assembler, or emitted-output policy
+into route/BIR diagnostic ownership.
+
+Deferrals remain explicit: E1 owns missing semantic-helper identity proof, E2
+owns public prepared API/private pass-context contraction, E4 owns
+cross-target wrapper prerequisites, Route 8 remains separate for return-chain
+owner/schema work, and E5/draft 155 remain unopened. Broad diagnostic/oracle
+replacement and aggregate prepared retirement remain unopened.
+
+Closeout proof: existing canonical backend regression logs were checked with
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`;
+the guard passed with 180/180 before and 180/180 after, 0 new failures.
