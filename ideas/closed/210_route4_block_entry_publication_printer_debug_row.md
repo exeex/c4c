@@ -52,3 +52,18 @@ mechanics migration.
 - Reject moving publication mechanics or target output policy into Route 4.
 - Reject retaining the same prepared-only diagnostic limitation under a new
   route-native label.
+
+## Closure Note
+
+Closed after replacing the selected available-register
+`block_entry_publication` prepared value-location printer row with
+route-native Route 4 attribution gated by prepared agreement and fail-closed
+fallback. The accepted proof covered positive agreement, absent route evidence,
+wrong references, mismatch, duplicate-reference fallback, byte-stable prepared
+row text, and x86/riscv wrapper no-change checks.
+
+Close proof:
+`cmake --build --preset default --target backend_prealloc_block_entry_publications_test backend_prepared_printer_test backend_x86_publication_plan_reuse_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_block_entry_publications|backend_prepared_printer|backend_x86_publication_plan_reuse|backend_riscv_prepared_edge_publication)$' > test_after.log`
+
+Close-time regression guard passed against matching four-test
+`test_before.log` / `test_after.log` logs.
