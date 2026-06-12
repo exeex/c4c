@@ -10209,6 +10209,32 @@ int verify_prepared_bir_comparison_condition_producer_equivalence() {
         "prepared and BIR materialized condition producer facts and Route 7 records should match binary condition producers");
   }
 
+  const auto absent_route7_condition =
+      bir::route7_find_materialized_condition(
+          bir::Route7ComparisonConditionIndex{},
+          block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          block.insts.size());
+  const auto absent_route7_condition_ref =
+      bir::route_index_validate_materialized_condition_reference(
+          bir::RouteIndexReferenceFacade{},
+          block,
+          bir::Value::named(bir::TypeKind::I1, "%cond"),
+          block.insts.size());
+  if (!prepared_condition.has_value() ||
+      !bir_condition.available ||
+      absent_route7_condition ||
+      absent_route7_condition.status !=
+          bir::Route7ComparisonStatus::MissingBlock ||
+      absent_route7_condition_ref ||
+      absent_route7_condition_ref.status !=
+          bir::RouteIndexValidationStatus::MissingRecord ||
+      absent_route7_condition_ref.route_status !=
+          bir::Route7ComparisonStatus::MissingBlock) {
+    return fail(
+        "selected materialized condition helper row should keep prepared/BIR facts when Route 7 reference authority is absent");
+  }
+
   return 0;
 }
 
