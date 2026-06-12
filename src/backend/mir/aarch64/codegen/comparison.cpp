@@ -1122,6 +1122,34 @@ void append_i128_compare_diagnostic(
 
 }  // namespace
 
+std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
+read_agreeing_route7_fused_compare_operand_producer_facts_for_testing(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedBranchCondition& branch_condition,
+    const prepare::PreparedFusedCompareOperandProducerFacts& prepared,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      branch_condition.kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+  return detail::read_agreeing_route7_fused_compare_operand_producer_facts(
+      {.context = context,
+       .branch_condition = branch_condition,
+       .before_instruction_index = before_instruction_index},
+      prepared);
+}
+
+std::optional<prepare::PreparedFusedCompareOperandProducerFacts>
+agreeing_route7_fused_compare_operand_producer_facts_for_testing(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedFusedCompareOperandProducerFacts& prepared,
+    const bir::FusedCompareOperandProducerFacts& route7) {
+  return route7_fused_compare_operand_producer_facts_if_agree_with_prepared(
+      context, prepared, route7);
+}
+
 std::string_view comparison_unconditional_branch_mnemonic(
     const InstructionRecord& instruction) {
   return machine_instruction_primary_printer_mnemonic(instruction);

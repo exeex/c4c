@@ -1,60 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Focused Helper-Family Proof
+Current Step ID: 5
+Current Step Title: Broader Backend Proof And Closeout Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Migrate The AArch64 Comparison-Lowering Consumer is complete.
+Step 4 - Add Focused Helper-Family Proof is complete.
 
-Confirmed with `c4c-clang-tool-ccdb` that the selected production
-comparison-lowering caller is
-`lower_prepared_conditional_branch_terminator(...)`, which calls the local
-`find_prepared_fused_compare_operand_producer_facts(...)` wrapper. That wrapper
-is now the only caller of
-`detail::read_agreeing_route7_fused_compare_operand_producer_facts(...)`, so
-the selected Route 7/prepared agreement identity read is behind the private
-pass-context-style boundary instead of being duplicated directly in the
-production lowering path.
+Added focused helper-family tests for the private fused compare operand
+producer agreement boundary. The positive case proves matching Route
+7/prepared agreement for the existing select plus folded-binary comparison
+provenance fixture. Fallback coverage now explicitly covers absent-route,
+invalid producer reference, duplicate/conflicting Route 7 records, mismatched
+operand facts, unfused paths, and partial non-agreement, all retaining prepared
+fallback behavior by requiring the private Route 7 agreement layer to decline
+authority.
 
-No code edit was required for this packet. Retained public surfaces remain
-intentional: the two-argument prepared fallback calls are kept inside the local
-wrapper for prepared-only, absent-route, invalid-reference,
-duplicate/conflict, mismatch, unfused, and non-agreement behavior; public
-helper-oracle/test coverage remains on the prepared helper surface; aggregate
-BIR/Route 7 lookup APIs remain public for retained non-production and
-branch-support accounting; `fused_compare_uses_selected_operand(...)` remains
-AArch64 branch-support policy, not the selected identity-read migration target.
-Target branch policy, suffix mapping, legality checks, hazards,
-emitted-register state, final instruction order, final assembler rows,
-printer/debug output, wrappers, x86 behavior, aggregate lookup surfaces, and
-expected strings were unchanged.
+No helper-oracle names, statuses, failure-mode strings, supported-path status,
+wrappers, printer/debug output, expected strings, or output policy were
+changed. The only production edit is a tiny non-header test bridge in the
+AArch64 comparison implementation for the existing private agreement reader and
+predicate.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: add focused helper-family proof for the private
-agreement boundary and required fallback modes without changing expected
-strings, wrapper output, helper-oracle statuses, or printer/debug rows.
+Execute Step 5 from `plan.md`: run the supervisor-selected broader backend
+proof, check for accidental scope expansion, and update `todo.md` for
+plan-owner closure review.
 
 ## Watchouts
 
-- The private boundary currently lives in the AArch64 comparison-lowering
-  implementation and wraps only the selected Route 7/prepared agreement read.
-- Keep branch target policy, suffix mapping, fused legality, hazards,
-  emitted-register state, final assembler order, printer/debug rows, wrappers,
-  helper-oracle strings, and expected strings out of route authority.
-- Treat unsupported downgrades, baseline refreshes, helper renames, wrapper
-  moves, timeout masking, and expectation rewrites as non-progress.
-- Preserve prepared fallback for absent-route, invalid-reference,
-  duplicate/conflict, mismatch, unfused, and non-agreement paths.
-- Do not migrate `fused_compare_uses_selected_operand(...)` or BIR/Route 7
-  aggregate lookup APIs in Step 4; they are retained branch-support and
-  aggregate/oracle surfaces.
-- Do not change helper-oracle names, statuses, failure-mode strings, machine
-  printer rows, branch-control expected strings, or x86 wrapper behavior.
+- The `_for_testing` bridge is intentionally not declared in a production
+  header; it exists only so the helper-family test can exercise the private
+  agreement seam directly.
+- Step 5 should not migrate aggregate BIR/Route 7 lookup APIs, retire prepared
+  aggregate surfaces, change branch target policy, or touch printer/debug,
+  wrapper, helper-oracle, or expected-string output.
+- Treat unsupported downgrades, baseline refreshes, timeout masking, and
+  expectation rewrites as non-progress.
 
 ## Proof
 
@@ -65,6 +51,8 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 Result: passed, 3/3 tests.
+
+Additional check: `git diff --check` passed.
 
 Test subset:
 
