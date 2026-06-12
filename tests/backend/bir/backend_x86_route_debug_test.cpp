@@ -1108,6 +1108,89 @@ prepare::PreparedBirModule legalize_single_block_same_module_scalar_call_wrapper
   return prepare_module(std::move(module));
 }
 
+bir::CallInst* find_selected_route6_scalar_arg_call(
+    prepare::PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    if (function.name != "single_block_same_module_scalar_call_wrapper_miss") {
+      continue;
+    }
+    for (auto& block : function.blocks) {
+      if (block.label != "entry" || block.insts.size() <= 2) {
+        continue;
+      }
+      auto* call = std::get_if<bir::CallInst>(&block.insts[2]);
+      if (call != nullptr && call->callee == "addip0") {
+        return call;
+      }
+    }
+  }
+  return nullptr;
+}
+
+prepare::PreparedCallArgumentPlan* find_selected_prepared_scalar_arg(
+    prepare::PreparedBirModule& prepared) {
+  const auto function_name = prepare::resolve_prepared_function_name_id(
+      prepared.names, "single_block_same_module_scalar_call_wrapper_miss");
+  if (!function_name.has_value()) {
+    return nullptr;
+  }
+  for (auto& function_calls : prepared.call_plans.functions) {
+    if (function_calls.function_name != *function_name) {
+      continue;
+    }
+    for (auto& call : function_calls.calls) {
+      if (call.block_index != 0 || call.instruction_index != 2) {
+        continue;
+      }
+      for (auto& argument : call.arguments) {
+        if (argument.arg_index == 0) {
+          return &argument;
+        }
+      }
+    }
+  }
+  return nullptr;
+}
+
+prepare::PreparedBirModule selected_route6_scalar_arg_without_route6_facts() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* call = find_selected_route6_scalar_arg_call(prepared);
+  if (call != nullptr) {
+    call->arg_sources.clear();
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule selected_route6_scalar_arg_with_invalid_source_id() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* call = find_selected_route6_scalar_arg_call(prepared);
+  if (call != nullptr && !call->arg_sources.empty()) {
+    call->arg_sources.front().source_value_id.reset();
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule selected_route6_scalar_arg_with_duplicate_conflict() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* call = find_selected_route6_scalar_arg_call(prepared);
+  if (call != nullptr && !call->arg_sources.empty()) {
+    auto duplicate = call->arg_sources.front();
+    duplicate.source_value_id = std::size_t{8};
+    duplicate.source_value_name = std::string{"%t4"};
+    call->arg_sources.push_back(std::move(duplicate));
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule selected_route6_scalar_arg_with_prepared_mismatch() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* argument = find_selected_prepared_scalar_arg(prepared);
+  if (argument != nullptr) {
+    argument->source_value_id = prepare::PreparedValueId{8};
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1392,6 +1475,17 @@ bool expect_contains(const std::string& text,
   return false;
 }
 
+bool expect_not_contains(const std::string& text,
+                         const std::string& needle,
+                         const char* description) {
+  if (text.find(needle) == std::string::npos) {
+    return true;
+  }
+  std::cerr << "[FAIL] unexpected " << description << ": " << needle << "\n";
+  std::cerr << "--- text ---\n" << text << "\n";
+  return false;
+}
+
 bool expect_equal(const std::string& actual,
                   const std::string& expected,
                   const char* description) {
@@ -1532,12 +1626,41 @@ int main() {
           single_block_aggregate_forwarding_wrapper_miss);
   const auto single_block_same_module_scalar_call_wrapper_miss =
       legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto single_block_same_module_scalar_call_wrapper_miss_probe =
+      legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  if (find_selected_route6_scalar_arg_call(
+          single_block_same_module_scalar_call_wrapper_miss_probe) == nullptr ||
+      find_selected_prepared_scalar_arg(
+          single_block_same_module_scalar_call_wrapper_miss_probe) == nullptr) {
+    std::cerr << "[FAIL] selected Route 6 scalar argument source fixture is malformed\n";
+    return EXIT_FAILURE;
+  }
   const std::string single_block_same_module_scalar_call_wrapper_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(
           single_block_same_module_scalar_call_wrapper_miss);
   const std::string single_block_same_module_scalar_call_wrapper_miss_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_same_module_scalar_call_wrapper_miss);
+  const auto single_block_same_module_scalar_call_without_route6 =
+      selected_route6_scalar_arg_without_route6_facts();
+  const std::string single_block_same_module_scalar_call_without_route6_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_without_route6);
+  const auto single_block_same_module_scalar_call_invalid_route6 =
+      selected_route6_scalar_arg_with_invalid_source_id();
+  const std::string single_block_same_module_scalar_call_invalid_route6_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_invalid_route6);
+  const auto single_block_same_module_scalar_call_duplicate_route6 =
+      selected_route6_scalar_arg_with_duplicate_conflict();
+  const std::string single_block_same_module_scalar_call_duplicate_route6_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_duplicate_route6);
+  const auto single_block_same_module_scalar_call_mismatched_route6 =
+      selected_route6_scalar_arg_with_prepared_mismatch();
+  const std::string single_block_same_module_scalar_call_mismatched_route6_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_mismatched_route6);
   const std::string multi_param_compare_driven_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
@@ -1560,6 +1683,11 @@ int main() {
       c4c::backend::BackendModuleInput{memory_return_focus.module},
       memory_return_focus_options,
       c4c::backend::BackendDumpStage::PreparedBir);
+
+  const std::string selected_route6_scalar_arg_row =
+      "    route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue\n";
+  const std::string selected_route6_scalar_arg_function_row =
+      "- function single_block_same_module_scalar_call_wrapper_miss: 1 blocks, return type void\n";
 
   if (!expect_equal(backend_semantic_dump,
                     c4c::backend::bir::print(prepared.module),
@@ -1638,8 +1766,44 @@ int main() {
                        "x86 route trace",
                        "single-block void call-sequence trace header") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
-                       "    route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue\n",
+                       selected_route6_scalar_arg_row,
                        "single-block same-module scalar call Route 6 source row") ||
+      !expect_contains(single_block_same_module_scalar_call_without_route6_trace,
+                       "x86 route trace",
+                       "selected scalar call absent-Route-6 fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_without_route6_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call absent-Route-6 fallback function row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_without_route6_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call absent-Route-6 source row") ||
+      !expect_contains(single_block_same_module_scalar_call_invalid_route6_trace,
+                       "x86 route trace",
+                       "selected scalar call invalid-Route-6 fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_invalid_route6_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call invalid-Route-6 fallback function row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_invalid_route6_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call invalid-Route-6 source row") ||
+      !expect_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
+                       "x86 route trace",
+                       "selected scalar call duplicate-Route-6 fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call duplicate-Route-6 fallback function row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call duplicate-Route-6 source row") ||
+      !expect_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
+                       "x86 route trace",
+                       "selected scalar call Route-6/prepared mismatch fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call Route-6/prepared mismatch fallback function row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call Route-6/prepared mismatch source row") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_summary,
                        "x86 route summary",
                        "module-level rejection summary header") ||
