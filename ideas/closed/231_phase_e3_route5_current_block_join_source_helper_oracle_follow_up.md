@@ -1,5 +1,21 @@
 # 231 Phase E3 Route 5 current-block join-source helper-oracle follow-up
 
+Closed: 2026-06-12
+
+Completion note:
+
+- The active runbook completed the selected
+  `PreparedCurrentBlockJoinParallelCopySourceFact` helper-oracle row scope.
+- The accepted row uses Route 5 current-block join-source metadata only after
+  prepared edge/join agreement.
+- Prepared authority is retained for absent, invalid, duplicate/conflicting,
+  memory-source, mismatch, unsupported, branch/parallel-copy, and
+  prepared-only paths.
+- Prepared-printer output, wrapper output, helper-oracle strings, expected
+  strings, baselines, and nearby same-feature cases remained stable.
+- Close-time regression guard passed on the accepted five-test retained-surface
+  scope with no new failures.
+
 ## Goal
 
 Augment or replace one Route 5 current-block join-source helper-oracle row for
