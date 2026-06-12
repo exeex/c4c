@@ -46,6 +46,20 @@ text, and expected strings.
 - The slice does not move block-order, wrapper, or emitted-output policy into
   route diagnostic ownership.
 
+## Closure Note
+
+Closed after the active runbook completed the selected available-register
+`block_entry_publication` row. The implementation threads Route 4 publication
+attribution into the prepared printer row only after prepared agreement, keeps
+prepared publication authoritative for fallback/output spelling, and covers
+positive attribution plus absent, wrong-reference, duplicate-reference,
+mismatch, and prepared-only fallback cases.
+
+Close proof used the accepted 18-test wrapper/CLI/prepared-printer scope in
+`test_before.log`, regenerated the same scope into `test_after.log`, and passed
+the close-time regression guard with non-decreasing pass semantics: 18/18 before
+and 18/18 after, with no new failures.
+
 ## Reviewer Reject Signals
 
 - The change matches one `block_entry_publication` output string or fixture
