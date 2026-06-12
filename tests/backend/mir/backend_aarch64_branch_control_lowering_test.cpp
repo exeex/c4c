@@ -790,6 +790,107 @@ prepare::PreparedBirModule prepared_with_materialized_bool_conditional_branch() 
   return prepared;
 }
 
+struct MaterializedBoolDispatchResult {
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  aarch64_codegen::InstructionDispatchResult result;
+};
+
+MaterializedBoolDispatchResult dispatch_materialized_bool_conditional_branch(
+    const prepare::PreparedBirModule& prepared) {
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 4);
+
+  MaterializedBoolDispatchResult dispatched;
+  dispatched.result = aarch64_codegen::dispatch_prepared_block(
+      block_context, dispatched.block, dispatched.diagnostics);
+  return dispatched;
+}
+
+int expect_materialized_bool_conditional_branch_selected(
+    const prepare::PreparedBirModule& prepared, std::string_view failure_context) {
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto dispatched = dispatch_materialized_bool_conditional_branch(prepared);
+  const auto& block = dispatched.block;
+
+  if (dispatched.result.visited_operations != 0 ||
+      !dispatched.result.visited_terminator ||
+      dispatched.result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      !dispatched.diagnostics.empty()) {
+    return fail(std::string(failure_context) +
+                ": expected materialized-bool conditional branch to emit one selected instruction");
+  }
+  if (block.successors.size() != 2 ||
+      block.successors[0].target_label != block_cf.true_label ||
+      block.successors[0].kind != mir::MachineBlockSuccessorKind::ConditionalTrue ||
+      block.successors[1].target_label != block_cf.false_label ||
+      block.successors[1].kind != mir::MachineBlockSuccessorKind::ConditionalFalse ||
+      !block.successors[0].origin.has_value() ||
+      !block.successors[1].origin.has_value() ||
+      block.successors[0].origin->reason != mir::MachineOriginReason::BirTerminator ||
+      block.successors[1].origin->reason != mir::MachineOriginReason::BirTerminator ||
+      block.successors[0].origin->function_name != function_cf.function_name ||
+      block.successors[1].origin->function_name != function_cf.function_name ||
+      block.successors[0].origin->block_label != block_cf.block_label ||
+      block.successors[1].origin->block_label != block_cf.block_label) {
+    return fail(std::string(failure_context) +
+                ": expected materialized-bool branch dispatch to record true/false successors");
+  }
+
+  const auto& instruction = block.instructions.front();
+  if (!instruction.origin.has_value() ||
+      instruction.origin->reason != mir::MachineOriginReason::BirTerminator ||
+      instruction.origin->function_name != function_cf.function_name ||
+      instruction.origin->block_label != block_cf.block_label) {
+    return fail(std::string(failure_context) +
+                ": expected conditional branch origin to preserve source block identity");
+  }
+  if (instruction.target.family != aarch64_codegen::InstructionFamily::Branch ||
+      instruction.target.opcode != aarch64_codegen::MachineOpcode::ConditionalBranch ||
+      instruction.target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.target.function_name != function_cf.function_name ||
+      instruction.target.block_label != block_cf.block_label ||
+      instruction.target.block_index != 4) {
+    return fail(std::string(failure_context) +
+                ": expected conditional branch target to be canonical selected branch node");
+  }
+
+  const auto* branch =
+      std::get_if<aarch64_codegen::BranchInstructionRecord>(&instruction.target.payload);
+  if (branch == nullptr || !branch->conditional || !branch->target_pair.has_value() ||
+      !branch->condition.has_value() || !branch->condition_record.has_value() ||
+      branch->condition_record->form != aarch64_codegen::BranchConditionForm::MaterializedBool ||
+      branch->target_pair->true_target.block_label != block_cf.true_label ||
+      branch->target_pair->false_target.block_label != block_cf.false_label) {
+    return fail(std::string(failure_context) +
+                ": expected conditional branch payload to preserve prepared condition targets");
+  }
+  if (branch->condition->kind != aarch64_codegen::OperandKind::Register) {
+    return fail(std::string(failure_context) +
+                ": expected materialized-bool condition operand to be a typed register");
+  }
+  const auto* condition_register =
+      std::get_if<aarch64_codegen::RegisterOperand>(&branch->condition->payload);
+  if (condition_register == nullptr ||
+      condition_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
+      !condition_register->value_id.has_value() ||
+      *condition_register->value_id != prepare::PreparedValueId{9} ||
+      condition_register->value_name !=
+          prepared.value_locations.functions.front().value_homes.front().value_name ||
+      !condition_register->expected_view.has_value() ||
+      *condition_register->expected_view != aarch64_abi::RegisterView::W) {
+    return fail(std::string(failure_context) +
+                ": expected materialized-bool condition to resolve from typed register authority");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_materialized_compare_condition_clobber() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1343,77 +1444,55 @@ int direct_dispatch_lowers_unconditional_branch_with_divergent_bir_label_ids() {
 
 int direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node() {
   auto prepared = prepared_with_materialized_bool_conditional_branch();
-  const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_codegen::make_function_lowering_context(
-      prepared, prepared.target_profile, function_cf);
-  const auto block_context =
-      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 4);
+  return expect_materialized_bool_conditional_branch_selected(
+      prepared, "baseline selected materialized-bool branch");
+}
 
-  aarch64_module::MachineBlock block;
-  aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto result =
-      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+int materialized_bool_branch_raw_label_text_drift_keeps_prepared_targets() {
+  auto prepared = prepared_with_materialized_bool_conditional_branch();
+  auto& terminator = prepared.module.functions.front().blocks.front().terminator;
+  terminator.true_label = "raw.drift.then";
+  terminator.false_label = "raw.drift.else";
 
-  if (result.visited_operations != 0 || !result.visited_terminator ||
-      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
-      !diagnostics.empty()) {
-    return fail("expected materialized-bool conditional branch to emit one selected instruction");
-  }
-  if (block.successors.size() != 2 ||
-      block.successors[0].target_label != block_cf.true_label ||
-      block.successors[0].kind != mir::MachineBlockSuccessorKind::ConditionalTrue ||
-      block.successors[1].target_label != block_cf.false_label ||
-      block.successors[1].kind != mir::MachineBlockSuccessorKind::ConditionalFalse ||
-      !block.successors[0].origin.has_value() ||
-      !block.successors[1].origin.has_value() ||
-      block.successors[0].origin->reason != mir::MachineOriginReason::BirTerminator ||
-      block.successors[1].origin->reason != mir::MachineOriginReason::BirTerminator ||
-      block.successors[0].origin->function_name != function_cf.function_name ||
-      block.successors[1].origin->block_label != block_cf.block_label) {
-    return fail("expected materialized-bool branch dispatch to record true/false successors");
+  return expect_materialized_bool_conditional_branch_selected(
+      prepared, "raw BIR label text drift with agreeing structured ids");
+}
+
+int materialized_bool_branch_rejects_non_agreeing_bir_targets() {
+  {
+    auto prepared = prepared_with_materialized_bool_conditional_branch();
+    auto& terminator = prepared.module.functions.front().blocks.front().terminator;
+    terminator.true_label_id = c4c::kInvalidBlockLabel;
+    if (const int status = expect_materialized_bool_conditional_branch_selected(
+            prepared, "invalid structured successor id fallback");
+        status != 0) {
+      return status;
+    }
   }
 
-  const auto& instruction = block.instructions.front();
-  if (!instruction.origin.has_value() ||
-      instruction.origin->reason != mir::MachineOriginReason::BirTerminator ||
-      instruction.origin->function_name != function_cf.function_name ||
-      instruction.origin->block_label != block_cf.block_label) {
-    return fail("expected conditional branch origin to preserve source block identity");
-  }
-  if (instruction.target.family != aarch64_codegen::InstructionFamily::Branch ||
-      instruction.target.opcode != aarch64_codegen::MachineOpcode::ConditionalBranch ||
-      instruction.target.selection.status !=
-          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      instruction.target.function_name != function_cf.function_name ||
-      instruction.target.block_label != block_cf.block_label ||
-      instruction.target.block_index != 4) {
-    return fail("expected conditional branch target to be canonical selected branch node");
+  {
+    auto prepared = prepared_with_materialized_bool_conditional_branch();
+    auto& terminator = prepared.module.functions.front().blocks.front().terminator;
+    terminator.true_label_id =
+        prepared.module.names.block_labels.intern("mb.mismatched.then");
+    if (const int status = expect_materialized_bool_conditional_branch_selected(
+            prepared, "mismatched structured successor id fallback");
+        status != 0) {
+      return status;
+    }
   }
 
-  const auto* branch =
-      std::get_if<aarch64_codegen::BranchInstructionRecord>(&instruction.target.payload);
-  if (branch == nullptr || !branch->conditional || !branch->target_pair.has_value() ||
-      !branch->condition.has_value() || !branch->condition_record.has_value() ||
-      branch->condition_record->form != aarch64_codegen::BranchConditionForm::MaterializedBool ||
-      branch->target_pair->true_target.block_label != block_cf.true_label ||
-      branch->target_pair->false_target.block_label != block_cf.false_label) {
-    return fail("expected conditional branch payload to preserve prepared condition targets");
+  {
+    auto prepared = prepared_with_materialized_bool_conditional_branch();
+    auto& terminator = prepared.module.functions.front().blocks.front().terminator;
+    terminator.false_label_id = terminator.true_label_id;
+    if (const int status = expect_materialized_bool_conditional_branch_selected(
+            prepared, "conflicting structured successor ids fallback");
+        status != 0) {
+      return status;
+    }
   }
-  if (branch->condition->kind != aarch64_codegen::OperandKind::Register) {
-    return fail("expected materialized-bool condition operand to be a typed register");
-  }
-  const auto* condition_register =
-      std::get_if<aarch64_codegen::RegisterOperand>(&branch->condition->payload);
-  if (condition_register == nullptr ||
-      condition_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
-      !condition_register->value_id.has_value() ||
-      *condition_register->value_id != prepare::PreparedValueId{9} ||
-      condition_register->value_name != prepared.names.value_names.intern("%cond") ||
-      !condition_register->expected_view.has_value() ||
-      *condition_register->expected_view != aarch64_abi::RegisterView::W) {
-    return fail("expected materialized-bool condition to resolve from typed register authority");
-  }
+
   return 0;
 }
 
@@ -2241,6 +2320,15 @@ int main() {
   }
   if (const int status =
           direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_bool_branch_raw_label_text_drift_keeps_prepared_targets();
+      status != 0) {
+    return status;
+  }
+  if (const int status = materialized_bool_branch_rejects_non_agreeing_bir_targets();
       status != 0) {
     return status;
   }
