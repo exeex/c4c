@@ -1,92 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/211_route5_current_block_join_source_semantic_reader.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Name the Reader and Baseline Prepared Behavior
+Current Step ID: Step 2
+Current Step Title: Add Route/Prepared Agreement for the Reader
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected one current-block join-source semantic reader for idea 211:
-`current_block_join_prepared_query_source(...)` in
-`src/backend/mir/aarch64/codegen/dispatch_producers.cpp`. This is the dispatch
-reader used by `src/backend/mir/aarch64/codegen/dispatch.cpp` to skip lowering a
-current-block source instruction when the join parallel-copy source is already
-authoritative for the current block.
+Step 2 added Route 5/prepared agreement gating for the selected
+`current_block_join_prepared_query_source(...)` reader only.
+`build_current_block_join_prepared_query_routing(...)` now keeps the prepared
+source bit as fallback and accepts Route 5 source evidence only when the Route 5
+fact names the same current block, predecessor edge, source-producing
+instruction/result, destination value, and prepared source-value relationship.
 
-Baseline behavior:
+The adjacent
+`current_block_join_prepared_query_incoming_expression(...)` reader was not
+migrated. It continues to read the existing Route 5 incoming-expression bits
+when Route 5 identity is available, including when prepared source facts are
+unavailable.
 
-- Prepared baseline: when Route 5 identity is unavailable or rejected,
-  `build_current_block_join_prepared_query_routing(...)` falls back to
-  `prepare::prepare_current_block_join_parallel_copy_source_facts(...)`; the
-  selected reader then returns the prepared source bit for the instruction
-  result value id. Prepared edge publications, value homes, move bundles,
-  branch policy, parallel-copy scheduling, and output remain authoritative.
-- Missing-source behavior: if the selected instruction result has no prepared
-  value id, the prepared facts are unavailable, or the routing table does not
-  contain the instruction index, `current_block_join_prepared_query_source(...)`
-  returns false and normal lowering/fallback remains in charge.
-- Route 5 evidence source: `build_current_block_join_prepared_query_routing(...)`
-  builds `bir::route5_build_edge_join_source_index(...)` and reads
-  `mir::find_bir_current_block_join_source_identity(...)` for the successor
-  block. Only `BirCurrentBlockJoinSourceStatus::Available` populates Route 5
-  source bits; every other status falls through to prepared facts.
-- Selected source identity: for the current test fixture, the selected source
-  bit is true for `%current.join.routing.source` and false for the operand-only
-  incoming expression `%current.join.routing.operand`.
+Focused coverage updated
+`backend_aarch64_current_block_join_routing` so:
 
-Coverage inventory:
-
-- Positive Route 5 source behavior: `backend_aarch64_current_block_join_routing`
-  covers available Route 5 identity with and without attached prepared policy;
-  `backend_aarch64_instruction_dispatch` covers the selected reader in the
-  dispatch fixture.
-- Absent Route 5 fallback: `backend_aarch64_current_block_join_routing` covers
-  the no-PHI/absent-route case falling back to prepared source bits.
-- Invalid/missing source evidence: `backend_prepared_lookup_helper` covers
-  missing block, missing successor label, missing publication/no PHI, and
-  missing named source producer statuses; the routing test covers no-source and
-  memory-source shapes returning prepared-derived bits.
-- Duplicate/conflict Route 5 evidence: `backend_prepared_lookup_helper` covers
-  duplicate indexed current-block join records and wrong-predecessor indexed
-  records failing closed as missing publication.
-- Mismatch/fallback coverage gap: existing tests cover Route 5 helper-level
-  destination/source type and missing-source mismatches, but the selected
-  AArch64 reader does not yet have an explicit route/prepared disagreement
-  assertion proving the prepared source bit is retained.
-- Joined-branch and wrapper string surfaces: `backend_prepared_printer` and the
-  configured wrapper tests should remain byte-stable. This build exposes
-  `backend_riscv_prepared_edge_publication`; the x86 joined-branch source file
-  is present behind `C4C_ENABLE_X86_BACKEND_TESTS`, but no
-  `backend_x86_handoff_boundary` CTest is configured in the current build.
+- Route 5 without prepared policy no longer marks the selected source reader.
+- A Route 5/prepared source disagreement retains the prepared source bit.
+- Memory-source Route 5 evidence remains visible to the incoming-expression
+  reader but is rejected by the selected source reader when the prepared
+  destination/source relationship does not match.
 
 ## Suggested Next
 
-Execute Step 2 for the selected reader only. Add a narrow Route 5/prepared
-agreement check for `current_block_join_prepared_query_source(...)` so Route 5
-source bits are accepted only when they identify the same prepared current
-block, join edge, source value, and destination/source relationship; absent,
-invalid, duplicate/conflict, and mismatch cases must retain the prepared source
-bit.
-
-Recommended narrow proof command for the next code-changing packet:
-
-```bash
-cmake --build --preset default --target backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test backend_prepared_printer_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper|backend_prepared_printer|backend_riscv_prepared_edge_publication)$' > test_after.log
-```
+Execute Step 3 by proving the fail-closed Route 5 join-source contract for the
+selected reader. Keep the packet focused on positive agreement, no Route 5
+source, invalid/missing source evidence, duplicate/conflicting indexed Route 5
+records, route/prepared disagreement, and prepared fallback.
 
 ## Watchouts
 
-- Keep the packet to one named current-block join-source reader.
+- Keep the next packet to the selected source reader; do not migrate the
+  adjacent incoming-expression reader.
 - Do not move branch, parallel-copy, execution-site, value-home, move-bundle,
-  final output, wrapper, or expected-string policy into Route 5.
-- Do not migrate `current_block_join_prepared_query_incoming_expression(...)` in
-  the same packet; it is adjacent but not the selected reader.
-- Do not rewrite expected strings or wrapper behavior as proof. The reader is a
-  semantic source identity gate only.
-- Treat no-source, invalid/missing reference, duplicate/conflict,
-  route/prepared mismatch, and prepared fallback as required proof dimensions.
+  output, wrapper, or expected-string policy into Route 5.
+- The helper intentionally compares prepared label/value identities through the
+  prepared name tables because Route 5 BIR identities and prepared IDs come
+  from different name tables.
+- Memory-source Route 5 records can be `Available` while still failing the
+  selected reader's prepared destination/source agreement; this is expected
+  fail-closed behavior.
 - If x86 backend tests are enabled in a later build, add
   `backend_x86_handoff_boundary_test` and `backend_x86_handoff_boundary` to the
   final wrapper proof; they are not available in the current configured CTest
@@ -94,14 +56,8 @@ cmake --build --preset default --target backend_aarch64_current_block_join_routi
 
 ## Proof
 
-Analysis-only packet; no build required and no `test_after.log` produced.
-Inspected the selected reader and coverage using `rg`, the repo clang-tool
-function-signature query, CMake/CTest target discovery, and focused reads of:
+Passed the exact delegated proof command. `test_after.log` records 5/5 passing:
 
-- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `src/backend/mir/query.cpp`
-- `src/backend/bir/bir.cpp`
-- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
-- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+```bash
+cmake --build --preset default --target backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test backend_prepared_printer_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper|backend_prepared_printer|backend_riscv_prepared_edge_publication)$' > test_after.log
+```

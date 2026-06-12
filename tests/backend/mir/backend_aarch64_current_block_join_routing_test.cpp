@@ -27,6 +27,7 @@ enum class CurrentJoinRouteShape {
   NoSource,
   MemorySource,
   AbsentRoute,
+  MismatchedSource,
 };
 
 int fail(std::string_view message) {
@@ -78,7 +79,10 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
   const bool include_phi = route_shape != CurrentJoinRouteShape::AbsentRoute;
   const bool route_has_named_source =
       route_shape == CurrentJoinRouteShape::NormalPredecessor ||
-      route_shape == CurrentJoinRouteShape::MissingPredecessor;
+      route_shape == CurrentJoinRouteShape::MissingPredecessor ||
+      route_shape == CurrentJoinRouteShape::MismatchedSource;
+  const bool route_uses_operand_source =
+      route_shape == CurrentJoinRouteShape::MismatchedSource;
   const bool route_has_missing_source =
       route_shape == CurrentJoinRouteShape::NoSource;
   const bool route_has_memory_source =
@@ -91,6 +95,9 @@ prepare::PreparedBirModule make_current_join_routing_prepared(
     if (route_has_missing_source) {
       incoming_value = bir::Value::named(bir::TypeKind::I32,
                                          "%current.join.routing.missing_source");
+    } else if (route_uses_operand_source) {
+      incoming_value = bir::Value::named(bir::TypeKind::I32,
+                                         "%current.join.routing.operand");
     } else if (route_has_memory_source) {
       incoming_value = bir::Value::named(bir::TypeKind::I32,
                                          "%current.join.routing.stack_source");
@@ -374,14 +381,23 @@ int verify_current_join_routing(prepare::PreparedBirModule prepared,
        instruction_index < join_context.bir_block->insts.size();
        ++instruction_index) {
     const auto& inst = join_context.bir_block->insts[instruction_index];
-    if (aarch64_codegen::current_block_join_prepared_query_incoming_expression(
-            routing, join_context, instruction_index, inst) !=
-        expected_incoming[instruction_index]) {
+    const bool actual_incoming =
+        aarch64_codegen::current_block_join_prepared_query_incoming_expression(
+            routing, join_context, instruction_index, inst);
+    if (actual_incoming != expected_incoming[instruction_index]) {
+      std::cerr << "incoming index " << instruction_index
+                << " expected " << expected_incoming[instruction_index]
+                << " actual " << actual_incoming
+                << "\n";
       return fail("current-block join incoming-expression routing bit mismatch");
     }
-    if (aarch64_codegen::current_block_join_prepared_query_source(
-            routing, join_context, instruction_index, inst) !=
-        expected_sources[instruction_index]) {
+    const bool actual_source =
+        aarch64_codegen::current_block_join_prepared_query_source(
+            routing, join_context, instruction_index, inst);
+    if (actual_source != expected_sources[instruction_index]) {
+      std::cerr << "source index " << instruction_index
+                << " expected " << expected_sources[instruction_index]
+                << " actual " << actual_source << "\n";
       return fail("current-block join source routing bit mismatch");
     }
   }
@@ -394,7 +410,7 @@ int main() {
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::NormalPredecessor, false),
-          true, false, {false, true, true}, {false, true, false});
+          true, false, {false, true, true}, {false, false, false});
       status != 0) {
     return status;
   }
@@ -413,6 +429,13 @@ int main() {
     return status;
   }
   if (const int status = verify_current_join_routing(
+          make_current_join_routing_prepared(
+              CurrentJoinRouteShape::MismatchedSource, true),
+          true, true, {false, false, true}, {false, true, false});
+      status != 0) {
+    return status;
+  }
+  if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(CurrentJoinRouteShape::NoSource,
                                              true),
           false, true, {false, true, true}, {false, false, true});
@@ -422,7 +445,7 @@ int main() {
   if (const int status = verify_current_join_routing(
           make_current_join_routing_prepared(
               CurrentJoinRouteShape::MemorySource, true),
-          true, true, {false, true, false}, {false, true, false});
+          true, true, {false, true, false}, {false, false, false});
       status != 0) {
     return status;
   }

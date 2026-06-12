@@ -99,6 +99,17 @@ instruction_result_prepared_value_id(
          }) != values.end();
 }
 
+[[nodiscard]] bool instruction_result_matches_bir_value_identity(
+    const bir::Inst& inst,
+    const mir::SameBlockValueIdentity& value) {
+  const auto* result = instruction_result_value_ref(inst);
+  return result != nullptr &&
+         result->kind == bir::Value::Kind::Named &&
+         !result->name.empty() &&
+         value.name == result->name &&
+         value.type == result->type;
+}
+
 [[nodiscard]] prepare::PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
     const module::BlockLoweringContext& context) {
@@ -142,6 +153,82 @@ prepare_current_block_join_parallel_copy_source_facts(
                   ? context.control_flow_block->block_label
                   : c4c::kInvalidBlockLabel,
       });
+}
+
+[[nodiscard]] bool current_block_join_route5_source_agrees_with_prepared(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const mir::BirCurrentBlockJoinSourceIdentity& route5_identity,
+    const prepare::PreparedCurrentBlockJoinParallelCopySourceFacts& prepared_facts) {
+  if (route5_identity.status != mir::BirCurrentBlockJoinSourceStatus::Available ||
+      prepared_facts.status !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      context.control_flow_block == nullptr ||
+      context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto prepared_successor_label =
+      prepare::prepared_block_label(context.function.prepared->names,
+                                    context.control_flow_block->block_label);
+  if (prepared_successor_label.empty()) {
+    return false;
+  }
+  const auto result_value_id = instruction_result_prepared_value_id(context, inst);
+  const auto* result_value = instruction_result_value_ref(inst);
+  if (!result_value_id.has_value() ||
+      result_value == nullptr ||
+      result_value->kind != bir::Value::Kind::Named ||
+      result_value->name.empty()) {
+    return false;
+  }
+
+  for (const auto& route5_fact : route5_identity.facts) {
+    if (route5_fact.status != mir::BirCurrentBlockJoinSourceStatus::Available ||
+        route5_fact.source_producer.inst != &inst ||
+        route5_fact.source_producer.instruction_index != instruction_index ||
+        route5_fact.source_producer_instruction_index !=
+            std::optional<std::size_t>{instruction_index} ||
+        !instruction_result_matches_bir_value_identity(
+            inst, route5_fact.source_value_identity) ||
+        route5_fact.successor_label != prepared_successor_label) {
+      continue;
+    }
+    const auto route5_destination_value_name =
+        route5_fact.destination_value != nullptr
+            ? prepared_named_value_id(context, *route5_fact.destination_value)
+            : std::nullopt;
+    const auto route5_source_value_name =
+        route5_fact.source_value != nullptr
+            ? prepared_named_value_id(context, *route5_fact.source_value)
+            : std::nullopt;
+    const auto prepared_match =
+        std::find_if(prepared_facts.facts.begin(),
+                     prepared_facts.facts.end(),
+                     [&](const auto& prepared_fact) {
+                       const auto prepared_predecessor_label =
+                           prepare::prepared_block_label(
+                               context.function.prepared->names,
+                               prepared_fact.predecessor_label);
+                       return prepared_fact.source_is_source_value &&
+                              prepared_fact.successor_label ==
+                                  context.control_flow_block->block_label &&
+                              !prepared_predecessor_label.empty() &&
+                              prepared_predecessor_label ==
+                                  route5_fact.predecessor_label &&
+                              prepared_fact.source_value_id == result_value_id &&
+                              route5_destination_value_name.has_value() &&
+                              route5_source_value_name.has_value() &&
+                              prepared_fact.destination_value_name ==
+                                  *route5_destination_value_name &&
+                              prepared_fact.source_value_name ==
+                                  *route5_source_value_name;
+                     });
+    if (prepared_match != prepared_facts.facts.end()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] SameBlockSelectProducer prepared_same_block_select_producer(
@@ -406,6 +493,7 @@ prepared_publication_source_producer_for_value(
 build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context) {
   CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
+  std::optional<mir::BirCurrentBlockJoinSourceIdentity> route5_identity;
   if (context.bir_block != nullptr) {
     const auto route5_join_sources =
         context.function.bir_function != nullptr
@@ -424,14 +512,7 @@ build_current_block_join_prepared_query_routing(
                     : c4c::kInvalidBlockLabel,
         });
     if (bir_identity.status == mir::BirCurrentBlockJoinSourceStatus::Available) {
-      for (const auto& inst : context.bir_block->insts) {
-        routing.incoming_expressions.push_back(
-            instruction_result_matches_bir_value_identity(
-                inst, bir_identity.incoming_expression_values));
-        routing.sources.push_back(instruction_result_matches_bir_value_identity(
-            inst, bir_identity.source_values));
-      }
-      return routing;
+      route5_identity = bir_identity;
     }
   }
 
@@ -478,6 +559,14 @@ build_current_block_join_prepared_query_routing(
   if (facts.status !=
           prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
       context.bir_block == nullptr) {
+    if (route5_identity.has_value() && context.bir_block != nullptr) {
+      for (const auto& inst : context.bir_block->insts) {
+        routing.incoming_expressions.push_back(
+            instruction_result_matches_bir_value_identity(
+                inst, route5_identity->incoming_expression_values));
+        routing.sources.push_back(false);
+      }
+    }
     return routing;
   }
 
@@ -494,8 +583,22 @@ build_current_block_join_prepared_query_routing(
         std::find(facts.source_value_ids.begin(),
                   facts.source_value_ids.end(),
                   *result_value_id) != facts.source_value_ids.end();
-    routing.incoming_expressions.push_back(prepared_incoming_expression);
-    routing.sources.push_back(prepared_source);
+    const bool route5_incoming_expression =
+        route5_identity.has_value() &&
+        instruction_result_matches_bir_value_identity(
+            inst, route5_identity->incoming_expression_values);
+    const bool route5_source =
+        route5_identity.has_value() &&
+        instruction_result_matches_bir_value_identity(
+            inst, route5_identity->source_values);
+    const bool route5_source_agrees =
+        route5_source &&
+        current_block_join_route5_source_agrees_with_prepared(
+            context, inst, routing.sources.size(), *route5_identity, facts);
+    routing.incoming_expressions.push_back(route5_identity.has_value()
+                                               ? route5_incoming_expression
+                                               : prepared_incoming_expression);
+    routing.sources.push_back(route5_source_agrees ? true : prepared_source);
   }
   return routing;
 }
